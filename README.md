@@ -112,7 +112,7 @@ Note: Upgrade from versions prior to v1.2.0 requires the re-running of ./install
   | ERCF_PRELOAD | Helper for filament loading. Feed filament into gate, ERCF will catch it and correctly position at the specified gate |
   | ERCF_CHECK_GATES | Inspect the gate(s) and mark availability |
   | ERCF_RECOVER | Recover filament position and optionally reset ERCF state |
-  | ERCF_ENABLE | Enable ERCF and reset state after disable |
+  | MMU | Enable ERCF and reset state after disable |
   | ERCF_DISABLE | Disable all ERCF functionality |
   | ERCF_RESET | Reset the ERCF persisted state back to defaults |
   
@@ -502,7 +502,6 @@ Good luck and hopefully a little less *enraged* printing.  You can find me on di
   | ERCF_PRELOAD | Helper for filament loading. Feed filament into gate, ERCF will catch it and correctly position at the specified gate | GATE=\[0..n\] The specific gate to preload. If omitted the currently selected gate can be loaded |
   | ERCF_UNLOCK | Unlock ERCF operations after a pause caused by error condition | None |
   | ERCF_HOME | Home the ERCF selector and optionally selects gate associated with the specified tool | TOOL=\[0..n\] After homing, select this gate as if ERCF_SELECT TOOL=xx was called <br>FORCE_UNLOAD=\[0\|1\] Optional. If specified will override default intelligent filament unload behavior prior to homing |
-  | ERCF_SELECT_TOOL | DEPRECATED but included as alias to 'ERCF_SELECT TOOL=' to be compatible with current documentation | DEPRECATED |
   | ERCF_SELECT | Selects the gate associated with the specified tool (TTG map) or the specific gate regardless of TTG map | TOOL=\[0..n\] The tool to be selected <br>GATE=\[0..n\] The gate to be selected (ignores TTG map) |
   | ERCF_SELECT_BYPASS | Unload and select the bypass selector position if configured | None |
   | ERCF_LOAD | Loads filament in currently selected tool/gate to extruder. Optionally performs just the extruder load part of the sequence - designed for bypass unloading | EXTRUDER_ONLY=\[0\|1\] To force just the extruder loading (automatic if in bypass) <br>NOTE: Owing to current documented use for test loading (correctly use ERCF_TEST_LOAD instead) it is necessary to pass `TEST=0` to force the loading of current tool/gate. This will be updated in the future |
@@ -510,8 +509,7 @@ Good luck and hopefully a little less *enraged* printing.  You can find me on di
   | ERCF_EJECT | Eject filament and park it in the ERCF gate or does the extruder unloading part of the unload sequence if in bypass | EXTRUDER_ONLY=\[0\|1\] To force just the extruder unloading (automatic if in bypass) |
   | ERCF_PAUSE | Pause the current print and lock the ERCF operations | FORCE_IN_PRINT=\[0\|1\] This option forces the handling of pause as if it occurred in print and is useful for testing |
   | ERCF_RECOVER | Recover filament position and optionally reset ERCF state. Useful to call prior to RESUME if you intervene/manipulate filament by hand | TOOL=\[0..n\] \| -2 Optionally force set the currently selected tool (-2 = bypass). Use caution! <br>GATE=\[0..n\] Optionally force set the currently selected gate if TTG mapping is being leveraged otherwise it will get the gate associated with current tool. Use caution! <br>LOADED=\[0\|1\] Optionally specify if the filamanet is fully loaded or fully unloaded. Use caution! If not specified, ERCF will try to discover filament position |
-  | ERCF_ENABLE | Enable ERCF and reset state after disable | None |
-  | ERCF_DISABLE | Disable all ERCF functionality | None |
+  | MMU | Enable and reset state or disable the MMU | ENABLE=\[0\|1\] |
   | ERCF_ENCODER | Explicitly enable or disable the encoder. Note that the encoder state is set automatically so this will only be sticky until next tool change | ENABLE=\[0\|1\] |
   | ERCF_SYNC_GEAR_MOTOR | Explicitly override the synchronization of extruder and gear motors. Note that synchronization is set automatically so this will only be sticky until the next tool change | SYNC=\[0\|1\] Turn gear/extruder synchronization on/off (default 1) <br>SERVO=\[0\|1\] If 1 (the default) servo will engage if SYNC=1 or disengage if SYNC=0 otherwise servo position will not change |
   <br>
@@ -519,8 +517,7 @@ Good luck and hopefully a little less *enraged* printing.  You can find me on di
   ## Servo and motor control
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |
-  | ERCF_SERVO_DOWN | Engage the ERCF gear | None |
-  | ERCF_SERVO_UP | Disengage the ERCF gear | None |
+  | ERCF_SERVO | Set the servo postion or angle | POS=\[up|down|move\] Move servo to predetermined position <br>ANGLE=.. Move servo to specified angle |
   | ERCF_MOTORS_OFF | Turn off both ERCF motors | None |
   | ERCF_BUZZ_GEAR_MOTOR | Buzz the ERCF gear motor and report on whether filament was detected | None |
   <br>

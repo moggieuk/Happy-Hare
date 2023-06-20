@@ -20,7 +20,7 @@ import logging, time
 SERVO_SIGNAL_PERIOD = 0.02
 PIN_MIN_TIME = 0.1
 
-class ErcfServo:
+class MmuServo:
     def __init__(self, config):
         self.printer = config.get_printer()
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -47,7 +47,7 @@ class ErcfServo:
         self.mcu_pwm.setup_start_value(initial_pwm, 0.)
         servo_name = config.get_name().split()[1]
         gcode = self.printer.lookup_object('gcode')
-        gcode.register_mux_command('ERCF_SET_SERVO', 'SERVO', servo_name, self.cmd_SET_SERVO, desc=self.cmd_SET_SERVO_help)
+        gcode.register_mux_command('SET_SERVO', 'SERVO', servo_name, self.cmd_SET_SERVO, desc=self.cmd_SET_SERVO_help)
 
     def handle_connect(self):
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
@@ -120,4 +120,4 @@ class ErcfServo:
         self.set_value(width, angle, duration)
 
 def load_config_prefix(config):
-    return ErcfServo(config)
+    return MmuServo(config)

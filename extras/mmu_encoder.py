@@ -18,7 +18,7 @@
 import logging, time
 from . import pulse_counter
 
-class ErcfEncoder:
+class MmuEncoder:
     CHECK_MOVEMENT_TIMEOUT = 0.250
 
     RUNOUT_DISABLED = 0
@@ -46,18 +46,18 @@ class ErcfEncoder:
 
         # For clog/runout functionality
         self.extruder_name = config.get('extruder', 'extruder')
-        # The runout headroom that ERCF will attempt to maintain (closest ERCF comes to triggering runout)
+        # The runout headroom that MMU will attempt to maintain (closest MMU comes to triggering runout)
         self.desired_headroom = config.getfloat('desired_headroom', 6., above=0.)
         # The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
         self.average_samples = config.getint('average_samples', 4, minval=1)
         # The extrusion interval where new detection_length is calculated (also done on toolchange)
         self.next_calibration_point = self.calibration_length = config.getfloat('calibration_length', 10000., minval=50.) # 10m
-        # Detection length will be set by ERCF calibration
+        # Detection length will be set by MMU calibration
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
         self.event_delay = config.getfloat('event_delay', 3., above=0.)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
-        self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '_ERCF_ENCODER_RUNOUT')
-        self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '_ERCF_ENCODER_INSERT')
+        self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '_MMU_ENCODER_RUNOUT')
+        self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '_MMU_ENCODER_INSERT')
         self._enabled = True
         self.min_event_systime = self.reactor.NEVER
         self.extruder = self.estimated_print_time = None
@@ -307,5 +307,5 @@ class ErcfEncoder:
         }
 
 def load_config_prefix(config):
-    return ErcfEncoder(config)
+    return MmuEncoder(config)
 

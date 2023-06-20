@@ -125,23 +125,23 @@ class Mmu:
     VENDOR_PRUSA = "prusa" # In progress
 
     # mmu_vars.cfg variables
-    VARS_ERCF_CALIB_CLOG_LENGTH      = "ercf_calib_clog_length"
-    VARS_ERCF_ENABLE_ENDLESS_SPOOL   = "ercf_state_enable_endless_spool"
-    VARS_ERCF_ENDLESS_SPOOL_GROUPS   = "ercf_state_endless_spool_groups"
-    VARS_ERCF_TOOL_TO_GATE_MAP       = "ercf_state_tool_to_gate_map"
-    VARS_ERCF_GATE_STATUS            = "ercf_state_gate_status"
-    VARS_ERCF_GATE_MATERIAL          = "ercf_state_gate_material"
-    VARS_ERCF_GATE_COLOR             = "ercf_state_gate_color"
-    VARS_ERCF_GATE_SELECTED          = "ercf_state_gate_selected"
-    VARS_ERCF_TOOL_SELECTED          = "ercf_state_tool_selected"
-    VARS_ERCF_LOADED_STATUS          = "ercf_state_loaded_status"
-    VARS_ERCF_CALIB_REF              = "ercf_calib_ref"
-    VARS_ERCF_CALIB_PREFIX           = "ercf_calib_"
-    VARS_ERCF_CALIB_VERSION          = "ercf_calib_version"
-    VARS_ERCF_GATE_STATISTICS_PREFIX = "ercf_statistics_gate_"
-    VARS_ERCF_SWAP_STATISTICS        = "ercf_statistics_swaps"
-    VARS_ERCF_SELECTOR_OFFSETS       = "ercf_selector_offsets"
-    VARS_ERCF_SELECTOR_BYPASS        = "ercf_selector_bypass"
+    VARS_MMU_CALIB_CLOG_LENGTH      = "mmu_calib_clog_length"
+    VARS_MMU_ENABLE_ENDLESS_SPOOL   = "mmu_state_enable_endless_spool"
+    VARS_MMU_ENDLESS_SPOOL_GROUPS   = "mmu_state_endless_spool_groups"
+    VARS_MMU_TOOL_TO_GATE_MAP       = "mmu_state_tool_to_gate_map"
+    VARS_MMU_GATE_STATUS            = "mmu_state_gate_status"
+    VARS_MMU_GATE_MATERIAL          = "mmu_state_gate_material"
+    VARS_MMU_GATE_COLOR             = "mmu_state_gate_color"
+    VARS_MMU_GATE_SELECTED          = "mmu_state_gate_selected"
+    VARS_MMU_TOOL_SELECTED          = "mmu_state_tool_selected"
+    VARS_MMU_LOADED_STATUS          = "mmu_state_loaded_status"
+    VARS_MMU_CALIB_REF              = "mmu_calib_ref"
+    VARS_MMU_CALIB_PREFIX           = "mmu_calib_"
+    VARS_MMU_CALIB_VERSION          = "mmu_calib_version"
+    VARS_MMU_GATE_STATISTICS_PREFIX = "mmu_statistics_gate_"
+    VARS_MMU_SWAP_STATISTICS        = "mmu_statistics_swaps"
+    VARS_MMU_SELECTOR_OFFSETS       = "mmu_selector_offsets"
+    VARS_MMU_SELECTOR_BYPASS        = "mmu_selector_bypass"
 
     DEFAULT_ENCODER_RESOLUTION = 0.67 # 0.67 is about the resolution of one pulse
     EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'servo_retries': 0, 'load_failures': 0, 'unload_failures': 0}
@@ -162,7 +162,7 @@ class Mmu:
                   'silver', 'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow', 'springgreen', 'steelblue', 'tan', 'teal', 'thistle', 'tomato',
                   'turquoise', 'violet', 'wheat', 'white', 'whitesmoke', 'yellow', 'yellowgreen']
 
-    UPGRADE_REMINDER = "Did you upgrade? Run Happy Hare './install.sh' again to fix configuration files and/or read https://github.com/moggieuk/ERCF-Software-V3/blob/master/doc/UPGRADE.md"
+    UPGRADE_REMINDER = "Did you upgrade? Run Happy Hare './install.sh' again to fix configuration files and/or read https://github.com/moggieuk/Happy-Hare/blob/main/doc/UPGRADE.md"
 
     def __init__(self, config):
         self.config = config
@@ -275,7 +275,7 @@ class Mmu:
         self.logfile_level = config.getint('logfile_level', 3, minval=-1, maxval=4)
         self.log_statistics = config.getint('log_statistics', 0, minval=0, maxval=1)
         self.log_visual = config.getint('log_visual', 1, minval=0, maxval=2)
-        self.startup_status = config.getint('startup_status', 0, minval=0, maxval=2)
+        self.startup_status = config.getint('startup_status', 1, minval=0, maxval=2)
 
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg
 
@@ -336,165 +336,153 @@ class Mmu:
         self.gcode = self.printer.lookup_object('gcode')
 
         # Logging and Stats
-        self.gcode.register_command('ERCF_RESET_STATS',
-                    self.cmd_ERCF_RESET_STATS,
-                    desc = self.cmd_ERCF_RESET_STATS_help)
-        self.gcode.register_command('ERCF_RESET',
-                    self.cmd_ERCF_RESET,
-                    desc = self.cmd_ERCF_RESET_help)
-        self.gcode.register_command('ERCF_DUMP_STATS',
-                    self.cmd_ERCF_DUMP_STATS,
-                    desc = self.cmd_ERCF_DUMP_STATS_help)
-        self.gcode.register_command('ERCF_SET_LOG_LEVEL',
-                    self.cmd_ERCF_SET_LOG_LEVEL,
-                    desc = self.cmd_ERCF_SET_LOG_LEVEL_help)
-        self.gcode.register_command('ERCF_DISPLAY_ENCODER_POS',
-                    self.cmd_ERCF_DISPLAY_ENCODER_POS,
-                    desc = self.cmd_ERCF_DISPLAY_ENCODER_POS_help)
-        self.gcode.register_command('ERCF_STATUS',
-                    self.cmd_ERCF_STATUS,
-                    desc = self.cmd_ERCF_STATUS_help)
+        self.gcode.register_command('MMU_RESET_STATS',
+                    self.cmd_MMU_RESET_STATS,
+                    desc = self.cmd_MMU_RESET_STATS_help)
+        self.gcode.register_command('MMU_RESET',
+                    self.cmd_MMU_RESET,
+                    desc = self.cmd_MMU_RESET_help)
+        self.gcode.register_command('MMU_DUMP_STATS',
+                    self.cmd_MMU_DUMP_STATS,
+                    desc = self.cmd_MMU_DUMP_STATS_help)
+        self.gcode.register_command('MMU_DISPLAY_ENCODER_POS',
+                    self.cmd_MMU_DISPLAY_ENCODER_POS,
+                    desc = self.cmd_MMU_DISPLAY_ENCODER_POS_help)
+        self.gcode.register_command('MMU_STATUS',
+                    self.cmd_MMU_STATUS,
+                    desc = self.cmd_MMU_STATUS_help)
 
         # Calibration
-        self.gcode.register_command('ERCF_CALIBRATE',
-                    self.cmd_ERCF_CALIBRATE,
-                    desc = self.cmd_ERCF_CALIBRATE_help)
-        self.gcode.register_command('ERCF_CALIBRATE_SINGLE',
-                    self.cmd_ERCF_CALIBRATE_SINGLE,
-                    desc = self.cmd_ERCF_CALIBRATE_SINGLE_help)
-        self.gcode.register_command('ERCF_CALIBRATE_SELECTOR',
-                    self.cmd_ERCF_CALIBRATE_SELECTOR,
-                    desc = self.cmd_ERCF_CALIBRATE_SELECTOR_help)
-        self.gcode.register_command('ERCF_CALIBRATE_ENCODER',
-                    self.cmd_ERCF_CALIBRATE_ENCODER,
-                    desc=self.cmd_ERCF_CALIBRATE_ENCODER_help)
+        self.gcode.register_command('MMU_CALIBRATE',
+                    self.cmd_MMU_CALIBRATE,
+                    desc = self.cmd_MMU_CALIBRATE_help)
+        self.gcode.register_command('MMU_CALIBRATE_SINGLE',
+                    self.cmd_MMU_CALIBRATE_SINGLE,
+                    desc = self.cmd_MMU_CALIBRATE_SINGLE_help)
+        self.gcode.register_command('MMU_CALIBRATE_SELECTOR',
+                    self.cmd_MMU_CALIBRATE_SELECTOR,
+                    desc = self.cmd_MMU_CALIBRATE_SELECTOR_help)
+        self.gcode.register_command('MMU_CALIBRATE_ENCODER',
+                    self.cmd_MMU_CALIBRATE_ENCODER,
+                    desc=self.cmd_MMU_CALIBRATE_ENCODER_help)
 
         # Servo and motor control
-        self.gcode.register_command('ERCF_SERVO_DOWN',
-                    self.cmd_ERCF_SERVO_DOWN,
-                    desc = self.cmd_ERCF_SERVO_DOWN_help)
-        self.gcode.register_command('ERCF_SERVO_UP',
-                    self.cmd_ERCF_SERVO_UP,
-                    desc = self.cmd_ERCF_SERVO_UP_help)
-        self.gcode.register_command('ERCF_SERVO_MOVE',
-                    self.cmd_ERCF_SERVO_MOVE,
-                    desc = self.cmd_ERCF_SERVO_MOVE_help)
-        self.gcode.register_command('ERCF_MOTORS_OFF',
-                    self.cmd_ERCF_MOTORS_OFF,
-                    desc = self.cmd_ERCF_MOTORS_OFF_help)
-        self.gcode.register_command('ERCF_BUZZ_GEAR_MOTOR',
-                    self.cmd_ERCF_BUZZ_GEAR_MOTOR,
-                    desc=self.cmd_ERCF_BUZZ_GEAR_MOTOR_help)
-        self.gcode.register_command('ERCF_SYNC_GEAR_MOTOR', 
-                    self.cmd_ERCF_SYNC_GEAR_MOTOR, 
-                    desc=self.cmd_ERCF_SYNC_GEAR_MOTOR_help)
+        self.gcode.register_command('MMU_SERVO',
+                    self.cmd_MMU_SERVO,
+                    desc = self.cmd_MMU_SERVO_help)
+        self.gcode.register_command('MMU_MOTORS_OFF',
+                    self.cmd_MMU_MOTORS_OFF,
+                    desc = self.cmd_MMU_MOTORS_OFF_help)
+        self.gcode.register_command('MMU_BUZZ_GEAR_MOTOR',
+                    self.cmd_MMU_BUZZ_GEAR_MOTOR,
+                    desc=self.cmd_MMU_BUZZ_GEAR_MOTOR_help)
+        self.gcode.register_command('MMU_SYNC_GEAR_MOTOR', 
+                    self.cmd_MMU_SYNC_GEAR_MOTOR, 
+                    desc=self.cmd_MMU_SYNC_GEAR_MOTOR_help)
 
-        # Core ERCF functionality
-        self.gcode.register_command('ERCF_ENABLE',
-                    self.cmd_ERCF_ENABLE,
-                    desc = self.cmd_ERCF_ENABLE_help)
-        self.gcode.register_command('ERCF_DISABLE',
-                    self.cmd_ERCF_DISABLE,
-                    desc = self.cmd_ERCF_DISABLE_help)
-        self.gcode.register_command('ERCF_ENCODER',
-                    self.cmd_ERCF_ENCODER,
-                    desc = self.cmd_ERCF_ENCODER_help)
-        self.gcode.register_command('ERCF_HOME',
-                    self.cmd_ERCF_HOME,
-                    desc = self.cmd_ERCF_HOME_help)
-        self.gcode.register_command('ERCF_SELECT',
-                    self.cmd_ERCF_SELECT,
-                    desc = self.cmd_ERCF_SELECT_help)
-        self.gcode.register_command('ERCF_SELECT_TOOL', # For backwards compatibility, but ERCF_SELECT is preferred
-                    self.cmd_ERCF_SELECT,
-                    desc = self.cmd_ERCF_SELECT_help)
-        self.gcode.register_command('ERCF_PRELOAD',
-                    self.cmd_ERCF_PRELOAD,
-                    desc = self.cmd_ERCF_PRELOAD_help)
-        self.gcode.register_command('ERCF_SELECT_BYPASS',
-                    self.cmd_ERCF_SELECT_BYPASS,
-                    desc = self.cmd_ERCF_SELECT_BYPASS_help)
-        self.gcode.register_command('ERCF_CHANGE_TOOL',
-                    self.cmd_ERCF_CHANGE_TOOL,
-                    desc = self.cmd_ERCF_CHANGE_TOOL_help)
-        self.gcode.register_command('ERCF_LOAD',
-                    self.cmd_ERCF_LOAD,
-                    desc=self.cmd_ERCF_LOAD_help)
-        self.gcode.register_command('ERCF_EJECT',
-                    self.cmd_ERCF_EJECT,
-                    desc = self.cmd_ERCF_EJECT_help)
-        self.gcode.register_command('ERCF_UNLOCK',
-                    self.cmd_ERCF_UNLOCK,
-                    desc = self.cmd_ERCF_UNLOCK_help)
-        self.gcode.register_command('ERCF_PAUSE',
-                    self.cmd_ERCF_PAUSE,
-                    desc = self.cmd_ERCF_PAUSE_help)
-        self.gcode.register_command('ERCF_RECOVER',
-                    self.cmd_ERCF_RECOVER,
-                    desc = self.cmd_ERCF_RECOVER_help)
+        # Core MMU functionality
+        self.gcode.register_command('MMU',
+                    self.cmd_MMU,
+                    desc = self.cmd_MMU_help)
+        self.gcode.register_command('MMU_HELP',
+                    self.cmd_MMU_HELP,
+                    desc = self.cmd_MMU_HELP_help)
+        self.gcode.register_command('MMU_ENCODER',
+                    self.cmd_MMU_ENCODER,
+                    desc = self.cmd_MMU_ENCODER_help)
+        self.gcode.register_command('MMU_HOME',
+                    self.cmd_MMU_HOME,
+                    desc = self.cmd_MMU_HOME_help)
+        self.gcode.register_command('MMU_SELECT',
+                    self.cmd_MMU_SELECT,
+                    desc = self.cmd_MMU_SELECT_help)
+        self.gcode.register_command('MMU_PRELOAD',
+                    self.cmd_MMU_PRELOAD,
+                    desc = self.cmd_MMU_PRELOAD_help)
+        self.gcode.register_command('MMU_SELECT_BYPASS',
+                    self.cmd_MMU_SELECT_BYPASS,
+                    desc = self.cmd_MMU_SELECT_BYPASS_help)
+        self.gcode.register_command('MMU_CHANGE_TOOL',
+                    self.cmd_MMU_CHANGE_TOOL,
+                    desc = self.cmd_MMU_CHANGE_TOOL_help)
+        self.gcode.register_command('MMU_LOAD',
+                    self.cmd_MMU_LOAD,
+                    desc=self.cmd_MMU_LOAD_help)
+        self.gcode.register_command('MMU_EJECT',
+                    self.cmd_MMU_EJECT,
+                    desc = self.cmd_MMU_EJECT_help)
+        self.gcode.register_command('MMU_UNLOCK',
+                    self.cmd_MMU_UNLOCK,
+                    desc = self.cmd_MMU_UNLOCK_help)
+        self.gcode.register_command('MMU_PAUSE',
+                    self.cmd_MMU_PAUSE,
+                    desc = self.cmd_MMU_PAUSE_help)
+        self.gcode.register_command('MMU_RECOVER',
+                    self.cmd_MMU_RECOVER,
+                    desc = self.cmd_MMU_RECOVER_help)
 
         # User Setup and Testing
-        self.gcode.register_command('ERCF_TEST_GRIP',
-                    self.cmd_ERCF_TEST_GRIP,
-                    desc = self.cmd_ERCF_TEST_GRIP_help)
-        self.gcode.register_command('ERCF_TEST_SERVO',
-                    self.cmd_ERCF_TEST_SERVO,
-                    desc = self.cmd_ERCF_TEST_SERVO_help)
-        self.gcode.register_command('ERCF_TEST_MOVE_GEAR',
-                    self.cmd_ERCF_TEST_MOVE_GEAR,
-                    desc = self.cmd_ERCF_TEST_MOVE_GEAR_help)
-        self.gcode.register_command('ERCF_TEST_LOAD',
-                    self.cmd_ERCF_TEST_LOAD,
-                    desc=self.cmd_ERCF_TEST_LOAD_help)
-        self.gcode.register_command('ERCF_TEST_TRACKING',
-                    self.cmd_ERCF_TEST_TRACKING,
-                    desc=self.cmd_ERCF_TEST_TRACKING_help)
-        self.gcode.register_command('ERCF_TEST_UNLOAD',
-                    self.cmd_ERCF_TEST_UNLOAD,
-                    desc=self.cmd_ERCF_TEST_UNLOAD_help)
-        self.gcode.register_command('ERCF_TEST_HOME_TO_EXTRUDER',
-                    self.cmd_ERCF_TEST_HOME_TO_EXTRUDER,
-                    desc = self.cmd_ERCF_TEST_HOME_TO_EXTRUDER_help)
-        self.gcode.register_command('ERCF_TEST_CONFIG',
-                    self.cmd_ERCF_TEST_CONFIG,
-                    desc = self.cmd_ERCF_TEST_CONFIG_help)
+        self.gcode.register_command('MMU_TEST_GRIP',
+                    self.cmd_MMU_TEST_GRIP,
+                    desc = self.cmd_MMU_TEST_GRIP_help)
+# PAUL
+#        self.gcode.register_command('MMU_TEST_SERVO',
+#                    self.cmd_MMU_TEST_SERVO,
+#                    desc = self.cmd_MMU_TEST_SERVO_help)
+        self.gcode.register_command('MMU_TEST_MOVE_GEAR',
+                    self.cmd_MMU_TEST_MOVE_GEAR,
+                    desc = self.cmd_MMU_TEST_MOVE_GEAR_help)
+        self.gcode.register_command('MMU_TEST_LOAD',
+                    self.cmd_MMU_TEST_LOAD,
+                    desc=self.cmd_MMU_TEST_LOAD_help)
+        self.gcode.register_command('MMU_TEST_TRACKING',
+                    self.cmd_MMU_TEST_TRACKING,
+                    desc=self.cmd_MMU_TEST_TRACKING_help)
+        self.gcode.register_command('MMU_TEST_UNLOAD',
+                    self.cmd_MMU_TEST_UNLOAD,
+                    desc=self.cmd_MMU_TEST_UNLOAD_help)
+        self.gcode.register_command('MMU_TEST_HOME_TO_EXTRUDER',
+                    self.cmd_MMU_TEST_HOME_TO_EXTRUDER,
+                    desc = self.cmd_MMU_TEST_HOME_TO_EXTRUDER_help)
+        self.gcode.register_command('MMU_TEST_CONFIG',
+                    self.cmd_MMU_TEST_CONFIG,
+                    desc = self.cmd_MMU_TEST_CONFIG_help)
 
         # Soak Testing
-        self.gcode.register_command('ERCF_SOAKTEST_SELECTOR',
-                    self.cmd_ERCF_SOAKTEST_SELECTOR,
-                    desc = self.cmd_ERCF_SOAKTEST_SELECTOR_help)
-        self.gcode.register_command('ERCF_SOAKTEST_LOAD_SEQUENCE',
-                    self.cmd_ERCF_SOAKTEST_LOAD_SEQUENCE,
-                    desc = self.cmd_ERCF_SOAKTEST_LOAD_SEQUENCE_help)
+        self.gcode.register_command('MMU_SOAKTEST_SELECTOR',
+                    self.cmd_MMU_SOAKTEST_SELECTOR,
+                    desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
+        self.gcode.register_command('MMU_SOAKTEST_LOAD_SEQUENCE',
+                    self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE,
+                    desc = self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help)
 
         # Runout, TTG and Endless spool
-        self.gcode.register_command('_ERCF_ENCODER_RUNOUT',
-                    self.cmd_ERCF_ENCODER_RUNOUT,
-                    desc = self.cmd_ERCF_ENCODER_RUNOUT_help)
-        self.gcode.register_command('_ERCF_ENCODER_INSERT',
-                    self.cmd_ERCF_ENCODER_INSERT,
-                    desc = self.cmd_ERCF_ENCODER_INSERT_help)
-        self.gcode.register_command('ERCF_DISPLAY_TTG_MAP',
-                    self.cmd_ERCF_DISPLAY_TTG_MAP,
-                    desc = self.cmd_ERCF_DISPLAY_TTG_MAP_help)
-        self.gcode.register_command('ERCF_REMAP_TTG',
-                    self.cmd_ERCF_REMAP_TTG,
-                    desc = self.cmd_ERCF_REMAP_TTG_help)
-        self.gcode.register_command('ERCF_SET_GATE_MAP',
-                    self.cmd_ERCF_SET_GATE_MAP,
-                    desc = self.cmd_ERCF_SET_GATE_MAP_help)
-        self.gcode.register_command('ERCF_ENDLESS_SPOOL',
-                    self.cmd_ERCF_ENDLESS_SPOOL,
-                    desc = self.cmd_ERCF_ENDLESS_SPOOL_help)
-        self.gcode.register_command('ERCF_CHECK_GATES',
-                    self.cmd_ERCF_CHECK_GATES,
-                    desc = self.cmd_ERCF_CHECK_GATES_help)
+        self.gcode.register_command('_MMU_ENCODER_RUNOUT',
+                    self.cmd_MMU_ENCODER_RUNOUT,
+                    desc = self.cmd_MMU_ENCODER_RUNOUT_help)
+        self.gcode.register_command('_MMU_ENCODER_INSERT',
+                    self.cmd_MMU_ENCODER_INSERT,
+                    desc = self.cmd_MMU_ENCODER_INSERT_help)
+        self.gcode.register_command('MMU_DISPLAY_TTG_MAP',
+                    self.cmd_MMU_DISPLAY_TTG_MAP,
+                    desc = self.cmd_MMU_DISPLAY_TTG_MAP_help)
+        self.gcode.register_command('MMU_REMAP_TTG',
+                    self.cmd_MMU_REMAP_TTG,
+                    desc = self.cmd_MMU_REMAP_TTG_help)
+        self.gcode.register_command('MMU_SET_GATE_MAP',
+                    self.cmd_MMU_SET_GATE_MAP,
+                    desc = self.cmd_MMU_SET_GATE_MAP_help)
+        self.gcode.register_command('MMU_ENDLESS_SPOOL',
+                    self.cmd_MMU_ENDLESS_SPOOL,
+                    desc = self.cmd_MMU_ENDLESS_SPOOL_help)
+        self.gcode.register_command('MMU_CHECK_GATES',
+                    self.cmd_MMU_CHECK_GATES,
+                    desc = self.cmd_MMU_CHECK_GATES_help)
 
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
         # This assumes that the hardware configuartion appears before the `[mmu]` section
         # the installer by default already guarantees this order
-        self._setup_logging() # PAUL temp
         self._setup_mmu_hardware(config)
 
     def _setup_logging(self):
@@ -535,14 +523,10 @@ class Mmu:
         if self.selector_endstop is None:
             raise self.config.error("Physical homing endstop not found for selector_stepper")
 
-        self._log_debug("PAUL: endstop_names=%s" % self.selector_stepper.get_endstop_names())
         # If user didn't configure a default endstop do it here. Mimimizes config differences
         if 'default' not in self.selector_stepper.get_endstop_names():
-            self._log_debug("PAUL: default not found")
             self.selector_stepper.activate_endstop("mmu selector home")
         self.selector_touch = 'mmu selector touch' in self.selector_stepper.get_endstop_names()
-        self._log_debug("PAUL: selector_touch=%s" % self.selector_touch)
-
 
         # Gear h/w setup
         for manual_stepper in self.printer.lookup_objects('manual_extruder_stepper'):
@@ -552,92 +536,9 @@ class Mmu:
         if self.gear_stepper is None:
             raise self.config.error("Missing [manual_extruder_stepper gear_stepper] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
-
-
-        # Allow setup of dual endstops on selector, leveraging what user may have already configured
-#        self.query_endstops = self.printer.load_object(config, 'query_endstops')
-#        self.selector_endstop = self.selector_virtual_endstop = None
-#        self.selector_touch = False
-#        for idx, (mcu_endstop, name) in enumerate(self.query_endstops.endstops):
-#            if name == 'manual_mmu_stepper selector_stepper':
-#                # We only expect one stepper
-#                for s in self.selector_stepper.steppers:
-#                    name = "%s" % s.get_name()
-#                    try:
-#                        endstop_pin = self.config.getsection(name).get("endstop_pin")
-#                        if "virtual_endstop" in endstop_pin:
-#                            # Found stallguard sensorless endstop
-#                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Selector Touch") # Rename it
-#                            self.selector_virtual_endstop = mcu_endstop
-#                            self.selector_touch = True
-#                        else:
-#                            # Found physical endstop config. Didn't expect it but we can deal with it
-#                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Selector") # Rename it
-#                            self.selector_endstop = mcu_endstop
-#                    except Exception as e:
-#                        pass
-
-# PAUL
-#        # Configure physical selector endstop if not alredy defined
-#        if self.selector_endstop is None and self.mmu_hardware is not None:
-#            endstop_pin = self.mmu_hardware.get_selector_homing_pin()
-#            ppins = self.printer.lookup_object('pins')
-#            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
-#            for s in self.selector_stepper.steppers:
-#                mcu_endstop.add_stepper(s)
-#            self.query_endstops.register_endstop(mcu_endstop, "MMU Selector")
-#            self.selector_endstop = mcu_endstop
-
-#        # Setup endstops on gear stepper for contolling loading/unloading. Accomodate
-#        # stallguard if setup but user and assume it is for extruder homing. If a phyical
-#        # endstop is set allow it but merge those defined in mmu_hardware
-#        # Endstop position names:
-#        #   'parked' filament unloaded postion in gate
-#        #   'extruder' entrance to extruder (typically virtual with stallguard)
-#        #   'toolhead' after the extruder entrance but before nozzle
-#        self.query_endstops = self.printer.load_object(config, 'query_endstops')
-#        self.gear_endstops = {}
-#        for idx, (mcu_endstop, name) in enumerate(self.query_endstops.endstops):
-#            if name == 'manual_extruder_stepper gear_stepper':
-#                # We only expect one stepper
-#                for s in self.gearr_stepper.steppers:
-#                    name = "%s" % s.get_name()
-#                    try:
-#                        endstop_pin = self.config.getsection(name).get("endstop_pin")
-#                        if "virtual_endstop" in endstop_pin:
-#                            # Found stallguard sensorless endstop
-#                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Extruder") # Rename it
-#                            self.gear_endstops["extruder"] = mcu_endstop
-#                        else:
-#                            # Found physical endstop config
-#                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Extruder") # Rename it
-#                            self.gear_endstops["extruder"] = mcu_endstop
-#                    except Exception as e:
-#                        pass
-#
-#        if self.mmu_hardware is not None and not "extruder" in self.gear_endstops:
-#            endstop_pin = self.mmu_hardware.get_gear_extruder_homing_pin()
-#            self._setup_gear_endstop(endstop_pin, "MMU Extruder", "extruder")
-#                    
-#        # Optional toolhead sensor (assumed to be after extruder gears)
-#        self.toolhead_sensor = self.printer.lookup_object("filament_switch_sensor toolhead_sensor", None)
-#        if self.toolhead_sensor:
-#            if self.toolhead_sensor.runout_helper.runout_pause:
-#                raise self.config.error("`pause_on_runout: False` is incorrect/missing from toolhead_sensor configuration")
-#
-#            # Setup toolhead sensor as an endstop for gear stepper
-#            endstop_pin = self.config.getsection("filament_switch_sensor toolhead_sensor").get("switch_pin")
-#            self._setup_gear_endstop(endstop_pin, "MMU Toolhead", "toolhead")
-#
-
-# PAUL why this...
+# PAUL why this... put in manual_extruder_stepper class?
             ffi_main, ffi_lib = chelper.get_ffi()
             self.toolhead_homing_sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'x'), ffi_lib.free)
-
-#        # Configure 'parked' endstop if defined
-#        if self.mmu_hardware is not None:
-#            endstop_pin = self.mmu_hardware.get_gear_parked_homing_pin()
-#            self._setup_gear_endstop(endstop_pin, "MMU Parked", "parked")
 
         # Get servo and encoder
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
@@ -647,18 +548,8 @@ class Mmu:
         if not self.encoder_sensor:
             raise self.config.error("Missing [mmu_encoder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
-#    def _setup_gear_endstop(self, endstop_pin, name, location):
-#        if endstop_pin is not None:
-#            ppins = self.printer.lookup_object('pins')
-#            ppins.allow_multi_use_pin(endstop_pin)
-#            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
-#            for s in self.gear_stepper.steppers:
-#                mcu_endstop.add_stepper(s)
-#            self.query_endstops.register_endstop(mcu_endstop, name)
-#            self.gear_endstops[location] = mcu_endstop
-
     def handle_connect(self):
-# PAUL        self._setup_logging()
+        self._setup_logging()
         self.toolhead = self.printer.lookup_object('toolhead')
 
         # See if we have a TMC controller capable of current control for filament collision detection and syncing
@@ -749,60 +640,60 @@ class Mmu:
         errors = []
 
         # Load selector/gate calibration offsets
-        selector_offsets = self.variables.get(self.VARS_ERCF_SELECTOR_OFFSETS, [])
+        selector_offsets = self.variables.get(self.VARS_MMU_SELECTOR_OFFSETS, [])
         if len(selector_offsets) == self.num_gates:
             self.selector_offsets = selector_offsets
             self._log_debug("Loaded saved selector offsets: %s" % selector_offsets)
         else:
-            errors.append("Incorrect number of gates specified in %s" % self.VARS_ERCF_SELECTOR_OFFSETS)
-        bypass_offset = self.variables.get(self.VARS_ERCF_SELECTOR_BYPASS, -1)
+            errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_SELECTOR_OFFSETS)
+        bypass_offset = self.variables.get(self.VARS_MMU_SELECTOR_BYPASS, -1)
         if bypass_offset >= 0:
             self.bypass_offset = bypass_offset
         self._log_debug("Loaded saved bypass offset: %s" % bypass_offset)
 
         if self.persistence_level >= 1:
             # Load EndlessSpool config
-            self.enable_endless_spool = self.variables.get(self.VARS_ERCF_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
-            endless_spool_groups = self.variables.get(self.VARS_ERCF_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
+            self.enable_endless_spool = self.variables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
+            endless_spool_groups = self.variables.get(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
             if len(endless_spool_groups) == self.num_gates:
                 self.endless_spool_groups = endless_spool_groups
             else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_ERCF_ENDLESS_SPOOL_GROUPS)
+                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_ENDLESS_SPOOL_GROUPS)
 
         if self.persistence_level >= 2:
             # Load tool to gate map
-            tool_to_gate_map = self.variables.get(self.VARS_ERCF_TOOL_TO_GATE_MAP, self.tool_to_gate_map)
+            tool_to_gate_map = self.variables.get(self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map)
             if len(tool_to_gate_map) == self.num_gates:
                 self.tool_to_gate_map = tool_to_gate_map
             else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_ERCF_TOOL_TO_GATE_MAP)
+                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_TOOL_TO_GATE_MAP)
 
         if self.persistence_level >= 3:
             # Load gate status (filament present or not)
-            gate_status = self.variables.get(self.VARS_ERCF_GATE_STATUS, self.gate_status)
+            gate_status = self.variables.get(self.VARS_MMU_GATE_STATUS, self.gate_status)
             if len(gate_status) == self.num_gates:
                 self.gate_status = gate_status
             else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_ERCF_GATE_STATUS)
+                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_STATUS)
 
             # Load filament material at each gate
-            gate_material = self.variables.get(self.VARS_ERCF_GATE_MATERIAL, self.gate_material)
+            gate_material = self.variables.get(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
             if len(gate_status) == self.num_gates:
                 self.gate_material = gate_material
             else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_ERCF_GATE_MATERIAL)
+                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_MATERIAL)
 
             # Load filament color at each gate
-            gate_color = self.variables.get(self.VARS_ERCF_GATE_COLOR, self.gate_color)
+            gate_color = self.variables.get(self.VARS_MMU_GATE_COLOR, self.gate_color)
             if len(gate_status) == self.num_gates:
                 self.gate_color = gate_color
             else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_ERCF_GATE_COLOR)
+                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_COLOR)
 
         if self.persistence_level >= 4:
             # Load selected tool and gate
-            tool_selected = self.variables.get(self.VARS_ERCF_TOOL_SELECTED, self.tool_selected)
-            gate_selected = self.variables.get(self.VARS_ERCF_GATE_SELECTED, self.gate_selected)
+            tool_selected = self.variables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
+            gate_selected = self.variables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
             if gate_selected < self.num_gates and tool_selected < self.num_gates:
                 self.tool_selected = tool_selected
                 self.gate_selected = gate_selected
@@ -818,14 +709,14 @@ class Mmu:
                     self.selector_stepper.do_set_position(self.bypass_offset)
                     self.is_homed = True
             else:
-                errors.append("Incorrect number of gates specified in %s or %s" % (self.VARS_ERCF_TOOL_SELECTED, self.VARS_ERCF_GATE_SELECTED))
+                errors.append("Incorrect number of gates specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
             if gate_selected != self.GATE_UNKNOWN and tool_selected != self.TOOL_UNKNOWN:
-                self.loaded_status = self.variables.get(self.VARS_ERCF_LOADED_STATUS, self.loaded_status)
+                self.loaded_status = self.variables.get(self.VARS_MMU_LOADED_STATUS, self.loaded_status)
 
         if len(errors) > 0:
             self._log_info("Warning: Some persisted state was ignored because it contained errors:\n%s" % ''.join(errors))
 
-        swap_stats = self.variables.get(self.VARS_ERCF_SWAP_STATISTICS, {})
+        swap_stats = self.variables.get(self.VARS_MMU_SWAP_STATISTICS, {})
         if swap_stats != {}:
             self.total_swaps = swap_stats['total_swaps']
             self.time_spent_loading = swap_stats['time_spent_loading']
@@ -833,7 +724,7 @@ class Mmu:
             self.total_pauses = swap_stats['total_pauses']
             self.time_spent_paused = swap_stats['time_spent_paused']
         for gate in range(self.num_gates):
-            self.gate_statistics[gate] = self.variables.get("%s%d" % (self.VARS_ERCF_GATE_STATISTICS_PREFIX, gate), self.EMPTY_GATE_STATS_ENTRY.copy())
+            self.gate_statistics[gate] = self.variables.get("%s%d" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate), self.EMPTY_GATE_STATS_ENTRY.copy())
 
     def handle_disconnect(self):
         self._log_debug('MMU Shutdown')
@@ -852,14 +743,14 @@ class Mmu:
             prev_resume = self.gcode.register_command('RESUME', None)
             if prev_resume != None:
                 self.gcode.register_command('__RESUME', prev_resume)
-                self.gcode.register_command('RESUME', self.cmd_ERCF_RESUME, desc = self.cmd_ERCF_RESUME_help)
+                self.gcode.register_command('RESUME', self.cmd_MMU_RESUME, desc = self.cmd_MMU_RESUME_help)
             else:
                 self._log_always('No existing RESUME macro found!')
 
             prev_cancel = self.gcode.register_command('CANCEL_PRINT', None)
             if prev_cancel != None:
                 self.gcode.register_command('__CANCEL_PRINT', prev_cancel)
-                self.gcode.register_command('CANCEL_PRINT', self.cmd_ERCF_CANCEL_PRINT, desc = self.cmd_ERCF_CANCEL_PRINT_help)
+                self.gcode.register_command('CANCEL_PRINT', self.cmd_MMU_CANCEL_PRINT, desc = self.cmd_MMU_CANCEL_PRINT_help)
             else:
                 self._log_always('No existing CANCEL_PRINT macro found!')
         except Exception as e:
@@ -872,7 +763,7 @@ class Mmu:
 
     def _bootup_tasks(self, eventtime):
         try:
-            self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_ERCF_CALIB_CLOG_LENGTH))
+            self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH))
             self._log_always('(\_/)\n( *,*)\n(")_(") MMU Ready')
             if self.startup_status > 0:
                 self._log_always(self._tool_to_gate_map_to_human_string(self.startup_status == 1))
@@ -902,7 +793,6 @@ class Mmu:
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
-                'is_paused': self.is_paused_locked, # TODO This is confusing and should be deprecated
                 'is_locked': self.is_paused_locked,
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
@@ -1041,9 +931,9 @@ class Mmu:
 
     def _persist_gate_statistics(self):
         for gate in range(self.num_gates):
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=\"%s\"" % (self.VARS_ERCF_GATE_STATISTICS_PREFIX, gate, self.gate_statistics[gate]))
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=\"%s\"" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate, self.gate_statistics[gate]))
         # Good place to persist current clog length
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_ERCF_CALIB_CLOG_LENGTH, self.encoder_sensor.get_clog_detection_length()))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, self.encoder_sensor.get_clog_detection_length()))
 
     def _persist_swap_statistics(self):
         swap_stats = {
@@ -1053,12 +943,12 @@ class Mmu:
             'total_pauses': self.total_pauses,
             'time_spent_paused': self.time_spent_paused
             }
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_ERCF_SWAP_STATISTICS, swap_stats))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SWAP_STATISTICS, swap_stats))
 
     def _persist_gate_map(self):
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_GATE_STATUS, self.gate_status))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_GATE_MATERIAL, list(map(lambda x: ("\'%s\'" %x), self.gate_material))))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_GATE_COLOR, list(map(lambda x: ("\'%s\'" %x), self.gate_color))))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ("\'%s\'" %x), self.gate_material))))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ("\'%s\'" %x), self.gate_color))))
 
     def _log_error(self, message):
         if self.mmu_logger:
@@ -1097,7 +987,7 @@ class Mmu:
         if self.log_level > 3:
             self.gcode.respond_info(message)
 
-    # Fun visual display of ERCF state
+    # Fun visual display of MMU state
     def _display_visual_state(self, direction=None, silent=False):
         if not direction == None:
             self.filament_direction = direction
@@ -1169,36 +1059,29 @@ class Mmu:
 
 ### LOGGING AND STATISTICS FUNCTIONS GCODE FUNCTIONS
 
-    cmd_ERCF_RESET_STATS_help = "Reset the MMU statistics"
-    def cmd_ERCF_RESET_STATS(self, gcmd):
+    cmd_MMU_RESET_STATS_help = "Reset the MMU statistics"
+    def cmd_MMU_RESET_STATS(self, gcmd):
         if self._check_is_disabled(): return
         self._reset_statistics()
         self._dump_statistics(report=True)
         self._persist_swap_statistics()
         self._persist_gate_statistics()
 
-    cmd_ERCF_DUMP_STATS_help = "Dump the MMU statistics"
-    def cmd_ERCF_DUMP_STATS(self, gcmd):
+    cmd_MMU_DUMP_STATS_help = "Dump the MMU statistics"
+    def cmd_MMU_DUMP_STATS(self, gcmd):
         if self._check_is_disabled(): return
         self._dump_statistics(report=True)
 
-    cmd_ERCF_SET_LOG_LEVEL_help = "Set the log level for the MMU"
-    def cmd_ERCF_SET_LOG_LEVEL(self, gcmd):
-        if self._check_is_disabled(): return
-        self.log_level = gcmd.get_int('LEVEL', self.log_level, minval=0, maxval=4)
-        self.logfile_level = gcmd.get_int('LOGFILE', self.logfile_level, minval=0, maxval=4)
-        self.log_visual = gcmd.get_int('VISUAL', self.log_visual, minval=0, maxval=2)
-        self.log_statistics = gcmd.get_int('STATISTICS', self.log_statistics, minval=0, maxval=1)
-
-    cmd_ERCF_DISPLAY_ENCODER_POS_help = "Display current value of the MMU encoder"
-    def cmd_ERCF_DISPLAY_ENCODER_POS(self, gcmd):
+    cmd_MMU_DISPLAY_ENCODER_POS_help = "Display current value of the MMU encoder"
+    def cmd_MMU_DISPLAY_ENCODER_POS(self, gcmd):
         if self._check_is_disabled(): return
         self._log_info("Encoder value is %.2f" % self.encoder_sensor.get_distance())
 
-    cmd_ERCF_STATUS_help = "Complete dump of current MMU state and important configuration"
-    def cmd_ERCF_STATUS(self, gcmd):
+    cmd_MMU_STATUS_help = "Complete dump of current MMU state and important configuration"
+    def cmd_MMU_STATUS(self, gcmd):
         config = gcmd.get_int('SHOWCONFIG', 0, minval=0, maxval=1)
-        msg = "MMU with %d gates" % (self.num_gates) # PAUL update with vendor and version
+        msg = "%s v%.1f" % (self.mmu_vendor.upper(), self.mmu_version)
+        msg += " with %d gates" % (self.num_gates)
         msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED/LOCKED" if self.is_paused_locked else "OPERATIONAL")
         msg += " with the servo in a %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
@@ -1327,40 +1210,44 @@ class Mmu:
 
 ### SERVO AND MOTOR GCODE FUNCTIONS
 
-    cmd_ERCF_SERVO_MOVE_help = "Disengage the MMU gear, hold filament and ready for selector movement"
-    def cmd_ERCF_SERVO_MOVE(self, gcmd):
+    cmd_MMU_SERVO_help = "Move MMU servo to position specified position or angle"
+    def cmd_MMU_SERVO(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
-        self._servo_move()
+        pos = gcmd.get('POS', "").lower()
+        if pos == "up":
+            self._servo_up()
+        elif pos == "move":
+            self._servo_move()
+        elif pos == "down":
+            if self._check_in_bypass(): return
+            self._servo_down()
+        elif pos == "":
+            if self._check_in_bypass(): return
+            angle = gcmd.get_float('ANGLE', None)
+            if angle is not None:
+                self._log_debug("Setting servo to angle: %d" % angle)
+                self._servo_set_angle(angle)
+            else:
+                self._log_error("No angle specified")
+        else:
+            self._log_error("Unknown servo position `%s`" % pos)
 
-    cmd_ERCF_SERVO_UP_help = "Disengage the MMU gear and release filament"
-    def cmd_ERCF_SERVO_UP(self, gcmd):
-        if self._check_is_disabled(): return
-        if self._check_is_paused(): return
-        self._servo_up()
-
-    cmd_ERCF_SERVO_DOWN_help = "Engage the MMU gear and release filament"
-    def cmd_ERCF_SERVO_DOWN(self, gcmd):
-        if self._check_is_disabled(): return
-        if self._check_is_paused(): return
-        if self._check_in_bypass(): return
-        self._servo_down()
-
-    cmd_ERCF_MOTORS_OFF_help = "Turn off both MMU motors"
-    def cmd_ERCF_MOTORS_OFF(self, gcmd):
+    cmd_MMU_MOTORS_OFF_help = "Turn off both MMU motors"
+    def cmd_MMU_MOTORS_OFF(self, gcmd):
         if self._check_is_disabled(): return
         self._motors_off()
         self._servo_auto()
 
-    cmd_ERCF_BUZZ_GEAR_MOTOR_help = "Buzz the MMU gear motor"
-    def cmd_ERCF_BUZZ_GEAR_MOTOR(self, gcmd):
+    cmd_MMU_BUZZ_GEAR_MOTOR_help = "Buzz the MMU gear motor"
+    def cmd_MMU_BUZZ_GEAR_MOTOR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
         found = self._buzz_gear_motor()
         self._log_info("Filament %s by gear motor buzz" % ("detected" if found else "not detected"))
 
-    cmd_ERCF_SYNC_GEAR_MOTOR_help = "Sync the MMU gear motor to the extruder motor"
-    def cmd_ERCF_SYNC_GEAR_MOTOR(self, gcmd):
+    cmd_MMU_SYNC_GEAR_MOTOR_help = "Sync the MMU gear motor to the extruder motor"
+    def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1)
@@ -1373,28 +1260,18 @@ class Mmu:
 #########################
 
     def _get_calibration_version(self):
-        return self.variables.get(self.VARS_ERCF_CALIB_VERSION, 1)
+        return self.variables.get(self.VARS_MMU_CALIB_VERSION, 1)
 
     def _get_calibration_ref(self):
-        return self.variables.get(self.VARS_ERCF_CALIB_REF, 500.)
-
-#########################
-# CALIBRATION FUNCTIONS #
-#########################
-
-    def _get_calibration_version(self):
-        return self.variables.get(self.VARS_ERCF_CALIB_VERSION, 1)
-
-    def _get_calibration_ref(self):
-        return self.variables.get(self.VARS_ERCF_CALIB_REF, 500.)
+        return self.variables.get(self.VARS_MMU_CALIB_REF, 500.)
 
     def _get_gate_ratio(self, gate):
         if gate < 0: return 1.
-        ratio = self.variables.get("%s%d" % (self.VARS_ERCF_CALIB_PREFIX, gate), 1.)
+        ratio = self.variables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, gate), 1.)
         if ratio > 0.9 and ratio < 1.1:
             return ratio
         else:
-            self._log_always("Warning: ercf_calib_%d value (%.6f) is invalid. Using reference 1.0. Re-run ERCF_CALIBRATE_SINGLE TOOL=%d" % (gate, ratio, gate))
+            self._log_always("Warning: mmu_calib_%d value (%.6f) is invalid. Using reference 1.0. Re-run MMU_CALIBRATE_SINGLE TOOL=%d" % (gate, ratio, gate))
             return 1.
 
     def _calculate_calibration_ref(self, extruder_homing_length=400, repeats=3):
@@ -1454,10 +1331,10 @@ class Mmu:
                 if self.enable_clog_detection:
                     msg += ". Clog detection length set to: %.1fmm" % detection_length
                 self._log_always(msg)
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_ERCF_CALIB_REF, average_reference))
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=1.0" % (self.VARS_ERCF_CALIB_PREFIX, 0))
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=3" % self.VARS_ERCF_CALIB_VERSION)
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_ERCF_CALIB_CLOG_LENGTH, detection_length))
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_REF, average_reference))
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=1.0" % (self.VARS_MMU_CALIB_PREFIX, 0))
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=3" % self.VARS_MMU_CALIB_VERSION)
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, detection_length))
                 self.encoder_sensor.set_clog_detection_length(detection_length)
             else:
                 self._log_always("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
@@ -1483,7 +1360,7 @@ class Mmu:
             self._log_always("Calibration move of %.1fmm, average encoder measurement %.1fmm - Ratio is %.6f" % (test_length * 2, measurement - encoder_moved, ratio))
             if not tool == 0:
                 if ratio > 0.8 and ratio < 1.2:
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=%.6f" % (self.VARS_ERCF_CALIB_PREFIX, tool, ratio))
+                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=%.6f" % (self.VARS_MMU_CALIB_PREFIX, tool, ratio))
                 else:
                     self._log_always("Calibration ratio not saved because it is not considered valid (0.8 < ratio < 1.2)")
             self._unload_encoder(self.unload_buffer)
@@ -1543,10 +1420,10 @@ class Mmu:
 
             if gate >= 0:
                 self.selector_offsets[gate] = round(traveled, 1)
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_ERCF_SELECTOR_OFFSETS, self.selector_offsets))
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets))
             else:
                 self.bypass_offset = round(traveled, 1)
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_ERCF_SELECTOR_BYPASS, self.bypass_offset))
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset))
             self._log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
         except MmuError as ee:
             self._pause(str(ee))
@@ -1628,8 +1505,8 @@ class Mmu:
                     if (i / 3) == v1_bypass_block:
                         self.bypass_offset = self.selector_offsets[i] + self.cad_bypass_block_delta
 
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_ERCF_SELECTOR_OFFSETS, self.selector_offsets))
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_ERCF_SELECTOR_BYPASS, self.bypass_offset))
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets))
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset))
                 self._log_always("Offsets %s and bypass %.1f have been saved" % (self.selector_offsets, self.bypass_offset))
                 self._log_always("Selector is calibrated for MMU v%.1f with %d gates" % (self.mmu_version, num_gates))
 
@@ -1652,8 +1529,8 @@ class Mmu:
 
 ### CALIBRATION GCODE COMMANDS
 
-    cmd_ERCF_CALIBRATE_help = "Complete calibration of all MMU tools"
-    def cmd_ERCF_CALIBRATE(self, gcmd):
+    cmd_MMU_CALIBRATE_help = "Complete calibration of all MMU tools"
+    def cmd_MMU_CALIBRATE(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -1674,8 +1551,8 @@ class Mmu:
         finally:
             self.calibrating = False
 
-    cmd_ERCF_CALIBRATE_SINGLE_help = "Calibration of a single MMU tool"
-    def cmd_ERCF_CALIBRATE_SINGLE(self, gcmd):
+    cmd_MMU_CALIBRATE_SINGLE_help = "Calibration of a single MMU tool"
+    def cmd_MMU_CALIBRATE_SINGLE(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -1696,8 +1573,8 @@ class Mmu:
         finally:
             self.calibrating = False
 
-    cmd_ERCF_CALIBRATE_ENCODER_help = "Calibration routine for the MMU encoder"
-    def cmd_ERCF_CALIBRATE_ENCODER(self, gcmd):
+    cmd_MMU_CALIBRATE_ENCODER_help = "Calibration routine for the MMU encoder"
+    def cmd_MMU_CALIBRATE_ENCODER(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -1769,8 +1646,8 @@ class Mmu:
                 self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_BOWDEN)
             self.calibrating = False
 
-    cmd_ERCF_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
-    def cmd_ERCF_CALIBRATE_SELECTOR(self, gcmd):
+    cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
+    def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
 
@@ -1786,9 +1663,9 @@ class Mmu:
             self._calibrate_selector_auto(v1_bypass_block)
 
 
-########################
-# ERCF STATE FUNCTIONS #
-########################
+#######################
+# MMU STATE FUNCTIONS #
+#######################
 
     def _setup_heater_off_reactor(self):
         self.heater_off_handler = self.reactor.register_timer(self._handle_pause_timeout, self.reactor.NEVER)
@@ -1825,7 +1702,7 @@ class Mmu:
             self._save_toolhead_position_and_lift()
             msg = "An issue with the MMU has been detected. Print paused"
             reason = "Reason: %s" % reason
-            extra = "When you intervene to fix the issue, first call \'ERCF_UNLOCK\'"
+            extra = "When you intervene to fix the issue, first call \'MMU_UNLOCK\'"
             run_pause = True
         elif self._is_in_pause():
             msg = "An issue with the MMU has been detected whilst printer is paused"
@@ -1908,13 +1785,13 @@ class Mmu:
 
     def _check_is_disabled(self):
         if not self.is_enabled:
-            self._log_always("MMU is disabled. Please use ERCF_ENABLE to use")
+            self._log_always("MMU is disabled. Please use MMU ENABLE=1 to use")
             return True
         return False
 
     def _check_is_paused(self):
         if self.is_paused_locked:
-            self._log_always("MMU is currently locked/paused. Please use \'ERCF_UNLOCK\'")
+            self._log_always("MMU is currently locked/paused. Please use MMU_UNLOCK")
             return True
         return False
 
@@ -1926,7 +1803,7 @@ class Mmu:
 
     def _check_not_bypass(self):
         if self.tool_selected != self.TOOL_BYPASS:
-            self._log_always("Bypass not selected. Please use ERCF_SELECT_BYPASS first")
+            self._log_always("Bypass not selected. Please use MMU_SELECT_BYPASS first")
             return True
         return False
 
@@ -1993,9 +1870,9 @@ class Mmu:
 
         # Minimal save_variable writes
         if state == self.LOADED_STATUS_FULL or state == self.LOADED_STATUS_UNLOADED:
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_LOADED_STATUS, state))
-        elif self.variables.get(self.VARS_ERCF_LOADED_STATUS, 0) != self.LOADED_STATUS_UNKNOWN:
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_LOADED_STATUS, self.LOADED_STATUS_UNKNOWN))
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_LOADED_STATUS, state))
+        elif self.variables.get(self.VARS_MMU_LOADED_STATUS, 0) != self.LOADED_STATUS_UNKNOWN:
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_LOADED_STATUS, self.LOADED_STATUS_UNKNOWN))
 
     def _selected_tool_string(self):
         if self.tool_selected == self.TOOL_BYPASS:
@@ -2031,31 +1908,54 @@ class Mmu:
         old_action = self.action
         self.action = action
         try:
-            self.printer.lookup_object('gcode_macro _ERCF_ACTION_CHANGED')
-            self.gcode.run_script_from_command("_ERCF_ACTION_CHANGED")
+            self.printer.lookup_object('gcode_macro _MMU_ACTION_CHANGED')
+            self.gcode.run_script_from_command("_MMU_ACTION_CHANGED")
         finally:
             return old_action
 
 
 ### STATE GCODE COMMANDS
 
-    cmd_ERCF_ENABLE_help = "Enable MMU functionality and reset state"
-    def cmd_ERCF_ENABLE(self, gcmd):
-        if not self.is_enabled:
-            self._log_always("ERCF enabled and reset")
+    cmd_MMU_help = "Enable/Disable functionality and reset state"
+    def cmd_MMU(self, gcmd):
+        enable = gcmd.get_int('ENABLE', minval=0, maxval=1)
+        if enable == 1 and not self.is_enabled:
+            self._log_always("MMU enabled and reset")
             self._initialize_state()
             self._load_persisted_state()
             self._log_always(self._tool_to_gate_map_to_human_string(summary=True))
             self._display_visual_state()
-
-    cmd_ERCF_DISABLE_help = "Disable all MMU functionality"
-    def cmd_ERCF_DISABLE(self, gcmd):
-        if self.is_enabled:
+        elif enable == 0 and self.is_enabled:
             self._log_always("MMU disabled")
             self.is_enabled = False
 
-    cmd_ERCF_ENCODER_help = "Manual enable/disable control of MMU encoder"
-    def cmd_ERCF_ENCODER(self, gcmd):
+    cmd_MMU_HELP_help = "Display the complete set of MMU commands and function"
+    def cmd_MMU_HELP(self, gcmd):
+        testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
+        macros = gcmd.get_int('MACROS', 0, minval=0, maxval=1)
+        msg = "Happy Hare MMU commands:\n"
+        msg += "(use MMU_HELP MACROS=1 TESTING=1 for full command set)\n"
+        tmsg = "\nHappy Hare MMU calibration and testing commands:\n"
+        mmsg = "\nHappy Hare MMU macros and callbacks:\n"
+        cmds = list(self.gcode.ready_gcode_handlers.keys())
+        cmds.sort()
+        for c in cmds:
+            d = self.gcode.gcode_help.get(c, "n/a")
+            if c.startswith("MMU") and not c.startswith("MMU__"):
+                if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c:
+                    msg += "%s - %s\n" % (c.upper(), d)
+                else:
+                    tmsg += "%s - %s\n" % (c.upper(), d)
+            elif c.startswith("_MMU"):
+                mmsg += "%s - %s\n" % (c.upper(), d)
+        if testing:
+            msg += tmsg
+        if macros:
+            msg += mmsg
+        self._log_always(msg)
+
+    cmd_MMU_ENCODER_help = "Manual enable/disable control of MMU encoder"
+    def cmd_MMU_ENCODER(self, gcmd):
         if self._check_is_disabled(): return
         enable = gcmd.get_int('ENABLE', minval=0, maxval=1)
         if enable:
@@ -2063,22 +1963,22 @@ class Mmu:
         else:
             self._disable_encoder_sensor(True)
 
-    cmd_ERCF_RESET_help = "Forget persisted state and re-initialize defaults"
-    def cmd_ERCF_RESET(self, gcmd):
+    cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
+    def cmd_MMU_RESET(self, gcmd):
         self._initialize_state()
         self.enable_endless_spool = self.default_enable_endless_spool
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
         self.endless_spool_groups = list(self.default_endless_spool_groups)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
         self.tool_to_gate_map = list(self.default_tool_to_gate_map)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
         self.gate_status = list(self.default_gate_status)
         self.gate_material = list(self.default_gate_material)
         self.gate_color = list(self.default_gate_color)
         self._persist_gate_map()
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_GATE_SELECTED, self.gate_selected))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_TOOL_SELECTED, self.tool_selected))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_LOADED_STATUS, self.loaded_status))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_LOADED_STATUS, self.loaded_status))
         self._log_always("MMU state reset")
 
 
@@ -2197,7 +2097,7 @@ class Mmu:
         self.encoder_sensor.set_distance(initial_encoder_position)
         return delta > self.ENCODER_MIN
 
-    # Check for filament in encoder by wiggling ERCF gear stepper and looking for movement on encoder
+    # Check for filament in encoder by wiggling MMU gear stepper and looking for movement on encoder
     def _check_filament_in_encoder(self):
         self._log_debug("Checking for filament in encoder...")
         if self._check_toolhead_sensor() == 1:
@@ -2376,7 +2276,7 @@ class Mmu:
             self._set_loaded_status(self.LOADED_STATUS_PARTIAL_END_OF_BOWDEN)
             raise MmuError("Failed to reach extruder gear after moving %.1fmm" % max_length)
         if measured_movement > (max_length * 0.8):
-            self._log_info("Warning: 80% of 'extruder_homing_max' was used homing. You may want to increase your initial load distance ('ercf_calib_ref') or increase 'extruder_homing_max'")
+            self._log_info("Warning: 80% of 'extruder_homing_max' was used homing. You may want to increase your initial load distance ('mmu_calib_ref') or increase 'extruder_homing_max'")
         self._set_loaded_status(self.LOADED_STATUS_PARTIAL_HOMED_EXTRUDER)
 
     def _home_to_extruder_collision_detection(self, max_length):
@@ -2825,7 +2725,7 @@ class Mmu:
 
             initial_encoder_position = self.encoder_sensor.get_distance()
             initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
-            self.gcode.run_script_from_command("_ERCF_FORM_TIP_STANDALONE")
+            self.gcode.run_script_from_command("_MMU_FORM_TIP_STANDALONE")
             self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
             delta = self.encoder_sensor.get_distance() - initial_encoder_position
             self._log_trace("After tip formation, encoder moved %.2f" % delta)
@@ -2865,7 +2765,7 @@ class Mmu:
         current_action = self._set_action(self.ACTION_HOMING)
         try:
             if self._get_calibration_version() != 3:
-                self._log_info("You are running an old calibration version.\nIt is strongly recommended that you rerun 'ERCF_CALIBRATE_SINGLE TOOL=0' to generate updated calibration values")
+                self._log_info("You are running an old calibration version.\nIt is strongly recommended that you rerun 'MMU_CALIBRATE_SINGLE TOOL=0' to generate updated calibration values")
 
             self._log_info("Homing MMU...")
             if self.is_paused_locked:
@@ -3081,11 +2981,11 @@ class Mmu:
 
     def _set_gate_selected(self, gate):
         self.gate_selected = gate
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_GATE_SELECTED, self.gate_selected))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
 
     def _set_tool_selected(self, tool, silent=False):
         self.tool_selected = tool
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_TOOL_SELECTED, self.tool_selected))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
         if tool == self.TOOL_UNKNOWN or tool == self.TOOL_BYPASS:
             self._set_steps(1.)
         else:
@@ -3107,8 +3007,8 @@ class Mmu:
 
 ### CORE GCODE COMMANDS ##########################################################
 
-    cmd_ERCF_UNLOCK_help = "Unlock MMU operations"
-    def cmd_ERCF_UNLOCK(self, gcmd):
+    cmd_MMU_UNLOCK_help = "Unlock MMU operations"
+    def cmd_MMU_UNLOCK(self, gcmd):
         if self._check_is_disabled(): return
         if not self.is_paused_locked:
             self._log_info("MMU is not locked")
@@ -3117,8 +3017,8 @@ class Mmu:
         self._unlock()
         self._log_info("When the issue is addressed you can resume print")
 
-    cmd_ERCF_HOME_help = "Home the MMU"
-    def cmd_ERCF_HOME(self, gcmd):
+    cmd_MMU_HOME_help = "Home the MMU"
+    def cmd_MMU_HOME(self, gcmd):
         if self._check_is_disabled(): return
         tool = gcmd.get_int('TOOL', 0, minval=0, maxval=self.num_gates - 1)
         force_unload = gcmd.get_int('FORCE_UNLOAD', -1, minval=0, maxval=1)
@@ -3127,8 +3027,8 @@ class Mmu:
         except MmuError as ee:
             self._pause(str(ee))
 
-    cmd_ERCF_SELECT_help = "Select the specified tool or gate"
-    def cmd_ERCF_SELECT(self, gcmd):
+    cmd_MMU_SELECT_help = "Select the specified tool or gate"
+    def cmd_MMU_SELECT(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_not_homed(): return
@@ -3136,7 +3036,7 @@ class Mmu:
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         if tool == -1 and gate == -1:
-            raise gcmd.error("Error on 'ERCF_SELECT': missing TOOL or GATE")
+            raise gcmd.error("Error on 'MMU_SELECT': missing TOOL or GATE")
         try:
             if tool != -1:
                 self._select_tool(tool)
@@ -3161,8 +3061,8 @@ class Mmu:
         finally:
             self._servo_auto() # PAUL added
 
-    cmd_ERCF_CHANGE_TOOL_help = "Perform a tool swap"
-    def cmd_ERCF_CHANGE_TOOL(self, gcmd):
+    cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap"
+    def cmd_MMU_CHANGE_TOOL(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -3185,19 +3085,19 @@ class Mmu:
         finally:
             self._next_tool = self.TOOL_UNKNOWN
 
-    cmd_ERCF_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage"
-    def cmd_ERCF_LOAD(self, gcmd, bypass=False):
+    cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage"
+    def cmd_MMU_LOAD(self, gcmd, bypass=False):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or bypass)
 
-        # Manual currently documents `ERCF_LOAD` for setup so this tries to supoort that but forces real
+        # Manual currently documents `MMU_LOAD` for setup so this tries to supoort that but forces real
         # use to also set the parameter `TEST=0`
         length = gcmd.get_float('LENGTH', -1) # Test for legacy use
         test = gcmd.get_float('TEST', 1) # Test for legacy use
         if not extruder_only and (test == 1 or length != -1):
-            self._log_always("Deprecated. For setup/test purposes please use 'ERCF_TEST_LOAD' instead")
-            return self.cmd_ERCF_TEST_LOAD(gcmd)
+            self._log_always("Deprecated. For setup/test purposes please use 'MMU_TEST_LOAD' instead")
+            return self.cmd_MMU_TEST_LOAD(gcmd)
 
         restore_encoder = self._disable_encoder_sensor() # Don't want runout accidently triggering during filament load
         try:
@@ -3214,8 +3114,8 @@ class Mmu:
         finally:
             self._enable_encoder_sensor(restore_encoder)
 
-    cmd_ERCF_EJECT_help = "Eject filament and park it in the MMU or optionally unloads just the extruder"
-    def cmd_ERCF_EJECT(self, gcmd, bypass=False):
+    cmd_MMU_EJECT_help = "Eject filament and park it in the MMU or optionally unloads just the extruder"
+    def cmd_MMU_EJECT(self, gcmd, bypass=False):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or bypass)
@@ -3238,8 +3138,8 @@ class Mmu:
         finally:
             self._enable_encoder_sensor(restore_encoder)
 
-    cmd_ERCF_SELECT_BYPASS_help = "Select the filament bypass"
-    def cmd_ERCF_SELECT_BYPASS(self, gcmd):
+    cmd_MMU_SELECT_BYPASS_help = "Select the filament bypass"
+    def cmd_MMU_SELECT_BYPASS(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_not_homed(): return
@@ -3249,8 +3149,8 @@ class Mmu:
         except MmuError as ee:
             self._pause(str(ee))
 
-    cmd_ERCF_PAUSE_help = "Pause the current print and lock the ERCF operations"
-    def cmd_ERCF_PAUSE(self, gcmd):
+    cmd_MMU_PAUSE_help = "Pause the current print and lock the MMU operations"
+    def cmd_MMU_PAUSE(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -3258,12 +3158,12 @@ class Mmu:
         self._pause("Pause macro was directly called", force_in_print)
 
     # Not a user facing command - used in automatic wrapper
-    cmd_ERCF_RESUME_help = "Wrapper around default RESUME macro"
-    def cmd_ERCF_RESUME(self, gcmd):
+    cmd_MMU_RESUME_help = "Wrapper around default RESUME macro"
+    def cmd_MMU_RESUME(self, gcmd):
         if not self.is_enabled:
             self.gcode.run_script_from_command("__RESUME") # User defined or Klipper default
             return
-        self._log_debug("ERCF_RESUME wrapper called")
+        self._log_debug("MMU_RESUME wrapper called")
         if self.is_paused_locked:
             self._log_always("You can't resume the print without unlocking the MMU first")
             return
@@ -3277,7 +3177,7 @@ class Mmu:
                 self._set_loaded_status(self.LOADED_STATUS_FULL, silent=True)
                 self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
             else:
-                self._log_always("State does not indicate flament is LOADED.  Please run `ERCF_RECOVER LOADED=1` first")
+                self._log_always("State does not indicate flament is LOADED.  Please run `MMU_RECOVER LOADED=1` first")
                 return
 
         self._set_above_min_temp(self.paused_extruder_temp)
@@ -3290,12 +3190,12 @@ class Mmu:
         # Continue printing...
 
     # Not a user facing command - used in automatic wrapper
-    cmd_ERCF_CANCEL_PRINT_help = "Wrapper around default CANCEL_PRINT macro"
-    def cmd_ERCF_CANCEL_PRINT(self, gcmd):
+    cmd_MMU_CANCEL_PRINT_help = "Wrapper around default CANCEL_PRINT macro"
+    def cmd_MMU_CANCEL_PRINT(self, gcmd):
         if not self.is_enabled:
             self.gcode.run_script_from_command("__CANCEL_PRINT") # User defined or Klipper default
             return
-        self._log_debug("ERCF_CANCEL_PRINT wrapper called")
+        self._log_debug("MMU_CANCEL_PRINT wrapper called")
         if self.is_paused_locked:
             self._track_pause_end()
             self.is_paused_locked = False
@@ -3303,8 +3203,8 @@ class Mmu:
         self._save_toolhead_position_and_lift(False)
         self.gcode.run_script_from_command("__CANCEL_PRINT")
 
-    cmd_ERCF_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
-    def cmd_ERCF_RECOVER(self, gcmd):
+    cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
+    def cmd_MMU_RECOVER(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         tool = gcmd.get_int('TOOL', self.TOOL_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
@@ -3351,8 +3251,8 @@ class Mmu:
 
 ### GCODE COMMANDS INTENDED FOR TESTING #####################################
 
-    cmd_ERCF_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
-    def cmd_ERCF_SOAKTEST_SELECTOR(self, gcmd):
+    cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
+    def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_is_loaded(): return
@@ -3376,8 +3276,8 @@ class Mmu:
             self._log_error("Soaktest abandoned because of error")
             self._log_always(str(ee))
 
-    cmd_ERCF_SOAKTEST_LOAD_SEQUENCE_help = "Soak test tool load/unload sequence"
-    def cmd_ERCF_SOAKTEST_LOAD_SEQUENCE(self, gcmd):
+    cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help = "Soak test tool load/unload sequence"
+    def cmd_MMU_SOAKTEST_LOAD_SEQUENCE(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -3408,25 +3308,26 @@ class Mmu:
         except MmuError as ee:
             self._pause(str(ee))
 
-    cmd_ERCF_TEST_GRIP_help = "Test the MMU grip for a Tool"
-    def cmd_ERCF_TEST_GRIP(self, gcmd):
+    cmd_MMU_TEST_GRIP_help = "Test the MMU grip for a Tool"
+    def cmd_MMU_TEST_GRIP(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
         self._servo_down()
         self._motors_off(motor="gear")
 
-    cmd_ERCF_TEST_SERVO_help = "Test the servo angle"
-    def cmd_ERCF_TEST_SERVO(self, gcmd):
-        if self._check_is_disabled(): return
-        if self._check_is_paused(): return
-        if self._check_in_bypass(): return
-        angle = gcmd.get_float('VALUE')
-        self._log_debug("Setting servo to angle: %d" % angle)
-        self._servo_set_angle(angle)
+# PAUL
+#    cmd_MMU_TEST_SERVO_help = "Test the servo angle"
+#    def cmd_MMU_TEST_SERVO(self, gcmd):
+#        if self._check_is_disabled(): return
+#        if self._check_is_paused(): return
+#        if self._check_in_bypass(): return
+#        angle = gcmd.get_float('VALUE')
+#        self._log_debug("Setting servo to angle: %d" % angle)
+#        self._servo_set_angle(angle)
 
-    cmd_ERCF_TEST_MOVE_GEAR_help = "Move the MMU gear"
-    def cmd_ERCF_TEST_MOVE_GEAR(self, gcmd):
+    cmd_MMU_TEST_MOVE_GEAR_help = "Move the MMU gear"
+    def cmd_MMU_TEST_MOVE_GEAR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -3435,8 +3336,8 @@ class Mmu:
         accel = gcmd.get_float('ACCEL', 200., minval=0.)
         self._gear_stepper_move_wait(length, wait=False, speed=speed, accel=accel)
 
-    cmd_ERCF_TEST_LOAD_help = "Test loading of filament from MMU to the extruder"
-    def cmd_ERCF_TEST_LOAD(self, gcmd):
+    cmd_MMU_TEST_LOAD_help = "Test loading of filament from MMU to the extruder"
+    def cmd_MMU_TEST_LOAD(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -3447,8 +3348,8 @@ class Mmu:
         except MmuError as ee:
             self._log_always("Load test failed: %s" % str(ee))
 
-    cmd_ERCF_TEST_TRACKING_help = "Test the tracking of gear feed and encoder sensing"
-    def cmd_ERCF_TEST_TRACKING(self, gcmd):
+    cmd_MMU_TEST_TRACKING_help = "Test the tracking of gear feed and encoder sensing"
+    def cmd_MMU_TEST_TRACKING(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -3479,8 +3380,8 @@ class Mmu:
         except MmuError as ee:
             self._log_always("Tracking test failed: %s" % str(ee))
 
-    cmd_ERCF_TEST_UNLOAD_help = "For testing for fine control of filament unloading and parking it in the MMU"
-    def cmd_ERCF_TEST_UNLOAD(self, gcmd):
+    cmd_MMU_TEST_UNLOAD_help = "For testing for fine control of filament unloading and parking it in the MMU"
+    def cmd_MMU_TEST_UNLOAD(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -3491,8 +3392,8 @@ class Mmu:
         except MmuError as ee:
             self._log_always("Unload test failed: %s" % str(ee))
 
-    cmd_ERCF_TEST_HOME_TO_EXTRUDER_help = "Test homing the filament to the extruder from the end of the bowden. Intended to be used for calibrating the current reduction or stallguard threshold"
-    def cmd_ERCF_TEST_HOME_TO_EXTRUDER(self, params):
+    cmd_MMU_TEST_HOME_TO_EXTRUDER_help = "Test homing the filament to the extruder from the end of the bowden. Intended to be used for calibrating the current reduction or stallguard threshold"
+    def cmd_MMU_TEST_HOME_TO_EXTRUDER(self, params):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
@@ -3511,8 +3412,8 @@ class Mmu:
         except MmuError as ee:
             self._log_always("Homing test failed: %s" % str(ee))
 
-    cmd_ERCF_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
-    def cmd_ERCF_TEST_CONFIG(self, gcmd):
+    cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
+    def cmd_MMU_TEST_CONFIG(self, gcmd):
         self.long_moves_speed = gcmd.get_float('LONG_MOVES_SPEED', self.long_moves_speed, above=20.)
         self.long_moves_speed_from_spool = gcmd.get_float('LONG_MOVES_SPEED_FROM_SPOOL', self.long_moves_speed_from_spool, above=20.)
         self.short_moves_speed = gcmd.get_float('SHORT_MOVES_SPEED', self.short_moves_speed, above=20.)
@@ -3548,11 +3449,12 @@ class Mmu:
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
+        self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
         self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
         self.encoder_sensor.set_mode(self.enable_clog_detection)
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
-        self.variables[self.VARS_ERCF_CALIB_REF] = gcmd.get_float('ERCF_CALIB_REF', self._get_calibration_ref(), minval=10.)
-        clog_length = gcmd.get_float('ERCF_CALIB_CLOG_LENGTH', self.encoder_sensor.get_clog_detection_length(), minval=1., maxval=100.)
+        self.variables[self.VARS_MMU_CALIB_REF] = gcmd.get_float('MMU_CALIB_REF', self._get_calibration_ref(), minval=10.)
+        clog_length = gcmd.get_float('MMU_CALIB_CLOG_LENGTH', self.encoder_sensor.get_clog_detection_length(), minval=1., maxval=100.)
         if clog_length != self.encoder_sensor.get_clog_detection_length():
             self.encoder_sensor.set_clog_detection_length(clog_length)
         msg = "long_moves_speed = %.1f" % self.long_moves_speed
@@ -3593,10 +3495,11 @@ class Mmu:
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         msg += "\nlog_level = %d" % self.log_level
         msg += "\nlog_visual = %d" % self.log_visual
+        msg += "\nlog_statistics = %d" % self.log_statistics
         msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
-        msg += "\nercf_calib_ref = %.1f" % self.variables[self.VARS_ERCF_CALIB_REF]
-        msg += "\nercf_calib_clog_length = %.1f" % clog_length
+        msg += "\nmmu_calib_ref = %.1f" % self.variables[self.VARS_MMU_CALIB_REF]
+        msg += "\nmmu_calib_clog_length = %.1f" % clog_length
         self._log_info(msg)
 
 
@@ -3643,13 +3546,13 @@ class Mmu:
                 raise MmuError("No more EndlessSpool spools available after checking gates %s" % checked_gates)
             self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
 
-            self.gcode.run_script_from_command("_ERCF_ENDLESS_SPOOL_PRE_UNLOAD")
+            self.gcode.run_script_from_command("_MMU_ENDLESS_SPOOL_PRE_UNLOAD")
             if not self._form_tip_standalone(disable_sync = True):
                 self._log_info("Filament didn't reach encoder after tip forming move")
             self._unload_tool(skip_tip=True)
             self._remap_tool(self.tool_selected, next_gate, 1)
             self._select_and_load_tool(self.tool_selected)
-            self.gcode.run_script_from_command("_ERCF_ENDLESS_SPOOL_POST_LOAD")
+            self.gcode.run_script_from_command("_MMU_ENDLESS_SPOOL_POST_LOAD")
             self._restore_toolhead_position()
             self.encoder_sensor.reset_counts()    # Encoder 0000
             self._enable_encoder_sensor()
@@ -3661,11 +3564,11 @@ class Mmu:
 
     def _set_tool_to_gate(self, tool, gate):
         self.tool_to_gate_map[tool] = gate
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
 
     def _set_gate_status(self, gate, state):
         self.gate_status[gate] = state
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_GATE_STATUS, self.gate_status))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
 
     def _get_filament_char(self, gate_status, no_space=False):
         if gate_status == self.GATE_AVAILABLE_FROM_BUFFER:
@@ -3765,7 +3668,7 @@ class Mmu:
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
         self.tool_to_gate_map = self.default_tool_to_gate_map
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
         self._unselect_tool()
 
     def _reset_gate_map(self):
@@ -3796,8 +3699,8 @@ class Mmu:
 
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
 
-    cmd_ERCF_ENCODER_RUNOUT_help = "Internal encoder filament runout handler"
-    def cmd_ERCF_ENCODER_RUNOUT(self, gcmd):
+    cmd_MMU_ENCODER_RUNOUT_help = "Internal encoder filament runout handler"
+    def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
         force_runout = bool(gcmd.get_int('FORCE_RUNOUT', 0, minval=0, maxval=1))
         try:
@@ -3805,8 +3708,8 @@ class Mmu:
         except MmuError as ee:
             self._pause(str(ee))
 
-    cmd_ERCF_ENCODER_INSERT_help = "Internal encoder filament detection handler"
-    def cmd_ERCF_ENCODER_INSERT(self, gcmd):
+    cmd_MMU_ENCODER_INSERT_help = "Internal encoder filament detection handler"
+    def cmd_MMU_ENCODER_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         self._log_debug("Filament insertion not implemented yet! Check back later")
 # Future feature :-)
@@ -3815,14 +3718,14 @@ class Mmu:
 #        except MmuError as ee:
 #            self._pause(str(ee))
 
-    cmd_ERCF_DISPLAY_TTG_MAP_help = "Display the current mapping of tools to MMU gate positions. Used with endless spool"
-    def cmd_ERCF_DISPLAY_TTG_MAP(self, gcmd):
+    cmd_MMU_DISPLAY_TTG_MAP_help = "Display the current mapping of tools to MMU gate positions. Used with endless spool"
+    def cmd_MMU_DISPLAY_TTG_MAP(self, gcmd):
         if self._check_is_disabled(): return
         summary = gcmd.get_int('SUMMARY', 0, minval=0, maxval=1)
         self._log_always(self._tool_to_gate_map_to_human_string(summary == 1))
 
-    cmd_ERCF_REMAP_TTG_help = "Remap a tool to a specific gate and set gate availability"
-    def cmd_ERCF_REMAP_TTG(self, gcmd):
+    cmd_MMU_REMAP_TTG_help = "Remap a tool to a specific gate and set gate availability"
+    def cmd_MMU_REMAP_TTG(self, gcmd):
         if self._check_is_disabled(): return
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
@@ -3840,7 +3743,7 @@ class Mmu:
                     self.tool_to_gate_map.append(int(gate))
                 else:
                     self.tool_to_gate_map.append(0)
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
         else:
             tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.num_gates - 1)
             gate = gcmd.get_int('GATE', minval=0, maxval=self.num_gates - 1)
@@ -3855,8 +3758,8 @@ class Mmu:
         if not quiet:
             self._log_info(self._tool_to_gate_map_to_human_string())
 
-    cmd_ERCF_SET_GATE_MAP_help = "Define the type and color of filaments on each gate"
-    def cmd_ERCF_SET_GATE_MAP(self, gcmd):
+    cmd_MMU_SET_GATE_MAP_help = "Define the type and color of filaments on each gate"
+    def cmd_MMU_SET_GATE_MAP(self, gcmd):
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
         dump = gcmd.get_int('DISPLAY', 0, minval=0, maxval=1)
@@ -3881,8 +3784,8 @@ class Mmu:
         if not quiet:
             self._log_info(self._gate_map_to_human_string())
 
-    cmd_ERCF_ENDLESS_SPOOL_help = "Redefine the EndlessSpool groups"
-    def cmd_ERCF_ENDLESS_SPOOL(self, gcmd):
+    cmd_MMU_ENDLESS_SPOOL_help = "Redefine the EndlessSpool groups"
+    def cmd_MMU_ENDLESS_SPOOL(self, gcmd):
         if self._check_is_disabled(): return
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         enabled = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
@@ -3890,7 +3793,7 @@ class Mmu:
         dump = gcmd.get_int('DISPLAY', 0, minval=0, maxval=1)
         if enabled >= 0:
             self.enable_endless_spool = enabled
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_ERCF_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
         if not self.enable_endless_spool:
             self._log_always("EndlessSpool is disabled")
         if reset == 1:
@@ -3911,13 +3814,13 @@ class Mmu:
                     self.endless_spool_groups.append(int(group))
                 else:
                     self.endless_spool_groups.append(0)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
 
         if not quiet:
             self._log_info(self._tool_to_gate_map_to_human_string())
 
-    cmd_ERCF_CHECK_GATES_help = "Automatically inspects gate(s), parks filament and marks availability"
-    def cmd_ERCF_CHECK_GATES(self, gcmd):
+    cmd_MMU_CHECK_GATES_help = "Automatically inspects gate(s), parks filament and marks availability"
+    def cmd_MMU_CHECK_GATES(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
@@ -4013,8 +3916,8 @@ class Mmu:
             self._set_action(current_action)
             self._servo_auto()
 
-    cmd_ERCF_PRELOAD_help = "Preloads filament at specified or current gate"
-    def cmd_ERCF_PRELOAD(self, gcmd):
+    cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
+    def cmd_MMU_PRELOAD(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
@@ -4050,7 +3953,6 @@ class Mmu:
             self.calibrating = False
             self._servo_auto()
             self._set_action(current_action)
-            # PAUL TODO should we reselect starting position like check gates?
 
 def load_config(config):
     return Mmu(config)
