@@ -458,7 +458,7 @@ install_update_manager() {
     echo -e "${INFO}Adding update manager to moonraker.conf"
     file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
     if [ -f "${file}" ]; then
-        update_section=$(grep -c '\[update_manager ercf-happy_hare\]' \
+        update_section=$(grep -c '\[update_manager happy-hare\]' \
         ${file} || true)
         if [ "${update_section}" -eq 0 ]; then
             echo "" >> "${file}"
@@ -468,7 +468,7 @@ install_update_manager() {
             echo "" >> "${file}"
             restart_moonraker
         else
-            echo -e "${INFO}[update_manager ercf-happy_hare] already exist in moonraker.conf - skipping install"
+            echo -e "${INFO}[update_manager happy-hare] already exist in moonraker.conf - skipping install"
         fi
     else
         echo -e "${WARNING}moonraker.conf not found!"

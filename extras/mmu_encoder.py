@@ -112,14 +112,14 @@ class ErcfEncoder:
         if self._enabled:
             extruder_pos = self._get_extruder_pos(eventtime)
 
-            # PAUL
-            if self._logger:
-                encoder_pos = self.get_distance()
-                if self._movement:
-                    drift = extruder_pos - encoder_pos
-                    self._logger("PAUL: Extruder Pos: %.1f, Encoder Pos: %.1f" % (extruder_pos, encoder_pos))
-                else:
-                    self._logger("PAUL: Extruder Pos: %.1f" % extruder_pos)
+            # PAUL - temp debugging
+#            if self._logger:
+#                encoder_pos = self.get_distance()
+#                if self._movement:
+#                    drift = extruder_pos - encoder_pos
+#                    self._logger("PAUL: Extruder Pos: %.1f, Encoder Pos: %.1f" % (extruder_pos, encoder_pos))
+#                else:
+#                    self._logger("PAUL: Extruder Pos: %.1f" % extruder_pos)
 
             # First lets see if we got encoder movement since last invocation
             if self._movement:
@@ -264,7 +264,8 @@ class ErcfEncoder:
             self.samples = self.samples[-self.flowrate_samples:]
         encoder_movement = encoder_pos - self.samples[0][0]
         extruder_movement = extruder_pos - self.samples[0][1]
-        self._logger("PAUL: Extruder Movement: %.1f, Encoder Movement: %.1f, Delta: %.1f" % (extruder_movement, encoder_movement, extruder_movement - encoder_movement))
+        # PAUL - temp debugging
+        #self._logger("PAUL: Extruder Movement: %.1f, Encoder Movement: %.1f, Delta: %.1f" % (extruder_movement, encoder_movement, extruder_movement - encoder_movement))
         new_extrusion_flowrate = (encoder_movement / extruder_movement) if extruder_movement > 0. else 1.
         self.extrusion_flowrate = (self.extrusion_flowrate + new_extrusion_flowrate) / 2.
 

@@ -1,4 +1,4 @@
-[update_manager happy_hare]
+[update_manager happy-hare]
 type: git_repo
 path: ~/Happy-Hare
 origin: https://github.com/moggieuk/Happy-Hare.git

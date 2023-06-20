@@ -70,7 +70,7 @@ class MultiLineFormatter(logging.Formatter):
 class MmuError(Exception):
     pass
 
-# Main  klipper module
+# Main klipper module
 class Mmu:
     BOOT_DELAY = 1.5            # Delay before running bootup tasks
 
@@ -124,7 +124,7 @@ class Mmu:
     VENDOR_TRADRACK = "tradrack" # In progress
     VENDOR_PRUSA = "prusa" # In progress
 
-    # ercf_vars.cfg variables
+    # mmu_vars.cfg variables
     VARS_ERCF_CALIB_CLOG_LENGTH      = "ercf_calib_clog_length"
     VARS_ERCF_ENABLE_ENDLESS_SPOOL   = "ercf_state_enable_endless_spool"
     VARS_ERCF_ENDLESS_SPOOL_GROUPS   = "ercf_state_endless_spool_groups"
@@ -261,7 +261,6 @@ class Mmu:
 
         # Options
         self.homing_method = config.getint('homing_method', 0, minval=0, maxval=1)
-# PAUL no longer an option        self.sensorless_selector = config.getint('sensorless_selector', 0, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
@@ -278,7 +277,7 @@ class Mmu:
         self.log_visual = config.getint('log_visual', 1, minval=0, maxval=2)
         self.startup_status = config.getint('startup_status', 0, minval=0, maxval=2)
 
-        # The following lists are the defaults (when reset) and will be overriden by values in ercf_vars.cfg
+        # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg
 
         # Endless spool groups
         self.enable_endless_spool = self.default_enable_endless_spool
@@ -331,7 +330,7 @@ class Mmu:
 
         # Logging
         self.queue_listener = None
-        self.ercf_logger = None
+        self.mmu_logger = None
 
         # Register GCODE commands
         self.gcode = self.printer.lookup_object('gcode')
@@ -415,12 +414,6 @@ class Mmu:
         self.gcode.register_command('ERCF_SELECT_BYPASS',
                     self.cmd_ERCF_SELECT_BYPASS,
                     desc = self.cmd_ERCF_SELECT_BYPASS_help)
-        self.gcode.register_command('ERCF_LOAD_BYPASS', # Deprecated. Has warning and redirect
-                    self.cmd_ERCF_LOAD_BYPASS,
-                    desc=self.cmd_ERCF_LOAD_BYPASS_help)
-        self.gcode.register_command('ERCF_UNLOAD_BYPASS', # Deprecated. Has warning and redirect
-                    self.cmd_ERCF_UNLOAD_BYPASS,
-                    desc=self.cmd_ERCF_UNLOAD_BYPASS_help)
         self.gcode.register_command('ERCF_CHANGE_TOOL',
                     self.cmd_ERCF_CHANGE_TOOL,
                     desc = self.cmd_ERCF_CHANGE_TOOL_help)
@@ -499,8 +492,9 @@ class Mmu:
 
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
-        # This assumes that the hardware configuartion appears before the `ercf` section
+        # This assumes that the hardware configuartion appears before the `[mmu]` section
         # the installer by default already guarantees this order
+        self._setup_logging() # PAUL temp
         self._setup_mmu_hardware(config)
 
     def _setup_logging(self):
@@ -509,27 +503,48 @@ class Mmu:
             logfile_path = self.printer.start_args['log_file']
             dirname = os.path.dirname(logfile_path)
             if dirname == None:
-                ercf_log = '/tmp/ercf.log'
+                mmu_log = '/tmp/mmu.log'
             else:
-                ercf_log = dirname + '/ercf.log'
-            self._log_debug("ercf_log=%s" % ercf_log)
-            self.queue_listener = QueueListener(ercf_log)
+                mmu_log = dirname + '/mmu.log'
+            self._log_debug("mmu_log=%s" % mmu_log)
+            self.queue_listener = QueueListener(mmu_log)
             self.queue_listener.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%I:%M:%S'))
             queue_handler = QueueHandler(self.queue_listener.bg_queue)
-            self.ercf_logger = logging.getLogger('ercf')
-            self.ercf_logger.setLevel(logging.INFO)
-            self.ercf_logger.addHandler(queue_handler)
+            self.mmu_logger = logging.getLogger('mmu')
+            self.mmu_logger.setLevel(logging.INFO)
+            self.mmu_logger.addHandler(queue_handler)
 
     def _setup_mmu_hardware(self, config):
         self.mmu_hardware = self.printer.lookup_object('mmu_hardware', None)
 
-        for manual_stepper in self.printer.lookup_objects('manual_stepper'):
+        # Selector h/w setup
+        for manual_stepper in self.printer.lookup_objects('manual_mmu_stepper'):
             stepper_name = manual_stepper[1].get_steppers()[0].get_name()
-            if stepper_name == 'manual_stepper selector_stepper':
+            if stepper_name == 'manual_mmu_stepper selector_stepper':
                 self.selector_stepper = manual_stepper[1]
         if self.selector_stepper is None:
-            raise self.config.error("Missing [manual_stepper selector_stepper] section in mmu_hardware.cfg")
+            raise self.config.error("Missing [manual_mmu_stepper selector_stepper] section in mmu_hardware.cfg")
 
+        # Find the pyhysical (homing) selector endstop
+        self.selector_endstop = self.selector_stepper.get_endstop("mmu selector home")
+        if self.selector_endstop is None:
+            for name in self.selector_stepper.get_endstop_names():
+                if not self.selector_stepper.is_endstop_virtual(name):
+                    self.selector_endstop = self.selector_stepper.get_endstop(name)
+                    break
+        if self.selector_endstop is None:
+            raise self.config.error("Physical homing endstop not found for selector_stepper")
+
+        self._log_debug("PAUL: endstop_names=%s" % self.selector_stepper.get_endstop_names())
+        # If user didn't configure a default endstop do it here. Mimimizes config differences
+        if 'default' not in self.selector_stepper.get_endstop_names():
+            self._log_debug("PAUL: default not found")
+            self.selector_stepper.activate_endstop("mmu selector home")
+        self.selector_touch = 'mmu selector touch' in self.selector_stepper.get_endstop_names()
+        self._log_debug("PAUL: selector_touch=%s" % self.selector_touch)
+
+
+        # Gear h/w setup
         for manual_stepper in self.printer.lookup_objects('manual_extruder_stepper'):
             stepper_name = manual_stepper[1].get_steppers()[0].get_name()
             if stepper_name == 'manual_extruder_stepper gear_stepper':
@@ -537,87 +552,92 @@ class Mmu:
         if self.gear_stepper is None:
             raise self.config.error("Missing [manual_extruder_stepper gear_stepper] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
+
+
         # Allow setup of dual endstops on selector, leveraging what user may have already configured
-        self.query_endstops = self.printer.load_object(config, 'query_endstops')
-        self.selector_endstop = self.selector_virtual_endstop = None
-        self.sensorless_selector = False
-        for idx, (mcu_endstop, name) in enumerate(self.query_endstops.endstops):
-            if name == 'manual_stepper selector_stepper':
-                # We only expect one stepper
-                for s in self.selector_stepper.steppers:
-                    name = "%s" % s.get_name()
-                    try:
-                        endstop_pin = self.config.getsection(name).get("endstop_pin")
-                        if "virtual_endstop" in endstop_pin:
-                            # Found stallguard sensorless endstop
-                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Selector Touch") # Rename it
-                            self.selector_virtual_endstop = mcu_endstop
-                            self.sensorless_selector = True
-                        else:
-                            # Found physical endstop config. Didn't expect it but we can deal with it
-                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Selector") # Rename it
-                            self.selector_endstop = mcu_endstop
-                    except Exception as e:
-                        pass
+#        self.query_endstops = self.printer.load_object(config, 'query_endstops')
+#        self.selector_endstop = self.selector_virtual_endstop = None
+#        self.selector_touch = False
+#        for idx, (mcu_endstop, name) in enumerate(self.query_endstops.endstops):
+#            if name == 'manual_mmu_stepper selector_stepper':
+#                # We only expect one stepper
+#                for s in self.selector_stepper.steppers:
+#                    name = "%s" % s.get_name()
+#                    try:
+#                        endstop_pin = self.config.getsection(name).get("endstop_pin")
+#                        if "virtual_endstop" in endstop_pin:
+#                            # Found stallguard sensorless endstop
+#                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Selector Touch") # Rename it
+#                            self.selector_virtual_endstop = mcu_endstop
+#                            self.selector_touch = True
+#                        else:
+#                            # Found physical endstop config. Didn't expect it but we can deal with it
+#                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Selector") # Rename it
+#                            self.selector_endstop = mcu_endstop
+#                    except Exception as e:
+#                        pass
 
-        # Configure physical selector endstop if not alredy defined
-        if self.selector_endstop is None and self.mmu_hardware is not None:
-            endstop_pin = self.mmu_hardware.get_selector_homing_pin()
-            ppins = self.printer.lookup_object('pins')
-            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
-            for s in self.selector_stepper.steppers:
-                mcu_endstop.add_stepper(s)
-            self.query_endstops.register_endstop(mcu_endstop, "MMU Selector")
-            self.selector_endstop = mcu_endstop
+# PAUL
+#        # Configure physical selector endstop if not alredy defined
+#        if self.selector_endstop is None and self.mmu_hardware is not None:
+#            endstop_pin = self.mmu_hardware.get_selector_homing_pin()
+#            ppins = self.printer.lookup_object('pins')
+#            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
+#            for s in self.selector_stepper.steppers:
+#                mcu_endstop.add_stepper(s)
+#            self.query_endstops.register_endstop(mcu_endstop, "MMU Selector")
+#            self.selector_endstop = mcu_endstop
 
-        # Setup endstops on gear stepper for contolling loading/unloading. Accomodate
-        # stallguard if setup but user and assume it is for extruder homing. If a phyical
-        # endstop is set allow it but merge those defined in mmu_hardware
-        # Endstop position names:
-        #   'parked' filament unloaded postion in gate
-        #   'extruder' entrance to extruder (typically virtual with stallguard)
-        #   'toolhead' after the extruder entrance but before nozzle
-        self.query_endstops = self.printer.load_object(config, 'query_endstops')
-        self.gear_endstops = {}
-        for idx, (mcu_endstop, name) in enumerate(self.query_endstops.endstops):
-            if name == 'manual_extruder_stepper gear_stepper':
-                # We only expect one stepper
-                for s in self.gearr_stepper.steppers:
-                    name = "%s" % s.get_name()
-                    try:
-                        endstop_pin = self.config.getsection(name).get("endstop_pin")
-                        if "virtual_endstop" in endstop_pin:
-                            # Found stallguard sensorless endstop
-                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Extruder") # Rename it
-                            self.gear_endstops["extruder"] = mcu_endstop
-                        else:
-                            # Found physical endstop config
-                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Extruder") # Rename it
-                            self.gear_endstops["extruder"] = mcu_endstop
-                    except Exception as e:
-                        pass
+#        # Setup endstops on gear stepper for contolling loading/unloading. Accomodate
+#        # stallguard if setup but user and assume it is for extruder homing. If a phyical
+#        # endstop is set allow it but merge those defined in mmu_hardware
+#        # Endstop position names:
+#        #   'parked' filament unloaded postion in gate
+#        #   'extruder' entrance to extruder (typically virtual with stallguard)
+#        #   'toolhead' after the extruder entrance but before nozzle
+#        self.query_endstops = self.printer.load_object(config, 'query_endstops')
+#        self.gear_endstops = {}
+#        for idx, (mcu_endstop, name) in enumerate(self.query_endstops.endstops):
+#            if name == 'manual_extruder_stepper gear_stepper':
+#                # We only expect one stepper
+#                for s in self.gearr_stepper.steppers:
+#                    name = "%s" % s.get_name()
+#                    try:
+#                        endstop_pin = self.config.getsection(name).get("endstop_pin")
+#                        if "virtual_endstop" in endstop_pin:
+#                            # Found stallguard sensorless endstop
+#                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Extruder") # Rename it
+#                            self.gear_endstops["extruder"] = mcu_endstop
+#                        else:
+#                            # Found physical endstop config
+#                            self.query_endstops.endstops[idx] = (mcu_endstop, "MMU Extruder") # Rename it
+#                            self.gear_endstops["extruder"] = mcu_endstop
+#                    except Exception as e:
+#                        pass
+#
+#        if self.mmu_hardware is not None and not "extruder" in self.gear_endstops:
+#            endstop_pin = self.mmu_hardware.get_gear_extruder_homing_pin()
+#            self._setup_gear_endstop(endstop_pin, "MMU Extruder", "extruder")
+#                    
+#        # Optional toolhead sensor (assumed to be after extruder gears)
+#        self.toolhead_sensor = self.printer.lookup_object("filament_switch_sensor toolhead_sensor", None)
+#        if self.toolhead_sensor:
+#            if self.toolhead_sensor.runout_helper.runout_pause:
+#                raise self.config.error("`pause_on_runout: False` is incorrect/missing from toolhead_sensor configuration")
+#
+#            # Setup toolhead sensor as an endstop for gear stepper
+#            endstop_pin = self.config.getsection("filament_switch_sensor toolhead_sensor").get("switch_pin")
+#            self._setup_gear_endstop(endstop_pin, "MMU Toolhead", "toolhead")
+#
 
-        if self.mmu_hardware is not None and not "extruder" in self.gear_endstops:
-            endstop_pin = self.mmu_hardware.get_gear_extruder_homing_pin()
-            self._setup_gear_endstop(endstop_pin, "MMU Extruder", "extruder")
-                    
-        # Optional toolhead sensor (assumed to be after extruder gears)
-        self.toolhead_sensor = self.printer.lookup_object("filament_switch_sensor toolhead_sensor", None)
-        if self.toolhead_sensor:
-            if self.toolhead_sensor.runout_helper.runout_pause:
-                raise self.config.error("`pause_on_runout: False` is incorrect/missing from toolhead_sensor configuration")
-
-            # Setup toolhead sensor as an endstop for gear stepper
-            endstop_pin = self.config.getsection("filament_switch_sensor toolhead_sensor").get("switch_pin")
-            self._setup_gear_endstop(endstop_pin, "MMU Toolhead", "toolhead")
-
+# PAUL why this...
             ffi_main, ffi_lib = chelper.get_ffi()
             self.toolhead_homing_sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'x'), ffi_lib.free)
 
-        # Configure 'parked' endstop if defined
-        if self.mmu_hardware is not None:
-            endstop_pin = self.mmu_hardware.get_gear_parked_homing_pin()
-            self._setup_gear_endstop(endstop_pin, "MMU Parked", "parked")
+#        # Configure 'parked' endstop if defined
+#        if self.mmu_hardware is not None:
+#            endstop_pin = self.mmu_hardware.get_gear_parked_homing_pin()
+#            self._setup_gear_endstop(endstop_pin, "MMU Parked", "parked")
 
         # Get servo and encoder
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
@@ -627,18 +647,18 @@ class Mmu:
         if not self.encoder_sensor:
             raise self.config.error("Missing [mmu_encoder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
-    def _setup_gear_endstop(self, endstop_pin, name, location):
-        if endstop_pin is not None:
-            ppins = self.printer.lookup_object('pins')
-            ppins.allow_multi_use_pin(endstop_pin)
-            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
-            for s in self.gear_stepper.steppers:
-                mcu_endstop.add_stepper(s)
-            self.query_endstops.register_endstop(mcu_endstop, name)
-            self.gear_endstops[location] = mcu_endstop
+#    def _setup_gear_endstop(self, endstop_pin, name, location):
+#        if endstop_pin is not None:
+#            ppins = self.printer.lookup_object('pins')
+#            ppins.allow_multi_use_pin(endstop_pin)
+#            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
+#            for s in self.gear_stepper.steppers:
+#                mcu_endstop.add_stepper(s)
+#            self.query_endstops.register_endstop(mcu_endstop, name)
+#            self.gear_endstops[location] = mcu_endstop
 
     def handle_connect(self):
-        self._setup_logging()
+# PAUL        self._setup_logging()
         self.toolhead = self.printer.lookup_object('toolhead')
 
         # See if we have a TMC controller capable of current control for filament collision detection and syncing
@@ -648,7 +668,7 @@ class Mmu:
         for chip in tmc_chips:
             if self.selector_tmc is None:
                 try:
-                    self.selector_tmc = self.printer.lookup_object('%s manual_stepper selector_stepper' % chip)
+                    self.selector_tmc = self.printer.lookup_object('%s manual_mmu_stepper selector_stepper' % chip)
                     self._log_debug("Found %s on selector_stepper. Stallguard homing possible." % chip)
                 except:
                     pass
@@ -1041,39 +1061,39 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_ERCF_GATE_COLOR, list(map(lambda x: ("\'%s\'" %x), self.gate_color))))
 
     def _log_error(self, message):
-        if self.ercf_logger:
-            self.ercf_logger.info(message)
+        if self.mmu_logger:
+            self.mmu_logger.info(message)
         self.gcode.respond_raw("!! %s" % message)
 
     def _log_always(self, message):
-        if self.ercf_logger:
-            self.ercf_logger.info(message)
+        if self.mmu_logger:
+            self.mmu_logger.info(message)
         self.gcode.respond_info(message)
 
     def _log_info(self, message):
-        if self.ercf_logger and self.logfile_level > 0:
-            self.ercf_logger.info(message)
+        if self.mmu_logger and self.logfile_level > 0:
+            self.mmu_logger.info(message)
         if self.log_level > 0:
             self.gcode.respond_info(message)
 
     def _log_debug(self, message):
         message = "- DEBUG: %s" % message
-        if self.ercf_logger and self.logfile_level > 1:
-            self.ercf_logger.info(message)
+        if self.mmu_logger and self.logfile_level > 1:
+            self.mmu_logger.info(message)
         if self.log_level > 1:
             self.gcode.respond_info(message)
 
     def _log_trace(self, message):
         message = "- - TRACE: %s" % message
-        if self.ercf_logger and self.logfile_level > 2:
-            self.ercf_logger.info(message)
+        if self.mmu_logger and self.logfile_level > 2:
+            self.mmu_logger.info(message)
         if self.log_level > 2:
             self.gcode.respond_info(message)
 
     def _log_stepper(self, message):
         message = "- - - STEPPER: %s" % message
-        if self.ercf_logger and self.logfile_level > 3:
-            self.ercf_logger.info(message)
+        if self.mmu_logger and self.logfile_level > 3:
+            self.mmu_logger.info(message)
         if self.log_level > 3:
             self.gcode.respond_info(message)
 
@@ -1215,7 +1235,7 @@ class Mmu:
             else:
                 msg += "\nGear and Extruder steppers are not synchronized"
             msg += ". Tip forming current is %d%%" % self.extruder_form_tip_current
-            msg += "\nSelector homing is %s - blocked gate detection and recovery %s possible" % (("sensorless", "may be") if self.sensorless_selector else ("microswitch", "is not"))
+            msg += "\nSelector homing is %s - blocked gate detection and recovery %s possible" % (("touch", "may be") if self.selector_touch else ("microswitch", "is not"))
             msg += "\nClog detection is %s" % ("AUTOMATIC" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_AUTOMATIC else "ENABLED" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_STATIC else "DISABLED")
             msg += " (%.1fmm runout)" % self.encoder_sensor.get_clog_detection_length()
             msg += " and EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
@@ -1480,7 +1500,7 @@ class Mmu:
         self.selector_stepper.do_set_position(0.)
         found_home = False
         try:
-            if self.sensorless_selector:
+            if self.selector_touch:
                 self._selector_stepper_move_wait(-max_movement, speed=self.selector_sensorless_speed, homing_move=1)
                 found_home = self.selector_endstop.query_endstop(self.toolhead.get_last_move_time()) # Physical endstop
             else:
@@ -1556,7 +1576,7 @@ class Mmu:
             self._log_always("Searching for end of selector... (up to %.1fmm)" % max_movement)
             self.selector_stepper.do_set_position(0.)
             self._selector_stepper_move_wait(self.cad_gate0_pos) # Get off endstop
-            if self.sensorless_selector:
+            if self.selector_touch:
                 try:
                     self._selector_stepper_move_wait(max_movement, speed=self.selector_sensorless_speed, homing_move=1)
                     found_home = True
@@ -2151,8 +2171,8 @@ class Mmu:
             accel = self.selector_stepper.accel
         if homing_move != 0:
             self._log_stepper("SELECTOR: dist=%.1f, speed=%.1f, accel=%.1f homing=%d" % (dist, speed, accel, homing_move))
-            # Don't allow sensorless home moves in rapid succession (TMC limitation)
-            if self.sensorless_selector:
+            # Don't allow stallguard home moves in rapid succession (TMC limitation)
+            if self.selector_touch:
                 current_time = self.estimated_print_time(self.reactor.monotonic())
                 time_since_last = self.last_selector_move_time + 2.0 - current_time
                 if (time_since_last) > 0:
@@ -2336,9 +2356,9 @@ class Mmu:
                         break
                 self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_BOWDEN)
                 if delta >= tolerance:
-                    self._log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder delta %.1fmm. See ercf.log for more details"% (length, delta))
+                    self._log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder delta %.1fmm. See mmu.log for more details"% (length, delta))
             else:
-                self._log_info("Warning: Excess slippage was detected in bowden tube load but 'apply_bowden_correction' is disabled. Gear moved %.1fmm, Encoder delta %.1fmm. See ercf.log for more details" % (length, delta))
+                self._log_info("Warning: Excess slippage was detected in bowden tube load but 'apply_bowden_correction' is disabled. Gear moved %.1fmm, Encoder delta %.1fmm. See mmu.log for more details" % (length, delta))
 
             if delta >= tolerance:
                 self._log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo\nLoad speed too fast for encoder to track (>200mm/s)")
@@ -2876,7 +2896,7 @@ class Mmu:
         selector_length = 10. + (num_channels-1)*21. + ((num_channels-1)//3)*5. + (self.bypass_offset > 0)
         self._log_debug("Moving up to %.1fmm to home a %d channel MMU" % (selector_length, num_channels))
         self.toolhead.wait_moves()
-        if self.sensorless_selector:
+        if self.selector_touch:
             try:
                 self.selector_stepper.do_set_position(0.)
                 self._selector_stepper_move_wait(5, True)                      # Ensure some bump space
@@ -3036,7 +3056,7 @@ class Mmu:
                 offset = self.bypass_offset
             else:
                 offset = self.selector_offsets[gate]
-            if self.sensorless_selector:
+            if self.selector_touch:
                 self._move_selector_sensorless(offset)
             else:
                 self._selector_stepper_move_wait(offset)
@@ -3228,16 +3248,6 @@ class Mmu:
             self._select_bypass()
         except MmuError as ee:
             self._pause(str(ee))
-
-    cmd_ERCF_LOAD_BYPASS_help = "Deprecated. Use bypass aware ERCF_LOAD instead"
-    def cmd_ERCF_LOAD_BYPASS(self, gcmd):
-        self._log_always("Warning: ERCF_LOAD_BYPASS is now deprecated. Please simply use the bypass aware `ERCF_LOAD` instead")
-        self.cmd_ERCF_LOAD(gcmd, bypass=True)
-
-    cmd_ERCF_UNLOAD_BYPASS_help = "Deprecated. Use bypass aware ERCF_EJECT instead"
-    def cmd_ERCF_UNLOAD_BYPASS(self, gcmd):
-        self._log_always("Warning: ERCF_UNLOAD_BYPASS is now deprecated. Please simply use the bypass aware `ERCF_EJECT` instead")
-        self.cmd_ERCF_EJECT(gcmd, bypass=True)
 
     cmd_ERCF_PAUSE_help = "Pause the current print and lock the ERCF operations"
     def cmd_ERCF_PAUSE(self, gcmd):
