@@ -7,11 +7,6 @@
 # Inspired by original ERCF software
 # Enraged Rabbit Carrot Feeder Project           Copyright (C) 2021  Ette
 #
-# Internal Encoder Sensor based on:
-# Original Enraged Rabbit Carrot Feeder Project  Copyright (C) 2021  Ette
-# Generic Filament Sensor Module                 Copyright (C) 2019  Eric Callahan <arksine.code@gmail.com>
-# Filament Motion Sensor Module                  Copyright (C) 2021  Joshua Wherrett <thejoshw.code@gmail.com>
-#
 # (\_/)
 # ( *,*)
 # (")_(") MMU Ready
@@ -137,7 +132,6 @@ class Mmu:
     VARS_MMU_LOADED_STATUS          = "mmu_state_loaded_status"
     VARS_MMU_CALIB_REF              = "mmu_calib_ref"
     VARS_MMU_CALIB_PREFIX           = "mmu_calib_"
-    VARS_MMU_CALIB_VERSION          = "mmu_calib_version"
     VARS_MMU_GATE_STATISTICS_PREFIX = "mmu_statistics_gate_"
     VARS_MMU_SWAP_STATISTICS        = "mmu_statistics_swaps"
     VARS_MMU_SELECTOR_OFFSETS       = "mmu_selector_offsets"
@@ -345,9 +339,6 @@ class Mmu:
         self.gcode.register_command('MMU_DUMP_STATS',
                     self.cmd_MMU_DUMP_STATS,
                     desc = self.cmd_MMU_DUMP_STATS_help)
-        self.gcode.register_command('MMU_DISPLAY_ENCODER_POS',
-                    self.cmd_MMU_DISPLAY_ENCODER_POS,
-                    desc = self.cmd_MMU_DISPLAY_ENCODER_POS_help)
         self.gcode.register_command('MMU_STATUS',
                     self.cmd_MMU_STATUS,
                     desc = self.cmd_MMU_STATUS_help)
@@ -425,10 +416,6 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_GRIP',
                     self.cmd_MMU_TEST_GRIP,
                     desc = self.cmd_MMU_TEST_GRIP_help)
-# PAUL
-#        self.gcode.register_command('MMU_TEST_SERVO',
-#                    self.cmd_MMU_TEST_SERVO,
-#                    desc = self.cmd_MMU_TEST_SERVO_help)
         self.gcode.register_command('MMU_TEST_MOVE_GEAR',
                     self.cmd_MMU_TEST_MOVE_GEAR,
                     desc = self.cmd_MMU_TEST_MOVE_GEAR_help)
@@ -1072,11 +1059,6 @@ class Mmu:
         if self._check_is_disabled(): return
         self._dump_statistics(report=True)
 
-    cmd_MMU_DISPLAY_ENCODER_POS_help = "Display current value of the MMU encoder"
-    def cmd_MMU_DISPLAY_ENCODER_POS(self, gcmd):
-        if self._check_is_disabled(): return
-        self._log_info("Encoder value is %.2f" % self.encoder_sensor.get_distance())
-
     cmd_MMU_STATUS_help = "Complete dump of current MMU state and important configuration"
     def cmd_MMU_STATUS(self, gcmd):
         config = gcmd.get_int('SHOWCONFIG', 0, minval=0, maxval=1)
@@ -1259,9 +1241,6 @@ class Mmu:
 # CALIBRATION FUNCTIONS #
 #########################
 
-    def _get_calibration_version(self):
-        return self.variables.get(self.VARS_MMU_CALIB_VERSION, 1)
-
     def _get_calibration_ref(self):
         return self.variables.get(self.VARS_MMU_CALIB_REF, 500.)
 
@@ -1333,7 +1312,6 @@ class Mmu:
                 self._log_always(msg)
                 self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_REF, average_reference))
                 self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=1.0" % (self.VARS_MMU_CALIB_PREFIX, 0))
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=3" % self.VARS_MMU_CALIB_VERSION)
                 self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, detection_length))
                 self.encoder_sensor.set_clog_detection_length(detection_length)
             else:
@@ -1954,14 +1932,16 @@ class Mmu:
             msg += mmsg
         self._log_always(msg)
 
-    cmd_MMU_ENCODER_help = "Manual enable/disable control of MMU encoder"
+    cmd_MMU_ENCODER_help = "Display encoder position or temporarily enable/disable detection logic in encoder"
     def cmd_MMU_ENCODER(self, gcmd):
         if self._check_is_disabled(): return
-        enable = gcmd.get_int('ENABLE', minval=0, maxval=1)
-        if enable:
+        enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
+        if enable == 1:
             self._enable_encoder_sensor(True)
-        else:
+        elif enable == 0:
             self._disable_encoder_sensor(True)
+        else:
+            self._log_info("Encoder value is %.2f" % self.encoder_sensor.get_distance())
 
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
     def cmd_MMU_RESET(self, gcmd):
@@ -2764,9 +2744,6 @@ class Mmu:
         if self._check_in_bypass(): return
         current_action = self._set_action(self.ACTION_HOMING)
         try:
-            if self._get_calibration_version() != 3:
-                self._log_info("You are running an old calibration version.\nIt is strongly recommended that you rerun 'MMU_CALIBRATE_SINGLE TOOL=0' to generate updated calibration values")
-
             self._log_info("Homing MMU...")
             if self.is_paused_locked:
                 self._log_debug("MMU is locked, unlocking it before continuing...")
@@ -3315,16 +3292,6 @@ class Mmu:
         if self._check_in_bypass(): return
         self._servo_down()
         self._motors_off(motor="gear")
-
-# PAUL
-#    cmd_MMU_TEST_SERVO_help = "Test the servo angle"
-#    def cmd_MMU_TEST_SERVO(self, gcmd):
-#        if self._check_is_disabled(): return
-#        if self._check_is_paused(): return
-#        if self._check_in_bypass(): return
-#        angle = gcmd.get_float('VALUE')
-#        self._log_debug("Setting servo to angle: %d" % angle)
-#        self._servo_set_angle(angle)
 
     cmd_MMU_TEST_MOVE_GEAR_help = "Move the MMU gear"
     def cmd_MMU_TEST_MOVE_GEAR(self, gcmd):

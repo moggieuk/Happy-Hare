@@ -1,8 +1,8 @@
 # Happy Hare MMU Software
 # Support for a manual stepper that can be configured with multiple endstops
 #
-# Copyright (C) 2023  Cambridge Yang <camyang@csail.mit.edu>
-#                     moggieuk#6538 (discord) moggieuk@hotmail.com
+# Copyright (C) 2023  moggieuk#6538 (discord) moggieuk@hotmail.com
+#                     Cambridge Yang <camyang@csail.mit.edu>
 #
 # (\_/)
 # ( *,*)
@@ -91,11 +91,9 @@ class ManualMmuStepper(manual_stepper.ManualStepper, object):
                                    self.name, self.cmd_MANUAL_STEPPER,
                                    desc=self.cmd_MANUAL_STEPPER_help)
 
-        logging.info("PAUL: endstop_names=%s" % self.get_endstop_names()) # PAUL temp
-
     def _add_endstop(self, config, pin, name):
         ppins = self.printer.lookup_object('pins')
-#        logging.info("PAUL: Allowing multiuse of pin: %s" % pin)
+# TODO. Not sure if we need to set reuse? Would also need to cleanse pin name before calling
 #        ppins.allow_multi_use_pin(pin) # Always allow reuse of `extra_endstop_pins`
         mcu_endstop = ppins.setup_pin('endstop', pin)
         for s in self.steppers:
@@ -110,10 +108,8 @@ class ManualMmuStepper(manual_stepper.ManualStepper, object):
     def activate_endstop(self, name):
         endstop = self.mcu_endstops.get(name)
         if name is not None:
-            logging.info("PAUL: Activating endstop: name=%s" % name)
             self.rail.endstops = [(endstop['mcu_endstop'], name)]
         else:
-            logging.info("PAUL: Restoring default endstop")
             self.rail.endstops = self.default_endstop
 
     def get_endstop(self, name):

@@ -493,7 +493,6 @@ Good luck and hopefully a little less *enraged* printing.  You can find me on di
   | ERCF_DUMP_STATS | Dump the ERCF statistics (and Gate statistics to debug level - usually the logfile) | None |
   | ERCF_SET_LOG_LEVEL | Sets the logging level and turning on/off of visual loading/unloading sequence and stats reporting | LEVEL=\[1..4\] The level of logging to the console (1 recommended) <br>LOGFILE=\[1..4\] The level of logging to the ercf.log file (3 recommended) <br>VISUAL=\[0\|1\] Whether to also show visual representation <br>STATS=\[0\|1\] Whether to log print stats and gate summary on every tool change |
   | ERCF_STATUS | Report on ERCF state, capabilities and Tool-to-Gate map | SHOWCONFIG=\[0\|1\] Whether or not to describe the machine configuration in status message. Default 0 |
-  | ERCF_DISPLAY_ENCODER_POS | Displays the current value of the ERCF encoder | None |
   <br>
 
   ## Core ERCF functionality
@@ -510,7 +509,7 @@ Good luck and hopefully a little less *enraged* printing.  You can find me on di
   | ERCF_PAUSE | Pause the current print and lock the ERCF operations | FORCE_IN_PRINT=\[0\|1\] This option forces the handling of pause as if it occurred in print and is useful for testing |
   | ERCF_RECOVER | Recover filament position and optionally reset ERCF state. Useful to call prior to RESUME if you intervene/manipulate filament by hand | TOOL=\[0..n\] \| -2 Optionally force set the currently selected tool (-2 = bypass). Use caution! <br>GATE=\[0..n\] Optionally force set the currently selected gate if TTG mapping is being leveraged otherwise it will get the gate associated with current tool. Use caution! <br>LOADED=\[0\|1\] Optionally specify if the filamanet is fully loaded or fully unloaded. Use caution! If not specified, ERCF will try to discover filament position |
   | MMU | Enable and reset state or disable the MMU | ENABLE=\[0\|1\] |
-  | ERCF_ENCODER | Explicitly enable or disable the encoder. Note that the encoder state is set automatically so this will only be sticky until next tool change | ENABLE=\[0\|1\] |
+  | ERCF_ENCODER | Displays the current value of the ERCF encoder or explicitly enable or disable the encoder. Note that the encoder state is set automatically so this will only be sticky until next tool change | ENABLE=\[0\|1\] |
   | ERCF_SYNC_GEAR_MOTOR | Explicitly override the synchronization of extruder and gear motors. Note that synchronization is set automatically so this will only be sticky until the next tool change | SYNC=\[0\|1\] Turn gear/extruder synchronization on/off (default 1) <br>SERVO=\[0\|1\] If 1 (the default) servo will engage if SYNC=1 or disengage if SYNC=0 otherwise servo position will not change |
   <br>
   

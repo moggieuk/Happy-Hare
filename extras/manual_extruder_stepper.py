@@ -14,60 +14,17 @@ from kinematics import extruder as kinematics_extruder
 from . import manual_stepper, manual_mmu_stepper
 
 
-#class PrinterRailWithMockEndstop(stepper.PrinterRail, object):
-#    """PrinterRail that pretends to have an endstop during the initial setup phase.
-#    The rail is only homable if it has a properly configured endstop at runtime"""
-#
-#    class MockEndstop:
-#        def add_stepper(self, *args, **kwargs):
-#            pass
-#    
-#    def __init__(self, *args, **kwargs):
-#        self._in_setup = True
-#        super(PrinterRailWithMockEndstop, self).__init__(*args, **kwargs)
-#        self.endstops = []
-#
-#    def add_extra_stepper(self, *args, **kwargs):
-#        if self._in_setup:
-#            self.endstops = [(self.MockEndstop(), "")] # hack: pretend we have endstops
-#        return super(PrinterRailWithMockEndstop, self).add_extra_stepper(*args, **kwargs)
-
-
-#class ManualExtruderStepper(kinematics_extruder.ExtruderStepper, manual_stepper.ManualStepper, object):
 class ManualExtruderStepper(manual_mmu_stepper.ManualMmuStepper, kinematics_extruder.ExtruderStepper, object):
     """Extruder stepper that can be manually controlled when it is not synced to its motion queue"""
 
     def __init__(self, config):
         super(ManualExtruderStepper, self).__init__(config) # Will call ManualMmuStepper.__init__()
 
-#        self.printer = config.get_printer()
-#        self.name = config.get_name().split()[-1]
-
         # Extruder setup
         self.stepper = self.rail
         self.pressure_advance = self.pressure_advance_smooth_time = 0.
         self.config_pa = config.getfloat('pressure_advance', 0., minval=0.)
         self.config_smooth_time = config.getfloat('pressure_advance_smooth_time', 0.040, above=0., maxval=.200)
-
-#        # Setup stepper
-#        self.can_home = True
-#        self.stepper = PrinterRailWithMockEndstop(config, need_position_minmax=False, default_position_endstop=0.)
-#        self.steppers = self.stepper.get_steppers()
-
-#        self.rail = self.stepper # For forwarding manual_stepper...
-
-#        self.velocity = config.getfloat('velocity', 5., above=0.)
-#        self.accel = self.homing_accel = config.getfloat('accel', 0., minval=0.)
-#        self.next_cmd_time = 0.
-
-
-#        # Setup iterative solver for manual movement
-#        ffi_main, ffi_lib = chelper.get_ffi()
-#        self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
-#        self.trapq_append = ffi_lib.trapq_append
-#        self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
-#        self.rail.setup_itersolve('cartesian_stepper_alloc', b'x')
-#        self.rail.set_trapq(self.trapq)
 
         # Setup extruder kinematics
         ffi_main, ffi_lib = chelper.get_ffi()
@@ -86,6 +43,7 @@ class ManualExtruderStepper(manual_mmu_stepper.ManualMmuStepper, kinematics_extr
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         gcode = self.printer.lookup_object('gcode')
 
+# PAUL do we need to register all these commands? This class will never be used as a real extruder stepper
         # Extruder commands
         if self.name == 'extruder':
             gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", None,
@@ -107,7 +65,7 @@ class ManualExtruderStepper(manual_mmu_stepper.ManualMmuStepper, kinematics_extr
                                    self.name, self.cmd_SYNC_STEPPER_TO_EXTRUDER,
                                    desc=self.cmd_SYNC_STEPPER_TO_EXTRUDER_help)
 
-#        # Manual Stepper commands
+        # Manual Stepper commands
 #        gcode.register_mux_command('MANUAL_STEPPER', "STEPPER",
 #                                   self.name, self.cmd_MANUAL_STEPPER,
 #                                   desc=self.cmd_MANUAL_STEPPER_help)
