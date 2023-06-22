@@ -196,9 +196,9 @@ class Mmu:
             raise self.config.error("Support for non-ERCF systems is comming soon!")
 
         self.extruder_name = config.get('extruder', 'extruder')
-        self.long_moves_speed = config.getfloat('long_moves_speed', 100., minval=1.)
-        self.long_moves_speed_from_spool = config.getfloat('long_moves_speed_from_spool', self.long_moves_speed, minval=1.)
-        self.short_moves_speed = config.getfloat('short_moves_speed', 25., minval=1.)
+        self.short_moves_speed = config.getfloat('short_moves_speed', 10., minval=1.)
+        self.long_moves_speed_from_buffer = config.getfloat('long_moves_speed_from_buffer', 50., minval=1.)
+        self.long_moves_speed_from_spool = config.getfloat('long_moves_speed_from_spool', self.long_moves_speed_from_buffer / 2, minval=1.)
         self.z_hop_height = config.getfloat('z_hop_height', 5., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.gear_homing_accel = config.getfloat('gear_homing_accel', 1000)
@@ -233,15 +233,15 @@ class Mmu:
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.)
         self.toolhead_homing_step = config.getfloat('toolhead_homing_step', 1., minval=0.5, maxval=5.)
         self.sync_load_length = config.getfloat('sync_load_length', 8., minval=0., maxval=100.) # keep?
-        self.sync_load_speed = config.getfloat('sync_load_speed', 10., minval=1., maxval=100.)
+        self.extruder_sync_load_speed = config.getfloat('extruder_sync_load_speed', 10., minval=1., maxval=100.)
         self.sync_unload_length = config.getfloat('sync_unload_length', 10., minval=0., maxval=100.) # keep?
-        self.sync_unload_speed = config.getfloat('sync_unload_speed', 10., minval=1., maxval=100.)
+        self.extruder_sync_unload_speed = config.getfloat('extruder_sync_unload_speed', 10., minval=1., maxval=100.)
         self.delay_servo_release = config.getfloat('delay_servo_release', 2., minval=0., maxval=5.)
         self.home_position_to_nozzle = config.getfloat('home_position_to_nozzle', minval=5.) # Legacy, separate measures below are preferred
         self.extruder_to_nozzle = config.getfloat('extruder_to_nozzle', 0., minval=5.) # For sensorless
         self.sensor_to_nozzle = config.getfloat('sensor_to_nozzle', 0., minval=5.) # For toolhead sensor
-        self.nozzle_load_speed = config.getfloat('nozzle_load_speed', 15, minval=1., maxval=100.)
-        self.nozzle_unload_speed = config.getfloat('nozzle_unload_speed', 20, minval=1., maxval=100.)
+        self.extruder_load_speed = config.getfloat('extruder_load_speed', 15, minval=1., maxval=100.)
+        self.extruder_unload_speed = config.getfloat('extruder_unload_speed', 20, minval=1., maxval=100.)
         self.selector_move_speed = config.getfloat('selector_move_speed', 200, minval=1., maxval=300.)
         self.selector_homing_speed = config.getfloat('selector_homing_speed', 100, minval=1., maxval=300.)
         self.selector_sensorless_speed = config.getfloat('selector_sensorless_speed', 60, minval=1., maxval=200.)
@@ -1331,8 +1331,8 @@ class Mmu:
             self.encoder_sensor.reset_counts()    # Encoder 0000
             encoder_moved = self._load_encoder(retry=False)
             test_length = load_length - encoder_moved
-            delta = self._trace_filament_move("Calibration load movement", test_length, speed=self.long_moves_speed)
-            delta = self._trace_filament_move("Calibration unload movement", -test_length, speed=self.long_moves_speed)
+            delta = self._trace_filament_move("Calibration load movement", test_length, speed=self.long_moves_speed_from_buffer)
+            delta = self._trace_filament_move("Calibration unload movement", -test_length, speed=self.long_moves_speed_from_buffer)
             measurement = self.encoder_sensor.get_distance()
             ratio = (test_length * 2) / (measurement - encoder_moved)
             self._log_always("Calibration move of %.1fmm, average encoder measurement %.1fmm - Ratio is %.6f" % (test_length * 2, measurement - encoder_moved, ratio))
@@ -1558,7 +1558,7 @@ class Mmu:
         if self._check_in_bypass(): return
         dist = gcmd.get_float('DIST', 500., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
-        speed = gcmd.get_float('SPEED', self.long_moves_speed, above=0.)
+        speed = gcmd.get_float('SPEED', self.long_moves_speed_from_buffer, above=0.)
         min_speed = gcmd.get_float('MINSPEED', speed, above=0.)
         max_speed = gcmd.get_float('MAXSPEED', speed, above=0.)
         accel = gcmd.get_float('ACCEL', self.gear_stepper.accel, minval=0.)
@@ -1978,7 +1978,7 @@ class Mmu:
                     # Long pulling move when we are sure that we are at a gate but the filament buffer might be empty
                     speed = self.long_moves_speed_from_spool
                 else:
-                    speed = self.long_moves_speed
+                    speed = self.long_moves_speed_from_buffer
             else:
                 speed = self.short_moves_speed
         if accel is None:
@@ -2360,7 +2360,7 @@ class Mmu:
             if self.sync_load_extruder and not skip_entry_moves:
                 # Newer simplified forced full sync move
                 self._sync_gear_to_extruder(True, servo=True)
-                delta = self._trace_filament_move("Synchronously loading filament to nozzle", length, speed=self.sync_load_speed, motor="synced")
+                delta = self._trace_filament_move("Synchronously loading filament to nozzle", length, speed=self.extruder_sync_load_speed, motor="synced")
 
             else:
                 # Original method with filament spring handoff and optional partial sync move
@@ -2368,17 +2368,17 @@ class Mmu:
                     # This is the extruder entry logic similar to that in home_to_toolhead_sensor()
                     if self.delay_servo_release > 0:
                         # Delay servo release by a few mm to keep filament tension for reliable transition
-                        delta = self._trace_filament_move("Small extruder move under filament tension before servo release", self.delay_servo_release, speed=self.sync_load_speed, motor="extruder")
+                        delta = self._trace_filament_move("Small extruder move under filament tension before servo release", self.delay_servo_release, speed=self.extruder_sync_load_speed, motor="extruder")
                         length -= self.delay_servo_release
                     if self.sync_load_length > 0:
                         self._servo_down()
                         self._log_debug("Moving the gear and extruder motors in sync for %.1fmm" % self.sync_load_length)
-                        delta = self._trace_filament_move("Sync load move", self.sync_load_length, speed=self.sync_load_speed, motor="both")
+                        delta = self._trace_filament_move("Sync load move", self.sync_load_length, speed=self.extruder_sync_load_speed, motor="both")
                         length -= self.sync_load_length
     
                 # Move the remaining distance to the nozzle meltzone under exclusive extruder stepper control
                 self._servo_up()
-                delta = self._trace_filament_move("Remainder of final move to meltzone", length, speed=self.nozzle_load_speed, motor="extruder")
+                delta = self._trace_filament_move("Remainder of final move to meltzone", length, speed=self.extruder_load_speed, motor="extruder")
 
             # Final sanity check
             measured_movement = self.encoder_sensor.get_distance() - initial_encoder_position
@@ -2532,7 +2532,7 @@ class Mmu:
                 #step = self.toolhead_homing_step # TODO Too slow
                 step = 3.
                 max_length = self._get_home_position_to_nozzle() + safety_margin
-                speed = self.nozzle_unload_speed
+                speed = self.extruder_unload_speed
                 self._log_debug("Trying to exit the extruder to toolhead sensor, up to %.1fmm in %.1fmm steps" % (max_length, step))
                 for i in range(int(math.ceil(max_length / step))):
                     msg = "Step #%d:" % (i+1)
@@ -2554,12 +2554,12 @@ class Mmu:
                 # Do this until we have traveled more than the length of the extruder
                 step = self.encoder_move_step_size
                 max_length = self._get_home_position_to_nozzle() + step
-                speed = self.nozzle_unload_speed * 0.5 # First pull slower just in case we don't have tip
+                speed = self.extruder_unload_speed * 0.5 # First pull slower just in case we don't have tip
                 self._log_debug("Trying to exit the extruder, up to %.1fmm in %.1fmm steps" % (max_length, step))
                 for i in range(int(math.ceil(max_length / step))):
                     msg = "Step #%d:" % (i+1)
                     delta = self._trace_filament_move(msg, -step, speed=speed, motor="extruder")
-                    speed = self.nozzle_unload_speed  # Can pull at full speed on subsequent steps
+                    speed = self.extruder_unload_speed  # Can pull at full speed on subsequent steps
 
                     if (step - delta) < self.ENCODER_MIN:
                         self._log_debug("Extruder entrance reached after %d moves" % (i+1))
@@ -2572,13 +2572,13 @@ class Mmu:
                 # Then back up the extruder a bit to make sure that the encoder doesn't see any movement
                 step = self.encoder_move_step_size
                 max_length = self._get_home_position_to_nozzle() + step
-                speed = self.nozzle_unload_speed * 0.5 # First pull slower just in case we don't have tip
+                speed = self.extruder_unload_speed * 0.5 # First pull slower just in case we don't have tip
                 self._log_debug("Trying to exit the extruder, up to %.1fmm in %.1fmm steps" % (max_length, step))
                 stuck_in_extruder = False
                 for i in range(int(math.ceil(max_length / step))):
                     msg = "Step #%d:" % (i+1)
                     delta = self._trace_filament_move(msg, -step, speed=speed, motor="synced")
-                    speed = self.nozzle_unload_speed  # Can pull at full speed on subsequent steps
+                    speed = self.extruder_unload_speed  # Can pull at full speed on subsequent steps
 
                     if (step - delta) < self.ENCODER_MIN:
                         self._log_debug("No encoder movement despite both steppers are pulling after %d moves" % (i+1))
@@ -2608,7 +2608,7 @@ class Mmu:
         if not length:
             length = self.encoder_move_step_size
         self._sync_gear_to_extruder(False, servo=True)
-        delta = self._trace_filament_move("Moving extruder to test for exit", -length, speed=self.nozzle_load_speed * 0.5, motor="extruder")
+        delta = self._trace_filament_move("Moving extruder to test for exit", -length, speed=self.extruder_load_speed * 0.5, motor="extruder")
         return (length - delta) < self.ENCODER_MIN
 
     # Fast unload of filament from exit of extruder gear (end of bowden) to close to MMU (but still in encoder)
@@ -2624,10 +2624,10 @@ class Mmu:
             initial_move = 10. if not sync else self.sync_unload_length
             if sync:
                 self._log_debug("Moving the gear and extruder motors in sync for %.1fmm" % -initial_move)
-                delta = self._trace_filament_move("Sync unload", -initial_move, speed=self.sync_unload_speed, motor="both")
+                delta = self._trace_filament_move("Sync unload", -initial_move, speed=self.extruder_sync_unload_speed, motor="both")
             else:
                 self._log_debug("Moving the gear motor for %.1fmm" % -initial_move)
-                delta = self._trace_filament_move("Unload", -initial_move, speed=self.sync_unload_speed, motor="gear", track=True)
+                delta = self._trace_filament_move("Unload", -initial_move, speed=self.extruder_sync_unload_speed, motor="gear", track=True)
 
             if delta > max(initial_move * 0.5, 1): # 50% slippage
                 self._log_always("Error unloading filament - not enough detected at encoder. Suspect servo not properly down. Retrying...")
@@ -2635,9 +2635,9 @@ class Mmu:
                 self._servo_up()
                 self._servo_down()
                 if sync:
-                    delta = self._trace_filament_move("Retrying sync unload move after servo reset", -delta, speed=self.sync_unload_speed, motor="both")
+                    delta = self._trace_filament_move("Retrying sync unload move after servo reset", -delta, speed=self.extruder_sync_unload_speed, motor="both")
                 else:
-                    delta = self._trace_filament_move("Retrying unload move after servo reset", -delta, speed=self.sync_unload_speed, motor="gear", track=True)
+                    delta = self._trace_filament_move("Retrying unload move after servo reset", -delta, speed=self.extruder_sync_unload_speed, motor="gear", track=True)
                 if delta > max(initial_move * 0.5, 1): # 50% slippage
                     # Actually we are likely still stuck in extruder
                     self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_EXTRUDER)
@@ -3381,7 +3381,7 @@ class Mmu:
 
     cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
     def cmd_MMU_TEST_CONFIG(self, gcmd):
-        self.long_moves_speed = gcmd.get_float('LONG_MOVES_SPEED', self.long_moves_speed, above=20.)
+        self.long_moves_speed_from_buffer = gcmd.get_float('LONG_MOVES_SPEED_FROM_BUFFER', self.long_moves_speed_from_buffer, above=20.)
         self.long_moves_speed_from_spool = gcmd.get_float('LONG_MOVES_SPEED_FROM_SPOOL', self.long_moves_speed_from_spool, above=20.)
         self.short_moves_speed = gcmd.get_float('SHORT_MOVES_SPEED', self.short_moves_speed, above=20.)
         self.home_to_extruder = gcmd.get_int('HOME_TO_EXTRUDER', self.home_to_extruder, minval=0, maxval=1)
@@ -3394,9 +3394,9 @@ class Mmu:
         self.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.extruder_form_tip_current, minval=100, maxval=150)
         self.delay_servo_release = gcmd.get_float('DELAY_SERVO_RELEASE', self.delay_servo_release, minval=0., maxval=5.)
         self.sync_load_length = gcmd.get_float('SYNC_LOAD_LENGTH', self.sync_load_length, minval=0., maxval=100.)
-        self.sync_load_speed = gcmd.get_float('SYNC_LOAD_SPEED', self.sync_load_speed, minval=1., maxval=100.)
+        self.extruder_sync_load_speed = gcmd.get_float('EXTRUDER_SYNC_LOAD_SPEED', self.extruder_sync_load_speed, minval=1., maxval=100.)
         self.sync_unload_length = gcmd.get_float('SYNC_UNLOAD_LENGTH', self.sync_unload_length, minval=0., maxval=100.)
-        self.sync_unload_speed = gcmd.get_float('SYNC_UNLOAD_SPEED', self.sync_unload_speed, minval=1., maxval=100.)
+        self.extruder_sync_unload_speed = gcmd.get_float('EXTRUDER_SYNC_UNLOAD_SPEED', self.extruder_sync_unload_speed, minval=1., maxval=100.)
         self.sync_to_extruder = gcmd.get_int('SYNC_TO_EXTRUDER', self.sync_to_extruder, minval=0, maxval=1)
         self.sync_load_extruder = gcmd.get_int('SYNC_LOAD_EXTRUDER', self.sync_load_extruder, minval=0, maxval=1)
         self.sync_unload_extruder = gcmd.get_int('SYNC_UNLOAD_EXTRUDER', self.sync_unload_extruder, minval=0, maxval=1)
@@ -3405,13 +3405,11 @@ class Mmu:
         self.num_moves = gcmd.get_int('NUM_MOVES', self.num_moves, minval=1)
         self.apply_bowden_correction = gcmd.get_int('APPLY_BOWDEN_CORRECTION', self.apply_bowden_correction, minval=0, maxval=1)
         self.load_bowden_tolerance = gcmd.get_float('LOAD_BOWDEN_TOLERANCE', self.load_bowden_tolerance, minval=1., maxval=50.)
-
         self.home_position_to_nozzle = gcmd.get_float('HOME_POSITION_TO_NOZZLE', self.home_position_to_nozzle, minval=5.)
         self.extruder_to_nozzle = gcmd.get_float('EXTRUDER_TO_NOZZLE', self.extruder_to_nozzle, minval=0.)
         self.sensor_to_nozzle = gcmd.get_float('SENSOR_TO_NOZZLE', self.sensor_to_nozzle, minval=0.)
-
-        self.nozzle_load_speed = gcmd.get_float('NOZZLE_LOAD_SPEED', self.nozzle_load_speed, minval=1., maxval=100.)
-        self.nozzle_unload_speed = gcmd.get_float('NOZZLE_UNLOAD_SPEED', self.nozzle_unload_speed, minval=1., maxval=100)
+        self.extruder_load_speed = gcmd.get_float('EXTRUDER_LOAD_SPEED', self.extruder_load_speed, minval=1., maxval=100.)
+        self.extruder_unload_speed = gcmd.get_float('EXTRUDER_UNLOAD_SPEED', self.extruder_unload_speed, minval=1., maxval=100)
         self.z_hop_height = gcmd.get_float('Z_HOP_HEIGHT', self.z_hop_height, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
@@ -3424,7 +3422,7 @@ class Mmu:
         clog_length = gcmd.get_float('MMU_CALIB_CLOG_LENGTH', self.encoder_sensor.get_clog_detection_length(), minval=1., maxval=100.)
         if clog_length != self.encoder_sensor.get_clog_detection_length():
             self.encoder_sensor.set_clog_detection_length(clog_length)
-        msg = "long_moves_speed = %.1f" % self.long_moves_speed
+        msg = "long_moves_speed_from_buffer = %.1f" % self.long_moves_speed_from_buffer
         msg = "long_moves_speed_from_spool = %.1f" % self.long_moves_speed_from_spool
         msg += "\nshort_moves_speed = %.1f" % self.short_moves_speed
         msg += "\nhome_to_extruder = %d" % self.home_to_extruder
@@ -3437,9 +3435,9 @@ class Mmu:
         msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
         msg += "\ndelay_servo_release = %.1f" % self.delay_servo_release
         msg += "\nsync_load_length = %.1f" % self.sync_load_length
-        msg += "\nsync_load_speed = %.1f" % self.sync_load_speed
+        msg += "\nextruder_sync_load_speed = %.1f" % self.extruder_sync_load_speed
         msg += "\nsync_unload_length = %.1f" % self.sync_unload_length
-        msg += "\nsync_unload_speed = %.1f" % self.sync_unload_speed
+        msg += "\nextruder_sync_unload_speed = %.1f" % self.extruder_sync_unload_speed
         msg += "\nsync_to_extruder = %d" % self.sync_to_extruder
         msg += "\nsync_load_extruder = %d" % self.sync_load_extruder
         msg += "\nsync_unload_extruder = %d" % self.sync_unload_extruder
@@ -3456,8 +3454,8 @@ class Mmu:
         if self.sensor_to_nozzle > 0.:
             msg += "\nsensor_to_nozzle = %.1f" % self.sensor_to_nozzle
 
-        msg += "\nnozzle_load_speed = %.1f" % self.nozzle_load_speed
-        msg += "\nnozzle_unload_speed = %.1f" % self.nozzle_unload_speed
+        msg += "\nextruder_load_speed = %.1f" % self.extruder_load_speed
+        msg += "\nextruder_unload_speed = %.1f" % self.extruder_unload_speed
         msg += "\nz_hop_height = %.1f" % self.z_hop_height
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         msg += "\nlog_level = %d" % self.log_level

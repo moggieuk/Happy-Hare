@@ -19,7 +19,6 @@ PIN[ERB,gear_step_pin]="ercf:gpio10";         PIN[EASY-BRD,gear_step_pin]="ercf:
 PIN[ERB,gear_dir_pin]="!ercf:gpio9";          PIN[EASY-BRD,gear_dir_pin]="!ercf:PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="!ercf:gpio28"
 PIN[ERB,gear_enable_pin]="!ercf:gpio8";       PIN[EASY-BRD,gear_enable_pin]="!ercf:PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="!ercf:gpio26"
 PIN[ERB,gear_diag_pin]="ercf:gpio13";         PIN[EASY-BRD,gear_diag_pin]="";                  PIN[EASY-BRD-RP2040,gear_diag_pin]=""
-PIN[ERB,gear_endstop_pin]="ercf:gpio24";      PIN[EASY-BRD,gear_endstop_pin]="ercf:PB9";       PIN[EASY-BRD-RP2040,gear_endstop_pin]="ercf:gpio1"
 PIN[ERB,selector_uart_pin]="ercf:gpio17";     PIN[EASY-BRD,selector_uart_pin]="ercf:PA8";      PIN[EASY-BRD-RP2040,selector_uart_pin]="ercf:gpio6"
 PIN[ERB,selector_step_pin]="ercf:gpio16";     PIN[EASY-BRD,selector_step_pin]="ercf:PA9";      PIN[EASY-BRD-RP2040,selector_step_pin]="ercf:gpio7"
 PIN[ERB,selector_dir_pin]="!ercf:gpio15";     PIN[EASY-BRD,selector_dir_pin]="!ercf:PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="!ercf:gpio0"
@@ -45,6 +44,7 @@ B_GREEN='\033[1;32m'      # Bold Green
 B_YELLOW='\033[1;33m'     # Bold Yellow
 B_CYAN='\033[1;36m'       # Bold Cyan
 
+DETAIL="${BLUE}"
 INFO="${CYAN}"
 EMPHASIZE="${B_CYAN}"
 ERROR="${B_RED}"
@@ -120,72 +120,9 @@ unlink_mmu_plugin() {
     fi
 }
 
-# Pull parameters from previous installation else set defaults
-set_default_config() {
-    # TODO set default param values.. TODO fix ref code below..
-
-    # Generate sample colorselector, gate_status, endless_spool_groups based on number of gates
-    colorselector="colorselector: "
-    gate_status="gate_status: "
-    gate_material="gate_material: "
-    gate_color="gate_color: "
-    tool_to_gate_map="tool_to_gate_map: "
-    endless_spool_groups="endless_spool_groups: "
-    offset_x10=23
-    available=1
-    materials=(PLA PETG ABS PLA+ ABS ABS PLA ABS ASA)
-    colors=(red orange yellow green blue indigo violet ffffff black)
-    for (( i=0; i<=$(expr $num_gates - 1); i++ ))
-    do
-       mod=$(echo `expr $i % 9`)
-       if [ "${i}" -ne 0 ]; then
-           colorselector="${colorselector}, "
-           gate_status="${gate_status}, "
-           gate_material="${gate_material}, "
-           gate_color="${gate_color}, "
-           tool_to_gate_map="${tool_to_gate_map}, "
-           endless_spool_groups="${endless_spool_groups}, "
-       fi
-       colorselector="${colorselector}$(echo $offset_x10 | sed -e 's/.$/.&/;t' -e 's/.$/.0&/')"
-       gate_status="${gate_status}${available}"
-       gate_material="${gate_material}${materials[$mod]}"
-       gate_color="${gate_color}${colors[$mod]}"
-       tool_to_gate_map="${tool_to_gate_map}${i}"
-       endless_spool_groups="${endless_spool_groups}$(expr $i % 3 + 1)"
-       offset_x10=$(expr $offset_x10 + 210)
-       if [ "$(expr $i % 3)" -eq 2 ]; then
-           offset_x10=$(expr $offset_x10 + 51)
-       fi
-       available=0
-    done
-    if [ "${has_bypass}" -eq 1 ]; then
-        bypass_comment=""
-    else
-        bypass_comment="#"
-    fi
-}
-
-# Pull parameters from previous installation
-parse_config_files() {
-    hardware_cfg="mmu_hardware.cfg"
-    dest_hardware_cfg=${KLIPPER_CONFIG_HOME}/${hardware_cfg}
-    dest_old_hardware_cfg=${KLIPPER_CONFIG_HOME}/ercf_hardware.cfg
-    parameters_cfg="mmu_parameters.cfg"
-    dest_parameters_cfg=${KLIPPER_CONFIG_HOME}/${parameters_cfg}
-    dest_old_parameters_cfg=${KLIPPER_CONFIG_HOME}/ercf_parameters.cfg
-
-    if [ ! -f "${dest_old_parameters_cfg}" -a ! -f "${dest_parameters_cfg}" ]; then
-        echo -e "${WARNING}No previous installation found. Installing default settings"
-	return
-    fi
-
-    if [ -f "${dest_parameters_cfg}" ]; then
-        echo -e "${INFO}Reading configuration from previous installation..."
-    else
-        echo -e "${INFO}Upgrading from previous ERCF-Software-V3 Happy Hare installation..."
-        dest_parameters_cfg=${dest_old_parameters_cfg}
-        dest_hardware_cfg=${dest_old_hardware_cfg}
-    fi
+parse_file() {
+    filename="$1"
+    prefix_filter="$2"
 
     # Read old config files
     while IFS= read -r line
@@ -201,88 +138,215 @@ parse_config_files() {
             # Remove leading and trailing whitespace
             parameter=$(echo "$parameter" | xargs)
             value=$(echo "$value" | xargs)
-            if [ "${value}" != "" ]; then
-                eval "${parameter}='${value}'"
+
+	    # If parameter is one of interest and it has a value remember it
+            if echo "$parameter" | egrep -q "${prefix_filter}"; then
+                if [ "${value}" != "" ]; then
+                    eval "${parameter}='${value}'"
+                fi
             fi
         fi
-    done < "${dest_parameters_cfg}"
-
-    if [ ! -f "${dest_parameters_cfg}" ]; then
-        # Upgrade / map / force old parameters
-        long_moves_speed_from_buffer=${long_moves_speed}
-        if [ "${long_move_speed_from_spool}" != "" ]; then
-            long_moves_speed_from_spool=${short_moves_speed}
-        fi
-        selector_offsets=${colorselector}
-        if [ "${sync_load_length}" -gt 0 ]; then
-            sync_load_extruder=1
-        fi
-        if [ "${sync_unload_length}" -gt 0 ]; then
-            sync_unload_extruder=1
-        fi
-        extruder_sync_load_speed=${sync_load_speed}
-        extruder_sync_unload_speed=${sync_unload_speed}
-        extruder_load_speed=${nozzle_load_speed}
-        extruder_unload_speed=${nozzle_unload_speed}
-        if [ "${persistence_level}" -lt 3 ]; then
-            persistence_level=3
-	fi
-        if [ "${startup_status}" -lt 1 ]; then
-            startup_status=1
-	fi
-    fi
-    echo "PAUL TEST vendor=${mmu_vendor}"
-    echo "PAUL TEST colorselector=${colorselector}"
+    done < "${filename}"
 }
 
-    # TODO
+update_copy_file() {
+    src="$1"
+    dest="$2"
+    prefix_filter="$3"
+
+    # Read the file line by line
+    while IFS="" read -r line || [ -n "$line" ]
+    do
+        # Check if line is a simple comment
+        if echo "$line" | egrep -q '^#'; then
+            echo "$line"
+        else
+            # Split the line into the part before # and the part after #
+            parameterAndValueAndSpace=$(echo "$line" | cut -d'#' -f1)
+            comment=$(echo "$line" | cut -s -d'#' -f2-)
+            space=`printf "%s" "$parameterAndValueAndSpace" | sed 's/.*[^[:space:]]\(.*\)$/\1/'`
+
+            if echo "$parameterAndValueAndSpace" | egrep -q "${prefix_filter}"; then
+                # If parameter and value exist, substitute the value with the in memory variable of the same name
+                if echo "$parameterAndValueAndSpace" | egrep -q '^\['; then
+                    echo "$line"
+                elif [ -n "$parameterAndValueAndSpace" ]; then
+                    parameter=$(echo "$parameterAndValueAndSpace" | cut -d':' -f1)
+                    value=$(echo "$parameterAndValueAndSpace" | cut -d':' -f2)
+                    new_value=`eval echo \\${${parameter}}`
+                    if [ -n "$comment" ]; then
+                        echo "${parameter}: ${new_value}${space}#${comment}"
+                    else
+                        echo "${parameter}: ${new_value}"
+                    fi
+                else
+                    echo "$line"
+                fi
+            else
+                echo "$line"
+            fi
+        fi
+    done < "$src" >"$dest"
+}
+
+# Set default parameters from the distribution (reference) config files
+read_default_config() {
+    echo -e "${INFO}Reading default configuration parameters..."
+    parameters_cfg="mmu_parameters.cfg"
+
+    parse_file "${SRCDIR}/config/${parameters_cfg}"
+
+#    # PAUL TODO hardware.cfg NOT NEEDED ANYMORE
+#    toolhead_sensor=0 # PAUL TODO
+#    sensorless_selector=0 # PAUL TODO
+
+# PAUL not wanted anymore
+#    # Generate sample colorselector, gate_status, endless_spool_groups based on number of gates
+#    colorselector="colorselector: "
+#    gate_status="gate_status: "
+#    gate_material="gate_material: "
+#    gate_color="gate_color: "
+#    tool_to_gate_map="tool_to_gate_map: "
+#    endless_spool_groups="endless_spool_groups: "
+#    offset_x10=23
+#    available=1
+#    materials=(PLA PETG ABS PLA+ ABS ABS PLA ABS ASA)
+#    colors=(red orange yellow green blue indigo violet ffffff black)
+#    for (( i=0; i<=$(expr $num_gates - 1); i++ ))
+#    do
+#       mod=$(echo `expr $i % 9`)
+#       if [ "${i}" -ne 0 ]; then
+#           colorselector="${colorselector}, "
+#           gate_status="${gate_status}, "
+#           gate_material="${gate_material}, "
+#           gate_color="${gate_color}, "
+#           tool_to_gate_map="${tool_to_gate_map}, "
+#           endless_spool_groups="${endless_spool_groups}, "
+#       fi
+#       colorselector="${colorselector}$(echo $offset_x10 | sed -e 's/.$/.&/;t' -e 's/.$/.0&/')"
+#       gate_status="${gate_status}${available}"
+#       gate_material="${gate_material}${materials[$mod]}"
+#       gate_color="${gate_color}${colors[$mod]}"
+#       tool_to_gate_map="${tool_to_gate_map}${i}"
+#       endless_spool_groups="${endless_spool_groups}$(expr $i % 3 + 1)"
+#       offset_x10=$(expr $offset_x10 + 210)
+#       if [ "$(expr $i % 3)" -eq 2 ]; then
+#           offset_x10=$(expr $offset_x10 + 51)
+#       fi
+#       available=0
+#    done
+#    if [ "${has_bypass}" -eq 1 ]; then
+#        bypass_comment=""
 #    else
-#        echo -e "${INFO}Upgrading configuration files..."
-#        encoder_pin="<FIXME>"
-#        encoder_resolution="<FIXME>"
-#        if test -f $dest_parameters; then
-#            next_dest="$(nextfilename "$dest_parameters")"
-#            echo -e "${INFO}Pre upgrade config file ${dest_parameters} moved to ${next_dest} for reference"
-#            cp ${dest_parameters} ${next_dest}
-#    
-#            update_encoder=$(grep -c '\encoder_pin:' ${dest_parameters} || true)
-#            if [ "${update_encoder}" -eq 1 ]; then
-#                # These two settings have moved to mmu_hardware.cfg
-#                encoder_pin=$(egrep 'encoder_pin:' ${dest_parameters} | awk '{ sub("\^", "") ; print $2 }')
-#                encoder_resolution=$(egrep 'encoder_resolution:' ${dest_parameters} | awk '{ print $2 }')
-#    
-#                # Comment out all old settings in mmu_parameters.cfg
-#                echo -e "${WARNING}Upgrading ${dest_parameters} to remove legacy servo and encoder settings..."
-#                cat ${dest_parameters} | sed -e " \
-#                    s/^encoder_pin:/#encoder_pin:/ ; \
-#                    s/^encoder_resolution:/#encoder_resolution:/ ; \
-#                    s/^extra_servo_dwell_up:/#extra_servo_dwell_up:/ ; \
-#                    s/^extra_servo_dwell_down:/#extra_servo_dwell_down:/ ; \
-#                    s/^sensorless_selector:/#sensorless_selector:/ ; \
-#                        " > ${dest_parameters}.encoder_upgrade && mv ${dest_parameters}.encoder_upgrade ${dest_parameters}
-#            fi
-#        fi
+#        bypass_comment="#"
 #    fi
+}
+
+# Pull parameters from previous installation
+parse_config_files() {
+    parameters_cfg="mmu_parameters.cfg"
+    dest_parameters_cfg=${KLIPPER_CONFIG_HOME}/${parameters_cfg}
+    dest_old_parameters_cfg=${KLIPPER_CONFIG_HOME}/ercf_parameters.cfg
+
+    if [ ! -f "${dest_old_parameters_cfg}" -a ! -f "${dest_parameters_cfg}" ]; then
+        echo -e "${WARNING}No previous ${parameters_cfg} found. Will install default"
+    else
+        if [ -f "${dest_parameters_cfg}" ]; then
+            echo -e "${INFO}Reading ${parameters_cfg} configuration from previous installation..."
+        else
+            echo -e "${INFO}Upgrading ${parameters_cfg} from previous ERCF-Software-V3 Happy Hare installation..."
+            dest_parameters_cfg=${dest_old_parameters_cfg}
+        fi
+        parse_file "${dest_parameters_cfg}"
+
+        if [ ! -f "${dest_parameters_cfg}" ]; then
+            # Upgrade / map / force old parameters
+            long_moves_speed_from_buffer=${long_moves_speed}
+            if [ "${long_move_speed_from_spool}" != "" ]; then
+                long_moves_speed_from_spool=${short_moves_speed}
+            fi
+            selector_offsets=${colorselector}
+            if [ "${sync_load_length}" -gt 0 ]; then
+                sync_load_extruder=1
+            fi
+            if [ "${sync_unload_length}" -gt 0 ]; then
+                sync_unload_extruder=1
+            fi
+            extruder_sync_load_speed=${sync_load_speed}
+            extruder_sync_unload_speed=${sync_unload_speed}
+            extruder_load_speed=${nozzle_load_speed}
+            extruder_unload_speed=${nozzle_unload_speed}
+            if [ "${persistence_level}" -lt 3 ]; then
+                persistence_level=3
+            fi
+            if [ "${startup_status}" -lt 1 ]; then
+                startup_status=1
+            fi
+        fi
+    fi
+
+    software_cfg="mmu_software.cfg"
+    dest_software_cfg=${KLIPPER_CONFIG_HOME}/${software_cfg}
+    dest_old_software=${KLIPPER_CONFIG_HOME}/ercf_software.cfg
+
+    if [ ! -f "${dest_old_software}" -a ! -f "${dest_software_cfg}" ]; then
+        echo -e "${WARNING}No previous ${software_cfg} found. Will install default"
+    else
+        if [ -f "${dest_software_cfg}" ]; then
+            echo -e "${INFO}Reading ${software_cfg} configuration from previous installation..."
+        else
+            echo -e "${INFO}Upgrading ${software_cfg} from previous ERCF-Software-V3 Happy Hare installation..."
+            dest_software_cfg=${dest_old_software_cfg}
+        fi
+        parse_file "${dest_software_cfg}" "variable_"
+    fi
+}
+
+upgrade_ercf_hardware_config() {
+    dest_old_hardware_cfg=${KLIPPER_CONFIG_HOME}/ercf_hardware.cfg
+    dest_new_hardware_cfg=${KLIPPER_CONFIG_HOME}/mmu_hardware.cfg
+
+    if [ -f "${dest_old_hardware_cfg}" ]; then
+        echo -e "${INFO}Upgrading hardware config from previous ERCF-Software-V3 Happy Hare installation..."
+        backup="$(nextfilename "$dest_old_hardware_cfg")"
+        echo -e "${DETAIL}Backed to ${backup}"
+        mv "${dest_old_hardware_cfg}" "${backup}"
+        # PAUL TODO ... cp as is it not sufficient..
+        # add extra_endstop, cleanup?
+        echo "PAUL: TODO - fix ${dest_new_hardware_cfg}"
+        cp "${backup}" "${dest_new_hardware_cfg}"
+    else
+        echo -e "${WARNING}No previous ERCF-Software-V3 ercf_hardware.cfg file found!"
+    fi
+}
 
 copy_config_files() {
-#    if [ "${INSTALL_TEMPLATES}" -eq 0 ]; then
-#        # Then check to see if we need to upgrade the current config files
-#        upgrade_config_files
-#        return
-#    fi
-
-
-    echo -e "${INFO}Copying configuration files to ${KLIPPER_CONFIG_HOME}"
-    for file in `cd ${SRCDIR} ; ls *.cfg`; do
+    echo -e "${INFO}Copying configuration files into ${KLIPPER_CONFIG_HOME} directory..."
+    for file in `cd ${SRCDIR}/config ; ls *.cfg`; do
+        src=${SRCDIR}/config/${file}
         dest=${KLIPPER_CONFIG_HOME}/${file}
 
-        if test -f $dest; then
-            next_dest="$(nextfilename "$dest")"
-            echo -e "${INFO}Config file ${file} already exists - moving old one to ${next_dest}"
-            mv ${dest} ${next_dest}
+        if [ -f "${dest}" ]; then
+	    if [ "${file}" == "mmu_hardware.cfg" -a "${INSTALL}" -eq 0 ]; then
+                echo -e "${WARNING}Skipping copy of hardware config file because already exists"
+                continue
+            else
+                next_dest="$(nextfilename "$dest")"
+                echo -e "${DETAIL}Config file ${file} already exists - moving old one to ${next_dest}"
+                mv ${dest} ${next_dest}
+            fi
         fi
 
-        if [ "${file}" == "mmu_hardware.cfg" ]; then
+        if [ "${file}" == "mmu_parameters.cfg" ]; then
+            update_copy_file "$src" "$dest"
+
+	elif [ "${file}" == "mmu_hardware.cfg" ]; then
+	    if [ "${INSTALL}" -eq 0 ]; then
+                # We must be upgrading from previous ERCF version
+                upgrade_ercf_hardware_config
+		continue
+            fi
+
             if [ "${toolhead_sensor}" -eq 1 ]; then
                 magic_str1="## MMU Toolhead sensor"
             else
@@ -294,7 +358,7 @@ copy_config_files() {
             fi
 
             if [ "${sensorless_selector}" -eq 1 ]; then
-                cat ${SRCDIR}/${file} | sed -e "\
+                cat ${src} | sed -e "\
                     s/^#diag_pin: \^{selector_diag_pin}/diag_pin: \^{selector_diag_pin}/; \
                     s/^#driver_SGTHRS: 65/driver_SGTHRS: 65/; \
                     s/^endstop_pin: \^{selector_endstop_pin}/#endstop_pin: \^{selector_endstop_pin}/; \
@@ -304,7 +368,7 @@ copy_config_files() {
                         " > ${dest}.tmp
             else
                 # This is the default template config without sensorless selector homing enabled
-                cat ${SRCDIR}/${file} | sed -e "\
+                cat ${src} | sed -e "\
                     s/{brd_type}/${brd_type}/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
                         " > ${dest}.tmp
@@ -324,7 +388,6 @@ copy_config_files() {
                     s/{gear_dir_pin}/${PIN[$brd_type,gear_dir_pin]}/; \
                     s/{gear_enable_pin}/${PIN[$brd_type,gear_enable_pin]}/; \
                     s/{gear_diag_pin}/${PIN[$brd_type,gear_diag_pin]}/; \
-                    s/{gear_endstop_pin}/${PIN[$brd_type,gear_endstop_pin]}/; \
                     s/{selector_uart_pin}/${PIN[$brd_type,selector_uart_pin]}/; \
                     s/{selector_step_pin}/${PIN[$brd_type,selector_step_pin]}/; \
                     s/{selector_dir_pin}/${PIN[$brd_type,selector_dir_pin]}/; \
@@ -339,28 +402,19 @@ copy_config_files() {
                         " > ${dest} && rm ${dest}.tmp
             fi
 
-        elif [ "${file}" == "mmu_software.cfg" ]; then
-            cat ${SRCDIR}/${file} | sed -e "\
-                s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
-                    " > ${dest}
+         elif [ "${file}" == "mmu_software.cfg" ]; then
+            if [ "${INSTALL}" -eq 1 ]; then
+                cat ${src} | sed -e "\
+                    s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
+                        " > ${dest}
+            else
+                klipper_config_home="${KLIPPER_CONFIG_HOME}"
+                update_copy_file "$src" "$dest" "variable_"
+            fi
+
         else
-            # Other config files (not mmu_hardware.cfg, mmu_software.cfg, mmu_display_menu.cfg)
-            cp ${SRCDIR}/${file} ${dest}.tmp
-            cat ${dest}.tmp | sed -e "\
-                s/{clog_detection}/${clog_detection}/g; \
-                s/{endless_spool}/${endless_spool}/g; \
-                s/{servo_up_angle}/${servo_up_angle}/g; \
-                s/{servo_down_angle}/${servo_down_angle}/g; \
-                s/{calibration_bowden_length}/${calibration_bowden_length}/g; \
-		s/colorselector:.*/${colorselector}/; \
-		s/gate_status:.*/${gate_status}/; \
-		s/gate_material:.*/${gate_material}/; \
-		s/gate_color:.*/${gate_color}/; \
-		s/tool_to_gate_map:.*/${tool_to_gate_map}/; \
-		s/endless_spool_groups:.*/${endless_spool_groups}/; \
-		s/#bypass_selector:/${bypass_comment}bypass_selector:/; \
-                    " > ${dest} && rm ${dest}.tmp
-        fi
+            cp ${src} ${dest}
+	fi
     done
 
     if [ "${INSTALL_TEMPLATES}" -eq 1 ]; then
@@ -373,6 +427,13 @@ copy_config_files() {
                 cp ${dest} ${next_dest}
                 if [ ${menu_12864} -eq 1 ]; then
                     i='\[include mmu_menu.cfg\]'
+                    already_included=$(grep -c "${i}" ${dest} || true)
+                    if [ "${already_included}" -eq 0 ]; then
+                        sed -i "1i ${i}" ${dest}
+                    fi
+                fi
+                if [ ${ercf_compat} -eq 1 ]; then # PAUL TODO ercf_compat in questionaire?
+                    i='\[include ercf_compatibility.cfg\]'
                     already_included=$(grep -c "${i}" ${dest} || true)
                     if [ "${already_included}" -eq 0 ]; then
                         sed -i "1i ${i}" ${dest}
@@ -417,11 +478,15 @@ remove_template_files() {
             /\[include mmu_software.cfg\]/ d; \
             /\[include mmu_parameters.cfg\]/ d; \
             /\[include mmu_hardware.cfg\]/ d; \
-            /\[include mmu_menu.cfg\]/ d" > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
+            /\[include mmu_menu.cfg\]/ d; \
+            /\[include ercf_software.cfg\]/ d; \
+            /\[include ercf_parameters.cfg\]/ d; \
+            /\[include ercf_hardware.cfg\]/ d; \
+            /\[include ercf_menu.cfg\]/ d; \
+            /\[include ercf_compatibility.cfg\]/ d; \
+	        " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
     fi
 }
-
-
 
 install_update_manager() {
     echo -e "${INFO}Adding update manager to moonraker.conf"
@@ -673,15 +738,15 @@ questionaire() {
     yn=$(prompt_yn "Enable clog detection")
     case $yn in
         y)
-            clog_detection=1
+            enable_clog_detection=1
             echo -e "${PROMPT}    Would you like MMU to automatically adjust clog detection length (recommended)?${INPUT}"
             yn=$(prompt_yn "    Automatic")
             if [ "${yn}" == "y" ]; then
-                clog_detection=2
+                enable_clog_detection=2
             fi
             ;;
         n)
-            clog_detection=0
+            enable_clog_detection=0
             ;;
     esac
 
@@ -690,15 +755,15 @@ questionaire() {
     yn=$(prompt_yn "Enable EndlessSpool")
     case $yn in
         y)
-            endless_spool=1
-            if [ "${clog_detection}" -eq 0 ]; then
+            enable_endless_spool=1
+            if [ "${enable_clog_detection}" -eq 0 ]; then
                 echo
                 echo -e "${WARNING}    NOTE: I've re-enabled clog detection which is necessary for EndlessSpool to function"
-                clog_detection=2
+                enable_clog_detection=2
             fi
             ;;
         n)
-           endless_spool=0
+           enable_endless_spool=0
            ;;
     esac
 
@@ -766,8 +831,9 @@ usage() {
     echo -e "${EMPHASIZE}"
     echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]"
     echo
-    echo "-i for interactive"
+    echo "-i for interactive install"
     echo "-u for uninstall"
+    echo "no flags for safe re-install / upgrade"
     echo
     exit 1
 }
@@ -779,6 +845,7 @@ clear
 # Find SRCDIR from the pathname of this script
 SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/ && pwd )"
 
+INSTALL=0
 UNINSTALL=0
 INSTALL_TEMPLATES=0
 INSTALL_KLIPPER_SCREEN_ONLY=0
@@ -787,27 +854,30 @@ while getopts "k:c:iud" arg; do
         k) KLIPPER_HOME=${OPTARG};;
         c) KLIPPER_CONFIG_HOME=${OPTARG};;
         i) INSTALL=1;;
-        u) UPGRADE=1;;
         d) UNINSTALL=1;;
         *) usage;;
     esac
 done
 
+if [ "${INSTALL}" -eq 1 -a "${UNINSTALL}" -eq 1 ]; then
+    echo -e "${ERROR}Can't install and uninstall at the same time!"
+    usage
+fi
+
+# PAUL TEMP precaution
 KLIPPER_HOME=/tmp
 KLIPPER_CONFIG_HOME=/tmp
-parse_config_files
-exit 0
 
 verify_not_root
 verify_home_dirs
 check_klipper
 if [ "$UNINSTALL" -eq 0 ]; then
-    set_default_config
+    read_default_config
     if [ "${INSTALL}" -eq 1 ]; then
         # Set parameters from questionaire
         questionaire
     else
-        # Attempt to set parameters from previous install
+        # Pull parameters from previous install
         parse_config_files
     fi
     copy_config_files

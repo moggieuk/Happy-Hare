@@ -1,3 +1,9 @@
+Few things left in install.sh -- search for PAUL
+sync_load_lenght and unload_length switch to new boolean flags 
+
+
+--- MAPPING ---
+
 extruder
 
 long_moves_speed > long_moves_speed_from_buffer
