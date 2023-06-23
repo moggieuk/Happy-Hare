@@ -104,6 +104,8 @@ link_mmu_plugin() {
         for file in `cd ${SRCDIR}/extras ; ls *.py`; do
             ln -sf "${SRCDIR}/extras/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
         done
+	# Cleanup legacy ERCF-Software-V3 files...
+        rm -f "${SRCDIR}/extras/ercf_*"
     else
         echo -e "${WARNING}MMU modules not installed because Klipper 'extras' directory not found!"
     fi
@@ -115,6 +117,8 @@ unlink_mmu_plugin() {
         for file in `cd ${SRCDIR}/extras ; ls *.py`; do
             rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
         done
+	# Cleanup legacy ERCF-Software-V3 files...
+        rm -f "${SRCDIR}/extras/ercf_*"
     else
         echo -e "${WARNING}MMU modules not uninstalled because Klipper 'extras' directory not found!"
     fi
@@ -489,6 +493,7 @@ remove_template_files() {
 }
 
 install_update_manager() {
+    # PAUL TODO .. handle update from ercf_happy-hare to new
     echo -e "${INFO}Adding update manager to moonraker.conf"
     file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
     if [ -f "${file}" ]; then
