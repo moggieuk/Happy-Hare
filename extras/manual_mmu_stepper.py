@@ -98,6 +98,7 @@ class ManualMmuStepper(manual_stepper.ManualStepper, object):
         mcu_endstop = ppins.setup_pin('endstop', pin)
         for s in self.steppers:
             mcu_endstop.add_stepper(s)
+
         self.query_endstops.register_endstop(mcu_endstop, name)
         self.mcu_endstops[name]={'mcu_endstop': mcu_endstop, 'virtual': "virtual_endstop" in pin}
         return mcu_endstop

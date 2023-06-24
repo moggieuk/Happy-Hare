@@ -33,22 +33,33 @@ class ManualGearStepper(manual_mmu_stepper.ManualMmuStepper, kinematics_extruder
         self.sk_extruder = ffi_main.gc(ffi_lib.extruder_stepper_alloc(), ffi_lib.free)
 
         # Get the kinematics for the steppers under manual mode
-        # by temporarily setting the extruder kinematics to the extruder
-        # kinematics then setting back. This avoid using private APIs
-        self.alt_stepper_sks = [s.set_stepper_kinematics(self.sk_extruder)
-                                for s in self.steppers]
+        # by temporarily setting to the extruder kinematics then setting back.
+        # This avoids using private APIs
+        self.alt_stepper_sks = [s.set_stepper_kinematics(self.sk_extruder) for s in self.steppers]
         # Set back to the manual kinematics
         self._set_manual_kinematics()
         self.motion_queue = None
 
         # Setup kinematics that can be passed to extruder for use when homing
-        self.toolhead_homing_sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'x'), ffi_lib.free)
+        self.linked_move_sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'x'), ffi_lib.free)
 
-        # Register variation of MANUL_STEPPER command for linked extruder control
+        stepper_name = config.get_name().split()[1]
         gcode = self.printer.lookup_object('gcode')
-        gcode.register_command('MANUAL_LINKED_STEPPER',
-                    self.cmd_MANUAL_LINKED_STEPPER,
-                    desc = self.cmd_MANUAL_LINKED_STEPPER_help)
+
+        # Register variation of MANUAL_STEPPER command for linked extruder control
+        gcode.register_mux_command('MANUAL_LINKED_STEPPER', "STEPPER",
+                                   stepper_name, self.cmd_MANUAL_LINKED_STEPPER,
+                                   desc=self.cmd_MANUAL_LINKED_STEPPER_help)
+
+# PAUL vvv test
+        extruder = self.printer.lookup_object('extruder', None)
+        if extruder:
+            logging.info("PAUL: Registering endstops on extruder stepper")
+            mcu_endstop, name = self.rail.endstops[0]
+            mcu_endstop.add_stepper(extruder.extruder_stepper.stepper)
+        else:
+            logging.info("PAUL: EXTRUDER NOT FOUND")
+# PAUL ^^^ test
 
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
 
@@ -96,7 +107,9 @@ class ManualGearStepper(manual_mmu_stepper.ManualMmuStepper, kinematics_extruder
             super(ManualGearStepper, self).sync_print_time()
 
     def _set_manual_kinematics(self):
+        logging.info("PAUL: _set_manual_kinematics")
         for s, sk in zip(self.steppers, self.alt_stepper_sks):
+            logging.info("PAUL: _set_manual_kinematics s=%s, sk=%s" % (s, sk))
             s.set_stepper_kinematics(sk)
         self.rail.set_trapq(self.trapq)
 
@@ -112,8 +125,8 @@ class ManualGearStepper(manual_mmu_stepper.ManualMmuStepper, kinematics_extruder
             raise self.printer.command_error("Extruder named '%s' is not found" % extruder_name)
         for s in self.steppers:
             s.set_stepper_kinematics(self.sk_extruder)
-        self.rail.set_trapq(extruder.get_trapq())
         self.rail.set_position([extruder.last_position, 0., 0.])
+        self.rail.set_trapq(extruder.get_trapq())
         self.motion_queue = extruder_name
 
     def is_synced(self):
@@ -124,40 +137,35 @@ class ManualGearStepper(manual_mmu_stepper.ManualMmuStepper, kinematics_extruder
         extruder = self.printer.lookup_object(extruder_name, None)
         if not extruder:
             raise self.printer.command_error("Extruder named '%s' not found" % extruder_name)
-        toolhead_stepper = extruder.extruder_stepper.stepper
+        extruder_stepper = extruder.extruder_stepper.stepper
 
         # Switch manual stepper to manual mode
         manual_stepper_mq = self.motion_queue
         manual_trapq = self.trapq
+        manual_steppers = self.steppers
         self.sync_to_extruder(None)
-        logging.info("PAUL: manual_stepper_mq = %s" % manual_stepper_mq)
-        logging.info("PAUL: manual_trapq = %s" % manual_trapq)
 
-        # Sync toolhead to manual stepper
-        # We do this by injecting the toolhead stepper into the manual stepper's rail
+        # Sync extruder to manual stepper
+        # We do this by injecting the extruder stepper into the manual stepper's rail
         prev_manual_steppers = self.steppers
         prev_manual_rail_steppers = self.rail.steppers
-        logging.info("PAUL: prev_manual_steppers = %s" % prev_manual_steppers)
-        logging.info("PAUL: prev_manual_rail_steppers = %s" % prev_manual_rail_steppers)
-        self.steppers = self.steppers + [toolhead_stepper]
-        self.rail.steppers = self.rail.steppers + [toolhead_stepper]
-        logging.info("PAUL: self.steppers = %s" % self.steppers)
-        logging.info("PAUL: self.rail.steppers = %s" % self.rail.steppers)
+        self.steppers = self.steppers + [extruder_stepper]
+        self.rail.steppers = self.rail.steppers + [extruder_stepper]
 
-        prev_toolhead_trapq = toolhead_stepper.set_trapq(manual_trapq)
-        prev_toolhead_sk = toolhead_stepper.set_stepper_kinematics(self.toolhead_homing_sk)
-        logging.info("PAUL: prev_toolhead_trapq = %s" % prev_toolhead_trapq)
-        logging.info("PAUL: prev_toolhead_sk = %s" % prev_toolhead_sk)
+        # Extruder must look like it has always been part of the rail (position important!)
+        prev_extruder_sk = extruder_stepper.set_stepper_kinematics(self.linked_move_sk)
+        prev_extruder_trapq = extruder_stepper.set_trapq(manual_trapq)
+        pos = manual_steppers[0].get_commanded_position()
+        extruder_stepper.set_position([pos, 0., 0.])
 
         # Yield to caller
         yield self
 
         # Restore previous state
-        logging.info("PAUL: restoring previous state")
         self.steppers = prev_manual_steppers
         self.rail.steppers = prev_manual_rail_steppers
-        toolhead_stepper.set_trapq(prev_toolhead_trapq)
-        toolhead_stepper.set_stepper_kinematics(prev_toolhead_sk)
+        extruder_stepper.set_stepper_kinematics(prev_extruder_sk)
+        extruder_stepper.set_trapq(prev_extruder_trapq)
         self.sync_to_extruder(manual_stepper_mq)
 
     # Will perform regular move bringing the extruder along for the ride
@@ -166,9 +174,10 @@ class ManualGearStepper(manual_mmu_stepper.ManualMmuStepper, kinematics_extruder
             super(ManualGearStepper, self).do_move(movepos, speed, accel, sync)
 
     # Will perform homing move using active endstop bringing the extruder along for the ride
-    def do_linked_homing_move(self, extruder_name, movepos, speed, accel, triggered, check_trigger):
+    def do_linked_homing_move(self, extruder_name, movepos, speed, accel, triggered=True, check_trigger=True):
         with self._with_linked_extruder(extruder_name):
-            super(ManualGearStepper, self).do_homing_move(movepos, speed, accel, triggered=True, check_trigger=True)
+            logging.info("PAUL: do_homing_move()")
+            super(ManualGearStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
 
 def load_config_prefix(config):
     return ManualGearStepper(config)

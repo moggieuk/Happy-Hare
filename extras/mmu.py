@@ -164,7 +164,7 @@ class Mmu:
         self.reactor = self.printer.get_reactor()
         self.estimated_print_time = None
         self.last_selector_move_time = 0
-        self.gear_stepper_run_current = 0.
+        self.gear_stepper_run_current = -1
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
@@ -568,7 +568,6 @@ class Mmu:
                 try:
                     self.gear_tmc = self.printer.lookup_object('%s manual_gear_stepper gear_stepper' % chip)
                     self._log_debug("Found %s on gear_stepper. Current control enabled. Stallguard homing possible." % chip)
-                    self.gear_stepper_run_current = self.gear_tmc.get_status(0)['run_current']
                 except:
                     pass
             if self.extruder_tmc is None:
@@ -2164,7 +2163,7 @@ class Mmu:
             self.gear_stepper.sync_to_extruder(self.extruder_name if sync else None)
 
         # Option to reduce current during print
-        if in_print and sync and self.gear_tmc and self.sync_gear_current < 100:
+        if in_print and sync and self.gear_tmc and self.sync_gear_current < 100 and self.gear_stepper_run_current < 0 :
             self.gear_stepper_run_current = self.gear_tmc.get_status(0)['run_current']
             self._log_info("Reducing reducing gear_stepper run current to %d%% for extruder syncing" % self.sync_gear_current)
             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=gear_stepper CURRENT=%.2f"
@@ -2172,6 +2171,7 @@ class Mmu:
         elif self.gear_tmc and self.gear_tmc.get_status(0)['run_current'] < self.gear_stepper_run_current:
             self._log_info("Restoring gear_stepper run current to 100% configured")
             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=gear_stepper CURRENT=%.2f" % self.gear_stepper_run_current)
+            self.gear_stepper_run_current = -1
 
 
 ###########################
