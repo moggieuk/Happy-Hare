@@ -170,7 +170,7 @@ class Mmu:
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
 
         # MMU hardware (steppers, servo, encoder and optional toolhead sensor)
-        self.selector_stepper = self.gear_stepper = self.toolhead_sensor = self.encoder_sensor = self.servo = None
+        self.selector_stepper = self.gear_stepper = self.toolhead_stepper = self.toolhead_sensor = self.encoder_sensor = self.servo = None
 
         # Specific build parameters / tuning
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
@@ -493,12 +493,12 @@ class Mmu:
         self.mmu_hardware = self.printer.lookup_object('mmu_hardware', None)
 
         # Selector h/w setup ------
-        for manual_stepper in self.printer.lookup_objects('manual_mmu_stepper'):
+        for manual_stepper in self.printer.lookup_objects('manual_mh_stepper'):
             stepper_name = manual_stepper[1].get_steppers()[0].get_name()
-            if stepper_name == 'manual_mmu_stepper selector_stepper':
+            if stepper_name == 'manual_mh_stepper selector_stepper':
                 self.selector_stepper = manual_stepper[1]
         if self.selector_stepper is None:
-            raise self.config.error("Missing [manual_mmu_stepper selector_stepper] section in mmu_hardware.cfg")
+            raise self.config.error("Missing [manual_mh_stepper selector_stepper] section in mmu_hardware.cfg")
 
         # Find the pyhysical (homing) selector endstop
         self.selector_endstop = self.selector_stepper.get_endstop("mmu selector home")
@@ -516,32 +516,32 @@ class Mmu:
         self.selector_touch = 'mmu selector touch' in self.selector_stepper.get_endstop_names()
 
         # Gear h/w setup ------
-        for manual_stepper in self.printer.lookup_objects('manual_gear_stepper'):
+        for manual_stepper in self.printer.lookup_objects('manual_extruder_stepper'):
             stepper_name = manual_stepper[1].get_steppers()[0].get_name()
-            if stepper_name == 'manual_gear_stepper gear_stepper':
+            if stepper_name == 'manual_extruder_stepper gear_stepper':
                 self.gear_stepper = manual_stepper[1]
+            if stepper_name == "manual_extruder_stepper extruder":
+                self.toolhead_stepper = manual_stepper[1]
         if self.gear_stepper is None:
-            raise self.config.error("Missing [manual_gear_stepper gear_stepper] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
-#        self._log_info("PAUL: gear_stepper=%s" % self.gear_stepper)
+            raise self.config.error("Missing [manual_extruder_stepper gear_stepper] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
+        if self.toolhead_stepper is None:
+            raise self.config.error("Missing [manual_extruder_stepper extruder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
         # Optional toolhead sensor (assumed to be after extruder gears)
         self.toolhead_sensor = self.printer.lookup_object("filament_switch_sensor toolhead_sensor", None)
-        if self.toolhead_sensor and self.toolhead_sensor.runout_helper.runout_pause:
-            raise self.config.error("`pause_on_runout: False` is incorrect/missing from toolhead_sensor configuration")
+        if self.toolhead_sensor:
+            self.toolhead_sensor.runout_helper.runout_pause = False # With MMU this must not pause nor call user defined macros
+            toolhead_sensor_pin = self.config.getsection("filament_switch_sensor toolhead_sensor").get("switch_pin")
 
-# PAUL
-#            endstop_pin = self.config.getsection("filament_switch_sensor toolhead_sensor").get("switch_pin")
-#            # setup toolhead sensor pin as an endstop
-#            ppins = self.printer.lookup_object('pins')
-#            ppins.allow_multi_use_pin(endstop_pin)
-#            self.toolhead_sensor_mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
-#            for s in self.gear_stepper.steppers:
-#                self.toolhead_sensor_mcu_endstop.add_stepper(s)
-#
-#            ffi_main, ffi_lib = chelper.get_ffi()
-#            self.toolhead_homing_sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'x'), ffi_lib.free)
+            # Add toolhead sensor pin as an extra endstop for manual_extruder_stepper
+            ppins = self.printer.lookup_object('pins')
+            ppins.allow_multi_use_pin(toolhead_sensor_pin)
+            mcu_endstop = self.gear_stepper._add_endstop(toolhead_sensor_pin, "MMU Toolhead")
+            # Also, because this can be used to home gear and extruder together we need to add extruder steppers
+            for s in self.toolhead_stepper.steppers:
+                mcu_endstop.add_stepper(s)
 
-        # Get servo and encoder
+        # Get servo and encoder setup -----
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
         if not self.servo:
             raise self.config.error("Missing [mmu_servo] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
@@ -559,23 +559,18 @@ class Mmu:
         tmc_chips = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
         for chip in tmc_chips:
             if self.selector_tmc is None:
-                try:
-                    self.selector_tmc = self.printer.lookup_object('%s manual_mmu_stepper selector_stepper' % chip)
+                self.selector_tmc = self.printer.lookup_object('%s manual_mh_stepper selector_stepper' % chip, None)
+                if self.selector_tmc is not None:
                     self._log_debug("Found %s on selector_stepper. Stallguard homing possible." % chip)
-                except:
-                    pass
             if self.gear_tmc is None:
-                try:
-                    self.gear_tmc = self.printer.lookup_object('%s manual_gear_stepper gear_stepper' % chip)
+                self.gear_tmc = self.printer.lookup_object('%s manual_extruder_stepper gear_stepper' % chip, None)
+                if self.gear_tmc is not None:
                     self._log_debug("Found %s on gear_stepper. Current control enabled. Stallguard homing possible." % chip)
-                except:
-                    pass
             if self.extruder_tmc is None:
-                try:
-                    self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, self.extruder_name))
+                self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, self.extruder_name), None)
+                if self.extruder_tmc is not None:
                     self._log_debug("Found %s on extruder. Current control enabled" % chip)
-                except:
-                    pass
+
         if self.selector_tmc is None:
             self._log_debug("TMC driver not found for selector_stepper, cannot use sensorless homing and recovery")
         if self.extruder_tmc is None:
@@ -600,6 +595,10 @@ class Mmu:
 
         if self.enable_endless_spool == 1 and self.enable_clog_detection == 0:
             self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled")
+
+        # Add the MCU defined (real) extruder stepper to the toolhead extruder and sync it to complete the setup
+        self.extruder.extruder_stepper = self.toolhead_stepper
+        self.toolhead_stepper.sync_to_extruder(self.extruder_name)
 
         self.ref_step_dist=self.gear_stepper.steppers[0].get_step_dist()
         self.variables = self.printer.lookup_object('save_variables').allVariables

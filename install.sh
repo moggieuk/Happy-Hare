@@ -98,7 +98,7 @@ verify_home_dirs() {
     echo -e "${INFO}Klipper config directory (${KLIPPER_CONFIG_HOME}) found"
 }
 
-link_mmu_plugin() {
+link_mmu_plugins() {
     echo -e "${INFO}Linking mmu extension to Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
         for file in `cd ${SRCDIR}/extras ; ls *.py`; do
@@ -111,7 +111,7 @@ link_mmu_plugin() {
     fi
 }
 
-unlink_mmu_plugin() {
+unlink_mmu_plugins() {
     echo -e "${INFO}Unlinking mmu extension to Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
         for file in `cd ${SRCDIR}/extras ; ls *.py`; do
@@ -870,8 +870,10 @@ if [ "${INSTALL}" -eq 1 -a "${UNINSTALL}" -eq 1 ]; then
 fi
 
 # PAUL TEMP precaution
-KLIPPER_HOME=/tmp
-KLIPPER_CONFIG_HOME=/tmp
+#KLIPPER_HOME=/tmp
+#KLIPPER_CONFIG_HOME=/tmp
+link_mmu_plugins
+exit 0
 
 verify_not_root
 verify_home_dirs
@@ -886,7 +888,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
         parse_config_files
     fi
     copy_config_files
-    link_mmu_plugin
+    link_mmu_plugins
     install_update_manager
 else
     echo
@@ -895,7 +897,7 @@ else
     yn=$(prompt_yn "Are you sure you want to proceed with deleting Happy Hare?")
     case $yn in
         y)
-            unlink_mmu_plugin
+            unlink_mmu_plugins
             remove_template_files
             uninstall_update_manager
             echo -e "${INFO}Uninstall complete except for the Happy-Hare directory - you can now safely delete that as well"

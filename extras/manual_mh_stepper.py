@@ -29,11 +29,11 @@ class PrinterRailWithMockEndstop(stepper.PrinterRail, object):
 
     def add_extra_stepper(self, *args, **kwargs):
         if self._in_setup:
-            self.endstops = [(self.MockEndstop(), "")] # Hack: pretend we have endstops
+            self.endstops = [(self.MockEndstop(), "mock")] # Hack: pretend we have endstops
         return super(PrinterRailWithMockEndstop, self).add_extra_stepper(*args, **kwargs)
 
 
-class ManualMmuStepper(manual_stepper.ManualStepper, object):
+class ManualMhStepper(manual_stepper.ManualStepper, object):
     """Manual stepper that can have multiple separately controlled endstops (only one active at a time)"""
 
     def __init__(self, config):
@@ -47,22 +47,25 @@ class ManualMmuStepper(manual_stepper.ManualStepper, object):
         else:
             self.rail = PrinterRailWithMockEndstop(config, need_position_minmax=False, default_position_endstop=0.)
         self.steppers = self.rail.get_steppers()
-        self.default_endstop = self.rail.endstops
+        self.default_endstops = self.rail.endstops
 
         # Setup default endstop
         self.query_endstops = self.printer.load_object(config, 'query_endstops')
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin is not None:
-            self.mcu_endstops['default']={'mcu_endstop': self.default_endstop[0], 'virtual': "virtual_endstop" in endstop_pin}
+            logging.info("PAUL: added endstop name='default'")
+            self.mcu_endstops['default']={'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
             # Vanity rename of default endstop in query_endstops
             endstop_pin_name = config.get('endstop_pin_name', None)
             if endstop_pin_name is not None:
                 for idx, es in enumerate(self.query_endstops.endstops):
-                    if es[1] == self.default_endstop[0][1]:
-                        self.query_endstops.endstops[idx] = (self.default_endstop[0][0], endstop_pin_name)
+                    if es[1] == self.default_endstops[0][1]:
+                        self.query_endstops.endstops[idx] = (self.default_endstops[0][0], endstop_pin_name)
                         # Also add vanity name so we can lookup
-                        self.mcu_endstops[endstop_pin_name]={'mcu_endstop': self.default_endstop[0], 'virtual': "virtual_endstop" in endstop_pin}
+                        logging.info("PAUL: added endstop name=%s" % endstop_pin_name)
+                        self.mcu_endstops[endstop_pin_name]={'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
                         break
+
         # Handle any extra endstops
         extra_endstop_pins = config.getlist('extra_endstop_pins', [])
         extra_endstop_names = config.getlist('extra_endstop_names', [])
@@ -71,7 +74,7 @@ class ManualMmuStepper(manual_stepper.ManualStepper, object):
                 raise self.config.error("`extra_endstop_pins` and `extra_endstop_names` are different lengths")
             for idx, pin in enumerate(extra_endstop_pins):
                 name = extra_endstop_names[idx]
-                self._add_endstop(config, pin, name)
+                self._add_endstop(pin, name)
 
         self.velocity = config.getfloat('velocity', 5., above=0.)
         self.accel = self.homing_accel = config.getfloat('accel', 0., minval=0.)
@@ -91,27 +94,34 @@ class ManualMmuStepper(manual_stepper.ManualStepper, object):
                                    self.name, self.cmd_MANUAL_STEPPER,
                                    desc=self.cmd_MANUAL_STEPPER_help)
 
-    def _add_endstop(self, config, pin, name):
+    def _add_endstop(self, pin, name):
         ppins = self.printer.lookup_object('pins')
-# TODO. Not sure if we need to set reuse? Would also need to cleanse pin name before calling
-#        ppins.allow_multi_use_pin(pin) # Always allow reuse of `extra_endstop_pins`
         mcu_endstop = ppins.setup_pin('endstop', pin)
         for s in self.steppers:
             mcu_endstop.add_stepper(s)
 
         self.query_endstops.register_endstop(mcu_endstop, name)
+        logging.info("PAUL: _add_endstops=%s" % name)
         self.mcu_endstops[name]={'mcu_endstop': mcu_endstop, 'virtual': "virtual_endstop" in pin}
         return mcu_endstop
 
     def get_endstop_names(self):
+        logging.info("PAUL: mcu_endstops=%s" % self.mcu_endstops.keys())
         return self.mcu_endstops.keys()
 
     def activate_endstop(self, name):
+        current_mcu_endstop, stepper_name = self.rail.endstops[0]
+        current_endstop_name = None
+        for i in self.mcu_endstops:
+            if self.mcu_endstops[i]['mcu_endstop'][0] == current_mcu_endstop:
+                current_endstop_name = i
+                break
         endstop = self.mcu_endstops.get(name)
-        if name is not None:
-            self.rail.endstops = [(endstop['mcu_endstop'], name)]
+        if endstop is not None:
+            self.rail.endstops = [endstop['mcu_endstop']]
         else:
-            self.rail.endstops = self.default_endstop
+            self.rail.endstops = self.default_endstops
+        return current_endstop_name
 
     def get_endstop(self, name):
         endstop = self.mcu_endstops.get(name)
@@ -125,5 +135,5 @@ class ManualMmuStepper(manual_stepper.ManualStepper, object):
             return endstop['virtual']
 
 def load_config_prefix(config):
-    return ManualMmuStepper(config)
+    return ManualMhStepper(config)
 
