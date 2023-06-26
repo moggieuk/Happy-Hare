@@ -38,7 +38,7 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         self.alt_stepper_sks = [s.set_stepper_kinematics(self.sk_extruder) for s in self.steppers]
         # Set back to the manual kinematics
         self._set_manual_kinematics()
-        self.motion_queue = None
+        self.motion_queue = self.synced_extruder_name = None
 
         # Setup kinematics that can be passed to extruder for use when homing
         self.linked_move_sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'x'), ffi_lib.free)
@@ -121,20 +121,24 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         self.rail.set_trapq(self.trapq)
 
     def sync_to_extruder(self, extruder_name):
+        logging.info("PAUL: sync_to_extruder(%s)" % extruder_name)
         toolhead = self.printer.lookup_object('toolhead')
         toolhead.flush_step_generation()
         if not extruder_name:
             self._set_manual_kinematics()
             self.motion_queue = None
+            self.synced_extruder_name = None
             return
         extruder = self.printer.lookup_object(extruder_name, None)
         if extruder is None or not isinstance(extruder, kinematics_extruder.PrinterExtruder):
             raise self.printer.command_error("Extruder named '%s' is not found" % extruder_name)
         for s in self.steppers:
             s.set_stepper_kinematics(self.sk_extruder)
+            logging.info("PAUL: stepper %s kinematics set to extruder" % s.get_name())
         self.rail.set_position([extruder.last_position, 0., 0.])
         self.rail.set_trapq(extruder.get_trapq())
         self.motion_queue = extruder_name
+        self.synced_extruder_name = extruder_name
 
     def is_synced(self):
         return self.motion_queue != None

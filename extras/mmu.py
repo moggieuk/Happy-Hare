@@ -596,10 +596,10 @@ class Mmu:
             self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled")
 
         # Add the MCU defined (real) extruder stepper to the toolhead extruder and sync it to complete the setup
-        self._log_debug("PAUL: self.extruder.extruder_stepper changed from:%s to:%s" % (self.extruder.extruder_stepper, self.toolhead_stepper))
+        self._log_debug("PAUL: mmu.py self.extruder.extruder_stepper changed from:%s to:%s" % (self.extruder.extruder_stepper, self.toolhead_stepper))
         self.extruder.extruder_stepper = self.toolhead_stepper
-#        self._log_debug("PAUL: self.toolhead_stepper.sync_to(%s)" % self.extruder_name)
-#        self.toolhead_stepper.sync_to_extruder(self.extruder_name)
+        self._log_debug("PAUL: mmu.py self.toolhead_stepper.sync_to(%s)" % self.extruder_name)
+        self.toolhead_stepper.sync_to_extruder(self.extruder_name)
 
         self.ref_step_dist=self.gear_stepper.steppers[0].get_step_dist()
         self.variables = self.printer.lookup_object('save_variables').allVariables
