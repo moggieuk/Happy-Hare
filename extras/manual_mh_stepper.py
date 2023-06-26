@@ -10,7 +10,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import stepper, chelper, logging
+import stepper, chelper, logging, contextlib
 from . import manual_stepper
 
 
@@ -38,6 +38,7 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
 
     def __init__(self, config):
         self.printer = config.get_printer()
+        self.config_name = config.get_name()
         self.name = config.get_name().split()[-1]
         self.mcu_endstops = {}
         self.can_home = True
@@ -48,13 +49,16 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
             self.rail = PrinterRailWithMockEndstop(config, need_position_minmax=False, default_position_endstop=0.)
         self.steppers = self.rail.get_steppers()
         self.default_endstops = self.rail.endstops
+        logging.info("PAUL: INIT: self.rail=%s" % self.rail)
+        logging.info("PAUL: INIT: self.steppers=%s" % self.steppers)
+        logging.info("PAUL: INIT: self.default_endstops=%s" % self.default_endstops)
 
         # Setup default endstop
         self.query_endstops = self.printer.load_object(config, 'query_endstops')
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin is not None:
-            logging.info("PAUL: added endstop name='default'")
             self.mcu_endstops['default']={'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
+            logging.info("PAUL: ADDED: default: %s" % self.mcu_endstops['default'])
             # Vanity rename of default endstop in query_endstops
             endstop_pin_name = config.get('endstop_pin_name', None)
             if endstop_pin_name is not None:
@@ -62,8 +66,8 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
                     if es[1] == self.default_endstops[0][1]:
                         self.query_endstops.endstops[idx] = (self.default_endstops[0][0], endstop_pin_name)
                         # Also add vanity name so we can lookup
-                        logging.info("PAUL: added endstop name=%s" % endstop_pin_name)
-                        self.mcu_endstops[endstop_pin_name]={'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
+                        self.mcu_endstops[endstop_pin_name.lower()]={'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
+                        logging.info("PAUL: ADDED: %s: %s" % (endstop_pin_name.lower(), self.mcu_endstops[endstop_pin_name.lower()]))
                         break
 
         # Handle any extra endstops
@@ -75,6 +79,9 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
             for idx, pin in enumerate(extra_endstop_pins):
                 name = extra_endstop_names[idx]
                 self._add_endstop(pin, name)
+
+        logging.info("PAUL: init self.default_endstops=%s" % self.default_endstops)
+        logging.info("PAUL: init self.rail.endstops=%s" % self.rail.endstops)
 
         self.velocity = config.getfloat('velocity', 5., above=0.)
         self.accel = self.homing_accel = config.getfloat('accel', 0., minval=0.)
@@ -93,16 +100,19 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         gcode.register_mux_command('MANUAL_STEPPER', "STEPPER",
                                    self.name, self.cmd_MANUAL_STEPPER,
                                    desc=self.cmd_MANUAL_STEPPER_help)
+        gcode.register_mux_command('DUMP_MANUAL_STEPPER', "STEPPER",
+                                   self.name, self.cmd_DUMP_MANUAL_STEPPER,
+                                   desc=self.cmd_DUMP_MANUAL_STEPPER_help)
 
-    def _add_endstop(self, pin, name):
+    def _add_endstop(self, pin, name, register=True):
         ppins = self.printer.lookup_object('pins')
         mcu_endstop = ppins.setup_pin('endstop', pin)
         for s in self.steppers:
             mcu_endstop.add_stepper(s)
-
-        self.query_endstops.register_endstop(mcu_endstop, name)
-        logging.info("PAUL: _add_endstops=%s" % name)
-        self.mcu_endstops[name]={'mcu_endstop': mcu_endstop, 'virtual': "virtual_endstop" in pin}
+        if register:
+            self.query_endstops.register_endstop(mcu_endstop, name)
+        self.mcu_endstops[name.lower()]={'mcu_endstop': (mcu_endstop, self.config_name), 'virtual': "virtual_endstop" in pin}
+        logging.info("PAUL: ADDED: %s: %s" % (name.lower(), self.mcu_endstops[name.lower()]))
         return mcu_endstop
 
     def get_endstop_names(self):
@@ -111,27 +121,32 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
 
     def activate_endstop(self, name):
         logging.info("PAUL: activate_endstop(%s)" % name)
-        current_mcu_endstop, stepper_name = self.rail.endstops[0]
-        current_endstop_name = None
-        for i in self.mcu_endstops:
-            if self.mcu_endstops[i]['mcu_endstop'][0] == current_mcu_endstop:
-                current_endstop_name = i
-                break
-        endstop = self.mcu_endstops.get(name)
+        current_endstop_name = "default"
+        if len(self.rail.endstops) > 0:
+            current_mcu_endstop, stepper_name = self.rail.endstops[0] # PAUL what if no endstops initially?
+            logging.info("PAUL: activate current_mcu_endstop=%s, stepper_name=%s" % (current_mcu_endstop, stepper_name))
+            for i in self.mcu_endstops:
+                logging.info("PAUL: mcu_endstops[%s]=%s" % (i, self.mcu_endstops[i]))
+                if self.mcu_endstops[i]['mcu_endstop'][0] == current_mcu_endstop:
+                    current_endstop_name = i
+                    break
+        endstop = self.mcu_endstops.get(name.lower())
         if endstop is not None:
             self.rail.endstops = [endstop['mcu_endstop']]
         else:
             self.rail.endstops = self.default_endstops
+        logging.info("PAUL: activate new self.rail.endstops=%s" % self.rail.endstops)
         return current_endstop_name
 
     def get_endstop(self, name):
-        endstop = self.mcu_endstops.get(name)
+        endstop = self.mcu_endstops.get(name.lower())
         if endstop is not None:
+            logging.info("PAUL: returning: %s" % [endstop['mcu_endstop']])
             return endstop['mcu_endstop']
         return None
 
     def is_endstop_virtual(self, name):
-        endstop = self.mcu_endstops.get(name)
+        endstop = self.mcu_endstops.get(name.lower())
         if endstop is not None:
             return endstop['virtual']
 
@@ -154,31 +169,61 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         elif gcmd.get_float('MOVE', None) is not None:
             movepos = gcmd.get_float('MOVE')
             sync = gcmd.get_int('SYNC', 1)
-            super(ManualExtruderStepper, self).do_move(movepos, speed, accel, sync)
+            super(ManualMhStepper, self).do_move(movepos, speed, accel, sync)
         elif gcmd.get_int('SYNC', 0):
-            super(ManualExtruderStepper, self).sync_print_time()
+            super(ManualMhStepper, self).sync_print_time()
+
+    cmd_DUMP_MANUAL_STEPPER_help = "For debugging: dump configuration of multi-homed stepper"
+    def cmd_DUMP_MANUAL_STEPPER(self, gcmd):
+        msg = self.dump_manual_stepper()
+        gcmd.respond_raw(msg)
+
+    def dump_manual_stepper(self):
+        msg = "Class: %s\n" % self.__class__.__name__
+        msg += "Rail:\n"
+        msg += "- Num Steppers: %d\n" % len(self.rail.steppers)
+        msg += "- Num Endstops: %d\n" % len(self.rail.endstops)
+        msg += "Steppers:\n"
+        for s in self.get_steppers():
+            msg += "- Stepper: %s\n" % s.get_name()
+            msg += "- - Commanded Position: %.1f\n" % s.get_commanded_position()
+            msg += "- - MCU Position: %.1f\n" % s.get_mcu_position()
+        msg += "Endstops:\n"
+        for (mcu_endstop, name) in self.rail.get_endstops():
+            msg += "- Name: '%s', mcu: '%s', pin: '%s'\n" % (name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin)
+            for idx2, s in enumerate(mcu_endstop.get_steppers()):
+                msg += "- - stepper %d: '%s'\n" % (idx2+1, s.get_name())
+        msg += "Registered (alternate) Endstops:\n"
+        for idx, es in enumerate(self.get_endstop_names()):
+            endstop = self.mcu_endstops[es]
+            (mcu_endstop, name) = endstop['mcu_endstop']
+            msg += "- %d '%s', Name: '%s', mcu: '%s', pin: '%s'" % (idx+1, es, name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin)
+            msg += " (virtual)\n" if endstop['virtual'] else "\n"
+            for idx2, s in enumerate(mcu_endstop.get_steppers()):
+                msg += "- - Stepper %d: '%s'\n" % (idx2+1, s.get_name())
+        return msg
 
     @contextlib.contextmanager
     def _with_endstop(self, endstop_name=None):
         logging.info("PAUL: _with_endstop(%s)" % endstop_name)
         prev_endstop_name = None
         if endstop_name:
-            logging.info("PAUL: possbile endstop names=%s" % self.get_endstop_names())
             prev_endstop_name = self.activate_endstop(endstop_name)
             logging.info("PAUL: prev_endstop_name: %s" % prev_endstop_name)
 
+        logging.info("PAUL: BEFORE YIELD:\n%s" % self.dump_manual_stepper())
         # Yield to caller
         yield self
 
         # Restore previous endstop if changed
         if prev_endstop_name:
-            self.activate(prev_endstop_name)
+            self.activate_endstop(prev_endstop_name)
 
     # Perform homing move using specified endstop
     def do_mh_homing_move(self, movepos, speed, accel, triggered=True, check_trigger=True, endstop_name=None):
         logging.info("PAUL: do_mh_homing_move()")
         with self._with_endstop(endstop_name):
-            super(ManualExtruderStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
+            super(ManualMhStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
 
 def load_config_prefix(config):
     return ManualMhStepper(config)

@@ -536,7 +536,7 @@ class Mmu:
             # Add toolhead sensor pin as an extra endstop for manual_extruder_stepper
             ppins = self.printer.lookup_object('pins')
             ppins.allow_multi_use_pin(toolhead_sensor_pin)
-            mcu_endstop = self.gear_stepper._add_endstop(toolhead_sensor_pin, "MMU Toolhead")
+            mcu_endstop = self.gear_stepper._add_endstop(toolhead_sensor_pin, "mmu toolhead")
             # Also, because this can be used to home gear and extruder together we need to add extruder steppers
             for s in self.toolhead_stepper.steppers:
                 mcu_endstop.add_stepper(s)
@@ -584,9 +584,8 @@ class Mmu:
             raise self.config.error("Extruder named `%s` not found on printer" % self.extruder_name)
 
         # Sanity check required klipper options are enabled
-        try:
-            self.pause_resume = self.printer.lookup_object('pause_resume')
-        except:
+        pause_resume = self.printer.lookup_object('pause_resume', None)
+        if pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
         if self.toolhead_sensor is None:
@@ -597,8 +596,10 @@ class Mmu:
             self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled")
 
         # Add the MCU defined (real) extruder stepper to the toolhead extruder and sync it to complete the setup
+        self._log_debug("PAUL: self.extruder.extruder_stepper changed from:%s to:%s" % (self.extruder.extruder_stepper, self.toolhead_stepper))
         self.extruder.extruder_stepper = self.toolhead_stepper
-        self.toolhead_stepper.sync_to_extruder(self.extruder_name)
+#        self._log_debug("PAUL: self.toolhead_stepper.sync_to(%s)" % self.extruder_name)
+#        self.toolhead_stepper.sync_to_extruder(self.extruder_name)
 
         self.ref_step_dist=self.gear_stepper.steppers[0].get_step_dist()
         self.variables = self.printer.lookup_object('save_variables').allVariables
