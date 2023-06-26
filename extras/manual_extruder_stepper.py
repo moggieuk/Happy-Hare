@@ -51,9 +51,8 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
                                    stepper_name, self.cmd_MANUAL_EXTRUDER_STEPPER,
                                    desc=self.cmd_MANUAL_EXTRUDER_STEPPER_help)
 
-#    def add_endstop(self, pin, name, extruder):
+#    def add_endstop(self, pin, name, extruder_name):
 #        super(ManualExtruderStepper, self)._add_endstop(pin, name)
-
 # PAUL TODO call super, then add to all steppers..?
 #        ppins = self.printer.lookup_object('pins')
 ###        ppins.allow_multi_use_pin(pin) # Always allow reuse of `extra_endstop_pins`
@@ -65,48 +64,6 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
 #        logging.info("PAUL: _add_endstops=%s" % name)
 #        self.mcu_endstops[name]={'mcu_endstop': mcu_endstop, 'virtual': "virtual_endstop" in pin}
 #        return mcu_endstop
-
-# PAUL
-#        # Setup toolhead filament sensor if defined
-#        toolhead_sensor_pin = config.get('toolhead_sensor_pin', None)
-#        if toolhead_sensor_pin:
-#            toolhead_sensor_name = config.get('toolhead_sensor_name', "toolhead_sensor")
-#            buttons = self.printer.load_object(config, 'buttons')
-#            buttons.register_buttons([toolhead_sensor_pin], self._button_handler)
-#            config.section = "filament_switch_sensor %s" % toolhead_sensor_name # PAUL risk
-#            self.runout_helper = filament_switch_sensor.RunoutHelper(config)
-#            self.get_status = self.runout_helper.get_status
-#
-#    def _button_handler(self, eventtime, state):
-#        self.runout_helper.note_filament_present(state)
-#
-# PAUL vvv test
-#        toolhead = self.printer.lookup_object('toolhead', None)
-#        if not toolhead:
-#            logging.info("PAUL: TOOLHEAD NOT FOUND")
-#        extruder = self.printer.lookup_object('extruder', None)
-##        extruder = self.printer.load_object(config, 'extruder')
-#        if extruder:
-#            logging.info("PAUL: Registering endstops on extruder stepper")
-#            mcu_endstop, name = self.rail.endstops[0]
-#            mcu_endstop.add_stepper(extruder.extruder_stepper.stepper)
-#        else:
-#            logging.info("PAUL: EXTRUDER NOT FOUND")
-# PAUL ^^^ test
-
-#        self.printer.register_event_handler("klippy:connect", self._handle_connect)
-
-#    def _handle_connect(self):
-#        toolhead = self.printer.lookup_object('toolhead', None)
-#        if not toolhead:
-#            logging.info("PAUL: TOOLHEAD NOT FOUND")
-#        extruder = self.printer.lookup_object('extruder', None)
-#        if extruder:
-#            logging.info("PAUL: Registering endstops on extruder stepper")
-#            mcu_endstop, name = self.rail.endstops[0]
-#            mcu_endstop.add_stepper(extruder.extruder_stepper.stepper)
-#        else:
-#            logging.info("PAUL: EXTRUDER NOT FOUND")
 
     def do_enable(self, enable):
         assert self.motion_queue is None
@@ -125,15 +82,18 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         return super(ManualExtruderStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
 
     def cmd_MANUAL_STEPPER(self, gcmd):
+        logging.info("PAUL: manualExtruderStepper.cmd_MANUAL_STEPPER")
         if self.motion_queue is not None:
             raise self.printer.command_error("Cannot manual move: stepper synced to motion queue")
         return super(ManualExtruderStepper, self).cmd_MANUAL_STEPPER(gcmd)
 
-    cmd_MANUAL_EXTRUDER_STEPPER_help = "Command a manually configured stepper with synced extruder"
+    cmd_MANUAL_EXTRUDER_STEPPER_help = "Command a manually configured stepper with linked extruder"
     def cmd_MANUAL_EXTRUDER_STEPPER(self, gcmd):
-        logging.info("PAUL: get_endstop_names(): %s" % self.get_endstop_names())
-        extruder_name = gcmd.get('EXTRUDER', "extruder")
-        endstop_name = gcmd.get('ENDSTOP', "default")
+        logging.info("PAUL: manualExtruderStepper.cmd_MANUAL_EXTRUDER_STEPPER")
+        if self.motion_queue is not None:
+            raise self.printer.command_error("Cannot manual move: stepper synced to motion queue")
+        extruder_name = gcmd.get('EXTRUDER', "extruder") # Added
+        endstop_name = gcmd.get('ENDSTOP', "default") # Added
         enable = gcmd.get_int('ENABLE', None)
         if enable is not None:
             super(ManualExtruderStepper, self).do_enable(enable)
@@ -180,7 +140,8 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         return self.motion_queue != None
 
     @contextlib.contextmanager
-    def _with_linked_extruder(self, extruder_name, endstop_name=None):
+    def _with_linked_extruder(self, extruder_name):
+        logging.info("PAUL: _with_linked_extruder(%s)" % extruder_name)
         extruder = self.printer.lookup_object(extruder_name, None)
         if not extruder:
             raise self.printer.command_error("Extruder named '%s' not found" % extruder_name)
@@ -199,10 +160,10 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         self.steppers = self.steppers + [extruder_stepper]
         self.rail.steppers = self.rail.steppers + [extruder_stepper]
 
-        prev_endstop_name = None
-        if endstop_name:
-            prev_endstop_name = self.activate_endstop(endstop_name)
-            logging.info("PAUL: prev_endstop_name: %s" % prev_endstop_name)
+#        prev_endstop_name = None
+#        if endstop_name:
+#            prev_endstop_name = self.activate_endstop(endstop_name)
+#            logging.info("PAUL: prev_endstop_name: %s" % prev_endstop_name)
 
         # Extruder must look like it has always been part of the rail (position important!)
         prev_extruder_sk = extruder_stepper.set_stepper_kinematics(self.linked_move_sk)
@@ -219,19 +180,21 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         extruder_stepper.set_stepper_kinematics(prev_extruder_sk)
         extruder_stepper.set_trapq(prev_extruder_trapq)
         self.sync_to_extruder(manual_stepper_mq)
-        if prev_endstop_name:
-            self.activate(prev_endstop_name)
+#        if prev_endstop_name:
+#            self.activate(prev_endstop_name)
 
-    # Will perform regular move bringing the extruder along for the ride
+    # Perform regular move bringing the extruder along for the ride
     def do_linked_move(self, movepos, speed, accel, sync=True, extruder_name="extruder"):
+        assert self.motion_queue is None
         with self._with_linked_extruder(extruder_name):
             super(ManualExtruderStepper, self).do_move(movepos, speed, accel, sync)
 
-    # Will perform homing move using active endstop bringing the extruder along for the ride
+    # Perform homing move using specified endstop bringing the extruder along for the ride
     def do_linked_homing_move(self, movepos, speed, accel, triggered=True, check_trigger=True, extruder_name="extruder", endstop_name=None):
-        with self._with_linked_extruder(extruder_name, endstop_name):
-            logging.info("PAUL: do_homing_move()")
-            super(ManualExtruderStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
+        assert self.motion_queue is None
+        logging.info("PAUL: do_linked_homing_move()")
+        with self._with_linked_extruder(extruder_name):
+            super(ManualExtruderStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger, endstop_name)
 
 def load_config_prefix(config):
     return ManualExtruderStepper(config)

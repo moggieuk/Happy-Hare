@@ -110,6 +110,7 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         return self.mcu_endstops.keys()
 
     def activate_endstop(self, name):
+        logging.info("PAUL: activate_endstop(%s)" % name)
         current_mcu_endstop, stepper_name = self.rail.endstops[0]
         current_endstop_name = None
         for i in self.mcu_endstops:
@@ -133,6 +134,51 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         endstop = self.mcu_endstops.get(name)
         if endstop is not None:
             return endstop['virtual']
+
+    cmd_MANUAL_STEPPER_help = "Command a manually configured stepper"
+    def cmd_MANUAL_STEPPER(self, gcmd):
+        logging.info("PAUL: manualMhStepper.cmd_MANUAL_STEPPER")
+        endstop_name = gcmd.get('ENDSTOP', "default") # Added
+        enable = gcmd.get_int('ENABLE', None)
+        if enable is not None:
+            super(ManualExtruderStepper, self).do_enable(enable)
+        setpos = gcmd.get_float('SET_POSITION', None)
+        if setpos is not None:
+            super(ManualMhStepper, self).do_set_position(setpos)
+        speed = gcmd.get_float('SPEED', self.velocity, above=0.)
+        accel = gcmd.get_float('ACCEL', self.accel, minval=0.)
+        homing_move = gcmd.get_int('STOP_ON_ENDSTOP', 0)
+        if homing_move:
+            movepos = gcmd.get_float('MOVE')
+            self.do_mh_homing_move(movepos, speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name)
+        elif gcmd.get_float('MOVE', None) is not None:
+            movepos = gcmd.get_float('MOVE')
+            sync = gcmd.get_int('SYNC', 1)
+            super(ManualExtruderStepper, self).do_move(movepos, speed, accel, sync)
+        elif gcmd.get_int('SYNC', 0):
+            super(ManualExtruderStepper, self).sync_print_time()
+
+    @contextlib.contextmanager
+    def _with_endstop(self, endstop_name=None):
+        logging.info("PAUL: _with_endstop(%s)" % endstop_name)
+        prev_endstop_name = None
+        if endstop_name:
+            logging.info("PAUL: possbile endstop names=%s" % self.get_endstop_names())
+            prev_endstop_name = self.activate_endstop(endstop_name)
+            logging.info("PAUL: prev_endstop_name: %s" % prev_endstop_name)
+
+        # Yield to caller
+        yield self
+
+        # Restore previous endstop if changed
+        if prev_endstop_name:
+            self.activate(prev_endstop_name)
+
+    # Perform homing move using specified endstop
+    def do_mh_homing_move(self, movepos, speed, accel, triggered=True, check_trigger=True, endstop_name=None):
+        logging.info("PAUL: do_mh_homing_move()")
+        with self._with_endstop(endstop_name):
+            super(ManualExtruderStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
 
 def load_config_prefix(config):
     return ManualMhStepper(config)
