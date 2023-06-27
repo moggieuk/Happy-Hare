@@ -170,7 +170,7 @@ class Mmu:
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
 
         # MMU hardware (steppers, servo, encoder and optional toolhead sensor)
-        self.selector_stepper = self.gear_stepper = self.toolhead_stepper = self.toolhead_sensor = self.encoder_sensor = self.servo = None
+        self.selector_stepper = self.gear_stepper = self.mmu_extruder_stepper = self.toolhead_sensor = self.encoder_sensor = self.servo = None
 
         # Specific build parameters / tuning
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
@@ -196,18 +196,7 @@ class Mmu:
             raise self.config.error("Support for non-ERCF systems is comming soon!")
 
         self.extruder_name = config.get('extruder', 'extruder')
-        self.short_moves_speed = config.getfloat('short_moves_speed', 10., minval=1.)
-        self.long_moves_speed_from_buffer = config.getfloat('long_moves_speed_from_buffer', 50., minval=1.)
-        self.long_moves_speed_from_spool = config.getfloat('long_moves_speed_from_spool', self.long_moves_speed_from_buffer / 2, minval=1.)
         self.z_hop_height = config.getfloat('z_hop_height', 5., minval=0.)
-        self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
-        self.gear_homing_accel = config.getfloat('gear_homing_accel', 1000)
-        self.gear_sync_accel = config.getfloat('gear_sync_accel', 1000)
-        self.gear_buzz_accel = config.getfloat('gear_buzz_accel', 2000)
-        self.servo_down_angle = config.getfloat('servo_down_angle')
-        self.servo_up_angle = config.getfloat('servo_up_angle')
-        self.servo_move_angle = config.getfloat('servo_move_angle', self.servo_up_angle)
-        self.servo_duration = config.getfloat('servo_duration', 0.2, minval=0.1)
         self.num_moves = config.getint('num_moves', 1, minval=1)
         self.apply_bowden_correction = config.getint('apply_bowden_correction', 0, minval=0, maxval=1)
         self.load_bowden_tolerance = config.getfloat('load_bowden_tolerance', 10., minval=1.)
@@ -228,20 +217,42 @@ class Mmu:
         self.ignore_extruder_load_error = config.getint('ignore_extruder_load_error', 0, minval=0, maxval=1)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=20.)
         self.extruder_homing_step = config.getfloat('extruder_homing_step', 2., minval=0.5, maxval=5.)
-        self.extruder_homing_current = config.getint('extruder_homing_current', 50, minval=10, maxval=100)
-        self.extruder_form_tip_current = config.getint('extruder_form_tip_current', 100, minval=100, maxval=150)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.)
-        self.toolhead_homing_step = config.getfloat('toolhead_homing_step', 1., minval=0.5, maxval=5.)
-        self.sync_load_length = config.getfloat('sync_load_length', 8., minval=0., maxval=100.) # PAUL remove
-        self.extruder_sync_load_speed = config.getfloat('extruder_sync_load_speed', 10., minval=1., maxval=100.)
-        self.sync_unload_length = config.getfloat('sync_unload_length', 10., minval=0., maxval=100.) # PAUL remove?
-        self.extruder_sync_unload_speed = config.getfloat('extruder_sync_unload_speed', 10., minval=1., maxval=100.)
-        self.delay_servo_release = config.getfloat('delay_servo_release', 2., minval=0., maxval=5.)
+#        self.toolhead_homing_step = config.getfloat('toolhead_homing_step', 1., minval=0.5, maxval=5.)
+        self.transition_length = config.getfloat('transition_length', 8., minval=0., maxval=100.) # PAUL was sync_load_length
         self.home_position_to_nozzle = config.getfloat('home_position_to_nozzle', minval=5.) # Legacy, separate measures below are preferred
         self.extruder_to_nozzle = config.getfloat('extruder_to_nozzle', 0., minval=5.) # For sensorless
         self.sensor_to_nozzle = config.getfloat('sensor_to_nozzle', 0., minval=5.) # For toolhead sensor
+
+        # Servo control
+        self.servo_down_angle = config.getfloat('servo_down_angle')
+        self.servo_up_angle = config.getfloat('servo_up_angle')
+        self.servo_move_angle = config.getfloat('servo_move_angle', self.servo_up_angle)
+        self.servo_duration = config.getfloat('servo_duration', 0.2, minval=0.1)
+        self.delay_servo_release = config.getfloat('delay_servo_release', 2., minval=0., maxval=5.)
+
+        # TMC current adjustments
+        self.extruder_homing_current = config.getint('extruder_homing_current', 50, minval=10, maxval=100)
+        self.extruder_form_tip_current = config.getint('extruder_form_tip_current', 100, minval=100, maxval=150)
+        self.sync_gear_current = config.getint('sync_gear_current', 50, minval=10, maxval=100)
+
+        # Speeds and accelaration
+        self.short_moves_speed = config.getfloat('short_moves_speed', 10., minval=1.)
+        self.long_moves_speed_from_buffer = config.getfloat('long_moves_speed_from_buffer', 50., minval=1.)
+        self.long_moves_speed_from_spool = config.getfloat('long_moves_speed_from_spool', self.long_moves_speed_from_buffer / 2, minval=1.)
+        self.gear_homing_speed = config.getfloat('gear_homing_speed', 50, minval=1.) # PAUL NEW
+        self.gear_homing_accel = config.getfloat('gear_homing_accel', 1000)
         self.extruder_load_speed = config.getfloat('extruder_load_speed', 15, minval=1., maxval=100.)
         self.extruder_unload_speed = config.getfloat('extruder_unload_speed', 20, minval=1., maxval=100.)
+        self.extruder_sync_load_speed = config.getfloat('extruder_sync_load_speed', 10., minval=1., maxval=100.)
+        self.extruder_sync_unload_speed = config.getfloat('extruder_sync_unload_speed', 10., minval=1., maxval=100.)
+        self.extruder_homing_speed = config.getfloat('extruder_homing_speed', 10, minval=1.) # PAUL NEW
+        self.extruder_accel = config.getfloat('extruder_accel', 1000) # For when not synced to toolhead
+        self.gear_sync_accel = config.getfloat('gear_sync_accel', 1000)
+        self.gear_buzz_accel = config.getfloat('gear_buzz_accel', 2000)
+        self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
+
+        # Selector speeds
         self.selector_move_speed = config.getfloat('selector_move_speed', 200, minval=1., maxval=300.)
         self.selector_homing_speed = config.getfloat('selector_homing_speed', 100, minval=1., maxval=300.)
         self.selector_sensorless_speed = config.getfloat('selector_sensorless_speed', 60, minval=1., maxval=200.)
@@ -251,7 +262,6 @@ class Mmu:
         self.sync_load_extruder = config.getint('sync_load_extruder', 0, minval=0, maxval=1)
         self.sync_unload_extruder = config.getint('sync_unload_extruder', 0, minval=0, maxval=1)
         self.sync_form_tip = config.getint('sync_form_tip', 0, minval=0, maxval=1)
-        self.sync_gear_current = config.getint('sync_gear_current', 50, minval=10, maxval=100)
 
         # Options
         self.homing_method = config.getint('homing_method', 0, minval=0, maxval=1)
@@ -521,10 +531,10 @@ class Mmu:
             if stepper_name == 'manual_extruder_stepper gear_stepper':
                 self.gear_stepper = manual_stepper[1]
             if stepper_name == "manual_extruder_stepper extruder":
-                self.toolhead_stepper = manual_stepper[1]
+                self.mmu_extruder_stepper = manual_stepper[1]
         if self.gear_stepper is None:
             raise self.config.error("Missing [manual_extruder_stepper gear_stepper] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
-        if self.toolhead_stepper is None:
+        if self.mmu_extruder_stepper is None:
             raise self.config.error("Missing [manual_extruder_stepper extruder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
         # Optional toolhead sensor (assumed to be after extruder gears)
@@ -538,8 +548,10 @@ class Mmu:
             ppins.allow_multi_use_pin(toolhead_sensor_pin)
             mcu_endstop = self.gear_stepper._add_endstop(toolhead_sensor_pin, "mmu toolhead")
             # Also, because this can be used to home gear and extruder together we need to add extruder steppers
-            for s in self.toolhead_stepper.steppers:
+            for s in self.mmu_extruder_stepper.steppers:
                 mcu_endstop.add_stepper(s)
+            # Finally we might want to home the extruder to toolhead sensor in isolation
+            self.mmu_extruder_stepper._add_endstop(toolhead_sensor_pin, "mmu toolhead", register=False)
 
         # Get servo and encoder setup -----
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
@@ -596,8 +608,8 @@ class Mmu:
             self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled")
 
         # Add the MCU defined (real) extruder stepper to the toolhead extruder and sync it to complete the setup
-        self.extruder.extruder_stepper = self.toolhead_stepper
-        self.toolhead_stepper.sync_to_extruder(self.extruder_name)
+        self.extruder.extruder_stepper = self.mmu_extruder_stepper
+        self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name)
 
         self.ref_step_dist=self.gear_stepper.steppers[0].get_step_dist()
         self.variables = self.printer.lookup_object('save_variables').allVariables
@@ -1128,7 +1140,7 @@ class Mmu:
         self.servo_state = self.SERVO_UNKNOWN_STATE
 
     def _servo_down(self):
-        self._log_debug("PAUL: _servo_down()")
+#        self._log_debug("PAUL: _servo_down()")
         if self.servo_state == self.SERVO_DOWN_STATE: return
         if self.gate_selected == self.TOOL_BYPASS: return
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_down_angle)
@@ -1156,7 +1168,7 @@ class Mmu:
         self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self):
-        self._log_debug("PAUL: _servo_up()")
+#        self._log_debug("PAUL: _servo_up()")
         if self.tool_selected < 0: # PAUL - maybe temp
             self._log_debug("PAUL: ****** Assertion failure - servo_up() called but no tool loaded")
 
@@ -1177,7 +1189,7 @@ class Mmu:
         return delta
 
     def _servo_auto(self):
-        self._log_debug("PAUL: _servo_auto()")
+#        self._log_debug("PAUL: _servo_auto()")
         # PAUL TODO, need to handle case of synced gear/extruder motors...
         if not self.is_homed or self.tool_selected < 0 or self.gate_selected < 0:
             self._servo_move()
@@ -1278,7 +1290,7 @@ class Mmu:
                         # Home to extruder step is enabled so we don't need any spring
                         # in filament since we will do it again on every load
                         reference = measured_movement - (spring * 1.0)
-                    elif self.sync_load_length > 0:
+                    elif self.transition_length > 0:
                         # Synchronized load makes the transition from gear stepper to extruder stepper
                         # work reliably so we don't need spring tension in the bowden
                         if self._has_toolhead_sensor():
@@ -1984,16 +1996,15 @@ class Mmu:
                     speed = self.long_moves_speed_from_buffer
             else:
                 speed = self.short_moves_speed
-        if accel is None:
-            accel = self.gear_stepper.accel
+        accel = accel or self.gear_stepper.accel
         self._log_stepper("GEAR: dist=%.1f, speed=%.1f, accel=%.1f sync=%s wait=%s" % (dist, speed, accel, sync, wait))
         self.gear_stepper.do_move(dist, speed, accel, sync)
         if wait:
             self.toolhead.wait_moves()
 
     # Convenience wrapper around a gear and extruder motor move that tracks measured movement and create trace log entry
-    # motor = "gear" - always gear only
-    #         "extruder" - always extruder only
+    # motor = "gear" - gear only
+    #         "extruder" - extruder only
     #         "both" - gear and extruder together but independent
     #         "synced" - gear and extruder synced together
     def _trace_filament_move(self, trace_str, distance, speed=None, accel=None, motor="gear", homing=False, track=False):
@@ -2045,6 +2056,110 @@ class Mmu:
                 self._track_gate_statistics('unload_distance', self.gate_selected, -distance)
                 self._track_gate_statistics('unload_delta', self.gate_selected, delta)
         return delta
+
+    # Convenience wrapper around all gear and extruder motor movement that tracks measured movement and create trace log entry
+    # motor = "gear" - gear only
+    #         "extruder" - extruder only
+    #         "both" - gear and extruder together but independent
+    #         "synced" - gear and extruder synced together
+    # If homing move then optional endstop name can be specified
+    def _trace_filament_move2(self, trace_str, distance, speed=None, accel=None, motor="gear", homing=False, endstop="default", track=False):
+#        self._log_info("PAUL: _trace_filament_move2()")
+        self._sync_gear_to_extruder(False)
+        start = self.encoder_sensor.get_distance()
+        trace_str += ". Stepper: '%s' moved %%.1fmm, encoder measured %%.1fmm (delta %%.1fmm)" % motor
+        success = False
+
+        if motor == "both":
+            if homing:
+                self._log_error("Not possible to perform homing move on two independent steppers")
+            speed = speed or self.gear_stepper.velocity
+            accel = accel or self.gear_stepper.accel
+            self._log_stepper("BOTH: dist=%.1f, speed=%.1f, accel=%.1f" % (distance, speed, accel))
+            self.gear_stepper.do_set_position(0.)                   # Make incremental move
+            pos = self.toolhead.get_position()
+            pos[3] += distance
+            self.gear_stepper.do_move(distance, speed, accel, False)
+            self.toolhead.manual_move(pos, speed)
+            self.toolhead.dwell(0.05)                               # "MCU Timer too close" protection
+            self.toolhead.wait_moves()
+            self.toolhead.set_position(pos)                         # Force subsequent incremental move
+
+        elif motor == "gear":
+            if homing:
+                speed = speed or self.gear_stepper.velocity # PAUL fix for gear homing speed
+                accel = accel or self.gear_stepper.accel
+                self._log_stepper("GEAR_HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s" % (dist, speed, accel, endstop))
+                try:
+                    self.gear_stepper.do_set_position(0.) # All gear moves are relative
+                    self.gear_stepper.do_mh_homing_move(distance, speed, accel, True, True, endstop_name=endstop)
+                    success = True
+                except Exception as e:
+                    self._log_error("Did not home") # PAUL improve on this
+            else:
+                self._gear_stepper_move_wait(distance, speed=speed, accel=accel)
+                success = True
+
+        elif motor == "extruder":
+            if homing:
+                speed = speed or self.extruder_homing_speed
+                accel = accel or self.extruder_accel
+                self._log_stepper("EXTRUDER_HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s" % (distance, speed, accel, endstop))
+                try:
+                    self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead motion queue
+                    self.mmu_extruder_stepper.do_set_position(0.) # Force relative move
+                    self.mmu_extruder_stepper.do_mh_homing_move(distance, speed, accel, True, True, endstop_name=endstop)
+                    success = True
+                except Exception as e:
+                    self._log_error("Did not home") # PAUL improve on this
+                finally:
+                    self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Sync back to toolhead
+                    # PAUL what about toolhead pos? does it need to be fixed?
+            else:
+                speed = speed or self.extruder_load_speed
+                self._log_stepper("EXTRUDER: dist=%.1f, speed=%.1f" % (distance, speed))
+                pos = self.toolhead.get_position()
+                pos[3] += distance
+                self.toolhead.manual_move(pos, speed)
+                self.toolhead.wait_moves()
+                self.toolhead.set_position(pos)                         # Force subsequent incremental move
+
+        elif motor == "synced":
+            if homing:
+                speed = speed or min(self.gear_homing_speed, self.extruder_homing_speed)
+                accel = accel or self.gear_homing_accel
+                self._log_stepper("SYNCED_HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s, extruder=%s" % (distance, speed, accel, endstop, self.extruder_name))
+                try:
+                    self.gear_stepper.do_linked_homing_move(distance, speed, accel, True, True, endstop_name=endstop, extruder_name=self.extruder_name)
+                    success = True
+                except Exception as e:
+                    self._log_error("Did not home") # PAUL improve on this
+            else:
+                speed = speed or min(self.gear_stepped.velocity, self.extruder_load_speed)
+                accel = accel or min(self.gear_sync_accel, self.extruder_accel)
+                self._log_stepper("SYNCED: dist=%.1f, speed=%.1f, accel=%.1f, extruder=%s" % (distance, speed, accel, sync, wait, self.extruder_name))
+                self.gear_stepper.do_linked_move(distance, speed, accel, sync, extruder_name=self.extruder_name)
+#                self.toolhead.wait_moves()
+                success = True
+                # PAUL do we need this? self.toolhead.set_position(pos)                         # Force subsequent incremental move
+
+        else:
+            self._log_error("Assertion Failure: Invalid motor specification")
+
+        end = self.encoder_sensor.get_distance()
+        measured = end - start
+        # Delta: +ve means measured less than moved, -ve means measured more than moved
+        delta = abs(distance) - measured
+        trace_str += ". Counter: @%.1fmm" % end
+        self._log_trace(trace_str % (distance, measured, delta))
+        if motor == "gear" and track:
+            if distance > 0:
+                self._track_gate_statistics('load_distance', self.gate_selected, distance)
+                self._track_gate_statistics('load_delta', self.gate_selected, delta)
+            else:
+                self._track_gate_statistics('unload_distance', self.gate_selected, -distance)
+                self._track_gate_statistics('unload_delta', self.gate_selected, delta)
+        return delta, success
 
     def _selector_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, homing_move=0):
         if speed == None:
@@ -2103,13 +2218,13 @@ class Mmu:
         return -1
 
     # Check for filament in extruder by moving extruder motor. This is only used with toolhead sensor
-    # and can only happen is the short distance from sensor to gears. This check will eliminate that
+    # and can only happen if filament is the short distance from sensor to gears. This check will eliminate that
     # problem and indicate if we can unload the rest of the bowden more quickly
-    def _check_filament_stuck_in_extruder(self):
-        self._log_debug("Checking for possibility of filament stuck in extruder gears...")
+    def _check_filament_still_in_extruder(self):
+        self._log_debug("Checking for possibility of filament still in extruder gears...")
         self._set_above_min_temp()
         self._servo_up()
-        delta = self._trace_filament_move("Checking extruder", -self.toolhead_homing_max, speed=25, motor="extruder")
+        delta, success = self._trace_filament_move2("Checking extruder", -self.toolhead_homing_max, speed=self.extruder_unload_speed, motor="extruder")
         return (self.toolhead_homing_max - delta) > 1.
 
     def _sync_gear_to_extruder(self, sync=True, servo=False, in_print=False):
@@ -2147,6 +2262,9 @@ class Mmu:
         if self.gate_status[gate] == self.GATE_EMPTY:
             raise MmuError("Gate %d is empty!" % gate)
         self._load_sequence(self._get_calibration_ref())
+
+        # Ready to print...
+        self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=True)
 
     def _load_sequence(self, length, no_extruder = False):
         current_action = self._set_action(self.ACTION_LOADING)
@@ -2197,7 +2315,7 @@ class Mmu:
         retries = self.load_encoder_retries if retry else 1
         for i in range(retries):
             msg = "Initial load into encoder" if i == 0 else ("Retry load into encoder #%d" % i)
-            delta = self._trace_filament_move(msg, self.LONG_MOVE_THRESHOLD)
+            delta, success = self._trace_filament_move2(msg, self.LONG_MOVE_THRESHOLD)
             if (self.LONG_MOVE_THRESHOLD - delta) > 6.0:
                 self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
                 self._set_loaded_status(self.LOADED_STATUS_PARTIAL_PAST_ENCODER)
@@ -2227,7 +2345,8 @@ class Mmu:
         delta = 0
         for i in range(moves):
             msg = "Course loading move #%d into bowden" % (i+1)
-            delta += self._trace_filament_move(msg, length / moves, track=True)
+            d, success = self._trace_filament_move2(msg, length / moves, track=True)
+            delta += d
             self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_BOWDEN)
 
         # Correction attempts to load the filament according to encoder reporting
@@ -2236,7 +2355,7 @@ class Mmu:
                 for i in range(2):
                     if delta >= tolerance:
                         msg = "Correction load move #%d into bowden" % (i+1)
-                        delta = self._trace_filament_move(msg, delta, track=True)
+                        delta, success = self._trace_filament_move2(msg, delta, track=True)
                         self._log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self.encoder_sensor.get_distance())
                     else:
                         break
@@ -2281,7 +2400,7 @@ class Mmu:
         homed = False
         for i in range(int(max_length / step)):
             msg = "Homing step #%d" % (i+1)
-            delta = self._trace_filament_move(msg, step, speed=5, accel=self.gear_homing_accel)
+            delta, success = self._trace_filament_move2(msg, step, speed=5, accel=self.gear_homing_accel)
             measured_movement = self.encoder_sensor.get_distance() - initial_encoder_position
             total_delta = step*(i+1) - measured_movement
             if delta >= step / 2. or abs(total_delta) > step: # Not enough or strange measured movement means we've hit the extruder
@@ -2297,6 +2416,7 @@ class Mmu:
             self._log_info("Warning: A lot of slippage was detected whilst homing to extruder, you may want to reduce 'extruder_homing_current' and/or ensure a good grip on filament by gear drive")
         return homed, measured_movement
 
+# PAUL redo this. Maybe the actual gear position after homing is more accurate than ensoder??
     # Note: not readily compatible with EASY BRD / or with sensorless selector homing (endstop contention)
     def _home_to_extruder_with_stallguard(self, max_length):
         self._log_debug("Homing to extruder gear with stallguard, up to %.1fmm" % max_length)
@@ -2313,81 +2433,112 @@ class Mmu:
     # Step 3b of the load sequence
     # This optional step aligns (homes) filament to the toolhead sensor which should be a very
     # reliable location. Returns measured movement
-    def _home_to_toolhead_sensor(self, skip_entry_moves):
+    # 'extruder_stepper_only' forces only extruder stepper movement regardless of configuration
+    def _home_to_toolhead_sensor(self, extruder_stepper_only):
         if self.toolhead_sensor.runout_helper.filament_present:
             # We shouldn't be here and probably means the toolhead sensor is malfunctioning/blocked
             raise MmuError("Toolhead sensor malfunction - filament detected before it entered extruder!")
 
-        if self.sync_load_extruder and not skip_entry_moves:
-            # Newer simplified forced full sync move
-            self._sync_gear_to_extruder(True, servo=True)
-            step = self.toolhead_homing_step
-            self._log_debug("Synchronized homing to toolhead sensor, up to %.1fmm in %.1fmm steps" % (self.toolhead_homing_max, step))
-            for i in range(int(self.toolhead_homing_max / step)):
-                msg = "Homing step #%d" % (i+1)
-                delta = self._trace_filament_move(msg, step, speed=10, motor="synced")
-                if self.toolhead_sensor.runout_helper.filament_present:
-                    self._log_debug("Toolhead sensor reached after %.1fmm (%d moves)" % (step*(i+1), i+1))
-                    break
+        sync = self.sync_load_extruder and not extruder_stepper_only
+        self._log_debug("Homing to toolhead sensor%s, up to %.1fmm" % (" (synced)" if sync else "", self.toolhead_homing_max))
+
+        if sync:
+            delta, success = self._trace_filament_move2("Synchronously homing to toolhead sensor", self.toolhead_homing_max,
+                    speed=self.extruder_sync_load_speed, motor="synced", homing=True, endstop="mmu toolhead")
         else:
-            # Original method either synced or extruder only
-            sync = not skip_entry_moves and self.sync_load_length > 0.
-            delay = self.delay_servo_release if self._must_home_to_extruder() else 0.
-            if sync: self._servo_down()
-            step = self.toolhead_homing_step
-            self._log_debug("Homing to toolhead sensor%s, up to %.1fmm in %.1fmm steps" % (" (synced)" if sync else "", self.toolhead_homing_max, step))
-            for i in range(int(self.toolhead_homing_max / step)):
-                msg = "Homing step #%d" % (i+1)
-                if not sync and step*(i+1) > delay:
-                    self._servo_up()
-                delta = self._trace_filament_move(msg, step, speed=10, motor="both" if sync and step*(i+1) > delay else "extruder")
-                if self.toolhead_sensor.runout_helper.filament_present:
-                    self._log_debug("Toolhead sensor reached after %.1fmm (%d moves)" % (step*(i+1), i+1))
-                    break
+            length = self.toolhead_homing_max
+            delay_length = self.delay_servo_release if self._must_home_to_extruder() else 0.
+            if delay_length > 0:
+                # Delay servo release by a few mm to keep filament tension for reliable transition
+                delta, success = self._trace_filament_move2("Small extruder move under filament tension before servo release", delay_length,
+                        speed=self.extruder_load_speed, motor="extruder")
+                length -= delay_length
+            if not extruder_stepper_only and self.transition_length > 0.
+                # Synced extruder transistion move
+                delta, success = self._trace_filament_move2("Synced extruder entry move", self.transition_length - delay_length,
+                        speed=self.extruder_sync_load_speed, motor="synced", homing=True, endstop="mmu toolhead")
+                length -= (self.transition_length - delay_length)
+            if not self.toolhead_sensor.runout_helper.filament_present:
+                # Now complete homing with just extruder movement
+                self._servo_up()
+                delta, success = self._trace_filament_move2("Homing to toolhead sensor", length,
+                        speed=self.extruder_homing_speed, motor="extruder", homing=True, endstop="mmu toolhead")
 
         if self.toolhead_sensor.runout_helper.filament_present:
             self._set_loaded_status(self.LOADED_STATUS_PARTIAL_HOMED_SENSOR)
         else:
             raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
+# Old logic:
+#        if self.sync_load_extruder and not extruder_stepper_only:
+#            # Newer simplified forced full sync move
+#            self._sync_gear_to_extruder(True, servo=True)
+#            step = self.toolhead_homing_step
+#            self._log_debug("Synchronized homing to toolhead sensor, up to %.1fmm in %.1fmm steps" % (self.toolhead_homing_max, step))
+#            for i in range(int(self.toolhead_homing_max / step)):
+#                msg = "Homing step #%d" % (i+1)
+#                delta = self._trace_filament_move(msg, step, speed=10, motor="synced")
+#                if self.toolhead_sensor.runout_helper.filament_present:
+#                    self._log_debug("Toolhead sensor reached after %.1fmm (%d moves)" % (step*(i+1), i+1))
+#                    break
+#        else:
+#            # Original method either synced or extruder only
+#            sync = not extruder_stepper_only and self.transition_length > 0.
+#            delay = self.delay_servo_release if self._must_home_to_extruder() else 0.
+#            if sync: self._servo_down()
+#            step = self.toolhead_homing_step
+#            self._log_debug("Homing to toolhead sensor%s, up to %.1fmm in %.1fmm steps" % (" (synced)" if sync else "", self.toolhead_homing_max, step))
+#            for i in range(int(self.toolhead_homing_max / step)):
+#                msg = "Homing step #%d" % (i+1)
+#                if not sync and step*(i+1) > delay:
+#                    self._servo_up()
+#                delta = self._trace_filament_move(msg, step, speed=10, motor="both" if sync and step*(i+1) > delay else "extruder")
+#                if self.toolhead_sensor.runout_helper.filament_present:
+#                    self._log_debug("Toolhead sensor reached after %.1fmm (%d moves)" % (step*(i+1), i+1))
+#                    break
+#
+#        if self.toolhead_sensor.runout_helper.filament_present:
+#            self._set_loaded_status(self.LOADED_STATUS_PARTIAL_HOMED_SENSOR)
+#        else:
+#            raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
+
     # Step 4 of the load sequence
     # Move filament from the home position (extruder or sensor) to the nozzle. Return measured movement
-    def _load_extruder(self, skip_entry_moves=False):
+    def _load_extruder(self, extruder_stepper_only=False):
         current_action = self._set_action(self.ACTION_LOADING_EXTRUDER)
         try:
             self.filament_direction = self.DIRECTION_LOAD
             self._set_above_min_temp()
 
             if self._has_toolhead_sensor():
-                # With toolhead sensor we must home filament first which performs extruder entry steps
-                self._home_to_toolhead_sensor(skip_entry_moves)
+                # With toolhead sensor we home to toolhead sensor past the extruder entrance
+                self._home_to_toolhead_sensor(extruder_stepper_only)
 
             length = self._get_home_position_to_nozzle()
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             initial_encoder_position = self.encoder_sensor.get_distance()
 
-            if self.sync_load_extruder and not skip_entry_moves:
-                # Newer simplified forced full sync move
-                self._sync_gear_to_extruder(True, servo=True)
-                delta = self._trace_filament_move("Synchronously loading filament to nozzle", length, speed=self.extruder_sync_load_speed, motor="synced")
-
+            if self.sync_load_extruder and not extruder_stepper_only:
+                self._servo_down()
+                delta, success = self._trace_filament_move2("Synchronously loading filament to nozzle", length,
+                        speed=self.extruder_sync_load_speed, motor="synced")
             else:
-                # Original method with filament spring handoff and optional partial sync move
-                if not self._has_toolhead_sensor() and not skip_entry_moves:
-                    # This is the extruder entry logic similar to that in home_to_toolhead_sensor()
+                if not self._has_toolhead_sensor() and not extruder_stepper_only:
                     if self.delay_servo_release > 0:
                         # Delay servo release by a few mm to keep filament tension for reliable transition
-                        delta = self._trace_filament_move("Small extruder move under filament tension before servo release", self.delay_servo_release, speed=self.extruder_load_speed, motor="extruder")
+                        delta, success = self._trace_filament_move2("Small extruder move under filament tension before servo release", self.delay_servo_release,
+                                speed=self.extruder_load_speed, motor="extruder")
                         length -= self.delay_servo_release
-                    if self.sync_load_length > 0:
-                        self._servo_down()
-                        self._log_debug("Moving the gear and extruder motors in sync for %.1fmm" % self.sync_load_length)
-                        delta = self._trace_filament_move("Sync load move", self.sync_load_length, speed=self.extruder_sync_load_speed, motor="both")
-                        length -= self.sync_load_length
-    
+                    if self.transition_length > 0:
+                        # Synced extruder transistion move
+                        delta, success = self._trace_filament_move2("Synced extruder entry move", self.transition_length - self.delay_servo_release,
+                                speed=self.extruder_sync_load_speed, motor="synced")
+                        length -= (self.transition_length - self.delay_servo_release)
+
                 # Move the remaining distance to the nozzle meltzone under exclusive extruder stepper control
                 self._servo_up()
-                delta = self._trace_filament_move("Remainder of final move to meltzone", length, speed=self.extruder_load_speed, motor="extruder")
+                delta, success  = self._trace_filament_move2("Remainder of final move to mozzle", length,
+                        speed=self.extruder_load_speed, motor="extruder")
 
             # Final sanity check
             measured_movement = self.encoder_sensor.get_distance() - initial_encoder_position
@@ -2400,16 +2551,72 @@ class Mmu:
                     self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_EXTRUDER)
                     raise MmuError(msg)
                 else:
-                    self._log_always("Ignoring: %s" % msg)
+                   self._log_always("Ignoring: %s" % msg)
 
             self._set_loaded_status(self.LOADED_STATUS_FULL)
             self._log_info('MMU load successful')
 
-            if not skip_entry_moves:
-                self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=True)
-
         finally:
             self._set_action(current_action)
+
+# Old logic:
+#        current_action = self._set_action(self.ACTION_LOADING_EXTRUDER)
+#        try:
+#            self.filament_direction = self.DIRECTION_LOAD
+#            self._set_above_min_temp()
+#
+#            if self._has_toolhead_sensor():
+#                # With toolhead sensor we must home filament first which performs extruder entry steps
+#                self._home_to_toolhead_sensor(extruder_stepper_only)
+#
+#            length = self._get_home_position_to_nozzle()
+#            self._log_debug("Loading last %.1fmm to the nozzle..." % length)
+#            initial_encoder_position = self.encoder_sensor.get_distance()
+#
+#            if self.sync_load_extruder and not extruder_stepper_only:
+#                # Newer simplified forced full sync move
+#                self._sync_gear_to_extruder(True, servo=True)
+#                delta = self._trace_filament_move("Synchronously loading filament to nozzle", length, speed=self.extruder_sync_load_speed, motor="synced")
+#
+#            else:
+#                # Original method with filament spring handoff and optional partial sync move
+#                if not self._has_toolhead_sensor() and not extruder_stepper_only:
+#                    # This is the extruder entry logic similar to that in home_to_toolhead_sensor()
+#                    if self.delay_servo_release > 0:
+#                        # Delay servo release by a few mm to keep filament tension for reliable transition
+#                        delta = self._trace_filament_move("Small extruder move under filament tension before servo release", self.delay_servo_release, speed=self.extruder_load_speed, motor="extruder")
+#                        length -= self.delay_servo_release
+#                    if self.transition_length > 0:
+#                        self._servo_down()
+#                        self._log_debug("Moving the gear and extruder motors in sync for %.1fmm" % self.transition_length)
+#                        delta = self._trace_filament_move("Sync load move", self.transition_length, speed=self.extruder_sync_load_speed, motor="both")
+#                        length -= self.transition_length
+#    
+#                # Move the remaining distance to the nozzle meltzone under exclusive extruder stepper control
+#                self._servo_up()
+#                delta = self._trace_filament_move("Remainder of final move to meltzone", length, speed=self.extruder_load_speed, motor="extruder")
+#
+#            # Final sanity check
+#            measured_movement = self.encoder_sensor.get_distance() - initial_encoder_position
+#            total_delta = self._get_home_position_to_nozzle() - measured_movement
+#            self._log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured_movement, total_delta))
+#            tolerance = max(self.encoder_sensor.get_clog_detection_length(), self._get_home_position_to_nozzle() * 0.50)
+#            if total_delta > tolerance:
+#                msg = "Move to nozzle failed (encoder not sensing sufficient movement). Extruder may not have picked up filament or filament did not home correctly"
+#                if not self.ignore_extruder_load_error:
+#                    self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_EXTRUDER)
+#                    raise MmuError(msg)
+#                else:
+#                    self._log_always("Ignoring: %s" % msg)
+#
+#            self._set_loaded_status(self.LOADED_STATUS_FULL)
+#            self._log_info('MMU load successful')
+#
+#            if not extruder_stepper_only:
+#                self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=True)
+#
+#        finally:
+#            self._set_action(current_action)
 
 
 #############################
@@ -2512,8 +2719,10 @@ class Mmu:
             self._set_loaded_status(self.LOADED_STATUS_FULL)
         else:                               # Filament not detected in toolhead
             if self._check_filament_in_encoder():
-                if self._check_filament_stuck_in_extruder():
-                    self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_EXTRUDER)
+                if self._check_filament_still_in_extruder():
+# PAUL, changed this for better prediction of location
+#                    self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_EXTRUDER)
+                    self._set_loaded_status(self.LOADED_STATUS_PARTIAL_HOMED_EXTRUDER) # We can do a fast unload
                 else:
                     self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_BOWDEN) # This prevents fast unload move
             else:
@@ -2633,8 +2842,8 @@ class Mmu:
 
         # Initial short move allows for dealing with (servo) errors.
         if not self.calibrating:
-            sync = not skip_sync_move and self.sync_unload_length > 0
-            initial_move = 10. if not sync else self.sync_unload_length
+            sync = not skip_sync_move and self.transition_length > 0
+            initial_move = 10. if not sync else self.transition_length
             if sync:
                 self._log_debug("Moving the gear and extruder motors in sync for %.1fmm" % -initial_move)
                 delta = self._trace_filament_move("Sync unload", -initial_move, speed=self.extruder_sync_unload_speed, motor="both")
@@ -2715,16 +2924,16 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f"
                                                     % (self.extruder_name, (extruder_run_current * self.extruder_form_tip_current)/100.))
 
-            initial_extruder_position = self.toolhead_stepper.stepper.get_commanded_position()
+            initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
             initial_encoder_position = self.encoder_sensor.get_distance()
             initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
             self.gcode.run_script_from_command("_MMU_FORM_TIP_STANDALONE")
             self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
             self.toolhead.wait_moves()
             delta = self.encoder_sensor.get_distance() - initial_encoder_position
-            park_pos = initial_extruder_position - self.toolhead_stepper.stepper.get_commanded_position()
+            park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
             self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos ,delta))
-            self._log_trace("PAUL: initial_extruder_position: %.2f, final: %.2f" % (initial_extruder_position, self.toolhead_stepper.stepper.get_commanded_position()))
+            self._log_trace("PAUL: initial_extruder_position: %.2f, final: %.2f" % (initial_extruder_position, self.mmu_extruder_stepper.stepper.get_commanded_position()))
             self.encoder_sensor.set_distance(initial_encoder_position + park_pos)
 
             if self.extruder_tmc and self.extruder_form_tip_current > 100:
@@ -2942,7 +3151,7 @@ class Mmu:
         self._select_gate(gate)
         self._set_tool_selected(tool, silent=True)
         if move_servo:
-            self._servo_up() # PAUL added - selecting a tool should release filament
+            self._servo_auto() # PAUL added - selecting a tool should release filament
         self._log_info("Tool T%d enabled%s" % (tool, (" on gate #%d" % gate) if tool != gate else ""))
 
     def _select_gate(self, gate):
@@ -3322,7 +3531,7 @@ class Mmu:
         length = gcmd.get_float('LENGTH', 200.)
         speed = gcmd.get_float('SPEED', 50.)
         accel = gcmd.get_float('ACCEL', 200., minval=0.)
-        self._gear_stepper_move_wait(length, wait=False, speed=speed, accel=accel)
+        self._gear_stepper_move_wait(length, wait=False, speed=speed, accel=accel) # PAUL TODO change to trace
 
     cmd_MMU_TEST_LOAD_help = "Test loading of filament from MMU to the extruder"
     def cmd_MMU_TEST_LOAD(self, gcmd):
@@ -3410,7 +3619,7 @@ class Mmu:
         self.extruder_homing_max = gcmd.get_float('EXTRUDER_HOMING_MAX', self.extruder_homing_max, above=20.)
         self.extruder_homing_step = gcmd.get_float('EXTRUDER_HOMING_STEP', self.extruder_homing_step, minval=1., maxval=5.)
         self.toolhead_homing_max = gcmd.get_float('TOOLHEAD_HOMING_MAX', self.toolhead_homing_max, minval=0.)
-        self.toolhead_homing_step = gcmd.get_float('TOOLHEAD_HOMING_STEP', self.toolhead_homing_step, minval=0.5, maxval=5.)
+#        self.toolhead_homing_step = gcmd.get_float('TOOLHEAD_HOMING_STEP', self.toolhead_homing_step, minval=0.5, maxval=5.)
         self.extruder_homing_current = gcmd.get_int('EXTRUDER_HOMING_CURRENT', self.extruder_homing_current, minval=10, maxval=100)
         self.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.extruder_form_tip_current, minval=100, maxval=150)
         self.delay_servo_release = gcmd.get_float('DELAY_SERVO_RELEASE', self.delay_servo_release, minval=0., maxval=5.)
@@ -3449,7 +3658,7 @@ class Mmu:
         msg += "\nextruder_homing_max = %.1f" % self.extruder_homing_max
         msg += "\nextruder_homing_step = %.1f" % self.extruder_homing_step
         msg += "\ntoolhead_homing_max = %.1f" % self.toolhead_homing_max
-        msg += "\ntoolhead_homing_step = %.1f" % self.toolhead_homing_step
+#        msg += "\ntoolhead_homing_step = %.1f" % self.toolhead_homing_step
         msg += "\nextruder_homing_current = %d" % self.extruder_homing_current
         msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
         msg += "\ndelay_servo_release = %.1f" % self.delay_servo_release
