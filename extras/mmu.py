@@ -596,9 +596,7 @@ class Mmu:
             self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled")
 
         # Add the MCU defined (real) extruder stepper to the toolhead extruder and sync it to complete the setup
-        self._log_debug("PAUL: mmu.py self.extruder.extruder_stepper changed from:%s to:%s" % (self.extruder.extruder_stepper, self.toolhead_stepper))
         self.extruder.extruder_stepper = self.toolhead_stepper
-        self._log_debug("PAUL: mmu.py self.toolhead_stepper.sync_to(%s)" % self.extruder_name)
         self.toolhead_stepper.sync_to_extruder(self.extruder_name)
 
         self.ref_step_dist=self.gear_stepper.steppers[0].get_step_dist()
@@ -770,7 +768,6 @@ class Mmu:
                 self._log_always(self._tool_to_gate_map_to_human_string(self.startup_status == 1))
                 self._display_visual_state(silent=(self.persistence_level < 4))
             self._servo_auto()
-                #self._servo_up() PAUL was this
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
 
@@ -1241,42 +1238,6 @@ class Mmu:
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         self._sync_gear_to_extruder(sync, servo)
-
-# PAUL testing
-#    cmd_MMU_SYNC_HOME_help = "Homes gear to specified endstop forcing the extruder to follow"
-#    def cmd_MMU_SYNC_HOME(self, gcmd):
-#        if self._check_is_disabled(): return
-#        if self._check_in_bypass(): return
-#        endstop_name = gcmd.get('ENDSTOP', "default")
-#        extruder_name = gcmd.get('EXTRUDER', "extruder")
-#        setpos = gcmd.get_float('SET_POSITION', None)
-#        speed = gcmd.get_float('SPEED', self.gear_stepper.velocity, above=0.)
-#        accel = gcmd.get_float('ACCEL', self.gear_stepper.accel, minval=0.)
-#        homing_move = gcmd.get_int('STOP_ON_ENDSTOP', 1)
-#        if homing_move:
-#            movepos = gcmd.get_float('MOVE')
-#            self.gear_stepper.do_linked_homing_move(extruder_name, movepos, speed, accel, homing_move > 0, abs(homing_move) == 1)
-
-#def cmd_MANUAL_STEPPER(self, gcmd):
-#        enable = gcmd.get_int('ENABLE', None)
-#        if enable is not None:
-#            self.do_enable(enable)
-#        setpos = gcmd.get_float('SET_POSITION', None)
-#        if setpos is not None:
-#            self.do_set_position(setpos)
-#        speed = gcmd.get_float('SPEED', self.velocity, above=0.)
-#        accel = gcmd.get_float('ACCEL', self.accel, minval=0.)
-#        homing_move = gcmd.get_int('STOP_ON_ENDSTOP', 0)
-#        if homing_move:
-#            movepos = gcmd.get_float('MOVE')
-#            self.do_homing_move(movepos, speed, accel,
-#                                homing_move > 0, abs(homing_move) == 1)
-#        elif gcmd.get_float('MOVE', None) is not None:
-#            movepos = gcmd.get_float('MOVE')
-#            sync = gcmd.get_int('SYNC', 1)
-#            self.do_move(movepos, speed, accel, sync)
-#        elif gcmd.get_int('SYNC', 0):
-#            self.sync_print_time()
 
 
 #########################
@@ -2743,7 +2704,6 @@ class Mmu:
 
         current_action = self._set_action(self.ACTION_FORMING_TIP)
         try:
-            park_pos = 35.  # TODO cosmetic: bring in from tip forming (represents parking position in extruder)
             self._log_info("Forming tip...")
             self._set_above_min_temp()
             self._sync_gear_to_extruder(self.sync_form_tip and not disable_sync, servo=True)
@@ -2755,12 +2715,16 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f"
                                                     % (self.extruder_name, (extruder_run_current * self.extruder_form_tip_current)/100.))
 
+            initial_extruder_position = self.toolhead_stepper.stepper.get_commanded_position()
             initial_encoder_position = self.encoder_sensor.get_distance()
             initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
             self.gcode.run_script_from_command("_MMU_FORM_TIP_STANDALONE")
             self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
+            self.toolhead.wait_moves()
             delta = self.encoder_sensor.get_distance() - initial_encoder_position
-            self._log_trace("After tip formation, encoder moved %.2f" % delta)
+            park_pos = initial_extruder_position - self.toolhead_stepper.stepper.get_commanded_position()
+            self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos ,delta))
+            self._log_trace("PAUL: initial_extruder_position: %.2f, final: %.2f" % (initial_extruder_position, self.toolhead_stepper.stepper.get_commanded_position()))
             self.encoder_sensor.set_distance(initial_encoder_position + park_pos)
 
             if self.extruder_tmc and self.extruder_form_tip_current > 100:

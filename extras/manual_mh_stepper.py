@@ -142,7 +142,7 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         endstop = self.mcu_endstops.get(name.lower())
         if endstop is not None:
             logging.info("PAUL: returning: %s" % [endstop['mcu_endstop']])
-            return endstop['mcu_endstop']
+            return endstop['mcu_endstop'][0]
         return None
 
     def is_endstop_virtual(self, name):
@@ -190,14 +190,14 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
             msg += "- - MCU Position: %.1f\n" % s.get_mcu_position()
         msg += "Endstops:\n"
         for (mcu_endstop, name) in self.rail.get_endstops():
-            msg += "- Name: '%s', mcu: '%s', pin: '%s'\n" % (name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin)
+            msg += "- Name: '%s', mcu: '%s', pin: '%s', obj_id: %s\n" % (name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin, id(mcu_endstop))
             for idx2, s in enumerate(mcu_endstop.get_steppers()):
                 msg += "- - stepper %d: '%s'\n" % (idx2+1, s.get_name())
         msg += "Registered (alternate) Endstops:\n"
         for idx, es in enumerate(self.get_endstop_names()):
             endstop = self.mcu_endstops[es]
             (mcu_endstop, name) = endstop['mcu_endstop']
-            msg += "- %d '%s', Name: '%s', mcu: '%s', pin: '%s'" % (idx+1, es, name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin)
+            msg += "- %d '%s', Name: '%s', mcu: '%s', pin: '%s', obj_id: %s" % (idx+1, es, name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin, id(mcu_endstop))
             msg += " (virtual)\n" if endstop['virtual'] else "\n"
             for idx2, s in enumerate(mcu_endstop.get_steppers()):
                 msg += "- - Stepper %d: '%s'\n" % (idx2+1, s.get_name())

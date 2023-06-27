@@ -22,6 +22,13 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
     def __init__(self, config):
         super(ManualExtruderStepper, self).__init__(config) # Will call ManualMhStepper.__init__()
 
+        # Register variation of MANUAL_STEPPER command for linked extruder control # PAUL rename to MANUAL_EXTRUDER_STEPPER?
+        gcode = self.printer.lookup_object('gcode')
+        stepper_name = config.get_name().split()[1]
+        gcode.register_mux_command('MANUAL_EXTRUDER_STEPPER', "STEPPER",
+                                   stepper_name, self.cmd_MANUAL_EXTRUDER_STEPPER,
+                                   desc=self.cmd_MANUAL_EXTRUDER_STEPPER_help)
+
         # Extruder setup
         self.stepper = self.steppers[0]
         self.pressure_advance = self.pressure_advance_smooth_time = 0.
@@ -43,13 +50,30 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         # Setup kinematics that can be passed to extruder for use when homing
         self.linked_move_sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'x'), ffi_lib.free)
 
-        stepper_name = config.get_name().split()[1]
-        gcode = self.printer.lookup_object('gcode')
+        # Register extruder commands
+        self.printer.register_event_handler("klippy:connect", self._handle_connect)
+        if self.name == 'extruder':
+            gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", None,
+                                       self.cmd_default_SET_PRESSURE_ADVANCE,
+                                       desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER",
+                                   self.name, self.cmd_SET_PRESSURE_ADVANCE,
+                                   desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        gcode.register_mux_command("SET_EXTRUDER_ROTATION_DISTANCE", "EXTRUDER",
+                                   self.name, self.cmd_SET_E_ROTATION_DISTANCE,
+                                   desc=self.cmd_SET_E_ROTATION_DISTANCE_help)
+        gcode.register_mux_command("SYNC_EXTRUDER_MOTION", "EXTRUDER",
+                                   self.name, self.cmd_SYNC_EXTRUDER_MOTION,
+                                   desc=self.cmd_SYNC_EXTRUDER_MOTION_help)
+        gcode.register_mux_command("SET_EXTRUDER_STEP_DISTANCE", "EXTRUDER",
+                                   self.name, self.cmd_SET_E_STEP_DISTANCE,
+                                   desc=self.cmd_SET_E_STEP_DISTANCE_help)
+        gcode.register_mux_command("SYNC_STEPPER_TO_EXTRUDER", "STEPPER",
+                                   self.name, self.cmd_SYNC_STEPPER_TO_EXTRUDER,
+                                   desc=self.cmd_SYNC_STEPPER_TO_EXTRUDER_help)
 
-        # Register variation of MANUAL_STEPPER command for linked extruder control # PAUL rename to MANUAL_EXTRUDER_STEPPER?
-        gcode.register_mux_command('MANUAL_EXTRUDER_STEPPER', "STEPPER",
-                                   stepper_name, self.cmd_MANUAL_EXTRUDER_STEPPER,
-                                   desc=self.cmd_MANUAL_EXTRUDER_STEPPER_help)
+        logging.info("PAUL: ManualExtruderStepper.__init__")
+
 
 #    def add_endstop(self, pin, name, extruder_name):
 #        super(ManualExtruderStepper, self)._add_endstop(pin, name)
@@ -198,7 +222,7 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         assert self.motion_queue is None
         logging.info("PAUL: do_linked_homing_move()")
         with self._with_linked_extruder(extruder_name):
-            super(ManualExtruderStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger, endstop_name)
+            super(ManualExtruderStepper, self).do_mh_homing_move(movepos, speed, accel, triggered, check_trigger, endstop_name)
 
 def load_config_prefix(config):
     return ManualExtruderStepper(config)
