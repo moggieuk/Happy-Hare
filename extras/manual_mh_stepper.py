@@ -50,10 +50,6 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         self.steppers = self.rail.get_steppers()
         self.default_endstops = self.rail.endstops
         self.stepper = self.steppers[0]
-        logging.info("PAUL: INIT: self.rail=%s" % self.rail)
-        logging.info("PAUL: INIT: self.steppers=%s" % self.steppers)
-        logging.info("PAUL: INIT: self.default_endstops=%s" % self.default_endstops)
-        logging.info("PAUL: INIT: self.stepper=%s" % self.stepper)
 
         # Setup default endstop
         self.query_endstops = self.printer.load_object(config, 'query_endstops')
@@ -79,9 +75,6 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
             for idx, pin in enumerate(extra_endstop_pins):
                 name = extra_endstop_names[idx]
                 self._add_endstop(pin, name)
-
-        logging.info("PAUL: init self.default_endstops=%s" % self.default_endstops)
-        logging.info("PAUL: init self.rail.endstops=%s" % self.rail.endstops)
 
         self.velocity = config.getfloat('velocity', 5., above=0.)
         self.accel = self.homing_accel = config.getfloat('accel', 0., minval=0.)
@@ -118,13 +111,10 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         return self.mcu_endstops.keys()
 
     def activate_endstop(self, name):
-        logging.info("PAUL: activate_endstop(%s)" % name)
         current_endstop_name = "default"
         if len(self.rail.endstops) > 0:
-            current_mcu_endstop, stepper_name = self.rail.endstops[0] # PAUL what if no endstops initially?
-            logging.info("PAUL: activate current_mcu_endstop=%s, stepper_name=%s" % (current_mcu_endstop, stepper_name))
+            current_mcu_endstop, stepper_name = self.rail.endstops[0]
             for i in self.mcu_endstops:
-                logging.info("PAUL: mcu_endstops[%s]=%s" % (i, self.mcu_endstops[i]))
                 if self.mcu_endstops[i]['mcu_endstop'][0] == current_mcu_endstop:
                     current_endstop_name = i
                     break
@@ -133,13 +123,11 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
             self.rail.endstops = [endstop['mcu_endstop']]
         else:
             self.rail.endstops = self.default_endstops
-        logging.info("PAUL: activate new self.rail.endstops=%s" % self.rail.endstops)
         return current_endstop_name
 
     def get_endstop(self, name):
         endstop = self.mcu_endstops.get(name.lower())
         if endstop is not None:
-            logging.info("PAUL: returning: %s" % [endstop['mcu_endstop']])
             return endstop['mcu_endstop'][0]
         return None
 
@@ -150,7 +138,6 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
 
     cmd_MANUAL_STEPPER_help = "Command a manually configured stepper"
     def cmd_MANUAL_STEPPER(self, gcmd):
-        logging.info("PAUL: manualMhStepper.cmd_MANUAL_STEPPER")
         endstop_name = gcmd.get('ENDSTOP', "default") # Added
         enable = gcmd.get_int('ENABLE', None)
         if enable is not None:
@@ -206,12 +193,9 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
 
     @contextlib.contextmanager
     def _with_endstop(self, endstop_name=None):
-        logging.info("PAUL: _with_endstop(%s)" % endstop_name)
         prev_endstop_name = None
         if endstop_name:
             prev_endstop_name = self.activate_endstop(endstop_name)
-            logging.info("PAUL: prev_endstop_name: %s" % prev_endstop_name)
-        logging.info("PAUL: BEFORE YIELD DUMP:\n%s" % self.dump_manual_stepper())
 
         # Yield to caller
         try:
@@ -221,11 +205,9 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
             # Restore previous endstop if changed
             if prev_endstop_name:
                 self.activate_endstop(prev_endstop_name)
-            logging.info("PAUL: AFTER YIELD DUMP:\n%s" % self.dump_manual_stepper())
 
     # Perform homing move using specified endstop
     def do_mh_homing_move(self, movepos, speed, accel, triggered=True, check_trigger=True, endstop_name=None):
-        logging.info("PAUL: do_mh_homing_move()")
         with self._with_endstop(endstop_name):
             super(ManualMhStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
 

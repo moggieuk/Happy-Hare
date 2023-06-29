@@ -265,14 +265,17 @@ parse_config_files() {
 
         if [ ! -f "${dest_parameters_cfg}" ]; then
             # Upgrade / map / force old parameters
-            long_moves_speed_from_buffer=${long_moves_speed}
+            extruder_homing_method=${homing_method}
+            gear_short_move_speed=${short_moves_speed}
+            gear_from_buffer_speed=${long_moves_speed}
             if [ "${long_move_speed_from_spool}" != "" ]; then
-                long_moves_speed_from_spool=${short_moves_speed}
+                gear_from_spool_speed=${short_moves_speed}
             fi
             selector_offsets=${colorselector}
             if [ "${sync_load_length}" -gt 0 ]; then
                 sync_load_extruder=1
             fi
+            transition_length=${sync_load_length}
             if [ "${sync_unload_length}" -gt 0 ]; then
                 sync_unload_extruder=1
             fi

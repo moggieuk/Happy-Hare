@@ -166,26 +166,19 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         # Extruder must look like it has always been part of the rail (position important!)
         prev_extruder_sk = extruder_stepper.set_stepper_kinematics(self.linked_move_sk)
         prev_extruder_trapq = extruder_stepper.set_trapq(manual_trapq)
-        prev_pos = extruder_stepper.get_commanded_position() # PAUL new
         pos = manual_steppers[0].get_commanded_position()
         extruder_stepper.set_position([pos, 0., 0.])
-        logging.info("PAUL ***** : Before yield: extruder_stepper.get_commanded_position:()%s" % prev_pos)
-        logging.info("PAUL ***** : Before yield: extruder_stepper set_position([%s, 0, 0]) from manual_stepper" % pos)
 
         # Yield to caller
         try:
             yield self
 
         finally:
-            pos = extruder_stepper.get_commanded_position() # PAUL temp line for debugging
-            logging.info("PAUL ***** : After yield: extruder_stepper.get_commanded_position():%s" % pos)
-
             # Restore previous state
             self.steppers = prev_manual_steppers
             self.rail.steppers = prev_manual_rail_steppers
             extruder_stepper.set_stepper_kinematics(prev_extruder_sk)
             extruder_stepper.set_trapq(prev_extruder_trapq)
-#        extruder_stepper.set_position(prev_pos) # PAUL new
             self.sync_to_extruder(manual_stepper_mq)
 
     # Perform regular move bringing the extruder along for the ride
