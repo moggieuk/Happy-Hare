@@ -22,7 +22,7 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
     def __init__(self, config):
         super(ManualExtruderStepper, self).__init__(config) # Will call ManualMhStepper.__init__()
 
-        # Register variation of MANUAL_STEPPER command for linked extruder control # PAUL rename to MANUAL_EXTRUDER_STEPPER?
+        # Register variation of MANUAL_STEPPER command for linked extruder control
         gcode = self.printer.lookup_object('gcode')
         stepper_name = config.get_name().split()[1]
         gcode.register_mux_command('MANUAL_EXTRUDER_STEPPER', "STEPPER",
@@ -30,7 +30,6 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
                                    desc=self.cmd_MANUAL_EXTRUDER_STEPPER_help)
 
         # Extruder setup
-        self.stepper = self.steppers[0]
         self.pressure_advance = self.pressure_advance_smooth_time = 0.
         self.config_pa = config.getfloat('pressure_advance', 0., minval=0.)
         self.config_smooth_time = config.getfloat('pressure_advance_smooth_time', 0.040, above=0., maxval=.200)
@@ -72,23 +71,6 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
                                    self.name, self.cmd_SYNC_STEPPER_TO_EXTRUDER,
                                    desc=self.cmd_SYNC_STEPPER_TO_EXTRUDER_help)
 
-        logging.info("PAUL: ManualExtruderStepper.__init__")
-
-
-#    def add_endstop(self, pin, name, extruder_name):
-#        super(ManualExtruderStepper, self)._add_endstop(pin, name)
-# PAUL TODO call super, then add to all steppers..?
-#        ppins = self.printer.lookup_object('pins')
-###        ppins.allow_multi_use_pin(pin) # Always allow reuse of `extra_endstop_pins`
-#        mcu_endstop = ppins.setup_pin('endstop', pin)
-#        for s in self.steppers:
-#            mcu_endstop.add_stepper(s)
-#
-#        self.query_endstops.register_endstop(mcu_endstop, name)
-#        logging.info("PAUL: _add_endstops=%s" % name)
-#        self.mcu_endstops[name]={'mcu_endstop': mcu_endstop, 'virtual': "virtual_endstop" in pin}
-#        return mcu_endstop
-
     def do_enable(self, enable):
         assert self.motion_queue is None
         return super(ManualExtruderStepper, self).do_enable(enable)
@@ -106,14 +88,12 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         return super(ManualExtruderStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
 
     def cmd_MANUAL_STEPPER(self, gcmd):
-        logging.info("PAUL: manualExtruderStepper.cmd_MANUAL_STEPPER")
         if self.motion_queue is not None:
             raise self.printer.command_error("Cannot manual move: stepper synced to motion queue")
         return super(ManualExtruderStepper, self).cmd_MANUAL_STEPPER(gcmd)
 
     cmd_MANUAL_EXTRUDER_STEPPER_help = "Command a manually configured stepper with linked extruder"
     def cmd_MANUAL_EXTRUDER_STEPPER(self, gcmd):
-        logging.info("PAUL: manualExtruderStepper.cmd_MANUAL_EXTRUDER_STEPPER")
         if self.motion_queue is not None:
             raise self.printer.command_error("Cannot manual move: stepper synced to motion queue")
         extruder_name = gcmd.get('EXTRUDER', "extruder") # Added
@@ -138,14 +118,11 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
             super(ManualExtruderStepper, self).sync_print_time()
 
     def _set_manual_kinematics(self):
-        logging.info("PAUL: _set_manual_kinematics")
         for s, sk in zip(self.steppers, self.alt_stepper_sks):
-            logging.info("PAUL: _set_manual_kinematics s=%s, sk=%s" % (s, sk))
             s.set_stepper_kinematics(sk)
         self.rail.set_trapq(self.trapq)
 
     def sync_to_extruder(self, extruder_name):
-        logging.info("PAUL: sync_to_extruder(%s)" % extruder_name)
         toolhead = self.printer.lookup_object('toolhead')
         toolhead.flush_step_generation()
         if not extruder_name:
@@ -158,7 +135,6 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
             raise self.printer.command_error("Extruder named '%s' is not found" % extruder_name)
         for s in self.steppers:
             s.set_stepper_kinematics(self.sk_extruder)
-            logging.info("PAUL: stepper %s kinematics set to extruder" % s.get_name())
         self.rail.set_position([extruder.last_position, 0., 0.])
         self.rail.set_trapq(extruder.get_trapq())
         self.motion_queue = extruder_name
@@ -169,7 +145,6 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
 
     @contextlib.contextmanager
     def _with_linked_extruder(self, extruder_name):
-        logging.info("PAUL: _with_linked_extruder(%s)" % extruder_name)
         extruder = self.printer.lookup_object(extruder_name, None)
         if not extruder:
             raise self.printer.command_error("Extruder named '%s' not found" % extruder_name)
@@ -188,28 +163,30 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         self.steppers = self.steppers + [extruder_stepper]
         self.rail.steppers = self.rail.steppers + [extruder_stepper]
 
-#        prev_endstop_name = None
-#        if endstop_name:
-#            prev_endstop_name = self.activate_endstop(endstop_name)
-#            logging.info("PAUL: prev_endstop_name: %s" % prev_endstop_name)
-
         # Extruder must look like it has always been part of the rail (position important!)
         prev_extruder_sk = extruder_stepper.set_stepper_kinematics(self.linked_move_sk)
         prev_extruder_trapq = extruder_stepper.set_trapq(manual_trapq)
+        prev_pos = extruder_stepper.get_commanded_position() # PAUL new
         pos = manual_steppers[0].get_commanded_position()
         extruder_stepper.set_position([pos, 0., 0.])
+        logging.info("PAUL ***** : Before yield: extruder_stepper.get_commanded_position:()%s" % prev_pos)
+        logging.info("PAUL ***** : Before yield: extruder_stepper set_position([%s, 0, 0]) from manual_stepper" % pos)
 
         # Yield to caller
-        yield self
+        try:
+            yield self
 
-        # Restore previous state
-        self.steppers = prev_manual_steppers
-        self.rail.steppers = prev_manual_rail_steppers
-        extruder_stepper.set_stepper_kinematics(prev_extruder_sk)
-        extruder_stepper.set_trapq(prev_extruder_trapq)
-        self.sync_to_extruder(manual_stepper_mq)
-#        if prev_endstop_name:
-#            self.activate(prev_endstop_name)
+        finally:
+            pos = extruder_stepper.get_commanded_position() # PAUL temp line for debugging
+            logging.info("PAUL ***** : After yield: extruder_stepper.get_commanded_position():%s" % pos)
+
+            # Restore previous state
+            self.steppers = prev_manual_steppers
+            self.rail.steppers = prev_manual_rail_steppers
+            extruder_stepper.set_stepper_kinematics(prev_extruder_sk)
+            extruder_stepper.set_trapq(prev_extruder_trapq)
+#        extruder_stepper.set_position(prev_pos) # PAUL new
+            self.sync_to_extruder(manual_stepper_mq)
 
     # Perform regular move bringing the extruder along for the ride
     def do_linked_move(self, movepos, speed, accel, sync=True, extruder_name="extruder"):
@@ -220,7 +197,6 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
     # Perform homing move using specified endstop bringing the extruder along for the ride
     def do_linked_homing_move(self, movepos, speed, accel, triggered=True, check_trigger=True, extruder_name="extruder", endstop_name=None):
         assert self.motion_queue is None
-        logging.info("PAUL: do_linked_homing_move()")
         with self._with_linked_extruder(extruder_name):
             super(ManualExtruderStepper, self).do_mh_homing_move(movepos, speed, accel, triggered, check_trigger, endstop_name)
 
