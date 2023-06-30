@@ -57,13 +57,13 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         if endstop_pin is not None:
             self.mcu_endstops['default']={'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
             # Vanity rename of default endstop in query_endstops
-            endstop_pin_name = config.get('endstop_pin_name', None)
-            if endstop_pin_name is not None:
+            endstop_name = config.get('endstop_name', None)
+            if endstop_name is not None:
                 for idx, es in enumerate(self.query_endstops.endstops):
                     if es[1] == self.default_endstops[0][1]:
-                        self.query_endstops.endstops[idx] = (self.default_endstops[0][0], endstop_pin_name)
+                        self.query_endstops.endstops[idx] = (self.default_endstops[0][0], endstop_name)
                         # Also add vanity name so we can lookup
-                        self.mcu_endstops[endstop_pin_name.lower()]={'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
+                        self.mcu_endstops[endstop_name.lower()]={'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
                         break
 
         # Handle any extra endstops
@@ -135,6 +135,8 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         endstop = self.mcu_endstops.get(name.lower())
         if endstop is not None:
             return endstop['virtual']
+        else:
+            return False
 
     cmd_MANUAL_STEPPER_help = "Command a manually configured stepper"
     def cmd_MANUAL_STEPPER(self, gcmd):
@@ -166,8 +168,8 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
     def dump_manual_stepper(self):
         msg = "Class: %s\n" % self.__class__.__name__
         msg += "Rail:\n"
-        msg += "- Num Steppers: %d\n" % len(self.rail.steppers)
-        msg += "- Num Endstops: %d\n" % len(self.rail.endstops)
+        msg += "- Num steppers: %d\n" % len(self.rail.steppers)
+        msg += "- Num active endstops: %d\n" % len(self.rail.endstops)
         msg += "Steppers:\n"
         for s in self.get_steppers():
             msg += "- Stepper: %s\n" % s.get_name()
@@ -209,7 +211,10 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
     # Perform homing move using specified endstop
     def do_mh_homing_move(self, movepos, speed, accel, triggered=True, check_trigger=True, endstop_name=None):
         with self._with_endstop(endstop_name):
-            super(ManualMhStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
+            if len(self.rail.endstops) > 0:
+                super(ManualMhStepper, self).do_homing_move(movepos, speed, accel, triggered, check_trigger)
+            else:
+                raise self.printer.command_error("No active endstops for this manual multi-home stepper")
 
 def load_config_prefix(config):
     return ManualMhStepper(config)
