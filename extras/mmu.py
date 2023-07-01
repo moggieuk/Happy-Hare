@@ -272,6 +272,7 @@ class Mmu:
         self.selector_touch_speed = config.getfloat('selector_touch_speed', 60, minval=1.)
 
         # Optional features
+        self.enable_selector_touch = config.getint('enable_selector_touch', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
@@ -444,7 +445,7 @@ class Mmu:
         # If user didn't configure a default endstop do it here. Mimimizes config differences
         if 'default' not in self.selector_stepper.get_endstop_names():
             self.selector_stepper.activate_endstop("mmu selector home")
-        self.selector_touch = 'mmu selector touch' in self.selector_stepper.get_endstop_names()
+        self.selector_touch = 'mmu selector touch' in self.selector_stepper.get_endstop_names() and self.enable_selector_touch
 
         # Gear h/w setup ------
         for manual_stepper in self.printer.lookup_objects('manual_extruder_stepper'):
@@ -494,11 +495,11 @@ class Mmu:
             if self.selector_tmc is None:
                 self.selector_tmc = self.printer.lookup_object('%s manual_mh_stepper selector_stepper' % chip, None)
                 if self.selector_tmc is not None:
-                    self._log_debug("Found %s on selector_stepper. Stallguard homing possible." % chip)
+                    self._log_debug("Found %s on selector_stepper. Stallguard 'touch' homing possible." % chip)
             if self.gear_tmc is None:
                 self.gear_tmc = self.printer.lookup_object('%s manual_extruder_stepper gear_stepper' % chip, None)
                 if self.gear_tmc is not None:
-                    self._log_debug("Found %s on gear_stepper. Current control enabled. Stallguard homing possible." % chip)
+                    self._log_debug("Found %s on gear_stepper. Current control enabled. Stallguard 'touch' homing possible." % chip)
             if self.extruder_tmc is None:
                 self.extruder_tmc = self.printer.lookup_object("%s manual_extruder_stepper %s" % (chip, self.extruder_name), None)
                 if self.extruder_tmc is not None:
@@ -1036,7 +1037,7 @@ class Mmu:
                 msg += "tip forming, " if self.sync_form_tip else ""
                 msg += ("print (at %d%% current)" % self.sync_gear_current) if self.sync_to_extruder else ""
             msg += "\nTip forming extruder current is %d%%" % self.extruder_form_tip_current
-            msg += "\nSelector homing is %s - blocked gate detection and recovery %s possible" % (("touch", "may be") if self.selector_touch else ("microswitch", "is not"))
+            msg += "\nSelector %s touch (stallguard) capability enabled - blocked gate detection and recovery %s possible" % (("has", "may be") if self.selector_touch else ("does not have", "is not"))
             msg += "\nClog detection is %s" % ("AUTOMATIC" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_AUTOMATIC else "ENABLED" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_STATIC else "DISABLED")
             msg += " (%.1fmm runout)" % self.encoder_sensor.get_clog_detection_length()
             msg += " and EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
@@ -1061,7 +1062,6 @@ class Mmu:
         self.servo_state = self.SERVO_UNKNOWN_STATE
 
     def _servo_down(self):
-#        self._log_debug("PAUL: _servo_down()")
         if self.servo_state == self.SERVO_DOWN_STATE: return
         if self.gate_selected == self.TOOL_BYPASS: return
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_down_angle)
@@ -1077,10 +1077,9 @@ class Mmu:
         self.servo_state = self.SERVO_DOWN_STATE
 
     def _servo_move(self): # Position servo for selector movement
-        self._log_debug("PAUL: _servo_move()")
         if self.servo_state == self.SERVO_MOVE_STATE: return 0.
         initial_encoder_position = self.encoder_sensor.get_distance()
-        self._log_debug("Setting servo to idle (filament hold) position at angle: %d" % self.servo_move_angle)
+        self._log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_move_angle)
         self.toolhead.wait_moves()
         self.servo.set_value(angle=self.servo_move_angle, duration=self.servo_duration)
         self.toolhead.dwell(min(self.servo_duration, 0.4))
@@ -1089,7 +1088,6 @@ class Mmu:
         self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self):
-#        self._log_debug("PAUL: _servo_up()")
         if self.tool_selected < 0: # PAUL - maybe temp
             self._log_debug("PAUL: ****** Assertion failure - servo_up() called but no tool loaded")
 
@@ -1110,8 +1108,6 @@ class Mmu:
         return delta
 
     def _servo_auto(self):
-#        self._log_debug("PAUL: _servo_auto()")
-        # PAUL TODO, need to handle case of synced gear/extruder motors...
         if not self.is_homed or self.tool_selected < 0 or self.gate_selected < 0:
             self._servo_move()
         else:
@@ -1291,16 +1287,17 @@ class Mmu:
         self.selector_stepper.do_set_position(0.)
         found_home = False
         try:
-            if self.selector_touch:
-                self._selector_stepper_move_wait(-max_movement, speed=self.selector_touch_speed, homing_move=1)
-                found_home = self.selector_endstop.query_endstop(self.toolhead.get_last_move_time()) # Physical endstop
-            else:
-                self._selector_stepper_move_wait(-max_movement, speed=self.selector_homing_speed, homing_move=1)
-                self.selector_stepper.do_set_position(0.)
-                self._selector_stepper_move_wait(5, False)                      # Ensure some bump space
-                self.selector_stepper.do_set_position(0.)
-                self._selector_stepper_move_wait(-10, speed=10, homing_move=1)  # Slower more accurate homing move
-                found_home = True
+# PAUL Always home to physical
+#            if self.selector_touch:
+#                self._selector_stepper_move_wait(-max_movement, speed=self.selector_touch_speed, homing_move=1)
+#                found_home = self.selector_endstop.query_endstop(self.toolhead.get_last_move_time()) # Physical endstop
+#            else:
+            self._selector_stepper_move_wait(-max_movement, speed=self.selector_homing_speed, homing_move=1)
+            self.selector_stepper.do_set_position(0.)
+            self._selector_stepper_move_wait(5, False)                      # Ensure some bump space
+            self.selector_stepper.do_set_position(0.)
+            self._selector_stepper_move_wait(-10, speed=10, homing_move=1)  # Slower more accurate homing move
+            found_home = True
         except Exception as e:
             pass # Home definitely not found
         mcu_position = self.selector_stepper.stepper.get_mcu_position()
@@ -1977,7 +1974,6 @@ class Mmu:
                 try:
                     self.gear_stepper.do_set_position(0.) # Force relative move
                     init_mcu_pos = self.gear_stepper.stepper.get_mcu_position()
-                    self._log_info("PAUL: self.gear_stepper.do_mh_homing_move(%s, %s, %s, %s, %s, %s)" % (dist, speed, accel, homing_move > 0, abs(homing_move) == 1, endstop))
                     self.gear_stepper.do_mh_homing_move(dist, speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop)
                     homed = True
                 except Exception as e:
@@ -2057,7 +2053,7 @@ class Mmu:
         else:
             return delta
 
-    def _selector_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, homing_move=0):
+    def _selector_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, homing_move=0, endstop="default"):
         speed = speed or self.selector_move_speed
         speed = min(self.selector_stepper.velocity, speed) # Cap max speed
         accel = accel or self.selector_stepper.accel
@@ -2066,13 +2062,13 @@ class Mmu:
             # Don't allow stallguard home moves in rapid succession (TMC limitation)
             if self.selector_touch:
                 current_time = self.estimated_print_time(self.reactor.monotonic())
-                time_since_last = self.last_selector_move_time + 2.0 - current_time
+                time_since_last = self.last_selector_move_time + 1.0 - current_time # 1 sec recovery time
                 if (time_since_last) > 0:
                     self._log_trace("Waiting %.2f seconds before next sensorless homing move" % time_since_last)
                     self.toolhead.dwell(time_since_last)
             elif abs(dist - self.selector_stepper.get_position()[0]) < 12: # Workaround for Timer Too Close error with short homing moves
                 self.toolhead.dwell(1)
-            self.selector_stepper.do_homing_move(dist, speed, accel, homing_move > 0, abs(homing_move) == 1)
+            self.selector_stepper.do_mh_homing_move(dist, speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop)
         else:
             self._log_stepper("SELECTOR: dist=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
             self.selector_stepper.do_move(dist, speed, accel)
@@ -2183,7 +2179,7 @@ class Mmu:
                 if home: self._set_above_min_temp() # This will ensure the extruder stepper is powered to resist collision
                 self._load_bowden(length - encoder_measured)
 
-            if home: #  PAUL why have this logic? Do we need it?
+            if home:
                 self._set_loaded_status(self.LOADED_STATUS_PARTIAL_END_OF_BOWDEN)
                 self._log_debug("Full length load, will home filament...")
                 if self._must_home_to_extruder():
@@ -2358,7 +2354,7 @@ class Mmu:
         else:
             raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
-# Old logic:
+# PAUL Old logic:
 #        if self.sync_load_extruder and not extruder_stepper_only:
 #            # Newer simplified forced full sync move
 #            self._sync_gear_to_extruder(True, servo=True)
@@ -2449,7 +2445,7 @@ class Mmu:
         finally:
             self._set_action(current_action)
 
-# Old logic:
+# PAUL Old logic:
 #        current_action = self._set_action(self.ACTION_LOADING_EXTRUDER)
 #        try:
 #            self.filament_direction = self.DIRECTION_LOAD
@@ -2554,12 +2550,13 @@ class Mmu:
                     # No movement means we can safely assume we are somewhere in the bowden
                     self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_BOWDEN)
 
-# PAUL not sure we want this
-#            if self.loaded_status == self.LOADED_STATUS_PARTIAL_END_OF_BOWDEN and self._has_toolhead_sensor():
-#                # This error case can occur when home to sensor failed and we may be stuck in extruder
-#                self._unload_extruder(park_pos=park_pos)
-#                self._unload_encoder(length) # Full slow unload
-#                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
+# PAUL vv do we need this?
+            if self.loaded_status == self.LOADED_STATUS_PARTIAL_END_OF_BOWDEN and self._has_toolhead_sensor():
+                # This error case can occur when home to sensor failed and we may be stuck in extruder
+                self._unload_extruder(park_pos=park_pos)
+                self._unload_encoder(length) # Full slow unload
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
+# PAUL ^^
 
             if self.loaded_status >= self.LOADED_STATUS_PARTIAL_HOMED_SENSOR:
                 # Exit extruder, fast unload of bowden, then slow unload encoder
@@ -2896,32 +2893,33 @@ class Mmu:
         selector_length = 10. + (num_channels-1)*21. + ((num_channels-1)//3)*5. + (self.bypass_offset > 0)
         self._log_debug("Moving up to %.1fmm to home a %d channel MMU" % (selector_length, num_channels))
         self.toolhead.wait_moves()
-        if self.selector_touch:
-            try:
-                self.selector_stepper.do_set_position(0.)
-                self._selector_stepper_move_wait(5, True)                      # Ensure some bump space
-                self.selector_stepper.do_set_position(0.)
-                self._selector_stepper_move_wait(-selector_length, speed=self.selector_touch_speed, homing_move=1)
-                self.is_homed = self.selector_endstop.query_endstop(self.toolhead.get_last_move_time()) # Physical endstop
-                if not self.is_homed:
-                    self._set_tool_selected(self.TOOL_UNKNOWN)
-                    raise MmuError("Homing selector failed because of blockage")
-            except Exception as e:
-                # Error, stallguard didn't trigger
-                raise MmuError("Homing selector failed because error. Klipper reports: %s" % str(e))
-        else:
-            try:
-                self.selector_stepper.do_set_position(0.)
-                self._selector_stepper_move_wait(-selector_length, speed=self.selector_homing_speed, homing_move=1)   # Fast homing move
-                self.selector_stepper.do_set_position(0.)
-                self._selector_stepper_move_wait(5, False)                      # Ensure some bump space
-                self.selector_stepper.do_set_position(0.)
-                self._selector_stepper_move_wait(-10, speed=10, homing_move=1)  # Slower more accurate homing move
-                self.is_homed = True
-            except Exception as e:
-                # Homing failed
-                self._set_tool_selected(self.TOOL_UNKNOWN)
-                raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
+# PAUL always home to physical. Keep for testing?
+#        if self.selector_touch:
+#            try:
+#                self.selector_stepper.do_set_position(0.)
+#                self._selector_stepper_move_wait(5, True)                      # Ensure some bump space
+#                self.selector_stepper.do_set_position(0.)
+#                self._selector_stepper_move_wait(-selector_length, speed=self.selector_touch_speed, homing_move=1)
+#                self.is_homed = self.selector_endstop.query_endstop(self.toolhead.get_last_move_time()) # Physical endstop
+#                if not self.is_homed:
+#                    self._set_tool_selected(self.TOOL_UNKNOWN)
+#                    raise MmuError("Homing selector failed because of blockage")
+#            except Exception as e:
+#                # Error, stallguard didn't trigger
+#                raise MmuError("Homing selector failed because error. Klipper reports: %s" % str(e))
+#        else:
+        try:
+            self.selector_stepper.do_set_position(0.)
+            self._selector_stepper_move_wait(-selector_length, speed=self.selector_homing_speed, homing_move=1)   # Fast homing move
+            self.selector_stepper.do_set_position(0.)
+            self._selector_stepper_move_wait(5, False)                      # Ensure some bump space
+            self.selector_stepper.do_set_position(0.)
+            self._selector_stepper_move_wait(-10, speed=10, homing_move=1)  # Slower more accurate homing move
+            self.is_homed = True
+        except Exception as e:
+            # Homing failed
+            self._set_tool_selected(self.TOOL_UNKNOWN)
+            raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
         self.selector_stepper.do_set_position(0.)
 
     def _move_selector_touch(self, target):
@@ -2969,7 +2967,7 @@ class Mmu:
         init_position = self.selector_stepper.get_position()[0]
         init_mcu_pos = self.selector_stepper.stepper.get_mcu_position()
         target_move = target - init_position
-        self._selector_stepper_move_wait(target, speed=self.selector_touch_speed, homing_move=2) # PAUL why 2 again?
+        self._selector_stepper_move_wait(target, speed=self.selector_touch_speed, homing_move=2, endstop="mmu selector touch")
         mcu_position = self.selector_stepper.stepper.get_mcu_position()
         travel = (mcu_position - init_mcu_pos) * selector_steps
         delta = abs(target_move - travel)
@@ -3156,11 +3154,10 @@ class Mmu:
                             break
                     if not tool_found:
                         self._set_tool_selected(self.TOOL_UNKNOWN, silent=True)
-                        #self._servo_move() # PAUL - added because not tool selected now in finally
         except MmuError as ee:
             self._pause(str(ee))
         finally:
-            self._servo_auto() # PAUL added
+            self._servo_auto()
 
     cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap"
     def cmd_MMU_CHANGE_TOOL(self, gcmd):
@@ -3324,7 +3321,7 @@ class Mmu:
             self._log_info("Warning: Making assumption that bypass is unloaded")
             self.filament_direction = self.DIRECTION_LOAD
             self._set_loaded_status(self.LOADED_STATUS_UNLOADED, silent=True)
-            self._servo_auto() # PAUL added. Should we be changing servo pos here?
+            self._servo_auto()
             return
 
         if loaded == 1:
@@ -3339,8 +3336,7 @@ class Mmu:
         # Filament position not specified so auto recover
         self._log_info("Recovering filament position/state...")
         self._recover_loaded_state()
-        self._servo_auto() # PAUL added
-# PAUL ^^^ check this with klipperscreen and examine ending servo position.  We nned to change servo pos?
+        self._servo_auto()
 
 
 ### GCODE COMMANDS INTENDED FOR TESTING #####################################
@@ -3484,6 +3480,8 @@ class Mmu:
 
         endstop = gcmd.get('ENDSTOP', "default")
         length = gcmd.get_float('LENGTH', 100.)
+        speed = gcmd.get_float('SPEED', None)
+        accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
         if motor != "gear" and motor != "extruder" and motor != "synced":
             raise gcmd.error("Valid motor names are 'gear', 'extruder' or 'synced' (gear+extruder)")
@@ -3498,14 +3496,14 @@ class Mmu:
         if motor == "gear" or motor == "synced":
             self._servo_down()
             if stepper.is_endstop_virtual(endstop):
-                self.toolhead.dwell(2) # TMC needs time to settle
+                self.toolhead.dwell(1) # TMC needs time to settle after gear buzz for servo
         else:
             self._servo_up()
 
         self.toolhead.wait_moves()
         self._log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, length))
         homed, actual, delta = self._trace_filament_move("Test homing move",
-                length, motor=motor, homing_move=stop_on_endstop, endstop=endstop)
+                length, motor=motor, homing_move=stop_on_endstop, speed=speed, accel=accel, endstop=endstop)
         measured_movement = actual - delta
         self._log_always("%s after %.1fmm (measured %.1fmm)" % (("Homed" if homed else "Did not home"), actual, measured_movement))
 
@@ -3555,6 +3553,8 @@ class Mmu:
         # Software behavior options
         self.z_hop_height = gcmd.get_float('Z_HOP_HEIGHT', self.z_hop_height, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
+        self.enable_selector_touch = gcmd.get_int('ENABLE_SELECTOR_TOUCH', self.enable_selector_touch, minval=0, maxval=1)
+        self.selector_touch = 'mmu selector touch' in self.selector_stepper.get_endstop_names() and self.enable_selector_touch
         self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
         self.encoder_sensor.set_mode(self.enable_clog_detection)
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
@@ -3613,6 +3613,7 @@ class Mmu:
         msg += "\n\nOther behavior:"
         msg += "\nz_hop_height = %.1f" % self.z_hop_height
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
+        msg += "\nenable_selector_touch = %d" % self.enable_selector_touch
         msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nlog_level = %d" % self.log_level
@@ -3957,7 +3958,7 @@ class Mmu:
         current_action = self._set_action(self.ACTION_CHECKING)
         try:
             tool_selected = self.tool_selected
-            self._set_tool_selected(self.TOOL_UNKNOWN, True) # PAUL added to stop servo waggle
+            self._set_tool_selected(self.TOOL_UNKNOWN, True)
             gates_tools = []
             if tools != "!":
                 # Tools used in print (may be empty list)
@@ -4048,7 +4049,7 @@ class Mmu:
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         current_action = self._set_action(self.ACTION_CHECKING)
         try:
-            self.calibrating = True # To suppress visual filament position
+            self.calibrating = True # To suppress visual filament position display
             # If gate not specified assume current gate
             if gate == -1:
                 gate = self.gate_selected
@@ -4079,3 +4080,4 @@ class Mmu:
 
 def load_config(config):
     return Mmu(config)
+
