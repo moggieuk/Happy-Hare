@@ -143,7 +143,7 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
         endstop_name = gcmd.get('ENDSTOP', "default") # Added
         enable = gcmd.get_int('ENABLE', None)
         if enable is not None:
-            super(ManualExtruderStepper, self).do_enable(enable)
+            super(ManualMhStepper, self).do_enable(enable)
         setpos = gcmd.get_float('SET_POSITION', None)
         if setpos is not None:
             super(ManualMhStepper, self).do_set_position(setpos)
