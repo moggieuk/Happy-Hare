@@ -271,19 +271,19 @@ class MmuEncoder:
         self._last_count = count
 
     def set_resolution(self, resolution):
-        self._encoder_steps = resolution
+        self.resolution = resolution
 
     def get_resolution(self):
-        return self._encoder_steps
+        return self.resolution
 
     def get_counts(self):
         return self._counts
 
     def get_distance(self):
-        return (self._counts / 2.) * self._encoder_steps
+        return self._counts * self.resolution
 
     def set_distance(self, new_distance):
-        self._counts = int((new_distance / self._encoder_steps) * 2.)
+        self._counts = int(new_distance / self.resolution)
 
     def reset_counts(self):
         self._counts = 0.

@@ -486,22 +486,27 @@ remove_template_files() {
             /\[include mmu_parameters.cfg\]/ d; \
             /\[include mmu_hardware.cfg\]/ d; \
             /\[include mmu_menu.cfg\]/ d; \
+            /\[include ercf_compatibility.cfg\]/ d; \
             /\[include ercf_software.cfg\]/ d; \
             /\[include ercf_parameters.cfg\]/ d; \
             /\[include ercf_hardware.cfg\]/ d; \
             /\[include ercf_menu.cfg\]/ d; \
-            /\[include ercf_compatibility.cfg\]/ d; \
 	        " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
     fi
 }
 
 install_update_manager() {
-    # PAUL TODO .. handle update from ercf_happy-hare to new
     echo -e "${INFO}Adding update manager to moonraker.conf"
     file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
     if [ -f "${file}" ]; then
-        update_section=$(grep -c '\[update_manager happy-hare\]' \
-        ${file} || true)
+        v1_section=$(grep -c '\[update_manager ercf-happy_hare\]' ${file} || true)
+        if [ "${v1_section}" -ne 0 ]; then
+            echo -e "${INFO}Removing old Happy Hare v1 entry from moonraker.conf"
+            cat "${file}" | sed -e " \
+                /\[update_manager ercf-happy_hare\]/,+6 d; \
+                    " > "${file}.new" && mv "${file}.new" "${file}"
+	fi
+        update_section=$(grep -c '\[update_manager happy-hare\]' ${file} || true)
         if [ "${update_section}" -eq 0 ]; then
             echo "" >> "${file}"
             while read -r line; do
@@ -521,8 +526,7 @@ uninstall_update_manager() {
     echo -e "${INFO}Removing update manager from moonraker.conf"
     file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
     if [ -f "${file}" ]; then
-        update_section=$(grep -c '\[update_manager happy-hare\]' \
-        ${file} || true)
+        update_section=$(grep -c '\[update_manager happy-hare\]' ${file} || true)
         if [ "${update_section}" -eq 0 ]; then
             echo -e "${INFO}[update_manager happy-hare] not found in moonraker.conf - skipping removal"
         else
@@ -857,7 +861,7 @@ INSTALL=0
 UNINSTALL=0
 INSTALL_TEMPLATES=0
 INSTALL_KLIPPER_SCREEN_ONLY=0
-while getopts "k:c:iud" arg; do
+while getopts "k:c:id" arg; do
     case $arg in
         k) KLIPPER_HOME=${OPTARG};;
         c) KLIPPER_CONFIG_HOME=${OPTARG};;
@@ -877,6 +881,7 @@ fi
 #KLIPPER_CONFIG_HOME=/tmp
 link_mmu_plugins
 exit 0
+# PAUL ^^^ temp
 
 verify_not_root
 verify_home_dirs

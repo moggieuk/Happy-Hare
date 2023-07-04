@@ -186,13 +186,14 @@ class Mmu:
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
         self.mmu_version_string = config.get('mmu_version', "1.1")
         self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
+        bmg_circ = 23.
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
             if self.mmu_version >= 2.0:
                 self.cad_gate0_pos = 4.0
                 self.cad_gate_width = 23.0
                 self.cad_bypass_offset = 5.7
                 self.cad_last_gate_offset = 19.2
-                self.encoder_min_resolution = 22.5 / (2 * 11) # Binky 11 tooth disc with BMG gear
+                self.encoder_min_resolution = bmg_circ / (2 * 11) # Binky 11 tooth disc with BMG gear
             else: # V1.1
                 self.cad_gate0_pos = 4.2
                 if "t" in self.mmu_version_string:
@@ -207,7 +208,10 @@ class Mmu:
                 self.cad_block_width = 5.
                 self.cad_bypass_block_width = 7. # PAUL TODO should be 6. (only my custom bypass block setup is 7)
                 self.cad_bypass_block_delta = 9.
-                self.encoder_min_resolution = 22.5 / (2 * 17) # Original 17 tooth BMG gear
+                if "b" in self.mmu_version_string:
+                    self.encoder_min_resolution = bmg_circ / (2 * 11) # Binky 11 tooth disc with BMG gear
+                else:
+                    self.encoder_min_resolution = bmg_circ / (2 * 17) # Original 17 tooth BMG gear
             self.cal_max_gates = 12
             self.cal_tolerance = 5.0
         else:
@@ -378,7 +382,6 @@ class Mmu:
         # Servo and motor control
         self.gcode.register_command('MMU_SERVO', self.cmd_MMU_SERVO, desc = self.cmd_MMU_SERVO_help)
         self.gcode.register_command('MMU_MOTORS_OFF', self.cmd_MMU_MOTORS_OFF, desc = self.cmd_MMU_MOTORS_OFF_help)
-        self.gcode.register_command('MMU_BUZZ_GEAR_MOTOR', self.cmd_MMU_BUZZ_GEAR_MOTOR, desc=self.cmd_MMU_BUZZ_GEAR_MOTOR_help)
         self.gcode.register_command('MMU_SYNC_GEAR_MOTOR', self.cmd_MMU_SYNC_GEAR_MOTOR, desc=self.cmd_MMU_SYNC_GEAR_MOTOR_help)
 
         # Core MMU functionality
@@ -397,6 +400,7 @@ class Mmu:
         self.gcode.register_command('MMU_RECOVER', self.cmd_MMU_RECOVER, desc = self.cmd_MMU_RECOVER_help)
 
         # User Setup and Testing
+        self.gcode.register_command('MMU_TEST_BUZZ_MOTOR', self.cmd_MMU_TEST_BUZZ_MOTOR, desc=self.cmd_MMU_TEST_BUZZ_MOTOR_help)
         self.gcode.register_command('MMU_TEST_GRIP', self.cmd_MMU_TEST_GRIP, desc = self.cmd_MMU_TEST_GRIP_help)
         self.gcode.register_command('MMU_TEST_LOAD', self.cmd_MMU_TEST_LOAD, desc=self.cmd_MMU_TEST_LOAD_help)
         self.gcode.register_command('MMU_TEST_MOVE', self.cmd_MMU_TEST_MOVE, desc = self.cmd_MMU_TEST_MOVE_help)
@@ -553,10 +557,9 @@ class Mmu:
 
         self.variables = self.printer.lookup_object('save_variables').allVariables
 
-        # Sanity check to see that mmu_vars.cfg is included
-# PAUL TODO we can now start with completely empty mmu_vars.cfg
-#        if self.variables == {}:
-#            raise self.config.error("Calibration settings not set. mmu_vars.cfg probably not found. Check [save_variables] section in mmu_software.cfg")
+        # Sanity check to see that mmu_vars.cfg is included (even if empty). This will verify path
+        if self.variables == {}:
+            raise self.config.error("Calibration settings not set. mmu_vars.cfg probably not found. Check [save_variables] section in mmu_software.cfg")
 
         # Remember user setting of idle_timeout so it can be restored (if not overridden)
         if self.timeout_unlock < 0:
@@ -1123,19 +1126,20 @@ class Mmu:
         self.servo.set_value(angle=angle, duration=self.servo_duration)
         self.servo_state = self.SERVO_UNKNOWN_STATE
 
-    def _servo_down(self):
+    def _servo_down(self, buzz_gear=True):
         if self.servo_state == self.SERVO_DOWN_STATE: return
         if self.gate_selected == self.TOOL_BYPASS: return
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_down_angle)
         self.toolhead.wait_moves()
         self.servo.set_value(angle=self.servo_down_angle, duration=self.servo_duration)
-        oscillations = 2
-        for i in range(oscillations):
-            self.toolhead.dwell(0.05)
-            self._gear_stepper_move_wait(0.5, speed=25, accel=self.gear_buzz_accel, wait=False, sync=False)
-            self.toolhead.dwell(0.05)
-            self._gear_stepper_move_wait(-0.5, speed=25, accel=self.gear_buzz_accel, wait=False, sync=(i == oscillations - 1))
-        self.toolhead.dwell(max(0., self.servo_duration - (0.1 * oscillations)))
+        if buzz_gear:
+            oscillations = 2
+            for i in range(oscillations):
+                self.toolhead.dwell(0.05)
+                self._gear_stepper_move_wait(0.5, speed=25, accel=self.gear_buzz_accel, wait=False, sync=False)
+                self.toolhead.dwell(0.05)
+                self._gear_stepper_move_wait(-0.5, speed=25, accel=self.gear_buzz_accel, wait=False, sync=(i == oscillations - 1))
+            self.toolhead.dwell(max(0., self.servo_duration - (0.1 * oscillations)))
         self.servo_state = self.SERVO_DOWN_STATE
 
     def _servo_move(self): # Position servo for selector movement
@@ -1145,7 +1149,6 @@ class Mmu:
         self.toolhead.wait_moves()
         self.servo.set_value(angle=self.servo_move_angle, duration=self.servo_duration)
         self.toolhead.dwell(min(self.servo_duration, 0.4))
-        self.toolhead.dwell(self.servo_duration)
         self.toolhead.wait_moves()
         self.servo_state = self.SERVO_MOVE_STATE
 
@@ -1215,12 +1218,41 @@ class Mmu:
         self._motors_off()
         self._servo_auto()
 
-    cmd_MMU_BUZZ_GEAR_MOTOR_help = "Buzz the MMU gear motor"
-    def cmd_MMU_BUZZ_GEAR_MOTOR(self, gcmd):
+    cmd_MMU_TEST_BUZZ_MOTOR_help = "Simple buzz the selected motor (default gear) for setup testing"
+    def cmd_MMU_TEST_BUZZ_MOTOR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
-        found = self._buzz_gear_motor()
-        self._log_info("Filament %s by gear motor buzz" % ("detected" if found else "not detected"))
+        motor = gcmd.get('MOTOR', "gear")
+        if motor == "gear":
+            found = self._buzz_gear_motor()
+            self._log_info("Filament %s by gear motor buzz" % ("detected" if found else "not detected"))
+        elif motor == "selector":
+            pos = self.selector_stepper.stepper.get_commanded_position()
+            self._selector_stepper_move_wait(pos + 5, wait=False)
+            self._selector_stepper_move_wait(pos - 5, wait=False)
+            self._selector_stepper_move_wait(pos + 5, wait=False)
+            self._selector_stepper_move_wait(pos - 5, wait=False)
+        elif motor == "servo":
+            self.toolhead.wait_moves()
+            old_state = self.servo_state
+            small=min(self.servo_down_angle, self.servo_up_angle)
+            large=max(self.servo_down_angle, self.servo_up_angle)
+            mid=(self.servo_down_angle + self.servo_up_angle)/2
+            self.servo.set_value(angle=mid, duration=self.servo_duration)
+            self.toolhead.dwell(min(self.servo_duration, 0.5))
+            self.servo.set_value(angle=abs(mid+small)/2, duration=self.servo_duration)
+            self.toolhead.dwell(min(self.servo_duration, 0.5))
+            self.servo.set_value(angle=abs(mid+large)/2, duration=self.servo_duration)
+            self.toolhead.dwell(min(self.servo_duration, 0.5))
+            self.toolhead.wait_moves()
+            if old_state == self.SERVO_DOWN_STATE:
+                self._servo_down(buzz_gear=False)
+            elif old_state == self.SERVO_MOVE_STATE:
+                self._servo_move()
+            else:
+                self._servo_up()
+        else:
+            raise gcmd.error("Motor '%s' not known" % motor)
 
     cmd_MMU_SYNC_GEAR_MOTOR_help = "Sync the MMU gear motor to the extruder motor"
     def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
@@ -1517,12 +1549,12 @@ class Mmu:
     def cmd_MMU_CALIBRATE_GEAR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return
-        dist = gcmd.get_float('DIST', 100., above=50.)
+        length = gcmd.get_float('LENGTH', 100., above=50.)
         measured = gcmd.get_float('MEASURED', above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
 
         prev_rotation_distance = self.gear_stepper.stepper.get_rotation_distance()[0]
-        new_rotation_distance = prev_rotation_distance * measured / dist
+        new_rotation_distance = prev_rotation_distance * measured / length
         self.gear_stepper.stepper.set_rotation_distance(new_rotation_distance)
 
         self._log_always("Gear stepper `rotation_distance` calculated to be %.6f" % new_rotation_distance)
@@ -1586,7 +1618,7 @@ class Mmu:
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR): return
-        dist = gcmd.get_float('DIST', 300., above=0.)
+        length = gcmd.get_float('LENGTH', 400., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
         speed = gcmd.get_float('SPEED', self.gear_from_buffer_speed, above=0.)
         min_speed = gcmd.get_float('MINSPEED', speed, above=0.)
@@ -1597,52 +1629,52 @@ class Mmu:
         speed_incr = (max_speed - min_speed) / repeats
         try:
             self.calibrating = True
-            plus_values, min_values = [], []
+            pos_values, neg_values = [], []
             for x in range(repeats):
                 if (speed_incr > 0.):
                     self._log_always("Test run #%d, Speed=%.1f mm/s" % (x, test_speed))
                 # Move forward
                 self.encoder_sensor.reset_counts()    # Encoder 0000
-                self._gear_stepper_move_wait(dist, wait=True, speed=test_speed, accel=accel)
+                self._gear_stepper_move_wait(length, wait=True, speed=test_speed, accel=accel)
                 counts = self.encoder_sensor.get_counts()
-                plus_values.append(counts)
+                pos_values.append(counts)
                 self._log_always("+ counts =  %d" % counts)
                 # Move backward
                 self.encoder_sensor.reset_counts()    # Encoder 0000
-                self._gear_stepper_move_wait(-dist, wait=True, speed=test_speed, accel=accel)
+                self._gear_stepper_move_wait(-length, wait=True, speed=test_speed, accel=accel)
                 counts = self.encoder_sensor.get_counts()
-                min_values.append(counts)
+                neg_values.append(counts)
                 self._log_always("- counts =  %d" % counts)
                 if counts == 0: break
                 test_speed += speed_incr
 
             self._log_always("Load direction: mean=%(mean).2f stdev=%(stdev).2f"
                               " min=%(min)d max=%(max)d range=%(range)d"
-                              % self._sample_stats(plus_values))
+                              % self._sample_stats(pos_values))
             self._log_always("Unload direction: mean=%(mean).2f stdev=%(stdev).2f"
                               " min=%(min)d max=%(max)d range=%(range)d"
-                              % self._sample_stats(min_values))
+                              % self._sample_stats(neg_values))
 
-            mean_plus = self._sample_stats(plus_values)['mean']
-            mean_minus = self._sample_stats(min_values)['mean']
-            half_mean = (float(mean_plus) + float(mean_minus)) / 4
+            mean_pos = self._sample_stats(pos_values)['mean']
+            mean_neg = self._sample_stats(neg_values)['mean']
+            mean = (float(mean_pos) + float(mean_neg)) / 2
 
-            if half_mean == 0:
+            if mean == 0:
                 self._log_always("No counts measured. Ensure a tool was selected with servo down " +
                                   "before running calibration and that your encoder " +
                                   "is working properly")
                 return
 
-            resolution = dist / half_mean
-            old_result = half_mean * self.encoder_sensor.get_resolution()
-            new_result = half_mean * resolution
+            resolution = length / mean
+            old_result = mean * self.encoder_sensor.get_resolution()
+            new_result = mean * resolution
 
-            # Sanity check to ensure all teeth are reflecting
-            if resolution < (self.encoder_min_resolution * 2 * 0.971) or resolution > (self.encoder_min_resolution * 2 * 1.029):
+            # Sanity check to ensure all teeth are reflecting / being counted. 20% tolerance
+            if (abs(resolution - self.encoder_min_resolution) / self.encoder_min_resolution) > 0.2:
                 self._log_always("Warning: Encoder is not detecting the expected number of counts. It is possible that reflections from some teeth are unreliable")
 
             msg = "Before calibration measured length = %.2f" % old_result
-            msg += "\nResulting resolution for the encoder = %.6f" % resolution
+            msg += "\nResulting resolution of the encoder = %.6f" % resolution
             msg += "\nAfter calibration measured length = %.2f" % new_result
             self._log_always(msg)
             if save:
@@ -1653,7 +1685,7 @@ class Mmu:
         except MmuError as ee:
             self._pause(str(ee))
         finally:
-            if half_mean == 0:
+            if mean == 0:
                 self._set_loaded_status(self.LOADED_STATUS_UNKNOWN)
             else:
                 self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_BOWDEN)
@@ -1968,10 +2000,9 @@ class Mmu:
     def cmd_MMU_HELP(self, gcmd):
         testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
         macros = gcmd.get_int('MACROS', 0, minval=0, maxval=1)
-        msg = "Happy Hare MMU commands:\n"
-        msg += "(use MMU_HELP MACROS=1 TESTING=1 for full command set)\n"
-        tmsg = "\nHappy Hare MMU calibration and testing commands:\n"
-        mmsg = "\nHappy Hare MMU macros and callbacks:\n"
+        msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)\n"
+        tmsg = "\nCalibration and testing commands:\n"
+        mmsg = "\nMacros and callbacks (defined in mmu_software.cfg):\n"
         cmds = list(self.gcode.ready_gcode_handlers.keys())
         cmds.sort()
         for c in cmds:
@@ -3134,7 +3165,7 @@ class Mmu:
         except MmuError as ee:
             self._pause(str(ee))
 
-    cmd_MMU_SELECT_help = "Select the specified logical tool (uses TTG map) or physical gate"
+    cmd_MMU_SELECT_help = "Select the specified logical tool (following TTG map) or physical gate"
     def cmd_MMU_SELECT(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_is_paused(): return

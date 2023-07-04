@@ -97,7 +97,7 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         if self.motion_queue is not None:
             raise self.printer.command_error("Cannot manual move: stepper synced to motion queue")
         extruder_name = gcmd.get('EXTRUDER', "extruder") # Added
-        endstop_name = gcmd.get('ENDSTOP', "default") # Added
+        endstop_name = gcmd.get('ENDSTOP', "default") # Added by ManualMhStepper
         enable = gcmd.get_int('ENABLE', None)
         if enable is not None:
             super(ManualExtruderStepper, self).do_enable(enable)
@@ -145,10 +145,10 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
 
     @contextlib.contextmanager
     def _with_linked_extruder(self, extruder_name):
-        extruder = self.printer.lookup_object(extruder_name, None)
-        if not extruder:
-            raise self.printer.command_error("Extruder named '%s' not found" % extruder_name)
-        extruder_stepper = extruder.extruder_stepper.steppers[0] # First stepper is real one
+        manual_extruder_stepper = self.printer.lookup_object("manual_extruder_stepper %s" % extruder_name, None)
+        if not manual_extruder_stepper:
+            raise self.printer.command_error("ManualExtruderStepper named '%s' not found" % extruder_name)
+        extruder_stepper = manual_extruder_stepper.stepper
 
         # Switch manual stepper to manual mode
         manual_stepper_mq = self.motion_queue

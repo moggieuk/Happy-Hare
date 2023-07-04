@@ -1,5 +1,5 @@
 # Happy Hare MMU Software
-# Support for a manual stepper that can be configured with multiple endstops
+# Support for a manual stepper that can be configured with multiple endstops (multi-homed)
 #
 # Copyright (C) 2023  moggieuk#6538 (discord) moggieuk@hotmail.com
 #                     Cambridge Yang <camyang@csail.mit.edu>
