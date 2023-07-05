@@ -877,8 +877,6 @@ if [ "${INSTALL}" -eq 1 -a "${UNINSTALL}" -eq 1 ]; then
 fi
 
 # PAUL TEMP precaution
-#KLIPPER_HOME=/tmp
-#KLIPPER_CONFIG_HOME=/tmp
 link_mmu_plugins
 exit 0
 # PAUL ^^^ temp
