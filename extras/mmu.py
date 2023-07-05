@@ -484,6 +484,21 @@ class Mmu:
         if self.mmu_extruder_stepper is None:
             raise self.config.error("Missing [manual_extruder_stepper extruder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
+        # To allow for homing moves on extruder synced with gear and gear synced with extruder we need
+        # each to share each others endstops
+        for en in self.mmu_extruder_stepper.get_endstop_names():
+            self._log_info("PAUL: Ext: en=%s" % en)
+            mcu_es = self.mmu_extruder_stepper.get_endstop(en)
+            for s in self.gear_stepper.steppers:
+                self._log_info("PAUL: Adding stepper(%s)" % s)
+                mcu_es.add_stepper(s)
+        for en in self.gear_stepper.get_endstop_names():
+            self._log_info("PAUL: Gear: en=%s" % en)
+            mcu_es = self.gear_stepper.get_endstop(en)
+            for s in self.mmu_extruder_stepper.steppers:
+                self._log_info("PAUL: -- Adding stepper(%s)" % s)
+                mcu_es.add_stepper(s)
+
         # Optional toolhead sensor (assumed to be after extruder gears)
         self.toolhead_sensor = self.printer.lookup_object("filament_switch_sensor toolhead_sensor", None)
         if self.toolhead_sensor:
