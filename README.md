@@ -1,7 +1,7 @@
 # "Happy Hare" - Universal MMU driver for Klipper
 
 
-# IF YOU HAVE FOUND THIS... PLEASE DON"T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS.  Use ERCF-Software-V3 for ERCF. I will announve when this is ready as an alternative!!
+# IF YOU HAVE FOUND THIS... PLEASE DON"T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS.  Use ERCF-Software-V3 for ERCF. I will announce when this is ready as an alternative!!
 
 
 
