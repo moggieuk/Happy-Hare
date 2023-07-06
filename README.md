@@ -3,33 +3,33 @@
 
 # IF YOU HAVE FOUND THIS... PLEASE DON'T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS AND WILL BREAK YOUR SYSTEM. Use ERCF-Software-V3 for ERCF. I will announce when this is ready as an alternative!!
 
-Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem.  Now in its second incarnation it is architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform.  It is best partnered with [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
+Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem.  Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform.  It is best partnered with [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
-Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking.  I'm not doing this for any financial reward but it you feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with ERCF more enjoyable.
+Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking.  I'm not doing this for any financial reward but it you feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
 
 Thank you!
 
 ## Major features:
 <ul>
-  <li>Support any type of MMU (well, ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon)</li>
-  <li>Has companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
+  <li>Support any brand of MMU (and user defined monsters) Caveat only ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon but I need to get ERCF rolling again first</li>
+  <li>Companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
   <li>Supports synchronized movement of extruder and gear motors during any part of the loading or unloading operations or during homing so it can overcome friction and even work with FLEX materials!</li>
   <li>Can leverage the gear motor synchronized to extruder to overcome friction whilst printing</li>
-  <li>Allows for sophisticated homing options including extruder!</li>
-  <li>Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any gate. It has the added advantage for being able to map gates to tools in case of slicing to spool loading mismatch.</li>
-  <li>Implements “EndlessSpool” feature. This allows empty gates to be identified and tool changes subsequent to runout to use the correct filament spool.</li>
+  <li>Allows for sophisticated multi-homing options including extruder!</li>
+  <li>Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any gate</li>
+  <li>Implements “EndlessSpool” allowing one spool to automaticall be mapped and take over from a spool that runs out</li>
   <li>Sophisticated logging options so you can keep the console log to a minimum and send debugging information to `mmu.log` located in the same directory as Klipper logs</li>
-  <li>Ability to define material type and color in each gate and leverage for customized setting tweaks (like Pressure Advance)
+  <li>Ability to define material type and color in each gate and leverage for visualization and customized setting tweaks (like Pressure Advance)</li>
   <li>Automated calibration for easy setup</li>
-  <li>Supports MMU bypass functionality</li>
-  <li>Ability to manipulate gear current (TMC) during various operations for reliable operation.</li>
-  <li>Convenience features to checks the availability of each gate and ready filaments</li>
+  <li>Supports MMU bypass "gate" functionality</li>
+  <li>Ability to manipulate gear current (TMC) during various operations for reliable operation</li>
+  <li>Convenience features to checks the availability of each gate and prepare filaments</li>
   <li>Moonraker update-manager support</li>
-  <li>Complete persitance of state and statistics across restarts!</li>
+  <li>Complete persitance of state and statistics across restarts. That's right you don't even need to home!</li>
   <li>Reliable servo operation - no more "kickback" problems</li>
   <li>Cool visualizations of selector and filament position</li>
-  <li>Highly configurable speed control that intelligently takes into account the realities of friction</li>
-  <li>Integrated encoder driver that implements filament measurement, runout and automatic clog detection!</li>
+  <li>Highly configurable speed control that intelligently takes into account the realities of friction and tugs on the spool</li>
+  <li>Optional integrated encoder driver that implements filament measurement, runout and automatic clog detection and flow rate verification!</li>
   <li>Vast customization options most of which can be changed and tested at runtime</li>
   <li>Integrated testing and soak-testing procedures</li>
   <li>Inegrated help</li>
@@ -67,7 +67,7 @@ If you using ERCF v1.1 the original encoder can be problematic. I new back-ward 
   
 ## Revision History
 <ul>
-<li> v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
+<li>v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
 </ul>
 
 
@@ -127,7 +127,7 @@ Happy Hare exposes the following 'printer' variables:
     printer.mmu.endless_spool_groups : {list} group membership for each tool
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
 
-Exposed on mmu_encoder (if fitted):
+Optionally exposed on mmu_encoder (if fitted):
 
     printer['mmu_encoder mmu_encoder'].encoder_pos : {float} Encoder position measurement in mm
     printer['mmu_encoder mmu_encoder'].detection_length : {float} The detection length for clog detection
@@ -138,8 +138,54 @@ Exposed on mmu_encoder (if fitted):
     printer['mmu_encoder mmu_encoder'].enabled : {bool} Whether encoder is currently enabled for clog detection
     printer['mmu_encoder mmu_encoder'].flow_rate : {int} % flowrate (extruder movement compared to encoder movement)
 
+## MMU Setup and Calibration:
+This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
+
+### Step 1. Validate your mmu_hardware.cfg configuration
+This can be daunting but the interactive installer will make the process easy for common mmu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc).  A detailed discusion of how to debug and confirm all the hardware can be [found here](doc/hardware_config.md).
+
+Assuming you are familiar with all that there is one new step that must be perform by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`
+
+# HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
+# With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
+# options.  This definition replaces the stepper definition part of you existing [extruder] definition.
+#
+# IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here
+[tmc2209 manual_extruder_stepper extruder]
+uart_pin: E_TMCUART
+interpolate: true
+run_current: 0.55				# LDO 36STH20-1004AHG.  Match to macro below
+hold_current: 0.4
+sense_resistor: 0.110
+stealthchop_threshold: 0			# Spreadcycle (better for extruder)
+#
+# Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing to nozzle
+diag_pin: E_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
+driver_SGTHRS: 60			# 255 is most sensitive value, 0 is least sensitive
+
+# Define just your printer's extruder stepper here. Valid config options are:
+# step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
+# pressure_advance, pressure_advance_smooth_time
+# IMPORTANT: REMOVE these settings from your existing [extruder] configuration BUT LEAVE ALL OTHER parameters!
+#
+[manual_extruder_stepper extruder]
+step_pin: E_STEP
+dir_pin: !E_DIR
+enable_pin: !E_ENABLE
+microsteps: 64
+rotation_distance: 22.4522		# Calibrated by hand
+gear_ratio: 50:10
+full_steps_per_rotation: 200
+pressure_advance: 0.035			# Fairly arbitary default
+pressure_advance_smooth_time: 0.040	# Recommended default
+#
+# Uncomment two lines below to enable filament "touch" homing option to nozzle
+extra_endstop_pins: tmc2209_extruder:virtual_endstop
+extra_endstop_names: mmu_ext_touch
+
 ## Selected features in detail:
 TODO
+
 ### Config Loading and Unload sequences explained
 Note that if a toolhead sensor is configured it will become the default filament homing method and home to extruder an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `ercf_calib_ref`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.
 
