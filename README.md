@@ -243,8 +243,31 @@ Notes: (i) ERCF v1.1 users need to pay particular attention to letter suffixes a
 ### Step 5. Calibrate bowden length:
 Probably the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
 
-    > MMU_CALIBRATE_ENCODER BOWDEN_LENGTH=650
-TODO
+    > MMU_CALIBRATE_ENCODER BOWDEN_LENGTH=640
+    > Homing MMU...
+    > Tool T0 enabled
+    > Calibrating bowden length from reference Gate #0
+    > Tool T0 enabled
+    > Heating extruder to minimum temp (200.0)
+    > Finding extruder gear position (try #1 of 3)...
+    > Run Current: 0.21A Hold Current: 0.09A
+    > Run Current: 0.49A Hold Current: 0.09A
+    > Pass #1: Filament homed to extruder, encoder measured 683.5mm, filament sprung back 3.2mm
+    > - Bowden calibration based on this pass is 683.5
+    > Finding extruder gear position (try #2 of 3)...
+    > Run Current: 0.21A Hold Current: 0.09A
+    > Run Current: 0.49A Hold Current: 0.09A
+    > Pass #2: Filament homed to extruder, encoder measured 682.7mm, filament sprung back 3.2mm
+    > - Bowden calibration based on this pass is 682.7
+    > Finding extruder gear position (try #3 of 3)...
+    > Run Current: 0.21A Hold Current: 0.09A
+    > Run Current: 0.49A Hold Current: 0.09A
+    > Pass #3: Filament homed to extruder, encoder measured 683.9mm, filament sprung back 3.2mm
+    > - Bowden calibration based on this pass is 683.4
+    > Recommended calibration reference is 680.2mm. Clog detection length: 16.8mm
+    > Bowden calibration and clog detection length have been saved for MMU ERCF v1.1sbTODO
+
+Notes: (i) This calibration assumes that the selector has been calibrated first. (ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
 
 ### Optional Step 6. Calibrating gates:
 This step allows for calibrating slight differences between gates.  It isn't required (or useful) for designs that cannot have variation like the Tradrack MMU but is useful for designs like ERCF that can have variation of feed between gates.  Even with ERCF this is optional because if not run, the gates will tune themselves over time automatically!  It is useful on two occasions: (i) to remove the need and time to autotune, (ii) if there is substantial variation between gates -- e.g. if BMG gears for different gates are sourced from different vendors.

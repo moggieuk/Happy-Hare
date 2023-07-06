@@ -1584,8 +1584,8 @@ class Mmu:
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
         approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', above=0.)
-        extr
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
+        extruder_homing_max = gcmd.get_float('HOMING_MAX', 100, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         try:
             self._reset_ttg_mapping() # To force tool = gate

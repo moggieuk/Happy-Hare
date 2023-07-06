@@ -877,8 +877,9 @@ if [ "${INSTALL}" -eq 1 -a "${UNINSTALL}" -eq 1 ]; then
 fi
 
 # PAUL TEMP precaution
-link_mmu_plugins
-exit 0
+echo -e "${ERROR}This is not ready for use yet!"
+#link_mmu_plugins
+#exit 0
 # PAUL ^^^ temp
 
 verify_not_root
