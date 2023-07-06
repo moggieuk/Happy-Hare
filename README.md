@@ -3,62 +3,44 @@
 
 # IF YOU HAVE FOUND THIS... PLEASE DON"T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS.  Use ERCF-Software-V3 for ERCF. I will announce when this is ready as an alternative!!
 
-
-
-I love my ERCF and building it was the most fun I've had in many years of the 3D-printing hobby. Whilst the design is brilliant I found a few problems with the software and wanted to add some features and improve user friendliness.  This became especially true after the separation of functionality with the introduction of the "sensorless filament homing" branch. I liked the new python implementation as a Klipper plug-in but wanted to leverage my (very reliable) toolhead sensor.  So I rewrote the software behind ERCF - it still has the structure and much of the code of the original but, more significantly, it has many new features, integrates the toolhead sensor and sensorless options.  I'm calling it the **"Happy Hare"** release or v3.
+Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem.  Now in its second incarnation it is architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform.  It is best partnered with [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
 Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking.  I'm not doing this for any financial reward but it you feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with ERCF more enjoyable.
 
 Thank you!
 
-## Major new features:
+## Major features:
 <ul>
-<li>Support all options for both toolhead sensor based loading/unloading and the newer sensorless filament homing (no toolhead sensor)
-<li>Supports sync load and unloading steps moving the extruder and gear motor together, including a config with toolhead sensor that can work with FLEX materials!
-<li>Fully implements “EndlessSpool” with new concept of Tool --> Gate mapping.  This allows empty gates to be identified and tool changes subsequent to runout to use the correct filament spool.  It has the added advantage for being able to map gates to tools in case of slicing to spool loading mismatch.
-<li>Vastly improved logging including a new log to file functionality. You can keep the console log to a minimum and send debugging information to `ercf.log` located in the same directory as Klipper logs
-<li>Optional fun visual representation of loading and unloading sequence
-<li>Ability to specify empty or disabled tools (gates) and to discover availability autmatically
-<li>Formal support for the filament bypass block with associated new commands and state if using it.
-<li>Ability to reduce gear current (currently TMC2209 only) during “collision” homing procedure to prevent grinding, etc.
-<li>Convenience filament "autoload" function and check gate feature to ensure filaments are all ready before print
-<li>No need to do anything custom in your existing macros
-<li>Moonraker update-manager support
-<li>Complete persitance of state and statistics across restarts!
-<li>Reliable servo operation - no more "kickback" problems
-<li>Integrated encoder driver that implements filament measurement and automatic clog detection!
-<li>Supports my sister project...
+  <li>Support any type of MMU (well, ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon)</li>
+  <li>Has companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
+  <li>Supports synchronized movement of extruder and gear motors during any part of the loading or unloading operations or during homing so it can overcome friction and even work with FLEX materials!</li>
+  <li>Allows for sophisticated homing options including extruder!</li>
+  <li>Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any gate. It has the added advantage for being able to map gates to tools in case of slicing to spool loading mismatch.</li>
+  <li>Implements “EndlessSpool” feature. This allows empty gates to be identified and tool changes subsequent to runout to use the correct filament spool.</li>
+  <li>Sophisticated logging options so you can keep the console log to a minimum and send debugging information to `mmu.log` located in the same directory as Klipper logs</li>
+  <li>Ability to define material type and color in each gate and leverage for customized setting tweaks (like Pressure Advance)
+  <li>Automated calibration for easy setup</li>
+  <li>supports MMU bypass functionality</li>
+  <li>Ability to manipulate gear current (TMC) during various operations for reliable operation.</li>
+  <li>Convenience features to checks the availability of each gate and ready filaments</li>
+  <li>Moonraker update-manager support</li>
+  <li>Complete persitance of state and statistics across restarts!</li>
+  <li>Reliable servo operation - no more "kickback" problems</li>
+  <li>Integrated encoder driver that implements filament measurement, runout and automatic clog detection!</li>
+  <li>Vast customization options most of which can be changed and tested at runtime</li>
 </ul>
 
-Now with customized [KlipperScreen for ERCF](#klipperscreen-happy-hare-edition) touchscreen control
+Customized [KlipperScreen for MMU](#klipperscreen-happy-hare-edition) touchscreen control
 
 <img src="doc/my_klipperscreen.png" width="400" alt="KlipperScreen-Happy Hare edition">
 
-## Other features:
-<ul>
-<li>Reworks calibration routine to average measurements, add compensation based on spring in filament (related to ID and length of bowden), and considers configuration options.
-<li>Runtime configuration via new command (ERCF_TEST_CONFIG) for most options which avoids constantly restarting klipper or recalibrating during setup
-<li>Workaround to some of the ways to provoke Klipper “Timer too close” errors (although there are definitely bugs in the Klipper firmware)
-<li>Measures “spring” in filament after extruder homing for more accurate calibration reference
-<li>Adds servo_up delay making the gear to extruder transition of filament more reliable (maintains pressure)
-<li>New "TEST_TRACKING" commands to help diagnose issues with encoder
-<li>Experimental logic to use stallguard filament homing (Caveat: not easy to setup using EASY-BRD and not compatible with sensorless selector homing option)
-</ul>
-  
-## Other benefits of the code rewrite:
-<ul>
-<li>Vastly increased error detection/checking of supplied parameters and configurations
-<li>Consistent handling of errors. E.g. use exceptions to avoid multiple calls to "pause"
-<li>Wrapping of all stepper movements to facilitate “DEVELOPER” logging level and easier debugging
-<li>New load and unload sequences (to support all build configurations) and effectively combine the sensor and sensorless logic
-</ul>
   
 ## Installation
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
 
     cd ~
     git clone https://github.com/moggieuk/ERCF-Software-V3.git
-    cd ERCF-Software-V3
+    cd Happy-Hare
 
     ./install.sh -i
 
