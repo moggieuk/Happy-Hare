@@ -20,12 +20,13 @@ Thank you!
   <li>Sophisticated logging options so you can keep the console log to a minimum and send debugging information to `mmu.log` located in the same directory as Klipper logs</li>
   <li>Ability to define material type and color in each gate and leverage for customized setting tweaks (like Pressure Advance)
   <li>Automated calibration for easy setup</li>
-  <li>supports MMU bypass functionality</li>
+  <li>Supports MMU bypass functionality</li>
   <li>Ability to manipulate gear current (TMC) during various operations for reliable operation.</li>
   <li>Convenience features to checks the availability of each gate and ready filaments</li>
   <li>Moonraker update-manager support</li>
   <li>Complete persitance of state and statistics across restarts!</li>
   <li>Reliable servo operation - no more "kickback" problems</li>
+  <li>Highly configurable speed control that intelligently takes into account the realities of friction</li>
   <li>Integrated encoder driver that implements filament measurement, runout and automatic clog detection!</li>
   <li>Vast customization options most of which can be changed and tested at runtime</li>
 </ul>
@@ -39,72 +40,35 @@ Customized [KlipperScreen for MMU](#klipperscreen-happy-hare-edition) touchscree
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
 
     cd ~
-    git clone https://github.com/moggieuk/ERCF-Software-V3.git
+    git clone https://github.com/moggieuk/Happy-Hare.git
     cd Happy-Hare
 
     ./install.sh -i
 
-The `-i` option will bring up some interactive prompts to aid setting some confusing parameters (like sensorless selector homing setup). For EASY-BRD and Fysetc ERB installations it will also configure all the pins for you. If not run with the `-i` flag the new template `ercf*.cfg` files will not be installed.  Note that if existing `ercf*.cfg` files are found the old versions will be moved to numbered backups like `<file>.00` extension instead so as not to overwrite an existing configuration.  If you still choose not to install the new `ercf*.cfg` files automatically be sure to examine them closely and compare to the supplied templates (this is completely different software from the original)
+The `-i` option will bring up an interactive installer  to aid setting some confusing parameters. For EASY-BRD and Fysetc ERB installations it will also configure all the pins for you. If not run with the `-i` flag the new template `mmu*.cfg` files will not be installed.  Note that if existing `mmu*.cfg` files are found the old versions will be moved to numbered backups like `<file>.<date>` extension instead so as not to overwrite an existing configuration.  If you still choose not to install the new `mmu*.cfg` files automatically be sure to examine them closely and compare to the supplied templates (this is completely different software from the original)
 <br>
 
-Note that the installer will look for Klipper install and config in standard locations.  If you have customized locations or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively. Also, the install assumes a single instance of Klipper running per device.  If you have many you may need to install and configure the `ercf*.cfg` files by hand.
+Note that the installer will look for Klipper install and config in standard locations.  If you have customized locations or multiple Klipper instances on the same rpi, or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively.
 <br>
 
-REMEMBER that `ercf_hardware.cfg`, `ercf_software.cfg` & `ercf_parameters.cfg` must all be referenced by your `printer.cfg` master config file.  `client_macros.cfg` should also be referenced if you don't already have working PAUSE/RESUME/CANCEL_PRINT macros (but be sure to read the section before on macro expectations). These includes can be added automatically for you with the install script.
+REMEMBER that `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file.  `client_macros.cfg` should also be referenced if you don't already have working PAUSE/RESUME/CANCEL_PRINT macros (but be sure to read the section before on macro expectations). These includes can be added automatically for you with the install script.
 <br>
 
 Pro tip: If you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp.  You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
 <br>
 
-Also be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
+If you using ERCF v1.1 the original encoder can be problematic. I new back-ward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
 <br>
 
-The configuration and setup of your ERCF using Happy Hare is 95% the same as documented in the [newer V2 Manual](https://github.com/EtteGit/EnragedRabbitProject/raw/no_toolhead_sensor/Documentation/ERCF_Manual.pdf).  Be sure to read this README and the installed 'ercf_*.cfg' files to understand any difference.  Read a [SUMMARY OF DIFFERENCES](doc/DIFFERENCES.md) here.
   
 ## Revision History
 <ul>
-<li> v1.0.0 - Initial Beta Release
-<li> v1.0.3 - Bug fixes from community: Better logging on toolchange (for manual recovery); Advanced config parameters for adjust tolerance used in 'apply_bowden_correction' move; Fixed a couple of silly (non serious) bugs
-<li> v1.1.0 - New commands: ERCF_PRELOAD & ERCF_CHECK_GATES ; Automatic setting of clog detection distance in calibration routine ; New interactive install script to help EASY-BRD setup; Bug fixes
-<li> v1.1.1 - Fixes for over zealous tolerance checks on bowden loading; Fix for unloading to far if apply_bowden_correction is active; new test command: ERCF_TEST_TRACKING; Fixed slicer based tool load issue
-<li> v1.1.2 - Improved install.sh -i to include servo and calib bowden length; Better detection of malfunctioning toolhead sensor
-<li> v1.1.3 - Added ERCF_RECOVER command to re-establish filament position after manual intervention and filament movement. Not necessary if you use ERCF commands to correct problem but useful to call prior to RESUME; Much improved install.sh to cover toolhead sensor and auto restart moonraker on first time install
-<li> v1.1.4 - Change to automatic clog detection length based on community feedback
-<li> v1.1.5 - Further install.sh improvements - no longer need filament_sensor defined or duplicate pin override if not using clog detection; Cleaned up documentation in template config file; Stallguard filament homing should now be possible (have to configure by hand); Additional configuration checks on startup; minor useability improvements based on community feedback
-<li> v1.1.6 - New feature to log to file independently to console (allows for clean console and debug to logfile);  New gate statistics (like slippage) are recorded and available with an augmented ERCF_DUMP_STATS command; Several minor improvements and fixes suggested by community
-<li> v1.1.7 - Automatic setting of encoder state - no need to put anything ERCF related into existing macros (START/PAUSE/RESUME/STOP/CANCEL) anymore!;  Improvements to install script for non EASY-BRD config; Exposed all built-in gear/extruder feed speeds; Tweaks to tolerance checks to prevent false pauses; No annoying pause/unlock sequence while you are playing out of a print. UPDATE TO CONFIG FILES RECOMMENDED
-<li> v1.1.8 - Enhanced ERCF_CHECK_GATES command; better configuraton of tip forming; Workarounds to Timer Too Close errors on selector; Fined grained current reduction control; less conservative restting of filament state; servo remains up on failed load; fixes typos and spelling mistakes. Full details here: https://discord.com/channels/460117602945990666/909743915475816458/1058586768791838791
-<li> v1.1.9 - Installer support for the Fytsec ERB Burrows board; Inclusion of display setup for 12864 mini displays; Bug fixes
-<li> v1.2.0 - Major new feature for being able to persist all ERCF state between restarts - now you can just turn on an print!; Various bug fixes, error message and status display improvements. SOME ADDITIONS TO `ercf_parameters.cfg` CONFIG FILE
-<li> v1.2.1 - MAJOR: Bundled servo driver with careful PWM synchronization to avoid servo kickback!!! (Requires re-running ./install.sh)
-<li> v1.2.2 - Automatic clog length setting. No more [filament_runout_sensor] or [duplicate_pin] setup (Required re-running ./install.sh)
-<li> v1.2.3 - Update to support KlipperScreen; Additional printer variables exposed; Cleanup of bypass commands; Bug fixes
-<li> v1.2.4 - Improvement of clog detection during wipetower movements generated by slicer; Enhanced ERCF_ENDLESS_SPOOL command; Restore users "idle_timeout" when print ends; Updated ercf_software for stand-alone tip formation
-<li> v1.2.5 - New `_ERCF_ACTION_CHANGED` callback for LED setting and the list; Selector calibration automatically saves measurements in ercf_vars.cfg; New flow rate % printer variable on ercf_encoder; install now favors printer_data over old klipper location; added couple of soaktests; explicit encoder on/off command; better tolerance of TMC stallguard problems; minor bug fixes
+<li> v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
 </ul>
-Note: Upgrade from versions prior to v1.2.0 requires the re-running of ./install.sh.  See [update notes](doc/UPGRADE.md) for more information
 
-## Summary of new commands (See the [command reference](#ercf-command-reference) for  options)
-  | Commmand | Description |
-  | -------- | ----------- |
-  | ERCF_STATUS | Report on ERCF state, capabilities and Tool-to-Gate map |
-  | ERCF_TEST_CONFIG | Dump / Change essential load/unload config options at runtime |
-  | ERCF_DISPLAY_TTG_MAP | Displays the current Tool - to - Gate mapping (can be used all the time but generally designed for EndlessSpool  |
-  | ERCF_REMAP_TTG | Reconfiguration of the Tool - to - Gate (TTG) map.  Can also set gates as empty! |
-  | ERCF_SET_GATE_MAP | Configure the filament type, color and availability |
-  | ERCF_ENDLESS_SPOOL | Modify the defined EndlessSpool groups at runtime |
-  | ERCF_SELECT_BYPASS | Unload and select the bypass selector position if configured |
-  | ERCF_LOAD | Loads current tool or just extruder |
-  | ERCF_TEST_HOME_TO_EXTRUDER | For calibrating extruder homing - TMC current setting, etc. |
-  | ERCF_TEST_TRACKING | Simple visual test to see how encoder tracks with gear motor |
-  | ERCF_PRELOAD | Helper for filament loading. Feed filament into gate, ERCF will catch it and correctly position at the specified gate |
-  | ERCF_CHECK_GATES | Inspect the gate(s) and mark availability |
-  | ERCF_RECOVER | Recover filament position and optionally reset ERCF state |
-  | MMU | Enable ERCF and reset state after disable |
-  | ERCF_DISABLE | Disable all ERCF functionality |
-  | ERCF_RESET | Reset the ERCF persisted state back to defaults |
-  
-  Because this is a complete rewrite some existing commands have been modifed and enhanced.  See the [command reference](#ercf-command-reference) at the end of this page for full details.
+
+## Command Reference
+
 
 ## Selected features in detail:
 ### Config Loading and Unload sequences explained
