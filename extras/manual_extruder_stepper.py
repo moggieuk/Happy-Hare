@@ -96,7 +96,7 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
     def cmd_MANUAL_EXTRUDER_STEPPER(self, gcmd):
         if self.motion_queue is not None:
             raise self.printer.command_error("Cannot manual move: stepper synced to motion queue")
-        extruder_name = gcmd.get('EXTRUDER', "extruder") # Added
+        extruder_name = gcmd.get('EXTRUDER', "extruder") # Added, name of ManualExtruderStepper
         endstop_name = gcmd.get('ENDSTOP', "default") # Added by ManualMhStepper
         enable = gcmd.get_int('ENABLE', None)
         if enable is not None:
@@ -163,10 +163,11 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         self.steppers = self.steppers + [extruder_stepper]
         self.rail.steppers = self.rail.steppers + [extruder_stepper]
 
-        # Extruder must look like it has always been part of the rail (position important!)
+        # Extruder stepper must look like it has always been part of the rail (position important!)
         prev_extruder_sk = extruder_stepper.set_stepper_kinematics(self.linked_move_sk)
         prev_extruder_trapq = extruder_stepper.set_trapq(manual_trapq)
         pos = manual_steppers[0].get_commanded_position()
+        logging.info("MOGGIE: linked extruder_stepper.set_position(%s)" % pos)
         extruder_stepper.set_position([pos, 0., 0.])
 
         # Yield to caller
@@ -182,15 +183,15 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
             self.sync_to_extruder(manual_stepper_mq)
 
     # Perform regular move bringing the extruder along for the ride
-    def do_linked_move(self, movepos, speed, accel, sync=True, extruder_name="extruder"):
+    def do_linked_move(self, movepos, speed, accel, sync=True, linked_extruder="extruder"):
         assert self.motion_queue is None
-        with self._with_linked_extruder(extruder_name):
+        with self._with_linked_extruder(linked_extruder):
             super(ManualExtruderStepper, self).do_move(movepos, speed, accel, sync)
 
     # Perform homing move using specified endstop bringing the extruder along for the ride
-    def do_linked_homing_move(self, movepos, speed, accel, triggered=True, check_trigger=True, extruder_name="extruder", endstop_name=None):
+    def do_linked_homing_move(self, movepos, speed, accel, triggered=True, check_trigger=True, linked_extruder="extruder", endstop_name=None):
         assert self.motion_queue is None
-        with self._with_linked_extruder(extruder_name):
+        with self._with_linked_extruder(linked_extruder):
             super(ManualExtruderStepper, self).do_mh_homing_move(movepos, speed, accel, triggered, check_trigger, endstop_name)
 
 def load_config_prefix(config):

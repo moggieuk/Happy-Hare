@@ -64,7 +64,7 @@ stealthchop_threshold: 0			# Spreadcycle (better for extruder)
 #
 # Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing to nozzle
 diag_pin: E_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
-driver_SGTHRS: 100			# 255 is most sensitive value, 0 is least sensitive
+driver_SGTHRS: 60			# 255 is most sensitive value, 0 is least sensitive
 
 # Define just your printer's extruder stepper here. Valid config options are:
 # step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
@@ -84,11 +84,11 @@ pressure_advance_smooth_time: 0.040	# Recommended default
 #
 # Uncomment two lines below to enable filament "touch" homing option to nozzle
 extra_endstop_pins: tmc2209_extruder:virtual_endstop
-extra_endstop_names: mmu extruder touch
+extra_endstop_names: mmu_ext_touch
 
 
 # FILAMENT DRIVE GEAR STEPPER  ---------------------------------------------------------------------------------------------
-# Note that 'mmu toolhead' endstop will automatically be added if a toolhead sensor is defined
+# Note that 'mmu_toolhead' endstop will automatically be added if a toolhead sensor is defined
 #
 # The default values are tested with the BOM NEMA14 motor. Please adapt these values to the motor you are using
 # Example : for NEMA17 motors, you'll usually use higher current
@@ -119,7 +119,7 @@ accel: 400
 #
 # Uncomment two lines below to enable filament "touch" homing option
 extra_endstop_pins: tmc2209_gear_stepper:virtual_endstop, ercf:gpio24
-extra_endstop_names: mmu gear touch, paul
+extra_endstop_names: mmu_gear_touch, paulg
 
 
 # SELECTOR STEPPER  --------------------------------------------------------------------------------------------------------
@@ -147,17 +147,17 @@ full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
 velocity: 200
 accel: 600
 endstop_pin: ^ercf:gpio24		# Selector microswitch
-endstop_name: mmu selector home
+endstop_name: mmu_sel_home
 #
 # Uncomment two lines below to give option of  selector "touch" movement and homing
 extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop
-extra_endstop_names: mmu selector touch
+extra_endstop_names: mmu_sel_touch
 
 
 # TOOLHEAD SENSOR  ---------------------------------------------------------------------------------------------------------
 # Uncomment this section to enable toolhead sensor support. Only the switch pin should be defined; other normal
 # filament_switch options are incompatible and will interfere with MMU operation. Note that this will automatically
-# define "mmu toolhead" endstop (homing point) for loading and unloading
+# define "mmu_toolhead" endstop (homing point) for loading and unloading
 #
 [filament_switch_sensor toolhead_sensor]
 switch_pin: PG13
