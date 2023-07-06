@@ -52,9 +52,9 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   ### Filament specification, Tool to Gate map and Endless spool commands
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |
-  | `MMU_CHECK_GATES` | Inspect the gate(s) and mark availability | `GATE=[0..n]` The specific gate to check <br>`TOOL=[0..n]` The specific too to check (same as gate if no TTG mapping in place) <br>`TOOLS={csv of tools}` The list of tools to check. Typically used in print start macro to validate all necessary tools <br>If all parameters are omitted all gates will be checked (the default) <br>`QUIET=[0\|1]` Optional. Supresses dump of gate status at end of checking procedure |
+  | `MMU_CHECK_GATES` | Inspect the gate(s) and mark availability | `GATE=[0..n]` The specific gate to check <br>`TOOL=[0..n]` The specific too to check (same as gate if no TTG mapping in place) <br>`TOOLS={csv}` The list of tools to check. Typically used in print start macro to validate all necessary tools <br>If all parameters are omitted all gates will be checked (the default) <br>`QUIET=[0\|1]` Optional. Supresses dump of gate status at end of checking procedure |
   | `MMU_SET_GATE_MAP` | Optionally configure the filament type, color and availabilty. Used in colored UI's and available via printer variables in your print_start macro | `RESET=[0\|1]` If specified the 'gate_materials, 'gate_colors' and 'gate_status' will be reset to that defined in mmu_parameters.cfg <br>`DISPLAY=[0\|1]` To simply display the current gate map <br>The following must be specified together to create a complete entry in the gate map: <br>`GATE=[0..n]` Gate numer <br>`MATERIAL=..` The material type. Short, no spaces. e.g. "PLA+" <br>`COLOR=..` The color of the filament. Can be a string representing one of the w3c color names found [here[(https://www.w3.org/TR/css-color-4/#named-colors) e.g. "violet" or a color string in the hexadeciaml format RRGGBB e.g. "ff0000" for red. NO space or # symbols. Empty string for no color <br>`AVAILABLE=[0\|1]` Optionally marks gate as empty or available <br>`QUIET=[0\|1]` Optional. Supresses dump of current gate map to log file |
-  | `MMU_REMAP_TTG` | Reconfiguration of the Tool - to - Gate (TTG) map.  Can also set gates as empty! | `RESET=[0\|1]` If specified the Tool -> Gate mapping will be reset to that defined in mmu_parameters.cfg <br>`TOOL=[0..n]` <br>`GATE=[0..n]` Maps specified tool to this gate (multiple tools can point to same gate) <br>`AVAILABLE=[0\|1]`  Marks gate as available or empty <br>`QUIET=[0\|1]` Optional. Supresses dump of current TTG map to log file <br>`MAP={csv of gates}` Specify the entire TTG map for bulk updates |
+  | `MMU_REMAP_TTG` | Reconfiguration of the Tool - to - Gate (TTG) map.  Can also set gates as empty! | `RESET=[0\|1]` If specified the Tool -> Gate mapping will be reset to that defined in mmu_parameters.cfg <br>`TOOL=[0..n]` <br>`GATE=[0..n]` Maps specified tool to this gate (multiple tools can point to same gate) <br>`AVAILABLE=[0\|1]`  Marks gate as available or empty <br>`QUIET=[0\|1]` Optional. Supresses dump of current TTG map to log file <br>`MAP={csv}` List of gates, one for each tool to specify the entire TTG map for bulk updates |
   | `MMU_ENDLESS_SPOOL` | Modify the defined EndlessSpool groups at runtime | `RESET=[0\|1]` If specified the EndlessSpool groups will be reset to that defined in mmu_parameters.cfg <br>`GROUPS={csv of groups}` The same format as the default groups defined in mmu_parameters.cfg. Must be the same length as the number of MMU gates | `QUIET=[0\|1]` Optional. Supresses dump of current TTG and endless spool map to log file <br>`ENABLE=[0\|1]` Optional. Force the enabling or disabling of endless spool at runtime (not persisted) |
   <br>
 
@@ -77,23 +77,11 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   <br>
 
   ## Calibration
-    Calibration and testing commands:
     MMU_CALIBRATE_BOWDEN - Calibration of reference bowden length for gate #0
     MMU_CALIBRATE_ENCODER - Calibration routine for the MMU encoder
     MMU_CALIBRATE_GATES - Optional calibration of individual MMU gate
     MMU_CALIBRATE_GEAR - Calibration routine for gear stepper rotational distance
     MMU_CALIBRATE_SELECTOR - Calibration of the selector positions or postion of specified gate
-
-    MMU_SOAKTEST_LOAD_SEQUENCE - Soak test tool load/unload sequence
-    MMU_SOAKTEST_SELECTOR - Soak test of selector movement
-    MMU_TEST_BUZZ_MOTOR - Simple buzz the selected motor (default gear) for setup testing
-    MMU_TEST_CONFIG - Runtime adjustment of MMU configuration for testing or in-print tweaking purposes
-    MMU_TEST_ENCODER_RUNOUT - Convenience macro to spoof a filament runout condition (defined in mmu_software.cfg)
-    MMU_TEST_GRIP - Test the MMU grip for a Tool
-    MMU_TEST_HOMING_MOVE - Test filament homing move to help debug setup / options
-    MMU_TEST_LOAD - For quick testing filament loading from gate to the extruder
-    MMU_TEST_MOVE - Test filament move to help debug setup / options
-    MMU_TEST_TRACKING - Test the tracking of gear feed and encoder sensing
   
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |
@@ -132,17 +120,9 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 
 <br>
 
-## User defined/configurable macros (in ercf_software.cfg)
-    Macros and callbacks (defined in mmu_software.cfg):
-    _MMU_ACTION_CHANGED - Called when an action has changed.
-    _MMU_ENCODER_INSERT - Internal encoder filament detection handler
-    _MMU_ENCODER_RUNOUT - Internal encoder filament runout handler
-    _MMU_ENDLESS_SPOOL_POST_LOAD - Optional post load routine for EndlessSpool changes
-    _MMU_ENDLESS_SPOOL_PRE_UNLOAD - Pre unload routine for EndlessSpool changes
-    _MMU_FORM_TIP_STANDALONE - Standalone macro that mimics SuperSlicer process
-  
-  | Command | Description | Parameters |
-  | ------- | ----------- | ---------- |
+## User defined/configurable macros (defined in mmm_software.cfg) 
+  | Command | Description |
+  | ------- | ----------- |
   | `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` | Called prior to unloading the remains of the current filament |
   | `_MMU_ENDLESS_SPOOL_POST_LOAD` | Called subsequent to loading filament in the new gate in the sequence |
   | `_MMU_FORM_TIP_STANDALONE` | Called to create tip on filament when not in print (and under the control of the slicer). You tune this macro by modifying the defaults to the parameters |
