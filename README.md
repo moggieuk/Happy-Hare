@@ -14,6 +14,7 @@ Thank you!
   <li>Support any type of MMU (well, ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon)</li>
   <li>Has companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
   <li>Supports synchronized movement of extruder and gear motors during any part of the loading or unloading operations or during homing so it can overcome friction and even work with FLEX materials!</li>
+  <li>Can leverage the gear motor synchronized to extruder to overcome friction whilst printing</li>
   <li>Allows for sophisticated homing options including extruder!</li>
   <li>Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any gate. It has the added advantage for being able to map gates to tools in case of slicing to spool loading mismatch.</li>
   <li>Implements “EndlessSpool” feature. This allows empty gates to be identified and tool changes subsequent to runout to use the correct filament spool.</li>
@@ -26,9 +27,12 @@ Thank you!
   <li>Moonraker update-manager support</li>
   <li>Complete persitance of state and statistics across restarts!</li>
   <li>Reliable servo operation - no more "kickback" problems</li>
+  <li>Cool visualizations of selector and filament position</li>
   <li>Highly configurable speed control that intelligently takes into account the realities of friction</li>
   <li>Integrated encoder driver that implements filament measurement, runout and automatic clog detection!</li>
   <li>Vast customization options most of which can be changed and tested at runtime</li>
+  <li>Integrated testing and soak-testing procedures</li>
+  <li>Inegrated help</li>
 </ul>
 
 Customized [KlipperScreen for MMU](#klipperscreen-happy-hare-edition) touchscreen control
@@ -68,7 +72,7 @@ If you using ERCF v1.1 the original encoder can be problematic. I new back-ward 
 
 
 ## Command Reference
-
+The full list of commands can be [found here](doc/command_ref.md). But here is a quick list:
 
 ## Selected features in detail:
 ### Config Loading and Unload sequences explained
