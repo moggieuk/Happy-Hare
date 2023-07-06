@@ -142,10 +142,10 @@ Optionally exposed on mmu_encoder (if fitted):
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
 ### Step 1. Validate your mmu_hardware.cfg configuration
-This can be daunting but the interactive installer will make the process easy for common mmu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc).  A detailed discusion of how to debug and confirm all the hardware can be [found here](doc/hardware_config.md).
+This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc).  A detailed discusion of how to debug and confirm all the hardware can be [found here](doc/hardware_config.md).
 
 Assuming you are familiar with all that there is one new IMPORTANT step that must be perform by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of mmu_hardware.cfg):
-
+  
     # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
     # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
     # options.  This definition replaces the stepper definition part of you existing [extruder] definition.
@@ -185,6 +185,8 @@ Assuming you are familiar with all that there is one new IMPORTANT step that mus
 
 The first TMC definition was previous `[tmc2209 extruder]` and is moved in here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` should be deleted or commented out.
 The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
+
+For now, ignore all the enstop setup.  A separate guide on endstops and homing can be found in the MMU movement guide [found here](doc/movement_and_homing.md)
 
 ### Step 2. Calibrate your gear stepper
 In this step you are simply ensuring that when the gear is told to move 100mm of filament it actually really does move that much.  It is akin to what you did when you set up your extruder rotational distance although no Klipper restart is necessary!
@@ -239,6 +241,10 @@ Notes: (i) ERCF v1.1 users need to pay particular attention to letter suffixes a
 Probably the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
 
     > MMU_CALIBRATE_ENCODER BOWDEN_LENGTH=650
+TODO
+
+### Optional Step 6. Calibrating gates:
+This step allows for calibrating slight differences between gates.  It isn't required (or useful) for designs that cannot have variation like the Tradrack MMU but is useful for designs like ERCF that can have variation of feed between gates.  Even with ERCF this is optional because if not run, the gates will tune themselves over time automatically!  It is useful on two occasions: (i) to remove the need and time to autotune, (ii) if there is substantial variation between gates -- e.g. if BMG gears for different gates are sourced from different vendors.
 
 
 ## Selected features in detail:
