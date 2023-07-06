@@ -144,44 +144,102 @@ This will vary slightly depending on your particular brand of MMU but the steps 
 ### Step 1. Validate your mmu_hardware.cfg configuration
 This can be daunting but the interactive installer will make the process easy for common mmu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc).  A detailed discusion of how to debug and confirm all the hardware can be [found here](doc/hardware_config.md).
 
-Assuming you are familiar with all that there is one new step that must be perform by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`
+Assuming you are familiar with all that there is one new IMPORTANT step that must be perform by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of mmu_hardware.cfg):
 
-# HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
-# With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
-# options.  This definition replaces the stepper definition part of you existing [extruder] definition.
-#
-# IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here
-[tmc2209 manual_extruder_stepper extruder]
-uart_pin: E_TMCUART
-interpolate: true
-run_current: 0.55				# LDO 36STH20-1004AHG.  Match to macro below
-hold_current: 0.4
-sense_resistor: 0.110
-stealthchop_threshold: 0			# Spreadcycle (better for extruder)
-#
-# Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing to nozzle
-diag_pin: E_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
-driver_SGTHRS: 60			# 255 is most sensitive value, 0 is least sensitive
+    # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
+    # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
+    # options.  This definition replaces the stepper definition part of you existing [extruder] definition.
+    #
+    # IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here
+    [tmc2209 manual_extruder_stepper extruder]
+    uart_pin: E_TMCUART
+    interpolate: true
+    run_current: 0.55				# LDO 36STH20-1004AHG.  Match to macro below
+    hold_current: 0.4
+    sense_resistor: 0.110
+    stealthchop_threshold: 0			# Spreadcycle (better for extruder)
+    #
+    # Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing to nozzle
+    diag_pin: E_DIAG				# Set to MCU pin connected to TMC DIAG pin for extruder
+    driver_SGTHRS: 60				# 255 is most sensitive value, 0 is least sensitive
+    
+    # Define just your printer's extruder stepper here. Valid config options are:
+    # step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
+    # pressure_advance, pressure_advance_smooth_time
+    # IMPORTANT: REMOVE these settings from your existing [extruder] configuration BUT LEAVE ALL OTHER parameters!
+    #
+    [manual_extruder_stepper extruder]
+    step_pin: E_STEP
+    dir_pin: !E_DIR
+    enable_pin: !E_ENABLE
+    microsteps: 64
+    rotation_distance: 22.4522			# Calibrated by hand
+    gear_ratio: 50:10
+    full_steps_per_rotation: 200
+    pressure_advance: 0.035			# Fairly arbitary default
+    pressure_advance_smooth_time: 0.040		# Recommended default
+    #
+    # Uncomment two lines below to enable filament "touch" homing option to nozzle
+    extra_endstop_pins: tmc2209_extruder:virtual_endstop
+    extra_endstop_names: mmu_ext_touch
 
-# Define just your printer's extruder stepper here. Valid config options are:
-# step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
-# pressure_advance, pressure_advance_smooth_time
-# IMPORTANT: REMOVE these settings from your existing [extruder] configuration BUT LEAVE ALL OTHER parameters!
-#
-[manual_extruder_stepper extruder]
-step_pin: E_STEP
-dir_pin: !E_DIR
-enable_pin: !E_ENABLE
-microsteps: 64
-rotation_distance: 22.4522		# Calibrated by hand
-gear_ratio: 50:10
-full_steps_per_rotation: 200
-pressure_advance: 0.035			# Fairly arbitary default
-pressure_advance_smooth_time: 0.040	# Recommended default
-#
-# Uncomment two lines below to enable filament "touch" homing option to nozzle
-extra_endstop_pins: tmc2209_extruder:virtual_endstop
-extra_endstop_names: mmu_ext_touch
+The first TMC definition was previous `[tmc2209 extruder]` and is moved in here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` should be deleted or commented out.
+The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
+
+### Step 2. Calibrate your gear stepper
+In this step you are simply ensuring that when the gear is told to move 100mm of filament it actually really does move that much.  It is akin to what you did when you set up your extruder rotational distance although no Klipper restart is necessary!
+Position selector in from of gate #0 and put some filament into the gate. Run:
+
+    > MMU_TEST_LOAD
+
+This will load a short length of filament and ensure the servo is down.  Next cut the filament flush with the bowden on the selector (this is the encoder on the ERCF design). Run this command again to emit close to 100mm of filament:
+
+    > MMU_TEST_LOAD
+
+Get out your ruler can very carefully measure the length of the emited filament.  Hold your ruler up to the bowden and gently pull the filament straight to get an accurate measurement. Next run this specifying your actual measured value:
+
+    > MMU_CALIBRATE_GEAR MEASURED=102.5
+    > Gear stepper `rotation_distance` calculated to be 23.117387
+    > Gear calibration has been saved for MMU ERCF v1.1sb
+
+You can also measure over a different length by using something like `MMU_TEST_LOAD LENGTH=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
+
+### Step 3. Calibrate your encoder (if your MMU has own like the ERCF)
+Next step is to calibrate the encoder so it measures distance accurately. Re-fit the bowden to the selector/encoder (you can insert the short length of filament to tube as you fit to save time). Now run:
+
+    > MMU_CALIBRATE_ENCODER
+
+You will see an output similar to:
+
+    > + counts = 368
+    > - counts = 368
+    > + counts = 369
+    > - counts = 369
+    > + counts = 369
+    > - counts = 369
+    > Load direction: mean=368.67 stdev=0.58 min=368 max=369 range=1
+    > Unload direction: mean=368.67 stdev=0.58 min=368 max=369 range=1
+    > Before calibration measured length = 394.47
+    > Resulting resolution of the encoder = 1.084991
+    > After calibration measured length = 400.00
+    > Encoder calibration has been saved for MMU ERCF v1.1sb
+
+Notes: (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences. (ii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-) (iii) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
+
+### Step 4. Calibrate selector offsets
+Before the final calibration of bowden load length, let's get the selector cailbrated in this easy step.  This sets up the position all of all the gates as well as the bypass position if fitted.  Firstly remove filament from gate #0 -- you may need to run `MMU_SERVO POS=up` to release the filament. Insert and remove filament through selector to ensure that gate #0 is correctly lined with selector. Then run:
+
+    > MMU_CALIBRATE_SELECTOR
+
+Sit back and relax. The selector will move to find the extremes of movement and then use information about the geometry of the particular MMU and version/options you are using to generate and save the selector offsets.  There are options to update a single position if you would like. See the calibration details page or command reference for more information.
+
+Notes: (i) ERCF v1.1 users need to pay particular attention to letter suffixes after the version number in `mmu_parameters.cfg`  (ii) ERCF v1.1 users that are using a bypass block modification also need to secify the position of that block with `BYPASS_BLOCK=` (see detailed notes)
+
+### Step 5. Calibrate bowden length:
+Probably the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
+
+    > MMU_CALIBRATE_ENCODER BOWDEN_LENGTH=650
+
 
 ## Selected features in detail:
 TODO

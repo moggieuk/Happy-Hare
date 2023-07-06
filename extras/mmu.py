@@ -2309,7 +2309,7 @@ class Mmu:
     # and can only happen if filament is the short distance from sensor to gears. This check will eliminate that
     # problem and indicate if we can unload the rest of the bowden more quickly
     def _check_filament_still_in_extruder(self):
-        self._log_debug("Checking for possibility of filament still in extruder gears...")
+        self._log_info("Checking for possibility of filament still in extruder gears...")
         self._set_above_min_temp()
         self._servo_up()
         length = self.encoder_move_step_size
