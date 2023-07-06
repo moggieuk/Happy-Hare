@@ -1,7 +1,7 @@
 # "Happy Hare" - Universal MMU driver for Klipper
 
 
-# IF YOU HAVE FOUND THIS... PLEASE DON"T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS.  Use ERCF-Software-V3 for ERCF. I will announce when this is ready as an alternative!!
+# IF YOU HAVE FOUND THIS... PLEASE DON'T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS AND WILL BREAK YOUR SYSTEM. Use ERCF-Software-V3 for ERCF. I will announce when this is ready as an alternative!!
 
 Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem.  Now in its second incarnation it is architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform.  It is best partnered with [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
