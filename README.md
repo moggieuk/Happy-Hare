@@ -9,6 +9,7 @@ Also, some folks have asked about making a donation to cover the cost of the all
 
 Thank you!
 
+
 ## Major features:
 <ul>
   <li>Support any brand of MMU (and user defined monsters) Caveat only ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon but I need to get ERCF rolling again first</li>
@@ -35,11 +36,11 @@ Thank you!
   <li>Inegrated help</li>
 </ul>
 
-Customized [KlipperScreen for MMU](#klipperscreen-happy-hare-edition) touchscreen control
+Companion customized [KlipperScreen for MMU](#klipperscreen-happy-hare-edition) touchscreen control
 
-<img src="doc/my_klipperscreen.png" width="400" alt="KlipperScreen-Happy Hare edition">
-
+<img src="doc/my_klipperscreen.png" width="600" alt="KlipperScreen-Happy Hare edition">
   
+
 ## Installation
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
 
@@ -138,6 +139,8 @@ Optionally exposed on mmu_encoder (if fitted):
     printer['mmu_encoder mmu_encoder'].enabled : {bool} Whether encoder is currently enabled for clog detection
     printer['mmu_encoder mmu_encoder'].flow_rate : {int} % flowrate (extruder movement compared to encoder movement)
 
+
+
 ## MMU Setup and Calibration:
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
@@ -173,11 +176,11 @@ Assuming you are familiar with all that there is one new IMPORTANT step that mus
     dir_pin: !E_DIR
     enable_pin: !E_ENABLE
     microsteps: 64
-    rotation_distance: 22.4522			# Calibrated by hand
+    rotation_distance: 22.4522               # Calibrated by hand
     gear_ratio: 50:10
     full_steps_per_rotation: 200
-    pressure_advance: 0.035			# Fairly arbitary default
-    pressure_advance_smooth_time: 0.040		# Recommended default
+    pressure_advance: 0.035                 # Fairly arbitary default
+    pressure_advance_smooth_time: 0.040		  # Recommended default
     #
     # Uncomment two lines below to enable filament "touch" homing option to nozzle
     extra_endstop_pins: tmc2209_extruder:virtual_endstop
