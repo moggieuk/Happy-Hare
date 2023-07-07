@@ -12,25 +12,23 @@ Thank you!
 
 ## Major features:
 <ul>
-  <li>Support any brand of MMU (and user defined monsters) Caveat only ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon but I need to get ERCF rolling again first</li>
+  <li>Support any brand of MMU (and user defined monsters) Caveat only ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon</li>
   <li>Companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
-  <li>Supports synchronized movement of extruder and gear motors during any part of the loading or unloading operations or during homing so it can overcome friction and even work with FLEX materials!</li>
-  <li>Can leverage the gear motor synchronized to extruder to overcome friction whilst printing</li>
-  <li>Allows for sophisticated multi-homing options including extruder!</li>
-  <li>Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any gate</li>
-  <li>Implements “EndlessSpool” allowing one spool to automaticall be mapped and take over from a spool that runs out</li>
-  <li>Sophisticated logging options so you can keep the console log to a minimum and send debugging information to `mmu.log` located in the same directory as Klipper logs</li>
-  <li>Ability to define material type and color in each gate and leverage for visualization and customized setting tweaks (like Pressure Advance)</li>
+  <li>Synchronized movement of extruder and gear motors during any part of the loading or unloading operations or homing so it can overcome friction and even work with FLEX materials!</li>
+  <li>Sophisticated multi-homing options including extruder!</li>
+  <li>Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any tool</li>
+  <li>EndlessSpool allowing a spool to automatically be mapped and take over from a spool that runs out</li>
+  <li>Sophisticated logging options (console and mmu.log file)</li>
+  <li>Can define material type and color in each gate  for visualization and customized settings (like Pressure Advance)</li>
   <li>Automated calibration for easy setup</li>
   <li>Supports MMU bypass "gate" functionality</li>
   <li>Ability to manipulate gear current (TMC) during various operations for reliable operation</li>
-  <li>Convenience features to checks the availability of each gate and prepare filaments</li>
   <li>Moonraker update-manager support</li>
   <li>Complete persitance of state and statistics across restarts. That's right you don't even need to home!</li>
   <li>Reliable servo operation - no more "kickback" problems</li>
   <li>Cool visualizations of selector and filament position</li>
   <li>Highly configurable speed control that intelligently takes into account the realities of friction and tugs on the spool</li>
-  <li>Optional integrated encoder driver that implements filament measurement, runout and automatic clog detection and flow rate verification!</li>
+  <li>Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!</li>
   <li>Vast customization options most of which can be changed and tested at runtime</li>
   <li>Integrated testing and soak-testing procedures</li>
   <li>Inegrated help</li>
@@ -39,7 +37,8 @@ Thank you!
 Companion customized [KlipperScreen for MMU](#klipperscreen-happy-hare-edition) touchscreen control
 
 <img src="doc/my_klipperscreen.png" width="600" alt="KlipperScreen-Happy Hare edition">
-  
+
+<br>
 
 ## Installation
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
@@ -72,8 +71,8 @@ If you using ERCF v1.1 the original encoder can be problematic. I new back-ward 
 </ul>
 
 
-## Command Reference
-The full list of commands can be [found here](doc/command_ref.md). But here is a quick list of the main (non test/calibration) commands:
+## Command and Printer variables Reference
+The full list of commands and options can be [found here](doc/command_ref.md). But here is a quick list of the main (non test/calibration) commands:
 
     > MMU_HELP
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
@@ -103,7 +102,7 @@ The full list of commands can be [found here](doc/command_ref.md). But here is a
     MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder motor
     MMU_UNLOCK - Unlock MMU operations after an error condition
     
-## MMU variables accessable for use in your own macros:
+### Printer variables accessable for use in your own macros:
 Happy Hare exposes the following 'printer' variables:
 
     printer.mmu.enabled : {bool}
@@ -140,141 +139,133 @@ Optionally exposed on mmu_encoder (if fitted):
     printer['mmu_encoder mmu_encoder'].flow_rate : {int} % flowrate (extruder movement compared to encoder movement)
 
 
-
 ## MMU Setup and Calibration:
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
-### Step 1. Validate your mmu_hardware.cfg configuration
-This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc).  A detailed discusion of how to debug and confirm all the hardware can be [found here](doc/hardware_config.md).
+### Step 1. Validate your mmu_hardware.cfg configuration and basic operation
+See [Hardward configuration doc here](doc/hardware_config.md)
 
-Assuming you are familiar with all that there is one new IMPORTANT step that must be perform by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of mmu_hardware.cfg):
+### Step 2. Calibrate
+See [MMU Calibration doc here](doc/calibration.md)
+
+### Step 3. Tweak configuration in mmu_parameters.cfg
+See [MMU Configuration doc here](doc/configuration.md) for general overview but a few selected features are discussed in more detail here:
+
+<br>
+
+## Important conceptual components of Happy Hare
+
+### 1. State persistence
+This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing. Here is an example startup state:
+
+  <img src="doc/persisted_state.png" width=600 alt="Persisted Startup State">
+
+(note this was accomplished by setting `startup_status: 1` in mmu_parameters.cfg and can be generated anytime with the `MMU_STATUS` command)
+This graphic indicates how I left my MMU the day prior... Filaments are loaded in gates 0,1 & 6; Gate/Tool #1 is selected; and the filament is fully loaded. If you are astute you can see I have remapped T2 to be on gate #3 and T3 to be on gate #2 because previously I had loaded these spools backward and this saved me from regenerating g-code.
+<br>
+
+In addition to basic operational state the print statistics and gate health statistics are persisted and so occasionally you might want to explicitly reset them with `ERCF_RESET_STATS`.  There are 5 levels of operation for this feature that you can set based on your personal preference/habbits. The level is controlled by a single variable `persistence_level` in `ercf_parameters.cfg`:
+
+    Advanced: Happy Hare can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
+    additional state information requiring progressively less inital setup. The higher level assume that you don't touch
+    ERCF while it is offline and it can come back to life exactly where it left off.  If you do touch it or get confused
+    then issue an appropriate reset command (E.g. ERCF_RESET) to get state back to the defaults.
+    Enabling `startup_status` is recommended if you use persisted state at level 2 and above
+    Levels: 0 = start fresh every time (the former default behavior)
+            1 = restore persisted endless spool groups
+            2 = additionally restore persisted tool-to-gate mapping
+            3 = additionally restore persisted gate status (filament availability)
+            4 = additionally restore persisted tool, gate and filament position!
+
+Generally there is no downside of setting the level to 2 and so that is the suggested default.  Really, so long as you are aware that persistence is happening and know how to adjust/reset you can set the level to 4 and enjoy immediate ERCF availability.  So what options are there for resetting state?  Here is the complete list:
+
+<ul>
+  <li>`MMU_RESET` - Reset all persisted state back to default/unknown except for print stats and per-gate health stats
+  <li>`MMU_RESET_STATS` - Reset print stats and per-gate health stats back to 0
+  <li>`MMU_REMAP_TTG RESET=1` - Reset just the tool-to-gate mapping
+  <li>`MMU_ENDLESS_SPOOL_GROUPS RESET=1` - Reset just the endless spool groups back to default
+  <li>`MMU_SET_GATE_MAP RESET=1` - Reset information about the filament type, color and availability
+  <li>`MMU_RECOVER` - Automatically discover or manually reset filament position, selected gate, selected tool, filament availability (lots of options)
+  <li>Needless to say, other operations can also be used to update state
+</ul>
+
+Couple of miscellaneous notes:
+<ul>
+  <li>Closely relevant to the usefulness of this functionality is the `MMU_CHECK_GATES` command that will examine all or selection of gates for presence of filament
+  <li>In the graphic depictions of filament state the '*' indicates presence ('B' and 'S' represent whether the filament is buffered or pulling straight from the spool), '?' unknown and ' ' or '.' the lack of filament
+  <li>With tool-to-gate mapping it is entirely possible to have multiple tools mapped to the same gate (for example to force a multi-color print to be monotone) and therefore some gates can be made inaccessable until map is reset
+  <li>The default value for `gate_status`, `tool_to_gate_map` and `endless_spool_groups` can be set in `ercf_parameters.cfg`.  If not set the default will be, Tx maps to Gate#x, the status of each gate is unknown and each tool is in its own endless spool group (i.e. not part of a group)
+</ul>
+
+### 2. Tool-to-Gate (TTG) mapping and EndlessSpool application
+When changing a tool with the `Tx` command the ERCF will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.  There are 3 primary use cases for this feature:
+<ol>
+  <li>You have loaded your filaments differently than you sliced gcode file... No problem, just issue the appropriate remapping commands prior to printing
+  <li>Some of "tools" don't have filament and you want to mark them as empty to avoid selection.
+  <li>Most importantly, for EndlessSpool - when a filament runs out on one gate (spool) then next in the sequence is automatically mapped to the original tool.  It will therefore continue to print on subsequent tool changes.  You can also replace the spool and update the map to indicate availability mid print
+</ol>
+
+*Note that the initial availability of filament at each gate can also be specified in the `ercf_parameters.cfg` file by updating the `gate_status` list. E.g.
+>gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
+
+  on a 9-gate ERCF would mark gates 2, 3, 5, 6 & 7 as empty
+ 
+To view the current mapping you can use either `ERCF_STATUS` or `ERCF_DISPLAY_TTG_MAP`
   
-    # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
-    # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
-    # options.  This definition replaces the stepper definition part of you existing [extruder] definition.
-    #
-    # IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here
-    [tmc2209 manual_extruder_stepper extruder]
-    uart_pin: E_TMCUART
-    interpolate: true
-    run_current: 0.55				# LDO 36STH20-1004AHG.  Match to macro below
-    hold_current: 0.4
-    sense_resistor: 0.110
-    stealthchop_threshold: 0			# Spreadcycle (better for extruder)
-    #
-    # Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing to nozzle
-    diag_pin: E_DIAG				# Set to MCU pin connected to TMC DIAG pin for extruder
-    driver_SGTHRS: 60				# 255 is most sensitive value, 0 is least sensitive
-    
-    # Define just your printer's extruder stepper here. Valid config options are:
-    # step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
-    # pressure_advance, pressure_advance_smooth_time
-    # IMPORTANT: REMOVE these settings from your existing [extruder] configuration BUT LEAVE ALL OTHER parameters!
-    #
-    [manual_extruder_stepper extruder]
-    step_pin: E_STEP
-    dir_pin: !E_DIR
-    enable_pin: !E_ENABLE
-    microsteps: 64
-    rotation_distance: 22.4522               # Calibrated by hand
-    gear_ratio: 50:10
-    full_steps_per_rotation: 200
-    pressure_advance: 0.035                 # Fairly arbitary default
-    pressure_advance_smooth_time: 0.040		  # Recommended default
-    #
-    # Uncomment two lines below to enable filament "touch" homing option to nozzle
-    extra_endstop_pins: tmc2209_extruder:virtual_endstop
-    extra_endstop_names: mmu_ext_touch
+![ERCF_STATUS](doc/ercf_status.png "ERCF_STATUS")
 
-The first TMC definition was previous `[tmc2209 extruder]` and is moved in here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` should be deleted or commented out.
-The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
+<br>
 
-For now, ignore all the enstop setup.  A separate guide on endstops and homing can be found in the MMU movement guide [found here](doc/movement_and_homing.md)
+Since EndlessSpool is not something that triggers very often you can use the following to simulate the action:
+  > ERCF_ENCODER_RUNOUT FORCE_RUNOUT=1
 
-### Step 2. Calibrate your gear stepper
-In this step you are simply ensuring that when the gear is told to move 100mm of filament it actually really does move that much.  It is akin to what you did when you set up your extruder rotational distance although no Klipper restart is necessary!
-Position selector in from of gate #0 and put some filament into the gate. Run:
+This will emulate a filament runout and force ERCF to interpret it as a true runout and not a possible clog. ERCF will then run the following sequence:
+<ul>
+  <li>Move the toolhead up a little (defined by 'z_hop_distance & z_hop_speed') to avoid blobs
+  <li>Call '_ERCF_ENDLESS_SPOOL_PRE_UNLOAD' macro.  Typically this where you would quickly move the toolhead to your parking area
+  <li>Perform the toolchange and map the new gate in the sequence
+  <li>Call '_ERCF_ENDLESS_SPOOL_POST_LOAD' macro.  Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where you picked it up in the PRE_UNLOAD macro
+  <li>Move the toolhead back down the final amount and resume the print
+</ul>
 
-    > MMU_TEST_LOAD
+The default supplied _PRE and _POST macros call PAUSE/RESUME which is typically a similar operation and may be already sufficient. Note: A common problem is that a custom _POST macro does not return the toolhead to previous position.  ERCF will still handle this case but it will move very slowly because it is not expecting large horizontal movement.
 
-This will load a short length of filament and ensure the servo is down.  Next cut the filament flush with the bowden on the selector (this is the encoder on the ERCF design). Run this command again to emit close to 100mm of filament:
+### 3. Synchronized Gear/Extruder motors
+Happy Hare allows for syncing gear motor with the extruder stepper during printing. This added functionality enhances the filament pulling torque, potentially alleviating friction-related problems. **It is crucial, however, to maintain precise rotational distances for both the primary extruder stepper and the gear stepper. A mismatch in filament transfer speeds between these components could lead to undue stress and filament grinding.**
 
-    > MMU_TEST_LOAD
+#### Setting up Print Synchronization
+Synchronizion during printing is controlled by 'sync_to_extruder' in `ercf_parameters.cfg`. If set to 1, after a toolchange, the MMU servo will stay engaged and the gear motor will sync with he extruder for move extrusion and retraction moves
 
-Get out your ruler can very carefully measure the length of the emited filament.  Hold your ruler up to the bowden and gently pull the filament straight to get an accurate measurement. Next run this specifying your actual measured value:
+#### Synchronization Workflow
+If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any MMU operation that necessitates exclusive gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles the majority of these actions. If the printer enters MMU_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted.  Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the MMU during a pause use the `ERCF_SYNC_GEAR_MOTOR` command.
 
-    > MMU_CALIBRATE_GEAR MEASURED=102.5
-    > Gear stepper `rotation_distance` calculated to be 23.117387
-    > Gear calibration has been saved for MMU ERCF v1.1sb
+    The `MMU_SYNC_GEAR_MOTOR sync={0|1} servo={0|1}` command functions as follows:
+    - Defaults to `sync=1` and `servo=1` 
+    - If `sync=1` and `servo=1`, it triggers the servo and executes the synchronization
+    - If `sync=1` and `servo=0`, it performs only the synchronization
+    - If `sync=0` and `servo=1`, it disengages and lifts the servo
+    - If `sync=0` and `servo=0`, it only disengages the synchronization
 
-You can also measure over a different length by using something like `MMU_TEST_LOAD LENGTH=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
+You can still control the gear stepper motor with the `MANUAL_STEPPER` command, however, this will only be effective if the stepper is not currently syncing with the extruder.
 
-### Step 3. Calibrate your encoder (if your MMU has own like the ERCF)
-Next step is to calibrate the encoder so it measures distance accurately. Re-fit the bowden to the selector/encoder (you can insert the short length of filament to tube as you fit to save time). Now run:
+#### Other synchonization options
+In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process. Whilst these might seem like duplicates of previous partial load/unload sync movements they operate slightly more simlified manner. If they are all disabled, Happy Hare will operate as it did previously.  If these options are enabled they turn off the former functionality.  E.g. If `sync_extruder_load` is enabled it will keep the gear synchronized with the extruder for the entire loading of the extruder.<br>
+Note that many run the gear stepper at maximum current to overcome friction. If you are one of those you might want to consider using `sync_gear_current` to reduce the current while it is synced during print to keep the temperature down.
 
-    > MMU_CALIBRATE_ENCODER
+`sync_extruder_load` turns on synchronization of extruder loading
+`sync_extruder_unload` turns on synchronization of extruder unloading
+`sync_form_tip` turns on syncronization of the stand alone tip forming movement
+`sync_gear_current` the percentage reduction of gear stepper while it is synchronized with extruder
 
-You will see an output similar to:
+### 4. Clog/runout detection
+ERCF can use its encoder to detect filament runout or clog conditions. This functionality is enabled with the `enable_clog_detection` in ercf_parameters.cfg. It works by monitoring how much filament the extruder is pushing and comparing it that measured by the encoder.  If the extruder ever gets ahead by more that the calibrated `clog_detection_length` the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `ERCF_UNLOCK` & `RESUME` to continue.  If a runout and endless spool is enabled the tool with be remaped and printing will automatically continue.
 
-    > + counts = 368
-    > - counts = 368
-    > + counts = 369
-    > - counts = 369
-    > + counts = 369
-    > - counts = 369
-    > Load direction: mean=368.67 stdev=0.58 min=368 max=369 range=1
-    > Unload direction: mean=368.67 stdev=0.58 min=368 max=369 range=1
-    > Before calibration measured length = 394.47
-    > Resulting resolution of the encoder = 1.084991
-    > After calibration measured length = 400.00
-    > Encoder calibration has been saved for MMU ERCF v1.1sb
+Setting this value to `1` enables clog detection employing the static clog detection length.  Setting it to `2` will enable automatic adjustment of the detection length. Whilst this doesn't guarantee you won't get a false trigger it will contiually tune until false triggers not longer occur.  The automatic algorithm is controlled by two variables in the `[ercf_encoder]` section:
 
-Notes: (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences. (ii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-) (iii) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
+    desired_headroom: 5.0		# The runout headroom that ERCF will attempt to maintain (closest ERCF comes to triggering runout)
+    average_samples: 4		# The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
 
-### Step 4. Calibrate selector offsets
-Before the final calibration of bowden load length, let's get the selector cailbrated in this easy step.  This sets up the position all of all the gates as well as the bypass position if fitted.  Firstly remove filament from gate #0 -- you may need to run `MMU_SERVO POS=up` to release the filament. Insert and remove filament through selector to ensure that gate #0 is correctly lined with selector. Then run:
-
-    > MMU_CALIBRATE_SELECTOR
-
-Sit back and relax. The selector will move to find the extremes of movement and then use information about the geometry of the particular MMU and version/options you are using to generate and save the selector offsets.  There are options to update a single position if you would like. See the calibration details page or command reference for more information.
-
-Notes: (i) ERCF v1.1 users need to pay particular attention to letter suffixes after the version number in `mmu_parameters.cfg`  (ii) ERCF v1.1 users that are using a bypass block modification also need to secify the position of that block with `BYPASS_BLOCK=` (see detailed notes)
-
-### Step 5. Calibrate bowden length:
-Probably the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
-
-    > MMU_CALIBRATE_ENCODER BOWDEN_LENGTH=640
-    > Homing MMU...
-    > Tool T0 enabled
-    > Calibrating bowden length from reference Gate #0
-    > Tool T0 enabled
-    > Heating extruder to minimum temp (200.0)
-    > Finding extruder gear position (try #1 of 3)...
-    > Run Current: 0.21A Hold Current: 0.09A
-    > Run Current: 0.49A Hold Current: 0.09A
-    > Pass #1: Filament homed to extruder, encoder measured 683.5mm, filament sprung back 3.2mm
-    > - Bowden calibration based on this pass is 683.5
-    > Finding extruder gear position (try #2 of 3)...
-    > Run Current: 0.21A Hold Current: 0.09A
-    > Run Current: 0.49A Hold Current: 0.09A
-    > Pass #2: Filament homed to extruder, encoder measured 682.7mm, filament sprung back 3.2mm
-    > - Bowden calibration based on this pass is 682.7
-    > Finding extruder gear position (try #3 of 3)...
-    > Run Current: 0.21A Hold Current: 0.09A
-    > Run Current: 0.49A Hold Current: 0.09A
-    > Pass #3: Filament homed to extruder, encoder measured 683.9mm, filament sprung back 3.2mm
-    > - Bowden calibration based on this pass is 683.4
-    > Recommended calibration reference is 680.2mm. Clog detection length: 16.8mm
-    > Bowden calibration and clog detection length have been saved for MMU ERCF v1.1sbTODO
-
-Notes: (i) This calibration assumes that the selector has been calibrated first. (ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
-
-### Optional Step 6. Calibrating gates:
-This step allows for calibrating slight differences between gates.  It isn't required (or useful) for designs that cannot have variation like the Tradrack MMU but is useful for designs like ERCF that can have variation of feed between gates.  Even with ERCF this is optional because if not run, the gates will tune themselves over time automatically!  It is useful on two occasions: (i) to remove the need and time to autotune, (ii) if there is substantial variation between gates -- e.g. if BMG gears for different gates are sourced from different vendors.
-
-
-## Selected features in detail:
-TODO
+# TODO - rewrite beyond this marker vvvv
 
 ### Config Loading and Unload sequences explained
 Note that if a toolhead sensor is configured it will become the default filament homing method and home to extruder an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `ercf_calib_ref`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.
@@ -379,33 +370,6 @@ Regardless of loading settings above it is important to accurately set `home_to_
 This is much simplier than loading. The toolhead sensor, if installed, will automatically be leveraged as a checkpoint when extracting from the extruder.
 `sync_unload_length` controls the mm of synchronized movement at start of bowden unloading.  This can make unloading more reliable if the tip is caught in the gears and will act as what Ette refers to as a "hair pulling" step on unload.  This is an optional step, set to 0 to disable.
 
-### Synchronized Gear/Extruder motors
-The ERCF system now offers the optional feature of coordinating its gear motor with the extruder stepper during printing. This added functionality enhances the filament pulling torque, potentially alleviating friction-related problems. **It is crucial, however, to maintain precise rotational distances for both the primary extruder stepper and the gear stepper. A mismatch in filament transfer speeds between these components could lead to undue stress and filament grinding.**
-
-#### Setting up Print Synchronization
-Synchronizion during printing is controlled by 'sync_to_extruder' in `ercf_parameters.cfg`. If set to 1, after a toolchange, the ERCF servo will stay engaged and the gear motor will sync with he extruder for move extrusion and retraction moves
-
-#### Synchronization Workflow
-If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any ERCF operation that necessitates exclusinve gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles the majority of these actions. However, if the printer enters ERCF_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted.  Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the ERCF during a pause use the `ERCF_SYNC_GEAR_MOTOR` command.
-
-The `ERCF_SYNC_GEAR_MOTOR sync={0|1} servo={0|1}` command functions as follows:
-- Defaults to `sync=1` and `servo=1`
-- If `sync=1` and `servo=1`, it triggers the servo and executes the synchronization
-- If `sync=1` and `servo=0`, it performs only the synchronization
-- If `sync=0` and `servo=1`, it disengages and lifts the servo
-- If `sync=0` and `servo=0`, it only disengages the synchronization
-
-You can still control the gear stepper motor with the `MANUAL_STEPPER` command, however, this will only be effective if the stepper is not currently syncing with the extruder.
-
-#### Other synchonization options
-In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process. Whilst these might seem like duplicates of previous partial load/unload sync movements they operate slightly more simlified manner. If they are all disabled, Happy Hare will operate as it did previously.  If these options are enabled they turn off the former functionality.  E.g. If `sync_extruder_load` is enabled it will keep the gear synchronized with the extruder for the entire loading of the extruder.<br>
-Note that many run the gear stepper at maximum current to overcome friction. If you are one of those you might want to consider using `sync_gear_current` to reduce the current while it is synced during print to keep the temperature down.
-
-`sync_extruder_load` turns on synchronization of extruder loading
-`sync_extruder_unload` turns on synchronization of extruder unloading
-`sync_form_tip` turns on syncronization of the stand alone tip forming movement
-`sync_gear_current` the percentage reduction of gear stepper while it is synchronized with extruder
-
 ### Clog/runout detection
 ERCF can use its encoder to detect filament runout or clog conditions. This functionality is enabled with the `enable_clog_detection` in ercf_parameters.cfg. It works by monitoring how much filament the extruder is pushing and comparing it that measured by the encoder.  If the extruder ever gets ahead by more that the calibrated `clog_detection_length` the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `ERCF_UNLOCK` & `RESUME` to continue.  If a runout and endless spool is enabled the tool with be remaped and printing will automatically continue.
 
@@ -414,39 +378,6 @@ Setting this value to `1` enables clog detection employing the static clog detec
     desired_headroom: 5.0		# The runout headroom that ERCF will attempt to maintain (closest ERCF comes to triggering runout)
     average_samples: 4		# The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
 
-### Tool-to-Gate (TTG) mapping and EndlessSpool application
-When changing a tool with the `Tx` command the ERCF will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.  There are 3 primary use cases for this feature:
-<ol>
-  <li>You have loaded your filaments differently than you sliced gcode file... No problem, just issue the appropriate remapping commands prior to printing
-  <li>Some of "tools" don't have filament and you want to mark them as empty to avoid selection.
-  <li>Most importantly, for EndlessSpool - when a filament runs out on one gate (spool) then next in the sequence is automatically mapped to the original tool.  It will therefore continue to print on subsequent tool changes.  You can also replace the spool and update the map to indicate availability mid print
-</ol>
-
-*Note that the initial availability of filament at each gate can also be specified in the `ercf_parameters.cfg` file by updating the `gate_status` list. E.g.
->gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
-
-  on a 9-gate ERCF would mark gates 2, 3, 5, 6 & 7 as empty
- 
-To view the current mapping you can use either `ERCF_STATUS` or `ERCF_DISPLAY_TTG_MAP`
-  
-![ERCF_STATUS](doc/ercf_status.png "ERCF_STATUS")
-
-<br>
-
-Since EndlessSpool is not something that triggers very often you can use the following to simulate the action:
-  > ERCF_ENCODER_RUNOUT FORCE_RUNOUT=1
-
-This will emulate a filament runout and force ERCF to interpret it as a true runout and not a possible clog. ERCF will then run the following sequence:
-<ul>
-  <li>Move the toolhead up a little (defined by 'z_hop_distance & z_hop_speed') to avoid blobs
-  <li>Call '_ERCF_ENDLESS_SPOOL_PRE_UNLOAD' macro.  Typically this where you would quickly move the toolhead to your parking area
-  <li>Perform the toolchange and map the new gate in the sequence
-  <li>Call '_ERCF_ENDLESS_SPOOL_POST_LOAD' macro.  Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where you picked it up in the PRE_UNLOAD macro
-  <li>Move the toolhead back down the final amount and resume the print
-</ul>
-
-The default supplied _PRE and _POST macros call PAUSE/RESUME which is typically a similar operation and may be already sufficient. Note: A common problem is that a custom _POST macro does not return the toolhead to previous position.  ERCF will still handle this case but it will move very slowly because it is not expecting large horizontal movement.
-  
 ### Visualization of filament position
   The `log_visual` setting turns on an off the addition of a filament tracking visualization in either long form or abbreviated KlipperScreen form.  This is a nice with log_level of 0 or 1 on a tuned and functioning setup.
   
@@ -521,47 +452,7 @@ At some point when a project occurs during a multi-color print ERCF will go into
     ERCF_RECOVER TOOL=5 LOADED=1 - tell ERCF that T5 is loaded and ready to print
     ERCF_RECOVER TOOL=1 GATE=2 LOADED=0 - tell ERCF that T1 is being serviced by gate #2 and the filament is Unloaded
 
-### State persistence
-This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of ERCF. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify ERCF whilst it is off-line you will need to correct the appropriate state prior to printing. Here is an example startup state:
 
-  <img src="doc/persisted_state.png" width=600 alt="Persisted Startup State">
-
-(note this was accomplished by setting `startup_status: 1` in ercf_parameters.cfg and can be generated anytime with the `ERCF_DISPLAY_TTG_MAP SUMMARY=1` command)
-This graphic indicates how I left ERCF the day prior... Filaments are loaded in gates 0,1 & 6; Gate/Tool #1 is selected; and the filament is fully loaded. If you are astute you can see I have remapped T2 to be on gate #3 and T3 to be on gate #2 because previously I had loaded these spools backward and this saved me from regenerating g-code.
-<br>
-
-In addition to basic operational state the print statistics and gate health statistics are persisted and so occasionally you might want to explicitly reset them with `ERCF_RESET_STATS`.  There are 5 levels of operation for this feature that you can set based on your personal preference/habbits. The level is controlled by a single variable `persistence_level` in `ercf_parameters.cfg`:
-
-    Advanced: ERCF can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
-    additional state information requiring progressively less inital setup. The higher level assume that you don't touch
-    ERCF while it is offline and it can come back to life exactly where it left off.  If you do touch it or get confused
-    then issue an appropriate reset command (E.g. ERCF_RESET) to get state back to the defaults.
-    Enabling `startup_status` is recommended if you use persisted state at level 2 and above
-    Levels: 0 = start fresh every time (the former default behavior)
-            1 = restore persisted endless spool groups
-            2 = additionally restore persisted tool-to-gate mapping
-            3 = additionally restore persisted gate status (filament availability)
-            4 = additionally restore persisted tool, gate and filament position!
-
-Generally there is no downside of setting the level to 2 and so that is the suggested default.  Really, so long as you are aware that persistence is happening and know how to adjust/reset you can set the level to 4 and enjoy immediate ERCF availability.  So what options are there for resetting state?  Here is the complete list:
-
-<ul>
-  <li>`ERCF_RESET` - Reset all persisted state back to defaults / unknown except for print stats and per-gate health stats
-  <li>`ERCF_RESET_STATS` - Reset print stats and per-gate health stats back to 0
-  <li>`ERCF_REMAP_TTG RESET=1` - Reset just the tool-to-gate mapping
-  <li>`ERCF_ENDLESS_SPOOL_GROUPS RESET=1` - Reset just the endless spool groups back to default
-  <li>`ERCF_SET_GATE_MAP RESET=1` - Reset information about the filament type, color and availability
-  <li>`ERCF_RECOVER` - Automatically discover or manually reset filament position, selected gate, selected tool, filament availability (lots of options)
-  <li>Needless to say, other operations can also be used to update state
-</ul>
-
-Couple of miscellaneous notes:
-<ul>
-  <li>Closely relevant to the usefulness of this functionality is the `ERCF_CHECK_GATES` command that will examine all or selection of gates for presence of filament
-  <li>In the graphic depictions of filament state the '*' indicates presence, '?' unknown and ' ' or '.' the lack of filament
-  <li>With tool-to-gate mapping it is entirely possible to have multiple tools mapped to the same gate (for example to force a multi-color print to be monotone) and therefore some gates can be made inaccessable until map is reset
-  <li>The default value for `gate_status`, `tool_to_gate_map` and `endless_spool_groups` can be set in `ercf_parameters.cfg`.  If not set the default will be, Tx maps to Gate#x, the status of each gate is unknown and each tool is in its own endless spool group (i.e. not part of a group)
-</ul>
 
 ## KlipperScreen Happy Hare Edition
 <img src="doc/ercf_main_printing.png" width="500" alt="KlipperScreen">
@@ -598,6 +489,8 @@ Firstly the importance of a reliable and fairly accurate encoder should not be u
 </ul>
 
 Good luck! You can find me on discord as *moggieuk#6538*
+
+<br>
 
     (\_/)
     ( *,*)
