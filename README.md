@@ -322,7 +322,7 @@ This experimental feature uses the measured filament movement to assess the % fl
 
 </details>
 
-## 5. Logging
+### 5. Logging
 There are four configuration options that control logging, both statistical logging and logging messages and level to console and logfile.
 
 <details>
@@ -343,7 +343,11 @@ The logfile will be placed in the same directory as other log files and is calle
 
 </details>
 
-### Pause / Resume / Cancel_Print macros:
+### 6. Pause / Resume / Cancel_Print macros:
+
+<details>
+<summary>Click to read more aboout Pause/Resume/Cancel_print macros...</summary>
+  
 It is no longer necessary to added anything to these macros -- ERCF will automatically wrap anything defined.   If you have used other versions of the software then you should remove these customizations. To understand the philosophy and expectations here is the sequence:
 <br>
   
@@ -356,9 +360,15 @@ The user then calls `ERCF_UNLOCK`, addresses the issue and calls `RESUME` to con
 The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead at higher speed to where it was left when the pause macro was called.  At this point the ERCF wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.
 <br>
   
-ERCF will always return the toolhead to the correct position, but if you leave it in your park area will will move it back very slowly.  You can to follow the above sequence to make this operation fast to prevent oozing from leaking on your print. 
+ERCF will always return the toolhead to the correct position, but if you leave it in your park area will will move it back very slowly.  You can to follow the above sequence to make this operation fast to prevent oozing from leaking on your print.
 
-### Recovering ERCF state:
+</details>
+
+### 7. Recovering ERCF state:
+
+<details>
+<summary>Click to read more aboout Pause/Resume/Cancel_print macros...</summary>
+  
 At some point when a project occurs during a multi-color print ERCF will go into a `pause/locked` state.  Generally the user would then call `ERCF_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue ERCF commands to move the filament around or change gate. If you do this the ERCF will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell ERCF the correct state with the `ERCF_RECOVER` command.  This command is also useful when first turning on an ERCF with filament already loaded.  Instead of ERCF having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
 
     ERCF_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
@@ -366,11 +376,10 @@ At some point when a project occurs during a multi-color print ERCF will go into
     ERCF_RECOVER TOOL=5 LOADED=1 - tell ERCF that T5 is loaded and ready to print
     ERCF_RECOVER TOOL=1 GATE=2 LOADED=0 - tell ERCF that T1 is being serviced by gate #2 and the filament is Unloaded
 
+</details>
 
-
-
-
-# TODO - rewrite beyond this marker vvvv
+<details>
+<summary>ALL THIS NEEDS REWRITING...</summary>
 
 ### Config Loading and Unload sequences explained
 Note that if a toolhead sensor is configured it will become the default filament homing method and home to extruder an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `ercf_calib_ref`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.
@@ -511,45 +520,9 @@ If you have installed the optional filament bypass block your can configure its 
 Similarly the `ERCF_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates. Could be a really useful pre-print check...
 
 ### Gate statistics
-  Per-gate statistics that aggregate servo/load/unload failures and slippage are recorded throughout a session and can be logged at each toolchange.  An augmented `ERCF_DUMP_STATS` command will display these stats and will give a rating on the "quality assessment" of functionality of the gate (more info is sent to debug level typically found in the `ercf.log`).  The per-gate statistics will record important data about possible problems with individual gates.  Since the software will try to recover for many of these conditions you might not know you have a problem.  One particularly useful feature is being able to spot gates that are prone to slippage.  If slippage occurs on all gates equally, it is likely an encoder problem.  If on one gate if might be incorrect calibration of that gate or friction in the filament path.  Note that `ERCF_DUMP_STATS` will display this data but the details are sent to the DEBUG log level so you will only see it in the ercf.log file if you setup as I suggest.
+  Per-gate statistics that aggregate servo/load/unload failures and slippage are recorded throughout a session and can be logged at each toolchange.  An augmented `ERCF_DUMP_STATS` command will display these stats and will give a rating on the "quality assessment" of functionality of the gate (more info is sent to debug level typically found in the `ercf.log`).  The per-gate statistics will record important data about possible problems with individual gates.  Since the software will try to recover for many of these conditions you might not know you have a problem.  One particularly useful feature is being able to spot gates that are prone to slippage.  If slippage occurs on all gates equally, it is likely an encoder problem.  If on one gate if might be incorrect calibration of that gate or friction in the filament path.  Note that `ERCF_DUMP_STATS` will display this data but the details are sent to the DEBUG log level so you will only see it in the ercf.log file if you setup as I suggest.:w
 
-### Logging
-There are four configuration options that control logging:
-
-    log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
-    Generally you can keep console logging to a minimal whilst still sending debug output to the ercf.log file
-    Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
-      log_level: 1
-      logfile_level: 3            # Can also be set to -1 to disable log file completely
-      log_statistics: 1           # 1 to log statistics on every toolchange, 0 to disable (still recorded)
-      log_visual: 1               # 1 to log a fun visual representation of ERCF state showing filament position, 0 disable
-
-The logfile will be placed in the same directory as other log files and is called `ercf.log`.  It will rotate and keep the last 5 versions (just like klipper).  The default log level for ercf.log is "3" but can be set by adding `logfile_level` in you `ercf_parameters.cfg`.  With this available my suggestion is to reset the console logging level `log_level: 1` for an uncluttered experience knowing that you can always access `ercf.log` for debugging at a later time.  Oh, and if you don't want the logfile, no problem, just set `logfile_level: -1`
-
-### Pause / Resume / Cancel_Print macros:
-It is no longer necessary to added anything to these macros -- ERCF will automatically wrap anything defined.   If you have used other versions of the software then you should remove these customizations. To understand the philosophy and expectations here is the sequence:
-<br>
-  
-During a print, if ERCF detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `ercf_software.cfg`).  It is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
-<br>
-
-The user then calls `ERCF_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.
-<br>
-  
-The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead at higher speed to where it was left when the pause macro was called.  At this point the ERCF wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.
-<br>
-  
-ERCF will always return the toolhead to the correct position, but if you leave it in your park area will will move it back very slowly.  You can to follow the above sequence to make this operation fast to prevent oozing from leaking on your print. 
-
-### Recovering ERCF state:
-At some point when a project occurs during a multi-color print ERCF will go into a `pause/locked` state.  Generally the user would then call `ERCF_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue ERCF commands to move the filament around or change gate. If you do this the ERCF will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell ERCF the correct state with the `ERCF_RECOVER` command.  This command is also useful when first turning on an ERCF with filament already loaded.  Instead of ERCF having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
-
-    ERCF_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
-    ERCF_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
-    ERCF_RECOVER TOOL=5 LOADED=1 - tell ERCF that T5 is loaded and ready to print
-    ERCF_RECOVER TOOL=1 GATE=2 LOADED=0 - tell ERCF that T1 is being serviced by gate #2 and the filament is Unloaded
-
-
+</details>
 
 ## KlipperScreen Happy Hare Edition
 <img src="doc/ercf_main_printing.png" width="500" alt="KlipperScreen">
@@ -558,12 +531,17 @@ Even if not a KlipperScreen user you might be interested in my brand new [Klippe
 
 
 ## My Testing:
-This software is largely rewritten as well as being extended and so, despite best efforts, has probably introduced some bugs that may not exist in the official driver.  It also lacks extensive testing on different configurations that will stress the corner cases.  I have been using successfully on Voron 2.4 / ERCF with EASY-BRD.  I use a self-modified CW2 extruder with foolproof microswitch toolhead sensor. My day-to-day configuration is to load the filament to the extruder in a single movement (`num_moves=1`) at 200mm/s, then home to toolhead sensor with synchronous gear/extruder movement (option #1 explained above).  I use the sensorless selector and have runout and EndlessSpool enabled.
+This new v2 Happy Hare software is largely rewritten and so, despite best efforts, has probably introduced some bugs that may not exist in the previous version.  It also lacks extensive testing on different configurations that will stress the corner cases.  I have been using it successfully on Voron 2.4 / ERCF v1.1 and ERCF v2.0 with EASY-BRD and ERB board.  I use a self-modified CW2 extruder with foolproof microswitch toolhead sensor (hall effect switches are extremely problematic in my experience). My day-to-day configuration is to load the filament to the extruder in a single movement at 250mm/s, then home to toolhead sensor with synchronous gear/extruder movement although I have just moved to automatic "touch" homing to the nozzle whcih works without ANY knowledge of my extruder dimensions!!
 
 ### My Setup:
 <img src="doc/My Voron 2.4 and ERCF.jpg" width="400" alt="My Setup">
 
-### Some setup notes based on my learnings:
+### Some setup notes based on my learnings with different MMUs
+
+<details>
+<summary>Read move about my learnings of ERCF v1.1...</summary>
+  
+<br>  
 
 Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `ERCF_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](doc/ENCODER.md) on fixing many possible problems with encoder.
 <ul>
@@ -584,6 +562,25 @@ Firstly the importance of a reliable and fairly accurate encoder should not be u
   </ul>
   <li>Speeds.... starting in v1.1.7 the speed setting for all the various moves made by ERCF can be tuned.  These are all configurable in the 'ercf_parameters.cfg' file or can be tested without restarting Klipper with the 'ERCF_TEST_CONFIG' command.  If you want to optimise performance you might want to tuning these faster.  If you do, watch for the gear stepper missing steps which will often be reported as slippage.
 </ul>
+
+</details>
+
+<details>
+<summary>Read move about my learnings of ERCF v2.0...</summary>
+  
+<br>
+STILL FORMING EXPERIEMCE
+
+</details>
+
+<details>
+<summary>Read move about my learnings with Tradrack v1.0...</summary>
+  
+<br>
+STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS ALMOST READY!
+
+</details>
+
 
 Good luck! You can find me on discord as *moggieuk#6538*
 
