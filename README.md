@@ -62,6 +62,7 @@ Pro tip: If you are concerned about running `install.sh -i` then run like this: 
 <br>
 
 If you using ERCF v1.1 the original encoder can be problematic. I new back-ward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
+
 <br>
 
   
@@ -71,10 +72,12 @@ If you using ERCF v1.1 the original encoder can be problematic. I new back-ward 
 </ul>
 
 
-## Command and Printer variables Reference
-The full list of commands and options can be [found here](doc/command_ref.md). But here is a quick list of the main (non test/calibration) commands:
+### MMU Commands
+Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. The full list of commands and options can be [found here](doc/command_ref.md)
 
-    > MMU_HELP
+<details>
+<summary>Click to show basic commands...</summary>
+  
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
     MMU - Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL - Perform a tool swap
@@ -102,8 +105,13 @@ The full list of commands and options can be [found here](doc/command_ref.md). B
     MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder motor
     MMU_UNLOCK - Unlock MMU operations after an error condition
     
+</details>
+
 ### Printer variables accessable for use in your own macros:
-Happy Hare exposes the following 'printer' variables:
+Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
+
+<details>
+<summary>Click to view variables...</summary>
 
     printer.mmu.enabled : {bool}
     printer.mmu.is_locked : {bool}
@@ -138,6 +146,7 @@ Optionally exposed on mmu_encoder (if fitted):
     printer['mmu_encoder mmu_encoder'].enabled : {bool} Whether encoder is currently enabled for clog detection
     printer['mmu_encoder mmu_encoder'].flow_rate : {int} % flowrate (extruder movement compared to encoder movement)
 
+</details>
 
 ## MMU Setup and Calibration:
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
@@ -156,7 +165,11 @@ See [MMU Configuration doc here](doc/configuration.md) for general overview but 
 ## Important conceptual components of Happy Hare
 
 ### 1. State persistence
-This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing. Here is an example startup state:
+This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing.
+<details>
+<summary>Click to read more about state persistence...</summary>
+  
+Here is an example startup state:
 
   <img src="doc/persisted_state.png" width=600 alt="Persisted Startup State">
 
@@ -196,6 +209,7 @@ Couple of miscellaneous notes:
   <li>With tool-to-gate mapping it is entirely possible to have multiple tools mapped to the same gate (for example to force a multi-color print to be monotone) and therefore some gates can be made inaccessable until map is reset
   <li>The default value for `gate_status`, `tool_to_gate_map` and `endless_spool_groups` can be set in `ercf_parameters.cfg`.  If not set the default will be, Tx maps to Gate#x, the status of each gate is unknown and each tool is in its own endless spool group (i.e. not part of a group)
 </ul>
+</details>
 
 ### 2. Tool-to-Gate (TTG) mapping and EndlessSpool application
 When changing a tool with the `Tx` command the ERCF will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.  There are 3 primary use cases for this feature:
@@ -204,6 +218,9 @@ When changing a tool with the `Tx` command the ERCF will by default select the f
   <li>Some of "tools" don't have filament and you want to mark them as empty to avoid selection.
   <li>Most importantly, for EndlessSpool - when a filament runs out on one gate (spool) then next in the sequence is automatically mapped to the original tool.  It will therefore continue to print on subsequent tool changes.  You can also replace the spool and update the map to indicate availability mid print
 </ol>
+
+<details>
+<summary>Click to read more about Tool-to-Gate mapping...</summary>
 
 *Note that the initial availability of filament at each gate can also be specified in the `ercf_parameters.cfg` file by updating the `gate_status` list. E.g.
 >gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
@@ -230,8 +247,13 @@ This will emulate a filament runout and force ERCF to interpret it as a true run
 
 The default supplied _PRE and _POST macros call PAUSE/RESUME which is typically a similar operation and may be already sufficient. Note: A common problem is that a custom _POST macro does not return the toolhead to previous position.  ERCF will still handle this case but it will move very slowly because it is not expecting large horizontal movement.
 
+</details>
+
 ### 3. Synchronized Gear/Extruder motors
 Happy Hare allows for syncing gear motor with the extruder stepper during printing. This added functionality enhances the filament pulling torque, potentially alleviating friction-related problems. **It is crucial, however, to maintain precise rotational distances for both the primary extruder stepper and the gear stepper. A mismatch in filament transfer speeds between these components could lead to undue stress and filament grinding.**
+
+<details>
+<summary>Click to read more about synchronized gear/extruder motors...</summary>
 
 #### Setting up Print Synchronization
 Synchronizion during printing is controlled by 'sync_to_extruder' in `ercf_parameters.cfg`. If set to 1, after a toolchange, the MMU servo will stay engaged and the gear motor will sync with he extruder for move extrusion and retraction moves
@@ -256,6 +278,8 @@ Note that many run the gear stepper at maximum current to overcome friction. If 
 `sync_extruder_unload` turns on synchronization of extruder unloading
 `sync_form_tip` turns on syncronization of the stand alone tip forming movement
 `sync_gear_current` the percentage reduction of gear stepper while it is synchronized with extruder
+
+</details>
 
 ### 4. Clog/runout detection
 ERCF can use its encoder to detect filament runout or clog conditions. This functionality is enabled with the `enable_clog_detection` in ercf_parameters.cfg. It works by monitoring how much filament the extruder is pushing and comparing it that measured by the encoder.  If the extruder ever gets ahead by more that the calibrated `clog_detection_length` the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `ERCF_UNLOCK` & `RESUME` to continue.  If a runout and endless spool is enabled the tool with be remaped and printing will automatically continue.
