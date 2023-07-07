@@ -196,7 +196,7 @@ class Mmu:
                 self.cad_gate_width = 23.0
                 self.cad_bypass_offset = 5.7
                 self.cad_last_gate_offset = 19.2
-                self.encoder_min_resolution = bmg_circ / (2 * 11) # Binky 11 tooth disc with BMG gear
+                self.encoder_min_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
             else: # V1.1
                 self.cad_gate0_pos = 4.2
                 if "t" in self.mmu_version_string:
@@ -209,16 +209,20 @@ class Mmu:
                 else:
                     self.cad_last_gate_offset = 2.0
                 self.cad_block_width = 5.
-                self.cad_bypass_block_width = 7. # PAUL TODO should be 6. (only my custom bypass block setup is 7)
+                self.cad_bypass_block_width = 6.
                 self.cad_bypass_block_delta = 9.
                 if "b" in self.mmu_version_string:
-                    self.encoder_min_resolution = bmg_circ / (2 * 11) # Binky 11 tooth disc with BMG gear
+                    self.encoder_min_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
                 else:
                     self.encoder_min_resolution = bmg_circ / (2 * 17) # Original 17 tooth BMG gear
             self.cal_max_gates = 12
             self.cal_tolerance = 5.0
         else:
             raise self.config.error("Support for non-ERCF systems is comming soon!")
+
+        # Still allow some 'cad' parameters to be customized, possibly temporary
+        self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width)
+        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
 
         # The threshold (mm) that determines real encoder movement (set to 1.5 pulses of encoder. i.e. allow one error pulse)
         self.encoder_min = 1.5 * self.encoder_min_resolution
@@ -2675,6 +2679,11 @@ class Mmu:
                 self._unload_encoder(self.unload_buffer)
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
+            elif self.loaded_status >= self.LOADED_STATUS_PARTIAL_END_OF_BOWDEN:
+                # Have to do slow unload because we don't know exactly where at the end of the bowden we are
+                self._unload_encoder(length) # Full slow unload
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
+
             elif self.loaded_status >= self.LOADED_STATUS_PARTIAL_BEFORE_ENCODER:
                 # Have to do slow unload because we don't know exactly where we are
                 self._unload_encoder(length) # Full slow unload
@@ -2859,8 +2868,8 @@ class Mmu:
 #                    self._set_loaded_status(self.LOADED_STATUS_PARTIAL_IN_EXTRUDER)
 #                    raise MmuError("Too much slippage (%.1fmm) detected during the sync unload from extruder. Maybe still stuck in extruder" % delta)
 #            length -= (initial_move - delta)
+#        # Continue fast unload
 
-        # Continue fast unload
         moves = 1 if length < (self.calibrated_bowden_length / self.num_moves) else self.num_moves
         delta = 0
         for i in range(moves):
@@ -2891,7 +2900,7 @@ class Mmu:
                 park = self.parking_distance - delta # will be between 8 and 20mm (for 23mm parking_distance, 15mm step)
                 delta = self._trace_filament_move("Final parking", -park)
                 # We don't expect any movement of the encoder unless it is free-spinning
-                if park - delta > 1.0: # We expect 0, but relax the test a little
+                if park - delta > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
                     self._log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
                 self._set_loaded_status(self.LOADED_STATUS_UNLOADED)
                 return
@@ -3069,10 +3078,10 @@ class Mmu:
         else:
             return False, travel
 
-    # This is the main function for initiating a tool change, handling unload if necessary
+    # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True):
         self._log_debug("Tool change initiated %s" % ("with slicer forming tip" if skip_tip else "with standalone MMU tip formation"))
-        self._sync_gear_to_extruder(False) # PAUL NEW, do I need to fix servo pos?
+        self._sync_gear_to_extruder(False)
         skip_unload = False
         initial_tool_string = "Unknown" if self.tool_selected < 0 else ("T%d" % self.tool_selected)
         if tool == self.tool_selected and self.tool_to_gate_map[tool] == self.gate_selected and self.loaded_status == self.LOADED_STATUS_FULL:
@@ -3097,7 +3106,7 @@ class Mmu:
             self.gcode.run_script_from_command("M117 T%s" % tool)
             return
 
-        # Identify the unitialized start up use case and make it easy for user
+        # Identify the unitialized startup use case and make it easy for user
         if not self.is_homed and self.tool_selected == self.TOOL_UNKNOWN:
             self._log_info("MMU not homed, homing it before continuing...")
             self._home(tool)
@@ -3805,7 +3814,7 @@ class Mmu:
                         gate = (j + starting_gate) % num_tools
                         if self.endless_spool_groups[gate] == group:
                             es += "%s%d%s" % (prefix, gate,self._get_filament_char(self.gate_status[gate]))
-                            prefix = " > "
+                            prefix = "> "
                     msg += es
                 if i == self.tool_selected:
                     msg += " [SELECTED on gate #%d]" % self.gate_selected

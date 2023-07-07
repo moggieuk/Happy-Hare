@@ -167,7 +167,6 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
         prev_extruder_sk = extruder_stepper.set_stepper_kinematics(self.linked_move_sk)
         prev_extruder_trapq = extruder_stepper.set_trapq(manual_trapq)
         pos = manual_steppers[0].get_commanded_position()
-        logging.info("MOGGIE: linked extruder_stepper.set_position(%s)" % pos)
         extruder_stepper.set_position([pos, 0., 0.])
 
         # Yield to caller
