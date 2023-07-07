@@ -34,7 +34,7 @@ Thank you!
   <li>Inegrated help</li>
 </ul>
 
-Companion customized [KlipperScreen for MMU](#klipperscreen-happy-hare-edition) touchscreen control
+Companion customized [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) for easy touchscreen MMU control!
 
 <img src="doc/my_klipperscreen.png" width="600" alt="KlipperScreen-Happy Hare edition">
 
@@ -286,7 +286,7 @@ If you MMU is equiped with an encoder it can be used to detect filament runout o
 
 <details>
 <summary>Click to read more runout/clog detection, EndlessSpool and flowrate monitoring...</summary>
-  
+<br>  
 Runout and Clog detection functionality are enabled with the `enable_clog_detection` parameter in mmu_parameters.cfg.  It works by comparing filament extruded to that measured by the encoder and if this is ever greater than the `mmu_calibration_clog_length` (stored in mmu_vars.cfg) the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `MMU_UNLOCK` & `RESUME` to continue.  If a runout is determined and EndlessSpool is enabled the fragment of filament will be unloaded, the current tool will be remaped to the next specified gate, and printing will automatically continue.
 
 Setting `enable_clog_detection` value to `1` enables clog detection employing the static clog detection length.  Setting it to `2` will enable automatic adjustment of the detection length and Happy Hare will peridically update the calibration value beased on what it learns about your system. Whilst this doesn't guarantee you won't get a false trigger it will contiually tune until false triggers not longer occur.  The automatic algorithm is controlled by two variables in the `[mmu_encoder]` section of `mmu_hardward.cfg`:
@@ -295,6 +295,29 @@ Setting `enable_clog_detection` value to `1` enables clog detection employing th
     average_samples: 4		# The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
 
 These default values makes the autotune logic try to maintain 5mm of "headroom" from the trigger point. If you have very fast movements defined in your custom macros or a very long bowden tube you might want to increase this a little.  The `average_samples` is purely the damping of the statistical sampling. Higher values means the automatic adjustments will be slower.
+
+### EndlessSpool
+As mentioned earlier, EndlessSpool will, if configured, spring into action when a filament runs out. It will map the current tool to the next gate in the defined sequence (see below) and continue printing.
+
+TODO: need details on setting up maps and command that view and update maps
+
+Since EndlessSpool is not something that triggers very often you can use the following to simulate the action and familiarize yourslef with its action:
+
+  > MMU_ENCODER_RUNOUT FORCE_RUNOUT=1
+
+This will emulate a filament runout and force the MMU to interpret it as a true runout and not a possible clog. THe MMU will then run the following sequence:
+<ul>
+  <li>Move the toolhead up a little (defined by 'z_hop_distance & z_hop_speed') to avoid blobs
+  <li>Call '_ERCF_ENDLESS_SPOOL_PRE_UNLOAD' macro (defined in `mmu_software.cfg`).  Typically this where you would quickly move the toolhead to your parking area
+  <li>Perform the toolchange and map the new gate in the sequence
+  <li>Call '_ERCF_ENDLESS_SPOOL_POST_LOAD' macro.  Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where you picked it up in the PRE_UNLOAD macro
+  <li>Move the toolhead back down the final amount and resume the print
+</ul>
+
+The default supplied _PRE and _POST macros call PAUSE/RESUME which is typically a similar operation and may be already sufficient. Note: A common problem is that a custom _POST macro does not return the toolhead to previous position.  The MMU will still handle this case but it will move very slowly because it will not be expecting large horizontal movement. To avoid this always return the toolhead to the starting position in your custom macros.
+
+### Flow rate monitoring
+This experimental feature uses the measured filament movement to assess the % flowrate being achieved.  If you print too fast or with a hotend that is too cold you will get a decreased % flowrate and under extrusion problems.  The encoder driver with Happy Hare updates a printer variable called `printer['mmu_encoder mmu_encoder'].flow_rate` with the % measured flowrate.  Whilst it is impossible for this value to be instantaneously accurate, if it tracks below about 94% it is likely you have some under extrusion problems and should slow down your print.  Note this is best monitored in the [KlipperScreen-HappyHare edition](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) application
 
 </details>
 
