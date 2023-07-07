@@ -390,6 +390,7 @@ The `MMU_DUMP_STATS` command will display these stats and will give a rating on 
 
 </details>
 
+THIS SECTION CONTAINS THE RAW REAME FROM HAPPY-HAREv1
 <details>
 <summary>ALL THIS NEEDS REWRITING...</summary>
 
@@ -536,7 +537,9 @@ Similarly the `ERCF_CHECK_GATES` command will run through all the gates (or thos
 ## KlipperScreen Happy Hare Edition
 <img src="doc/ercf_main_printing.png" width="500" alt="KlipperScreen">
 
-Even if not a KlipperScreen user you might be interested in my brand new [KlipperScreen version](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition). Be sure to follow the install directions carefully and read the [panel-by-panel](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition/blob/master/docs/ERCF.md) documentation.  It will make you even happier!!
+Even if not a KlipperScreen user yet you might be interested in my [KlipperScreen version](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) simply to control your MMU. It makes using your MMU the way it should be. Dare I say as easy at Bambu Labs ;-)  I run mine with a standalone Rasberry Pi attached to my buffer array and can control mutliple MMU's with it.
+
+Be sure to follow the install directions carefully and read the [panel-by-panel](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition/blob/master/docs/ERCF.md) documentation.
 
 
 ## My Testing:
