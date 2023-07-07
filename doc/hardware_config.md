@@ -2,10 +2,10 @@
 
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
-### Step 1. Validate your mmu_hardware.cfg configuration
+### Step 1. Validate your hardware configuration
 This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
 
-Assuming you are familiar with all that there is one new IMPORTANT step that must be perform by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of mmu_hardware.cfg):
+Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of mmu_hardware.cfg):
   
     # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
     # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
@@ -49,6 +49,14 @@ The second definion is the elements that define the extruder stepper motor taken
 
 For now, ignore all the enstop setup.  A separate guide on endstops and homing can be found in the MMU movement guide [found here](doc/movement_and_homing.md)
 
-### Step 2. TODO
+If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
 
+### Step 2. Check motor movement direction
 TODO
+
+### Step 3. Check endstops & option sensors
+TODO
+
+### Step 4. Check Encoder (if fitted)
+TODO
+
