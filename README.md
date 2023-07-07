@@ -343,33 +343,35 @@ The logfile will be placed in the same directory as other log files and is calle
 
 </details>
 
-### 6. Pause / Resume / Cancel_Print macros:
+### 6. Pause / Resume / Cancel_print macros:
+
+Regardless of whether you use your own Pause/Print/Cancel_print macros or use the ones provided in `client_macros.cfg`, Happy Hare will automatically wrap anything defined so that it can inject the necessary steps to control the MMU.
 
 <details>
-<summary>Click to read more aboout Pause/Resume/Cancel_print macros...</summary>
-  
-It is no longer necessary to added anything to these macros -- ERCF will automatically wrap anything defined.   If you have used other versions of the software then you should remove these customizations. To understand the philosophy and expectations here is the sequence:
+<summary>Click to read more aboout what Happy Hare adds to these macros...</summary>
+
 <br>
   
-During a print, if ERCF detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `ercf_software.cfg`).  It is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
+During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `ercf_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
 <br>
 
 The user then calls `ERCF_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.
 <br>
   
-The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead at higher speed to where it was left when the pause macro was called.  At this point the ERCF wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.
+The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead to where it was left when the pause macro was called.  At this point the Happy Hare wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.
 <br>
   
-ERCF will always return the toolhead to the correct position, but if you leave it in your park area will will move it back very slowly.  You can to follow the above sequence to make this operation fast to prevent oozing from leaking on your print.
+Happy Hare will always return the toolhead to the correct position, but if you leave it in your park area will will move it back very slowly.  You can to follow the above sequence to make this operation fast to prevent oozing from leaking on your print.
 
 </details>
 
-### 7. Recovering ERCF state:
+### 7. Recovering MMU state:
+Happy Hare is a state machine. That means it keeps track of the the state of the MMU. It uses knowledge of this state to determine how to handle a particular situation.  For example, if you ask it to unload filament... Is the filament in the toolhead, is it in the bowden, or is there no filament present?  If uses this information to make the correct decisions on what to do next.  Occasionaly, through print error or manual intervention the state may become stale and it is necessary to re-sync with Happy Hare.
 
 <details>
-<summary>Click to read more aboout Pause/Resume/Cancel_print macros...</summary>
+<summary>Click to read more how to recover MMU state...</summary>
   
-At some point when a project occurs during a multi-color print ERCF will go into a `pause/locked` state.  Generally the user would then call `ERCF_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue ERCF commands to move the filament around or change gate. If you do this the ERCF will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell ERCF the correct state with the `ERCF_RECOVER` command.  This command is also useful when first turning on an ERCF with filament already loaded.  Instead of ERCF having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
+At some point when a project occurs during a multi-color print your MMU will pause and go into a `locked` state.  Generally the user would then call `MMU_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
 
     ERCF_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
     ERCF_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
