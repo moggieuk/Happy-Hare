@@ -286,6 +286,7 @@ If you MMU is equiped with an encoder it can be used to detect filament runout o
 
 <details>
 <summary>Click to read more runout/clog detection, EndlessSpool and flowrate monitoring...</summary>
+  
 <br>  
 Runout and Clog detection functionality are enabled with the `enable_clog_detection` parameter in mmu_parameters.cfg.  It works by comparing filament extruded to that measured by the encoder and if this is ever greater than the `mmu_calibration_clog_length` (stored in mmu_vars.cfg) the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `MMU_UNLOCK` & `RESUME` to continue.  If a runout is determined and EndlessSpool is enabled the fragment of filament will be unloaded, the current tool will be remaped to the next specified gate, and printing will automatically continue.
 
@@ -320,6 +321,54 @@ The default supplied _PRE and _POST macros call PAUSE/RESUME which is typically 
 This experimental feature uses the measured filament movement to assess the % flowrate being achieved.  If you print too fast or with a hotend that is too cold you will get a decreased % flowrate and under extrusion problems.  The encoder driver with Happy Hare updates a printer variable called `printer['mmu_encoder mmu_encoder'].flow_rate` with the % measured flowrate.  Whilst it is impossible for this value to be instantaneously accurate, if it tracks below about 94% it is likely you have some under extrusion problems and should slow down your print.  Note this is best monitored in the [KlipperScreen-HappyHare edition](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) application
 
 </details>
+
+## 5. Logging
+There are four configuration options that control logging, both statistical logging and logging messages and level to console and logfile.
+
+<details>
+<summary>Click to read more aboout logging...</summary>
+  
+<br>  
+
+Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`. 
+log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
+    Generally you can keep console logging to a minimal whilst still sending debug output to the ercf.log file
+    Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
+      log_level: 1
+      logfile_level: 3            # Can also be set to -1 to disable log file completely
+      log_statistics: 1           # 1 to log statistics on every toolchange, 0 to disable (still recorded)
+      log_visual: 1               # 1 to log a fun visual representation of ERCF state showing filament position, 0 disable
+
+The logfile will be placed in the same directory as other log files and is called `ercf.log`.  It will rotate and keep the last 5 versions (just like klipper).  The default log level for ercf.log is "3" but can be set by adding `logfile_level` in you `ercf_parameters.cfg`.  With this available my suggestion is to reset the console logging level `log_level: 1` for an uncluttered experience knowing that you can always access `ercf.log` for debugging at a later time.  Oh, and if you don't want the logfile, no problem, just set `logfile_level: -1`
+
+</details>
+
+### Pause / Resume / Cancel_Print macros:
+It is no longer necessary to added anything to these macros -- ERCF will automatically wrap anything defined.   If you have used other versions of the software then you should remove these customizations. To understand the philosophy and expectations here is the sequence:
+<br>
+  
+During a print, if ERCF detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `ercf_software.cfg`).  It is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
+<br>
+
+The user then calls `ERCF_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.
+<br>
+  
+The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead at higher speed to where it was left when the pause macro was called.  At this point the ERCF wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.
+<br>
+  
+ERCF will always return the toolhead to the correct position, but if you leave it in your park area will will move it back very slowly.  You can to follow the above sequence to make this operation fast to prevent oozing from leaking on your print. 
+
+### Recovering ERCF state:
+At some point when a project occurs during a multi-color print ERCF will go into a `pause/locked` state.  Generally the user would then call `ERCF_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue ERCF commands to move the filament around or change gate. If you do this the ERCF will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell ERCF the correct state with the `ERCF_RECOVER` command.  This command is also useful when first turning on an ERCF with filament already loaded.  Instead of ERCF having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
+
+    ERCF_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
+    ERCF_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
+    ERCF_RECOVER TOOL=5 LOADED=1 - tell ERCF that T5 is loaded and ready to print
+    ERCF_RECOVER TOOL=1 GATE=2 LOADED=0 - tell ERCF that T1 is being serviced by gate #2 and the filament is Unloaded
+
+
+
+
 
 # TODO - rewrite beyond this marker vvvv
 
@@ -425,14 +474,6 @@ Regardless of loading settings above it is important to accurately set `home_to_
 #### Possible unloading options:
 This is much simplier than loading. The toolhead sensor, if installed, will automatically be leveraged as a checkpoint when extracting from the extruder.
 `sync_unload_length` controls the mm of synchronized movement at start of bowden unloading.  This can make unloading more reliable if the tip is caught in the gears and will act as what Ette refers to as a "hair pulling" step on unload.  This is an optional step, set to 0 to disable.
-
-### Clog/runout detection
-ERCF can use its encoder to detect filament runout or clog conditions. This functionality is enabled with the `enable_clog_detection` in ercf_parameters.cfg. It works by monitoring how much filament the extruder is pushing and comparing it that measured by the encoder.  If the extruder ever gets ahead by more that the calibrated `clog_detection_length` the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `ERCF_UNLOCK` & `RESUME` to continue.  If a runout and endless spool is enabled the tool with be remaped and printing will automatically continue.
-
-Setting this value to `1` enables clog detection employing the static clog detection length.  Setting it to `2` will enable automatic adjustment of the detection length. Whilst this doesn't guarantee you won't get a false trigger it will contiually tune until false triggers not longer occur.  The automatic algorithm is controlled by two variables in the `[ercf_encoder]` section:
-
-    desired_headroom: 5.0		# The runout headroom that ERCF will attempt to maintain (closest ERCF comes to triggering runout)
-    average_samples: 4		# The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
 
 ### Visualization of filament position
   The `log_visual` setting turns on an off the addition of a filament tracking visualization in either long form or abbreviated KlipperScreen form.  This is a nice with log_level of 0 or 1 on a tuned and functioning setup.
