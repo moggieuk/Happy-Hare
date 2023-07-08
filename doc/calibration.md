@@ -20,9 +20,9 @@ Position selector in from of gate #0 and put some filament into the gate. Run:
 
     > MMU_TEST_LOAD
 
-This will load a short length of filament and ensure the servo is down.  Next cut the filament flush with the bowden on the selector (this is the encoder on the ERCF design). Run this command again to emit close to 100mm of filament:
+This will load a short length of filament and ensure the servo is down.  Next cut the filament flush with the bowden on the selector (this is the encoder on the ERCF design). Run this command to emit close to 100mm of filament:
 
-    > MMU_TEST_LOAD
+    > MMU_TEST_MOVE LENGTH=100
 
 Get out your ruler can very carefully measure the length of the emited filament.  Hold your ruler up to the bowden and gently pull the filament straight to get an accurate measurement. Next run this specifying your actual measured value:
 
@@ -30,7 +30,7 @@ Get out your ruler can very carefully measure the length of the emited filament.
     > Gear stepper `rotation_distance` calculated to be 23.117387
     > Gear calibration has been saved for MMU ERCF v1.1sb
 
-You can also measure over a different length by using something like `MMU_TEST_LOAD LENGTH=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
+You can also measure over a different length by using something like `MMU_TEST_MOVE LENGTH=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
 
 ### Step 2. Calibrate your encoder (if your MMU has own like the ERCF)
 Next step is to calibrate the encoder so it measures distance accurately. Re-fit the bowden to the selector/encoder (you can insert the short length of filament to tube as you fit to save time). Now run:
