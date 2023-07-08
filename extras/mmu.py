@@ -223,6 +223,7 @@ class Mmu:
         # Still allow some 'cad' parameters to be customized, possibly temporary
         self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width)
         self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
+        self.encoder_min_resolution = config.getfloat('encoder_min_resolution', self.encoder_min_resolution)
 
         # The threshold (mm) that determines real encoder movement (set to 1.5 pulses of encoder. i.e. allow one error pulse)
         self.encoder_min = 1.5 * self.encoder_min_resolution
@@ -1305,7 +1306,7 @@ class Mmu:
         try:
             self._reset_ttg_mapping() # To force tool = gate
             self._log_always("Calibrating bowden length from reference Gate #0")
-            self._select_tool(0)
+# PAUL  not necessary          self._select_tool(0)
             self._set_gate_ratio(1.)
             reference_sum = spring_max = 0.
             successes = 0
@@ -1581,6 +1582,30 @@ class Mmu:
             self._log_always("Gear calibration has been saved for MMU %s v%s" % (self.mmu_vendor, self.mmu_version_string))
             self.calibration_status |= self.CALIBRATED_GEAR
 
+    # Start: Will home selector (unload if necessary), select gate #0
+    # End: Filament unloaded
+    cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for gate #0"
+    def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
+        if self._check_is_disabled(): return
+        if self._check_is_paused(): return
+        if self._check_in_bypass(): return
+        if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
+        approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', above=0.)
+        repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
+        extruder_homing_max = gcmd.get_float('HOMING_MAX', 100, above=0.)
+        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        try:
+            self._reset_ttg_mapping() # To force tool = gate
+            self.calibrating = True
+            self._home(0)
+            self._calibrate_bowden_length(approx_bowden_length, extruder_homing_max, repeats, save)
+        except MmuError as ee:
+            self._pause(str(ee))
+        finally:
+            self.calibrating = False
+
+    # Start: Will home selector (unload if necessary), select requested gate
+    # End: Filament unloaded
     cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for gate #0"
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         if self._check_is_disabled(): return
@@ -1630,6 +1655,8 @@ class Mmu:
         finally:
             self.calibrating = False
 
+    # Start: Assumes filament is loaded through encoder (e.g. with MMU_TEST_LOAD)
+    # End: Does not eject filament at end (filament same as start)
     cmd_MMU_CALIBRATE_ENCODER_help = "Calibration routine for the MMU encoder"
     def cmd_MMU_CALIBRATE_ENCODER(self, gcmd):
         if self._check_is_disabled(): return
@@ -1646,6 +1673,7 @@ class Mmu:
         test_speed = min_speed
         speed_incr = (max_speed - min_speed) / repeats
         try:
+            self._servo_down()
             self.calibrating = True
             pos_values, neg_values = [], []
             for x in range(repeats):
@@ -2541,9 +2569,10 @@ class Mmu:
                     length -= self.delay_servo_release
                 if self.transition_length > 0:
                     # Synced extruder transistion move
+                    dist = max(0, self.transition_length - self.delay_servo_release)
                     homed, actual, delta = self._trace_filament_move("Synced extruder entry move",
-                            self.transition_length - delay_length, motor="gear+extruder", homing_move=1, endstop="mmu_toolhead")
-                    length -= (self.transition_length - self.delay_servo_release)
+                            dist, motor="gear+extruder", homing_move=1, endstop="mmu_toolhead")
+                    length -= dist
             if not self.toolhead_sensor.runout_helper.filament_present:
                 # Now complete homing with just extruder movement
                 self._servo_up()
@@ -3123,6 +3152,7 @@ class Mmu:
         self._servo_auto()
 
     def _select_tool(self, tool, move_servo=True):
+        self._log_info("PAUL: _select_tool: tool_selected=%s, gate_selected=%s" % (self.tool_selected, self.gate_selected))
         if tool < 0 or tool >= self.num_gates:
             self._log_always("Tool %d does not exist" % tool)
             return
