@@ -82,7 +82,7 @@ Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. T
     MMU - Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL - Perform a tool swap
     MMU_CHECK_GATES - Automatically inspects gate(s), parks filament and marks availability
-    MMU_DUMP_STATS - Dump the MMU statistics
+    MMU_STATS - Dump (and optionally reset) the MMU statistics
     MMU_EJECT - Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER - Display encoder position or temporarily enable/disable detection logic in encoder
     MMU_ENDLESS_SPOOL - Redefine the EndlessSpool groups
@@ -96,7 +96,6 @@ Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. T
     MMU_RECOVER - Recover the filament location and set MMU state after manual intervention/movement
     MMU_REMAP_TTG - Remap a tool to a specific gate and set gate availability
     MMU_RESET - Forget persisted state and re-initialize defaults
-    MMU_RESET_STATS - Reset the MMU statistics
     MMU_SELECT - Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS - Select the filament bypass
     MMU_SERVO - Move MMU servo to position specified position or angle
@@ -165,7 +164,7 @@ See [MMU Configuration doc here](doc/configuration.md) for general overview but 
 ## Important conceptual components of Happy Hare
 
 ### 1. State persistence
-This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing.
+This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (selector homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing.
 <details>
 <summary>Click to read more about state persistence...</summary>
   
@@ -173,33 +172,34 @@ Here is an example startup state:
 
   <img src="doc/persisted_state.png" width=600 alt="Persisted Startup State">
 
-(note this was accomplished by setting `startup_status: 1` in mmu_parameters.cfg and can be generated anytime with the `MMU_STATUS` command)
+(note this was accomplished by setting `startup_status: 1` in mmu_parameters.cfg and can also be generated anytime with the `MMU_STATUS` command)
 This graphic indicates how I left my MMU the day prior... Filaments are loaded in gates 0,1 & 6; Gate/Tool #1 is selected; and the filament is fully loaded. If you are astute you can see I have remapped T2 to be on gate #3 and T3 to be on gate #2 because previously I had loaded these spools backward and this saved me from regenerating g-code.
 <br>
 
-In addition to basic operational state the print statistics and gate health statistics are persisted and so occasionally you might want to explicitly reset them with `ERCF_RESET_STATS`.  There are 5 levels of operation for this feature that you can set based on your personal preference/habbits. The level is controlled by a single variable `persistence_level` in `ercf_parameters.cfg`:
+In addition to basic operational state the print statistics and gate health statistics are persisted and so occasionally you might want to explicitly reset them with `MMU_STATS RESET=1`.  There are 5 levels of operation for this feature that you can set based on your personal preference/habbits. The level is controlled by a single variable `persistence_level` in `mmu_parameters.cfg`:
 
-    Advanced: Happy Hare can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
-    additional state information requiring progressively less inital setup. The higher level assume that you don't touch
-    ERCF while it is offline and it can come back to life exactly where it left off.  If you do touch it or get confused
-    then issue an appropriate reset command (E.g. ERCF_RESET) to get state back to the defaults.
-    Enabling `startup_status` is recommended if you use persisted state at level 2 and above
-    Levels: 0 = start fresh every time (the former default behavior)
-            1 = restore persisted endless spool groups
-            2 = additionally restore persisted tool-to-gate mapping
-            3 = additionally restore persisted gate status (filament availability)
-            4 = additionally restore persisted tool, gate and filament position!
+    # Turn on behavior -------------------------------------------------------------------------------------------------------
+    # MMU can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
+    # additional state information requiring progressively less inital setup. The higher level assume that you don't touch
+    # MMU while it is offline and it can come back to life exactly where it left off!  If you do touch it or get confused
+    # then issue an appropriate reset command (E.g. MMU_RESET) to get state back to the defaults.
+    # Enabling 'startup_status' is recommended if you use persisted state at level 2 and above
+    # Levels: 0 = start fresh every time except calibration data (the former default behavior)
+    #         1 = restore persisted endless spool groups
+    #         2 = additionally restore persisted tool-to-gate mapping
+    #         3 = additionally restore persisted gate status (filament availability, material and color) (default)
+    #         4 = additionally restore persisted tool, gate and filament position! (Recommended when MMU is working well)
 
-Generally there is no downside of setting the level to 2 and so that is the suggested default.  Really, so long as you are aware that persistence is happening and know how to adjust/reset you can set the level to 4 and enjoy immediate ERCF availability.  So what options are there for resetting state?  Here is the complete list:
+Generally there is no downside of setting the level to 2 or 3 (the suggested default).  Really, so long as you are aware that persistence is happening and know how to adjust/reset you can set the level to 4 and enjoy immediate MMU availability.  Here is the complete list of commands that can reset state:
 
 <ul>
   <li>`MMU_RESET` - Reset all persisted state back to default/unknown except for print stats and per-gate health stats
-  <li>`MMU_RESET_STATS` - Reset print stats and per-gate health stats back to 0
+  <li>`MMU_STATS RESET=1` - Reset print stats and per-gate health stats back to 0
   <li>`MMU_REMAP_TTG RESET=1` - Reset just the tool-to-gate mapping
   <li>`MMU_ENDLESS_SPOOL_GROUPS RESET=1` - Reset just the endless spool groups back to default
   <li>`MMU_SET_GATE_MAP RESET=1` - Reset information about the filament type, color and availability
   <li>`MMU_RECOVER` - Automatically discover or manually reset filament position, selected gate, selected tool, filament availability (lots of options)
-  <li>Needless to say, other operations can also be used to update state
+  <li>Needless to say, other operations will update state
 </ul>
 
 Couple of miscellaneous notes:
@@ -211,43 +211,70 @@ Couple of miscellaneous notes:
 </ul>
 </details>
 
-### 2. Tool-to-Gate (TTG) mapping and EndlessSpool application
-When changing a tool with the `Tx` command the ERCF will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.  There are 3 primary use cases for this feature:
+### 2. Tool-to-Gate (TTG) mapping
+When changing a tool with the `Tx` command the ERCF will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.  There are a few use cases for this feature:
 <ol>
   <li>You have loaded your filaments differently than you sliced gcode file... No problem, just issue the appropriate remapping commands prior to printing
-  <li>Some of "tools" don't have filament and you want to mark them as empty to avoid selection.
+  <li>Some of "tools" don't have filament and you want to mark them as empty to avoid selection
   <li>Most importantly, for EndlessSpool - when a filament runs out on one gate (spool) then next in the sequence is automatically mapped to the original tool.  It will therefore continue to print on subsequent tool changes.  You can also replace the spool and update the map to indicate availability mid print
+  <li>Turning a colored print into a mono one... Remap all the tools to a single gate.
 </ol>
 
 <details>
 <summary>Click to read more about Tool-to-Gate mapping...</summary>
 
-*Note that the initial availability of filament at each gate can also be specified in the `ercf_parameters.cfg` file by updating the `gate_status` list. E.g.
->gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
+To view the current detailed mapping you can use either `MMU_STATUS DETAIL=1` or `MMU_REMAP_TTG` with no parameters
 
-  on a 9-gate ERCF would mark gates 2, 3, 5, 6 & 7 as empty
- 
-To view the current mapping you can use either `ERCF_STATUS` or `ERCF_DISPLAY_TTG_MAP`
-  
-![ERCF_STATUS](doc/ercf_status.png "MMU_STATUS")
+The TTG map is controlled with the `MMU_REMAP_TTG` command although the graphical user interface with Happy Hare KlipperScreen makes this trivial. For example, to remap T0 to Gate #8, issue:
+
+> MMU_REMAP_TTG TOOL=0 GATE=8
+
+This will cause both T0 and the original T8 tools to pull filament from gate #8.  If you wanted to then change T8 to pull from gate #0 (i.e. complete the swap of the two tools) you would issue:
+
+> MMU_REMAP_TTG TOOL=8 GATE=0
+
+You can also use this command to mark the availability of a gate. E.g.
+
+> MMU_REMAP_TTG TOOL=1 GATE=1 AVAILABILE=1
+
+Would ensure T0 is mapped to gate #1 but more importantly mark the gate as available. You might do this mid print after reloading a spool for example.
+
+It is possible to specify an entirely new map in a single command as such:
+
+> MMU_REMAP_TTG MAP=8,7,6,5,4,3,2,1,0
+
+Which would reverse tool to gate mapping for a 9 gate MMU!
+
+An example of how to interpret a TTG map (this example has EndlessSpool disabled). Here tools T0 to T2 and T7 are mapped to respective gates, T3 to T5 are all mapped to gate #3, tools T6 and T8 have their gates swapped.  This also tells you that gates #1 and #2 have filament available in the buffer rather than in the spool for other gates and that gate #7 is currently empty/unavailable.
+
+    MMU_REMAP_TTG
+    T0 -> Gate #0(S)
+    T1 -> Gate #1(B) [SELECTED on gate #1]
+    T2 -> Gate #2(B)
+    T3 -> Gate #3(S)
+    T4 -> Gate #3(S)
+    T5 -> Gate #3(S)
+    T6 -> Gate #8(S)
+    T7 -> Gate #7( )
+    T8 -> Gate #6(S)
+
+    MMU Gates / Filaments:
+    Gate #0(S) -> T0, Material: PLA, Color: red, Status: Available
+    Gate #1(B) -> T1, Material: ABS+, Color: orange, Status: Buffered [SELECTED supporting tool T1]
+    Gate #2(B) -> T2, Material: ABS, Color: tomato, Status: Buffered
+    Gate #3(S) -> T3,T4,T5, Material: ABS, Color: green, Status: Available
+    Gate #4(S) -> ?, Material: PLA, Color: blue, Status: Available
+    Gate #5(S) -> ?, Material: PLA, Color: indigo, Status: Available
+    Gate #6(S) -> T8, Material: PETG, Color: violet, Status: Available
+    Gate #7(S) -> T7, Material: ABS, Color: ffffff, Status: Empty
+    Gate #8(S) -> T6, Material: ABS, Color: black, Status: Available
+
+The lower section of the status is the gate centric view showing the mapping back to tools as well as the configured filament material type and color which is explained later in this guide.
 
 <br>
+Advanced note: The initial availability of filament (and tihe default after a reset) at each gate can also be specified in the `mmu_parameters.cfg` file by updating the `gate_status` list of the same length as the number of gates. Generally this might be useful if you have purposefully decommissioned part of you MMU. E.g.
 
-Since EndlessSpool is not something that triggers very often you can use the following to simulate the action:
-  > ERCF_ENCODER_RUNOUT FORCE_RUNOUT=1
-
-This will emulate a filament runout and force ERCF to interpret it as a true runout and not a possible clog. ERCF will then run the following sequence:
-<ul>
-  <li>Move the toolhead up a little (defined by 'z_hop_distance & z_hop_speed') to avoid blobs
-  <li>Call '_ERCF_ENDLESS_SPOOL_PRE_UNLOAD' macro.  Typically this where you would quickly move the toolhead to your parking area
-  <li>Perform the toolchange and map the new gate in the sequence
-  <li>Call '_ERCF_ENDLESS_SPOOL_POST_LOAD' macro.  Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where you picked it up in the PRE_UNLOAD macro
-  <li>Move the toolhead back down the final amount and resume the print
-</ul>
-
-The default supplied _PRE and _POST macros call PAUSE/RESUME which is typically a similar operation and may be already sufficient. Note: A common problem is that a custom _POST macro does not return the toolhead to previous position.  ERCF will still handle this case but it will move very slowly because it is not expecting large horizontal movement.
-
-</details>
+>gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
 
 ### 3. Synchronized Gear/Extruder motors
 Happy Hare allows for syncing gear motor with the extruder stepper during printing. This added functionality enhances the filament pulling torque, potentially alleviating friction-related problems. **It is crucial, however, to maintain precise rotational distances for both the primary extruder stepper and the gear stepper. A mismatch in filament transfer speeds between these components could lead to undue stress and filament grinding.**
@@ -259,7 +286,7 @@ Happy Hare allows for syncing gear motor with the extruder stepper during printi
 Synchronizion during printing is controlled by 'sync_to_extruder' in `ercf_parameters.cfg`. If set to 1, after a toolchange, the MMU servo will stay engaged and the gear motor will sync with he extruder for move extrusion and retraction moves
 
 #### Synchronization Workflow
-If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any MMU operation that necessitates exclusive gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles the majority of these actions. If the printer enters MMU_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted.  Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the MMU during a pause use the `ERCF_SYNC_GEAR_MOTOR` command.
+If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any MMU operation that necessitates exclusive gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles the majority of these actions. If the printer enters MMU_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted.  Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the MMU during a pause use the `MMU_SYNC_GEAR_MOTOR` command.
 
     The `MMU_SYNC_GEAR_MOTOR sync={0|1} servo={0|1}` command functions as follows:
     - Defaults to `sync=1` and `servo=1` 
@@ -268,7 +295,7 @@ If the `sync_to_extruder` feature is activated, the gear stepper will automatica
     - If `sync=0` and `servo=1`, it disengages and lifts the servo
     - If `sync=0` and `servo=0`, it only disengages the synchronization
 
-You can still control the gear stepper motor with the `MANUAL_STEPPER` command, however, this will only be effective if the stepper is not currently syncing with the extruder.
+Note you can still control the gear stepper motor with the `MANUAL_STEPPER` command, however, this will only be effective if the stepper is not currently syncing with the extruder.
 
 #### Other synchonization options
 In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process. Whilst these might seem like duplicates of previous partial load/unload sync movements they operate slightly more simlified manner. If they are all disabled, Happy Hare will operate as it did previously.  If these options are enabled they turn off the former functionality.  E.g. If `sync_extruder_load` is enabled it will keep the gear synchronized with the extruder for the entire loading of the extruder.<br>
@@ -302,16 +329,16 @@ As mentioned earlier, EndlessSpool will, if configured, spring into action when 
 
 TODO: need details on setting up maps and command that view and update maps
 
-Since EndlessSpool is not something that triggers very often you can use the following to simulate the action and familiarize yourslef with its action:
+Since EndlessSpool is not something that triggers very often you can use the following to simulate the action and familiarize yourslef with its action and validate it is correctly setup prior to needing it:
 
   > MMU_ENCODER_RUNOUT FORCE_RUNOUT=1
 
 This will emulate a filament runout and force the MMU to interpret it as a true runout and not a possible clog. THe MMU will then run the following sequence:
 <ul>
   <li>Move the toolhead up a little (defined by 'z_hop_distance & z_hop_speed') to avoid blobs
-  <li>Call '_ERCF_ENDLESS_SPOOL_PRE_UNLOAD' macro (defined in `mmu_software.cfg`).  Typically this where you would quickly move the toolhead to your parking area
+  <li>Call '_MMU_ENDLESS_SPOOL_PRE_UNLOAD' macro (defined in `mmu_software.cfg`).  Typically this where you would quickly move the toolhead to your parking area
   <li>Perform the toolchange and map the new gate in the sequence
-  <li>Call '_ERCF_ENDLESS_SPOOL_POST_LOAD' macro.  Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where you picked it up in the PRE_UNLOAD macro
+  <li>Call '_MMU_ENDLESS_SPOOL_POST_LOAD' macro.  Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where you picked it up in the PRE_UNLOAD macro
   <li>Move the toolhead back down the final amount and resume the print
 </ul>
 
@@ -337,7 +364,7 @@ log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = deb
       log_level: 1
       logfile_level: 3            # Can also be set to -1 to disable log file completely
       log_statistics: 1           # 1 to log statistics on every toolchange, 0 to disable (still recorded)
-      log_visual: 1               # 1 to log a fun visual representation of ERCF state showing filament position, 0 disable
+      log_visual: 1               # 1 to log a fun visual representation of MMU state showing filament position, 0 disable
 
 The logfile will be placed in the same directory as other log files and is called `ercf.log`.  It will rotate and keep the last 5 versions (just like klipper).  The default log level for ercf.log is "3" but can be set by adding `logfile_level` in you `ercf_parameters.cfg`.  With this available my suggestion is to reset the console logging level `log_level: 1` for an uncluttered experience knowing that you can always access `ercf.log` for debugging at a later time.  Oh, and if you don't want the logfile, no problem, just set `logfile_level: -1`
 
@@ -355,7 +382,7 @@ Regardless of whether you use your own Pause/Print/Cancel_print macros or use th
 During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `ercf_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
 <br>
 
-The user then calls `ERCF_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.
+The user then calls `MMU_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.
 <br>
   
 The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead to where it was left when the pause macro was called.  At this point the Happy Hare wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.
@@ -373,10 +400,10 @@ Happy Hare is a state machine. That means it keeps track of the the state of the
   
 At some point when a project occurs during a multi-color print your MMU will pause and go into a `locked` state.  Generally the user would then call `MMU_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
 
-    ERCF_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
-    ERCF_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
-    ERCF_RECOVER TOOL=5 LOADED=1 - tell ERCF that T5 is loaded and ready to print
-    ERCF_RECOVER TOOL=1 GATE=2 LOADED=0 - tell ERCF that T1 is being serviced by gate #2 and the filament is Unloaded
+    MMU_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
+    MMU_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
+    MMU_RECOVER TOOL=5 LOADED=1 - tell Happy Hare that T5 is loaded and ready to print
+    MMU_RECOVER TOOL=1 GATE=2 LOADED=0 - tell Happy Hare that T1 is being serviced by gate #2 and the filament is Unloaded
 
 </details>
 
@@ -386,7 +413,7 @@ Happy Hare keeps triack of per-gate statistics that aggregate servo/load/unload 
 <details>
 <summary>Click to read more how to recover MMU state...</summary>
 
-The `MMU_DUMP_STATS` command will display these stats and will give a rating on the "quality assessment" of functionality of the gate (more info is sent to debug level typically found in the `mmu.log`).  The per-gate statistics will record important data about possible problems with individual gates.  Since the software will try to recover for many of these conditions you might not know you have a problem.  One particularly useful feature is being able to spot gates that are prone to slippage.  If slippage occurs on all gates equally, it is likely a generic problem like encoder issue.  If on one gate if might be incorrect calibration of that gate or friction in the filament path for that gate (you could switch buffers and see if that makes a difference).  Note that `MMU_DUMP_STATS` will display this data but the details are sent to the DEBUG log level so you will only see it in the `mmu.log` file if you setup in the default way.
+The `MMU_STATS` command will display these stats and will give a rating on the "quality assessment" of functionality of the gate (more info is sent to debug level typically found in the `mmu.log`).  The per-gate statistics will record important data about possible problems with individual gates.  Since the software will try to recover for many of these conditions you might not know you have a problem.  One particularly useful feature is being able to spot gates that are prone to slippage.  If slippage occurs on all gates equally, it is likely a generic problem like encoder issue.  If on one gate if might be incorrect calibration of that gate or friction in the filament path for that gate (you could switch buffers and see if that makes a difference).  Note that `MMU_STATS` will display this data but the details are sent to the DEBUG log level so you will only see it in the `mmu.log` file if you setup in the default way.
 
 </details>
 

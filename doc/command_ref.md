@@ -7,7 +7,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU - Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL - Perform a tool swap
     MMU_CHECK_GATES - Automatically inspects gate(s), parks filament and marks availability
-    MMU_DUMP_STATS - Dump the MMU statistics
+    MMU_STATS - Dump or reset the MMU statistics
     MMU_EJECT - Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER - Display encoder position or temporarily enable/disable detection logic in encoder
     MMU_ENDLESS_SPOOL - Redefine the EndlessSpool groups
@@ -21,7 +21,6 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_RECOVER - Recover the filament location and set MMU state after manual intervention/movement
     MMU_REMAP_TTG - Remap a tool to a specific gate and set gate availability
     MMU_RESET - Forget persisted state and re-initialize defaults
-    MMU_RESET_STATS - Reset the MMU statistics
     MMU_SELECT - Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS - Select the filament bypass
     MMU_SERVO - Move MMU servo to position specified position or angle
@@ -62,8 +61,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |
   | `MMU_RESET` | Reset the MMU persisted state back to defaults | `CONFIRM=[0\|1]` Must be sepcifed for affirmative action of this dangerous command |
-  | `MMU_RESET_STATS` | Reset the MMU statistics | None |
-  | `MMU_DUMP_STATS` | Dump the MMU statistics (and Gate statistics to debug level - usually the logfile) | None |
+  | `MMU_STATS` | Dump (and optionally reset) the MMU statistics. Note that gate statistics are sent to debug level - usually the logfile) | `RESET=[0\|1]` If 1 the stored statistics will be reset |
   | `MMU_STATUS` | Report on MMU state, capabilities and Tool-to-Gate map | `DETAIL=[0\|1]` Whether to show a more detailed view including EndlessSpool groups and full Tool-To-Gate mapping <br>`SHOWCONFIG=[0\|1]` (default 0) Whether or not to describe the machine configuration in status message |
   <br>
   
