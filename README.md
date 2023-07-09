@@ -198,7 +198,19 @@ When you ready to continue with the print:
 
 > RESUME
 
-This will not only run your own print resume logic, but it will reset the heater timeout clocks and restore the z-hop move to put the printhead back on the print 
+This will not only run your own print resume logic, but it will reset the heater timeout clocks and restore the z-hop move to put the printhead back on the print
+
+```mermaid
+graph TD;
+    Printing --> Error
+    Error --> MMU_UNLOCK
+    MMU_UNLOCK --> Fix_Problem
+    Fix_Problem --> RESUME
+    Fix_Problem --> MMU_RECOVER
+    Fix_Problem --> CANCEL_PRINT
+    MMU_RECOVER --> RESUME
+    RESUME --> Printing
+```
 
 </details>
 
