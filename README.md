@@ -163,8 +163,48 @@ See [MMU Configuration doc here](doc/configuration.md) for general overview but 
 
 ## Important conceptual components of Happy Hare
 
-### 1. State persistence
+### 1. How to handle errors
+We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_ULOCK`, `MMU_RECOVER`, etc.
+
+<details>
+<summary>Click to read more about handling errors and recovery...</summary>
+  
+<br>
+Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had mamy mult-thousand swap prints complete without incident.  Here is what you need to know when something goes wrong.
+
+When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog it will pause the print and put the MMU into a "locked" state.  You can try this by running:
+
+> MMU_PAUSE FORCE_IN_PRINT=1
+
+A few things happen in this "locked" state:
+<ul>
+  <li>Happy Hare will lift the toolhead off the print to avoid blobs</li>
+  <li>The `PAUSE` macro will be called. Typically this will further move the toolhead to a parking position</li>
+  <li>The heated bed will remain heated for the time set by `timeout_pause`</li>
+  <li>The extruder will remain hot for the time set with `disable_heater`</li>
+</ul>
+
+To proceed you first issue and command to unlock the MMU and acknowledge that you are addressing the issue:
+
+> MMU_UNLOCK
+
+You then need to address the specific issue. You can move the filament by hand or use basic MMU commands. Once you think you have things corrected you may need to run:
+
+> MMU_RECOVER (optional)
+
+This is optional and ONLY needed if you may have confused the MMU state.  I.e. if you simply put everything where it is expected there is no need to run and indeed if you use MMU commands then the state will be correct and there is not need to run.  However, this can be useful to force Happy Hare to run it's own checks to, for example, confirm the position of the filament.  By default this command will automatically fix essential state, but you can also force it by specifying additional options. E.g. `MMU_RECOVER TOOL=1 GATE=1 LOADED=1`.  See the [Command Reference](doc/command_ref.md) for more details.
+
+When you ready to continue with the print:
+
+> RESUME
+
+This will not only run your own print resume logic, but it will reset the heater timeout clocks and restore the z-hop move to put the printhead back on the print 
+
+</details>
+
+### 2. State and State persistence
 This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (selector homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing.
+
 <details>
 <summary>Click to read more about state persistence...</summary>
   
@@ -211,17 +251,20 @@ Couple of miscellaneous notes:
 </ul>
 </details>
 
-### 2. Tool-to-Gate (TTG) mapping
-When changing a tool with the `Tx` command the ERCF will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.  There are a few use cases for this feature:
+### 3. Tool-to-Gate (TTG) mapping
+When changing a tool with the `Tx` command the ERCF will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.
+
+<details>
+<summary>Click to read more about Tool-to-Gate mapping...</summary>
+
+<br>
+There are a few use cases for this feature:
 <ol>
   <li>You have loaded your filaments differently than you sliced gcode file... No problem, just issue the appropriate remapping commands prior to printing
   <li>Some of "tools" don't have filament and you want to mark them as empty to avoid selection
   <li>Most importantly, for EndlessSpool - when a filament runs out on one gate (spool) then next in the sequence is automatically mapped to the original tool.  It will therefore continue to print on subsequent tool changes.  You can also replace the spool and update the map to indicate availability mid print
   <li>Turning a colored print into a mono one... Remap all the tools to a single gate.
 </ol>
-
-<details>
-<summary>Click to read more about Tool-to-Gate mapping...</summary>
 
 To view the current detailed mapping you can use either `MMU_STATUS DETAIL=1` or `MMU_REMAP_TTG` with no parameters
 
@@ -276,7 +319,9 @@ Advanced note: The initial availability of filament (and tihe default after a re
 
 >gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
 
-### 3. Synchronized Gear/Extruder motors
+</details>
+
+### 4. Synchronized Gear/Extruder motors
 Happy Hare allows for syncing gear motor with the extruder stepper during printing. This added functionality enhances the filament pulling torque, potentially alleviating friction-related problems. **It is crucial, however, to maintain precise rotational distances for both the primary extruder stepper and the gear stepper. A mismatch in filament transfer speeds between these components could lead to undue stress and filament grinding.**
 
 <details>
@@ -308,7 +353,7 @@ Note that many run the gear stepper at maximum current to overcome friction. If 
 
 </details>
 
-### 4. Clog/runout detection, EndlessSpool and flowrate monitoring
+### 5. Clog/runout detection, EndlessSpool and flowrate monitoring
 If you MMU is equiped with an encoder it can be used to detect filament runout or clog conditions.  It does this by comparing filament extruded by the nozzle to that measured going through the encoder - if too much of a difference Happy Hare will determine if this is beacause filament has runout or whether it is not moving (clog).  In the later case it will pause the print. This same basic functionality can be used for other useful features too.
 
 <details>
@@ -349,7 +394,7 @@ This experimental feature uses the measured filament movement to assess the % fl
 
 </details>
 
-### 5. Logging
+### 6. Logging
 There are four configuration options that control logging, both statistical logging and logging messages and level to console and logfile.
 
 <details>
@@ -370,7 +415,7 @@ The logfile will be placed in the same directory as other log files and is calle
 
 </details>
 
-### 6. Pause / Resume / Cancel_print macros:
+### 7. Pause / Resume / Cancel_print macros:
 
 Regardless of whether you use your own Pause/Print/Cancel_print macros or use the ones provided in `client_macros.cfg`, Happy Hare will automatically wrap anything defined so that it can inject the necessary steps to control the MMU.
 
@@ -392,7 +437,7 @@ Happy Hare will always return the toolhead to the correct position, but if you l
 
 </details>
 
-### 7. Recovering MMU state:
+### 8. Recovering MMU state:
 Happy Hare is a state machine. That means it keeps track of the the state of the MMU. It uses knowledge of this state to determine how to handle a particular situation.  For example, if you ask it to unload filament... Is the filament in the toolhead, is it in the bowden, or is there no filament present?  If uses this information to make the correct decisions on what to do next.  Occasionaly, through print error or manual intervention the state may become stale and it is necessary to re-sync with Happy Hare.
 
 <details>
@@ -407,7 +452,7 @@ At some point when a project occurs during a multi-color print your MMU will pau
 
 </details>
 
-### 8. Gate statistics
+### 9. Gate statistics
 Happy Hare keeps triack of per-gate statistics that aggregate servo/load/unload failures (and slippage if your MMU has an encoder) and are recorded throughout a session and can be logged at each toolchange.
 
 <details>
