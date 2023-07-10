@@ -65,7 +65,7 @@ Pro tip: If you are concerned about running `install.sh -i` then run like this: 
        -u for uninstall
     (no flags for safe re-install / upgrade)
 
-If you using ERCF v1.1 the original encoder can be problematic. I new backward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
+Note to ERCF v1.1 users: the original encoder can be problematic. I new backward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
 
 <br>
 
