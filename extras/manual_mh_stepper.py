@@ -11,7 +11,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import stepper, chelper, logging, contextlib
-from . import manual_stepper, manual_extruder_stepper
+from extras import manual_stepper, manual_mh_stepper
 
 
 class PrinterRailWithMockEndstop(stepper.PrinterRail, object):

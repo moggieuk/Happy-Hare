@@ -124,7 +124,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.clog_detection : {int} 0 (off) | 1 (manual) | 2 (auto)
     printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled)
     printer.mmu.filament : {string} Loaded | Unloaded | Unknown
-    printer.mmu.loaded_status : {int} state machine - exact location of filament
+    printer.mmu.filament_pos : {int} state machine - exact location of filament
     printer.mmu.filament_direction : {int} 1 (load) | -1 (unload)
     printer.mmu.servo : {string} Up | Down | Unknown
     printer.mmu.ttg_map : {list} defined gate for each tool

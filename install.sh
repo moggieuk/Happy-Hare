@@ -798,7 +798,7 @@ usage() {
     echo
     echo "-i for interactive install"
     echo "-u for uninstall"
-    echo "no flags for safe re-install / upgrade"
+    echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
 }

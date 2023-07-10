@@ -13,7 +13,7 @@
 #
 import stepper, chelper, logging, contextlib
 from kinematics import extruder as kinematics_extruder
-from . import manual_stepper, manual_mh_stepper
+from extras import manual_stepper, manual_mh_stepper
 
 
 class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extruder.ExtruderStepper, object):
