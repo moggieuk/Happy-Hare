@@ -1,7 +1,7 @@
 # "Happy Hare" - Universal MMU driver for Klipper
 
 
-# IF YOU HAVE FOUND THIS... PLEASE DON'T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS AND WILL BREAK YOUR SYSTEM. Use ERCF-Software-V3 for ERCF. I will announce when this is ready as an alternative!!
+# IF YOU HAVE FOUND THIS... PLEASE DON'T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS. Use ERCF-Software-V3 for ERCF. I will announce when this is ready as an alternative!!
 
 Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem.  Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform.  It is best partnered with [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
@@ -12,7 +12,7 @@ Thank you!
 
 ## Major features:
 <ul>
-  <li>Support any brand of MMU (and user defined monsters) Caveat only ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon</li>
+  <li>Support any brand of MMU and user defined monsters. (Caveat: ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon)</li>
   <li>Companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
   <li>Synchronized movement of extruder and gear motors during any part of the loading or unloading operations or homing so it can overcome friction and even work with FLEX materials!</li>
   <li>Sophisticated multi-homing options including extruder!</li>
@@ -59,9 +59,13 @@ REMEMBER that `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must
 <br>
 
 Pro tip: If you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp.  You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
-<br>
 
-If you using ERCF v1.1 the original encoder can be problematic. I new back-ward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
+    Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
+       -i for interactive install
+       -u for uninstall
+    (no flags for safe re-install / upgrade)
+
+Note to ERCF v1.1 users: the original encoder can be problematic. I new backward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
 
 <br>
 
@@ -148,8 +152,33 @@ Optionally exposed on mmu_encoder (if fitted):
 </details>
 
 ## MMU Setup and Calibration:
-This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
+This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration. Note that it is important to set `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg`.
 
+<details>
+<summary>Click to read more about vendor/version specification...</summary>
+  
+<br>
+These few parameters in `mmu_parameters.cfg` must be set correctly because they define the basic capabilities and options in Happy Hare. The only complication is in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
+
+    # The vendor and version config is important to define the capabiliies of the MMU
+    #
+    # ERCF
+    # 1.1 original design, add "s" suffix for Sprigy, "b" for Binky, "t" for Triple-Decky
+    #     e.g. "1.1sb" for v1.1 with Spriny mod and Binky encoder
+    # 2.0 new community edition ERCF
+    #
+    # Tradrack
+    #  - Comming soon
+    #
+    # Prusa
+    #  - Comming soon
+    #
+    mmu_vendor: ERCF                        # MMU family ERCF/Tradrack/Prusa/Custom
+    mmu_version: 1.1                        # MMU hardware version number (add mod suffix documented above)
+    num_gates: 9                            # Number of selector gates
+
+</details>
+  
 ### Step 1. Validate your mmu_hardware.cfg configuration and basic operation
 See [Hardward configuration doc here](doc/hardware_config.md)
 
