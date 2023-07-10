@@ -11,7 +11,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import stepper, chelper, logging, contextlib
-from extras import manual_stepper, manual_mh_stepper
+from . import manual_stepper
 
 
 class PrinterRailWithMockEndstop(stepper.PrinterRail, object):
@@ -188,9 +188,9 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
             msg += " (virtual)\n" if endstop['virtual'] else "\n"
             for idx2, s in enumerate(mcu_endstop.get_steppers()):
                 msg += "- - Stepper %d: '%s'\n" % (idx2, s.get_name())
-        if isinstance(self, manual_extruder_stepper.ManualExtruderStepper) and self.is_synced():
+        logging.info("PAUL*****: HERE")
+        if self.__class__.__name__ == "ManualExtruderStepper" and self.is_synced():
             msg += "Synced to extruder '%s'" % self.synced_extruder_name
-
         return msg
 
     @contextlib.contextmanager

@@ -1029,6 +1029,7 @@ class Mmu:
         elif self.filament_pos == self.FILAMENT_POS_HOMED_EXTRUDER:
             visual = "MMU [T%s] >>>>> [encoder] >>>>>>>>>>>>| [extruder] ...%s... [nozzle]" % (tool_str, sensor_str)
             visual += counter_str
+#    FILAMENT_POS_PAST_EXTRUDER = 5 # PAUL NEW
         elif self.filament_pos == self.FILAMENT_POS_HOMED_TS:
             visual = "MMU [T%s] >>>>> [encoder] >>>>>>>>>>>>> [extruder] >>|%s... [nozzle]" % (tool_str, sensor_str)
             visual += counter_str
