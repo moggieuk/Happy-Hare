@@ -1,11 +1,46 @@
 # PAUL - EXPERIMENTAL THINKING
+#
+# _load_gate
+#     IF encoder:
+#     	_load_encoder (ERCF)
+#     ELSE
+#     	_load_gate (Tradrack)
+#
+# _load_bowden (Generic) equivalent to
+#   Fast_Move_With_Correction
+#     Feature: multi-speed
+#     	       encoder based slippage conf
+# 
+# _load_sequence()
+#   <setup>
+#      self.filament_pos = 0
+#      filament_state = UNLOADED
+#   Call _MMU_LOAD_SEQUENCE gcode:
+#
+#
 #    def cmd_MMU_STEP_LOAD_ENCODER(self, gcmd):
 #        self.filament_pos = self._load_encoder()
 #    def cmd_MMU_STEP_LOAD_BOWDEN(self, gcmd):
 #        move = gcmd.get_float('MOVE', self.calibrated_bowden_length, above=0.)
 #        self.filament_pos += self._load_bowden(move)
-# MMU_STEP_LOAD_ENCODER
-# MMU_STEP_LOAD_BOWDEN <options?> [MOVE=^calibrated_bowden_length]
+#
+#    FILAMENT_UNKNOWN = -1
+#    FILAMENT_UNLOADED = 0	    AKA FILAMENT_HOMED_GATE		FILAMENT_HOMED_GATE
+#    FILAMENT_BEFORE_ENCODER = 1	FILAMENT_IN_ENCODER		FILAMENT_PAST_GATE *
+#    FILAMENT_PAST_ENCODER = 2		FILAMENT_PAST_ENCODER		FILAMENT_START_BOWDEN
+#    FILAMENT_IN_BOWDEN = 3		FILAMENT_IN_BOWDEN		FILAMENT_IN_BOWDEN *
+#    FILAMENT_END_OF_BOWDEN = 4		FILAMENT_END_OF_BOWDEN		FILAMENT_END_OF_BOWDEN
+#    FILAMENT_HOMED_EXTRUDER = 5	FILAMENT_HOMED_EXTRUDER		FILAMENT_HOMED_EXTRUDER
+# N (FILAMENT_PAST_EXTRUDER)		FILAMENT_PAST_EXTRUDER		FILAMENT_PAST_EXTRUDER *
+#    FILAMENT_HOMED_TOOLHEAD = 6	FILAMENT_HOMED_TS		FILAMENT_HOMED_TS
+#    FILAMENT_IN_EXTRUDER = 7		FILAMENT_PAST_TS		FILAMENT_PAST_TS *
+#    FILAMENT_LOADED = 8	    AKA FILAMENT_HOMED_NOZZLE		FILAMENT_HOMED_NOZZLE
+#
+#
+# _MMU_LOAD_SEQUENCE OPTIONS:
+#
+# MMU_STEP_LOAD_ENCODER (Start State: UNLOADED, End State: FILAMENT_START_BOWDEN)
+# MMU_STEP_LOAD_BOWDEN <options?> [MOVE=^calibrated_bowden_length] (Start State: FILAMENT_START_BOWDEN,End State: END_OF_BOWDEN)
 #
 # MMU_STEP_HOMING_MOVE ENDSTOP=collision MOVE=50 MOTOR=gear
 # MMU_STEP_HOME MOVE=72 MOTOR=gear+extruder
@@ -13,8 +48,8 @@
 # MMU_STEP_HOMING_MOVE ENDSTOP=mmu_toolhead MAXMOVE=20 MOTOR=gear+extruder
 # MMU_STEP_HOME MOVE=62 MOTOR=gear+extruder
 #  - or -
-# MMU_STEP_HOMING_MOVE ENDSTOP=mmu_toolhead MAXMOVE=10 MOTOR=gear+extruder
-# MMU_STEP_HOMING_MOVE ENDSTOP=mmu_toolhead MAXMOVE=10 MOTOR=extruder
+# MMU_STEP_HOMING_MOVE ENDSTOP=mmu_toolhead MAXMOVE=10 MOTOR=gear+extruder SUCCESS=FILAMENT_HOMED_TS FAIL=FILAMENT_PAST_EXTRUDER
+# MMU_STEP_HOMING_MOVE ENDSTOP=mmu_toolhead MAXMOVE=10 MOTOR=extruder SUCCESS=FILAMENT_HOMED_TS FAIL=FILAMENT_PAST_EXTRUDER
 # MMU_STEP_HOME MOVE=62 MOTOR=extruder
 #  - or -
 # MMU_STEP_HOMING_MOVE ENDSTOP=mmu_extruder_touch MOVE=100 MOTOR=gear+extruder

@@ -1228,7 +1228,7 @@ class Mmu:
                 self._log_debug("Setting servo to angle: %d" % angle)
                 self._servo_set_angle(angle)
             else:
-                self._log_error("No angle specified")
+                self._log_error("No position or angle specified. Try POS=... or ANGLE=...")
         else:
             self._log_error("Unknown servo position `%s`" % pos)
 
@@ -2044,11 +2044,11 @@ class Mmu:
             d = self.gcode.gcode_help.get(c, "n/a")
             if c.startswith("MMU") and not c.startswith("MMU__"):
                 if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c:
-                    msg += "%s - %s\n" % (c.upper(), d)
+                    msg += "%s : %s\n" % (c.upper(), d)
                 else:
-                    tmsg += "%s - %s\n" % (c.upper(), d)
+                    tmsg += "%s : %s\n" % (c.upper(), d)
             elif c.startswith("_MMU"):
-                mmsg += "%s - %s\n" % (c.upper(), d)
+                mmsg += "%s : %s\n" % (c.upper(), d)
         if testing:
             msg += tmsg
         if macros:
