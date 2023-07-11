@@ -572,11 +572,10 @@ class Mmu:
         self.extruder.extruder_stepper = self.mmu_extruder_stepper
         self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name)
 
+        # Sanity check to see that mmu_vars.cfg is included. This will verify path because default has single entry
         self.variables = self.printer.lookup_object('save_variables').allVariables
-
-        # Sanity check to see that mmu_vars.cfg is included (even if empty). This will verify path
-#        if self.variables == {}:
-#            raise self.config.error("Calibration settings not set. mmu_vars.cfg probably not found. Check [save_variables] section in mmu_software.cfg")
+        if self.variables == {}:
+            raise self.config.error("Calibration settings not found: mmu_vars.cfg probably not found. Check [save_variables] section in mmu_software.cfg")
 
         # Remember user setting of idle_timeout so it can be restored (if not overridden)
         if self.timeout_unlock < 0:
@@ -3047,8 +3046,9 @@ class Mmu:
             self.selector_stepper.do_set_position(0.)
             self._selector_stepper_move_wait(-selector_length, speed=self.selector_homing_speed, homing_move=1) # Fast homing move
             self.selector_stepper.do_set_position(0.)
-            self._selector_stepper_move_wait(5, False)                    # Ensure some bump space
-            self._selector_stepper_move_wait(-5, speed=10, homing_move=1) # Slower more accurate homing move
+            self._selector_stepper_move_wait(10, True)                     # Ensure some bump space
+            self.selector_stepper.do_set_position(0.)
+            self._selector_stepper_move_wait(-10, speed=10, homing_move=1) # Slower more accurate homing move
             self.is_homed = True
         except Exception as e:
             # Homing failed
@@ -3245,10 +3245,17 @@ class Mmu:
     cmd_MMU_HOME_help = "Home the MMU selector"
     def cmd_MMU_HOME(self, gcmd):
         if self._check_is_disabled(): return
-        tool = gcmd.get_int('TOOL', 0, minval=0, maxval=self.num_gates - 1)
-        force_unload = gcmd.get_int('FORCE_UNLOAD', -1, minval=0, maxval=1)
+        if self._check_is_calibrated(self.CALIBRATED_SELECTOR):
+            self._log_always("Will home to endstop only!")
+            tool = -1
+            force_unload = 0
+        else:
+            tool = gcmd.get_int('TOOL', 0, minval=0, maxval=self.num_gates - 1)
+            force_unload = gcmd.get_int('FORCE_UNLOAD', -1, minval=0, maxval=1)
         try:
             self._home(tool, force_unload)
+            if tool == -1:
+                self._log_always("Homed")
         except MmuError as ee:
             self._pause(str(ee))
 
@@ -3258,6 +3265,7 @@ class Mmu:
         if self._check_is_paused(): return
         if self._check_not_homed(): return
         if self._check_is_loaded(): return
+        if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         if tool == -1 and gate == -1:
