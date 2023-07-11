@@ -215,14 +215,15 @@ class Mmu:
                     self.encoder_min_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
                 else:
                     self.encoder_min_resolution = bmg_circ / (2 * 17) # Original 17 tooth BMG gear
+
+                # Still allow some 'cad' parameters to be customized, possibly temporary
+                self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
             self.cal_max_gates = 12
             self.cal_tolerance = 5.0
         else:
             raise self.config.error("Support for non-ERCF systems is comming soon!")
 
-        # Still allow some 'cad' parameters to be customized, possibly temporary
         self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width)
-        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
         self.encoder_min_resolution = config.getfloat('encoder_min_resolution', self.encoder_min_resolution)
 
         # The threshold (mm) that determines real encoder movement (set to 1.5 pulses of encoder. i.e. allow one error pulse)
