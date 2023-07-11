@@ -5,7 +5,6 @@
 #                     moggieuk@hotmail.com
 #
 # Inspired by original ERCF software
-# Enraged Rabbit Carrot Feeder Project           Copyright (C) 2021  Ette
 #
 # (\_/)
 # ( *,*)
@@ -98,7 +97,7 @@ class Mmu:
     FILAMENT_POS_IN_BOWDEN = 2
     FILAMENT_POS_END_BOWDEN = 3
     FILAMENT_POS_HOMED_EXTRUDER = 4
-#    FILAMENT_POS_PAST_EXTRUDER = 5 # PAUL NEW
+    FILAMENT_POS_PAST_EXTRUDER = 5
     FILAMENT_POS_HOMED_TS = 6
     FILAMENT_POS_IN_EXTRUDER = 7    # AKA FILAMENT_POS_PAST_TS
     FILAMENT_POS_LOADED = 8         # AKA FILAMENT_POS_HOMED_NOZZLE
@@ -139,7 +138,7 @@ class Mmu:
     VARS_MMU_GATE_COLOR             = "mmu_state_gate_color"
     VARS_MMU_GATE_SELECTED          = "mmu_state_gate_selected"
     VARS_MMU_TOOL_SELECTED          = "mmu_state_tool_selected"
-    VARS_MMU_FILAMENT_POS          = "mmu_state_filament_pos"
+    VARS_MMU_FILAMENT_POS           = "mmu_state_filament_pos"
     VARS_MMU_CALIB_BOWDEN_LENGTH    = "mmu_calibration_bowden_length"
     VARS_MMU_CALIB_PREFIX           = "mmu_calibration_"
     VARS_MMU_GATE_STATISTICS_PREFIX = "mmu_statistics_gate_"
@@ -1029,7 +1028,9 @@ class Mmu:
         elif self.filament_pos == self.FILAMENT_POS_HOMED_EXTRUDER:
             visual = "MMU [T%s] >>>>> [encoder] >>>>>>>>>>>>| [extruder] ...%s... [nozzle]" % (tool_str, sensor_str)
             visual += counter_str
-#    FILAMENT_POS_PAST_EXTRUDER = 5 # PAUL NEW
+        elif self.filament_pos == self.FILAMENT_POS_PAST_EXTRUDER:
+            visual = "MMU [T%s] >>>>> [encoder] >>>>>>>>>>>>> [extruder] >>.%s... [nozzle]" % (tool_str, sensor_str)
+            visual += counter_str
         elif self.filament_pos == self.FILAMENT_POS_HOMED_TS:
             visual = "MMU [T%s] >>>>> [encoder] >>>>>>>>>>>>> [extruder] >>|%s... [nozzle]" % (tool_str, sensor_str)
             visual += counter_str
@@ -2586,6 +2587,7 @@ class Mmu:
         if self.toolhead_sensor.runout_helper.filament_present:
             self._set_filament_pos(self.FILAMENT_POS_HOMED_TS)
         else:
+            self._set_filament_pos(FILAMENT_POS_PAST_EXTRUDER)
             raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
     # Step 4 of the load sequence
@@ -2621,6 +2623,7 @@ class Mmu:
                         delta = self._trace_filament_move("Synced extruder entry move",
                                 self.transition_length - self.delay_servo_release, speed=self.extruder_sync_load_speed, motor="gear+extruder")
                         length -= (self.transition_length - self.delay_servo_release)
+                    self._set_filament_pos(FILAMENT_POS_PAST_EXTRUDER)
 
                 # Move the remaining distance to the nozzle meltzone under exclusive extruder stepper control
                 self._servo_up()
@@ -2791,6 +2794,7 @@ class Mmu:
                 homed, actual, delta = self._trace_filament_move("Reverse homing to toolhead sensor",
                         -length, motor=motor, homing_move=-1, endstop="mmu_toolhead")
                 if homed:
+                    self._set_filament_pos(self.FILAMENT_POS_HOMED_TS)
                     # Last move to ensure we are really free because of small space between sensor and extruder gears
                     length += actual # Actual is -ve
                     if self.sensor_to_nozzle > 0. and self.extruder_to_nozzle > 0.:
@@ -2807,6 +2811,7 @@ class Mmu:
                 length = self._get_home_position_to_nozzle() - park_pos + step + safety_margin
                 speed = self.extruder_unload_speed * 0.5 # First pull slower just in case we don't have tip
                 self._log_debug("Trying to exit the extruder, up to %.1fmm in %.1fmm steps" % (length, step))
+                self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
                 for i in range(int(math.ceil(length / step))):
                     msg = "Step #%d:" % (i+1)
                     delta = self._trace_filament_move(msg, -step, speed=speed, motor="extruder")
@@ -2820,13 +2825,14 @@ class Mmu:
             else:
                 # No toolhead sensor with synced steppers:
                 # This is a challenge because we don't know the filament "park position" in extruder
-                # If we go too far, bowden unload may accidentally unload encoder
+                # If we go too far, bowden unload may accidentally unload encoder later
                 # Simply move the maximum distance in steps to sanity check we are moving
                 step = self.encoder_move_step_size
                 length = self._get_home_position_to_nozzle() - park_pos + safety_margin
                 speed = self.extruder_unload_speed * 0.5 # First pull slower just in case we don't have tip
                 self._log_debug("Trying to exit the extruder, up to %.1fmm in %.1fmm steps" % (length, step))
                 stuck_in_extruder = False
+                self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
                 for i in range(int(math.ceil(length / step))):
                     msg = "Step #%d:" % (i+1)
                     delta = self._trace_filament_move(msg, -step, speed=speed, motor="gear+extruder")
@@ -2846,7 +2852,6 @@ class Mmu:
 #                        self._log_debug("Extruder entrance reached after %d moves" % (i+1))
 
             if not out_of_extruder:
-                self._set_filament_pos(self.FILAMENT_POS_IN_EXTRUDER)
                 raise MmuError("Filament seems to be stuck in the extruder")
 
             self._log_debug("Filament should be out of extruder")
@@ -2876,7 +2881,7 @@ class Mmu:
         self._servo_down()
 
 # PAUL TODO Don't like this test move anymore. Complicates things and servo is now more reliable
-#        # Initial short move allows for dealing with (servo) errors.
+#        # Initial short move allows for dealing with (servo) errors and prevent grinding filament
 #        if not self.calibrating:
 #            sync = not skip_sync_move and self.transition_length > 0
 #            initial_move = 10. if not sync else self.transition_length

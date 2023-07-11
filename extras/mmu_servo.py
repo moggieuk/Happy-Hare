@@ -6,7 +6,6 @@
 # Copyright (C) 2022  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
 #
-# Enraged Rabbit Carrot Feeder Project  Copyright (C) 2021  Ette
 # Based on original servo.py            Copyright (C) 2017-2020  Kevin O'Connor <kevin@koconnor.net>
 #
 # (\_/)
