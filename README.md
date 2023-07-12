@@ -43,11 +43,13 @@ Companion customized [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-ed
 ## Installation
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
 
-    cd ~
-    git clone https://github.com/moggieuk/Happy-Hare.git
-    cd Happy-Hare
+```
+cd ~
+git clone https://github.com/moggieuk/Happy-Hare.git
+cd Happy-Hare
 
-    ./install.sh -i
+./install.sh -i
+```
 
 The `-i` option will bring up an interactive installer  to aid setting some confusing parameters. For EASY-BRD and Fysetc ERB installations it will also configure all the pins for you. If not run with the `-i` flag the new template `mmu*.cfg` files will not be installed.  Note that if existing `mmu*.cfg` files are found the old versions will be moved to numbered backups like `<file>.<date>` extension instead so as not to overwrite an existing configuration.  If you still choose not to install the new `mmu*.cfg` files automatically be sure to examine them closely and compare to the supplied templates (this is completely different software from the original)
 <br>
@@ -55,17 +57,19 @@ The `-i` option will bring up an interactive installer  to aid setting some conf
 Note that the installer will look for Klipper install and config in standard locations.  If you have customized locations or multiple Klipper instances on the same rpi, or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively.
 <br>
 
-REMEMBER that `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file.  `client_macros.cfg` should also be referenced if you don't already have working PAUSE/RESUME/CANCEL_PRINT macros (but be sure to read the section before on macro expectations). These includes can be added automatically for you with the install script.
+> **Note**  `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file.  `client_macros.cfg` should also be referenced if you don't already have working PAUSE/RESUME/CANCEL_PRINT macros (but be sure to read the section before on macro expectations). These includes can be added automatically for you with the install script.
 <br>
 
-Pro tip: If you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp.  You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
+**Pro tip:** if you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp.  You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
 
-    Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
-       -i for interactive install
-       -u for uninstall
-    (no flags for safe re-install / upgrade)
+```
+Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
+     -i for interactive install
+     -u for uninstall
+(no flags for safe re-install / upgrade)
+```
 
-Note to ERCF v1.1 users: the original encoder can be problematic. I new backward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
+> **Warning** ERCF v1.1 users: the original encoder can be problematic. I new backward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
 
 <br>
 
@@ -160,22 +164,24 @@ This will vary slightly depending on your particular brand of MMU but the steps 
 <br>
 These few parameters in `mmu_parameters.cfg` must be set correctly because they define the basic capabilities and options in Happy Hare. The only complication is in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
 
-    # The vendor and version config is important to define the capabiliies of the MMU
-    #
-    # ERCF
-    # 1.1 original design, add "s" suffix for Sprigy, "b" for Binky, "t" for Triple-Decky
-    #     e.g. "1.1sb" for v1.1 with Spriny mod and Binky encoder
-    # 2.0 new community edition ERCF
-    #
-    # Tradrack
-    #  - Comming soon
-    #
-    # Prusa
-    #  - Comming soon
-    #
-    mmu_vendor: ERCF                        # MMU family ERCF/Tradrack/Prusa/Custom
-    mmu_version: 1.1                        # MMU hardware version number (add mod suffix documented above)
-    num_gates: 9                            # Number of selector gates
+```
+# The vendor and version config is important to define the capabiliies of the MMU
+#
+# ERCF
+# 1.1 original design, add "s" suffix for Sprigy, "b" for Binky, "t" for Triple-Decky
+#     e.g. "1.1sb" for v1.1 with Spriny mod and Binky encoder
+# 2.0 new community edition ERCF
+#
+# Tradrack
+#  - Comming soon
+#
+# Prusa
+#  - Comming soon
+#
+mmu_vendor: ERCF                        # MMU family ERCF/Tradrack/Prusa/Custom
+mmu_version: 1.1                        # MMU hardware version number (add mod suffix documented above)
+num_gates: 9                            # Number of selector gates
+```
 
 </details>
   
