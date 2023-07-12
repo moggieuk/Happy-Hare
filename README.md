@@ -168,7 +168,6 @@ This will vary slightly depending on your particular brand of MMU but the steps 
 <details>
 <summary>Click to read more about vendor/version specification...</summary>
   
-<br>
 These few parameters in `mmu_parameters.cfg` must be set correctly because they define the basic capabilities and options in Happy Hare. The only complication is in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
 
 ```
@@ -235,7 +234,18 @@ Normally the encoder is automatically enabled when needed and disabled when not 
 See [MMU Calibration doc here](doc/calibration.md) for detailed instructions
 
 ### Step 3. Tweak configuration in mmu_parameters.cfg
-See [MMU Configuration doc here](doc/configuration.md) for in-depth discussion but a few selected features are discussed in more detail in the following feature sections:
+See [MMU Configuration doc here](doc/configuration.md) for in-depth discussion but a few selected features are discussed in more detail in the following feature sections.
+
+#### Adjusting configuration at runtime
+It's worth noting here that all the essential configuration and tuning parameters can be modified at runtime without restarting Klipper. Use the `MMU_TEST_CONFIG` command to do this. Running without any parameters will display the currect value:
+
+> MMU_TEST_CONFIG
+
+Any of the displayed config settings can be modified.  E.g.
+
+  > MMU_TEST_CONFIG home_position_to_nozzle=45
+  
+Will update the distance from homing position to nozzle.  The change is designed for testing was will not be persistent.  Once you find your tuned settings be sure to update `mm_parameters.cfg`
 
 <br>
 
@@ -247,7 +257,6 @@ We all hope that printing is straightforward and everything works to plan. Unfor
 <details>
 <summary>Click to read more about handling errors and recovery...</summary>
   
-<br>
 Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had mamy mult-thousand swap prints complete without incident.  Here is what you need to know when something goes wrong.
 
 When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog it will pause the print and put the MMU into a "locked" state.  You can try this by running:
@@ -308,17 +317,19 @@ This graphic indicates how I left my MMU the day prior... Filaments are loaded i
 
 In addition to basic operational state the print statistics and gate health statistics are persisted and so occasionally you might want to explicitly reset them with `MMU_STATS RESET=1`.  There are 5 levels of operation for this feature that you can set based on your personal preference/habbits. The level is controlled by a single variable `persistence_level` in `mmu_parameters.cfg`:
 
-    # Turn on behavior -------------------------------------------------------------------------------------------------------
-    # MMU can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
-    # additional state information requiring progressively less inital setup. The higher level assume that you don't touch
-    # MMU while it is offline and it can come back to life exactly where it left off!  If you do touch it or get confused
-    # then issue an appropriate reset command (E.g. MMU_RESET) to get state back to the defaults.
-    # Enabling 'startup_status' is recommended if you use persisted state at level 2 and above
-    # Levels: 0 = start fresh every time except calibration data (the former default behavior)
-    #         1 = restore persisted endless spool groups
-    #         2 = additionally restore persisted tool-to-gate mapping
-    #         3 = additionally restore persisted gate status (filament availability, material and color) (default)
-    #         4 = additionally restore persisted tool, gate and filament position! (Recommended when MMU is working well)
+```
+# Turn on behavior -------------------------------------------------------------------------------------------------------
+# MMU can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
+# additional state information requiring progressively less inital setup. The higher level assume that you don't touch
+# MMU while it is offline and it can come back to life exactly where it left off!  If you do touch it or get confused
+# then issue an appropriate reset command (E.g. MMU_RESET) to get state back to the defaults.
+# Enabling 'startup_status' is recommended if you use persisted state at level 2 and above
+# Levels: 0 = start fresh every time except calibration data (the former default behavior)
+#         1 = restore persisted endless spool groups
+#         2 = additionally restore persisted tool-to-gate mapping
+#         3 = additionally restore persisted gate status (filament availability, material and color) (default)
+#         4 = additionally restore persisted tool, gate and filament position! (Recommended when MMU is working well)
+```
 
 Generally there is no downside of setting the level to 2 or 3 (the suggested default).  Really, so long as you are aware that persistence is happening and know how to adjust/reset you can set the level to 4 and enjoy immediate MMU availability.  Here is the complete list of commands that can reset state:
 
@@ -347,7 +358,6 @@ When changing a tool with the `Tx` command the ERCF will by default select the f
 <details>
 <summary>Click to read more about Tool-to-Gate mapping...</summary>
 
-<br>
 There are a few use cases for this feature:
 <ol>
   <li>You have loaded your filaments differently than you sliced gcode file... No problem, just issue the appropriate remapping commands prior to printing
@@ -448,8 +458,7 @@ If you MMU is equiped with an encoder it can be used to detect filament runout o
 
 <details>
 <summary>Click to read more runout/clog detection, EndlessSpool and flowrate monitoring...</summary>
-  
-<br>  
+   
 Runout and Clog detection functionality are enabled with the `enable_clog_detection` parameter in mmu_parameters.cfg.  It works by comparing filament extruded to that measured by the encoder and if this is ever greater than the `mmu_calibration_clog_length` (stored in mmu_vars.cfg) the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `MMU_UNLOCK` & `RESUME` to continue.  If a runout is determined and EndlessSpool is enabled the fragment of filament will be unloaded, the current tool will be remaped to the next specified gate, and printing will automatically continue.
 
 Setting `enable_clog_detection` value to `1` enables clog detection employing the static clog detection length.  Setting it to `2` will enable automatic adjustment of the detection length and Happy Hare will peridically update the calibration value beased on what it learns about your system. Whilst this doesn't guarantee you won't get a false trigger it will contiually tune until false triggers not longer occur.  The automatic algorithm is controlled by two variables in the `[mmu_encoder]` section of `mmu_hardward.cfg`:
@@ -489,8 +498,6 @@ There are four configuration options that control logging, both statistical logg
 
 <details>
 <summary>Click to read more aboout logging...</summary>
-  
-<br>  
 
 Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`. 
 
@@ -515,8 +522,6 @@ Regardless of whether you use your own Pause/Print/Cancel_print macros or use th
 <details>
 <summary>Click to read more aboout what Happy Hare adds to these macros...</summary>
 
-<br>
-  
 During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `ercf_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
 <br>
 
@@ -539,10 +544,10 @@ Happy Hare is a state machine. That means it keeps track of the the state of the
 At some point when a project occurs during a multi-color print your MMU will pause and go into a `locked` state.  Generally the user would then call `MMU_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
 
 ```
-    MMU_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
-    MMU_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
-    MMU_RECOVER TOOL=5 LOADED=1 - tell Happy Hare that T5 is loaded and ready to print
-    MMU_RECOVER TOOL=1 GATE=2 LOADED=0 - tell Happy Hare that T1 is being serviced by gate #2 and the filament is Unloaded
+MMU_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
+MMU_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
+MMU_RECOVER TOOL=5 LOADED=1 - tell Happy Hare that T5 is loaded and ready to print
+MMU_RECOVER TOOL=1 GATE=2 LOADED=0 - tell Happy Hare that T1 is being serviced by gate #2 and the filament is Unloaded
 ```
 
 </details>
@@ -557,9 +562,48 @@ The `MMU_STATS` command will display these stats and will give a rating on the "
 
 </details>
 
-THIS SECTION CONTAINS THE RAW REAME FROM HAPPY-HARE v1
+### 10. Filament bypass
+If you have installed the optional filament bypass block (ERCF v1.1) or have an ERCF v2.0 your can configure a selector position to select this bypass postion. This is useful if you want to do a quick print with a filament you don't have loaded on the MMU.
+
 <details>
-<summary>ALL THIS NEEDS REWRITING...</summary>
+<summary>Click to read more on filament bypass...</summary>
+
+The position of the bypass is configured automatically during calibration and persisted in `mmu_vars.cfg` as `mmu_selector_bypass` variable but can also be calibrated manually (see calibration guide).
+
+Once configured you can select the bypass position with:
+
+  > ERCF_SELECT_BYPASS
+  
+You can then use just the extruder loading logic to load filament to the nozzle:
+
+  > MMU_LOAD
+
+Finally, you can unload just the extruder using the usual eject:
+
+  > MMU_EJECT
+
+> **Note**  The `MMU_LOAD` and `MMU_EJECT` automatically add the `EXTRUDER_ONLY=1` flag when the bypass is selected
+
+</details>
+
+### 11. Useful pre-print functionality
+There are a couple of commands (`MMU_PRELOAD` and `MMU_CHECK_GATES`) that are useful to ensure MMU readiness prior to printing.
+
+<details>
+<summary>Click to read more on pre-print readiness...</summary>
+
+The `MMU_PRELOAD` is an aid to loading filament into the ERCF.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  Then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted blocking the gate.
+
+Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates.
+
+> **Note** The `MMU_CHECK_GATES` command has a special option that is designed to be called from your print_start macro. Unfortunately this requires slicer support to privide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print!
+
+</details>
+
+### 12. THIS SECTION CONTAINS THE RAW REAME FROM HAPPY-HARE v1.  ALL THIS NEEDS REWRITING
+
+<details>
+<summary>...</summary>
 
 ### Config Loading and Unload sequences explained
 Note that if a toolhead sensor is configured it will become the default filament homing method and home to extruder an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `ercf_calib_ref`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.
@@ -668,36 +712,6 @@ This is much simplier than loading. The toolhead sensor, if installed, will auto
   The `log_visual` setting turns on an off the addition of a filament tracking visualization in either long form or abbreviated KlipperScreen form.  This is a nice with log_level of 0 or 1 on a tuned and functioning setup.
   
 ![Bling is always better](doc/visual_filament.png "Visual Filament Location")
-
-### Filament bypass
-If you have installed the optional filament bypass block your can configure its selector position by setting `bypass_selector` in `ercf_parameters.cfg`. Once this is done you can use the following command to unload any ERCF controlled filament and select the bypass:
-  > ERCF_SELECT_BYPASS`
-  
-  Once you have filament loaded <u>up to the extruder</u> you can load the filament to nozzle with:
-  > ERCF_LOAD
-
-  Finally, you can unload just the extruder using the usual eject.
-  > ERCF_EJECT
-
-### Adjusting configuration at runtime
-  All the essential configuration and tuning parameters can be modified at runtime without restarting Klipper. Use the `ERCF_TEST_CONFIG` command to do this:
-  
-  <img src="doc/ercf_test_config.png" width="500" alt="ERCF_TEST_CONFIG">
-  
-  Any of the displayed config settings can be modified.  E.g.
-  > ERCF_TEST_CONFIG home_position_to_nozzle=45
-  
-  Will update the distance from homing position to nozzle.  The change is designed for testing was will not be persistent.  Once you find your tuned settings be sure to update `ercf_parameters.cfg`
-
-### Updated Calibration Ref
-  Setting the `ercf_calib_ref` is slightly different in that it will, by default, average 3 runs and compensate for spring tension in filament held by servo. It might be worth limiting to a single pass until you have tuned the gear motor current. Here is an example:
-  
-  <img src="doc/Calibration Ref.png" width="500" alt="ERCF_CALIBRATION_SINGLE TOOL=0">
-  
-### Useful pre-print functionality
-  The `ERCF_PRELOAD` is an aid to loading filament into the ERCF.  The command works a bit like the Prusa MMU and spins gear with servo depressed until filament is fed in.  Then parks the filament nicely. This is the recommended way to load filament into ERCF and ensures that filament is not under/over inserted blocking the gate.
-
-Similarly the `ERCF_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates. Could be a really useful pre-print check...
 
 </details>
 
