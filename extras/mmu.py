@@ -118,15 +118,15 @@ class Mmu:
 
     # Standard endstop or pseudo endstop names
     EXTRUDER_COLLISION_ENDSTOP = "collision"
-    EXTRUDER_TOUCH_ENDSTOP = "mmu_ext_touch"
-    GEAR_TOUCH_ENDSTOP = "mmu_gear_touch"
-    SELECTOR_TOUCH_ENDSTOP = "mmu_sel_touch"
-    SELECTOR_HOME_ENDSTOP = "mmu_sel_home"
+    EXTRUDER_TOUCH_ENDSTOP     = "mmu_ext_touch"
+    GEAR_TOUCH_ENDSTOP         = "mmu_gear_touch"
+    SELECTOR_TOUCH_ENDSTOP     = "mmu_sel_touch"
+    SELECTOR_HOME_ENDSTOP      = "mmu_sel_home"
 
     # Vendor MMU's supported
-    VENDOR_ERCF = "ERCF"
+    VENDOR_ERCF     = "ERCF"
     VENDOR_TRADRACK = "Tradrack" # In progress
-    VENDOR_PRUSA = "Prusa" # In progress
+    VENDOR_PRUSA    = "Prusa" # In progress
 
     # mmu_vars.cfg variables
     VARS_MMU_CALIB_CLOG_LENGTH      = "mmu_calibration_clog_length"
@@ -1297,7 +1297,7 @@ class Mmu:
         if ratio > 0.8 and ratio < 1.2:
             return ratio
         else:
-            self._log_always("Warning: %s%d value (%.6f) is invalid. Using reference 1.0. Re-run MMU_CALIBRATE_GATES GATE=%d" % (self.VARS_MMU_CALIB_PREFIX, gate, ratio, gate))
+            self._log_always("Warning: %s%d value (%.6f) is invalid. Using reference value 1.0. Re-run MMU_CALIBRATE_GATES GATE=%d" % (self.VARS_MMU_CALIB_PREFIX, gate, ratio, gate))
             return 1.
 
     def _calibrate_encoder(self, length, repeats, speed, min_speed, max_speed, accel, save=True):
@@ -1446,7 +1446,7 @@ class Mmu:
             delta = self._trace_filament_move("Calibration load movement", test_length)
             delta = self._trace_filament_move("Calibration unload movement", -test_length)
             measurement = self.encoder_sensor.get_distance()
-            ratio = (test_length * 2) / measurement
+            ratio = measurement / (test_length * 2)
             self._log_always("Calibration move of 2x %.1fmm, average encoder measurement: %.1fmm - Ratio is %.6f" % (test_length, measurement / 2, ratio))
             if not gate == 0: # Gate #0 is not calibrated, it is the reference
                 if ratio > 0.8 and ratio < 1.2:
@@ -2067,9 +2067,9 @@ class Mmu:
             msg = "Encoder position: %.1f" % status['encoder_pos']
             if status['enabled']:
                 clog = "Automatic" if status['detection_mode'] == 2 else "On" if status['detection_mode'] == 1 else "Off"
-                msg += "\nClog/Runout detection: %s (detection length: %.1f)" % (clog, status['detection_length'])
-                msg += "\nTrigger headroom: %.1f (min: %.1f)" % (status['headroom'], status['min_headroom'])
-                msg += "\nFlowrate %%: %d" % status['flow_rate']
+                msg += "\nClog/Runout detection: %s (Detection length: %.1f)" % (clog, status['detection_length'])
+                msg += "\nTrigger headroom: %.1f (Minimum observed: %.1f)" % (status['headroom'], status['min_headroom'])
+                msg += "\nFlowrate: %d %%" % status['flow_rate']
             self._log_info(msg)
 
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
@@ -2464,8 +2464,19 @@ class Mmu:
             delta += self._trace_filament_move(msg, length / moves, track=True)
             self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
 
+        # See if we need to automatically set calibration ratio for this gate
+        current_ratio = self.variables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), None)
+        if not current_ratio and not self.calibrating:
+            self._log_always("PAUL: length=%s, measured=%s, delta=%s" % (length, length - delta, delta))
+            ratio = (length - delta) / length
+            if ratio > 0.9 and ratio < 1.1:
+                self.variables["%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected)] = ratio
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=%.6f" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected, ratio))
+                self._log_always("Calibration ratio for gate #%d was missing. Value of %.6f has been automatically saved" % (self.gate_selected, ratio))
+                self._set_gate_ratio(ratio)
+
+        elif delta >= tolerance and not self.calibrating:
         # Correction attempts to load the filament according to encoder reporting
-        if delta >= tolerance and not self.calibrating:
             if self.apply_bowden_correction:
                 for i in range(2):
                     if delta >= tolerance:
@@ -2482,6 +2493,7 @@ class Mmu:
 
             if delta >= tolerance:
                 self._log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo\nLoad speed too fast for encoder to track (>200mm/s)")
+
         return length - delta
 
     # Step 3a of the load sequence
@@ -2587,7 +2599,7 @@ class Mmu:
         if self.toolhead_sensor.runout_helper.filament_present:
             self._set_filament_pos(self.FILAMENT_POS_HOMED_TS)
         else:
-            self._set_filament_pos(FILAMENT_POS_PAST_EXTRUDER)
+            self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
             raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
     # Step 4 of the load sequence
@@ -2623,7 +2635,7 @@ class Mmu:
                         delta = self._trace_filament_move("Synced extruder entry move",
                                 self.transition_length - self.delay_servo_release, speed=self.extruder_sync_load_speed, motor="gear+extruder")
                         length -= (self.transition_length - self.delay_servo_release)
-                    self._set_filament_pos(FILAMENT_POS_PAST_EXTRUDER)
+                    self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
 
                 # Move the remaining distance to the nozzle meltzone under exclusive extruder stepper control
                 self._servo_up()
@@ -3166,7 +3178,6 @@ class Mmu:
             return
 
         gate = self.tool_to_gate_map[tool]
-        self._log_info("PAUL: tool=%d, selected_tool=%s, selected_gate=%s" % (tool, self.tool_selected, self.gate_selected))
 # PAUL TODO this allows for correction of servo position if incorrect. Do we need it?
 #        if tool == self.tool_selected and gate == self.gate_selected \
 #                and (self.servo_state == self.SERVO_UP_STATE or self.servo_state == self.SERVO_DOWN_STATE):

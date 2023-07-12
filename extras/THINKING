@@ -74,3 +74,30 @@
 # MMU_STEP_UNLOAD_BOWDEN <options>  OPTIONAL use, could just use MOVE/HOMING_MOVE
 # MMU_STEP_UNLOAD_ENCODER
 #
+#
+#
+#
+# Example, common community method
+# 
+# MMU_STEP_LOAD_ENCODER
+# MMU_STEP_LOAD_BOWDEN MOVE=^calibrated_bowden_length
+# MMU_STEP_HOMING_MOVE ENDSTOP=collision MOVE=50 MOTOR=gear
+# MMU_STEP_HOME MOVE=72 MOTOR=gear+extruder
+#
+#  - or -
+#
+# Example, my current TS sequence
+#
+# MMU_STEP_LOAD_ENCODER
+# MMU_STEP_LOAD_BOWDEN MOVE=^calibrated_bowden_length
+# MMU_STEP_HOMING_MOVE ENDSTOP=mmu_toolhead MAXMOVE=20 MOTOR=gear+extruder
+# MMU_STEP_HOME MOVE=62 MOTOR=gear+extruder
+#
+#  - or -
+#
+# Example, using simply fast bowden move followed by synced homing to nozzle using stallguard!
+#
+# MMU_STEP_LOAD_ENCODER
+# MMU_STEP_LOAD_BOWDEN MOVE=^calibrated_bowden_length
+# MMU_STEP_HOMING_MOVE ENDSTOP=ext_touch MAXMOVE=100 MOTOR=extruder+gear
+#
