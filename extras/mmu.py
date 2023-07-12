@@ -1864,37 +1864,37 @@ class Mmu:
 
     def _check_is_disabled(self):
         if not self.is_enabled:
-            self._log_always("MMU is disabled. Please use MMU ENABLE=1 to use")
+            self._log_error("MMU is disabled. Please use MMU ENABLE=1 to use")
             return True
         return False
 
     def _check_is_paused(self):
         if self.is_paused_locked:
-            self._log_always("MMU is currently locked/paused. Please use MMU_UNLOCK")
+            self._log_error("MMU is currently locked/paused. Please use MMU_UNLOCK")
             return True
         return False
 
     def _check_in_bypass(self):
         if self.tool_selected == self.TOOL_BYPASS and self.filament_pos != self.FILAMENT_POS_UNLOADED:
-            self._log_always("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
+            self._log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
             return True
         return False
 
     def _check_not_bypass(self):
         if self.tool_selected != self.TOOL_BYPASS:
-            self._log_always("Bypass not selected. Please use MMU_SELECT_BYPASS first")
+            self._log_error("Bypass not selected. Please use MMU_SELECT_BYPASS first")
             return True
         return False
 
     def _check_not_homed(self):
         if not self.is_homed:
-            self._log_always("MMU is not homed")
+            self._log_error("MMU is not homed")
             return True
         return False
 
     def _check_is_loaded(self):
         if not (self.filament_pos == self.FILAMENT_POS_UNLOADED or self.filament_pos == self.FILAMENT_POS_UNKNOWN):
-            self._log_always("MMU has filament loaded")
+            self._log_error("MMU has filament loaded")
             return True
         return False
 
@@ -1915,7 +1915,7 @@ class Mmu:
                 steps.append("MMU_CALIBRATE_GATES")
             msg = "Prerequsite calibration steps are not complete. Please run:"
             if not silent:
-                self._log_always("%s %s" % (msg, ",".join(steps)))
+                self._log_error("%s %s" % (msg, ",".join(steps)))
             return True
         return False
 
@@ -3370,6 +3370,7 @@ class Mmu:
         if self._check_is_paused(): return
         if self._check_not_homed(): return
         if self._check_is_loaded(): return
+        if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
         try:
             self._select_bypass()
         except MmuError as ee:
@@ -3583,6 +3584,7 @@ class Mmu:
         if self._check_is_paused(): return
         if self._check_in_bypass(): return
         if self._check_is_loaded(): return
+        if self._check_is_calibrated(): return
         full = gcmd.get_int('FULL', 0, minval=0, maxval=1)
         if full:
             length = self.calibrated_bowden_length # May cause homing to extruder because full
@@ -4082,7 +4084,7 @@ class Mmu:
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
         if self._check_is_loaded(): return
-
+        if self._check_is_calibrated(): return
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         # These three parameters are mutually exclusive so we only process one
         tools = gcmd.get('TOOLS', "!")
@@ -4179,6 +4181,7 @@ class Mmu:
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
         if self._check_is_loaded(): return
+        if self._check_is_calibrated(): return
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         current_action = self._set_action(self.ACTION_CHECKING)
         try:
