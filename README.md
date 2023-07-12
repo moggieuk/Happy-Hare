@@ -87,6 +87,7 @@ Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. T
 <summary>Click to show basic commands...</summary>
 
 ```
+    > MMU_HELP
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
     MMU - Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL - Perform a tool swap
@@ -199,19 +200,18 @@ num_gates: 9                            # Number of selector gates
 ### Step 1. Validate your mmu_hardware.cfg configuration and basic operation
 See [Hardward configuration doc here](doc/hardware_config.md) for detailed instructions
 
-#### Optional hardware
-
-<br>
 <details>
 <summary>Click to read about optional hardware...</summary>
 
+#### Optional hardware
 Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propell the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning.
 
+##### Encoder
 Happy Hare optionally supports the use of an encoder which is fundamental to the ERCF MMU design. This is a device that measures the movement of filament and can be used for detecting and loading/unloading filament at the gate; validating that slippage is not occuring; runout and clog detection; flow rate verification and more. The following is an output of the `MMU_ENCODER` command to control and view the encoder:
 
 ```
-MMU_ENCODER ENABLE=1
-MMU_ENCODER
+> MMU_ENCODER ENABLE=1
+> MMU_ENCODER
 Encoder position: 743.5mm
 Clog/Runout detection: Automatic (Detection length: 10.0mm)
 Trigger headroom: 8.3mm (Minimum observed: 5.6mm)
@@ -493,13 +493,16 @@ There are four configuration options that control logging, both statistical logg
 <br>  
 
 Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`. 
+
+```
 log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
-    Generally you can keep console logging to a minimal whilst still sending debug output to the ercf.log file
-    Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
-      log_level: 1
-      logfile_level: 3            # Can also be set to -1 to disable log file completely
-      log_statistics: 1           # 1 to log statistics on every toolchange, 0 to disable (still recorded)
-      log_visual: 1               # 1 to log a fun visual representation of MMU state showing filament position, 0 disable
+Generally you can keep console logging to a minimal whilst still sending debug output to the ercf.log file
+Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
+log_level: 1
+logfile_level: 3            # Can also be set to -1 to disable log file completely
+log_statistics: 1           # 1 to log statistics on every toolchange, 0 to disable (still recorded)
+log_visual: 1               # 1 to log a fun visual representation of MMU state showing filament position, 0 disable
+```
 
 The logfile will be placed in the same directory as other log files and is called `ercf.log`.  It will rotate and keep the last 5 versions (just like klipper).  The default log level for ercf.log is "3" but can be set by adding `logfile_level` in you `ercf_parameters.cfg`.  With this available my suggestion is to reset the console logging level `log_level: 1` for an uncluttered experience knowing that you can always access `ercf.log` for debugging at a later time.  Oh, and if you don't want the logfile, no problem, just set `logfile_level: -1`
 
@@ -535,10 +538,12 @@ Happy Hare is a state machine. That means it keeps track of the the state of the
   
 At some point when a project occurs during a multi-color print your MMU will pause and go into a `locked` state.  Generally the user would then call `MMU_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
 
+```
     MMU_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
     MMU_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
     MMU_RECOVER TOOL=5 LOADED=1 - tell Happy Hare that T5 is loaded and ready to print
     MMU_RECOVER TOOL=1 GATE=2 LOADED=0 - tell Happy Hare that T1 is being serviced by gate #2 and the filament is Unloaded
+```
 
 </details>
 
@@ -552,7 +557,7 @@ The `MMU_STATS` command will display these stats and will give a rating on the "
 
 </details>
 
-THIS SECTION CONTAINS THE RAW REAME FROM HAPPY-HAREv1
+THIS SECTION CONTAINS THE RAW REAME FROM HAPPY-HARE v1
 <details>
 <summary>ALL THIS NEEDS REWRITING...</summary>
 
