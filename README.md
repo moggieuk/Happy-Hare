@@ -85,7 +85,8 @@ Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. T
 
 <details>
 <summary>Click to show basic commands...</summary>
-  
+
+```
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
     MMU - Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL - Perform a tool swap
@@ -111,7 +112,8 @@ Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. T
     MMU_STATUS - Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder motor
     MMU_UNLOCK - Unlock MMU operations after an error condition
-    
+ ```
+   
 </details>
 
 ### Printer variables accessable for use in your own macros:
@@ -120,6 +122,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
 <details>
 <summary>Click to view variables...</summary>
 
+```
     printer.mmu.enabled : {bool}
     printer.mmu.is_locked : {bool}
     printer.ercf.is_homed : {bool}
@@ -141,9 +144,11 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.gate_color : {list} of color names, one per gate
     printer.mmu.endless_spool_groups : {list} group membership for each tool
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
+```
 
 Optionally exposed on mmu_encoder (if fitted):
 
+```
     printer['mmu_encoder mmu_encoder'].encoder_pos : {float} Encoder position measurement in mm
     printer['mmu_encoder mmu_encoder'].detection_length : {float} The detection length for clog detection
     printer['mmu_encoder mmu_encoder'].min_headroom : {float} How close clog detection was from firing on current tool change
@@ -152,6 +157,7 @@ Optionally exposed on mmu_encoder (if fitted):
     printer['mmu_encoder mmu_encoder'].detection_mode : {int} Same as printer.ercf.clog_detection
     printer['mmu_encoder mmu_encoder'].enabled : {bool} Whether encoder is currently enabled for clog detection
     printer['mmu_encoder mmu_encoder'].flow_rate : {int} % flowrate (extruder movement compared to encoder movement)
+```
 
 </details>
 
@@ -183,16 +189,53 @@ mmu_version: 1.1                        # MMU hardware version number (add mod s
 num_gates: 9                            # Number of selector gates
 ```
 
+> **Note** Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods the follow parameters can be specified to override defaults. Use ONLY if necessary:
+> cad_bypass_block_width (width of bypass support block) - if using a custom bypass block with ERCF v1.1
+> cad_gate_width (width of individual gate in mm) - if using modified/custom gate
+> encoder_min_resolution (resolution of one 'pulse' on the encoder; generally 23 / pulses per rev for BMG based encoder) - if using customized encoder
+
 </details>
   
 ### Step 1. Validate your mmu_hardware.cfg configuration and basic operation
-See [Hardward configuration doc here](doc/hardware_config.md)
+See [Hardward configuration doc here](doc/hardware_config.md) for detailed instructions
+
+#### Optional hardware
+
+<br>
+<details>
+<summary>Click to read about optional hardware...</summary>
+
+Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propell the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning.
+
+Happy Hare optionally supports the use of an encoder which is fundamental to the ERCF MMU design. This is a device that measures the movement of filament and can be used for detecting and loading/unloading filament at the gate; validating that slippage is not occuring; runout and clog detection; flow rate verification and more. The following is an output of the `MMU_ENCODER` command to control and view the encoder:
+
+```
+MMU_ENCODER ENABLE=1
+MMU_ENCODER
+Encoder position: 743.5mm
+Clog/Runout detection: Automatic (Detection length: 10.0mm)
+Trigger headroom: 8.3mm (Minimum observed: 5.6mm)
+Flowrate: 0 %
+```
+
+Normally the encoder is automatically enabled when needed and disabled when not printing so to see the extra information you need to temporarily enable if out of a print.
+
+<ul>
+  <li>The encoder position, when calibrated, measures the movement of filament through it.  It should closely follow movement of the gear or extruder steppers but can drift over time.</li>
+  <li>If enabled the clog/runout detection length is the maximum distance the extruder is allowed to move without the encoder seeing it. 
+ A difference equal or greater than this value will trigger the clog/runout logic in Happy Hare</li>
+  <li>If clog detection is in `automatic` mode the `Trigger headroom` represents the distance that Happy Hare will aim to keep the clog detection from firing.  Generally around 8mm is good starting point.</li>
+  <li>The minimim observed headroom represents how close (in mm) clog detection came to firing since the last toolchange. This is useful for tuning your detection length (manual config) or trigger headroom (automatic config)</li>
+<li>Finally the `Flowrate` will provide an averaged % value of the mismatch between extruder extrusion and measured movement. Whilst it is not possible for this to real-time accurate it should average above 94%. If not it indicates that you may be trying too fast.</li>
+</ul>
+
+</details>
 
 ### Step 2. Calibrate
-See [MMU Calibration doc here](doc/calibration.md)
+See [MMU Calibration doc here](doc/calibration.md) for detailed instructions
 
 ### Step 3. Tweak configuration in mmu_parameters.cfg
-See [MMU Configuration doc here](doc/configuration.md) for general overview but a few selected features are discussed in more detail here:
+See [MMU Configuration doc here](doc/configuration.md) for in-depth discussion but a few selected features are discussed in more detail in the following feature sections:
 
 <br>
 
