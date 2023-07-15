@@ -15,14 +15,13 @@
 #
 mmu_vendor: ERCF			# MMU family
 mmu_version: 1.1			# MMU hardware version number (add mod suffix documented above)
-mmu_num_gates: {num_gates}		# Number of selector gates
+num_gate: {num_gates}				# Number of selector gates
 
 
 # Servo configuration  -----------------------------------------------------------------------------------------------------
 #
 servo_up_angle: {servo_up_angle}			# Default: MG90S servo: Up=30    ; SAVOX SH0255MG: Up=140
 servo_down_angle: {servo_down_angle}			# Default: MG90S servo: Down=140 ; SAVOX SH0255MG: Down=30
-servo_duration: 0.2					# Duration of PWM burst sent to servo (automatically turns off)
 
 
 # Logging ------------------------------------------------------------------------------------------------------------------
@@ -30,12 +29,11 @@ servo_duration: 0.2					# Duration of PWM burst sent to servo (automatically tur
 # log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
 # Generally you can keep console logging to a minimal whilst still sending debug output to the mmu.log file
 # Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
-#
 log_level: 1
-log_file_level: 3			# Can also be set to -1 to disable log file completely
+logfile_level: 3			# Can also be set to -1 to disable log file completely
 log_statistics: 1 			# 1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
 log_visual: 2				# 1 log visual representation of filament, 2 compact form (default) , 0 disable
-log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = summary (default), 2 = full, 0 = disable
+startup_status: 1			# Whether to log tool to gate status on startup, 1 = summary (default), 2 = full, 0 = disable
 
 
 # Movement speeds ----------------------------------------------------------------------------------------------------------
@@ -45,7 +43,6 @@ log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = sum
 # speed when pulling from the spool because more force is required to overcome friction and this prevents loosing steps.
 # 100mm/s should be "quiet" with the NEMA14 motor or a NEMA17 pancake, but you can go lower for really low noise
 # NOTE: Encoder cannot keep up much above 250mm/s so make sure `apply_bowden_correction` is off at very high speeds!
-#
 gear_from_buffer_speed: 160		# mm/s Conservative value is 100mm/s, Max around 350mm/s # PAUL was 160
 gear_from_spool_speed: 60		# mm/s Use (lower) speed when loading from a gate for the first time (i.e. pulling from spool)
 gear_short_move_speed: 60		# mm/s Conservative value is 35mm/s. Max around 100mm/s
@@ -62,107 +59,74 @@ extruder_homing_speed: 20		# mm/s speed of extruder only homing moves (e.g. to t
 selector_move_speed: 200        	# mm/s speed of selector movement (not touch)
 selector_homing_speed: 60       	# mm/s speed of initial selector homing move (not touch)
 selector_touch_speed: 80		# mm/s speed of all touch selector moves (if stallguard configured)
-enable_selector_touch: 1		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
 
 
-# Encoder loading/unloading ------------------------------------------------------------------------------------------------
-#
-# These setttings control the optional encoder to load and unload filament at the gate
-#
-encoder_unload_buffer: 40		# Amount to reduce the fast unload so that accurate encoder unload has room to operate
-encoder_load_retries: 2			# Number of times MMU will attempt to grab the filament on initial load (max 5)
-encoder_parking_distance: 23.0		# Controls how close to the gate entrance the filament is parked (distance from encoder, range=12-30)
-
-
-# Bowden tube loading/unloading --------------------------------------------------------------------------------------------
+# Bowden tube loading -----------------------------------------------------------------------------------------------------
 #
 # In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to detect missed steps
 # caused by "jerking" on a heavy spool. If bowden correction is enabled the driver with "believe" the encoder reading and
 # make correction moves to bring the filament to within the 'load_bowden_tolerance' of the end of bowden position
 # (this does require a reliable encoder and is not recommended for very high speed loading >200mm/s)
+apply_bowden_correction: 0		# 1 to enable, 0 disabled (default)
+load_bowden_tolerance: 15.0		# How close in mm the correction moves will attempt to get to target
+
+
+# Filament homing, loading and unloading controls -------------------------------------------------------------------------
 #
-bowden_apply_correction: 0		# 1 to enable, 0 disabled (default)
-bowden_load_tolerance: 15.0		# How close in mm the correction moves will attempt to get to target
-bowden_num_moves: 1			# Number of separate fast moves to make when loading or unloading bowden (>1 if you have TTC errors)
-
-
-# Extruder entrance detection/homing ---------------------------------------------------------------------------------------
+# An MMU must have a known point at the end of the bowden from which it can precisely load the extruder. A toolhead sensor
+# is past the extruder gear and the driver needs to know the max distance (from end of bowden move) to attempt homing.
+toolhead_homing_max: 20			# Maximum distance to advance in order to attempt to home to toolhead sensor
 #
 # If not using a toolhead sensor (homing endpoint) the driver can "feel" for the extruder gear entry by colliding with it
 # and thus needs to know how far to attempt homing. Because this method is not completely deterministic you might find
 # have to find the sweetspot for your setup by adjusting the TMC current reduction. Also, touch (stallguard) sensing is
-# possible to configure but unfortunately doesn't work well with external EASY-BRD or ERB mcu's.
-# Reduced current during collision detection can also prevent filament griding
-#
+# possible to configure but unfortunately doesn't work well with external EASY-BRD or ERB mcu's
 extruder_homing_max: 50			# Maximum distance to advance in order to attempt to home the extruder
 extruder_homing_endstop: collision	# Filament homing method/endstop name ("mmu_gear_touch" for stallguard) or "collision"
-extruder_homing_current: 40		# % gear_stepper current (10%-100%) to use when homing to extruder homing (100 to disable)
-#
-# In the absence of a toolhead sensor Happy Hare will automatically default to extruder entrance detection regardless of
-# this setting, however if you have a toolhead sensor you can still force the additional (unecessary and not recommended)
-# step of homing to extruder entrance before then homing to the toolhead sensor
-extruder_force_homing: 0
 
 
-# Built in default toolhead loading and unloading -------------------------------------------------------------------------
+# Final filament loading distances ----------------------------------------------------------------------------------------
 #
-# It is possible to define highly customized loading and unloading sequences, however, unless you have a specialized setup
-# it is probably easier to opt for the built-in toolhead loading and unloading sequence which already offers a high degree
-# of customization. If you need even more control then edit the _MMU_LOAD_SEQUENCE and __MMU_UNLOAD_SEQUENCE macros in
-# mmu_software.cfg - but be careful!
-#
-# An MMU must have a known point at the end of the bowden from which it can precisely load the extruder. Generally this will
-# either be the extruder extrance (which is controlled with settings above) or by homing to toolhead sensor. If you have
-# toolhead sensor it is past the extruder gear and the driver needs to know the max distance (from end of bowden move) to
-# attempt homing
-#
-toolhead_homing_max: 20			# Maximum distance to advance in order to attempt to home to toolhead sensor
-#
-# Once a homing position is determined, Happy Hare needs to know the final move distance to the nozzle. If homing to
-# toolhead sensor this will be the distance from the toolhead sensor to the nozzle. If extruder homing it will be the
-# distance from the extruder gears to the nozzle. Set the appropriate parameter for your setup
+# This is the distance of the final filament load from the homing point to the nozzle
+# If homing to toolhead sensor this will be the distance from the toolhead sensor to the nozzle
+# If extruder homing it will be the distance from the extruder gears (end of bowden) to the nozzle
 #
 # This value can be determined by manually inserting filament to your homing point (extruder gears or toolhead sensor)
 # and advancing it 1-2mm at a time until it starts to extrude from the nozzle.  Subtract 1-2mm from that distance distance
 # to get this value.  If you have large gaps in your purge tower, increase this value.  If you have blobs, reduce this value.
 # This value will depend on your extruder, hotend and nozzle setup.
+home_position_to_nozzle: 72		# E.g. Revo Voron with CW2 extruder using extruder homing (62 with toolhead sensor)
+#
+# Advanced and optional. If you want to be able to switch between sensorless and toolhead sensor or you want to optimize
+# extruder unload when using toolhead sensor you can override 'home_position_to_nozzle' with these more specific values
 # (Note that the difference between these two represents the extruder to sensor distance and is used as the final
 # unload distance from extruder. An accurate setting can reduce tip noise/grinding on exit from extruder)
-toolhead_extruder_to_nozzle: 72		# E.g. Revo Voron with CW2 extruder using extruder homing
-toolhead_sensor_to_nozzle: 62		# E.g. Revo Voron with CW2 extruder using toolhead sensor homing
+extruder_to_nozzle: 72			# E.g. Revo Voron with CW2 extruder using extruder homing
+sensor_to_nozzle: 62			# E.g. Revo Voron with CW2 extruder using toolhead sensor homing
 #
 # Whether the detection of successful extruder load is considered an error or warning. Some designs of extruder have a short
 # final move distance that may not be picked up by encoder and cause false errors. This allows masking of those errors.
 # However the error often indicates that your extruder load speed is too high for the friction on the filament and in
 # that case masking the error is not a good idea. Try reducing friction, syncing motors and lowering speed first!
-toolhead_ignore_load_error: 0
-#
-# Synchronized loading: It is generally recommended to load the toolhead with synchronized gear and extruder motors.
-toolhead_sync_load: 1			# Extruder loading leverages motor synchronization
-#
-# However, if synchronized loading is disabled, there are two more settings can aid successful transition of the filament
-# from the bowden tube through the extruder entrance into the toolhead
-toolhead_transition_length: 10		# mm of special handling for entry and exit of extruder when not synced. 0 to disable
-toolhead_delay_servo_release: 2.0	# Delay release on servo by (mm) when not using synchronous load during transition into toolhead
-#
-# Synchronized unloading: It is recommended not to enable synced motors during unloading because (i) it makes it harder to
-# detect stuck filament, (ii) it can lead to additional noise, (iii) it is possible to "over unload". Nevertheless, it can
-# be employed if you extruder struggles to unload
-toolhead_sync_unload: 0			# Extruder unloading (except stand alone tip forming) leverages motor synchronization
+ignore_extruder_load_error: 0
 
 
-# Synchronized gear/extruder movement and tip forming ----------------------------------------------------------------------
-#
-# This controls whether the extruder and gear steppers are synchronized during printing operations
+# Synchronized gear/extruder movement -------------------------------------------------------------------------------------
+# If enabled for loading or unloading extruder this will override 'sync_load_length' and 'sync_unload_length'
 # If you normally run with maxed out gear stepper current consider reducing it with 'sync_gear_current'
+sync_load_extruder: 1			# Extruder loading leverages motor synchronization
+sync_unload_extruder: 0			# Extruder unloading (except stand alone tip forming) leverages motor synchronization
+sync_form_tip: 0			# Standalone tip formation (initial part of unload) also leverages motor sychronization
+sync_to_extruder: 0			# Gear motor is synchronized to extruder during print
+
+
+# TMC Current control -----------------------------------------------------------------------------------------------------
 # If equipped with TMC drivers the current of the gear and extruder motors can be controlled to optimize performance.
 # This can be useful to control gear stepper temperature when printing with synchronized motor, to ensure no skipping during
-# fast tip-forming moves
-#
-sync_to_extruder: 0			# Gear motor is synchronized to extruder during print
+# fast tip-forming moves or to reduce current and prevent griding for collision detection when not using toolhead sensor
 sync_gear_current: 50			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
-sync_form_tip: 0			# Synchronize during standalone tip formation (initial part of unload)
 extruder_form_tip_current: 120		# % of extruder current (100%-150%) to use when forming tip (100 to disable)
+extruder_homing_current: 40		# % gear_stepper current (10%-100%) to use when homing to extruder homing (100 to disable)
 
 
 # Clog detection and Endless Spool ---------------------------------------------------------------------------------------
@@ -191,10 +155,23 @@ persistence_level: 3
 
 # Misc configurable, but fairly fixed values -----------------------------------------------------------------------------
 #
+num_moves: 1			# Number of separate fast moves to make when loading or unloading bowden (>1 if you have TTC errors)
 extruder: extruder		# Name of the toolhead extruder that MMU is using
 timeout_pause: 72000		# Time out in seconds used by the MMU_PAUSE
 disable_heater: 600		# Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
 min_temp_extruder: 200		# Used to ensure we can move the extruder and form tips
+
+** unload_buffer: 40		# Amount to reduce the fast unload so that accurate encoder unload has room to operate
+** load_encoder_retries: 2		# Number of times MMU will attempt to grab the filament on initial load (max 5)
+** parking_distance: 23.0		# Controls how close to the gate washer the filament is parked (distance from encoder, range=12-30)
+** 15mm move
+
+servo_duration: 0.2		# Duration of PWM burst sent to servo (automatically turns off)
+
+* transition_length: 10		# mm of special handling for entry and exit of extruder when not synced. 0 to disable
+* delay_servo_release: 2.0	# Delay release on servo by (mm) when not using synchronous load during transition to extruder
+
+enable_selector_touch: 0	# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
 z_hop_height: 5			# Height in mm of z_hop move on pause or runout to avoid blob on print
 z_hop_speed: 15			# mm/s Speed of z_hop move
 
@@ -246,5 +223,5 @@ z_hop_speed: 15			# mm/s Speed of z_hop move
 # For completeness and primarily for historical reasons rather than usefulness, the default position of each gate on the selector
 # and the optional bypass position can be specified. These would only ever be used if 'mmu_vars.cfg' was deleted
 #selector_offsets: 3.2, 24.2, 45.2, 71.3, 92.3, 113.3, 141.6, 162.6, 183.6
-#selector_bypass: 123.4			# Set to your measured position, 0 to disable
+#bypass_selector: 123.4			# Set to your measured position, 0 to disable
 

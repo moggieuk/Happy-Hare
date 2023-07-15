@@ -283,10 +283,10 @@ class MmuEncoder:
         return self._counts * self.resolution
 
     def set_distance(self, new_distance):
-        self._counts = int(new_distance / self.resolution)
+        self._counts = int(round(new_distance / self.resolution))
 
     def reset_counts(self):
-        self._counts = 0.
+        self._counts = 0
 
     def get_status(self, eventtime):
         return {
