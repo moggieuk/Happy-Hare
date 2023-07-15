@@ -1454,7 +1454,7 @@ class Mmu:
             self._select_tool(gate)
             self._set_gate_ratio(1.)
             encoder_moved = self._load_encoder(retry=False)
-            self.toolhead.dwell(0.5)
+            self.toolhead.dwell(0.2)
             self.toolhead.wait_moves()
             self.encoder_sensor.reset_counts()    # Encoder 0000
             self._log_always("%s gate %d over %.1fmm..." % ("Calibrating" if gate > 0 else "Validating calibration of", gate, length))
@@ -2528,7 +2528,7 @@ class Mmu:
         self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=True)
 
     def _load_sequence(self, length, skip_extruder=False, extruder_only=False):
-        self._log_info("Loading filament...")
+        self._log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
         full = home = False
         self._set_filament_direction(self.DIRECTION_LOAD)
         self.toolhead.wait_moves()
@@ -2909,10 +2909,10 @@ class Mmu:
             return
 
         try:
+            self._log_info("Unoading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
                 self._track_unload_start()
-                self._log_info("Unloading filament...")
                 self._display_visual_state()
 
             # Check for cases where we must form tip
