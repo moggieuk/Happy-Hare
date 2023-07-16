@@ -12,19 +12,19 @@ Thank you!
 <br>
 
 ## Table of Contents
-**[Major feature](#major-features)**<br>
-**[Installation](#installation)**<br>
-**[Basic Commands](#basic-commands)**<br>
-**[Setup & Calibration](#setup-and-calibration)**<br>
-**[Important Concepts and Features](#important-concepts-and-features)**<br>
-**[Loading and Unloading Sequences](#filament-loading-and-unloading-sequences)**<br>
-**[KlipperScreen Happy Hare Edition](#klipperscreen-happy-hare-edition)**<br>
-**[My Testing / Setup](#my-setup)**<br>
-**[Revision History](#revision-history)**<br>
+**[Major feature](#---major-features)**<br>
+**[Installation](#---installation)**<br>
+**[Basic Commands](#---basic-commands)**<br>
+**[Setup & Calibration](#---setup-and-calibration)**<br>
+**[Important Concepts and Features](#---important-concepts-and-features)**<br>
+**[Loading and Unloading Sequences](#---filament-loading-and-unloading-sequences)**<br>
+**[KlipperScreen Happy Hare Edition](#---klipperscreen-happy-hare-edition)**<br>
+**[My Testing / Setup](#---my-testing)**<br>
+**[Revision History](#---revision-history)**<br>
 
 <br>
-
-## Major features:
+ 
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Major features:
 <ul>
   <li>Support any brand of MMU and user defined monsters. (Caveat: ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon)</li>
   <li>Companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
@@ -52,8 +52,8 @@ Companion customized [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-ed
 <img src="doc/my_klipperscreen.png" width="600" alt="KlipperScreen-Happy Hare edition">
 
 <br>
-
-## Installation
+ 
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Installation
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
 
 ```
@@ -86,12 +86,12 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 <br>
 
-## Basic Commands
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Basic Commands
 Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. The full list of commands and options can be [found here](doc/command_ref.md).
 
 <details>
 <summary><sub>Click to show basic commands...</sub></summary>
-
+  
 ```
     > MMU_HELP
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
@@ -171,7 +171,7 @@ Optionally exposed on mmu_encoder (if fitted):
 
 <br>
 
-## Setup and Calibration:
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Setup and Calibration:
 Configuration and calibration will vary slightly depending on your particular brand of MMU althought the steps are essentially the same with some being dependent on hardware configuration. Here are the four basic steps.
 
 ### A) Important MMU Vendor / Version Specification
@@ -267,7 +267,7 @@ Will update the distance from extruder entrance (homing postion) to nozzle.  The
 
 <br>
 
-## Important Concepts and Features
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Important Concepts and Features
 
 ### 1. How to handle errors
 We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_ULOCK`, `MMU_RECOVER`, etc.
@@ -623,7 +623,7 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those
 
 <br>
 
-## Filament loading and unloading sequences
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Filament loading and unloading sequences
 Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`.  These are grouped into "modules" that control each step of the process and vary slightly based on the capabilities of your particular MMU.  Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later.
 
 <details>
@@ -756,16 +756,16 @@ This is much simplier than loading. The toolhead sensor, if installed, will auto
 
 <br>
 
-## KlipperScreen Happy Hare Edition
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) KlipperScreen Happy Hare Edition
 <img src="doc/ercf_main_printing.png" width="500" alt="KlipperScreen">
 
 Even if not a KlipperScreen user yet you might be interested in my [KlipperScreen version](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) simply to control your MMU. It makes using your MMU the way it should be. Dare I say as easy at Bambu Labs ;-)  I run mine with a standalone Rasberry Pi attached to my buffer array and can control mutliple MMU's with it.
 
 Be sure to follow the install directions carefully and read the [panel-by-panel](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition/blob/master/docs/ERCF.md) documentation.
 
-<br>
-
-## My Testing:
+<br> 
+ 
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) My Testing:
 This new v2 Happy Hare software is largely rewritten and so, despite best efforts, has probably introduced some bugs that may not exist in the previous version.  It also lacks extensive testing on different configurations that will stress the corner cases.  I have been using it successfully on Voron 2.4 / ERCF v1.1 and ERCF v2.0 with EASY-BRD and ERB board.  I use a self-modified CW2 extruder with foolproof microswitch toolhead sensor (hall effect switches are extremely problematic in my experience). My day-to-day configuration is to load the filament to the extruder in a single movement at 250mm/s, then home to toolhead sensor with synchronous gear/extruder movement although I have just moved to automatic "touch" homing to the nozzle whcih works without ANY knowledge of my extruder dimensions!! Yeah, really, load filament in gate, fast 670mm move, home to nozzle!
 
 ### My Setup:
@@ -818,10 +818,10 @@ STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS ALMOST READY!
 
 
 Good luck! You can find me on discord as *moggieuk#6538*
-
-<br>
   
-## Revision History
+<br>  
+ 
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Revision History
 <ul>
 <li>v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
 </ul>
