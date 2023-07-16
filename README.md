@@ -73,7 +73,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 <br>
 
 ## MMU Commands
-Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. The full list of commands and options can be [found here](doc/command_ref.md)
+Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. The full list of commands and options can be [found here](doc/command_ref.md).
 
 <details>
 <summary><sub>Click to show basic commands...</sub></summary>
@@ -610,9 +610,12 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those
 <br>
 
 ## Filament loading and unloading sequences
+Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`.  These are grouped into "modules" that control each step of the process and vary slightly based on the capabilities of your particular MMU.  Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later.
 
 <details>
-<summary>...</summary>
+<summary><sub>Click to learn more about loading sequence</sub></summary>
+
+TODO -- needs rewrite
 
 ### Config Loading and Unload sequences explained
 ~~Note that if a toolhead sensor is configured it will become the default filament homing method and home to extruder an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `ercf_calib_ref`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.~~
@@ -637,6 +640,13 @@ With toolhead sensor enabled there is a little more to this step: ERCF will home
 <br>The speed of all movements in this step is controlled by 'sync_load_speed'
     <li>Now the filament is under exclusive control of the extruder.  Filament is moved the remaining distance to the meltzone. This distance is defined by 'home_position_to_nozzle' and is either the distance from the toolhead sensor to the nozzle or the distance from the extruder gears to the nozzle depending on your setup.  This move speed is controlled by 'nozzle_load_speed'.  We are now loaded and ready to print.
   </ol>
+
+</details>
+
+<details>
+<summary><sub>Click to learn more about unloading sequence</sub></summary>
+
+TODO -- needs rewrite
 
 #### Understanding the unload sequence:
     1. ERCF [T1] <<<<< [encoder] <<<<<<<<<<<<<< [extruder] <<<< [sensor] <... [nozzle] (@34.8 mm)
