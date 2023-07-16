@@ -1,7 +1,7 @@
 # "Happy Hare" - Universal MMU driver for Klipper
 
 
-# IF YOU HAVE FOUND THIS... PLEASE DON'T EVEN THINK ABOUT TRYING TO INSTALL IT.  IT IS WORK IN PROGRESS. Use ERCF-Software-V3 for ERCF. I will announce when this is ready as an alternative!!
+# IF YOU HAVE FOUND THIS... PLEASE DON'T INSTALL IT YET.  IT IS WORK IN PROGRESS. Use ERCF-Software-V3 for ERCF. I will announce when this is ready as beta (Very soon now)
 
 Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem.  Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform.  It is best partnered with [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
@@ -21,8 +21,8 @@ Thank you!
   <li>Sophisticated logging options (console and mmu.log file)</li>
   <li>Can define material type and color in each gate  for visualization and customized settings (like Pressure Advance)</li>
   <li>Automated calibration for easy setup</li>
-  <li>Supports MMU bypass "gate" functionality</li>
-  <li>Ability to manipulate gear current (TMC) during various operations for reliable operation</li>
+  <li>Supports bypass "gate" functionality</li>
+  <li>Ability to manipulate gear and extruder current (TMC) during various operations for reliable operation</li>
   <li>Moonraker update-manager support</li>
   <li>Complete persitance of state and statistics across restarts. That's right you don't even need to home!</li>
   <li>Reliable servo operation - no more "kickback" problems</li>
@@ -30,8 +30,7 @@ Thank you!
   <li>Highly configurable speed control that intelligently takes into account the realities of friction and tugs on the spool</li>
   <li>Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!</li>
   <li>Vast customization options most of which can be changed and tested at runtime</li>
-  <li>Integrated testing and soak-testing procedures</li>
-  <li>Inegrated help</li>
+  <li>Integrated help, testing and soak-testing procedures</li>
 </ul>
 
 Companion customized [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) for easy touchscreen MMU control!
@@ -69,18 +68,11 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 (no flags for safe re-install / upgrade)
 ```
 
-> **Warning** ERCF v1.1 users: the original encoder can be problematic. I new backward compatible alternative is available in the ERCF v2.0 project and it strongly recommened.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work.
+> **Warning** ERCF v1.1 users: the original encoder can be problematic. A new backward compatible alternative is available in the ERCF v2.0 project and is strongly recommended.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work with ERCF design.
 
 <br>
 
-  
-## Revision History
-<ul>
-<li>v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
-</ul>
-
-
-### MMU Commands
+## MMU Commands
 Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. The full list of commands and options can be [found here](doc/command_ref.md)
 
 <details>
@@ -111,7 +103,7 @@ Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. T
     MMU_SERVO - Move MMU servo to position specified position or angle
     MMU_SET_GATE_MAP - Define the type and color of filaments on each gate
     MMU_STATUS - Complete dump of current MMU state and important configuration
-    MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder motor
+    MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder stepper
     MMU_UNLOCK - Unlock MMU operations after an error condition
  ```
    
@@ -163,13 +155,18 @@ Optionally exposed on mmu_encoder (if fitted):
 
 </details>
 
+<br>
+
 ## MMU Setup and Calibration:
-This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration. Note that it is important to set `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg`.
+Configuration and calibration will vary slightly depending on your particular brand of MMU althought the steps are essentially the same with some being dependent on hardware configuration. Here are the four basic steps.
+
+### A) Important MMU Vendor / Version Specification
+Happy Hare functionality will vary with MMU vendor. This is an important first step in setup.
 
 <details>
 <summary><sub>Click to read more about vendor/version specification...</sub></summary>
   
-These few parameters in `mmu_parameters.cfg` must be set correctly because they define the basic capabilities and options in Happy Hare. The only complication is in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
+It is important to set `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg` because they define the basic capabilities and options in Happy Hare. The only complication is in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
 
 ```
 # The vendor and version config is important to define the capabiliies of the MMU
@@ -196,8 +193,8 @@ num_gates: 9                            # Number of selector gates
 > encoder_min_resolution (resolution of one 'pulse' on the encoder; generally 23 / pulses per rev for BMG based encoder) - if using customized encoder
 
 </details>
-  
-### Step 1. Validate your mmu_hardware.cfg configuration and basic operation
+
+### B) Validate your mmu_hardware.cfg configuration and basic operation
 See [Hardward configuration doc here](doc/hardware_config.md) for detailed instructions
 
 <details>
@@ -231,26 +228,33 @@ Normally the encoder is automatically enabled when needed and disabled when not 
 
 </details>
 
-### Step 2. Calibrate
+### C) Calibration Commands
 See [MMU Calibration doc here](doc/calibration.md) for detailed instructions
 
-### Step 3. Tweak configuration in mmu_parameters.cfg
+### D) Setup configuration in mmu_parameters.cfg
 See [MMU Configuration doc here](doc/configuration.md) for in-depth discussion but a few selected features are discussed in more detail in the following feature sections.
 
-#### Adjusting configuration at runtime
+### E) Tweak configuration at runtime
 It's worth noting here that all the essential configuration and tuning parameters can be modified at runtime without restarting Klipper. Use the `MMU_TEST_CONFIG` command to do this. Running without any parameters will display the currect value:
+
+<details>
+<summary><sub>Click to read about run-time testing of configuration...</sub></summary>
+  
+Running without any parameters will display the current values:
 
 > MMU_TEST_CONFIG
 
 Any of the displayed config settings can be modified.  E.g.
 
-  > MMU_TEST_CONFIG home_position_to_nozzle=45
+  > MMU_TEST_CONFIG toolhead_extruder_to_nozzle=45
   
-Will update the distance from homing position to nozzle.  The change is designed for testing was will not be persistent.  Once you find your tuned settings be sure to update `mm_parameters.cfg`
+Will update the distance from extruder entrance (homing postion) to nozzle.  The change is designed for testing was will not be persistent.  Once you find your tuned settings be sure to update `mm_parameters.cfg`
+
+</details>
 
 <br>
 
-## Important conceptual components of Happy Hare
+## Review of important conceptual components of Happy Hare
 
 ### 1. How to handle errors
 We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_ULOCK`, `MMU_RECOVER`, etc.
@@ -299,6 +303,8 @@ graph TD;
     MMU_RECOVER --> RESUME
     RESUME --> Printing
 ```
+
+</details>
 
 </details>
 
@@ -785,3 +791,8 @@ Good luck! You can find me on discord as *moggieuk#6538*
     ( *,*)
     (")_(") MMU Ready
   
+  
+## Revision History
+<ul>
+<li>v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
+</ul>
