@@ -200,10 +200,9 @@ See [Hardward configuration doc here](doc/hardware_config.md) for detailed instr
 <details>
 <summary><sub>Click to read about optional hardware...</sub></summary>
 
-#### Optional hardware
 Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propell the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning.
 
-##### Encoder
+#### Optional hardware - Encoder
 Happy Hare optionally supports the use of an encoder which is fundamental to the ERCF MMU design. This is a device that measures the movement of filament and can be used for detecting and loading/unloading filament at the gate; validating that slippage is not occuring; runout and clog detection; flow rate verification and more. The following is an output of the `MMU_ENCODER` command to control and view the encoder:
 
 ```
@@ -608,7 +607,9 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those
 
 </details>
 
-### 12. THIS SECTION CONTAINS THE RAW REAME FROM HAPPY-HARE v1.  ALL THIS NEEDS REWRITING
+<br>
+
+## Filament loading and unloading sequences
 
 <details>
 <summary>...</summary>
@@ -723,6 +724,8 @@ This is much simplier than loading. The toolhead sensor, if installed, will auto
 
 </details>
 
+<br>
+
 ## KlipperScreen Happy Hare Edition
 <img src="doc/ercf_main_printing.png" width="500" alt="KlipperScreen">
 
@@ -730,6 +733,7 @@ Even if not a KlipperScreen user yet you might be interested in my [KlipperScree
 
 Be sure to follow the install directions carefully and read the [panel-by-panel](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition/blob/master/docs/ERCF.md) documentation.
 
+<br>
 
 ## My Testing:
 This new v2 Happy Hare software is largely rewritten and so, despite best efforts, has probably introduced some bugs that may not exist in the previous version.  It also lacks extensive testing on different configurations that will stress the corner cases.  I have been using it successfully on Voron 2.4 / ERCF v1.1 and ERCF v2.0 with EASY-BRD and ERB board.  I use a self-modified CW2 extruder with foolproof microswitch toolhead sensor (hall effect switches are extremely problematic in my experience). My day-to-day configuration is to load the filament to the extruder in a single movement at 250mm/s, then home to toolhead sensor with synchronous gear/extruder movement although I have just moved to automatic "touch" homing to the nozzle whcih works without ANY knowledge of my extruder dimensions!! Yeah, really, load filament in gate, fast 670mm move, home to nozzle!
@@ -791,6 +795,7 @@ Good luck! You can find me on discord as *moggieuk#6538*
     ( *,*)
     (")_(") MMU Ready
   
+<br>
   
 ## Revision History
 <ul>
