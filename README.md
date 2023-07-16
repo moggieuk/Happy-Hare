@@ -69,7 +69,7 @@ The `-i` option will bring up an interactive installer  to aid setting some conf
 Note that the installer will look for Klipper install and config in standard locations.  If you have customized locations or multiple Klipper instances on the same rpi, or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively.
 <br>
 
-> **Note**  `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file.  `client_macros.cfg` should also be referenced if you don't already have working PAUSE/RESUME/CANCEL_PRINT macros (but be sure to read the section before on macro expectations). These includes can be added automatically for you with the install script.
+> **Note**  `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file with `mmu_hardware.cfg` listed first.  `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
 <br>
 
 **Pro tip:** if you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp.  You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
@@ -357,7 +357,7 @@ Generally there is no downside of setting the level to 2 or 3 (the suggested def
   <li>`MMU_ENDLESS_SPOOL_GROUPS RESET=1` - Reset just the endless spool groups back to default
   <li>`MMU_SET_GATE_MAP RESET=1` - Reset information about the filament type, color and availability
   <li>`MMU_RECOVER` - Automatically discover or manually reset filament position, selected gate, selected tool, filament availability (lots of options)
-  <li>Needless to say, other operations will update state
+  <li>Needless to say, other operations can update specific state
 </ul>
 
 Couple of miscellaneous notes:
@@ -631,6 +631,7 @@ TODO -- needs rewrite
 Note that if a toolhead sensor is configured it is the favored filament homing method and home to extruder gears an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `mmu_calibration_bowden_length`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.
 
 ### Understanding the load sequence:
+
 ```
 Loading filament...
 1. MMU [T2] >.. [En] ....... [Ex] .. [Ts] .. [Nz] UNLOADED (@0.0 mm)
@@ -640,13 +641,14 @@ Loading filament...
 5. MMU [T2] >>> [En] >>>>>>> [Ex] >> [Ts] >> [Nz] LOADED (@783.6 mm)
 MMU load successful
 ```
+
 The "visual log" (set at level 2) above shows individual steps of the loading process for MMU with optional toolhead sensor. Here is an explanation of steps with `mmu_parameter.cfg` options:
   <ol>
     <li>Starting with filament unloaded and sitting in the gate for tool 2
     <li>Firstly MMU clamps the servo down and pulls a short length of filament from the gate to the start of the bowden tube.
       <ul>
-        <li>On ERCF designs this is achieved with the encoder, with Tradrack is achived by homing to specifc point. through the encoder. It it doesn't see filament it will try 'load_encoder_retries' times (default 2). If still no filament it will report the error. The speed of this initial movement is controlled by 'short_moves_speed', the acceleration is as defined on the gear stepper motor config in 'ercf_hardware.cfg'</li>
-        <li>On Tradrack ...</li>
+        <li>ERCF: This is achieved using the encoder by advancing filament until if is measured. It it doesn't see filament it will try 'encoder_load_retries' times (default 2). If still no filament it will report the error. The speed of this initial movement is controlled by 'gear_short_move_speed', the acceleration is as defined on the gear stepper motor config in 'mmu_hardware.cfg'.  Note that the encoder sensor is considered "point 0" and any movement beyond into the bowden will automatically be handled by the next bowden move.</li>
+        <li>Tradrack: This is achived by homing to specifc point. Note that the homing point is considered "point 0". TODO COMPLETE</li>
       </ul>
     </li>
     <li>ERCF will then load the filament through the bowden in a fast movement.  The speed is controlled by 'long_moves_speed' and optionally `long_moves_speed_from_buffer`.  This movement can be broken up into multiple movements with 'num_moves' as one workaround to overcome "Timer too close" errors from Klipper. If you keep your step size to 8 for the gear motor you are likely to be able to operate with a single fast movement.  The length of this movement is set when you calibrate ERCF and stored in 'ercf_vars.cfg'.  There is an advanced option to allow for correction of this move if slippage is detected controlled by 'apply_bowden_correction' and 'load_bowden_tolerance' (see comments in 'ercf_parameters.cfg' for more details)
