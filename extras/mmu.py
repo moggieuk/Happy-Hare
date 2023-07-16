@@ -1196,7 +1196,7 @@ class Mmu:
 
     def _servo_up(self):
         if self.tool_selected < 0:
-            self._log_info("PAUL TEMP DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
+            self._log_info("TODO TEMP DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
         delta = 0.
@@ -1297,7 +1297,7 @@ class Mmu:
         else:
             raise gcmd.error("Motor '%s' not known" % motor)
 
-    cmd_MMU_SYNC_GEAR_MOTOR_help = "Sync the MMU gear motor to the extruder motor"
+    cmd_MMU_SYNC_GEAR_MOTOR_help = "Sync the MMU gear motor to the extruder stepper"
     def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
@@ -3149,12 +3149,15 @@ class Mmu:
                         break
                 if not stuck_in_extruder:
                     out_of_extruder = True
-# PAUL TODO This causes unecessary servo movement and is probably unecessary
-#                    # Back up just a bit with only the extruder, if we don't see any movement.
-#                    # then the filament is out of the extruder
-#                    out_of_extruder, moved = self._test_filament_in_extruder_by_retracting()
-#                    if out_of_extruder:
-#                        self._log_debug("Extruder entrance reached after %d moves" % (i+1))
+# TODO This causes unecessary servo movement and is probably unecessary although could be put under 'strict' option:
+#                    if self.strict_filament_recovery:
+#                        # Back up just a bit with only the extruder, if we don't see any movement.
+#                        # then the filament is out of the extruder
+#                        out_of_extruder, moved = self._test_filament_in_extruder_by_retracting()
+#                        if out_of_extruder:
+#                            self._log_debug("Extruder entrance reached after %d moves" % (i+1))
+#                    else:
+#                        out_of_extruder = True
 
             if not out_of_extruder:
                 raise MmuError("Filament seems to be stuck in the extruder")
@@ -3188,7 +3191,8 @@ class Mmu:
         tolerance = self.bowden_unload_tolerance
         self._servo_down()
 
-# PAUL TODO Don't like this test move anymore. Complicates things and servo is now more reliable
+# TODO Old logic. Don't like this test move anymore. Complicates things and servo is now more reliable, althought it does prevent
+#      significant chewing of the filament if it is really caught in extruder gears!
 #        # Initial short move allows for dealing with (servo) errors and prevent grinding filament if stuck
 #        if not self.calibrating:
 #            sync = not skip_sync_move and self.toolhead_transition_length > 0
@@ -3269,10 +3273,11 @@ class Mmu:
             if self.filament_pos != self.FILAMENT_POS_LOADED:
                 return False, 0.
             else:
-                return True, 0. # Filament could still be in extruder gears
+                # Filament could be between extruder gears and toolhead sensor
+                out_of_extruder, moved = self._test_filament_in_extruder_by_retracting()
+                self.filament_distance += moved
+                return not out_of_extruder, moved
 
-# PAUL: this is a case (filament cutter) wheere we don't want to run this, maybe we need a shortcut parameter? In the case of not
-# running, park_pos=0 is probably appropriate
         current_action = self._set_action(self.ACTION_FORMING_TIP)
         try:
             self._log_info("Forming tip...")
