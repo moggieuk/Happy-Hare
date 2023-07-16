@@ -623,13 +623,6 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Filament loading and unloading sequences
 Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`.  These are grouped into "modules" that control each step of the process and vary slightly based on the capabilities of your particular MMU.  Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later.
 
-<details>
-<summary><sub>⭕ Click to learn more about loading sequence</sub></summary>
-
-TODO -- needs rewrite
-
-Note that if a toolhead sensor is configured it is the favored filament homing method and home to extruder gears an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `mmu_calibration_bowden_length`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.
-
 ### Understanding the load sequence:
 
 ```
@@ -642,6 +635,9 @@ Loading filament...
 5.  MMU [T2] >>> [En] >>>>>>> [Ex] >> [Ts] >> [Nz] LOADED (@783.6 mm)
 MMU load successful
 ```
+
+<details>
+<summary><sub>⭕ Click to learn more about loading sequence</sub></summary>
 
 The "visual log" (set at level 2) above shows individual steps of a typical loading process for MMU with optional toolhead sensor. Here is an explanation of steps with `mmu_parameter.cfg` options:
   <ol>
@@ -664,6 +660,8 @@ With toolhead sensor enabled there is a little more to this step: ERCF will home
 <br>The speed of all movements in this step is controlled by 'sync_load_speed'
     <li>Now the filament is under exclusive control of the extruder.  Filament is moved the remaining distance to the meltzone. This distance is defined by 'home_position_to_nozzle' and is either the distance from the toolhead sensor to the nozzle or the distance from the extruder gears to the nozzle depending on your setup.  This move speed is controlled by 'nozzle_load_speed'.  We are now loaded and ready to print.
   </ol>
+
+**Note:** that if a toolhead sensor is configured it is the favored filament homing method and home to extruder gears an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `mmu_calibration_bowden_length`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.
 
 </details>
 
