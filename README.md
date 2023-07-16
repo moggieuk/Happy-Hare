@@ -1,6 +1,5 @@
 # "Happy Hare" - Universal MMU driver for Klipper
 
-
 # IF YOU HAVE FOUND THIS... PLEASE DON'T INSTALL IT YET.  IT IS WORK IN PROGRESS. Use ERCF-Software-V3 for ERCF. I will announce when this is ready as beta (Very soon now)
 
 Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem.  Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform.  It is best partnered with [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
@@ -198,7 +197,7 @@ It is important to set `mmu_vendor` and `mmu_version` correctly in `mmu_paramete
 #
 mmu_vendor: ERCF                        # MMU family ERCF/Tradrack/Prusa/Custom
 mmu_version: 1.1                        # MMU hardware version number (add mod suffix documented above)
-num_gates: 9                            # Number of selector gates
+mmu_num_gates: 9                        # Number of selector gates
 ```
 
 > **Note** Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods the follow parameters can be specified to override defaults. Use ONLY if necessary:
@@ -261,7 +260,7 @@ Any of the displayed config settings can be modified.  E.g.
 
   > MMU_TEST_CONFIG toolhead_extruder_to_nozzle=45
   
-Will update the distance from extruder entrance (homing postion) to nozzle.  The change is designed for testing was will not be persistent.  Once you find your tuned settings be sure to update `mm_parameters.cfg`
+Will update the distance from extruder entrance (homing postion) to nozzle.  The change is designed for testing was will not be persistent.  Once you find your tuned settings be sure to update `mmu_parameters.cfg`
 
 </details>
 
@@ -802,7 +801,7 @@ Firstly the importance of a reliable and fairly accurate encoder should not be u
 <summary><sub>⭕ Read move about my learnings of ERCF v2.0...</sub></summary>
   
 <br>
-STILL FORMING EXPERIEMCE
+STILL FORMING EXPERIENCE
 
 </details>
 
