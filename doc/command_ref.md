@@ -30,7 +30,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_UNLOCK - Unlock MMU operations after an error condition
 
 
-  ## Basic MMU functionality
+  ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Basic MMU functionality
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |
   | `MMU` | Enable and reset state or disable the MMU. Useful to completely turn off the MMU functionality rather then uninstalling it. Note that persisted state will be reset when re-enabling | `ENABLE=[0\|1]` |
@@ -74,7 +74,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   
   <br>
 
-  ## Calibration
+  ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Calibration
     MMU_CALIBRATE_BOWDEN - Calibration of reference bowden length for gate #0
     MMU_CALIBRATE_ENCODER - Calibration routine for the MMU encoder
     MMU_CALIBRATE_GATES - Optional calibration of individual MMU gate
@@ -91,7 +91,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 
 <br>
 
-  ## Testing
+  ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Testing
     MMU_SOAKTEST_LOAD_SEQUENCE - Soak test tool load/unload sequence
     MMU_SOAKTEST_SELECTOR - Soak test of selector movement
     MMU_TEST_BUZZ_MOTOR - Simple buzz the selected motor (default gear) for setup testing
@@ -118,7 +118,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 
 <br>
 
-## User defined/configurable macros (defined in mmm_software.cfg) 
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) User defined/configurable macros (defined in mmm_software.cfg) 
   | Command | Description |
   | ------- | ----------- |
   | `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` | Called prior to unloading the remains of the current filament |
