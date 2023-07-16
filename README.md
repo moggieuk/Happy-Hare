@@ -9,6 +9,18 @@ Also, some folks have asked about making a donation to cover the cost of the all
 
 Thank you!
 
+## Table of Contents
+**[Major feature](#major-features)**<br>
+**[Installation](#installation)**<br>
+**[Basic Commands](#basic-commands)**<br>
+**[Setup & Calibration](#setup-and-calibration)**<br>
+**[Important Concepts](#important-concepts-and-features)**<br>
+**[Loading and Unloading Sequences](#filament-loading-and-unloading-sequences)**<br>
+**[Custom KlipperScreen](#klipperscreen-happy-hare-edition)**<br>
+**[My Testing / Setup](#my-setup)**<br>
+**[Revision History](#revision-history)**<br>
+
+<br>
 
 ## Major features:
 <ul>
@@ -72,7 +84,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 <br>
 
-## MMU Commands
+## Basic Commands
 Happy Hare has a built in help system accessed thtough the `MMU_HELP` command. The full list of commands and options can be [found here](doc/command_ref.md).
 
 <details>
@@ -157,7 +169,7 @@ Optionally exposed on mmu_encoder (if fitted):
 
 <br>
 
-## MMU Setup and Calibration:
+## Setup and Calibration:
 Configuration and calibration will vary slightly depending on your particular brand of MMU althought the steps are essentially the same with some being dependent on hardware configuration. Here are the four basic steps.
 
 ### A) Important MMU Vendor / Version Specification
@@ -253,7 +265,7 @@ Will update the distance from extruder entrance (homing postion) to nozzle.  The
 
 <br>
 
-## Review of important conceptual components of Happy Hare
+## Important Concepts and Features
 
 ### 1. How to handle errors
 We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_ULOCK`, `MMU_RECOVER`, etc.
