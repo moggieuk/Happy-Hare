@@ -9,14 +9,16 @@ Also, some folks have asked about making a donation to cover the cost of the all
 
 Thank you!
 
+<br>
+
 ## Table of Contents
 **[Major feature](#major-features)**<br>
 **[Installation](#installation)**<br>
 **[Basic Commands](#basic-commands)**<br>
 **[Setup & Calibration](#setup-and-calibration)**<br>
-**[Important Concepts](#important-concepts-and-features)**<br>
+**[Important Concepts and Features](#important-concepts-and-features)**<br>
 **[Loading and Unloading Sequences](#filament-loading-and-unloading-sequences)**<br>
-**[Custom KlipperScreen](#klipperscreen-happy-hare-edition)**<br>
+**[KlipperScreen Happy Hare Edition](#klipperscreen-happy-hare-edition)**<br>
 **[My Testing / Setup](#my-setup)**<br>
 **[Revision History](#revision-history)**<br>
 
@@ -812,14 +814,16 @@ STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS ALMOST READY!
 Good luck! You can find me on discord as *moggieuk#6538*
 
 <br>
+  
+## Revision History
+<ul>
+<li>v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
+</ul>
+
+<br>
 
     (\_/)
     ( *,*)
     (")_(") MMU Ready
   
 <br>
-  
-## Revision History
-<ul>
-<li>v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
-</ul>
