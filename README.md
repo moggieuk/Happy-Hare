@@ -634,6 +634,7 @@ Loading filament...
 4b. MMU [T2] >>> [En] >>>>>>> [Ex] >| [Ts] .. [Nz] (@720.0 mm)
 5.  MMU [T2] >>> [En] >>>>>>> [Ex] >> [Ts] >> [Nz] LOADED (@783.6 mm)
 MMU load successful
+Loaded 780.3mm of filament (encoder measured 783.6mm)
 ```
 
 <details>
@@ -700,19 +701,30 @@ extruder_homing_speed: 20		# mm/s speed of extruder only homing moves (e.g. to t
 
 </details>
 
+### Understanding the unload sequence:
+
+```
+Unoading filament...
+1.  MMU [T2] <<< [En] <<<<<<< [Ex] << [Ts] << [Nz] LOADED (@0.0 mm)
+2.  Forming tip...
+    Run Current: 0.67A Hold Current: 0.40A
+    pressure_advance: 0.000000
+    pressure_advance_smooth_time: 0.040000
+    pressure_advance: 0.035000
+    pressure_advance_smooth_time: 0.040000
+    Run Current: 0.55A Hold Current: 0.40A
+3.  MMU [T2] <<< [En] <<<<<<< [Ex] << [Ts] <. [Nz] (@40.5 mm)
+4.  MMU [T2] <<< [En] <<<<<<< [Ex] <| [Ts] .. [Nz] (@61.4 mm)
+5.  MMU [T2] <<< [En] <<<<<<< [Ex] .. [Ts] .. [Nz] (@70.1 mm)
+6.  MMU [T2] <<< [En] <...... [Ex] .. [Ts] .. [Nz] (@746.3 mm)
+7.  MMU [T2] <.. [En] ....... [Ex] .. [Ts] .. [Nz] UNLOADED (@784.7 mm)
+Unloaded 781.8mm of filament (encoder measured 784.7mm)
+```
+
 <details>
 <summary><sub>⭕ Click to learn more about unloading sequence</sub></summary>
 
 TODO -- This sections needs rewrite
-
-### Understanding the unload sequence:
-    1. ERCF [T1] <<<<< [encoder] <<<<<<<<<<<<<< [extruder] <<<< [sensor] <... [nozzle] (@34.8 mm)
-    2. ERCF [T1] <<<<< [encoder] <<<<<<<<<<<<<< [extruder] <<<| [sensor] .... [nozzle] (@87.7 mm)
-    3. ERCF [T1] <<<<< [encoder] <<<<<<<<<<<<<< [extruder] .... [sensor] .... [nozzle] (@91.7 mm)
-    4. ERCF [T1] <<<<< [encoder] <<<<<<<<...... [extruder] .... [sensor] .... [nozzle] (@729.9 mm)
-    5. ERCF [T1] <<<<< [encoder] <<<........... [extruder] .... [sensor] .... [nozzle] (@729.9 mm)
-    6. ERCF [T1] <<<.. [encoder] .............. [extruder] .... [sensor] .... [nozzle] (@795.5 mm)
-    7. ERCF [T1] <.... [encoder] .............. [extruder] .... [sensor] .... [nozzle] UNLOADED (@795.5 mm)
   
 The "visual log" above shows individual steps of the loading process:
   <ol>
