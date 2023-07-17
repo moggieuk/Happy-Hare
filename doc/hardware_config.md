@@ -1,11 +1,13 @@
-# Hardware configuration (mmu_hardware.cfg explained)
+# Hardware configuration, Movement and Homing
+
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Hardware configuration (mmu_hardware.cfg explained)
 
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
 ### Step 1. Validate your hardware configuration
 This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
 
-Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of mmu_hardware.cfg):
+Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
   
     # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
     # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
@@ -47,7 +49,7 @@ Assuming you are familiar with all that there is one new IMPORTANT step that mus
 The first TMC definition was previous `[tmc2209 extruder]` and is moved in here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` should be deleted or commented out.
 The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
 
-For now, ignore all the enstop setup.  A separate guide on endstops and homing can be found in the MMU movement guide [found here](doc/movement_and_homing.md)
+Endstop setup and options can be [found here](#endstops-and-mmu-movement)
 
 If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
 
@@ -60,3 +62,7 @@ TODO
 ### Step 4. Check Encoder (if fitted)
 TODO
 
+<br>
+
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Endstops and MMU Movement
+TODO

@@ -2,7 +2,9 @@
 
 Firstly you can get a quick reminder of commands using the `MMU_HELP` command from the console:
 
-    > MMU_HELP
+  > MMU_HELP
+
+```
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
     MMU - Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL - Perform a tool swap
@@ -28,9 +30,11 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_STATUS - Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder motor
     MMU_UNLOCK - Unlock MMU operations after an error condition
+```
 
 
   ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Basic MMU functionality
+
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |
   | `MMU` | Enable and reset state or disable the MMU. Useful to completely turn off the MMU functionality rather then uninstalling it. Note that persisted state will be reset when re-enabling | `ENABLE=[0\|1]` |
@@ -75,11 +79,14 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   <br>
 
   ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Calibration
+
+```
     MMU_CALIBRATE_BOWDEN - Calibration of reference bowden length for gate #0
     MMU_CALIBRATE_ENCODER - Calibration routine for the MMU encoder
     MMU_CALIBRATE_GATES - Optional calibration of individual MMU gate
     MMU_CALIBRATE_GEAR - Calibration routine for gear stepper rotational distance
     MMU_CALIBRATE_SELECTOR - Calibration of the selector positions or postion of specified gate
+```
   
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |
@@ -92,6 +99,8 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 <br>
 
   ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Testing
+
+```
     MMU_SOAKTEST_LOAD_SEQUENCE - Soak test tool load/unload sequence
     MMU_SOAKTEST_SELECTOR - Soak test of selector movement
     MMU_TEST_BUZZ_MOTOR - Simple buzz the selected motor (default gear) for setup testing
@@ -102,6 +111,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_TEST_LOAD - For quick testing filament loading from gate to the extruder
     MMU_TEST_MOVE - Test filament move to help debug setup / options
     MMU_TEST_TRACKING - Test the tracking of gear feed and encoder sensing
+```
     
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |

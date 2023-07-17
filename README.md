@@ -440,7 +440,7 @@ Couple of miscellaneous notes:
 </details>
 
 ### 3. Tool-to-Gate (TTG) mapping
-When changing a tool with the `Tx` command the ERCF will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.
+When changing a tool with the `Tx` command the MMU will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.
 
 <details>
 <summary><sub>⭕ Click to read more about Tool-to-Gate mapping...</sub></summary>
@@ -552,7 +552,7 @@ Runout and Clog detection functionality are enabled with the `enable_clog_detect
 
 Setting `enable_clog_detection` value to `1` enables clog detection employing the static clog detection length.  Setting it to `2` will enable automatic adjustment of the detection length and Happy Hare will peridically update the calibration value beased on what it learns about your system. Whilst this doesn't guarantee you won't get a false trigger it will contiually tune until false triggers not longer occur.  The automatic algorithm is controlled by two variables in the `[mmu_encoder]` section of `mmu_hardward.cfg`:
 
-    desired_headroom: 5.0		# The runout headroom that ERCF will attempt to maintain (closest ERCF comes to triggering runout)
+    desired_headroom: 5.0	# The runout headroom that Happy Hare will attempt to maintain (closest MMU comes to triggering runout)
     average_samples: 4		# The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
 
 These default values makes the autotune logic try to maintain 5mm of "headroom" from the trigger point. If you have very fast movements defined in your custom macros or a very long bowden tube you might want to increase this a little.  The `average_samples` is purely the damping of the statistical sampling. Higher values means the automatic adjustments will be slower.
@@ -673,7 +673,7 @@ At some point when a project occurs during a multi-color print your MMU will pau
 
 ```
 MMU_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
-MMU_RECOVER TOOL=0 - tell ERCF that T0 is selected but automatically look at filament location
+MMU_RECOVER TOOL=0 - tell MMU that T0 is selected but automatically look at filament location
 MMU_RECOVER TOOL=5 LOADED=1 - tell Happy Hare that T5 is loaded and ready to print
 MMU_RECOVER TOOL=1 GATE=2 LOADED=0 - tell Happy Hare that T1 is being serviced by gate #2 and the filament is Unloaded
 ```
@@ -700,7 +700,7 @@ The position of the bypass is configured automatically during calibration and pe
 
 Once configured you can select the bypass position with:
 
-  > ERCF_SELECT_BYPASS
+  > MMU_SELECT_BYPASS
   
 You can then use just the extruder loading logic to load filament to the nozzle:
 
@@ -720,7 +720,7 @@ There are a couple of commands (`MMU_PRELOAD` and `MMU_CHECK_GATES`) that are us
 <details>
 <summary><sub>⭕ Click to read more on pre-print readiness...</sub></summary>
 
-The `MMU_PRELOAD` is an aid to loading filament into the ERCF.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  Then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted blocking the gate.
+The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  Then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted blocking the gate.
 
 Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates.
 
@@ -938,7 +938,7 @@ This new v2 Happy Hare software is largely rewritten and so, despite best effort
 <details>
 <summary><sub>⭕ Read move about my learnings of ERCF v1.1...</sub></summary>
 
-Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `ERCF_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](doc/ercf_encoder_v11.md) on fixing many possible problems with encoder.  <ul>
+Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `MMU_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](doc/ercf_encoder_v11.md) on fixing many possible problems with encoder.  <ul>
   <li>If using a toolhead sensor, that must be reliable too.  The hall effect based switch is very awkward to get right because of so many variables: strength of magnet, amount of iron in washer, even temperature, therefore I strongly recommend a simple microswitch based detection.  They work first time, every time.
   <li>The longer the bowden length the more important it is to calibrate correctly (do a couple of times to check for consistency).  Small errors multiply with longer moves!
   <li>Eliminate all points of friction in the filament path.  There is lots written about this already but I found some unusual places where filament was rubbing on plastic and drilling out the path improved things a good deal.

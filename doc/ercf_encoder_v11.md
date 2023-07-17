@@ -1,4 +1,5 @@
 # Notes on building the best heart for ERCF - the Encoder
+
 The encoder in the ERCF is one of the most vital components and has to work correctly. It is used to measure the length of filament that moves through ERCF for loading and unloading and optionally is used as a filament runout sensor for clog detection and Endless Spool functionality.  Whilst it doesn't have to be mm accurate, it does need to be approximately correct and consistent.  Whilst this has always been true it is even more important if you opt not to use a toolhead sensor. If the encoder is not the best it can be it will cause you will encounter all sorts of problems that will lead you to chase things that aren't really problems at all, and you will undoubtedly become an ENRAGED rabbit :-)
 
 I've spent a little more time than I should have on this component and wanted to pull all my findings into one place.
@@ -9,13 +10,12 @@ This encoder sensor works with an IR light source being reflected by the gear te
 This is why the sequence to calibrate is in this order:
 <ol>
 <li>Set `rotation_distance` for the gear stepper of gate #0.  This will ensure that when the ERCF gear stepper is told to push 200mm of filament it will accurately push exactly that.  This is the same as you do for your extruder stepper and why you must calibrate a known length of filament (typically 200mm) to set the rotation_distance for your gear_stepper.
-<li>Run calibration on encoder `ERCF_CALIBRATE_ENCODER` to establish the `encoder_resolution` of the gear wheel in the encoder.  Think of it as the reverse of above -- gear extruder pushes 200mm, the encoder gear sensor must measure 200mm..
-<li>Then because the ERCF has many gates, a delta from the reference gate #0 is determined with `ERCF_CALIBRATE_SINGLE TOOL=<1,2,3,..,n> to compensate for slightly different effective diameters of the different gear wheels.
+<li>Run calibration on encoder `MMU_CALIBRATE_ENCODER` to establish the `encoder_resolution` of the gear wheel in the encoder.  Think of it as the reverse of above -- gear extruder pushes 200mm, the encoder gear sensor must measure 200mm..
+<li>Then because the ERCF has many gates, a delta from the reference gate #0 is determined with `MMU_CALIBRATE_GATES GATE=<1,2,3,..,n> to compensate for slightly different effective diameters of the different gear wheels.
 </ol>
 <br>
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) List of main issues:
-
 Ok, with that context out of the way let's look at the possible problems.  One of the biggest issues is the differences in the many BMG gear clones that are available on AliExpress or elsewhere. Take a look at these two example gears:
 
 <img src="gear_differences.jpg" width="800" alt="BMG gear differences">
@@ -55,7 +55,7 @@ Here is a reworked [Encoder_Cart_Right.stl](Encoder_Cart_Right_0_6mm.stl) for th
 Whilst not an encoder problem per se I think it is worth mentioning.  Slippage will occur in the gear motor if the drag on the filament is too great.  Remember the first step of calibrating the 'rotation_distance' for the gear stepper?  You have to be sure that the gear is moving the correct amount of filament when testing and calibrating the encoder else you won't be sure if it is filamenet slippage or the encoder causing the problem.
 
 ### To sum up
-I was experiementing with a (larger) encoder wheel believing the current design couldn't get the accuracy I wanted.  That was a mistake. With careful attention to detail you should be able to get accurate encoder readings. I usually get a standard deviation of 0 when running `ERCF_CALIBRATE_ENCODER`
+I was experiementing with a (larger) encoder wheel believing the current design couldn't get the accuracy I wanted.  That was a mistake. With careful attention to detail you should be able to get accurate encoder readings. I usually get a standard deviation of 0 when running `MMU_CALIBRATE_ENCODER`
 <br>
 
 <img src="calibrate_sd0.png"  width="500" alt="Reilable calibration">
@@ -63,6 +63,6 @@ I was experiementing with a (larger) encoder wheel believing the current design 
 
     (\_/)
     ( *,*)
-    (")_(") ERCF Ready
+    (")_(") MMU Ready
 
 
