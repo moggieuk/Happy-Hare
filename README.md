@@ -33,6 +33,13 @@ Thank you!
 **[My Testing / Setup](#---my-testing)**<br>
 **[Revision History](#---revision-history)**<br>
 
+#### Other Docs:
+**[Command Reference](doc/command_ref.md)**<br>
+**[Harware Configuration](doc/hardware_config.md)**<br>
+**[Calibration Guide](doc/calibration.md)**<br>
+**[Configuation Reference](doc/configuration.md)**<br>
+**[Gcode Customization](doc/gcode_customization.md)**<br>
+
 <br>
  
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Major features:
