@@ -748,7 +748,7 @@ The "visual log" (set at level 2) above shows individual steps of a typical unlo
 
 **7\. Parking in Gate:** The final move prior to instructing the servo to release grip on the filament is to park the filament in the correct position in the gate so it does not restrict further selector movement. The filament is now unloaded.
   <ul>
-    <li>ERCF: This is achieved using the encoder by pulling filament until no more movement is detected and then a final parking move to locate the filament correctly at "point 0"
+    <li>ERCF: This is achieved using the encoder by pulling filament until no more movement is detected and then a final parking move to locate the filament correctly at "point 0"</li>
     <li>Tradrack: This is achived by a homing move to a specifc endstop. Note that the homing point is considered "point 0". TODO</li>
   </ul>     
 
@@ -794,27 +794,20 @@ This new v2 Happy Hare software is largely rewritten and so, despite best effort
 
 <details>
 <summary><sub>⭕ Read move about my learnings of ERCF v1.1...</sub></summary>
-  
-<br>  
 
 Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `ERCF_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](doc/ENCODER.md) on fixing many possible problems with encoder.
 <ul>
   <li>If using a toolhead sensor, that must be reliable too.  The hall effect based switch is very awkward to get right because of so many variables: strength of magnet, amount of iron in washer, even temperature, therefore I strongly recommend a simple microswitch based detection.  They work first time, every time.
   <li>The longer the bowden length the more important it is to calibrate correctly (do a couple of times to check for consistency).  Small errors multiply with longer moves!
   <li>Eliminate all points of friction in the filament path.  There is lots written about this already but I found some unusual places where filament was rubbing on plastic and drilling out the path improved things a good deal.
-  <li>This version of the driver software both, compensates for, and exploits the spring that is inherently built when homing to the extruder.  The `ERCF_CALIBRATE_SINGLE TOOL=0` (which calibrates the *ercf_calib_ref* length) averages the measurement of multiple passes, measures the spring rebound and considers the configuration options when recommending and setting the ercf_calib_ref length.  If you change basic configuration options it is advisable to rerun this calibration step again.
-  <li>The dreaded "Timer too close" can occur but I believe I have worked around most of these cases.  The problem is not always an overloaded mcu as often cited -- there are a couple of bugs in Klipper that will delay messages between mcu and host and thus provoke this problem.  To minimize you hitting these, I recommend you use a step size of 8 for the gear motor. You don't need high fidelity and this greatly reduces the chance of this error. Also, increasing 'num_moves' also is a workaround.  I'm not experiencing this and have a high speed (200 mm/s) single move load/unload move with steps set to 8.
-  <li>The servo problem where a servo with move to end position and then jump back can occur due to bug in Klipper just like the original software but also because of power supply problems. The workaround for the former is increase the same servo "dwell" config options in small increments until the servo works reliably. Note that this driver will retry the initial servo down movement if it detects slippage thus working around this issue to some extent.
-  <li>I also added a 'apply_bowden_correction' config option that dictates whether the driver "believes" the encoder or not for long moves.  If enabled, the driver will make correction moves to get the encoder reading correct.  If disabled the gear stepper movement will be applied without slippage detection.  Details on when this is useful is documented in 'ercf_parameters'.  If enabled, the options 'load_bowden_tolerance' and 'unload_bowden_tolerance' will set the threshold at which correction is applied.
-  <li>I can recommend the "sensorless selector" option -- it works well once tuned and provides for additional recovery abilities if filament gets stuck in encoder preventing selection of a different gate. However there are some important things to note:
+  <li>This version of the driver software both, compensates for, and exploits the spring that is inherently built when homing to the extruder (`extruder_homing_endstop: collision`).  The `MMU_CALIBRATE_BOWDEN` (which calibrates the `mmu_calibration_bowden_length` length) averages the measurement of multiple passes, measures the spring rebound and considers the configuration options when recommending and setting the bowden length.</li>
+  <li>The dreaded "Timer too close" can occur but I believe I have worked around most of these cases.  The problem is not always an overloaded mcu as often cited -- there are a couple of bugs in Klipper that will delay messages between mcu and host and thus provoke this problem.  To minimize you hitting these, I recommend you use a step size of 8 for the gear motor. You don't need high fidelity and this greatly reduces the chance of this error. Also, increasing 'bowden_num_moves' also is a workaround.  I'm not experiencing this and have a high speed (250 mm/s) single move load/unload move with steps set to 8.</li>
+  <li>I can recommend the `enable_selector_touch` option if you have a reliable mcu to handle the TMC driver -- it works well once tuned and provides for additional recovery abilities if filament gets stuck in encoder preventing selection of a different gate. However there are some important things to note:
   <ul>
-    <li>The selector cart must home against something solid. You need to make sure there are no wires or zip tie getting in the way.
-    <li>If the motor audibly vibrates but doesn't appear to reliably detect home you selector belt might be too loose.
-    <li>It is likely necessary to change the square head homing screw for a lower profile button head one -- the reason is that you will get inaccurate homing position if you are forceable stopping on the microswitch.  You just want to make sure the microswitch is triggered when the selector cart comes to a stop.
-    <li>You can also add a small spacer to the slider mechanism make the selector cart physically stops before fully pressing the microswitch fully. Just be sure that the homing point is before gate #0. (I use a 1mm thick printed washer on the 8mm rods. See my repro for ERCF hacks).
-    <li>Finally it is important to experiement and tune the `driver_SGTHRS` value which is the point at which the TMC driver detects the stepper has stalled. Lower values are less sensitive (selector can ram too hard) and too high a value can mean a bit of friction on the selector is detected as a stall and interpreted as a blocked selector.
+    <li>The selector cart homing is always to the microswitch endstop. The "touch" operation is used only for movement and optionally sensing the rightmost limit in travel during calibration.</li>
+    <li>It is important to experiement and tune the `driver_SGTHRS` value which is the point at which the TMC driver detects the stepper has stalled. Lower values are less sensitive (selector can ram too hard) and too high a value can mean a bit of friction on the selector is detected as a stall and interpreted as a blocked selector.</li>
   </ul>
-  <li>Speeds.... starting in v1.1.7 the speed setting for all the various moves made by ERCF can be tuned.  These are all configurable in the 'ercf_parameters.cfg' file or can be tested without restarting Klipper with the 'ERCF_TEST_CONFIG' command.  If you want to optimise performance you might want to tuning these faster.  If you do, watch for the gear stepper missing steps which will often be reported as slippage.
+  <li>Speeds.... watch out for speeds that are too high for the extruder stepper (listen for them carefully).  The resultant skipped steps can cause loading and unloading steps to fail</li>
 </ul>
 
 </details>
@@ -822,15 +815,13 @@ Firstly the importance of a reliable and fairly accurate encoder should not be u
 <details>
 <summary><sub>⭕ Read move about my learnings of ERCF v2.0...</sub></summary>
   
-<br>
 STILL FORMING EXPERIENCE
 
 </details>
 
 <details>
 <summary><sub>⭕ Read move about my learnings with Tradrack v1.0...</sub></summary>
-  
-<br>
+
 STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS ALMOST READY!
 
 </details>
