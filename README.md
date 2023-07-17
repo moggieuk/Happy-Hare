@@ -640,35 +640,69 @@ MMU load successful
 <summary><sub>⭕ Click to learn more about loading sequence</sub></summary>
 
 The "visual log" (set at level 2) above shows individual steps of a typical loading process for MMU with optional toolhead sensor. Here is an explanation of steps with `mmu_parameter.cfg` options:
-  <ol>
-    <li>Starting with filament unloaded and sitting in the gate for tool 2
-    <li>Loading the Gate: Firstly MMU clamps the servo down and pulls a short length of filament from the gate to the start of the bowden tube.
-      <ul>
-        <li>ERCF: This is achieved using the encoder by advancing filament until if is measured. It it doesn't see filament it will try 'encoder_load_retries' times (default 2). If still no filament it will report the error. The speed of this initial movement is controlled by 'gear_short_move_speed', the acceleration is as defined on the gear stepper motor config in 'mmu_hardware.cfg'.  Note that the encoder sensor is considered "point 0" and any movement beyond into the bowden will automatically be handled by the next bowden move.</li>
-       <li>Tradrack: This is achived by homing to specifc point. Note that the homing point is considered "point 0". TODO COMPLETE</li>
-     </ul>
-   </li>
-   <li>Bowden Loading: The MMU will then load the filament through the bowden in a fast movement.  The speed is controlled by `gear_from_spool_speed` and `gear_from_buffer_speed` depending on whether Happy Hare believes it is pulling filament from the spool or from the buffer.   It is advantagous to pull more slowly from the spool to overcome the higher friction.  Once a full unload has occured and deposited filament in the buffer the higher speed 'from_buffer' can be used to reduce loading times. The length of the bowden move is determined by the calibrated value `mmu_calibration_bowden_length` that is persisted in `mmu_vars.cfg`
-   <ul>
-      <li>ERCF: Sometimes when loading from spool a sudden jerk can occur causing the gear stepper to loose steps. There is an advanced option to allow for correction if this occurs (or other slippage) if an encoder is fitted. If 'bowden_apply_correction` is enabled and the encoder measures a difference greater than `bowden_load_tolerance', Happy Hare will issue additional move commands to correct the error (see comments in `mmu_parameters.cfg` for more details)</li>
-   </ul>
-   <li>Extruder Homing: The example shown includes a toolhead sensor so this step is generally not performed, however, without toolhead sensor you need an accurate homing point. f you configure sensorless filament homing then ERCF will now creep towards your extruder gears to detect this point as its homing position.  Here the filament is homed to the extruder entrance (gears). This can either be setup to be detected through "touch" homing (using TMC stallguard) or, if an encoder is fitted to the MMU, but collision detection and is controlled by `extruder_homing_endstop`.  In both cases the filament will be advanced up to `extruder_homing_max`.  Because the collision method works best with a softer movement to prevent grinding the current of the gear stepper can be reduced with `extruder_homing_current` for the duration of the movement</li>
-    <li></li>
-    <li>The next move homes the filament. The example shown shows toolhead and is the most critical transition point.  ERCF will advance the extruder looking to see that the filament was successfully picked up. In the case of a toolhead sensor this is deterministic because it will advance to the sensor and use this as a new homing point.  For sensorless ERCF will look for encoder movement implying that filament has been picked up.  Optionally this move can be made to run gear and extruder motors synchronously for greater reliability. 'sync_load_length' (mm of synchronized extruder loading at entry to extruder).  As a further aid to reliability ERCF will use the "spring" in the filament by delaying the servo release by 'delay_servo_release' mm. When using synchronous load this will relax the compression in the filament leading to quieter loading, for extruder only load this will keep pressure on the gear to aid grabbing the filament</li>
-<br>
-With toolhead sensor enabled there is a little more to this step: ERCF will home the end of the filament to the toolhead sensor controlled by 'toolhead_homing_max' (maximum distance to advance in order to attempt to home to toolhead sensor) and 'toolhead_homing_step (step size to use when homing to the toolhead sensor. If 'sync_load_length' is greater than 0 this homing step will be synchronised.
-<br>The speed of all movements in this step is controlled by 'sync_load_speed'
-    <li>Now the filament is under exclusive control of the extruder.  Filament is moved the remaining distance to the meltzone. This distance is defined by 'home_position_to_nozzle' and is either the distance from the toolhead sensor to the nozzle or the distance from the extruder gears to the nozzle depending on your setup.  This move speed is controlled by 'nozzle_load_speed'.  We are now loaded and ready to print.
-  </ol>
 
-**Note:** that if a toolhead sensor is configured it is the favored filament homing method and home to extruder gears an optional but unnecessary step. Also note the home to extruder step will always be performed during calibration of tool 0 (to accurately set `mmu_calibration_bowden_length`). For accurate homing and to avoid grinding, tune the gear stepper current reduction `extruder_homing_current` as a % of the default run current.
+1. Starting with filament unloaded and sitting in the gate for tool 2
+
+2. *Loading the Gate:* Firstly MMU clamps the servo down and pulls a short length of filament from the gate to the start of the bowden tube.
+  <ul>
+    <li>ERCF: This is achieved using the encoder module by advancing filament until if is measured. It it doesn't see filament it will try 'encoder_load_retries' times (default 2). If still no filament it will report the error. The speed of this initial movement is controlled by 'gear_short_move_speed', the acceleration is as defined on the gear stepper motor config in 'mmu_hardware.cfg'.  Note that the encoder sensor is considered "point 0" and any movement beyond into the bowden will automatically be handled by the next bowden move.</li>
+    <li>Tradrack: This is achived by homing to specifc point. Note that the homing point is considered "point 0". TODO COMPLETE</li>
+  </ul>     
+
+3. *Bowden Tube Loading:* The MMU will then load the filament through the bowden in a fast movement.  The speed is controlled by `gear_from_spool_speed` and `gear_from_buffer_speed` depending on whether Happy Hare believes it is pulling filament from the spool or from the buffer.   It is advantagous to pull more slowly from the spool to overcome the higher friction.  Once a full unload has occured and deposited filament in the buffer the higher speed 'gear_speed_from_buffer' can be used to reduce loading times. The length of the bowden move is determined by the calibrated value `mmu_calibration_bowden_length` that is persisted in `mmu_vars.cfg`
+  <ul>
+    <li>ERCF (with encoder): Sometimes when loading from spool a sudden jerk can occur causing the gear stepper to loose steps. There is an advanced option to allow for correction if this occurs (or other slippage) if an encoder is fitted. If `bowden_apply_correction` is enabled and the encoder measures a difference greater than `bowden_load_tolerance', additional moves will be made correct the error (see comments in `mmu_parameters.cfg` for more details)</li>
+  </ul>
+
+4. *Toolhead Homing:* Before loading to the nozzle it is usually necessary to establish a known home position close or in the toolhead. For this point is then a known distance to the nozzle. There are three main methods of achieving this:
+  <ul>
+    <li>4a. Extruder Homing: (without endstop sensor (e.g. toolhead sensor this is a necessary method). Extruder filament homing which is automatic when necessary but can be also be forced by setting `extruder_force_homing`. Here the MMU will now creep towards your extruder gears to detect when it hits (its homing position).  This can either be setup to be detected through "touch" homing (using TMC stallguard) or, if an encoder is fitted to the MMU, by "collision" detection and is controlled by `extruder_homing_endstop`.  In both cases the filament will be advanced up to a maximum distance of `extruder_homing_max`.  Because the collision method works best with a softer movement to prevent grinding the current of the gear stepper can be reduced with `extruder_homing_current` for the duration of the movement.</li>
+    <li>4a. Endstop Homing: Similar to Extruder Homing, the third option is to home to a endstop sensor fitted just prior to the extruder entrance. This is setup using the same parameters as for Extruder Homing except `extruder_homing_endstop` is set to the name of the endstop you configured in `mmu_hardware.cfg`. Note that gear current reduction is not available for this method.
+    <li>4b. Toolhead Homing: MMU will home the end of the filament to the toolhead sensor up to a maximum distance of 'toolhead_homing_max'. Note that the endstop name "mmu_toolhead" is automatically created by Happy Hare if a toolhead sensor is present. Since the toolhead sensor is inside the extruder the transition moves detailed below will be employed.</li>
+  </ul>
+**Note:** Of the three methods, and for reasons discussed later in transition move, a toolhead sensor positioned past the extruder gears is the most accurate and reliable. 
+
+4-5. *Transition Move:* Depending on the toolhead homing option employed the transition move can occur during the homing (toolhead sensor) or in the subsequent move, but in both cases it aims to reliabily get the filament through the extruder gears given the options selected by the user on whether synchronized gear and extruder movement is permitted or whther they should be independent.
+  <ul>
+    <li>Synchronised Motors: (recommended) If `toolhead_sync_load` is enabled, both the gear and extruder motors will pull together up to the maximum sensible distance of `toolhead_extruder_to_nozzle` (if homing point is extruder entrance or endstop) or `toolhead_sensor_to_nozzle` (if homing point is toolhead sensor).</li>
+    <li>Independent Motors: Here just the extruder motor is used to start to pull the filament through the transition zone, but as a further aid to reliability and aid the grabbing of filament, Happy Hare will use the "spring" in the filament to keep pressure on the gear by delaying the servo release by 'toolhead_delay_servo_release' mm. Even with independent motors it is possible to define a short transition zone where, after the servo assisted move, both the gear and extruder will move together. This is set with `toolhead_transition_length`. This option is provided because it may be quieter but generally the synced load is preferred.
+  </ul>
+
+5. *Final Move to Nozzle:* Filament is moved the remaining distance to the meltzone. This distance is defined by `toolhead_extruder_to_nozzle` (extruder homing) or `toolhead_sensor_to_nozzle` (toolhead sensor homing). The extruder-only or synchronized gear and extruder movement is controlled with the `toolhead_sync_load` parameter.
+
+**Note:** If an encoder is available (ERCF) sanity checks checking for movement will monitor the loading process and issue errors (and lock the MMU) if things aren't copacetic. The final check which verifies that filament has reached the nozzle has been known to fail on some toolhead designs with short final movement. This error can be turned into a non-fatal warning by setting `toolhead_ignore_load_error`
+
+#### Speeds:
+Filament movement speeds for all operations are detailed in the `mmu_parameters.cfg` file. Note that gear motor acceleration is defined on the gear_stepper motor in `mmu_hardware.cfg` and used for all user controlled moves (internal gear buzz moves have internally controlled acceleration).
+
+```
+# Movement speeds ----------------------------------------------------------------------------------------------------------
+#
+# Long moves are faster than the small ones and used for the bulk of the bowden movement. Note that you can set two fast load
+# speeds depending on whether MMU thinks it is pulling from the buffer or from the spool. It is often helpful to use a lower
+# speed when pulling from the spool because more force is required to overcome friction and this prevents loosing steps.
+# 100mm/s should be "quiet" with the NEMA14 motor or a NEMA17 pancake, but you can go lower for really low noise
+# NOTE: Encoder cannot keep up much above 250mm/s so make sure `apply_bowden_correction` is off at very high speeds!
+#
+gear_from_buffer_speed: 160		# mm/s Conservative value is 100mm/s, Max around 350mm/s # PAUL was 160
+gear_from_spool_speed: 60		# mm/s Use (lower) speed when loading from a gate for the first time (i.e. pulling from spool)
+gear_short_move_speed: 60		# mm/s Conservative value is 35mm/s. Max around 100mm/s
+gear_homing_speed: 50			# mm/s Speed of gear stepper only homing moves (e.g. extruder homing)
+
+# Speeds of extruder movement. The 'sync' speeds will be used when gear and extruder steppers are moving in sync
+extruder_load_speed: 15			# mm/s speed of load move inside extruder from homing position to meltzone
+extruder_unload_speed: 20		# mm/s speed of unload moves inside of extruder (very initial move from meltzone is 50% of this)
+extruder_sync_load_speed: 20		# mm/s speed of synchronized extruder load moves
+extruder_sync_unload_speed: 25		# mm/s speed of synchronized extruder unload moves
+extruder_homing_speed: 20		# mm/s speed of extruder only homing moves (e.g. to toolhead sensor)
+```
 
 </details>
 
 <details>
 <summary><sub>⭕ Click to learn more about unloading sequence</sub></summary>
 
-TODO -- needs rewrite
+TODO -- This sections needs rewrite
 
 ### Understanding the unload sequence:
     1. ERCF [T1] <<<<< [encoder] <<<<<<<<<<<<<< [extruder] <<<< [sensor] <... [nozzle] (@34.8 mm)
@@ -694,48 +728,6 @@ The "visual log" above shows individual steps of the loading process:
 When the state of ERCF is unknown, ERCF will perform other movements and look at its sensors to try to ascertain filament location. This may modify the above sequence and result in the omission of the fast bowden move for unloads.
 
 #### Possible loading options (explained in ercf_parameters.cfg template):
-     If you have a toolhead sensor for filament homing:
-        toolhead_homing_max: 35            # Maximum distance to advance in order to attempt to home to toolhead sensor (default 20)
-        toolhead_homing_step: 1.0          # Step size to use when homing to the toolhead sensor (default 1)
-
-    Options without toolhead sensor (but still needed for calibration with toolhead sensor)
-
-        extruder_homing_max: 50            # Maximum distance to advance in order to attempt to home the extruder
-        extruder_homing_step: 2.0          # Step size to use when homing to the extruder with collision detection (default 2)
-    
-    For accurate homing and to avoid grinding, tune the gear stepper current reduction
-
-        extruder_homing_current: 40        # Percentage of gear stepper current to use when extruder homing (TMC2209 only, 100 to disable)
-    
-    How far (mm) to run gear_stepper and extruder together in sync on load and unload. This will make loading and unloading
-    more reliable and will act as a "hair pulling" step on unload.  These settings are optional - use 0 to disable
-    Non zero value for 'sync_load_length' will synchronize the whole homing distance if toolhead sensor is installed
-
-        sync_load_length: 10               # mm of synchronized extruder loading at entry to extruder
-        sync_unload_length: 10             # mm of synchronized movement at start of bowden unloading
-    
-    This is the distance of the final filament load from the homing point to the nozzle
-    If homing to toolhead sensor this will be the distance from the toolhead sensor to the nozzle
-    If extruder homing it will be the distance from the extruder gears (end of bowden) to the nozzle
-    
-    This value can be determined by manually inserting filament to your homing point (extruder gears or toolhead sensor)
-    and advancing it 1-2mm at a time until it starts to extrude from the nozzle.  Subtract 1-2mm from that distance distance
-    to get this value.  If you have large gaps in your purge tower, increase this value.  If you have blobs, reduce this value.
-    This value will depend on your extruder, hotend and nozzle setup.
-
-        home_position_to_nozzle: 72        # E.g. Revo Voron with CW2 extruder using extruder homing
-
-    Advanced and optional. If you regularly switch between sensorless and toolhead sensor or you want to optimize extruder
-    unload when using toolhead sensor you can override 'home_position_to_nozzle' with these more specific values
-    (Note that the difference between these two represents the extruder to sensor distance and is used as the final
-    unload distance from extruder. An accurate setting can reduce tip noise/grinding on exit from extruder)
-
-        extruder_to_nozzle: 72		# E.g. Revo Voron with CW2 extruder using extruder homing
-        sensor_to_nozzle: 62		# E.g. Revo Voron with CW2 extruder using toolhead sensor homing
-
-    Again, these last two settings are optional and can be omitted
-
-*Obviously the actual distances shown above may be customized*
   
   **Advanced options**
 When not using synchronous load move the spring tension in the filament held by servo will be leverage to help feed the filament into the extruder. This is controlled with the `delay_servo_release` setting. It defaults to 2mm and is unlikely that it will need to be altered.
@@ -745,15 +737,6 @@ When not using synchronous load move the spring tension in the filament held by 
   **Note about post homing distance**
 Regardless of loading settings above it is important to accurately set `home_to_nozzle` distance.  If you are not homing to the toolhead sensor this will be from the extruder entrance to nozzle.  If you are homing to toolhead sensor, this will be the (smaller) distance from sensor to nozzle.  For example in my setup of Revo & Clockwork 2, the distance is 72mm or 62mm respectively.
   
-#### Possible unloading options:
-This is much simplier than loading. The toolhead sensor, if installed, will automatically be leveraged as a checkpoint when extracting from the extruder.
-`sync_unload_length` controls the mm of synchronized movement at start of bowden unloading.  This can make unloading more reliable if the tip is caught in the gears and will act as what Ette refers to as a "hair pulling" step on unload.  This is an optional step, set to 0 to disable.
-
-### Visualization of filament position
-  The `log_visual` setting turns on an off the addition of a filament tracking visualization in either long form or abbreviated KlipperScreen form.  This is a nice with log_level of 0 or 1 on a tuned and functioning setup.
-  
-![Bling is always better](doc/visual_filament.png "Visual Filament Location")
-
 </details>
 
 <br>
