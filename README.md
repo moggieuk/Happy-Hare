@@ -621,7 +621,7 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those
 <br>
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Filament loading and unloading sequences
-Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`.  These are grouped into "modules" that control each step of the process and vary slightly based on the capabilities of your particular MMU.  Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later.
+Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`.  These are grouped into "modular phases" that control each step of the process and vary slightly based on the capabilities of your particular MMU.  Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later.
 
 ### Understanding the load sequence:
 
@@ -646,7 +646,7 @@ The "visual log" (set at level 2) above shows individual steps of a typical load
 
 **2\. Loading the Gate:** Firstly MMU clamps the servo down and pulls a short length of filament from the gate to the start of the bowden tube.
   <ul>
-    <li>ERCF: This is achieved using the encoder module by advancing filament until if is measured. It it doesn't see filament it will try 'encoder_load_retries' times (default 2). If still no filament it will report the error. The speed of this initial movement is controlled by 'gear_short_move_speed', the acceleration is as defined on the gear stepper motor config in 'mmu_hardware.cfg'.  Note that the encoder sensor is considered "point 0" and any movement beyond into the bowden will automatically be handled by the next bowden move.</li>
+    <li>ERCF: This is achieved using the encoder by advancing filament until if is measured. It it doesn't see filament it will try 'encoder_load_retries' times (default 2). If still no filament it will report the error. The speed of this initial movement is controlled by 'gear_short_move_speed', the acceleration is as defined on the gear stepper motor config in 'mmu_hardware.cfg'.  Note that the encoder sensor is considered "point 0" and any movement beyond into the bowden will automatically be handled by the next bowden move.</li>
     <li>Tradrack: This is achived by homing to specifc point. Note that the homing point is considered "point 0". TODO COMPLETE</li>
   </ul>     
 
@@ -744,9 +744,9 @@ The "visual log" (set at level 2) above shows individual steps of a typical unlo
 
 **6\. Bowden tube Unloading:** The filament is now extracted quickly through the bowden by the calibrated length. Generally the speed is controlled by 'gear_from_buffer_speed' but can be reduced to incremental moves of `gear_short_move_speed` in cases of recovery or if Happy Hare is unsure of filament position after manual intervention.
 
-**7\. Parking in Gate: The final move prior to instructing the servo to release grip on the filament is to park the filament in the correct position in the gate so it does not restrict further selector movement. The filament is now unloaded.
+**7\. Parking in Gate:** The final move prior to instructing the servo to release grip on the filament is to park the filament in the correct position in the gate so it does not restrict further selector movement. The filament is now unloaded.
   <ul>
-    <li>ERCF: This is achieved using the encoder module by pulling filament until no more movement is detected and then a final parking move to locate the filament correctly at "point 0"
+    <li>ERCF: This is achieved using the encoder by pulling filament until no more movement is detected and then a final parking move to locate the filament correctly at "point 0"
     <li>Tradrack: This is achived by a homing move to a specifc endstop. Note that the homing point is considered "point 0". TODO COMPLETE</li>
   </ul>     
 
@@ -767,6 +767,9 @@ extruder_sync_unload_speed: 25		# Synced gear and extruder unload speed
 > **Note** Happy Hare allows for easy change of loading/unloading sequence even during a print!  If you have a toolhead sensor, it can interesting, for example, to switch between extruder homing and toolhead sensor homing.  Each you intend to do this make sure you set both `toolhead_extruder_to_nozzle` and `toolhead_sensor_to_nozzle` distances.  As an example, in my setup of Revo & Clockwork 2, the distances are 72mm or 62mm respectively.  The difference in these two distances is also used in the logic for exiting the extruder to make exit fast and noise free.
   
 </details>
+
+### Advanced customized sequence (gcode macros)
+An experimental option is available for users with customized MMU's or for wanting even more control that exposes the loading and unloading sequences as gcode macros.  This is a complex setup and requires knowlege of the state machine kept by Happy Hare.  For the adventurous, the details are [documented here](doc/gcode_customization.md)
 
 <br>
 
