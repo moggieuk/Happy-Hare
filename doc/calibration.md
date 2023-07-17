@@ -1,6 +1,8 @@
-# Detailed MMU Hardware setup and calibration steps
+# MMU Calibration
 
 This discussion assumes that you have setup and debugged your hardware configuration.  A detailed discusion can be [found here](hardware_config.md).
+
+> **Warning** When calibrating the first time you must perform in the prescribed order.  Once complete you can re-calibrate particular steps but remember that some calibration changes will cascade.  E.g. after calibrating the gear, you must recalibrate the encoder, the bowden and possibly all the gates.  Generally you can re-calibrate the selector (step 3) and the gates (step 5) at any time, but the gear, encoder and bowden must always be done in that order!
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Calibration Steps
 ### Step 1. Calibrate your gear stepper
@@ -43,7 +45,7 @@ You will see an output similar to:
     Encoder calibration has been saved for MMU ERCF v1.1sb
 ```
 
-Notes: (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences. (ii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-) (iii) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
+> **Note** (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences. (ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions. (iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-) (iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
 
 ### Step 3. Calibrate selector offsets
 Before the final calibration of bowden load length, let's get the selector cailbrated in this easy step.  This sets up the position all of all the gates as well as the bypass position if fitted.  Firstly remove filament from gate #0 -- you may need to run `MMU_SERVO POS=up` to release the filament. Insert and remove filament through selector to ensure that gate #0 is correctly lined with selector. Then run:
