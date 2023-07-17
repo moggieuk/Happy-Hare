@@ -9,9 +9,10 @@ This can be daunting but the interactive installer will make the process easy fo
 
 Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
   
+```
     # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
-    # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
-    # options.  This definition replaces the stepper definition part of you existing [extruder] definition.
+    # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing
+    # and syncing options.  This definition replaces the stepper definition part of you existing [extruder] definition.
     #
     # IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here
     [tmc2209 manual_extruder_stepper extruder]
@@ -45,8 +46,9 @@ Assuming you are familiar with all that there is one new IMPORTANT step that mus
     # Uncomment two lines below to enable filament "touch" homing option to nozzle
     extra_endstop_pins: tmc2209_extruder:virtual_endstop
     extra_endstop_names: mmu_ext_touch
+```
 
-The first TMC definition was previous `[tmc2209 extruder]` and is moved in here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` should be deleted or commented out.
+The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in your `printer.cfg` should be deleted or commented out.
 The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
 
 Endstop setup and options can be [found here](#endstops-and-mmu-movement)
