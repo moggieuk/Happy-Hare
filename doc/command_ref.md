@@ -128,7 +128,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) User defined/configurable macros (defined in mmm_software.cfg) 
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) User defined/configurable macros (defined in mmu_software.cfg) 
   | Macro | Description | Supplied Parameters |
   | ----- | ----------- | ------------------- |
   | `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` | Called prior to unloading the remains of the current filament | |
@@ -139,6 +139,8 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `_MMU_UNLOAD_SEQUENCE` | Called when MMU is asked to unload filament | `FILAMENT_POS` `LENGTH` `EXTRUDER_ONLY` `PARK_POS` |
 
 <br>
+
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Internal macros for custom composition of load/unload sequences
 
   | Macro | Description | Parameters |
   | ----- | ----------- | ---------- |
