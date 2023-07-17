@@ -101,7 +101,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 Happy Hare has a built in help system accessed with the `MMU_HELP` command. The full list of commands and options can be [found here](doc/command_ref.md). Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
 
 <details>
-<summary><sub>⭕ Click to read more....</sub></summary>
+<summary><sub>🔹 Click to read more....</sub></summary>
 <br>
  
   > MMU_HELP
@@ -185,7 +185,7 @@ Configuration and calibration will vary slightly depending on your particular br
 Happy Hare functionality will vary with MMU vendor. This is an important first step in setup.
 
 <details>
-<summary><sub>⭕ Click to read more about vendor/version specification...</sub></summary>
+<summary><sub>🔹 Click to read more about vendor/version specification...</sub></summary>
 <br>  
 It is important to set `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg` because they define the basic capabilities and options in Happy Hare. The only complication is in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
 
@@ -219,7 +219,7 @@ mmu_num_gates: 9                        # Number of selector gates
 Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propell the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [Hardward configuration doc here](doc/hardware_config.md) for detailed instructions.
 
 <details>
-<summary><sub>⭕ Click to read about optional Encoder hardware</sub></summary>
+<summary><sub>🔹 Click for details on optional hardware...</sub></summary>
 
 #### Optional hardware - Encoder
 Happy Hare optionally supports the use of an encoder which is fundamental to the ERCF MMU design. This is a device that measures the movement of filament and can be used for detecting and loading/unloading filament at the gate; validating that slippage is not occuring; runout and clog detection; flow rate verification and more. The following is an output of the `MMU_ENCODER` command to control and view the encoder:
@@ -256,7 +256,7 @@ See [MMU Configuration doc here](doc/configuration.md) for in-depth discussion b
 It's worth noting here that all the essential configuration and tuning parameters can be modified at runtime without restarting Klipper. Use the `MMU_TEST_CONFIG` command to do this. Running without any parameters will display the currect value:
 
 <details>
-<summary><sub>⭕ Click to read about run-time testing of configuration...</sub></summary>
+<summary><sub>🔹 Click to read about run-time testing of configuration...</sub></summary>
 <br>  
 Running without any parameters will display the current values:
 
@@ -335,7 +335,7 @@ Will update the distance from extruder entrance (homing postion) to nozzle.  The
 We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_ULOCK`, `MMU_RECOVER`, etc.
 
 <details>
-<summary><sub>⭕ Click to read more about handling errors and recovery...</sub></summary>
+<summary><sub>🔹 Click to read more about handling errors and recovery...</sub></summary>
 <br>  
 Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had mamy mult-thousand swap prints complete without incident.  Here is what you need to know when something goes wrong.
 
@@ -385,7 +385,7 @@ graph TD;
 This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (selector homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing.
 
 <details>
-<summary><sub>⭕ Click to read more about state persistence...</sub></summary>
+<summary><sub>🔹 Click to read more about state persistence...</sub></summary>
 <br>  
 Here is an example startup state:
 
@@ -437,7 +437,7 @@ Couple of miscellaneous notes:
 When changing a tool with the `Tx` command the MMU will by default select the filament at the gate (spool) of the same number.  The mapping built into this *Happy Hare* driver allows you to modify that.
 
 <details>
-<summary><sub>⭕ Click to read more about Tool-to-Gate mapping...</sub></summary>
+<summary><sub>🔹 Click to read more about Tool-to-Gate mapping...</sub></summary>
 <br>
 There are a few use cases for this feature:
 <ol>
@@ -510,7 +510,7 @@ gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
 Happy Hare allows for syncing gear motor with the extruder stepper during printing. This added functionality enhances the filament pulling torque, potentially alleviating friction-related problems. **It is crucial, however, to maintain precise rotational distances for both the primary extruder stepper and the gear stepper. A mismatch in filament transfer speeds between these components could lead to undue stress and filament grinding.**
 
 <details>
-<summary><sub>⭕ Click to read more about synchronized gear/extruder motors...</sub></summary>
+<summary><sub>🔹 Click to read more about synchronized gear/extruder motors...</sub></summary>
 
 #### Setting up Print Synchronization
 Synchronizion during printing is controlled by 'sync_to_extruder' in `mmu_parameters.cfg`. If set to 1, after a toolchange, the MMU servo will stay engaged and the gear motor will sync with he extruder for move extrusion and retraction moves
@@ -542,7 +542,7 @@ Note that many run the gear stepper at maximum current to overcome friction. If 
 If you MMU is equiped with an encoder it can be used to detect filament runout or clog conditions.  It does this by comparing filament extruded by the nozzle to that measured going through the encoder - if too much of a difference Happy Hare will determine if this is beacause filament has runout or whether it is not moving (clog).  In the later case it will pause the print. This same basic functionality can be used for other useful features too.
 
 <details>
-<summary><sub>⭕ Click to read more runout/clog detection, EndlessSpool and flowrate monitoring...</sub></summary>
+<summary><sub>🔹 Click to read more runout/clog detection, EndlessSpool and flowrate monitoring...</sub></summary>
 <br>   
 Runout and Clog detection functionality are enabled with the `enable_clog_detection` parameter in mmu_parameters.cfg.  It works by comparing filament extruded to that measured by the encoder and if this is ever greater than the `mmu_calibration_clog_length` (stored in mmu_vars.cfg) the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `MMU_UNLOCK` & `RESUME` to continue.  If a runout is determined and EndlessSpool is enabled the fragment of filament will be unloaded, the current tool will be remaped to the next specified gate, and printing will automatically continue.
 
@@ -621,7 +621,7 @@ This experimental feature uses the measured filament movement to assess the % fl
 There are four configuration options that control logging, both statistical logging and logging messages and level to console and logfile.
 
 <details>
-<summary><sub>⭕ Click to read more aboout logging...</sub></summary>
+<summary><sub>🔹 Click to read more aboout logging...</sub></summary>
 <br>
 Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`. 
 
@@ -644,7 +644,7 @@ The logfile will be placed in the same directory as other log files and is calle
 Regardless of whether you use your own Pause/Print/Cancel_print macros or use the ones provided in `client_macros.cfg`, Happy Hare will automatically wrap anything defined so that it can inject the necessary steps to control the MMU.
 
 <details>
-<summary><sub>⭕ Click to read more aboout what Happy Hare adds to these macros...</sub></summary>
+<summary><sub>🔹 Click to read more aboout what Happy Hare adds to these macros...</sub></summary>
 <br>
 During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `mmu_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
 <br>
@@ -663,7 +663,7 @@ Happy Hare will always return the toolhead to the correct position, but if you l
 Happy Hare is a state machine. That means it keeps track of the the state of the MMU. It uses knowledge of this state to determine how to handle a particular situation.  For example, if you ask it to unload filament... Is the filament in the toolhead, is it in the bowden, or is there no filament present?  If uses this information to make the correct decisions on what to do next.  Occasionaly, through print error or manual intervention the state may become stale and it is necessary to re-sync with Happy Hare.
 
 <details>
-<summary><sub>⭕ Click to read more how to recover MMU state...</sub></summary>
+<summary><sub>🔹 Click to read more how to recover MMU state...</sub></summary>
 <br>  
 At some point when a project occurs during a multi-color print your MMU will pause and go into a `locked` state.  Generally the user would then call `MMU_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
 
@@ -680,7 +680,7 @@ MMU_RECOVER TOOL=1 GATE=2 LOADED=0 - tell Happy Hare that T1 is being serviced b
 Happy Hare keeps triack of per-gate statistics that aggregate servo/load/unload failures (and slippage if your MMU has an encoder) and are recorded throughout a session and can be logged at each toolchange.
 
 <details>
-<summary><sub>⭕ Click to read more how to recover MMU state...</sub></summary>
+<summary><sub>🔹 Click to read more how to recover MMU state...</sub></summary>
 <br>
 The `MMU_STATS` command will display these stats and will give a rating on the "quality assessment" of functionality of the gate (more info is sent to debug level typically found in the `mmu.log`).  The per-gate statistics will record important data about possible problems with individual gates.  Since the software will try to recover for many of these conditions you might not know you have a problem.  One particularly useful feature is being able to spot gates that are prone to slippage.  If slippage occurs on all gates equally, it is likely a generic problem like encoder issue.  If on one gate if might be incorrect calibration of that gate or friction in the filament path for that gate (you could switch buffers and see if that makes a difference).  Note that `MMU_STATS` will display this data but the details are sent to the DEBUG log level so you will only see it in the `mmu.log` file if you setup in the default way.
 
@@ -690,7 +690,7 @@ The `MMU_STATS` command will display these stats and will give a rating on the "
 If you have installed the optional filament bypass block (ERCF v1.1) or have an ERCF v2.0 your can configure a selector position to select this bypass postion. This is useful if you want to do a quick print with a filament you don't have loaded on the MMU.
 
 <details>
-<summary><sub>⭕ Click to read more on filament bypass...</sub></summary>
+<summary><sub>🔹 Click to read more on filament bypass...</sub></summary>
 <br>
 The position of the bypass is configured automatically during calibration and persisted in `mmu_vars.cfg` as `mmu_selector_bypass` variable but can also be calibrated manually (see calibration guide).
 
@@ -714,7 +714,7 @@ Finally, you can unload just the extruder using the usual eject:
 There are a couple of commands (`MMU_PRELOAD` and `MMU_CHECK_GATES`) that are useful to ensure MMU readiness prior to printing.
 
 <details>
-<summary><sub>⭕ Click to read more on pre-print readiness...</sub></summary>
+<summary><sub>🔹 Click to read more on pre-print readiness...</sub></summary>
 <br>
 The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  Then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted blocking the gate.
 
@@ -728,7 +728,7 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those
 Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material` and `printer.mmu.gate_color`) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
 
 <details>
-<summary><sub>⭕ Click to read more on editing the gate map...</sub></summary>
+<summary><sub>🔹 Click to read more on editing the gate map...</sub></summary>
 <br>
 The gate map can be viewed with the following command:
 
@@ -777,7 +777,7 @@ Loaded 780.3mm of filament (encoder measured 783.6mm)
 ```
 
 <details>
-<summary><sub>⭕ Click to learn more about loading sequence</sub></summary>
+<summary><sub>🔹 Click to learn more about loading sequence</sub></summary>
 <br>
 The "visual log" (set at level 2) above shows individual steps of a typical loading process for MMU with optional toolhead sensor. Here is an explanation of steps with `mmu_parameter.cfg` options:
 
@@ -863,7 +863,7 @@ Unloaded 781.8mm of filament (encoder measured 784.7mm)
 ```
 
 <details>
-<summary><sub>⭕ Click to learn more about unloading sequence</sub></summary>
+<summary><sub>🔹 Click to learn more about unloading sequence</sub></summary>
 <br>
 The "visual log" (set at level 2) above shows individual steps of a typical unloading process for MMU with optional toolhead sensor. Here is an explanation of steps with `mmu_parameter.cfg` options:
 
@@ -932,7 +932,7 @@ This new v2 Happy Hare software is largely rewritten and so, despite best effort
 ### Some setup notes based on my learnings with different MMUs
 
 <details>
-<summary><sub>⭕ Read move about my learnings of ERCF v1.1...</sub></summary>
+<summary><sub>🔹 Read move about my learnings of ERCF v1.1...</sub></summary>
 <br>
 Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `MMU_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](doc/ercf_encoder_v11.md) on fixing many possible problems with encoder.  <ul>
   <li>If using a toolhead sensor, that must be reliable too.  The hall effect based switch is very awkward to get right because of so many variables: strength of magnet, amount of iron in washer, even temperature, therefore I strongly recommend a simple microswitch based detection.  They work first time, every time.
@@ -951,14 +951,14 @@ Firstly the importance of a reliable and fairly accurate encoder should not be u
 </details>
 
 <details>
-<summary><sub>⭕ Read move about my learnings of ERCF v2.0...</sub></summary>
+<summary><sub>🔹 Read move about my learnings of ERCF v2.0...</sub></summary>
 <br>  
 STILL FORMING EXPERIENCE
 
 </details>
 
 <details>
-<summary><sub>⭕ Read move about my learnings with Tradrack v1.0...</sub></summary>
+<summary><sub>🔹 Read move about my learnings with Tradrack v1.0...</sub></summary>
 <br>
 STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS ALMOST READY!
 
