@@ -16,6 +16,18 @@ Thank you!
 **[Basic Commands](#---basic-commands)**<br>
 **[Setup & Calibration](#---setup-and-calibration)**<br>
 **[Important Concepts and Features](#---important-concepts-and-features)**<br>
+\- [1. How to handle errors](#1-how-to-handle-errors)<br>
+\- [2. State and Persistence](#2-state-and-persistence)<br>
+\- [3. Tool to Gate Mapping](#3-tool-to-gate-ttg-mapping)<br>
+\- [4. Synchronized Gear/Extruder](#4-synchronized-gearextruder-motors)<br>
+\- [5. Clog, Runout, EndlessSpool, Flowrate](#5-clogrunout-detection-endlessspool-and-flowrate-monitoring)<br>
+\- [6. Logging me](#6-logging)<br>
+\- [7. Pause/Resume/Cancel](#7-pause--resume--cancel_print-macros)<br>
+\- [8. Recovering MMU state](#8-recovering-mmu-state)<br>
+\- [9. Gate statistics](#9-gate-statistics)<br>
+\- [10. Filament bypass](#10-filament-bypass)<br>  
+\- [11. Pre-print functions](#11-useful-pre-print-functionality)<br> 
+\- [12. Gate map, Filament type and color](#12-gate-map-describing-filament-type-color-and-status)<br>
 **[Loading and Unloading Sequences](#---filament-loading-and-unloading-sequences)**<br>
 **[KlipperScreen Happy Hare Edition](#---klipperscreen-happy-hare-edition)**<br>
 **[My Testing / Setup](#---my-testing)**<br>
@@ -375,7 +387,7 @@ graph TD;
 
 </details>
 
-### 2. State and State persistence
+### 2. State and Persistence
 This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (selector homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing.
 
 <details>
