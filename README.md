@@ -131,7 +131,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
 ```
     printer.mmu.enabled : {bool}
     printer.mmu.is_locked : {bool}
-    printer.ercf.is_homed : {bool}
+    printer.mmu.is_homed : {bool}
     printer.mmu.tool : {int} 0..n | -1 for unknown | -2 for bypass
     printer.mmu.gate : {int} 0..n | -1 for unknown
     printer.mmu.material : {string} Material type for current gate (useful for print_start macro)
@@ -446,7 +446,7 @@ Happy Hare allows for syncing gear motor with the extruder stepper during printi
 <summary><sub>⭕ Click to read more about synchronized gear/extruder motors...</sub></summary>
 
 #### Setting up Print Synchronization
-Synchronizion during printing is controlled by 'sync_to_extruder' in `ercf_parameters.cfg`. If set to 1, after a toolchange, the MMU servo will stay engaged and the gear motor will sync with he extruder for move extrusion and retraction moves
+Synchronizion during printing is controlled by 'sync_to_extruder' in `mmu_parameters.cfg`. If set to 1, after a toolchange, the MMU servo will stay engaged and the gear motor will sync with he extruder for move extrusion and retraction moves
 
 #### Synchronization Workflow
 If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any MMU operation that necessitates exclusive gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles the majority of these actions. If the printer enters MMU_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted.  Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the MMU during a pause use the `MMU_SYNC_GEAR_MOTOR` command.
