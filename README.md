@@ -81,7 +81,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 (no flags for safe re-install / upgrade)
 ```
 
-> **Warning** ERCF v1.1 users: the original encoder can be problematic. A new backward compatible alternative is available in the ERCF v2.0 project and is strongly recommended.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ENCODER.md) - the better the encoder the better this software will work with ERCF design.
+> **Warning** ERCF v1.1 users: the original encoder can be problematic. A new backward compatible alternative is available in the ERCF v2.0 project and is strongly recommended.  If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ercf_encoder_v11.md) - the better the encoder the better this software will work with ERCF design.
 
 <br>
 
@@ -161,7 +161,7 @@ Optionally exposed on mmu_encoder (if fitted):
     printer['mmu_encoder mmu_encoder'].min_headroom : {float} How close clog detection was from firing on current tool change
     printer['mmu_encoder mmu_encoder'].headroom : {float} Current headroom of clog detection (i.e. distance from trigger point)
     printer['mmu_encoder mmu_encoder'].desired_headroom Desired headroom (mm) for automatic clog detection
-    printer['mmu_encoder mmu_encoder'].detection_mode : {int} Same as printer.ercf.clog_detection
+    printer['mmu_encoder mmu_encoder'].detection_mode : {int} Same as printer.mmu.clog_detection
     printer['mmu_encoder mmu_encoder'].enabled : {bool} Whether encoder is currently enabled for clog detection
     printer['mmu_encoder mmu_encoder'].flow_rate : {int} % flowrate (extruder movement compared to encoder movement)
 ```
@@ -255,6 +255,63 @@ It's worth noting here that all the essential configuration and tuning parameter
 Running without any parameters will display the current values:
 
 > MMU_TEST_CONFIG
+
+```
+    SPEEDS:
+    gear_short_move_speed = 60.0
+    gear_from_buffer_speed = 160.0
+    gear_from_spool_speed = 60.0
+    gear_homing_speed = 50.0
+    extruder_homing_speed = 20.0
+    extruder_load_speed = 15.0
+    extruder_unload_speed = 20.0
+    extruder_sync_load_speed = 20.0
+    extruder_sync_unload_speed = 25.0
+    selector_move_speed = 200.0
+    selector_homing_speed = 60.0
+    selector_touch_speed = 80.0
+    enable_selector_touch = 0
+
+    TMC & MOTOR SYNC CONTROL:
+    sync_to_extruder = 0
+    sync_form_tip = 0
+    sync_gear_current = 50
+    extruder_homing_current = 40
+    extruder_form_tip_current = 120
+
+    LOADING/UNLOADING:
+    bowden_apply_correction = 0
+    bowden_load_tolerance = 15
+    extruder_force_homing = 0
+    extruder_homing_endstop = collision
+    extruder_homing_max = 50.0
+    toolhead_sync_load = 1
+    toolhead_sync_unload = 0
+    toolhead_homing_max = 40.0
+    toolhead_transition_length = 10.0
+    toolhead_delay_servo_release = 2.0
+    toolhead_extruder_to_nozzle = 72.0
+    toolhead_sensor_to_nozzle = 62.0
+    toolhead_ignore_load_error = 0
+    gcode_load_sequence = 0
+    gcode_unload_sequence = 0
+
+    OTHER:
+    z_hop_height = 5.0
+    z_hop_speed = 15.0
+    enable_clog_detection = 2
+    enable_endless_spool = 1
+    slicer_tip_park_pos = 0.0
+    auto_calibrate_gates = 0
+    strict_filament_recovery = 0
+    log_level = 1
+    log_visual = 2
+    log_statistics = 1
+
+    CALIBRATION:
+    mmu_calibration_bowden_length = 697.9
+    mmu_calibration_clog_length = 19.3
+```
 
 Any of the displayed config settings can be modified.  E.g.
 
@@ -365,7 +422,7 @@ Couple of miscellaneous notes:
   <li>Closely relevant to the usefulness of this functionality is the `MMU_CHECK_GATES` command that will examine all or selection of gates for presence of filament</li>
   <li>In the graphic depictions of filament state the `*` indicates presence ('B' and 'S' represent whether the filament is buffered or pulling straight from the spool), '?' unknown and ' ' or '.' the lack of filament</li>
   <li>With tool-to-gate mapping it is entirely possible to have multiple tools mapped to the same gate (for example to force a multi-color print to be monotone) and therefore some gates can be made inaccessable until map is reset</li>
-  <li>The default value for `gate_status`, `tool_to_gate_map` and `endless_spool_groups` can be set in `ercf_parameters.cfg`.  If not set the default will be, Tx maps to Gate#x, the status of each gate is unknown and each tool is in its own endless spool group (i.e. not part of a group)</li>
+  <li>The default value for `gate_status`, `tool_to_gate_map` and `endless_spool_groups` can be set in `mmu_parameters.cfg`.  If not set the default will be, Tx maps to Gate#x, the status of each gate is unknown and each tool is in its own endless spool group (i.e. not part of a group)</li>
 </ul>
 
 </details>
@@ -408,6 +465,7 @@ Which would reverse tool to gate mapping for a 9 gate MMU!
 
 An example of how to interpret a TTG map (this example has EndlessSpool disabled). Here tools T0 to T2 and T7 are mapped to respective gates, T3 to T5 are all mapped to gate #3, tools T6 and T8 have their gates swapped.  This also tells you that gates #1 and #2 have filament available in the buffer rather than in the spool for other gates and that gate #7 is currently empty/unavailable.
 
+```
     MMU_REMAP_TTG
     T0 -> Gate #0(S)
     T1 -> Gate #1(B) [SELECTED on gate #1]
@@ -429,8 +487,9 @@ An example of how to interpret a TTG map (this example has EndlessSpool disabled
     Gate #6(S) -> T8, Material: PETG, Color: violet, Status: Available
     Gate #7(S) -> T7, Material: ABS, Color: ffffff, Status: Empty
     Gate #8(S) -> T6, Material: ABS, Color: black, Status: Available
+```
 
-The lower section of the status is the gate centric view showing the mapping back to tools as well as the configured filament material type and color which is explained later in this guide.
+The lower paragraph of the status is the gate centric view showing the mapping back to tools as well as the configured filament material type and color which is explained later in this guide.
 
 <br>
 Advanced note: The initial availability of filament (and tihe default after a reset) at each gate can also be specified in the `mmu_parameters.cfg` file by updating the `gate_status` list of the same length as the number of gates. Generally this might be useful if you have purposefully decommissioned part of you MMU. E.g.
@@ -487,9 +546,42 @@ Setting `enable_clog_detection` value to `1` enables clog detection employing th
 These default values makes the autotune logic try to maintain 5mm of "headroom" from the trigger point. If you have very fast movements defined in your custom macros or a very long bowden tube you might want to increase this a little.  The `average_samples` is purely the damping of the statistical sampling. Higher values means the automatic adjustments will be slower.
 
 ### EndlessSpool
-As mentioned earlier, EndlessSpool will, if configured, spring into action when a filament runs out. It will map the current tool to the next gate in the defined sequence (see below) and continue printing.
+As mentioned earlier, EndlessSpool will, if configured, spring into action when a filament runs out. It will map the current tool to the next gate in the defined sequence (see below) and continue printing. To see the current EndlessSpool groups run:
 
-TODO: need details on setting up maps and command that view and update maps
+  > MMU_ENDLESS_SPOOL DISPLAY=1
+
+To enable or disable the functionality use:
+
+  > MMU_ENDLESS_SPOOL ENABLE=0|1
+
+To set / change grouping you must specify a list which is the same length as the number of gates you have on your MMU where each postion indicates the group membership for that gate. For example:
+
+  > MMU_ENDLESS_SPOOL GROUPS=1,2,3,1,2,3,1,2,3
+
+```
+    T0 -> Gate #0(B) ES_Group_1: 0*> 3?> 6?
+    T1 -> Gate #1(B) ES_Group_2: 1*> 4?> 7?
+    T2 -> Gate #2(B) ES_Group_3: 2*> 5?> 8* [SELECTED on gate #2]
+    T3 -> Gate #3(?) ES_Group_1: 3?> 6?> 0*
+    T4 -> Gate #4(?) ES_Group_2: 4?> 7?> 1*
+    T5 -> Gate #5(?) ES_Group_3: 5?> 8*> 2*
+    T6 -> Gate #6(?) ES_Group_1: 6?> 0*> 3?
+    T7 -> Gate #7(?) ES_Group_2: 7?> 1*> 4?
+    T8 -> Gate #8(B) ES_Group_3: 8*> 2*> 5?
+
+    MMU Gates / Filaments:
+    Gate #0(B) -> T0, Material: PLA, Color: red, Status: Buffered
+    Gate #1(B) -> T1, Material: ABS+, Color: orange, Status: Buffered
+    Gate #2(B) -> T2, Material: ABS, Color: tomato, Status: Buffered [SELECTED supporting tool T2]
+    Gate #3(?) -> T3, Material: ABS, Color: green, Status: Unknown
+    Gate #4(?) -> T4, Material: PLA, Color: blue, Status: Unknown
+    Gate #5(?) -> T5, Material: PLA, Color: indigo, Status: Unknown
+    Gate #6(?) -> T6, Material: PETG, Color: violet, Status: Unknown
+    Gate #7(?) -> T7, Material: ABS, Color: ffffff, Status: Unknown
+    Gate #8(B) -> T8, Material: ABS, Color: black, Status: Buffered
+```
+
+Here, three groups are defined. ES_Group_1 consisting of gates 0, 3 and 6; ES_Group_2 consisting of gates 1, 4 and 7; ES_Group_3 consisting of gates 2, 5 and 8. The first paragraph indicates how each tool would cycle through gates and the second paragraph is a remining of what filament is loaded into each gate.
 
 Since EndlessSpool is not something that triggers very often you can use the following to simulate the action and familiarize yourslef with its action and validate it is correctly setup prior to needing it:
 
@@ -506,6 +598,12 @@ This will emulate a filament runout and force the MMU to interpret it as a true 
 
 The default supplied _PRE and _POST macros call PAUSE/RESUME which is typically a similar operation and may be already sufficient. Note: A common problem is that a custom _POST macro does not return the toolhead to previous position.  The MMU will still handle this case but it will move very slowly because it will not be expecting large horizontal movement. To avoid this always return the toolhead to the starting position in your custom macros.
 
+If you ever get confused you can reset the EndlessSpool groups to the default "one gate per tool" by running:
+
+  > MMU_ENDLESS_SPOOL RESET=1
+
+> **Note** Similar to Tool-to-Gate mapping, EndlessSpool is best visualized and modified using KlipperScreen Happy Hare edition.
+
 ### Flow rate monitoring
 This experimental feature uses the measured filament movement to assess the % flowrate being achieved.  If you print too fast or with a hotend that is too cold you will get a decreased % flowrate and under extrusion problems.  The encoder driver with Happy Hare updates a printer variable called `printer['mmu_encoder mmu_encoder'].flow_rate` with the % measured flowrate.  Whilst it is impossible for this value to be instantaneously accurate, if it tracks below about 94% it is likely you have some under extrusion problems and should slow down your print.  Note this is best monitored in the [KlipperScreen-HappyHare edition](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) application
 
@@ -521,7 +619,7 @@ Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`
 
 ```
 log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
-Generally you can keep console logging to a minimal whilst still sending debug output to the ercf.log file
+Generally you can keep console logging to a minimal whilst still sending debug output to the mmu.log file
 Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
 log_level: 1
 logfile_level: 3            # Can also be set to -1 to disable log file completely
@@ -529,7 +627,7 @@ log_statistics: 1           # 1 to log statistics on every toolchange, 0 to disa
 log_visual: 1               # 1 to log a fun visual representation of MMU state showing filament position, 0 disable
 ```
 
-The logfile will be placed in the same directory as other log files and is called `ercf.log`.  It will rotate and keep the last 5 versions (just like klipper).  The default log level for ercf.log is "3" but can be set by adding `logfile_level` in you `ercf_parameters.cfg`.  With this available my suggestion is to reset the console logging level `log_level: 1` for an uncluttered experience knowing that you can always access `ercf.log` for debugging at a later time.  Oh, and if you don't want the logfile, no problem, just set `logfile_level: -1`
+The logfile will be placed in the same directory as other log files and is called `mmu.log`.  It will rotate and keep the last 5 versions (just like klipper).  The default log level for mmu.log is "3" but can be set by adding `logfile_level` in you `mmu_parameters.cfg`.  With this available my suggestion is to reset the console logging level `log_level: 1` for an uncluttered experience knowing that you can always access `mmu.log` for debugging at a later time.  Oh, and if you don't want the logfile, no problem, just set `logfile_level: -1`
 
 </details>
 
@@ -540,7 +638,7 @@ Regardless of whether you use your own Pause/Print/Cancel_print macros or use th
 <details>
 <summary><sub>⭕ Click to read more aboout what Happy Hare adds to these macros...</sub></summary>
 
-During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `ercf_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
+During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `mmu_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
 <br>
 
 The user then calls `MMU_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.
@@ -615,6 +713,39 @@ The `MMU_PRELOAD` is an aid to loading filament into the ERCF.  The command work
 Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates.
 
 > **Note** The `MMU_CHECK_GATES` command has a special option that is designed to be called from your print_start macro. Unfortunately this requires slicer support to privide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print!
+
+</details>
+
+### 12. Gate map describing filament type, color and status
+Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material` and `printer.mmu.gate_color`) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
+
+<details>
+<summary><sub>⭕ Click to read more o nediting the gate map...</sub></summary>
+
+The gate map can be viewed with the following command:
+
+  > MMU_SET_GATE_MAP DISPLAY=1
+
+```
+    MMU Gates / Filaments:
+    Gate #0: Material: PLA, Color: red, Status: Buffered
+    Gate #1: Material: ABS+, Color: orange, Status: Buffered
+    Gate #2: Material: ABS, Color: tomato, Status: Buffered
+    Gate #3: Material: ABS, Color: green, Status: Unknown
+    Gate #4: Material: PLA, Color: blue, Status: Unknown
+    Gate #5: Material: PLA, Color: indigo, Status: Unknown
+    Gate #6: Material: PETG, Color: violet, Status: Unknown
+    Gate #7: Material: ABS, Color: ffffff, Status: Unknown
+    Gate #8: Material: ABS, Color: black, Status: Buffered
+```
+
+To change for a particular gate use a command in this form:
+
+  > MMU_SET_GATE_MAP GATE=8 MATERIAL=PLA COLOR=ff0000 AVAILABLE=1
+
+> **Note** There is no enforcement of material names but it is recommended use all capital short names like PLA, ABS+, TPU95, PETG. The color string can be one of the [w3c standard color names](https://www.w3schools.com/tags/ref_colornames.asp) or a RRGGBB red/green/blue hex value.  Because of a Klipper limitation don't add `#` to the color specification.
+
+> **Note** KlipperScreen Happy Hare edition has a nice editor with color picker for easy updating.
 
 </details>
 
@@ -776,7 +907,7 @@ An experimental option is available for users with customized MMU's or for wanti
 <br>
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) KlipperScreen Happy Hare Edition
-<img src="doc/ercf_main_printing.png" width="500" alt="KlipperScreen">
+<img src="doc/mmu_main_printing.png" width="500" alt="KlipperScreen">
 
 Even if not a KlipperScreen user yet you might be interested in my [KlipperScreen version](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) simply to control your MMU. It makes using your MMU the way it should be. Dare I say as easy at Bambu Labs ;-)  I run mine with a standalone Rasberry Pi attached to my buffer array and can control mutliple MMU's with it.
 
@@ -795,8 +926,7 @@ This new v2 Happy Hare software is largely rewritten and so, despite best effort
 <details>
 <summary><sub>⭕ Read move about my learnings of ERCF v1.1...</sub></summary>
 
-Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `ERCF_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](doc/ENCODER.md) on fixing many possible problems with encoder.
-<ul>
+Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `ERCF_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](doc/ercf_encoder_v11.md) on fixing many possible problems with encoder.  <ul>
   <li>If using a toolhead sensor, that must be reliable too.  The hall effect based switch is very awkward to get right because of so many variables: strength of magnet, amount of iron in washer, even temperature, therefore I strongly recommend a simple microswitch based detection.  They work first time, every time.
   <li>The longer the bowden length the more important it is to calibrate correctly (do a couple of times to check for consistency).  Small errors multiply with longer moves!
   <li>Eliminate all points of friction in the filament path.  There is lots written about this already but I found some unusual places where filament was rubbing on plastic and drilling out the path improved things a good deal.
