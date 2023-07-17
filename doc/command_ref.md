@@ -129,12 +129,29 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 <br>
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) User defined/configurable macros (defined in mmm_software.cfg) 
-  | Command | Description |
-  | ------- | ----------- |
-  | `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` | Called prior to unloading the remains of the current filament |
-  | `_MMU_ENDLESS_SPOOL_POST_LOAD` | Called subsequent to loading filament in the new gate in the sequence |
-  | `_MMU_FORM_TIP_STANDALONE` | Called to create tip on filament when not in print (and under the control of the slicer). You tune this macro by modifying the defaults to the parameters |
-  | `_MMU_ACTION_CHANGED` | Callback that is called everytime the `printer.ercf.action` is updated. Great for contolling LED lights, etc |
+  | Command | Description | Supplied Variables |
+  | ------- | ----------- | ------------------ |
+  | `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` | Called prior to unloading the remains of the current filament | |
+  | `_MMU_ENDLESS_SPOOL_POST_LOAD` | Called subsequent to loading filament in the new gate in the sequence | |
+  | `_MMU_FORM_TIP_STANDALONE` | Called to create tip on filament when not in print (and under the control of the slicer). You tune this macro by modifying the defaults to the parameters | |
+  | `_MMU_ACTION_CHANGED` | Callback that is called everytime the `printer.ercf.action` is updated. Great for contolling LED lights, etc | |
+  | `_MMU_UNLOAD_SEQUENCE` | Called when MMU is asked to unload filament | |
+  | `_MMU_LOAD_SEQUENCE` | Called when MMU is asked to load filament | |
+
+<br>
+
+  | Command | Description | Supplied Variables |
+  | ------- | ----------- | ------------------ |
+  | _MMU_STEP_HOME_EXTRUDER | User composable loading step: Extruder collision detection
+  | _MMU_STEP_HOMING_MOVE | User composable loading step: Generic homing move
+  | _MMU_STEP_LOAD_BOWDEN | User composable loading step: Smart loading of bowden
+  | _MMU_STEP_LOAD_ENCODER : User composable loading step: Move filament from gate to start of bowden using encoder
+  | _MMU_STEP_LOAD_TOOLHEAD : User composable loading step: Toolhead loading
+  | _MMU_STEP_MOVE : User composable loading step: Generic move
+  | _MMU_STEP_SET_FILAMENT : User composable loading step: Set filament position state
+  | _MMU_STEP_UNLOAD_BOWDEN : User composable unloading step: Smart unloading of bowden
+  | _MMU_STEP_UNLOAD_ENCODER : User composable unloading step: Move filament from start of bowden and park in the gate using encoder
+  | _MMU_STEP_UNLOAD_TOOLHEAD : User composable unloading step: Toolhead unloading
 
 *Working reference PAUSE / RESUME / CANCEL_PRINT macros are defined in `client_macros.cfg` and can be used/modified if you don't already have your own*
 
