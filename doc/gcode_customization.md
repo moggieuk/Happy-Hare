@@ -1,6 +1,8 @@
 # G-Code Customization (including Filament Loading and Unloading)
 Happy Hare provides a few defined "callbacks" that, if they exist, will be called at specific times.  They are designed for you to be able to extend the base functionality and to implement additional operations.  For example, if you want to control your printers LED's based on the action Happy Hare is performing you would modify `_MMU_ACTION_CHANGED`.  All of the default handlers and examples are defined in `mmu_software.cfg` and serve as a starting point for modification.
 
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ACTION_CHANGED
 Most of the time Happy Hare will be in the `Idle` state but it starts to perform a new action this macro is called.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.mmu.action`
 
@@ -18,6 +20,8 @@ Possible action strings are:
     Selecting   - When the selector is moving to select a new filament
     Unknown     - Should not occur
 ```
+
+<br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ENDLESS_SPOOL_PRE_UNLOAD & _MMU_ENDLESS_SPOOL_POST_LOAD
 If EndlessSpool is enabled, Happy Hare will unload the remains of the filament from the exhausted spool and load the new spool. These macros are called at the beginning and end of that sequence.  `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` is called because Happy Hare initiates the tip forming and typically would move the toolhead to a suitable "park" position it doesn't ooze onto your print.  This is commonly exactly the same as your `PAUSE` macro and so that is what the default handler calls.<br>
@@ -59,6 +63,8 @@ gcode:
     RESUME
 ```
 
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_FORM_TIP_STANDALONE
 TODO ... lots to document here!
 
@@ -92,6 +98,8 @@ variable_use_fast_skinnydip: 0         # Skip the toolhead temp change during sk
 # Final Eject - for standalone tuning only
 variable_final_eject: 0                # default 0, enable during standalone tuning process to eject the filament
 ```
+
+<br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_LOAD_SEQUENCE & _MMU_UNLOAD_SEQUENCE
 This is new EXPERIMENTAL functionality and as such is subject to change.  The essential information is that by default these macros are not called. If `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_software.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
