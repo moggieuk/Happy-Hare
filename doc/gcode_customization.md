@@ -1,4 +1,4 @@
-# G-Code Customized Filament Loading and Unloading
+# G-Code Customization (including Filament Loading and Unloading)
 Happy Hare provides a few defined "callbacks" that, if they exist, will be called at specific times.  They are designed for you to be able to extend the base functionality and to implement additional operations.  For example, if you want to control your printers LED's based on the action Happy Hare is performing you would modify `_MMU_ACTION_CHANGED`.  All of the default handlers are defined in `mmu_software.cfg` and serve as a starting point for modification.
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_ACTION_CHANGED
