@@ -2,7 +2,7 @@
 Happy Hare provides a few defined "callbacks" that, if they exist, will be called at specific times.  They are designed for you to be able to extend the base functionality and to implement additional operations.  For example, if you want to control your printers LED's based on the action Happy Hare is performing you would modify `_MMU_ACTION_CHANGED`.  All of the default handlers are defined in `mmu_software.cfg` and serve as a starting point for modification.
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_ACTION_CHANGED
-This is called when Happy Hare starts to perform a new action. Most of the time it will be in the `Idle` state.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.
+Most of the time it will be in the `Idle` state but when Happy Hare starts to perform a new action this macro is called.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.mmu.action`
 
 Possible action strings are:
 ```
@@ -19,15 +19,22 @@ Possible action strings are:
     Unknown     - Should not occur
 ```
 
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_ENCODER_RUNOUT
+TODO
 
-_MMU_ACTION_CHANGED : Called when an action has changed.
-_MMU_ENCODER_RUNOUT : Internal encoder filament runout handler
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_ENDLESS_SPOOL_PRE_UNLOAD & _MMU_ENDLESS_SPOOL_POST_LOAD
+TODO
+
+```
 _MMU_ENDLESS_SPOOL_POST_LOAD : Optional post load routine for EndlessSpool changes
 _MMU_ENDLESS_SPOOL_PRE_UNLOAD : Pre unload routine for EndlessSpool changes
-_MMU_FORM_TIP_STANDALONE : Standalone macro that mimics SuperSlicer process
-_MMU_LOAD_SEQUENCE : Called when MMU is asked to load filament (equivalent to internal default behavor)
-_MMU_UNLOAD_SEQUENCE : Called when MMU is asked to unload filament (equivalent to internal default behavor)
 ```
+
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_FORM_TIP_STANDALONE
+TODO
+
+## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_LOAD_SEQUENCE & _MMU_UNLOAD_SEQUENCE
+TODO
 
 ```
 ###########################################################################
