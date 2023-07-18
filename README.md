@@ -517,8 +517,7 @@ An example of how to interpret a TTG map (this example has EndlessSpool disabled
 The lower paragraph of the status is the gate centric view showing the mapping back to tools as well as the configured filament material type and color which is explained later in this guide.
 
 <br>
-Advanced note: The initial availability of filament (and tihe default after a reset) at each gate can also be specified in the `mmu_parameters.cfg` file by updating the `gate_status` list of the same length as the number of gates. Generally this might be useful if you have purposefully decommissioned part of you MMU. E.g.
-<br>
+Advanced note: The initial availability of filament (and tihe default after a reset) at each gate can also be specified in the `mmu_parameters.cfg` file by updating the `gate_status` list of the same length as the number of gates. Generally this might be useful if you have purposefully decommissioned part of you MMU. E.g.<br>
 
 ```
 gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
@@ -549,12 +548,13 @@ Note you can still control the gear stepper motor with the `MANUAL_STEPPER` comm
 
 #### Other synchonization options
 In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process. Whilst these might seem like duplicates of previous partial load/unload sync movements they operate slightly more simlified manner. If they are all disabled, Happy Hare will operate as it did previously.  If these options are enabled they turn off the former functionality.  E.g. If `sync_extruder_load` is enabled it will keep the gear synchronized with the extruder for the entire loading of the extruder.<br>
-Note that many run the gear stepper at maximum current to overcome friction. If you are one of those you might want to consider using `sync_gear_current` to reduce the current while it is synced during print to keep the temperature down.
 
-`sync_extruder_load` turns on synchronization of extruder loading
-`sync_extruder_unload` turns on synchronization of extruder unloading
-`sync_form_tip` turns on syncronization of the stand alone tip forming movement
-`sync_gear_current` the percentage reduction of gear stepper while it is synchronized with extruder
+> **Note** many run the gear stepper at maximum current to overcome friction. If you are one of those you might want to consider using `sync_gear_current` to reduce the current while it is synced during print to keep the temperature down.
+
+`sync_extruder_load` turns on synchronization of extruder loading<br>
+`sync_extruder_unload` turns on synchronization of extruder unloading<br>
+`sync_form_tip` turns on syncronization of the stand alone tip forming movement<br>
+`sync_gear_current` the percentage reduction of gear stepper while it is synchronized with extruder<br>
 
 </details>
 
