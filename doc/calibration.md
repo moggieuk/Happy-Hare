@@ -4,7 +4,7 @@ This discussion assumes that you have setup and debugged your hardware configura
 
 > **Warning** When calibrating the first time you must perform in the prescribed order.  Once complete you can re-calibrate particular steps but remember that some calibration changes will cascade.  E.g. after calibrating the gear, you must recalibrate the encoder, the bowden and possibly all the gates.  Generally you can re-calibrate the selector (step 3) and the gates (step 5) at any time, but the gear, encoder and bowden must always be done in that order!
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Calibration Steps
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Calibration Steps
 ### Step 1. Calibrate your gear stepper
 In this step you are simply ensuring that when the gear is told to move 100mm of filament it actually really does move that much.  It is akin to what you did when you set up your extruder rotational distance although no Klipper restart is necessary!
 Position selector in from of gate #0 and put some filament into the gate. Run:
