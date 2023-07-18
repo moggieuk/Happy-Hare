@@ -29,7 +29,8 @@ If EndlessSpool is enabled, Happy Hare will unload the remains of the filament f
 `MMU_ENDLESS_SPOOL_POST_LOAD` is called after the MMU has loaded the new filament from the next spool in rotation to the nozzle the same way as a normal filament swap (the previously configured Pressure Advance will be restored). Typically this would be a place to purge additional filament if necessary (it really shouldn't be) and clean nozzle if your printer is suitably equipped. I.e. similar to a typical `RESUME` macro.<br>
 
 Here are the default macros:
-```
+
+```yml
 ###########################################################################
 # Callback macros for modifying Happy Hare behavour
 # Note that EndlessSpool is an unsupervised filament change
@@ -68,7 +69,7 @@ gcode:
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_FORM_TIP_STANDALONE
 TODO ... lots to document here!
 
-```
+```yml
 # Unloading and Ramming values - Initial moves to form and shape tip
 variable_unloading_speed_start: 80     # Fast here to seperate the filament from meltzone (Very intitial retract SS uses distance of E-15)
 variable_unloading_speed: 20           # Too fast forms excessively long tip or hair. Slow is better here UNLOADING_SPEED_START/COOLING_MOVES seems a good start
@@ -123,7 +124,7 @@ graph TD;
 In additon to these states the macros are passed some additional information and hints about the context.  An important one is `FILAMENT_POS` which represents the position of the filament in mm either from "point 0" in the gate (load direction) or from the nozzle (unload direction).  Here are the default macros with additional information:<br>
 
 
-```
+```yml
 ###########################################################################
 # ADVANCED: User modifable loading and unloading sequences
 #
