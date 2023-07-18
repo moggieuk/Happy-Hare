@@ -98,17 +98,18 @@ This is new EXPERIMENTAL functionality and as such is subject to change.  The es
 
 `mmu_software.cfg` contains futher examples for alternative MMU setups, but before experimenting it is essential to understand the state machine for filament position.  These states are as follows and the loading/unloading sequence must be capable of completing the load/unload sequence for any starting state.<br>
 
-```
-        FILAMENT_POS_UNKNOWN = -1
-  L  ^  FILAMENT_POS_UNLOADED = 0
-  O  |  FILAMENT_POS_START_BOWDEN = 1
-  A  |  FILAMENT_POS_IN_BOWDEN = 2
-  D  U  FILAMENT_POS_END_BOWDEN = 3
-  |  N  FILAMENT_POS_HOMED_EXTRUDER = 4
-  |  L  FILAMENT_POS_EXTRUDER_ENTRY = 5
-  |  O  FILAMENT_POS_HOMED_TS = 6
-  |  A  FILAMENT_POS_IN_EXTRUDER = 7    # AKA Filament is past the Toolhead Sensor
-  v  D  FILAMENT_POS_LOADED = 8         # AKA Filament is homed to the nozzle
+```mermaid
+graph TD;
+    UNLOADED --> START_BOWDEN
+    START_BOWDEN --> IN_BOWDEN
+    IN_BOWDEN --> END_BOWDEN
+    END_BOWDEN --> HOMED_EXTRUDER
+    END_BOWDEN --> EXTRUDER_ENTRY
+    HOMED_EXTRUDER --> EXTRUDER_ENTRY
+    EXTRUDER_ENTRY --> HOMED_TS
+    EXTRUDER_ENTRY --> IN_EXTRUDER
+    HOMED_TS --> IN_EXTRUDER
+    IN_EXTRUDER --> LOADED
 ```
 
 In additon to these states the macros are passed some additional information and hints about the context.  An important one is `FILAMENT_POS` which represents the position of the filament in mm either from "point 0" in the gate (load direction) or from the nozzle (unload direction).  Here are the default macros with additional information:<br>
