@@ -1,8 +1,8 @@
 # G-Code Customization (including Filament Loading and Unloading)
-Happy Hare provides a few defined "callbacks" that, if they exist, will be called at specific times.  They are designed for you to be able to extend the base functionality and to implement additional operations.  For example, if you want to control your printers LED's based on the action Happy Hare is performing you would modify `_MMU_ACTION_CHANGED`.  All of the default handlers are defined in `mmu_software.cfg` and serve as a starting point for modification.
+Happy Hare provides a few defined "callbacks" that, if they exist, will be called at specific times.  They are designed for you to be able to extend the base functionality and to implement additional operations.  For example, if you want to control your printers LED's based on the action Happy Hare is performing you would modify `_MMU_ACTION_CHANGED`.  All of the default handlers and examples are defined in `mmu_software.cfg` and serve as a starting point for modification.
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_ACTION_CHANGED
-Most of the time it will be in the `Idle` state but when Happy Hare starts to perform a new action this macro is called.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.mmu.action`
+Most of the time Happy Hare will be in the `Idle` state but it starts to perform a new action this macro is called.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.mmu.action`
 
 Possible action strings are:
 ```
@@ -19,15 +19,43 @@ Possible action strings are:
     Unknown     - Should not occur
 ```
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_ENCODER_RUNOUT
-TODO
-
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_ENDLESS_SPOOL_PRE_UNLOAD & _MMU_ENDLESS_SPOOL_POST_LOAD
 TODO
 
 ```
 _MMU_ENDLESS_SPOOL_POST_LOAD : Optional post load routine for EndlessSpool changes
 _MMU_ENDLESS_SPOOL_PRE_UNLOAD : Pre unload routine for EndlessSpool changes
+###########################################################################
+# Callback macros for modifying Happy Hare behavour
+# Note that EndlessSpool is an unsupervised filament change
+###########################################################################
+
+[gcode_macro _MMU_ENDLESS_SPOOL_PRE_UNLOAD]
+description: Pre unload routine for EndlessSpool changes
+gcode:
+    # This occurs prior to MMU forming tip and ejecting the remains of the old filament
+    #
+    # Typically you would move toolhead to your park position so oozing is not a problem
+    #
+    # This is probably similar to what you do in your PAUSE macro and you could simply call that here...
+    # (this call works with reference PAUSE macro supplied in client_macros.cfg)
+
+    PAUSE
+
+[gcode_macro _MMU_ENDLESS_SPOOL_POST_LOAD]
+description: Optional post load routine for EndlessSpool changes
+gcode:
+    # This occurs after MMU has loaded the new filament from the next spool in rotation
+    # MMU will have loaded the new filament to the nozzle the same way as a normal filament
+    # swap. Previously configured Pressure Advance will be retained.
+    # 
+    # This would be a place to purge additional filament if necessary (it really shouldn't be)
+    # and clean nozzle if your printer is suitably equipped.
+    #
+    # This is probably similar to what you do in your RESUME macro and you could simply call that here...
+    # (this call works with reference RESUME macro supplied in client_macros.cfg)
+
+    RESUME
 ```
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) _MMU_FORM_TIP_STANDALONE
