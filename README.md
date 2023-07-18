@@ -105,7 +105,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 <br>
 
 ## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Basic Commands and Printer Variables
-Happy Hare has a built in help system accessed with the `MMU_HELP` command. The full list of commands and options can be [found here](doc/command_ref.md). Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
+Happy Hare has a built in help system to aid remembering the command set. It can accessed with the `MMU_HELP` command and can also be used to view testing commands and user extensible macros which are called by Happy Hare on certain conditions. The full list of commands and options can be [found here](doc/command_ref.md). Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
 
 <details>
 <summary><sub>🔹 Click to read more....</sub></summary>
@@ -141,6 +141,10 @@ Happy Hare has a built in help system accessed with the `MMU_HELP` command. The 
     MMU_UNLOCK - Unlock MMU operations after an error condition
  ```
 
+  > MMU_HELP MACROS=1 TESTING=1
+
+To additionaly see testing command set and macros.
+<br>
 Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
 
 ```
@@ -189,13 +193,11 @@ Optionally exposed on mmu_encoder (if fitted):
 Configuration and calibration will vary slightly depending on your particular brand of MMU althought the steps are essentially the same with some being dependent on hardware configuration. Here are the five basic steps.
 
 ### 1\. Important MMU Vendor / Version Specification
-Happy Hare functionality will vary with MMU vendor. This is an important first step in setup.
+Happy Hare functionality will vary with MMU vendor. After running the installer ir is important to verify `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg` because they define the basic capabilities and options in Happy Hare. The only complication is in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
 
 <details>
 <summary><sub>🔹 Click to read more about vendor/version specification...</sub></summary>
-<br>  
-It is important to set `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg` because they define the basic capabilities and options in Happy Hare. The only complication is in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
-
+<br>
 ```
 # The vendor and version config is important to define the capabiliies of the MMU
 #
@@ -254,13 +256,13 @@ Normally the encoder is automatically enabled when needed and disabled when not 
 </details>
 
 ### 3\. Calibration Commands
-See [MMU Calibration doc here](doc/calibration.md) for detailed instructions
+Before using your MMU you will need to calibrate it to adjust for the differences in componets used on your particular build.  Be careful to calibrate in the recommended order because some settings build on earlier ones. Happy Hare now has automated calibration for some of the traditionally longer steps and does not reuire any Klipper restarts so the process is quick and painless. See [MMU Calibration doc here](doc/calibration.md) for detailed instructions
 
 ### 4\. Setup configuration in mmu_parameters.cfg
-See [MMU Configuration doc here](doc/configuration.md) for in-depth discussion but a few selected features are discussed in more detail in the following feature sections.
+After calibration you might want to review and tweak the configuration and options in `mmu_parameters.cfg`.  The default values set by the installer are good starting points although you will always have to specify things like the dimensions of your extruder which are very specific. The [MMU Configuration guide](doc/configuration.md) contains an in-depth reference but some of the selected features are also discussed in more detail in the following sections.
 
 ### 5\. Tweak configuration at runtime
-It's worth noting here that all the essential configuration and tuning parameters can be modified at runtime without restarting Klipper. Use the `MMU_TEST_CONFIG` command to do this. Running without any parameters will display the currect value:
+It's worth noting, and a very useful feature, that all the essential configuration and tuning parameters (in `mmu_parameters.cfg`) can be modified at runtime without restarting Klipper. Use the `MMU_TEST_CONFIG` command to do this. Running without any parameters will display the current values. This even allows changes to configuration during a print!
 
 <details>
 <summary><sub>🔹 Click to read about run-time testing of configuration...</sub></summary>
@@ -326,11 +328,11 @@ Running without any parameters will display the current values:
     mmu_calibration_clog_length = 19.3
 ```
 
-Any of the displayed config settings can be modified.  E.g.
+Any of the displayed config settings can be modified.  For example, to update the distance from extruder entrance (homing postion) to nozzle.
 
   > MMU_TEST_CONFIG toolhead_extruder_to_nozzle=45
-  
-Will update the distance from extruder entrance (homing postion) to nozzle.  The change is designed for testing was will not be persistent.  Once you find your tuned settings be sure to update `mmu_parameters.cfg`
+
+> **Note** When you make a change with `MMU_TEST_CONFIG` it will not be persistent and is only effective until the next restart.  Therefore once you find your tuned settings be sure to update `mmu_parameters.cfg`
 
 </details>
 
