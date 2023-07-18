@@ -55,8 +55,8 @@ class MmuEncoder:
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
         self.event_delay = config.getfloat('event_delay', 3., above=0.)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
-        self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '_MMU_ENCODER_RUNOUT')
-        self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '_MMU_ENCODER_INSERT')
+        self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '__MMU_ENCODER_RUNOUT')
+        self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '__MMU_ENCODER_INSERT')
         self._enabled = True
         self.min_event_systime = self.reactor.NEVER
         self.extruder = self.estimated_print_time = None

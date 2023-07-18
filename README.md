@@ -122,7 +122,7 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     MMU_EJECT - Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER - Display encoder position or temporarily enable/disable detection logic in encoder
     MMU_ENDLESS_SPOOL - Redefine the EndlessSpool groups
-    MMU_FORM_TIP_STANDALONE - Convenience macro for calling standalone tip forming (defined in mmu_software.cfg)
+    MMU_FORM_TIP - Convenience macro for calling the standalone tip forming functionality
     MMU_HELP - Display the complete set of MMU commands and function
     MMU_HOME - Home the MMU selector
     MMU_LOAD - Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)
@@ -612,7 +612,7 @@ Here, three groups are defined. ES_Group_1 consisting of gates 0, 3 and 6; ES_Gr
 
 Since EndlessSpool is not something that triggers very often you can use the following to simulate the action and familiarize yourslef with its action and validate it is correctly setup prior to needing it:
 
-  > MMU_ENCODER_RUNOUT FORCE_RUNOUT=1
+  > MMU_TEST_ENCODER_RUNOUT FORCE_RUNOUT=1
 
 This will emulate a filament runout and force the MMU to interpret it as a true runout and not a possible clog. THe MMU will then run the following sequence:
 <ul>

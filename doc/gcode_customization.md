@@ -20,11 +20,12 @@ Possible action strings are:
 ```
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ENDLESS_SPOOL_PRE_UNLOAD & _MMU_ENDLESS_SPOOL_POST_LOAD
-TODO
+If EndlessSpool is enabled, Happy Hare will unload the remains of the filament from the exhausted spool and load the new spool. These macros are called at the beginning and end of that sequence.  `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` is called because Happy Hare initiates the tip forming and typically would move the toolhead to a suitable "park" position it doesn't ooze onto your print.  This is commonly exactly the same as your `PAUSE` macro and so that is what the default handler calls.<br>
 
+`MMU_ENDLESS_SPOOL_POST_LOAD` is called after the MMU has loaded the new filament from the next spool in rotation to the nozzle the same way as a normal filament swap (the previously configured Pressure Advance will be restored). Typically this would be a place to purge additional filament if necessary (it really shouldn't be) and clean nozzle if your printer is suitably equipped. I.e. similar to a typical `RESUME` macro.<br>
+
+Here are the default macros:
 ```
-_MMU_ENDLESS_SPOOL_POST_LOAD : Optional post load routine for EndlessSpool changes
-_MMU_ENDLESS_SPOOL_PRE_UNLOAD : Pre unload routine for EndlessSpool changes
 ###########################################################################
 # Callback macros for modifying Happy Hare behavour
 # Note that EndlessSpool is an unsupervised filament change
@@ -59,10 +60,59 @@ gcode:
 ```
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_FORM_TIP_STANDALONE
-TODO
+TODO ... lots to document here!
+
+```
+# Unloading and Ramming values - Initial moves to form and shape tip
+variable_unloading_speed_start: 80     # Fast here to seperate the filament from meltzone (Very intitial retract SS uses distance of E-15)
+variable_unloading_speed: 20           # Too fast forms excessively long tip or hair. Slow is better here UNLOADING_SPEED_START/COOLING_MOVES seems a good start
+variable_ramming_volume: 20            # in mm3 SS default values = 2, 5, 9, 13, 18, 23, 27. Only Used to Simulate SS Ramming during standalone
+variable_ss_ramming: 0                 # Set to 0 when using standalone ramming (RAMMING_VOLUME) or tuning, 1 to let the slicer do it
+
+# Cooling Move Values - To cool the tip formed and separate from strings
+variable_cooling_tube_position: 35     # Dragon ST: 35, Dragon HF: 30, Mosquito: 30, Revo: 35, Phaetus Rapido HF: 43;  Measured from Top of Heater Block to Top of Heatsink
+variable_cooling_tube_length: 10       # Dragon ST: 15, Dragon HF: 10, Mosquito: 20, Revo: 10, Phaetus Rapido HF: 22; Measured from Nozzle to Top of Heater Block
+variable_initial_cooling_speed: 10     # Slow to solidify tip and cool string if formed.
+variable_final_cooling_speed: 50       # High speed break the string formed. Too fast = tip deformation during eject. Too Slow = long string/no seperation
+variable_toolchange_temp: 0            # Used if you want to lower temp during toolchanges default 0
+variable_cooling_moves: 4              # 2-4 is a good start
+
+# SkinnyDip values - To burn off VERY FINE hairs only (This is NOT for long tip reshaping)
+variable_use_skinnydip: 1              # Tune this LAST, this is for removal of VERY FINE hairs only (Different than a long tip)
+variable_skinnydip_distance: 30        # Start just under Cooling_tube_position and increase - Will depend on how much Ramming Volume is used
+variable_dip_insertion_speed: 30       # Medium-Slow - Just long enough to melt the fine hairs. Too slow will pull up molten filament
+variable_dip_extraction_speed: 70      # Around 2x Insertion speed, Prevents forming new hairs
+variable_melt_zone_pause: 0            # in milliseconds - default 0
+variable_cooling_zone_pause: 0         # in milliseconds - default 0 - If you need to adjust here its possible Dip Insertion too slow
+variable_use_fast_skinnydip: 0         # Skip the toolhead temp change during skinnydip move - default 0
+
+# Park filament ready to eject
+# variable_parking_distance: 0          # TODO: SS parks filament after final cooling move
+
+# Final Eject - for standalone tuning only
+variable_final_eject: 0                # default 0, enable during standalone tuning process to eject the filament
+```
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_LOAD_SEQUENCE & _MMU_UNLOAD_SEQUENCE
-TODO
+This is new EXPERIMENTAL functionality and as such is subject to change.  The essential information is that by default these macros are not called. If `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_software.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
+
+`mmu_software.cfg` contains futher examples for alternative MMU setups, but before experimenting it is essential to understand the state machine for filament position.  These states are as follows and the loading/unloading sequence must be capable of completing the load/unload sequence for any starting state.<br>
+
+```
+        FILAMENT_POS_UNKNOWN = -1
+  L  ^  FILAMENT_POS_UNLOADED = 0
+  O  |  FILAMENT_POS_START_BOWDEN = 1
+  A  |  FILAMENT_POS_IN_BOWDEN = 2
+  D  U  FILAMENT_POS_END_BOWDEN = 3
+  |  N  FILAMENT_POS_HOMED_EXTRUDER = 4
+  |  L  FILAMENT_POS_PAST_EXTRUDER = 5
+  |  O  FILAMENT_POS_HOMED_TS = 6
+  |  A  FILAMENT_POS_IN_EXTRUDER = 7    # AKA Filament is past the Toolhead Sensor
+  v  D  FILAMENT_POS_LOADED = 8         # AKA Filament is homed to the nozzle
+```
+
+In additon to these states the macros are passed some additional information and hints about the context.  An important one is `FILAMENT_POS` which represents the position of the filament in mm either from "point 0" in the gate (load direction) or from the nozzle (unload direction).  Here are the default macros with additional information:<br>
+
 
 ```
 ###########################################################################

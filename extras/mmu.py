@@ -422,20 +422,22 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_HOMING_MOVE', self.cmd_MMU_TEST_HOMING_MOVE, desc = self.cmd_MMU_TEST_HOMING_MOVE_help)
         self.gcode.register_command('MMU_TEST_TRACKING', self.cmd_MMU_TEST_TRACKING, desc=self.cmd_MMU_TEST_TRACKING_help)
         self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
+        self.gcode.register_command('MMU_TEST_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
 
         # Soak Testing
         self.gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
         self.gcode.register_command('MMU_SOAKTEST_LOAD_SEQUENCE', self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE, desc = self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help)
 
         # Runout, TTG and Endless spool
-        self.gcode.register_command('_MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
-        #self.gcode.register_command('_MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
+        self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help) # Internal
+        #self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help) # Internal
         self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help)
         self.gcode.register_command('MMU_SET_GATE_MAP', self.cmd_MMU_SET_GATE_MAP, desc = self.cmd_MMU_SET_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
         self.gcode.register_command('MMU_CHECK_GATES', self.cmd_MMU_CHECK_GATES, desc = self.cmd_MMU_CHECK_GATES_help)
 
         # For use in user controlled load and unload macros
+        self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_FORM_TIP, desc = self.cmd_MMU_FORM_TIP_help)
         self.gcode.register_command('_MMU_STEP_LOAD_ENCODER', self.cmd_MMU_STEP_LOAD_ENCODER, desc = self.cmd_MMU_STEP_LOAD_ENCODER_help)
         self.gcode.register_command('_MMU_STEP_UNLOAD_ENCODER', self.cmd_MMU_STEP_UNLOAD_ENCODER, desc = self.cmd_MMU_STEP_UNLOAD_ENCODER_help)
         #self.gcode.register_command('_MMU_STEP_LOAD_GATE', self.cmd_MMU_STEP_LOAD_GATE, desc = self.cmd_MMU_STEP_LOAD_GATE_help)
@@ -1761,7 +1763,7 @@ class Mmu:
             self.calibrating = True
             if gate == -1:
                 self._log_always("Start the complete calibration of ancillary gates...")
-                for i in range(self.mmu_num_gates) - 1:
+                for i in range(self.mmu_num_gates - 1):
                     self._calibrate_gate(gate + 1, length, repeats, save=save)
                 self._log_always("Phew! End of auto gate calibration")
             else:
@@ -2465,6 +2467,17 @@ class Mmu:
 #########################################################
 # STEP FILAMENT LOAD/UNLOAD MACROS FOR USER COMPOSITION #
 #########################################################
+
+    cmd_MMU_FORM_TIP_help = "Convenience macro for calling the standalone tip forming functionality"
+    def cmd_MMU_FORM_TIP(self, gcmd):
+        extruder_stepper_only = gcmd.get_int('EXTRUDER_ONLY', 1)
+        try:
+            detected, park_pos = self._form_tip_standalone(extruder_stepper_only)
+            msg = "Filament: %s" % ("Detected" if detected else "Not detected")
+            msg += ("Park Position: %.1f" % park_pos) if detected else ""
+            self._log_always(msg)
+        except MmuError as ee:
+            raise gcmd.error(str(ee))
 
     cmd_MMU_STEP_LOAD_ENCODER_help = "User composable loading step: Move filament from gate to start of bowden using encoder"
     def cmd_MMU_STEP_LOAD_ENCODER(self, gcmd):
@@ -4359,7 +4372,7 @@ class Mmu:
         if not quiet:
             self._log_info(self._gate_map_to_human_string())
 
-    cmd_MMU_ENDLESS_SPOOL_help = "Redefine the EndlessSpool groups"
+    cmd_MMU_ENDLESS_SPOOL_help = "Manager EndlessSpool functionality and groups"
     def cmd_MMU_ENDLESS_SPOOL(self, gcmd):
         if self._check_is_disabled(): return
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)

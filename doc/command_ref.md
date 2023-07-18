@@ -13,7 +13,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_EJECT - Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER - Display encoder position or temporarily enable/disable detection logic in encoder
     MMU_ENDLESS_SPOOL - Redefine the EndlessSpool groups
-    MMU_FORM_TIP_STANDALONE - Convenience macro for calling standalone tip forming (defined in mmu_software.cfg)
+    MMU_FORM_TIP - Convenience macro to call the standalone tip forming functionality
     MMU_HELP - Display the complete set of MMU commands and function
     MMU_HOME - Home the MMU selector
     MMU_LOAD - Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)
@@ -105,7 +105,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_SOAKTEST_SELECTOR - Soak test of selector movement
     MMU_TEST_BUZZ_MOTOR - Simple buzz the selected motor (default gear) for setup testing
     MMU_TEST_CONFIG - Runtime adjustment of MMU configuration for testing or in-print tweaking purposes
-    MMU_TEST_ENCODER_RUNOUT - Convenience macro to spoof a filament runout condition (defined in mmu_software.cfg)
+    MMU_TEST_ENCODER_RUNOUT - Convenience macro to spoof a filament runout condition
     MMU_TEST_GRIP - Test the MMU grip for a Tool
     MMU_TEST_HOMING_MOVE - Test filament homing move to help debug setup / options
     MMU_TEST_LOAD - For quick testing filament loading from gate to the extruder
