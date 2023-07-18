@@ -2090,7 +2090,7 @@ class Mmu:
                     msg += "%s : %s\n" % (c.upper(), d)
                 else:
                     tmsg += "%s : %s\n" % (c.upper(), d)
-            elif c.startswith("_MMU"):
+            elif c.startswith("_MMU") and not c.startswith("_MMU_STEP"):
                 mmsg += "%s : %s\n" % (c.upper(), d)
         if testing:
             msg += tmsg
