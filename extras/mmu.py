@@ -1763,7 +1763,7 @@ class Mmu:
             self.calibrating = True
             if gate == -1:
                 self._log_always("Start the complete calibration of ancillary gates...")
-                for i in range(self.mmu_num_gates - 1):
+                for gate in range(self.mmu_num_gates - 1):
                     self._calibrate_gate(gate + 1, length, repeats, save=save)
                 self._log_always("Phew! End of auto gate calibration")
             else:
