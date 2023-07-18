@@ -15,7 +15,7 @@ This is why the sequence to calibrate is in this order:
 </ol>
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) List of main issues:
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) List of main issues:
 Ok, with that context out of the way let's look at the possible problems.  One of the biggest issues is the differences in the many BMG gear clones that are available on AliExpress or elsewhere. Take a look at these two example gears:
 
 <img src="gear_differences.jpg" width="800" alt="BMG gear differences">
