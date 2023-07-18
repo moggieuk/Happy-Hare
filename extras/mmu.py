@@ -2103,11 +2103,14 @@ class Mmu:
     cmd_MMU_ENCODER_help = "Display encoder position and stats or temporarily enable/disable detection logic in encoder"
     def cmd_MMU_ENCODER(self, gcmd):
         if self._check_is_disabled(): return
+        value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         if enable == 1:
             self._enable_encoder_sensor(True)
         elif enable == 0:
             self._disable_encoder_sensor(True)
+        elif value >= 0.:
+            self.encoder_sensor.set_distance(value)
         else:
             status = self.encoder_sensor.get_status(0)
             msg = "Encoder position: %.1f" % status['encoder_pos']
@@ -2474,7 +2477,7 @@ class Mmu:
         try:
             detected, park_pos = self._form_tip_standalone(extruder_stepper_only)
             msg = "Filament: %s" % ("Detected" if detected else "Not detected")
-            msg += ("Park Position: %.1f" % park_pos) if detected else ""
+            msg += (", Park Position: %.1f" % park_pos) if detected else ""
             self._log_always(msg)
         except MmuError as ee:
             raise gcmd.error(str(ee))
@@ -3313,10 +3316,11 @@ class Mmu:
             except Exception as e:
                 raise MmuError("Error running _MMU_FORM_TIP_STANDALONE: %s" % str(e))
             self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
+            self.toolhead.dwell(0.2)
             self.toolhead.wait_moves()
             delta = self.encoder_sensor.get_distance() - initial_encoder_position
             park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
-            self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos ,delta))
+            self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos, delta))
             self.encoder_sensor.set_distance(initial_encoder_position + park_pos)
             self.filament_distance += park_pos
             if self.extruder_tmc and self.extruder_form_tip_current > 100:
