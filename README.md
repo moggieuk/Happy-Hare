@@ -413,7 +413,7 @@ Here is an example startup state:
 2:18 AM MMU [T2] >>> [En] >>>>>>> [Ex] >> [Ts] >> [Nz] LOADED (@0.0 mm)
 ```
 
-Aside from showing that I was up too late writing this doc, this indicates how I left my MMU the day prior... Filaments are loaded in gates 0, 1, 2, 6 & 8; Gate #2 is selected; and the filament is fully loaded. If you are astute you can see I have remapped T4 to be on gate #2 because previously I had loaded these spools incorrectly and this saved me from regenerating g-code. Gate #6 contains filament that has never been loaded and thus it is still on the spool `S`.  The filaments in other gates has been previously loaded and unloaded and therefore are available from the buffer `B`. The buffer/spool distinction effects loading speed. (This status was generated on startup by setting `log_startup_status: 1` in mmu_parameters.cfg. It can also be generated anytime with the `MMU_STATUS` command).
+Aside from showing that I was up too late writing this doc, this indicates how I left my MMU the day prior... Filaments are loaded in gates 0, 1, 2, 6 & 8; Gate #2 is selected; and the filament is fully loaded. If you are astute you can see I have remapped T4 to be on gate #2 because previously I had loaded these spools incorrectly and this saved me from regenerating g-code. Gate #6 contains filament that has never been loaded and thus it is still on the `S` spool.  The filaments in other gates has been previously loaded and unloaded and therefore are available from the `B` buffer. The buffer/spool distinction effects loading speed. (This status was generated on startup by setting `log_startup_status: 1` in mmu_parameters.cfg. It can also be generated anytime with the `MMU_STATUS` command).
 <br>
 
 In addition to basic operational state the print statistics and gate health statistics are persisted and so occasionally you might want to explicitly reset them with `MMU_STATS RESET=1`.  There are 5 levels of operation for this feature that you can set based on your personal preference/habbits. The level is controlled by a single variable `persistence_level` in `mmu_parameters.cfg`:
@@ -434,15 +434,13 @@ In addition to basic operational state the print statistics and gate health stat
 
 Generally there is no downside of setting the level to 2 or 3 (the suggested default).  Really, so long as you are aware that persistence is happening and know how to adjust/reset you can set the level to 4 and enjoy immediate MMU availability.  Here is the complete list of commands that can reset state:
 
-<ul>
-  <li>`MMU_RESET` - Reset all persisted state back to default/unknown except for print stats and per-gate health stats
-  <li>`MMU_STATS RESET=1` - Reset print stats and per-gate health stats back to 0
-  <li>`MMU_REMAP_TTG RESET=1` - Reset just the tool-to-gate mapping
-  <li>`MMU_ENDLESS_SPOOL_GROUPS RESET=1` - Reset just the endless spool groups back to default
-  <li>`MMU_SET_GATE_MAP RESET=1` - Reset information about the filament type, color and availability
-  <li>`MMU_RECOVER` - Automatically discover or manually reset filament position, selected gate, selected tool, filament availability (lots of options)
-  <li>Needless to say, other operations can update specific state
-</ul>
+`MMU_RESET` - Reset all persisted state back to default/unknown except for print stats and per-gate health stats<br>
+`MMU_STATS RESET=1` - Reset print stats and per-gate health stats back to 0<br>
+`MMU_REMAP_TTG RESET=1` - Reset just the tool-to-gate mapping<br>
+`MMU_ENDLESS_SPOOL_GROUPS RESET=1` - Reset just the endless spool groups back to default<br>
+`MMU_SET_GATE_MAP RESET=1` - Reset information about the filament type, color and availability<br>
+`MMU_RECOVER` - Automatically discover or manually reset filament position, selected gate, selected tool, filament availability (lots of options)<br>
+Needless to say, other operations can update specific state<br>
 
 Couple of miscellaneous notes:
 <ul>
