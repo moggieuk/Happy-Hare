@@ -1,6 +1,6 @@
 # "Happy Hare" - Universal MMU driver for Klipper
 
-# IF YOU HAVE FOUND THIS... PLEASE DON'T INSTALL IT YET.  IT IS WORK IN PROGRESS. Use ERCF-Software-V3 for ERCF. I will announce when this is ready as beta (Very soon now)
+# IF YOU HAVE FOUND THIS... PLEASE DON'T INSTALL IT YET.  IT IS WORK IN PROGRESS. Use ERCF-Software-V3 for ERCF. I will announce when this is ready (Very soon now)
 
 Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem.  Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform.  It is best partnered with [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
@@ -198,6 +198,7 @@ Happy Hare functionality will vary with MMU vendor. After running the installer 
 <details>
 <summary><sub>🔹 Click to read more about vendor/version specification...</sub></summary>
 <br>
+ 
 ```
 # The vendor and version config is important to define the capabiliies of the MMU
 #
@@ -266,7 +267,8 @@ It's worth noting, and a very useful feature, that all the essential configurati
 
 <details>
 <summary><sub>🔹 Click to read about run-time testing of configuration...</sub></summary>
-<br>  
+<br>
+ 
 Running without any parameters will display the current values:
 
 > MMU_TEST_CONFIG
@@ -345,7 +347,8 @@ We all hope that printing is straightforward and everything works to plan. Unfor
 
 <details>
 <summary><sub>🔹 Click to read more about handling errors and recovery...</sub></summary>
-<br>  
+<br>
+
 Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had mamy mult-thousand swap prints complete without incident.  Here is what you need to know when something goes wrong.
 
 When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog it will pause the print and put the MMU into a "locked" state.  You can try this by running:
@@ -395,13 +398,22 @@ This is considered advanced functionality but it is incredibly useful once you a
 
 <details>
 <summary><sub>🔹 Click to read more about state persistence...</sub></summary>
-<br>  
+<br>
+
 Here is an example startup state:
 
-  <img src="doc/persisted_state.png" width=600 alt="Persisted Startup State">
+```
+2:18 AM (\_/)
+        ( *,*)
+        (")_(") MMU Ready
+2:18 AM Gates: |#0 |#1 |#2 |#3 |#4 |#5 |#6 |#7 |#8 |
+        Tools: |T0 |T1 |T2 |T3 |T4 |T5 |T6 |T7 |T8 |
+        Avail: | B | B | B | ? | . | ? | S | ? | B |
+        Selct: --------| * |------------------------ T4
+2:18 AM MMU [T2] >>> [En] >>>>>>> [Ex] >> [Ts] >> [Nz] LOADED (@0.0 mm)
+```
 
-(note this was accomplished by setting `startup_status: 1` in mmu_parameters.cfg and can also be generated anytime with the `MMU_STATUS` command)
-This graphic indicates how I left my MMU the day prior... Filaments are loaded in gates 0,1 & 6; Gate/Tool #1 is selected; and the filament is fully loaded. If you are astute you can see I have remapped T2 to be on gate #3 and T3 to be on gate #2 because previously I had loaded these spools backward and this saved me from regenerating g-code.
+Aside from showing that I was up too late writing this doc, this indicates how I left my MMU the day prior... Filaments are loaded in gates 0, 1, 2, 6 & 8; Gate #2 is selected; and the filament is fully loaded. If you are astute you can see I have remapped T4 to be on gate #2 because previously I had loaded these spools incorrectly and this saved me from regenerating g-code. Gate #6 contains filament that has never been loaded and thus it is still on the spool `S`.  The filaments in other gates has been previously loaded and unloaded and therefore are available from the buffer `B`. The buffer/spool distinction effects loading speed. (This status was generated on startup by setting `log_startup_status: 1` in mmu_parameters.cfg. It can also be generated anytime with the `MMU_STATUS` command).
 <br>
 
 In addition to basic operational state the print statistics and gate health statistics are persisted and so occasionally you might want to explicitly reset them with `MMU_STATS RESET=1`.  There are 5 levels of operation for this feature that you can set based on your personal preference/habbits. The level is controlled by a single variable `persistence_level` in `mmu_parameters.cfg`:
@@ -508,6 +520,7 @@ The lower paragraph of the status is the gate centric view showing the mapping b
 
 <br>
 Advanced note: The initial availability of filament (and tihe default after a reset) at each gate can also be specified in the `mmu_parameters.cfg` file by updating the `gate_status` list of the same length as the number of gates. Generally this might be useful if you have purposefully decommissioned part of you MMU. E.g.
+<br>
 
 ```
 gate_status = 1, 1, 0, 0, 1, 0, 0, 0, 1
@@ -554,6 +567,7 @@ If you MMU is equiped with an encoder it can be used to detect filament runout o
 <summary><sub>🔹 Click to read more runout/clog detection, EndlessSpool and flowrate monitoring...</sub></summary>
 <br>   
 Runout and Clog detection functionality are enabled with the `enable_clog_detection` parameter in mmu_parameters.cfg.  It works by comparing filament extruded to that measured by the encoder and if this is ever greater than the `mmu_calibration_clog_length` (stored in mmu_vars.cfg) the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `MMU_UNLOCK` & `RESUME` to continue.  If a runout is determined and EndlessSpool is enabled the fragment of filament will be unloaded, the current tool will be remaped to the next specified gate, and printing will automatically continue.
+<br>
 
 Setting `enable_clog_detection` value to `1` enables clog detection employing the static clog detection length.  Setting it to `2` will enable automatic adjustment of the detection length and Happy Hare will peridically update the calibration value beased on what it learns about your system. Whilst this doesn't guarantee you won't get a false trigger it will contiually tune until false triggers not longer occur.  The automatic algorithm is controlled by two variables in the `[mmu_encoder]` section of `mmu_hardward.cfg`:
 
@@ -632,7 +646,9 @@ There are four configuration options that control logging, both statistical logg
 <details>
 <summary><sub>🔹 Click to read more aboout logging...</sub></summary>
 <br>
-Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`. 
+
+Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`:
+<br>
 
 ```
 log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
@@ -653,16 +669,13 @@ The logfile will be placed in the same directory as other log files and is calle
 Regardless of whether you use your own Pause/Print/Cancel_print macros or use the ones provided in `client_macros.cfg`, Happy Hare will automatically wrap anything defined so that it can inject the necessary steps to control the MMU.
 
 <details>
-<summary><sub>🔹 Click to read more aboout what Happy Hare adds to these macros...</sub></summary>
-<br>
-During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `mmu_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.
-<br>
+<summary><sub>🔹 Click to read more aboout what Happy Hare adds to these macros...</sub></summary><br>
 
-The user then calls `MMU_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.
-<br>
+During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `mmu_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.<br>
+
+The user then calls `MMU_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.<br>
   
-The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead to where it was left when the pause macro was called.  At this point the Happy Hare wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.
-<br>
+The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead to where it was left when the pause macro was called.  At this point the Happy Hare wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.<br>
   
 Happy Hare will always return the toolhead to the correct position, but if you leave it in your park area will will move it back very slowly.  You can to follow the above sequence to make this operation fast to prevent oozing from leaking on your print.
 
@@ -672,9 +685,9 @@ Happy Hare will always return the toolhead to the correct position, but if you l
 Happy Hare is a state machine. That means it keeps track of the the state of the MMU. It uses knowledge of this state to determine how to handle a particular situation.  For example, if you ask it to unload filament... Is the filament in the toolhead, is it in the bowden, or is there no filament present?  If uses this information to make the correct decisions on what to do next.  Occasionaly, through print error or manual intervention the state may become stale and it is necessary to re-sync with Happy Hare.
 
 <details>
-<summary><sub>🔹 Click to read more how to recover MMU state...</sub></summary>
-<br>  
-At some point when a project occurs during a multi-color print your MMU will pause and go into a `locked` state.  Generally the user would then call `MMU_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:
+<summary><sub>🔹 Click to read more how to recover MMU state...</sub></summary><br>
+ 
+At some point when a project occurs during a multi-color print your MMU will pause and go into a `locked` state.  Generally the user would then call `MMU_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:<br>
 
 ```
 MMU_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
@@ -725,9 +738,9 @@ There are a couple of commands (`MMU_PRELOAD` and `MMU_CHECK_GATES`) that are us
 <details>
 <summary><sub>🔹 Click to read more on pre-print readiness...</sub></summary>
 <br>
-The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  Then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted blocking the gate.
+The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  Then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted blocking the gate.<br>
 
-Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates.
+Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates.<br>
 
 > **Note** The `MMU_CHECK_GATES` command has a special option that is designed to be called from your print_start macro. Unfortunately this requires slicer support to privide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print!
 
@@ -737,9 +750,9 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those
 Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material` and `printer.mmu.gate_color`) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
 
 <details>
-<summary><sub>🔹 Click to read more on editing the gate map...</sub></summary>
-<br>
-The gate map can be viewed with the following command:
+<summary><sub>🔹 Click to read more on editing the gate map...</sub></summary><br>
+
+The gate map can be viewed with the following command:<br>
 
   > MMU_SET_GATE_MAP DISPLAY=1
 
