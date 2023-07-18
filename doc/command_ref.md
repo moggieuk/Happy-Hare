@@ -4,7 +4,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 
   > MMU_HELP
 
-```
+```yml
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
     MMU - Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL - Perform a tool swap
@@ -80,7 +80,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 
   ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Calibration
 
-```
+```yml
     MMU_CALIBRATE_BOWDEN - Calibration of reference bowden length for gate #0
     MMU_CALIBRATE_ENCODER - Calibration routine for the MMU encoder
     MMU_CALIBRATE_GATES - Optional calibration of individual MMU gate
@@ -100,7 +100,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 
   ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Testing
 
-```
+```yml
     MMU_SOAKTEST_LOAD_SEQUENCE - Soak test tool load/unload sequence
     MMU_SOAKTEST_SELECTOR - Soak test of selector movement
     MMU_TEST_BUZZ_MOTOR - Simple buzz the selected motor (default gear) for setup testing
