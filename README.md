@@ -10,7 +10,7 @@ Thank you!
 
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Table of Contents
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Table of Contents
 **[Major feature](#---major-features)**<br>
 **[Installation](#---installation)**<br>
 **[Basic Commands](#---basic-commands-and-printer-variables)**<br>
@@ -42,7 +42,7 @@ Thank you!
 
 <br>
  
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Major features:
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Major features:
 <ul>
   <li>Support any brand of MMU and user defined monsters. (Caveat: ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon)</li>
   <li>Companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
@@ -71,7 +71,7 @@ Companion customized [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-ed
 
 <br>
  
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Installation
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Installation
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
 
 ```
@@ -104,7 +104,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Basic Commands and Printer Variables
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Basic Commands and Printer Variables
 Happy Hare has a built in help system to aid remembering the command set. It can accessed with the `MMU_HELP` command and can also be used to view testing commands and user extensible macros which are called by Happy Hare on certain conditions. The full list of commands and options can be [found here](doc/command_ref.md). Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
 
 <details>
@@ -189,7 +189,7 @@ Optionally exposed on mmu_encoder (if fitted):
 
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Setup and Calibration:
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Setup and Calibration:
 Configuration and calibration will vary slightly depending on your particular brand of MMU althought the steps are essentially the same with some being dependent on hardware configuration. Here are the five basic steps.
 
 ### 1\. Important MMU Vendor / Version Specification
@@ -340,7 +340,7 @@ Any of the displayed config settings can be modified.  For example, to update th
 
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Important Concepts and Features
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Important Concepts and Features
 
 ### 1. How to handle errors
 We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_ULOCK`, `MMU_RECOVER`, etc.
@@ -777,7 +777,7 @@ To change for a particular gate use a command in this form:
 
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Filament loading and unloading sequences
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Filament loading and unloading sequences
 Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`.  These are grouped into "modular phases" that control each step of the process and vary slightly based on the capabilities of your particular MMU.  Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later.
 
 ### Understanding the load sequence:
@@ -932,7 +932,7 @@ An experimental option is available for users with customized MMU's or for wanti
 
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) KlipperScreen Happy Hare Edition
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) KlipperScreen Happy Hare Edition
 <img src="doc/mmu_main_printing.png" width="500" alt="KlipperScreen">
 
 Even if not a KlipperScreen user yet you might be interested in my [KlipperScreen version](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) simply to control your MMU. It makes using your MMU the way it should be. Dare I say as easy at Bambu Labs ;-)  I run mine with a standalone Rasberry Pi attached to my buffer array and can control mutliple MMU's with it.
@@ -941,7 +941,7 @@ Be sure to follow the install directions carefully and read the [panel-by-panel]
 
 <br> 
  
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) My Testing:
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) My Testing:
 This new v2 Happy Hare software is largely rewritten and so, despite best efforts, has probably introduced some bugs that may not exist in the previous version.  It also lacks extensive testing on different configurations that will stress the corner cases.  I have been using it successfully on Voron 2.4 / ERCF v1.1 and ERCF v2.0 with EASY-BRD and ERB board.  I use a self-modified CW2 extruder with foolproof microswitch toolhead sensor (hall effect switches are extremely problematic in my experience). My day-to-day configuration is to load the filament to the extruder in a single movement at 250mm/s, then home to toolhead sensor with synchronous gear/extruder movement although I have just moved to automatic "touch" homing to the nozzle whcih works without ANY knowledge of my extruder dimensions!! Yeah, really, load filament in gate, fast 670mm move, home to nozzle!
 
 ### My Setup:
@@ -987,7 +987,7 @@ Good luck! You can find me on discord as *moggieuk#6538*
   
 <br>  
  
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Revision History
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Revision History
 <ul>
 <li>v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
 </ul>
