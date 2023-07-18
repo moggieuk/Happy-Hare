@@ -97,7 +97,7 @@ class Mmu:
     FILAMENT_POS_IN_BOWDEN = 2
     FILAMENT_POS_END_BOWDEN = 3
     FILAMENT_POS_HOMED_EXTRUDER = 4
-    FILAMENT_POS_PAST_EXTRUDER = 5
+    FILAMENT_POS_EXTRUDER_ENTRY = 5
     FILAMENT_POS_HOMED_TS = 6
     FILAMENT_POS_IN_EXTRUDER = 7    # AKA FILAMENT_POS_PAST_TS
     FILAMENT_POS_LOADED = 8         # AKA FILAMENT_POS_HOMED_NOZZLE
@@ -1054,7 +1054,7 @@ class Mmu:
         elif self.filament_pos == self.FILAMENT_POS_HOMED_EXTRUDER:
             visual = "MMU [T%s] >>>>> [encoder] >>>>>>>>>>>>| [extruder] ...%s... [nozzle]" % (tool_str, sensor_str)
             visual += counter_str
-        elif self.filament_pos == self.FILAMENT_POS_PAST_EXTRUDER:
+        elif self.filament_pos == self.FILAMENT_POS_EXTRUDER_ENTRY:
             visual = "MMU [T%s] >>>>> [encoder] >>>>>>>>>>>>> [extruder] >>.%s... [nozzle]" % (tool_str, sensor_str)
             visual += counter_str
         elif self.filament_pos == self.FILAMENT_POS_HOMED_TS:
@@ -2618,7 +2618,7 @@ class Mmu:
                     raise MmuError("Error running user _MMU_LOAD_SEQUENCE macro")
 
             elif extruder_only:
-                if self.filament_pos < self.FILAMENT_POS_PAST_EXTRUDER:
+                if self.filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
                     self._load_extruder(extruder_stepper_only=True)
                 else:
                     self._log_debug("Assertion failure - unexpected state %d in _load_sequence(extruder_only=True)" % self.filament_pos)
@@ -2651,7 +2651,7 @@ class Mmu:
                 if not skip_extruder:
                     self._load_extruder()
 
-            elif self.filament_pos < self.FILAMENT_POS_PAST_EXTRUDER:
+            elif self.filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
                 if not skip_extruder:
                     self._load_extruder()
 
@@ -2876,7 +2876,7 @@ class Mmu:
             self.filament_distance += distance_moved
             return distance_moved
         else:
-            self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
+            self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
             raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
     # Step 4 of the load sequence
@@ -2915,7 +2915,7 @@ class Mmu:
                         delta = self._trace_filament_move("Synced extruder entry move",
                                 dist, speed=self.extruder_sync_load_speed, motor="gear+extruder")
                         length -= dist
-                    self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
+                    self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
 
                 # Move the remaining distance to the nozzle meltzone under exclusive extruder stepper control
                 self._servo_up()
@@ -3007,13 +3007,13 @@ class Mmu:
                     self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
             elif extruder_only:
-                if self.filament_pos >= self.FILAMENT_POS_PAST_EXTRUDER:
+                if self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
                     self._unload_extruder(extruder_stepper_only=True, park_pos=park_pos)
                 else:
                     self._log_debug("Assertion failure - unexpected state %d in _unload_sequence(extruder_only=True)" % self.filament_pos)
                     raise MmuError("Cannot unload extruder because filament not in extruder!")
 
-            elif self.filament_pos >= self.FILAMENT_POS_PAST_EXTRUDER:
+            elif self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
                 # Exit extruder, fast unload of bowden, then slow unload encoder
                 self._unload_extruder(park_pos=park_pos)
                 self._unload_bowden(length - self.encoder_unload_buffer)
@@ -3061,7 +3061,7 @@ class Mmu:
         if toolhead_sensor_state == -1:     # Not installed
             if self._check_filament_in_encoder():
                 if self._check_filament_still_in_extruder():
-                    self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
+                    self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
                 else:
                     self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
             else:
@@ -3072,7 +3072,7 @@ class Mmu:
             if self._check_filament_in_encoder():
                 if self.strict_filament_recovery or strict:
                     if self._check_filament_still_in_extruder():
-                        self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
+                        self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
                     else:
                         self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
                 else:
@@ -3130,7 +3130,7 @@ class Mmu:
                 length = self._get_home_position_to_nozzle() - park_pos + step + safety_margin
                 speed = self.extruder_unload_speed * 0.5 # First pull slower just in case we don't have tip
                 self._log_debug("Trying to exit the extruder, up to %.1fmm in %.1fmm steps" % (length, step))
-                self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
+                self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
                 for i in range(int(math.ceil(length / step))):
                     msg = "Step #%d:" % (i+1)
                     delta = self._trace_filament_move(msg, -step, speed=speed, motor="extruder")
@@ -3152,7 +3152,7 @@ class Mmu:
                 speed = self.extruder_unload_speed * 0.5 # First pull slower just in case we don't have tip
                 self._log_debug("Trying to exit the extruder, up to %.1fmm in %.1fmm steps" % (length, step))
                 stuck_in_extruder = False
-                self._set_filament_pos(self.FILAMENT_POS_PAST_EXTRUDER)
+                self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
                 for i in range(int(math.ceil(length / step))):
                     msg = "Step #%d:" % (i+1)
                     delta = self._trace_filament_move(msg, -step, speed=speed, motor="gear+extruder")

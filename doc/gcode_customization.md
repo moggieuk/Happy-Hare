@@ -105,7 +105,7 @@ This is new EXPERIMENTAL functionality and as such is subject to change.  The es
   A  |  FILAMENT_POS_IN_BOWDEN = 2
   D  U  FILAMENT_POS_END_BOWDEN = 3
   |  N  FILAMENT_POS_HOMED_EXTRUDER = 4
-  |  L  FILAMENT_POS_PAST_EXTRUDER = 5
+  |  L  FILAMENT_POS_EXTRUDER_ENTRY = 5
   |  O  FILAMENT_POS_HOMED_TS = 6
   |  A  FILAMENT_POS_IN_EXTRUDER = 7    # AKA Filament is past the Toolhead Sensor
   v  D  FILAMENT_POS_LOADED = 8         # AKA Filament is homed to the nozzle
@@ -144,7 +144,7 @@ In additon to these states the macros are passed some additional information and
 #  A  |  FILAMENT_POS_IN_BOWDEN = 2
 #  D  U  FILAMENT_POS_END_BOWDEN = 3
 #  |  N  FILAMENT_POS_HOMED_EXTRUDER = 4
-#  |  L  FILAMENT_POS_PAST_EXTRUDER = 5
+#  |  L  FILAMENT_POS_EXTRUDER_ENTRY = 5
 #  |  O  FILAMENT_POS_HOMED_TS = 6
 #  |  A  FILAMENT_POS_IN_EXTRUDER = 7    # AKA Filament is past the Toolhead Sensor
 #  v  D  FILAMENT_POS_LOADED = 8         # AKA Filament is homed to the nozzle
@@ -196,7 +196,7 @@ gcode:
             _MMU_STEP_LOAD_TOOLHEAD
         {% endif %}
 
-    {% elif filament_pos < 5 %}		# FILAMENT_POS_PAST_EXTRUDER
+    {% elif filament_pos < 5 %}		# FILAMENT_POS_EXTRUDER_ENTRY
         {% if not skip_extruder %}
             _MMU_STEP_LOAD_TOOLHEAD
         {% endif %}
@@ -214,13 +214,13 @@ gcode:
     {% set park_pos = params.PARK_POS|float %}
 
     {% if extruder_only %}
-        {% if filament_pos >= 5 %}	# FILAMENT_POS_PAST_EXTRUDER
+        {% if filament_pos >= 5 %}	# FILAMENT_POS_EXTRUDER_ENTRY
             _MMU_STEP_UNLOAD_TOOLHEAD EXTRUDER_ONLY=1 PARK_POS={park_pos}
         {% else %}
             {action_raise_error("Can't unload extruder - already unloaded!")}
         {% endif %}
 
-    {% elif filament_pos >= 5 %}	# FILAMENT_POS_PAST_EXTRUDER
+    {% elif filament_pos >= 5 %}	# FILAMENT_POS_EXTRUDER_ENTRY
         # Exit extruder, fast unload of bowden, then slow unload encoder
         _MMU_STEP_UNLOAD_TOOLHEAD PARK_POS={park_pos}
         _MMU_STEP_UNLOAD_BOWDEN FULL=1
