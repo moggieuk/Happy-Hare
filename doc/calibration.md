@@ -2,10 +2,29 @@
 
 This discussion assumes that you have setup and debugged your hardware configuration.  A detailed discusion can be [found here](hardware_config.md).
 
-> **Warning** When calibrating the first time you must perform in the prescribed order.  Once complete you can re-calibrate particular steps but remember that some calibration changes will cascade.  E.g. after calibrating the gear, you must recalibrate the encoder, the bowden and possibly all the gates.  Generally you can re-calibrate the selector (step 3) and the gates (step 5) at any time, but the gear, encoder and bowden must always be done in that order!
+> **Warning** When calibrating the first time you must perform in the prescribed order.  Once complete you can re-calibrate particular steps but remember that some calibration changes will cascade.  E.g. after calibrating the gear, you must recalibrate the encoder, the bowden and possibly all the gates.  Generally you can re-calibrate the selector (step 1) and the gates (step 5) at any time, but the gear, encoder and bowden must always be done in that order!
+
+```mermaid
+graph TD;
+    Hardware_Working --> MMU_CALIBRATE_SELECTOR
+    Hardware_Working --> MMU_CALIBRATE_GEAR
+    MMU_CALIBRATE_GEAR --> MMU_CALIBRATE_BOWDEN
+    MMU_CALIBRATE_BOWDEN --> MMU_CALIBRATE_GEARS
+```
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Calibration Steps
-### Step 1. Calibrate your gear stepper
+### Step 1. Calibrate selector offsets
+Before the final calibration of bowden load length, let's get the selector cailbrated in this easy step.  This sets up the position all of all the gates as well as the bypass position if fitted.  Firstly remove filament from gate #0 -- you may need to run `MMU_SERVO POS=up` to release the filament. Insert and remove filament through selector to ensure that gate #0 is correctly lined with selector. Then run:
+
+  > MMU_CALIBRATE_SELECTOR
+
+Sit back and relax. The selector will move to find the extremes of movement and then use information about the geometry of the particular MMU and version/options you are using to generate and save the selector offsets automatically!  There are options to update a single position if you would like or run into problems. See the calibration details page or command reference for more detailed information on options, but basically you turn MMU motors off, line up the desired gate with the selector and run:
+
+  > MMU_CALIBRATE_SELECTOR GATE=..
+
+Notes: (i) ERCF v1.1 users need to pay particular attention to letter suffixes after the version number in `mmu_parameters.cfg`  (ii) ERCF v1.1 users that are using a bypass block modification also need to secify the position of that block with `BYPASS_BLOCK=` (see detailed notes)
+
+### Step 2. Calibrate your gear stepper
 In this step you are simply ensuring that when the gear is told to move 100mm of filament it actually really does move that much.  It is akin to what you did when you set up your extruder rotational distance although no Klipper restart is necessary!
 Position selector in from of gate #0 and put some filament into the gate. Run:
 
@@ -23,7 +42,7 @@ Get out your ruler can very carefully measure the length of the emited filament.
 
 You can also measure over a different length by using something like `MMU_TEST_MOVE MOVE=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
 
-### Step 2. Calibrate your encoder (if your MMU has own like the ERCF)
+### Step 3. Calibrate your encoder (if your MMU has own like the ERCF)
 Next step is to calibrate the encoder so it measures distance accurately. Re-fit the bowden to the selector/encoder (you can insert the short length of filament to tube as you fit to save time). Now run:
 
   > MMU_CALIBRATE_ENCODER
@@ -46,17 +65,6 @@ You will see an output similar to:
 ```
 
 > **Note** (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences. (ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions. (iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-) (iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
-
-### Step 3. Calibrate selector offsets
-Before the final calibration of bowden load length, let's get the selector cailbrated in this easy step.  This sets up the position all of all the gates as well as the bypass position if fitted.  Firstly remove filament from gate #0 -- you may need to run `MMU_SERVO POS=up` to release the filament. Insert and remove filament through selector to ensure that gate #0 is correctly lined with selector. Then run:
-
-  > MMU_CALIBRATE_SELECTOR
-
-Sit back and relax. The selector will move to find the extremes of movement and then use information about the geometry of the particular MMU and version/options you are using to generate and save the selector offsets automatically!  There are options to update a single position if you would like or run into problems. See the calibration details page or command reference for more detailed information on options, but basically you turn MMU motors off, line up the desired gate with the selector and run:
-
-  > MMU_CALIBRATE_SELECTOR GATE=..
-
-Notes: (i) ERCF v1.1 users need to pay particular attention to letter suffixes after the version number in `mmu_parameters.cfg`  (ii) ERCF v1.1 users that are using a bypass block modification also need to secify the position of that block with `BYPASS_BLOCK=` (see detailed notes)
 
 ### Step 4. Calibrate bowden length:
 Probably the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
