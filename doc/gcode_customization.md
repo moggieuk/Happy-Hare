@@ -7,18 +7,19 @@ Happy Hare provides a few defined "callbacks" that, if they exist, will be calle
 Most of the time Happy Hare will be in the `Idle` state but it starts to perform a new action this macro is called.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.mmu.action`
 
 Possible action strings are:
-```
-    Idle        - No action being performed
-    Loading     - Filament loading
-    Unloading   - Filamdng unloading
-    Loading Ext - Loading filament into the extruder (usually occurs after Loading)
-    Exiting Ext - Unloading filament from the extruder (usually after Foriming Tip and before Unloading)
-    Forming Tip - When running standalone tip forming (cannot detect when slicer does it)
-    Heating     - When heating the nozzle
-    Checking    - Checking gates for filament (MMU_CHECK_GATES)
-    Homing      - Homing the selector
-    Selecting   - When the selector is moving to select a new filament
-    Unknown     - Should not occur
+
+```yml
+    Idle           No action being performed
+    Loading        Filament loading
+    Unloading      Filamdng unloading
+    Loading Ext    Loading filament into the extruder (usually occurs after Loading)
+    Exiting Ext    Unloading filament from the extruder (usually after Foriming Tip and before Unloading)
+    Forming Tip    When running standalone tip forming (cannot detect when slicer does it)
+    Heating        When heating the nozzle
+    Checking       Checking gates for filament (MMU_CHECK_GATES)
+    Homing         Homing the selector
+    Selecting      When the selector is moving to select a new filament
+    Unknown        Should not occur
 ```
 
 <br>
@@ -256,7 +257,7 @@ gcode:
 
 The following are internal macros that can be called from within the `_MMU_LOAD_SEQUENCE` and `MMU_UNLAOD_SEQUENCE` callbacks:
 
-  | Macro | Description | Parameters |
+  | Macro | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Description&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Parameters |
   | ----- | ----------- | ---------- |
   | `_MMU_STEP_LOAD_ENCODER` | User composable loading step: Move filament from gate to start of bowden using encoder | |
   | `_MMU_STEP_LOAD_BOWDEN` | User composable loading step: Smart loading of bowden | `LENGTH=..` |
