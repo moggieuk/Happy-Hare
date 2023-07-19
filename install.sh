@@ -642,12 +642,12 @@ questionaire() {
             ;;
     esac
 
-    num_gates=9
+    mmu_num_gates=9
     echo
     echo -e "${PROMPT}How many gates (selectors) do you have (eg 3, 6, 9, 12)?${INPUT}"
     while true; do
-        read -p "Number of gates? " num_gates
-        if ! [ "${num_gates}" -ge 1 ] 2> /dev/null ;then
+        read -p "Number of gates? " mmu_num_gates
+        if ! [ "${mmu_num_gates}" -ge 1 ] 2> /dev/null ;then
             echo -e "${INFO}Positive integer value only"
       else
            break
