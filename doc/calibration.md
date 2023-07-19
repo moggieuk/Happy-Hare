@@ -7,7 +7,7 @@ This discussion assumes that you have setup and debugged your hardware configura
 ```mermaid
 graph TD;
     Hardware_Working --> MMU_CALIBRATE_SELECTOR
-    MMU_CALIBRATE_SELECTOR --> MMU_CALIBRATE_ENCODER
+    MMU_CALIBRATE_SELECTOR --> MMU_CALIBRATE_BOWDEN
     Hardware_Working --> MMU_CALIBRATE_GEAR
     MMU_CALIBRATE_GEAR --> MMU_CALIBRATE_ENCODER
     MMU_CALIBRATE_ENCODER --> MMU_CALIBRATE_BOWDEN
@@ -30,6 +30,8 @@ Although it should not be necessary, there are options to update a single positi
 
 **Validation:** At the end of this step you should be able to select any tool/gate on your MMU. For instance, try running `MMU_HOME TOOL=3` to re-home and select too/gate #3.
 
+<br>
+
 ### Step 2. Calibrate your gear stepper
 In this step you are simply ensuring that when the gear stepper is told to move 100mm of filament it really does move 100mm.  It is akin to what you did when you set up your extruder rotational distance although in this case no Klipper restart is necessary!  Position selector in front of gate #0 and put some filament into the gate. Run:
 
@@ -42,12 +44,17 @@ This will load a short length of filament and ensure the servo is down.  Next re
 Get out your ruler can very carefully measure the length of the emited filament.  Hold your ruler up to the bowden and gently pull the filament straight to get an accurate measurement. Next run this specifying your actual measured value (102.5 used in this example):
 
   > MMU_CALIBRATE_GEAR MEASURED=102.5
-  > Gear stepper `rotation_distance` calculated to be 23.117387
-  > Gear calibration has been saved for MMU ERCF v1.1sb
 
-You can also measure over a different length by using something like `MMU_TEST_MOVE MOVE=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
+```
+    Gear stepper `rotation_distance` calculated to be 23.117387
+    Gear calibration has been saved
+```
+
+> **Note** You can also measure over a different length by using something like `MMU_TEST_MOVE MOVE=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
 
 **Validation:** If you want to test, snip the filament again flush with the ECAS connector and run `MMU_TEST_MOVE`.  Exactly 100mm should be moved this time.
+
+<br>
 
 ### Step 3. Calibrate your encoder (if your MMU has one like the ERCF design)
 Next step is to calibrate the encoder so it measures distance accurately. Re-fit the bowden to the selector/encoder (you can insert the short length of filament to tube as you fit to save time). Now run:
@@ -71,7 +78,9 @@ You will see an output similar to:
     Encoder calibration has been saved for MMU ERCF v1.1sb
 ```
 
-> **Note** (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences. (ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions. (iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-) (iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
+> **Note**<br>(i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences.<br>(ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions.<br>(iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-)<br>(iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
+
+<br>
 
 ### Step 4. Calibrate bowden length:
 Optionally the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
@@ -103,10 +112,40 @@ Optionally the last calibration before use! Here you can calibrate the length of
     Bowden calibration and clog detection length have been saved for MMU ERCF v1.1sbTODO
 ```
 
-Notes: (i) This calibration assumes that the selector has been calibrated first. (ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
+> **Note**<br>(i) This calibration assumes that the selector has been calibrated first.<br>(ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
+
+<br>
 
 ### Optional Step 5. Calibrating gates:
-This step allows for calibrating slight differences between gates.  It isn't required (or useful) for designs that cannot have variation like the Tradrack MMU but is useful for designs like ERCF that can have variation of feed between gates.  Even with ERCF this is optional because if not run, the gates will tune themselves as they are used automatically!  That said it be beneficial to get this out of the way with a test piece of filament but doing it also: (i) removes the need to set the `auto_calibrate_gates` in `mmu_parameters.cfg`, (ii) necessary if there is substantial variation between gates -- e.g. if BMG gears for different gates are sourced from different vendors.
+This step allows for calibrating slight differences between gates.  It isn't required (or useful) for designs that cannot have variation like the Tradrack MMU but is useful for designs like ERCF that can have variation of feed between gates.  Even with ERCF this is optional because if not run, the gates will tune themselves as they are used automatically!  That said it be beneficial to get this out of the way with a test piece of filament but doing it also: (i) removes the need to set the `auto_calibrate_gates` in `mmu_parameters.cfg`, (ii) is necessary if there is substantial variation between gates -- e.g. if BMG gears for different gates are sourced from different vendors.
+
+Simply make sure filament is available at the gate you want to calibrate -- you can hold a (500mm) loose piece of filament and run:
+
+> MMU_CALIBRATE_GATES GATE=1
+
+You will see an output similar to:
+
+```
+    Tool T1 enabled
+    Calibrating gate 1 over 400.0mm...
+    + measured = 404.4mm
+    - measured = 404.4mm
+    + measured = 404.4mm
+    - measured = 404.4mm
+    + measured = 405.5mm
+    - measured = 405.5mm
+    Load direction: mean=404.7 stdev=0.63 min=404.4 max=405.5 range=1.1
+    Unload direction: mean=404.7 stdev=0.63 min=404.4 max=405.5 range=1.1
+    Calibration move of 6x 400.0mm, average encoder measurement: 404.7mm - Ratio is 1.011872
+    (Gate #1 rotation_distance: 22.941324 vs Gate #0: 22.672165)
+    Calibration for gate #1 has been saved
+```
+
+> **Note** You can also quickly run through all gates (even pass the loose filament gate to gate) with `MMU_CALIBRATE_GATES ALL=1`
+
+<br>
+
+> **Warning**<br>All of the calibration steps can be run in a "check/test" mode.  Simply add `SAVE=0` to the command and the calibration will be run but the results will not be saved.  This is very useful for verification.<br>Finally, remember that the results from all the calibration is stored in `mmu_vars.cfg` so you can also view/edit that file directly.
 
 <br>
 
