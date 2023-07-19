@@ -1,6 +1,6 @@
 # Hardware configuration, Movement and Homing
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Hardware configuration (mmu_hardware.cfg explained)
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware configuration (mmu_hardware.cfg explained)
 
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
@@ -55,18 +55,24 @@ Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
 If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
 
-### Step 2. Check motor movement direction
+<br>
+
+### Step 2. Check motor movement and direction
 TODO .. help on basic motor movement and direction / changes
-
-### Step 3. Check endstops & option sensors
-TODO .. help on how to validate endtops and reverse polarity
-
-### Step 4. Check Encoder (if fitted)
-TODO .. help on validating that it is registering
 
 <br>
 
-## ![#f03c15](https://placehold.co/15x15/f03c15/f03c15.png) ![#c5f015](https://placehold.co/15x15/c5f015/c5f015.png) ![#1589F0](https://placehold.co/15x15/1589F0/1589F0.png) Endstops and MMU Movement
+### Step 3. Check endstops & optional sensors
+TODO .. help on how to validate endtops and reverse polarity
+
+<br>
+
+### Step 4. Check Encoder (if fitted)
+TODO .. help on validating that it is registering movement
+
+<br>
+
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Endstops and MMU Movement
 TODO
 Talk about:
 - new endstop naming (and mmu_ convention)
