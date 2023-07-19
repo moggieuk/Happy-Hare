@@ -113,7 +113,7 @@ Happy Hare has a built in help system to aid remembering the command set. It can
  
   > MMU_HELP
 
-```
+```yml
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
     MMU - Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL - Perform a tool swap
@@ -147,7 +147,7 @@ To additionaly see testing command set and macros.
 <br>
 Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
 
-```
+```yml
     printer.mmu.enabled : {bool}
     printer.mmu.is_locked : {bool}
     printer.mmu.is_homed : {bool}
@@ -174,7 +174,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
 
 Optionally exposed on mmu_encoder (if fitted):
 
-```
+```yml
     printer['mmu_encoder mmu_encoder'].encoder_pos : {float} Encoder position measurement in mm
     printer['mmu_encoder mmu_encoder'].detection_length : {float} The detection length for clog detection
     printer['mmu_encoder mmu_encoder'].min_headroom : {float} How close clog detection was from firing on current tool change
@@ -199,7 +199,7 @@ Happy Hare functionality will vary with MMU vendor. After running the installer 
 <summary><sub>🔹 Read more about vendor/version specification...</sub></summary>
 <br>
  
-```
+```yml
 # The vendor and version config is important to define the capabiliies of the MMU
 #
 # ERCF
@@ -226,7 +226,7 @@ mmu_num_gates: 9                        # Number of selector gates
 </details>
 
 ### 2\. Validate your mmu_hardware.cfg configuration and basic operation
-Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propel the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [Hardward configuration doc here](doc/hardware_config.md) for detailed instructions.
+Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propel the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [Hardward configuration doc](doc/hardware_config.md) for detailed instructions.
 
 <details>
 <summary><sub>🔹 Details on optional hardware...</sub></summary>
@@ -257,7 +257,7 @@ Normally the encoder is automatically enabled when needed and disabled when not 
 </details>
 
 ### 3\. Calibration Commands
-Before using your MMU you will need to calibrate it to adjust for the differences in componets used on your particular build.  Be careful to calibrate in the recommended order because some settings build on earlier ones. Happy Hare now has automated calibration for some of the traditionally longer steps and does not require any Klipper restarts so the process is quick and painless. See [MMU Calibration doc here](doc/calibration.md) for detailed instructions
+Before using your MMU you will need to calibrate it to adjust for the differences in componets used on your particular build.  Be careful to calibrate in the recommended order because some settings build on earlier ones. Happy Hare now has automated calibration for some of the traditionally longer steps and does not require any Klipper restarts so the process is quick and painless. See [MMU Calibration doc](doc/calibration.md) for detailed instructions
 
 ### 4\. Setup configuration in mmu_parameters.cfg
 After calibration you might want to review and tweak the configuration and options in `mmu_parameters.cfg`.  The default values set by the installer are good starting points although you will always have to specify things like the dimensions of your extruder which are very specific. The [MMU Configuration guide](doc/configuration.md) contains an in-depth reference but some of the selected features are also discussed in more detail in the following sections.
@@ -418,7 +418,7 @@ Aside from showing that I was up too late writing this doc, this indicates how I
 
 In addition to basic operational state the print statistics and gate health statistics are persisted and so occasionally you might want to explicitly reset them with `MMU_STATS RESET=1`.  There are 5 levels of operation for this feature that you can set based on your personal preference/habbits. The level is controlled by a single variable `persistence_level` in `mmu_parameters.cfg`:
 
-```
+```yml
 # Turn on behavior -------------------------------------------------------------------------------------------------------
 # MMU can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
 # additional state information requiring progressively less inital setup. The higher level assume that you don't touch
@@ -491,7 +491,6 @@ Which would reverse tool to gate mapping for a 9 gate MMU!
 An example of how to interpret a TTG map (this example has EndlessSpool disabled). Here tools T0 to T2 and T7 are mapped to respective gates, T3 to T5 are all mapped to gate #3, tools T6 and T8 have their gates swapped.  This also tells you that gates #1 and #2 have filament available in the buffer rather than in the spool for other gates and that gate #7 is currently empty/unavailable.
 
 ```
-    MMU_REMAP_TTG
     T0 -> Gate #0(S)
     T1 -> Gate #1(B) [SELECTED on gate #1]
     T2 -> Gate #2(B)
@@ -646,7 +645,7 @@ There are four configuration options that control logging, both statistical logg
 Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`:
 <br>
 
-```
+```yml
 log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
 Generally you can keep console logging to a minimal whilst still sending debug output to the mmu.log file
 Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
@@ -734,11 +733,11 @@ There are a couple of commands (`MMU_PRELOAD` and `MMU_CHECK_GATES`) that are us
 <details>
 <summary><sub>🔹 Read more on pre-print readiness...</sub></summary><br>
  
-The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  Then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted blocking the gate.<br>
+The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  It then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted potentially preventing pickup or blocking the gate.<br>
 
 Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates.<br>
 
-> **Note** The `MMU_CHECK_GATES` command has a special option that is designed to be called from your print_start macro. Unfortunately this requires slicer support to privide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print!
+> **Note** The `MMU_CHECK_GATES` command has a special option that is designed to be called from your print_start macro. Unfortunately this requires slicer support to provide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print.  This is/will be a really useful pre-print check!
 
 </details>
 
@@ -836,7 +835,7 @@ The "visual log" (set at level 2) above shows individual steps of a typical load
 #### Speeds:
 Filament movement speeds for all operations are detailed in the `mmu_parameters.cfg` file. Note that gear motor acceleration is defined on the gear_stepper motor in `mmu_hardware.cfg` and used for all user controlled moves (internal gear buzz moves have internally controlled acceleration).
 
-```
+```yml
 # Movement speeds ----------------------------------------------------------------------------------------------------------
 #
 # Long moves are faster than the small ones and used for the bulk of the bowden movement. Note that you can set two fast load
@@ -914,7 +913,7 @@ The "visual log" (set at level 2) above shows individual steps of a typical unlo
 #### Unload Speeds:
 See comments in `mmu_parameters.cfg` or speeds section under the load sequence for more details, but parameters that effect unload speeds include:
 
-```
+```yml
 gear_from_buffer_speed: 160		# Fast bowden unload speed
 gear_short_move_speed: 60		# Slow bowden unload speed for recovery
 gear_homing_speed: 50			# When homing to endstop (e.g. Tradrack)
