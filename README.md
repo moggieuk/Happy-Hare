@@ -376,8 +376,8 @@ This will not only run your own print resume logic, but it will reset the heater
 
 ```mermaid
 graph TD;
-    Printing --> Error
-    Error --> Fix_Problem
+    Printing --> Paused_Error
+    Paused_Error --> Fix_Problem
     Fix_Problem --> RESUME
     Fix_Problem --> MMU_RECOVER
     Fix_Problem --> CANCEL_PRINT
@@ -655,7 +655,7 @@ The logfile will be placed in the same directory as other log files and is calle
 
 ### 7. Pause / Resume / Cancel_print macros:
 
-Regardless of whether you use your own Pause/Print/Cancel_print macros or use the ones provided in `client_macros.cfg`, Happy Hare will automatically wrap anything defined so that it can inject the necessary steps to control the MMU.
+Regardless of whether you use your own PAUSE / RESUME / CANCEL_PRINT macros or use the ones provided in `client_macros.cfg`, Happy Hare will automatically wrap anything defined so that it can inject the necessary steps to control the MMU.
 
 <details>
 <summary><sub>🔹 Read more aboout what Happy Hare adds to these macros...</sub></summary><br>
@@ -676,7 +676,11 @@ Happy Hare is a state machine. That means it keeps track of the the state of the
 <details>
 <summary><sub>🔹 Read more how to recover MMU state...</sub></summary><br>
  
-At some point when a project occurs during a multi-color print your MMU will pause with an error.  Generally the user would then fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:<br>
+At some point when a problem occurs during a multi-color print your MMU will pause with an error.  Generally the user would then fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!
+<br>
+
+Here are some examples:
+<br>
 
 ```
 MMU_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
@@ -698,12 +702,12 @@ The `MMU_STATS` command will display these stats and will give a rating on the "
 </details>
 
 ### 10. Filament bypass
-If you have installed the optional filament bypass block (ERCF v1.1) or have an ERCF v2.0 your can configure a selector position to select this bypass postion. This is useful if you want to do a quick print with a filament you don't have loaded on the MMU.
+If you have installed a filament bypass selector position (e.g. the optional filament bypass block on ERCF v1.1 or have an ERCF v2.0) you can configure a selector position to select this bypass postion. This is useful if you want to do a quick print with a filament you don't have loaded on the MMU.
 
 <details>
 <summary><sub>🔹 Read more on filament bypass...</sub></summary><br>
  
-The position of the bypass is configured automatically during calibration and persisted in `mmu_vars.cfg` as `mmu_selector_bypass` variable but can also be calibrated manually (see calibration guide).
+The position of the bypass is configured automatically during calibration for standard builds and persisted in `mmu_vars.cfg` as `mmu_selector_bypass` variable but can also be calibrated manually (see calibration guide).
 
 Once configured you can select the bypass position with:
 
@@ -729,9 +733,9 @@ There are a couple of commands (`MMU_PRELOAD` and `MMU_CHECK_GATES`) that are us
  
 The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  It then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted potentially preventing pickup or blocking the gate.<br>
 
-Similarly the `MMU_CHECK_GATES` command will run through all the gates (or those specified), checks that filament is loaded, correctly parks and updates the "gate status" map of empty gates.<br>
+Similarly the `MMU_CHECK_GATES` command will run through all the gates (or the one specified), checks that filament is loaded, correctly parks and updates the "gate status" map so the MMU knows which gates have filament available.<br>
 
-> **Note** The `MMU_CHECK_GATES` command has a special option that is designed to be called from your print_start macro. Unfortunately this requires slicer support to provide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print.  This is/will be a really useful pre-print check!
+> **Note** The `MMU_CHECK_GATES` command has a special option that is designed to be called from your `PRINT_START` macro. Unfortunately this requires slicer support to provide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print.  This is (will be) a really useful pre-print check!
 
 </details>
 
@@ -771,7 +775,7 @@ To change for a particular gate use a command in this form:
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Filament loading and unloading sequences
-Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`.  These are grouped into "modular phases" that control each step of the process and vary slightly based on the capabilities of your particular MMU.  Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later.
+Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`.  These are grouped into "modular phases" that control each step of the process and vary slightly based on the capabilities of your particular MMU.  Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later in the [gcode guide](doc/gcode_customization.md).
 
 ### Understanding the load sequence:
 
