@@ -411,7 +411,7 @@ class Mmu:
         self.gcode.register_command('MMU_CHANGE_TOOL', self.cmd_MMU_CHANGE_TOOL, desc = self.cmd_MMU_CHANGE_TOOL_help)
         self.gcode.register_command('MMU_LOAD', self.cmd_MMU_LOAD, desc=self.cmd_MMU_LOAD_help)
         self.gcode.register_command('MMU_EJECT', self.cmd_MMU_EJECT, desc = self.cmd_MMU_EJECT_help)
-        self.gcode.register_command('MMU_UNLOCK', self.cmd_MMU_UNLOCK, desc = self.cmd_MMU_UNLOCK_help)
+#PAUL        self.gcode.register_command('MMU_UNLOCK', self.cmd_MMU_UNLOCK, desc = self.cmd_MMU_UNLOCK_help)
         self.gcode.register_command('MMU_PAUSE', self.cmd_MMU_PAUSE, desc = self.cmd_MMU_PAUSE_help)
         self.gcode.register_command('MMU_RECOVER', self.cmd_MMU_RECOVER, desc = self.cmd_MMU_RECOVER_help)
 
@@ -1108,7 +1108,7 @@ class Mmu:
 
         msg = "%s v%s" % (self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
-        msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED/LOCKED" if self.is_paused_locked else "OPERATIONAL")
+        msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_paused_locked else "OPERATIONAL")
         msg += " with the servo in a %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
         msg += ", Encoder reads %.2fmm" % self.encoder_sensor.get_distance()
@@ -1238,7 +1238,7 @@ class Mmu:
     cmd_MMU_SERVO_help = "Move MMU servo to position specified position or angle"
     def cmd_MMU_SERVO(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         pos = gcmd.get('POS', "").lower()
         if pos == "up":
             self._servo_up()
@@ -1673,7 +1673,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_GEAR_help = "Calibration routine for gear stepper rotational distance"
     def cmd_MMU_CALIBRATE_GEAR(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         length = gcmd.get_float('LENGTH', 100., above=50.)
         measured = gcmd.get_float('MEASURED', above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
@@ -1693,7 +1693,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_ENCODER_help = "Calibration routine for the MMU encoder"
     def cmd_MMU_CALIBRATE_ENCODER(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR): return
 
@@ -1716,7 +1716,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
@@ -1735,7 +1735,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for gate #0"
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR): return
@@ -1759,7 +1759,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_GATES_help = "Optional calibration of individual MMU gate"
     def cmd_MMU_CALIBRATE_GATES(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR|self.CALIBRATED_BOWDEN): return
@@ -1826,7 +1826,7 @@ class Mmu:
             self._save_toolhead_position_and_lift()
             msg = "An issue with the MMU has been detected. Print paused"
             reason = "Reason: %s" % reason
-            extra = "When you intervene to fix the issue, first call \'MMU_UNLOCK\'"
+            extra = "After fixing the issue, call \'RESUME\' to continue printing"
             run_pause = True
         elif self._is_in_pause():
             msg = "An issue with the MMU has been detected whilst printer is paused"
@@ -1845,7 +1845,7 @@ class Mmu:
             self.gcode.run_script_from_command("PAUSE")
 
     def _unlock(self):
-        if not self.is_paused_locked: return
+# PAUL        if not self.is_paused_locked: return
         self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
         if not self.printer.lookup_object(self.extruder_name).heater.can_extrude and self.paused_extruder_temp > 0:
             self._log_info("Enabling extruder heater (%.1f)" % self.paused_extruder_temp)
@@ -1915,11 +1915,12 @@ class Mmu:
             return True
         return False
 
-    def _check_is_paused(self):
-        if self.is_paused_locked:
-            self._log_error("MMU is currently locked/paused. Please use MMU_UNLOCK")
-            return True
-        return False
+# PAUL
+#    def _check_is_paused(self):
+#        if self.is_paused_locked:
+#            self._log_error("MMU is currently locked/paused. Please use MMU_UNLOCK")
+#            return True
+#        return False
 
     def _check_in_bypass(self):
         if self.tool_selected == self.TOOL_BYPASS and self.filament_pos != self.FILAMENT_POS_UNLOADED:
@@ -2435,7 +2436,7 @@ class Mmu:
 
     def _move_cmd(self, gcmd, trace_str):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', None)
@@ -2452,7 +2453,7 @@ class Mmu:
 
     def _homing_move_cmd(self, gcmd, trace_str):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         endstop = gcmd.get('ENDSTOP', "default")
         move = gcmd.get_float('MOVE', 100.)
@@ -2964,7 +2965,7 @@ class Mmu:
 
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False):
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self._log_debug("Tool already unloaded")
             return
@@ -3377,9 +3378,10 @@ class Mmu:
         current_action = self._set_action(self.ACTION_HOMING)
         try:
             self._log_info("Homing MMU...")
-            if self.is_paused_locked:
-                self._log_debug("MMU is locked, unlocking it before continuing...")
-                self._unlock()
+# PAUL
+#            if self.is_paused_locked:
+#                self._log_debug("MMU is locked, unlocking it before continuing...")
+#                self._unlock()
 
             if force_unload != -1:
                 self._log_debug("(asked to %s)" % ("force unload" if force_unload == 1 else "not unload"))
@@ -3604,15 +3606,16 @@ class Mmu:
 
 ### CORE GCODE COMMANDS ##########################################################
 
-    cmd_MMU_UNLOCK_help = "Unlock MMU operations after an error condition"
-    def cmd_MMU_UNLOCK(self, gcmd):
-        if self._check_is_disabled(): return
-        if not self.is_paused_locked:
-            self._log_info("MMU is not locked")
-            return
-        self._log_info("Unlocking the MMU")
-        self._unlock()
-        self._log_info("When the issue is addressed you can resume print")
+# PAUL
+#    cmd_MMU_UNLOCK_help = "Unlock MMU operations after an error condition"
+#    def cmd_MMU_UNLOCK(self, gcmd):
+#        if self._check_is_disabled(): return
+#        if not self.is_paused_locked:
+#            self._log_info("MMU is not locked")
+#            return
+#        self._log_info("Unlocking the MMU")
+#        self._unlock()
+#        self._log_info("When the issue is addressed you can resume print")
 
     cmd_MMU_HOME_help = "Home the MMU selector"
     def cmd_MMU_HOME(self, gcmd):
@@ -3634,7 +3637,7 @@ class Mmu:
     cmd_MMU_SELECT_help = "Select the specified logical tool (following TTG map) or physical gate"
     def cmd_MMU_SELECT(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_not_homed(): return
         if self._check_is_loaded(): return
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
@@ -3668,7 +3671,7 @@ class Mmu:
     cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap"
     def cmd_MMU_CHANGE_TOOL(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(): return
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
@@ -3693,7 +3696,7 @@ class Mmu:
     cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)"
     def cmd_MMU_LOAD(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         in_bypass = self.gate_selected == self.TOOL_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
         restore_encoder = self._disable_encoder_sensor() # Don't want runout accidently triggering during filament load
@@ -3714,7 +3717,7 @@ class Mmu:
     cmd_MMU_EJECT_help = "Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)"
     def cmd_MMU_EJECT(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_is_calibrated(): return
         in_bypass = self.gate_selected == self.TOOL_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
@@ -3740,7 +3743,7 @@ class Mmu:
     cmd_MMU_SELECT_BYPASS_help = "Select the filament bypass"
     def cmd_MMU_SELECT_BYPASS(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_not_homed(): return
         if self._check_is_loaded(): return
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
@@ -3752,7 +3755,7 @@ class Mmu:
     cmd_MMU_PAUSE_help = "Pause the current print and lock the MMU operations"
     def cmd_MMU_PAUSE(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1))
         self._pause("Pause macro was directly called", force_in_print)
@@ -3765,8 +3768,10 @@ class Mmu:
             return
         self._log_debug("MMU_RESUME wrapper called")
         if self.is_paused_locked:
-            self._log_always("You can't resume the print without unlocking the MMU first")
-            return
+            self._unlock() # PAUL
+# PAUL
+#            self._log_always("You can't resume the print without unlocking the MMU first")
+#            return
         if not self.printer.lookup_object("pause_resume").is_paused:
             self._log_always("Print is not paused")
             return
@@ -3797,8 +3802,10 @@ class Mmu:
             return
         self._log_debug("MMU_CANCEL_PRINT wrapper called")
         if self.is_paused_locked:
-            self._track_pause_end()
-            self.is_paused_locked = False
+            self._unlock() # PAUL
+# PAUL
+#            self._track_pause_end()
+#            self.is_paused_locked = False
         self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
         self._save_toolhead_position_and_lift(False)
         self.gcode.run_script_from_command("__CANCEL_PRINT")
@@ -3806,7 +3813,7 @@ class Mmu:
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
     def cmd_MMU_RECOVER(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         tool = gcmd.get_int('TOOL', self.TOOL_UNKNOWN, minval=-2, maxval=self.mmu_num_gates - 1)
         mod_gate = gcmd.get_int('GATE', self.TOOL_UNKNOWN, minval=-2, maxval=self.mmu_num_gates - 1)
         loaded = gcmd.get_int('LOADED', -1, minval=0, maxval=1)
@@ -3855,7 +3862,7 @@ class Mmu:
     cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
     def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_is_loaded(): return
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
         loops = gcmd.get_int('LOOP', 100)
@@ -3881,7 +3888,7 @@ class Mmu:
     cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help = "Soak test tool load/unload sequence"
     def cmd_MMU_SOAKTEST_LOAD_SEQUENCE(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         if self._check_not_homed(): return
         if self._check_is_calibrated(): return
@@ -3914,7 +3921,7 @@ class Mmu:
     cmd_MMU_TEST_GRIP_help = "Test the MMU grip for a Tool"
     def cmd_MMU_TEST_GRIP(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         self._servo_down()
         self._motors_off(motor="gear")
@@ -3922,7 +3929,7 @@ class Mmu:
     cmd_MMU_TEST_TRACKING_help = "Test the tracking of gear feed and encoder sensing"
     def cmd_MMU_TEST_TRACKING(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         if self._check_not_homed(): return
         if self._check_is_calibrated(): return
@@ -3955,7 +3962,7 @@ class Mmu:
     cmd_MMU_TEST_LOAD_help = "For quick testing filament loading from gate to the extruder"
     def cmd_MMU_TEST_LOAD(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self._check_in_bypass(): return
         if self._check_is_loaded(): return
         if self._check_is_calibrated(): return
@@ -4109,7 +4116,7 @@ class Mmu:
 ###########################################
 
     def _handle_runout(self, force_runout):
-        if self._check_is_paused(): return
+#PAUL        if self._check_is_paused(): return
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
