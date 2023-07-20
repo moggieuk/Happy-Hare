@@ -1,23 +1,28 @@
 # G-Code Customization (including Filament Loading and Unloading)
 Happy Hare provides a few defined "callbacks" that, if they exist, will be called at specific times.  They are designed for you to be able to extend the base functionality and to implement additional operations.  For example, if you want to control your printers LED's based on the action Happy Hare is performing you would modify `_MMU_ACTION_CHANGED`.  All of the default handlers and examples are defined in `mmu_software.cfg` and serve as a starting point for modification.
 
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ACTION_CHANGED
 Most of the time Happy Hare will be in the `Idle` state but it starts to perform a new action this macro is called.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.mmu.action`
 
 Possible action strings are:
+
+```yml
+    Idle           No action being performed
+    Loading        Filament loading
+    Unloading      Filamdng unloading
+    Loading Ext    Loading filament into the extruder (usually occurs after Loading)
+    Exiting Ext    Unloading filament from the extruder (usually after Foriming Tip and before Unloading)
+    Forming Tip    When running standalone tip forming (cannot detect when slicer does it)
+    Heating        When heating the nozzle
+    Checking       Checking gates for filament (MMU_CHECK_GATES)
+    Homing         Homing the selector
+    Selecting      When the selector is moving to select a new filament
+    Unknown        Should not occur
 ```
-    Idle        - No action being performed
-    Loading     - Filament loading
-    Unloading   - Filamdng unloading
-    Loading Ext - Loading filament into the extruder (usually occurs after Loading)
-    Exiting Ext - Unloading filament from the extruder (usually after Foriming Tip and before Unloading)
-    Forming Tip - When running standalone tip forming (cannot detect when slicer does it)
-    Heating     - When heating the nozzle
-    Checking    - Checking gates for filament (MMU_CHECK_GATES)
-    Homing      - Homing the selector
-    Selecting   - When the selector is moving to select a new filament
-    Unknown     - Should not occur
-```
+
+<br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ENDLESS_SPOOL_PRE_UNLOAD & _MMU_ENDLESS_SPOOL_POST_LOAD
 If EndlessSpool is enabled, Happy Hare will unload the remains of the filament from the exhausted spool and load the new spool. These macros are called at the beginning and end of that sequence.  `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` is called because Happy Hare initiates the tip forming and typically would move the toolhead to a suitable "park" position it doesn't ooze onto your print.  This is commonly exactly the same as your `PAUSE` macro and so that is what the default handler calls.<br>
@@ -25,7 +30,8 @@ If EndlessSpool is enabled, Happy Hare will unload the remains of the filament f
 `MMU_ENDLESS_SPOOL_POST_LOAD` is called after the MMU has loaded the new filament from the next spool in rotation to the nozzle the same way as a normal filament swap (the previously configured Pressure Advance will be restored). Typically this would be a place to purge additional filament if necessary (it really shouldn't be) and clean nozzle if your printer is suitably equipped. I.e. similar to a typical `RESUME` macro.<br>
 
 Here are the default macros:
-```
+
+```yml
 ###########################################################################
 # Callback macros for modifying Happy Hare behavour
 # Note that EndlessSpool is an unsupervised filament change
@@ -59,10 +65,12 @@ gcode:
     RESUME
 ```
 
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_FORM_TIP_STANDALONE
 TODO ... lots to document here!
 
-```
+```yml
 # Unloading and Ramming values - Initial moves to form and shape tip
 variable_unloading_speed_start: 80     # Fast here to seperate the filament from meltzone (Very intitial retract SS uses distance of E-15)
 variable_unloading_speed: 20           # Too fast forms excessively long tip or hair. Slow is better here UNLOADING_SPEED_START/COOLING_MOVES seems a good start
@@ -93,28 +101,31 @@ variable_use_fast_skinnydip: 0         # Skip the toolhead temp change during sk
 variable_final_eject: 0                # default 0, enable during standalone tuning process to eject the filament
 ```
 
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_LOAD_SEQUENCE & _MMU_UNLOAD_SEQUENCE
-This is new EXPERIMENTAL functionality and as such is subject to change.  The essential information is that by default these macros are not called. If `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_software.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
+This is new EXPERIMENTAL functionality and as such is subject to change.  By default these macros are not called, however, if `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_software.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
 
 `mmu_software.cfg` contains futher examples for alternative MMU setups, but before experimenting it is essential to understand the state machine for filament position.  These states are as follows and the loading/unloading sequence must be capable of completing the load/unload sequence for any starting state.<br>
 
-```
-        FILAMENT_POS_UNKNOWN = -1
-  L  ^  FILAMENT_POS_UNLOADED = 0
-  O  |  FILAMENT_POS_START_BOWDEN = 1
-  A  |  FILAMENT_POS_IN_BOWDEN = 2
-  D  U  FILAMENT_POS_END_BOWDEN = 3
-  |  N  FILAMENT_POS_HOMED_EXTRUDER = 4
-  |  L  FILAMENT_POS_EXTRUDER_ENTRY = 5
-  |  O  FILAMENT_POS_HOMED_TS = 6
-  |  A  FILAMENT_POS_IN_EXTRUDER = 7    # AKA Filament is past the Toolhead Sensor
-  v  D  FILAMENT_POS_LOADED = 8         # AKA Filament is homed to the nozzle
+```mermaid
+graph TD;
+    UNLOADED --> START_BOWDEN
+    START_BOWDEN --> IN_BOWDEN
+    IN_BOWDEN --> END_BOWDEN
+    END_BOWDEN --> HOMED_EXTRUDER
+    END_BOWDEN --> EXTRUDER_ENTRY
+    HOMED_EXTRUDER --> EXTRUDER_ENTRY
+    EXTRUDER_ENTRY --> HOMED_TS
+    EXTRUDER_ENTRY --> IN_EXTRUDER
+    HOMED_TS --> IN_EXTRUDER
+    IN_EXTRUDER --> LOADED
 ```
 
 In additon to these states the macros are passed some additional information and hints about the context.  An important one is `FILAMENT_POS` which represents the position of the filament in mm either from "point 0" in the gate (load direction) or from the nozzle (unload direction).  Here are the default macros with additional information:<br>
 
 
-```
+```yml
 ###########################################################################
 # ADVANCED: User modifable loading and unloading sequences
 #
@@ -246,7 +257,7 @@ gcode:
 
 The following are internal macros that can be called from within the `_MMU_LOAD_SEQUENCE` and `MMU_UNLAOD_SEQUENCE` callbacks:
 
-  | Macro | Description | Parameters |
+  | Macro | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Description&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Parameters |
   | ----- | ----------- | ---------- |
   | `_MMU_STEP_LOAD_ENCODER` | User composable loading step: Move filament from gate to start of bowden using encoder | |
   | `_MMU_STEP_LOAD_BOWDEN` | User composable loading step: Smart loading of bowden | `LENGTH=..` |
