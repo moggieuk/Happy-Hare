@@ -138,7 +138,6 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     MMU_SET_GATE_MAP - Define the type and color of filaments on each gate
     MMU_STATUS - Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder stepper
-    MMU_UNLOCK - Unlock MMU operations after an error condition
  ```
 
   > MMU_HELP MACROS=1 TESTING=1
@@ -363,11 +362,7 @@ A few things happen in this "locked" state:
   <li>The extruder will remain hot for the time set with `disable_heater`</li>
 </ul>
 
-To proceed you first issue and command to unlock the MMU and acknowledge that you are addressing the issue:
-
-> MMU_UNLOCK
-
-You then need to address the specific issue. You can move the filament by hand or use basic MMU commands. Once you think you have things corrected you may need to run:
+To proceed you need to address the specific issue. You can move the filament by hand or use basic MMU commands. Once you think you have things corrected you may need to run:
 
 > MMU_RECOVER (optional)
 
@@ -382,8 +377,7 @@ This will not only run your own print resume logic, but it will reset the heater
 ```mermaid
 graph TD;
     Printing --> Error
-    Error --> MMU_UNLOCK
-    MMU_UNLOCK --> Fix_Problem
+    Error --> Fix_Problem
     Fix_Problem --> RESUME
     Fix_Problem --> MMU_RECOVER
     Fix_Problem --> CANCEL_PRINT
@@ -562,7 +556,7 @@ If you MMU is equiped with an encoder it can be used to detect filament runout o
 <details>
 <summary><sub>🔹 Read more runout/clog detection, EndlessSpool and flowrate monitoring...</sub></summary><br>
  
-Runout and Clog detection functionality are enabled with the `enable_clog_detection` parameter in mmu_parameters.cfg.  It works by comparing filament extruded to that measured by the encoder and if this is ever greater than the `mmu_calibration_clog_length` (stored in mmu_vars.cfg) the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require `MMU_UNLOCK` & `RESUME` to continue.  If a runout is determined and EndlessSpool is enabled the fragment of filament will be unloaded, the current tool will be remaped to the next specified gate, and printing will automatically continue.<br>
+Runout and Clog detection functionality are enabled with the `enable_clog_detection` parameter in mmu_parameters.cfg.  It works by comparing filament extruded to that measured by the encoder and if this is ever greater than the `mmu_calibration_clog_length` (stored in mmu_vars.cfg) the runout/clog detection logic is triggered.  If it is determined to be a clog, the printer will pause in the usual manner and require fixing followed by & `RESUME` to continue.  If a runout is determined and EndlessSpool is enabled the fragment of filament will be unloaded, the current tool will be remaped to the next specified gate, and printing will automatically continue.<br>
 
 Setting `enable_clog_detection` value to `1` enables clog detection employing the static clog detection length.  Setting it to `2` will enable automatic adjustment of the detection length and Happy Hare will peridically update the calibration value beased on what it learns about your system. Whilst this doesn't guarantee you won't get a false trigger it will contiually tune until false triggers not longer occur.  The automatic algorithm is controlled by two variables in the `[mmu_encoder]` section of `mmu_hardward.cfg`:
 
@@ -668,7 +662,7 @@ Regardless of whether you use your own Pause/Print/Cancel_print macros or use th
 
 During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob).  It will then call the user's PAUSE macro (which can be the example one supplied in `mmu_software.cfg`).  As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.<br>
 
-The user then calls `MMU_UNLOCK`, addresses the issue and calls `RESUME` to continue with the print.<br>
+The user then addresses the issue and calls `RESUME` to continue with the print.<br>
   
 The user's RESUME macro may do some purging or nozzle cleaning, but is expected to return the toolhead to where it was left when the pause macro was called.  At this point the Happy Hare wrapper takes over and is responsible for dropping the toolhead back down to the print and resumes printing.<br>
   
@@ -682,7 +676,7 @@ Happy Hare is a state machine. That means it keeps track of the the state of the
 <details>
 <summary><sub>🔹 Read more how to recover MMU state...</sub></summary><br>
  
-At some point when a project occurs during a multi-color print your MMU will pause and go into a `locked` state.  Generally the user would then call `MMU_UNLOCK`, fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:<br>
+At some point when a project occurs during a multi-color print your MMU will pause with an error.  Generally the user would then fix the issue and then resume print with `RESUME`.   While fixing the problem you may find it useful to issue MMU commands to move the filament around or change gate. If you do this the MMU will "know" the correct state when resuming a print and everything will be copacetic. However, if you manually move the filament you are able to tell MMU the correct state with the `MMU_RECOVER` command.  This command is also useful when first turning on an MMU with filament already loaded.  Instead of MMU having to unload and reload to figure out the state you can simple tell it!  Here are some examples:<br>
 
 ```
 MMU_RECOVER - attempt to automatically recover the filament state.  The tool or gate selection will not be changed.
