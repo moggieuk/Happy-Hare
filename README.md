@@ -376,8 +376,8 @@ This will not only run your own print resume logic, but it will reset the heater
 
 ```mermaid
 graph TD;
-    Printing --> Error
-    Error --> Fix_Problem
+    Printing --> Paused_Error
+    Paused_Error --> Fix_Problem
     Fix_Problem --> RESUME
     Fix_Problem --> MMU_RECOVER
     Fix_Problem --> CANCEL_PRINT
