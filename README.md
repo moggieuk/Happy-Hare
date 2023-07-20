@@ -182,7 +182,7 @@ Optionally exposed on mmu_encoder (if fitted):
     printer['mmu_encoder mmu_encoder'].detection_length : {float} The detection length for clog detection
     printer['mmu_encoder mmu_encoder'].min_headroom : {float} How close clog detection was from firing on current tool change
     printer['mmu_encoder mmu_encoder'].headroom : {float} Current headroom of clog detection (i.e. distance from trigger point)
-    printer['mmu_encoder mmu_encoder'].desired_headroom Desired headroom (mm) for automatic clog detection
+    printer['mmu_encoder mmu_encoder'].desired_headroom : {float} Desired headroom (mm) for automatic clog detection
     printer['mmu_encoder mmu_encoder'].detection_mode : {int} Same as printer.mmu.clog_detection
     printer['mmu_encoder mmu_encoder'].enabled : {bool} Whether encoder is currently enabled for clog detection
     printer['mmu_encoder mmu_encoder'].flow_rate : {int} % flowrate (extruder movement compared to encoder movement)
@@ -664,17 +664,15 @@ There are four configuration options that control logging, both statistical logg
 <summary><sub>🔹 Read more aboout logging...</sub></summary>
 <br>
 
-Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`:
+Logging in Happy Hare is controlled by a few parmateters in `mmu_parameters.cfg`: `log_level` & `logfile_level` can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer). Generally you can keep console logging to a minimal whilst still sending debug output to the `mmu.log` file.  Increasing the console log level is only really useful during initial setup to save having to constantly open the log file. Finally there are a couple of options to control what is shown at startup and the verboseness of the visual filament position:
 <br>
 
 ```yml
-log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
-Generally you can keep console logging to a minimal whilst still sending debug output to the mmu.log file
-Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
-log_level: 1
-logfile_level: 3            # Can also be set to -1 to disable log file completely
-log_statistics: 1           # 1 to log statistics on every toolchange, 0 to disable (still recorded)
-log_visual: 1               # 1 to log a fun visual representation of MMU state showing filament position, 0 disable
+log_level: 1                # 0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer
+log_file_level: 3           # Can also be set to -1 to disable log file completely
+log_statistics: 1           # 1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
+log_visual: 2               # 1 log visual representation of filament, 2 compact form (default) , 0 disable
+log_startup_status: 1       # Whether to log tool to gate status on startup, 1 = summary (default), 2 = full, 0 = disable
 ```
 
 The logfile will be placed in the same directory as other log files and is called `mmu.log`. It will rotate and keep the last 5 versions (just like klipper). The default log level for mmu.log is "3" but can be set by adding `logfile_level` in you `mmu_parameters.cfg`. With this available my suggestion is to reset the console logging level `log_level: 1` for an uncluttered experience knowing that you can always access `mmu.log` for debugging at a later time. Oh, and if you don't want the logfile, no problem, just set `logfile_level: -1` (anything on the console will end up in klipper.log anyway)
