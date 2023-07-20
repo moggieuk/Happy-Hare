@@ -342,7 +342,7 @@ Any of the displayed config settings can be modified.  For example, to update th
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Important Concepts and Features
 
 ### 1. How to handle errors
-We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_ULOCK`, `MMU_RECOVER`, etc.
+We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_RECOVER`, etc.
 
 <details>
 <summary><sub>🔹 Read more about handling errors and recovery...</sub></summary>

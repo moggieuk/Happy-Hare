@@ -1106,7 +1106,7 @@ class Mmu:
         config = gcmd.get_int('SHOWCONFIG', 0, minval=0, maxval=1)
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
 
-        msg = "%s v%s" % (self.mmu_vendor, self.mmu_version_string)
+        msg = "MMU %s v%s" % (self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
         msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_paused_locked else "OPERATIONAL")
         msg += " with the servo in a %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
