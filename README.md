@@ -363,8 +363,6 @@ We all hope that printing is straightforward and everything works to plan. Unfor
 
 Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had many multi-thousand swap prints complete without incident. Here is what you need to know when something goes wrong.
 
-# Should this part be removed?
-
 When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog, it will pause the print and put the MMU into a "locked" state. You can try this by running:
 
 > MMU_PAUSE FORCE_IN_PRINT=1
@@ -391,7 +389,7 @@ When you ready to continue with the print:
 This will not only run your own print resume logic, but it will reset the heater timeout clocks and restore the z-hop move to put the printhead back on the print
 
 ```mermaid
-graph TD;
+    graph TD;
     Printing --> Paused_Error
     Paused_Error --> Fix_Problem
     Fix_Problem --> RESUME
