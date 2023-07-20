@@ -363,11 +363,11 @@ We all hope that printing is straightforward and everything works to plan. Unfor
 
 Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had many multi-thousand swap prints complete without incident. Here is what you need to know when something goes wrong.
 
-When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog, it will pause the print and put the MMU into a "locked" state. You can try this by running:
+When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog, it will pause the print and ready the printer for fixing. You can try this by running:
 
 > MMU_PAUSE FORCE_IN_PRINT=1
 
-A few things happen in this "locked" state:
+A few things happen in this paused state:
 
 <ul>
   <li>Happy Hare will lift the toolhead off the print to avoid blobs</li>
