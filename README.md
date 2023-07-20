@@ -45,7 +45,7 @@ Thank you!
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Major features:
 <ul>
   <li>Support any brand of MMU and user defined monsters. (Caveat: ERCF 1.1, 2,0 so far, Tradrack and Prusa comming very soon)</li>
-  <li>Companion KlipperScreen - Happy Hare edition for very simple graphical interaction</li>
+  <li>Companion [KlipperScreen for Happy Hare](#klipperscreen-happy-hare-edition) for very simple graphical interaction</li>
   <li>Synchronized movement of extruder and gear motors during any part of the loading or unloading operations or homing so it can overcome friction and even work with FLEX materials!</li>
   <li>Sophisticated multi-homing options including extruder!</li>
   <li>Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any tool</li>
@@ -53,7 +53,7 @@ Thank you!
   <li>Sophisticated logging options (console and mmu.log file)</li>
   <li>Can define material type and color in each gate  for visualization and customized settings (like Pressure Advance)</li>
   <li>Automated calibration for easy setup</li>
-  <li>Supports bypass "gate" functionality</li>
+  <li>Supports ["gate bypass"](#10-filament-bypass) functionality</li>
   <li>Ability to manipulate gear and extruder current (TMC) during various operations for reliable operation</li>
   <li>Moonraker update-manager support</li>
   <li>Complete persitance of state and statistics across restarts. That's right you don't even need to home!</li>
@@ -82,7 +82,7 @@ cd Happy-Hare
 ./install.sh -i
 ```
 
-The `-i` option will bring up an interactive installer  to aid setting some confusing parameters. For EASY-BRD and Fysetc ERB installations it will also configure all the pins for you. If not run with the `-i` flag the new template `mmu*.cfg` files will not be installed.  Note that if existing `mmu*.cfg` files are found the old versions will be moved to numbered backups like `<file>.<date>` extension instead so as not to overwrite an existing configuration.  If you still choose not to install the new `mmu*.cfg` files automatically be sure to examine them closely and compare to the supplied templates (this is completely different software from the original)
+The `-i` option will bring up an interactive installer to aid setting some confusing parameters. For EASY-BRD and Fysetc ERB installations it will also configure all the pins for you. If not run with the `-i` flag the new template `mmu*.cfg` files will not be installed.  Note that if existing `mmu*.cfg` files are found the old versions will be moved to numbered backups like `<file>.<date>` extension instead so as not to overwrite an existing configuration.  If you still choose not to install the new `mmu*.cfg` files automatically be sure to examine them closely and compare to the supplied templates (this is completely different software from the original)
 <br>
 
 Note that the installer will look for Klipper install and config in standard locations.  If you have customized locations or multiple Klipper instances on the same rpi, or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively.
@@ -242,7 +242,7 @@ Happy Hare supports the use of an encoder which is fundamental to the ERCF MMU d
     Flowrate: 0 %
 ```
 
-Normally the encoder is automatically enabled when needed and disabled when not printing so to see the extra information you need to temporarily enable if out of a print (hence the extra `ENABLE=1`)
+Normally the encoder is automatically enabled when needed and disabled when not printing. To see the extra information you need to temporarily enable if out of a print (hence the extra `ENABLE=1`).
 
 <ul>
   <li>The encoder, when calibrated, measures the movement of filament through it.  It should closely follow movement of the gear or extruder steppers but can drift over time.</li>
@@ -256,7 +256,7 @@ Normally the encoder is automatically enabled when needed and disabled when not 
 </details>
 
 ### 3\. Calibration Commands
-Before using your MMU you will need to calibrate it to adjust for the differences in componets used on your particular build.  Be careful to calibrate in the recommended order because some settings build on earlier ones. Happy Hare now has automated calibration for some of the traditionally longer steps and does not require any Klipper restarts so the process is quick and painless. See [MMU Calibration doc](doc/calibration.md) for detailed instructions
+Before using your MMU you will need to calibrate it to adjust for the differences in components used on your particular build.  Be careful to calibrate in the recommended order because some settings build on earlier ones. Happy Hare now has automated calibration for some of the traditionally longer steps and does not require any Klipper restarts so the process is quick and painless. See [MMU Calibration doc](doc/calibration.md) for detailed instructions
 
 ### 4\. Setup configuration in mmu_parameters.cfg
 After calibration you might want to review and tweak the configuration and options in `mmu_parameters.cfg`.  The default values set by the installer are good starting points although you will always have to specify things like the dimensions of your extruder which are very specific. The [MMU Configuration guide](doc/configuration.md) contains an in-depth reference but some of the selected features are also discussed in more detail in the following sections.
@@ -342,15 +342,17 @@ Any of the displayed config settings can be modified.  For example, to update th
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Important Concepts and Features
 
 ### 1. How to handle errors
-We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with a MMU and if may need manual intervention to complete a successful print and specifically how you use `MMU_RECOVER`, etc.
+We all hope that printing is straightforward and everything works to plan. Unfortunately that is not the case with an MMU and it may need manual intervention to complete a successful print and specifically how you use `MMU_RECOVER`, etc.
 
 <details>
 <summary><sub>🔹 Read more about handling errors and recovery...</sub></summary>
 <br>
 
-Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had mamy mult-thousand swap prints complete without incident.  Here is what you need to know when something goes wrong.
+Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had many multi-thousand swap prints complete without incident. Here is what you need to know when something goes wrong.
 
-When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog it will pause the print and put the MMU into a "locked" state.  You can try this by running:
+# Should this part be removed?
+
+When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog, it will pause the print and put the MMU into a "locked" state. You can try this by running:
 
 > MMU_PAUSE FORCE_IN_PRINT=1
 
