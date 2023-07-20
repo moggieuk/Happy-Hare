@@ -33,11 +33,11 @@ Although it should not be necessary, there are options to update a single positi
 <br>
 
 ### Step 2. Calibrate your gear stepper
-In this step you are simply ensuring that when the gear stepper is told to move 100mm of filament it really does move 100mm.  It is akin to what you did when you set up your extruder rotational distance although in this case no Klipper restart is necessary!  Position selector in front of gate #0 and put some filament into the gate. Run:
+In this step you are simply ensuring that when the gear stepper is told to move 100mm of filament it really does move 100mm.  It is akin to what you did when you set up your extruder rotational distance although in this case no Klipper restart is necessary!  Position selector in front of gate #0 and put some filament through the gate so that it pokes out just past the selector exit.  Run the following to ensure the filament is gripped:
 
-  > MMU_TEST_LOAD
+  > MMU_SERVO POS=down
 
-This will load a short length of filament and ensure the servo is down.  Next remove the bowden tube and cut the filament flush with the ECAS connector on the selector (this is the encoder on the ERCF design). Run this command to attemp to move 100mm of filament:
+Next remove the bowden tube and cut the filament flush with the ECAS connector on the selector (this is the encoder on the ERCF design). Run this command to attemp to move 100mm of filament:
 
   > MMU_TEST_MOVE MOVE=100
 
