@@ -257,6 +257,7 @@ class Mmu:
 
         # Homing, loading and unloading controls for built-in logic
         self.encoder_unload_buffer = config.getfloat('encoder_unload_buffer', 30., minval=15.)
+        self.encoder_unload_max = config.getfloat('encoder_unload_max', 2 * self.encoder_unload_buffer, minval=self.encoder_unload_buffer)
         self.encoder_parking_distance = config.getfloat('encoder_parking_distance', 23., minval=12., maxval=60.)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.)
         self.encoder_load_retries = config.getint('encoder_load_retries', 2, minval=1, maxval=5)
@@ -1197,8 +1198,8 @@ class Mmu:
         self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self):
-        if self.tool_selected < 0:
-            self._log_info("TODO TEMP DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
+#        if self.tool_selected < 0:
+#            self._log_info("TODO TEMP DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
         delta = 0.
@@ -1427,7 +1428,7 @@ class Mmu:
 
                 self.encoder_sensor.reset_counts()    # Encoder 0000
                 self._unload_bowden(reference - self.encoder_unload_buffer)
-                self._unload_encoder(self.encoder_unload_buffer)
+                self._unload_encoder(self.encoder_unload_max)
                 self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
 
             if successes > 0:
@@ -1459,25 +1460,35 @@ class Mmu:
             self._select_tool(gate)
             self._set_gate_ratio(1.)
             encoder_moved = self._load_encoder(retry=False)
-            self.toolhead.dwell(0.2)
-            self.toolhead.wait_moves()
-            self.encoder_sensor.reset_counts()    # Encoder 0000
-            self._log_always("%s gate %d over %.1fmm..." % ("Calibrating" if gate > 0 else "Validating calibration of", gate, length))
+#            self.toolhead.dwell(0.2)
+#            self.toolhead.wait_moves()
+#            self.encoder_sensor.reset_counts()    # Encoder 0000
+            self._log_always("%s gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", gate, length))
 
             for x in range(repeats):
+                self.toolhead.dwell(0.2)
+                self.toolhead.wait_moves()
+                self.encoder_sensor.reset_counts()    # Encoder 0000
                 delta = self._trace_filament_move("Calibration load movement", length, dwell=0.2)
                 pos_values.append(length - delta)
-                self._log_always("+ measured =  %.1fmm" % (length - delta))
+                self._log_always("+ measured =  %.1fmm (counts = %d)" % ((length - delta), self.encoder_sensor.get_counts()))
 
+                self.toolhead.dwell(0.2)
+                self.toolhead.wait_moves()
+                self.encoder_sensor.reset_counts()    # Encoder 0000
                 delta = self._trace_filament_move("Calibration unload movement", -length, dwell=0.2)
                 neg_values.append(length - delta)
-                self._log_always("- measured =  %.1fmm" % (length - delta))
+                self._log_always("- measured =  %.1fmm (counts = %d)" % ((length - delta), self.encoder_sensor.get_counts()))
 
             self._log_always("Load direction: mean=%(mean).1f stdev=%(stdev).2f min=%(min).1f max=%(max).1f range=%(range).1f" % self._sample_stats(pos_values))
             self._log_always("Unload direction: mean=%(mean).1f stdev=%(stdev).2f min=%(min).1f max=%(max).1f range=%(range).1f" % self._sample_stats(neg_values))
-            measurement = self.encoder_sensor.get_distance()
-            ratio = measurement / (length * 2 * repeats)
-            self._log_always("Calibration move of %dx %.1fmm, average encoder measurement: %.1fmm - Ratio is %.6f" % (repeats * 2, length, measurement / (2 * repeats), ratio))
+
+            mean_pos = self._sample_stats(pos_values)['mean']
+            mean_neg = self._sample_stats(neg_values)['mean']
+            mean = (float(mean_pos) + float(mean_neg)) / 2
+            ratio = mean / length
+
+            self._log_always("Calibration move of %dx %.1fmm, average encoder measurement: %.1fmm - Ratio is %.6f" % (repeats * 2, length, mean, ratio))
             self._log_always("(Gate #%d rotation_distance: %.6f vs Gate #0: %.6f)" % (gate, ratio * self.ref_gear_rotation_distance, self.ref_gear_rotation_distance))
             if not gate == 0: # Gate #0 is not calibrated, it is the reference
                 if ratio > 0.8 and ratio < 1.2:
@@ -1488,7 +1499,7 @@ class Mmu:
                         self.calibration_status |= self.CALIBRATED_GATES
                 else:
                     self._log_always("Calibration ratio ignored because it is not considered valid (0.8 < ratio < 1.2)")
-            self._unload_encoder(self.encoder_unload_buffer)
+            self._unload_encoder(self.encoder_unload_max)
             self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
         except MmuError as ee:
             # Add some more context to the error and re-raise
@@ -1677,7 +1688,7 @@ class Mmu:
             self._log_always("Gear calibration has been saved")
             self.calibration_status |= self.CALIBRATED_GEAR
 
-    # Start: Assumes filament is loaded through encoder (e.g. with MMU_TEST_LOAD)
+    # Start: Assumes filament is loaded through encoder
     # End: Does not eject filament at end (filament same as start)
     cmd_MMU_CALIBRATE_ENCODER_help = "Calibration routine for the MMU encoder"
     def cmd_MMU_CALIBRATE_ENCODER(self, gcmd):
@@ -1735,6 +1746,7 @@ class Mmu:
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         try:
             self._reset_ttg_mapping() # To force tool = gate
+            self._unload_tool()
             self.calibrating = True
             self._calibrate_bowden_length(approx_bowden_length, extruder_homing_max, repeats, save)
         except MmuError as ee:
@@ -1760,6 +1772,7 @@ class Mmu:
             raise gcmd.error("Must specify 'GATE=' or 'ALL=1' for all gates")
         try:
             self._reset_ttg_mapping() # To force tool = gate
+            self._unload_tool()
             self.calibrating = True
             if gate == -1:
                 self._log_always("Start the complete calibration of ancillary gates...")
@@ -2493,7 +2506,7 @@ class Mmu:
     def cmd_MMU_STEP_UNLOAD_ENCODER(self, gcmd):
         full = gcmd.get_int('FULL', 0)
         try:
-            self._unload_encoder(self.calibrated_bowden_length if full else self.encoder_unload_buffer)
+            self._unload_encoder(self.calibrated_bowden_length if full else self.encoder_unload_max)
         except MmuError as ee:
             raise gcmd.error("_MMU_STEP_UNLOAD_ENCODER: %s" % str(ee))
 
@@ -2974,7 +2987,7 @@ class Mmu:
             return
 
         try:
-            self._log_info("Unoading %s..." % ("extruder" if extruder_only else "filament"))
+            self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
                 self._track_unload_start()
@@ -3017,13 +3030,13 @@ class Mmu:
                 # Exit extruder, fast unload of bowden, then slow unload encoder
                 self._unload_extruder(park_pos=park_pos)
                 self._unload_bowden(length - self.encoder_unload_buffer)
-                self._unload_encoder(self.encoder_unload_buffer)
+                self._unload_encoder(self.encoder_unload_max)
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
             elif self.filament_pos >= self.FILAMENT_POS_END_BOWDEN:
                 # Fast unload of bowden, then slow unload encoder
                 self._unload_bowden(length - self.encoder_unload_buffer)
-                self._unload_encoder(self.encoder_unload_buffer)
+                self._unload_encoder(self.encoder_unload_max)
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
             elif self.filament_pos >= self.FILAMENT_POS_START_BOWDEN:
@@ -4470,7 +4483,7 @@ class Mmu:
                     self._set_gate_status(gate, max(self.gate_status[gate], self.GATE_AVAILABLE))
                     try:
                         if encoder_moved > self.encoder_min:
-                            self._unload_encoder(self.encoder_unload_buffer)
+                            self._unload_encoder(self.encoder_unload_max)
                         else:
                             self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
                     except MmuError as ee:
@@ -4531,7 +4544,7 @@ class Mmu:
                     self._load_encoder(retry=False, adjust_servo_on_error=False)
                     # Caught the filament, so now park it in the gate
                     self._log_always("Parking...")
-                    self._unload_encoder(self.encoder_unload_buffer)
+                    self._unload_encoder(self.encoder_unload_max)
                     self._log_always("Filament detected and parked in gate #%d" % gate)
                     return
                 except MmuError as ee:
