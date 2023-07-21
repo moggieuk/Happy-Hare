@@ -85,7 +85,7 @@ You will see an output similar to:
 ### Step 4. Calibrate bowden length:
 Optionally the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
 
-  > MMU_CALIBRATE_ENCODER BOWDEN_LENGTH=640
+  > MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=640
 
 ```
     Homing MMU...
