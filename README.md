@@ -583,7 +583,7 @@ Runout and Clog detection functionality are enabled with the `enable_clog_detect
 Setting `enable_clog_detection` value to `1` enables clog detection employing the static clog detection length. Setting it to `2` will enable automatic adjustment of the detection length and Happy Hare will peridically update the calibration value beased on what it learns about your system. Whilst this doesn't guarantee you won't get a false trigger it will contiually tune until false triggers not longer occur. The automatic algorithm is controlled by two variables in the `[mmu_encoder]` section of `mmu_hardware.cfg`:
 
     desired_headroom: 5.0  # The runout headroom that Happy Hare will attempt to maintain (closest MMU comes to triggering runout)
-    average_samples: 4  # The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
+    average_samples: 4     # The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
 
 These default values makes the autotune logic try to maintain 5mm of "headroom" from the trigger point. If you have very fast movements defined in your custom macros or a very long bowden tube you might want to increase this a little. The `average_samples` is purely the damping of the statistical sampling. Higher values means the automatic adjustments will be slower.
 
