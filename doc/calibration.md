@@ -41,7 +41,7 @@ Next remove the bowden tube and cut the filament flush with the ECAS connector o
 
   > MMU_TEST_MOVE MOVE=100
 
-Get out your ruler can very carefully measure the length of the emited filament.  Hold your ruler up to the bowden and gently pull the filament straight to get an accurate measurement. Next run this specifying your actual measured value (102.5 used in this example):
+Get out your ruler and very carefully measure the length of the emited filament.  Hold your ruler up to the bowden and gently pull the filament straight to get an accurate measurement. Next run this specifying your actual measured value (102.5 used in this example):
 
   > MMU_CALIBRATE_GEAR MEASURED=102.5
 
