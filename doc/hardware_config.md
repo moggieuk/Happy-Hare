@@ -76,11 +76,7 @@ TODO .. help on validating that it is registering movement
 Happy Hare offers some sophisticated stepper synching and homing options which add additional parameters to the klipper stepper definition.
 
 ### Multiple Endstops
-In a nutshell, all steppers (MMU and extruder) defined in Happy Hare can have muliple endstops defined. Firstly the default endstop can be defined in the normal way by setting `endstop_pin`.  This would then become the default endstop and can be referenced in gcode as "default".  However it is better to give the endstop a name by adding a new `endstop_name` parameter. This is the name that will appear when listing endstops (e.g. in the Mainsail interface or with `QUERY_ENDSTOPS`). Happy Hare uses a naming convention of `mmu_` so these are anticipated names:
-
-```
-mmu_gear_touch, mmu_ext_touch, mmu_sel_home, mmu_sel_touch, mmu_toolhead
-```
+In a nutshell, all steppers (MMU and extruder) defined in Happy Hare can have muliple endstops defined. Firstly the default endstop can be defined in the normal way by setting `endstop_pin`.  This would then become the default endstop and can be referenced in gcode as "default".  However it is better to give the endstop a vanity name by adding a new `endstop_name` parameter. This is the name that will appear when listing endstops (e.g. in the Mainsail interface or with `QUERY_ENDSTOPS`). Happy Hare uses a naming convention of `mmu_` so these are anticipated names: `mmu_gear_touch`, `mmu_ext_touch`, `mmu_sel_home`, `mmu_sel_touch`, `mmu_toolhead`.
 
 These would represent touch endstop on gear, touch on extruder, physical selector home, selector touch endstop and toolhead sensor. In Happy Hare, "touch" refers to stallguard based sensing feedback from the TMC driver (if avaialable).
 
@@ -91,14 +87,14 @@ extra_endstop_pins: tmc2209_extruder:virtual_endstop, TEST_PIN
 extra_endstop_names: mmu_ext_touch, my_test_endstop
 ```
 
-Defines two endstops, the first is a virtual "touch" one leveraging stallguard and the second an example of a test switch.
+Defines two (non-default) endstops, the first is a virtual "touch" one leveraging stallguard and the second an example of a test switch.
 
 > **Note** If equipped with a toolhead sensor, endstops for gear stepper and extruder stepper will automatically be created with the name `mmu_toolhead`
 
 Ok, so you can define lots of endstops. Why? and what next... Let's discuss syncing and homing moves first and then bring it all together with an example.
 
 ### Stepper syncing
-Any stepper defined with `[manual_extruder_stepper]` not only inherits multiple endstops but also can act as an extruder stepper or a manual stepper. This dual personality allows its motion queue to be synced with other extruder steppers or, but manipulated manually in the same way as a Klipper manual\_stepper can be.
+Any stepper defined with `[manual_extruder_stepper]` not only inherits multiple endstops but also can act as both an extruder stepper or a manual stepper. This dual personality allows its motion queue to be synced with other extruder steppers or, but manipulated manually in the same way as a Klipper manual\_stepper can be.
 
 Happy have provides two test moves commands `MMU_TEST_MOVE`, `MMU_TEST_HOMING_MOVE` (and two similar commands designed for embedded gcode use). For example:
 
