@@ -225,9 +225,9 @@ mmu_num_gates: 9                        # Number of selector gates
 
 > **Note** Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods the follow parameters can be specified to override defaults. Use ONLY if necessary:<br>
 
-`cad_bypass_block_width:` (width of bypass support block) - if using a custom bypass block with ERCF v1.1<br>
-`cad_gate_width:` (width of individual gate in mm) - if using modified/custom gate<br>
-`encoder_min_resolution:` (resolution of one 'pulse' on the encoder; generally 23 / pulses per rev for BMG based encoder) - if using customized encoder
+`cad_gate_width:` Width of individual filament block in mm - if using modified/custom block<br>
+`encoder_min_resolution:` Resolution of one 'pulse' on the encoder. Generally (23 / pulses per revolution for BMG based encoder) - if using customized encoder<br>
+`cad_bypass_block_width:` Width of bypass support block - if using a custom bypass block with ERCF v1.1 (like the one in my repo which is 7mm thick)
 
 </details>
 
@@ -251,7 +251,7 @@ Happy Hare supports the use of an encoder which is fundamental to the ERCF MMU d
     Flowrate: 0 %
 ```
 
-Normally the encoder is automatically enabled when needed and disabled when not printing. To see the extra information you need to temporarily enable if out of a print (hence the extra `ENABLE=1`).
+Normally the encoder is automatically enabled when needed and disabled when not printing. To see the extra information you need to temporarily enable if out of a print (hence the extra `ENABLE=1` command).
 
 <ul>
   <li>The encoder, when calibrated, measures the movement of filament through it.  It should closely follow movement of the gear or extruder steppers but can drift over time.</li>
@@ -298,7 +298,7 @@ Running without any parameters will display the current values:
     selector_move_speed = 200.0
     selector_homing_speed = 60.0
     selector_touch_speed = 80.0
-    enable_selector_touch = 0
+    enable_selector_touch = 0                    # Advanced
 
     TMC & MOTOR SYNC CONTROL:
     sync_to_extruder = 0
@@ -317,18 +317,18 @@ Running without any parameters will display the current values:
     toolhead_sync_unload = 0
     toolhead_homing_max = 40.0
     toolhead_transition_length = 10.0
-    toolhead_delay_servo_release = 2.0
+    toolhead_delay_servo_release = 2.0           # Advanced
     toolhead_extruder_to_nozzle = 72.0
     toolhead_sensor_to_nozzle = 62.0
     toolhead_ignore_load_error = 0
-    gcode_load_sequence = 0
-    gcode_unload_sequence = 0
+    gcode_load_sequence = 0                      # Expert
+    gcode_unload_sequence = 0                    # Expert
 
     OTHER:
     z_hop_height = 5.0
     z_hop_speed = 15.0
     enable_clog_detection = 2
-    enable_endless_spool = 1
+    enable_endless_spool = 1                     # Advanced
     slicer_tip_park_pos = 0.0
     auto_calibrate_gates = 0
     strict_filament_recovery = 0
@@ -345,7 +345,7 @@ Any of the displayed config settings can be modified. For example, to update the
 
 > MMU_TEST_CONFIG toolhead_extruder_to_nozzle=45
 
-> **Note** When you make a change with `MMU_TEST_CONFIG` it will not be persistent and is only effective until the next restart. Therefore once you find your tuned settings be sure to update `mmu_parameters.cfg`
+> **Note** When you make a change with `MMU_TEST_CONFIG` it will not be persisted and is only effective until the next restart. Therefore once you find your tuned settings be sure to update `mmu_parameters.cfg`
 
 </details>
 
@@ -361,9 +361,9 @@ We all hope that printing is straightforward and everything works to plan. Unfor
 <summary><sub>🔹 Read more about handling errors and recovery...</sub></summary>
 <br>
 
-Although error conditions are inevitable, that isn't to say reliable operation isn't possible - I've had many multi-thousand swap prints complete without incident. Here is what you need to know when something goes wrong.
+Although error conditions are inevitable, that isn't to say fairly reliable operation isn't possible - I've had many multi-thousand swap prints complete without incident. Here is what you need to know when something goes wrong.
 
-When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog, it will pause the print and ready the printer for fixing. You can try this by running:
+When Happy Hare detects something has gone wrong, like a filament not being correctly loaded or perhaps a suspected clog, it will pause the print and ready the printer for fixing. You can test this condition by running:
 
 > MMU_PAUSE FORCE_IN_PRINT=1
 
@@ -376,17 +376,17 @@ A few things happen in this paused state:
   <li>The extruder will remain hot for the time set with `disable_heater`</li>
 </ul>
 
-To proceed you need to address the specific issue. You can move the filament by hand or use basic MMU commands. Once you think you have things corrected you may need to run:
+To proceed you need to address the specific issue. You can move the filament by hand or use basic MMU commands. Once you think you have things corrected you may (optionally) need to run:
 
-> MMU_RECOVER (optional)
+> MMU_RECOVER
 
-This is optional and ONLY needed if you may have confused the MMU state. I.e. if you simply put everything where it is expected there is no need to run and indeed if you use MMU commands then the state will be correct and there is not need to run. However, this can be useful to force Happy Hare to run it's own checks to, for example, confirm the position of the filament. By default this command will automatically fix essential state, but you can also force it by specifying additional options. E.g. `MMU_RECOVER TOOL=1 GATE=1 LOADED=1`. See the [Command Reference](doc/command_ref.md) for more details.
+This is optional and ONLY needed if you may have confused the MMU state. I.e. if you left everything where the MMU expects it there is no need to run and indeed if you use MMU commands then the state will be correct and there is never a need to run. However, this can be useful to force Happy Hare to run it's own checks to, for example, confirm the position of the filament. By default this command will automatically fix essential state, but you can also force it by specifying additional options. E.g. `MMU_RECOVER TOOL=1 GATE=1 LOADED=1`. See the [Command Reference](doc/command_ref.md) for more details.
 
 When you ready to continue with the print:
 
 > RESUME
 
-This will not only run your own print resume logic, but it will reset the heater timeout clocks and restore the z-hop move to put the printhead back on the print
+This will not only run your own print resume logic, but it will reset the heater timeout clocks and restore the z-hop move to put the printhead back on the print at the correct position.
 
 ```mermaid
     graph TD;
@@ -403,7 +403,7 @@ This will not only run your own print resume logic, but it will reset the heater
 
 ### 2. State and Persistence
 
-This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (selector homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing.
+This is considered advanced functionality but it is incredibly useful once you are familar with the basic operation of your MMU. Essentially the state of everything from the EndlessSpool groups to the filament position and gate selection can be persisted accross restarts (selector homing is not even necessary)! The implication of using this big time saver is that you must be aware that if you modify your MMU whilst it is off-line you will need to correct the appropriate state prior to printing by using `MMU_RECOVER` or by simply homing `MMU_HOME`
 
 <details>
 <summary><sub>🔹 Read more about state persistence...</sub></summary>
