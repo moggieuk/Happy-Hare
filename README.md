@@ -543,11 +543,11 @@ Happy Hare allows for syncing gear motor with the extruder stepper during printi
 
 #### Setting up Print Synchronization
 
-Synchronizion during printing is controlled by 'sync_to_extruder' in `mmu_parameters.cfg`. If set to 1, after a toolchange, the MMU servo will stay engaged and the gear motor will sync with he extruder for move extrusion and retraction moves
+Synchronizion during printing is controlled by `sync_to_extruder` in `mmu_parameters.cfg`. If set to 1, after a toolchange, the MMU servo will stay engaged and the gear motor will sync with the extruder for extrusion and retraction moves
 
 #### Synchronization Workflow
 
-If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any MMU operation that necessitates exclusive gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles the majority of these actions. If the printer enters MMU_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted. Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the MMU during a pause use the `MMU_SYNC_GEAR_MOTOR` command.
+If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any MMU operation that necessitates exclusive gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles these actions. If the printer enters MMU_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted. Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the MMU during a pause use the `MMU_SYNC_GEAR_MOTOR` command.
 
     The `MMU_SYNC_GEAR_MOTOR sync={0|1} servo={0|1}` command functions as follows:
     - Defaults to `sync=1` and `servo=1`
@@ -556,18 +556,18 @@ If the `sync_to_extruder` feature is activated, the gear stepper will automatica
     - If `sync=0` and `servo=1`, it disengages and lifts the servo
     - If `sync=0` and `servo=0`, it only disengages the synchronization
 
-Note you can still control the gear stepper motor with the `MANUAL_STEPPER` command, however, this will only be effective if the stepper is not currently syncing with the extruder.
+Note you can still control the gear stepper motor with the `MMU_TEST_MOVE` commmand or the more Klipper direct `MANUAL_STEPPER` command, however, this will only be effective if the stepper is not currently syncing with the extruder.
 
 #### Other synchonization options
 
-In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process. Whilst these might seem like duplicates of previous partial load/unload sync movements they operate slightly more simlified manner. If they are all disabled, Happy Hare will operate as it did previously. If these options are enabled they turn off the former functionality. E.g. If `sync_extruder_load` is enabled it will keep the gear synchronized with the extruder for the entire loading of the extruder.<br>
+In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process. If they are all disabled, Happy Hare will operate with non synchronized movements except for the optional extruder transisiton phase. If these options are enabled they override and force full synchronized operation. E.g. If `sync_extruder_load` is enabled it will keep the gear synchronized with the extruder for the entire loading of the extruder.<br>
 
-> **Note** many run the gear stepper at maximum current to overcome friction. If you are one of those you might want to consider using `sync_gear_current` to reduce the current while it is synced during print to keep the temperature down.
+> **Note** If you run the gear stepper synchronized for long prints you might find that it can become very hot. You might want to consider using `sync_gear_current` to reduce the current while it is synced during print to keep the temperature down. Afterall you probably don't need full power while printing.  The current will be restored for loading and unloading operations.
 
-`sync_extruder_load` turns on/off synchronization of extruder loading<br>
-`sync_extruder_unload` turns on/off synchronization of extruder unloading<br>
-`sync_form_tip` turns on/off synchronization of the stand alone tip forming movement<br>
-`sync_gear_current` the percentage reduction of gear stepper while it is synchronized with extruder<br>
+`sync_extruder_load` Turns on/off synchronization of extruder loading<br>
+`sync_extruder_unload` Turns on/off synchronization of extruder unloading<br>
+`sync_form_tip` Turns on/off synchronization of the stand alone tip forming movement<br>
+`sync_gear_current` The percentage reduction of gear stepper while it is synchronized with extruder<br>
 
 </details>
 
