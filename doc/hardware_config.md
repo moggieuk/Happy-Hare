@@ -73,15 +73,56 @@ TODO .. help on validating that it is registering movement
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Endstops and MMU Movement
-TODO
-Talk about:
-- new endstop naming (and mmu_ convention)
-- concept of extra endstops
-- runtime switching of endstop
-- association of endstop to stepper
-- Explain commands (and options)
-- - MMU_TEST_MOVE
-- - MMU_TEST_HOMING_MOVE
-- Hint at possibilities for use
-- Suggest that after calibration the you comes back here to try out some new move and homing options
+Happy Hare offers some sophisticated stepper synching and homing options which add additional parameters to the klipper stepper definition.
 
+### Multiple Endstops
+In a nutshell, all steppers (MMU and extruder) defined in Happy Hare can have muliple endstops defined. Firstly the default endstop can be defined in the normal way by setting `endstop_pin`.  This would then become the default endstop and can be referenced in gcode as "default".  However it is better to give the endstop a name by adding a new `endstop_name` parameter. This is the name that will appear when listing endstops (e.g. in the Mainsail interface or with `QUERY_ENDSTOPS`). Happy Hare uses a naming convention of `mmu_` so these are anticipated names:
+
+```
+mmu_gear_touch, mmu_ext_touch, mmu_sel_home, mmu_sel_touch, mmu_toolhead
+```
+
+These would represent touch endstop on gear, touch on extruder, physical selector home, selector touch endstop and toolhead sensor. In Happy Hare, "touch" refers to stallguard based sensing feedback from the TMC driver (if avaialable).
+
+In addition the default endstop which is only set on the selector in the out-of-the-box configuration you can specify a list of "extra" endstops each with a customized name.  These extra endstops can be switched in and out as needed. E.g.
+
+```
+extra_endstop_pins: tmc2209_extruder:virtual_endstop, TEST_PIN
+extra_endstop_names: mmu_ext_touch, my_test_endstop
+```
+
+Defines two endstops, the first is a virtual "touch" one leveraging stallguard and the second an example of a test switch.
+
+> **Note** If equipped with a toolhead sensor, endstops for gear stepper and extruder stepper will automatically be created with the name `mmu_toolhead`
+
+Ok, so you can define lots of endstops. Why? and what next... Let's discuss syncing and homing moves first and then bring it all together with an example.
+
+### Stepper syncing
+Any stepper defined with `[manual_extruder_stepper]` not only inherits multiple endstops but also can act as an extruder stepper or a manual stepper. This dual personality allows its motion queue to be synced with other extruder steppers or, but manipulated manually in the same way as a Klipper manual\_stepper can be.
+
+Happy have provides two test moves commands `MMU_TEST_MOVE`, `MMU_TEST_HOMING_MOVE` (and two similar commands designed for embedded gcode use). For example:
+
+> MMU_TEST_MOVE MOVE=100 SPEED=10 MOTOR="gear+extruder"
+
+This will advance both the MMU gear and extruder steppers in sync but +100mm at 10mm/s. If only only `MOTOR` was specified the move would obviously not be synchronized. Note that the difference between "gear+extruder" and "extruder+gear" is which motors position is driving the movement and in the case of a homing move, which endstop.
+
+### Homing moves
+Similarly it is possible to specify a homing move:
+
+> MMU_TEST_HOMING_MOVE MOVE=100 SPEED=10 MOTOR="extruder+gear" ENDSTOP=mmu_ext_touch STOP_ON_ENDSTOP=1
+
+This would home the filament using synchronized motors to the nozzle using stallguard! Cool hey?!?
+
+> **Note** Homing moves can also be done in the reverse direction (and by therefore reversing the endstop switch) by specifying `STOP_ON_ENDSTOP=-1`. This should be familiar if you have ever used the Klipper `MANUAL_STEPPER` command.<br>If you are at all curious (and I know you will be after reading this) you can "dump" out the Happy Hare stepper configuration with the command `DUMP_MANUAL_STEPPER STEPPER=gear_stepper | extruder | selector_stepper`. I'll leave it to you to figure out the results.<br>Final note is that the generic `MANUAL_STEPPER` command has additional parameters `ENDSTOP=` and `EXTRUDER=` for specifying endstop or extruder to sync too when managing steppers defined with Happy Hare.
+
+For quick reference here are the two test MMU move commands:
+
+  | Command | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Description&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Parameters |
+  | ------- | ----------- | ---------- |
+  | `MMU_TEST_MOVE` | Simple test move the MMU gear stepper | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` (defaults to min accel defined on steppers employed in move) Motor acceleration <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement |
+  | `MMU_TEST_HOMING_MOVE` | Testing homing move of filament using multiple stepper combinations specifying endstop and driection of homing move | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` Motor accelaration (defaults to min accel defined on steppers employed in homing move) <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement. This is important for homing because the endstop must be on the commanded stepper <br>`ENDSTOP=..` Symbolic name of endstop to home to as defined in mmu_hardware.cfg. Must be defined on the primary stepper <br>`STOP_ON_ENDSTOP=[1\|-1]` (default 1) The direction of homing move. 1 is in the normal direction with endstop firing, -1 is in the reverse direction waiting for endstop to release. Note that virtual (touch) endstops can only be homed in a forward direction |
+
+### What's the point?
+Hopefully you can see some of the coordinated movements that are possible that are highly useful for an MMU setup.  For example, I'm current loading filament with an incredibly fast bowden load using the gear stepper followed by a synchronized homing move of the extruder and gear, homing to the nozzle using `mmu_ext_touch` (stallguard) endstop. It requires zero knowledge of extruder dimensions and no physical switches! It also has lots of uses for custom setups with filmament cutters or other purging mechanisms.
+
+Altough this advanced functionality is already being used internally in Happy Hare, you will need to use the manual gcode commands or customize the loading and unloading gcode sequences to do highly imaginatively things - let me know how you get on.

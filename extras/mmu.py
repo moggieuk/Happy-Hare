@@ -3078,8 +3078,8 @@ class Mmu:
 
     # Step 1 of the unload sequence
     # Extract filament past extruder gear (to end of bowden)
-    # Assume that tip has already been formed and we are parked somewhere in the encoder either by
-    # slicer or by stand alone tip creation
+    # Assume that tip has already been formed and we are parked somewhere in the extruder
+    # either by slicer or by stand alone tip creation
     # Returns the measured distance moved if encoder equipped else actual
     def _unload_extruder(self, extruder_stepper_only=False, park_pos=0.):
         current_action = self._set_action(self.ACTION_UNLOADING_EXTRUDER)
