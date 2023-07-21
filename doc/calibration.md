@@ -41,7 +41,7 @@ Next remove the bowden tube and cut the filament flush with the ECAS connector o
 
   > MMU_TEST_MOVE MOVE=100
 
-Get out your ruler can very carefully measure the length of the emited filament.  Hold your ruler up to the bowden and gently pull the filament straight to get an accurate measurement. Next run this specifying your actual measured value (102.5 used in this example):
+Get out your ruler and very carefully measure the length of the emited filament.  Hold your ruler up to the bowden and gently pull the filament straight to get an accurate measurement. Next run this specifying your actual measured value (102.5 used in this example):
 
   > MMU_CALIBRATE_GEAR MEASURED=102.5
 
@@ -85,7 +85,7 @@ You will see an output similar to:
 ### Step 4. Calibrate bowden length:
 Optionally the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
 
-  > MMU_CALIBRATE_ENCODER BOWDEN_LENGTH=640
+  > MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=640
 
 ```
     Homing MMU...
