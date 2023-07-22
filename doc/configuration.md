@@ -2,6 +2,8 @@
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Reference Configuration
 
+The first section specifies the type of MMU and is used by Happy Hare to adjust options. It is documented in the main README.md.
+
 ```yml
 [mmu]
 #
@@ -20,9 +22,12 @@
 #
 mmu_vendor: ERCF			# MMU family
 mmu_version: 1.1			# MMU hardware version number (add mod suffix documented above)
-mmu_num_gates: {num_gates}		# Number of selector gates
+mmu_num_gates: 9			# Number of selector gates
+```
 
+The servo configuration allos for up to three positions but some designs (e.g. ERCF v1.1) only require `up`/`down`.  If `move` is not used then comment it out or set it to the same value as `up`.  The servo duraction is the lemght of PWM burst.  Most digital servos only require a short 0.1 second or so but slower analog servos may require longer (0.4 - 0.5s).  Be very careful if you use the `servo_active_down` option because it will can strain your electronics.
 
+```yml
 # Servo configuration  -----------------------------------------------------------------------------------------------------
 #
 # Angle of the servo in three named positions:
@@ -39,8 +44,11 @@ servo_down_angle: 45			# Default: MG90S servo: Down~140 ; SAVOX SH0255MG: Down~3
 servo_move_angle: 110			# Optional angle used when selector is moved (defaults to up position)
 servo_duration: 0.2			# Duration of PWM burst sent to servo (automatically turns off)
 servo_active_down: 0			# CAUTION: 1=Force servo to stay active when down, 0=Release after movement
+```
 
+Logging controls - it really is unessessary to have verbose logging to the console so defaults are recommended.
 
+```yml
 # Logging ------------------------------------------------------------------------------------------------------------------
 #
 # log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
@@ -52,8 +60,11 @@ log_file_level: 3			# Can also be set to -1 to disable log file completely
 log_statistics: 1 			# 1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
 log_visual: 2				# 1 log visual representation of filament, 2 compact form (default) , 0 disable
 log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = summary (default), 2 = full, 0 = disable
+```
 
+Speeds. TODO
 
+```yml
 # Movement speeds ----------------------------------------------------------------------------------------------------------
 #
 # Long moves are faster than the small ones and used for the bulk of the bowden movement. Note that you can set two fast load
@@ -62,7 +73,7 @@ log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = sum
 # 100mm/s should be "quiet" with the NEMA14 motor or a NEMA17 pancake, but you can go lower for really low noise
 # NOTE: Encoder cannot keep up much above 250mm/s so make sure `apply_bowden_correction` is off at very high speeds!
 #
-gear_from_buffer_speed: 160		# mm/s Conservative value is 100mm/s, Max around 350mm/s # PAUL was 160
+gear_from_buffer_speed: 160		# mm/s Conservative value is 100mm/s, Max around 350mm/s
 gear_from_spool_speed: 60		# mm/s Use (lower) speed when loading from a gate for the first time (i.e. pulling from spool)
 gear_short_move_speed: 60		# mm/s Conservative value is 35mm/s. Max around 100mm/s
 gear_homing_speed: 50			# mm/s Speed of gear stepper only homing moves (e.g. extruder homing)
@@ -79,8 +90,11 @@ selector_move_speed: 200        	# mm/s speed of selector movement (not touch)
 selector_homing_speed: 60       	# mm/s speed of initial selector homing move (not touch)
 selector_touch_speed: 80		# mm/s speed of all touch selector moves (if stallguard configured)
 enable_selector_touch: 0		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
+```
 
+TODO
 
+```yml
 # Encoder loading/unloading ------------------------------------------------------------------------------------------------
 #
 # These setttings control the optional encoder to load and unload filament at the gate
@@ -88,8 +102,11 @@ enable_selector_touch: 0		# If selector touch operation is possible this can be 
 encoder_unload_buffer: 40		# Amount to reduce the fast unload so that accurate encoder unload has room to operate
 encoder_load_retries: 2			# Number of times MMU will attempt to grab the filament on initial load (max 5)
 encoder_parking_distance: 23.0		# Advanced: Controls parking postion in the gate (distance from encoder, range=12-30)
+```
 
+TODO
 
+```yml
 # Bowden tube loading/unloading --------------------------------------------------------------------------------------------
 #
 # In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to detect missed steps
@@ -100,8 +117,11 @@ encoder_parking_distance: 23.0		# Advanced: Controls parking postion in the gate
 bowden_apply_correction: 0		# 1 to enable, 0 disabled (default)
 bowden_load_tolerance: 15.0		# How close in mm the correction moves will attempt to get to target
 bowden_num_moves: 1			# Number of separate fast moves to make when loading or unloading bowden (>1 if you have TTC errors)
+```
 
+TODO
 
+```yml
 # Extruder entrance detection/homing ---------------------------------------------------------------------------------------
 #
 # If not using a toolhead sensor (homing endpoint) the driver can "feel" for the extruder gear entry by colliding with it
@@ -118,8 +138,11 @@ extruder_homing_current: 40		# % gear_stepper current (10%-100%) to use when hom
 # this setting, however if you have a toolhead sensor you can still force the additional (unecessary and not recommended)
 # step of homing to extruder entrance before then homing to the toolhead sensor
 extruder_force_homing: 0
+```
 
+TODO
 
+```yml
 # Built in default toolhead loading and unloading -------------------------------------------------------------------------
 #
 # It is possible to define highly customized loading and unloading sequences, however, unless you have a specialized setup
@@ -165,8 +188,11 @@ toolhead_delay_servo_release: 2.0	# Delay release on servo by (mm) when not usin
 # detect stuck filament, (ii) it can lead to additional noise, (iii) it is possible to "over unload". Nevertheless, it can
 # be employed if you extruder struggles to unload
 toolhead_sync_unload: 0			# Extruder unloading (except stand alone tip forming) leverages motor synchronization
+```
 
+TODO
 
+```yml
 # Synchronized gear/extruder movement and tip forming ----------------------------------------------------------------------
 #
 # This controls whether the extruder and gear steppers are synchronized during printing operations
@@ -179,8 +205,11 @@ sync_to_extruder: 0			# Gear motor is synchronized to extruder during print
 sync_gear_current: 50			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
 sync_form_tip: 0			# Synchronize during standalone tip formation (initial part of unload)
 extruder_form_tip_current: 120		# % of extruder current (100%-150%) to use when forming tip (100 to disable)
+```
 
+TODO
 
+```yml
 # Clog detection and Endless Spool ---------------------------------------------------------------------------------------
 # Selector (stallguard) operation. If configured for sensorless homing MMU can detect blocked filament path and try to recover
 # automatically but it is slower and more difficult to set up (sensorless still requires the physical endstop switch)
@@ -188,8 +217,9 @@ extruder_form_tip_current: 120		# % of extruder current (100%-150%) to use when 
 #
 enable_clog_detection: 2	# 0 = disable, 1 = static length clog detection, 2 = automatic length clog detection
 enable_endless_spool: 1		# 0 = disable endless spool,  1 = enable endless spool (requires clog detection)
+```
 
-
+```yml
 # Turn on behavior -------------------------------------------------------------------------------------------------------
 # MMU can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
 # additional state information requiring progressively less inital setup. The higher level assume that you don't touch
@@ -203,8 +233,11 @@ enable_endless_spool: 1		# 0 = disable endless spool,  1 = enable endless spool 
 #         4 = additionally restore persisted tool, gate and filament position! (Recommended when MMU is working well)
 #
 persistence_level: 3
+```
 
+TODO
 
+```yml
 # Misc configurable, but fairly fixed values -----------------------------------------------------------------------------
 #
 extruder: extruder		# Name of the toolhead extruder that MMU is using
@@ -218,8 +251,11 @@ gcode_load_sequence: 0		# Advanced: Gcode loading sequence 1=enabled, 0=internal
 gcode_unload_sequence: 0	# Advanced: Gcode unloading sequence, 1=enabled, 0=internal logic (default)
 auto_calibrate_gates: 0		# Automated gate (not gate#0) calibration. 1=calibrated on first load, 0=disabled
 strict_filament_recovery: 0	# If '1' with toolhead sensor, will look for filament trapped after extruder but before sensor
+```
 
+TODO
 
+```yml
 # Advanced: re-initialize behavior --- ONLY SET IF YOU REALLY WANT NON DEFAULT INITIALIZATION ----------------------------
 #
 # Happy Hare has advanced features like:
