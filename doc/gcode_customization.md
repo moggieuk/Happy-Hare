@@ -97,14 +97,30 @@ gcode:
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_FORM_TIP_STANDALONE
-TODO ... lots to document here!
+This is probably the most important aspect of getting a reliable MMU after basic calibration is complete. There is plenty written about tip forming and lots of advice n the forums.  What is important to understand here is that this macro mimicks the tip forming logic from SuperSlicer (almost identical to PrusaSlicer). Read SuperSlicer documentation for hints and here a few things you should know:
+<ul>
+<li>This macro will always be used when not printing, but you can elect to use it instead of your slicers logic by:</li>
+ <ul>
+  <li>Turning OFF all tip forming logic in your slicer</li>
+  <li>Setting the `variable_standalone: 1` in the `T0` macro</li>
+ </ul>
+<li>When tuning if is useful to pull the bowden from your extruder, load filament with the `MMU_LOAD EXTRUDER_ONLY=1` command, then call `MMU_FORM_TIP` (not the marco directly) or `MMU_EJECT EXTRUDER_ONLY=1`</li>
+ <ul>
+  <li>The benefit of calling as desribed is the additional TMC current control and pressure advance restoration will occur so it exactly mimicks what will occur when called automatically</li>
+  <li>If calling `MMU_FORM_TIP` you will want to set `variable_final_eject: 1` so that the filament is fully ejected for inspection (MMU_EJECT will automatically do this and therefore is recommended)
+  <li>Calling this way will also report on the final parking position of the filament</li>
+ </ul>
+<li>Before you start tweaking, make sure the settings accurately represent the geometry of your extruder. The defaults are for my Voron Clockwork 2 extruder with Voron Revo hotend with 0.4mm tip</li>
+</ul>
+
+Here are the default values for tip forming.  These are the exact values I used for non PLA filaments (PLA seems to like skinny dip for example):
 
 ```yml
 # Unloading and Ramming values - Initial moves to form and shape tip
 variable_unloading_speed_start: 80     # Fast here to seperate the filament from meltzone (Very intitial retract SS uses distance of E-15)
 variable_unloading_speed: 20           # Too fast forms excessively long tip or hair. Slow is better here UNLOADING_SPEED_START/COOLING_MOVES seems a good start
-variable_ramming_volume: 20            # in mm3 SS default values = 2, 5, 9, 13, 18, 23, 27. Only Used to Simulate SS Ramming during standalone
-variable_ss_ramming: 0                 # Set to 0 when using standalone ramming (RAMMING_VOLUME) or tuning, 1 to let the slicer do it
+variable_ramming_volume: 0             # in mm3 SS default values = 2, 5, 9, 13, 18, 23, 27. Only Used to Simulate SS Ramming during standalone
+variable_ss_ramming: 0                 # Set to 0 for standalone ramming (RAMMING_VOLUME) or tuning, 1 to let the slicer do it (i.e. turn off standalone)
 
 # Cooling Move Values - To cool the tip formed and separate from strings
 variable_cooling_tube_position: 35     # Dragon ST: 35, Dragon HF: 30, Mosquito: 30, Revo: 35, Phaetus Rapido HF: 43;  Measured from Top of Heater Block to Top of Heatsink
@@ -124,7 +140,7 @@ variable_cooling_zone_pause: 0         # in milliseconds - default 0 - If you ne
 variable_use_fast_skinnydip: 0         # Skip the toolhead temp change during skinnydip move - default 0
 
 # Park filament ready to eject
-# variable_parking_distance: 0          # TODO: SS parks filament after final cooling move
+# variable_parking_distance: 35        # Final filament parking position after final cooling move, 0 will leave filament where it naturally ends up
 
 # Final Eject - for standalone tuning only
 variable_final_eject: 0                # default 0, enable during standalone tuning process to eject the filament
