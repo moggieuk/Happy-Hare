@@ -90,7 +90,7 @@ The `-i` option will bring up an interactive installer to aid setting some confu
 Note that the installer will look for Klipper install and config in standard locations. If you have customized locations or multiple Klipper instances on the same rpi, or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively.
 <br>
 
-> [!NOTE]  
+> [!IMPORTANT]  
 > `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file with `mmu_hardware.cfg` listed first. `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
 
 <br>
@@ -348,7 +348,7 @@ Any of the displayed config settings can be modified. For example, to update the
 
 > MMU_TEST_CONFIG toolhead_extruder_to_nozzle=45
 
-> [!NOTE]  
+> [!IMPORTANT]  
 > When you make a change with `MMU_TEST_CONFIG` it will not be persisted and is only effective until the next restart. Therefore once you find your tuned settings be sure to update `mmu_parameters.cfg`
 
 </details>
@@ -567,7 +567,7 @@ Note you can still control the gear stepper motor with the `MMU_TEST_MOVE` commm
 
 In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process. If they are all disabled, Happy Hare will operate with non synchronized movements except for the optional extruder transisiton phase. If these options are enabled they override and force full synchronized operation. E.g. If `sync_extruder_load` is enabled it will keep the gear synchronized with the extruder for the entire loading of the extruder.<br>
 
-> [!NOTE]  
+> [!WARNING]  
 > If you run the gear stepper synchronized for long prints you might find that it can become very hot. You might want to consider using `sync_gear_current` to reduce the current while it is synced during print to keep the temperature down. Afterall you probably don't need full power while printing.  The current will be restored for loading and unloading operations.
 
 `sync_extruder_load` Turns on/off synchronization of extruder loading<br>
@@ -755,7 +755,8 @@ Finally, you can unload just the extruder using the usual eject:
 
 > MMU_EJECT
 
-> **Note** The `MMU_LOAD` and `MMU_EJECT` automatically add the `EXTRUDER_ONLY=1` flag when the bypass is selected
+> [!NOTE]  
+> The `MMU_LOAD` and `MMU_EJECT` automatically add the `EXTRUDER_ONLY=1` flag when the bypass is selected
 
 </details>
 
@@ -770,7 +771,8 @@ The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works
 
 Similarly the `MMU_CHECK_GATES` command will run through all the gates (or the one specified), checks that filament is loaded, correctly parks and updates the "gate status" map so the MMU knows which gates have filament available.<br>
 
-> **Note** The `MMU_CHECK_GATES` command has a special option that is designed to be called from your `PRINT_START` macro. Unfortunately this requires slicer support to provide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print. This is (will be) a really useful pre-print check!
+> [!NOTE]  
+> The `MMU_CHECK_GATES` command has a special option that is designed to be called from your `PRINT_START` macro. Unfortunately this requires slicer support to provide this list of tools (PR's for PrusaSlicer and SuperSlicer have been submitted). When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print. This is (will be) a really useful pre-print check!
 
 </details>
 
