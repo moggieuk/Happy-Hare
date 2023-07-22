@@ -104,7 +104,11 @@ variable_final_eject: 0                # default 0, enable during standalone tun
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_LOAD_SEQUENCE & _MMU_UNLOAD_SEQUENCE
-This is new EXPERIMENTAL functionality and as such is subject to change.  By default these macros are not called, however, if `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_software.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
+
+> [!WARNING]  
+> This is new EXPERIMENTAL functionality and as such is subject to change (with only a mild apology :-)
+
+By default these macros are not called, however, if `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_software.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
 
 `mmu_software.cfg` contains futher examples for alternative MMU setups, but before experimenting it is essential to understand the state machine for filament position.  These states are as follows and the loading/unloading sequence must be capable of completing the load/unload sequence for any starting state.<br>
 
