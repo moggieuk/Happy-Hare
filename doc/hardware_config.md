@@ -51,6 +51,9 @@ extra_endstop_names: mmu_ext_touch
 The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in your `printer.cfg` should be deleted or commented out.
 The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
 
+> [!Warning]
+> If you see a Klipper error message like `mux command SET_PRESSURE_ADVANCE EXTRUDER None already registered` it almost certainly means that you have not commented out or disabled your extruder stepper in the original `[extruder]` section of `printer.cfg`
+
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
 If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
