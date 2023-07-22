@@ -2,7 +2,8 @@
 
 This discussion assumes that you have setup and debugged your hardware configuration.  A detailed discusion can be [found here](hardware_config.md).
 
-> **Warning** When calibrating the first time you must perform in the prescribed order.  Once complete you can re-calibrate particular steps but remember that some calibration changes will cascade.  E.g. after calibrating the gear, you must recalibrate the encoder, the bowden and possibly all the gates.  Generally you can re-calibrate the selector (step 1) and the gates (step 5) at any time, but the gear, encoder and bowden must always be done in that order!
+> [!IMPORTANT]
+> When calibrating the first time you must perform in the prescribed order.  Once complete you can re-calibrate particular steps but remember that some calibration changes will cascade.  E.g. after calibrating the gear, you must recalibrate the encoder, the bowden and possibly all the gates.  Generally you can re-calibrate the selector (step 1) and the gates (step 5) at any time, but the gear, encoder and bowden must always be done in that order!
 
 ```mermaid
 graph TD;
@@ -50,7 +51,8 @@ Get out your ruler and very carefully measure the length of the emited filament.
     Gear calibration has been saved
 ```
 
-> **Note** You can also measure over a different length by using something like `MMU_TEST_MOVE MOVE=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
+> [!NOTE]
+> You can also measure over a different length by using something like `MMU_TEST_MOVE MOVE=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
 
 **Validation:** If you want to test, snip the filament again flush with the ECAS connector and run `MMU_TEST_MOVE`.  Exactly 100mm should be moved this time.
 
@@ -78,7 +80,8 @@ You will see an output similar to:
     Encoder calibration has been saved for MMU ERCF v1.1sb
 ```
 
-> **Note**<br>(i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences.<br>(ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions.<br>(iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-)<br>(iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
+> [!NOTE]
+> (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences.<br>(ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions.<br>(iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-)<br>(iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
 
 <br>
 
@@ -112,7 +115,8 @@ Optionally the last calibration before use! Here you can calibrate the length of
     Bowden calibration and clog detection length have been saved for MMU ERCF v1.1sbTODO
 ```
 
-> **Note**<br>(i) This calibration assumes that the selector has been calibrated first.<br>(ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
+> [!NOTE]
+> (i) This calibration assumes that the selector has been calibrated first.<br>(ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
 
 <br>
 
@@ -141,11 +145,13 @@ You will see an output similar to:
     Calibration for gate #1 has been saved
 ```
 
-> **Note** You can also quickly run through all gates (even pass the loose filament gate to gate) with `MMU_CALIBRATE_GATES ALL=1`
+> [!NOTE]
+> You can also quickly run through all gates (even pass the loose filament gate to gate) with `MMU_CALIBRATE_GATES ALL=1`
 
 <br>
 
-> **Warning**<br>All of the calibration steps can be run in a "check/test" mode.  Simply add `SAVE=0` to the command and the calibration will be run but the results will not be saved.  This is very useful for verification.<br>Finally, remember that the results from all the calibration is stored in `mmu_vars.cfg` so you can also view/edit that file directly.
+> [!IMPORTANT]
+> All of the calibration steps can be run in a "check/test" mode.  Simply add `SAVE=0` to the command and the calibration will be run but the results will not be saved.  This is very useful for verification.<br>Finally, remember that the results from all the calibration is stored in `mmu_vars.cfg` so you can also view/edit that file directly.
 
 <br>
 
