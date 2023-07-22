@@ -4,6 +4,33 @@ TODO list in progress
 6. Have per print metrics and total metrics without cmd line ability to clear the total
 8. Bug: If EndlessSpool enabled and initial tool is empty, auto map to next gate
 
+> **Note**\
+> This is note!!
+
+> **Warning**
+> This is a warning2
+
+> [!Important]\
+> This is important!!
+
+> [!NOTE]  
+> Highlights information that users should take into account, even when skimming.
+
+> [!IMPORTANT]  
+> Crucial information necessary for users to succeed.
+
+> [!WARNING]  
+> Critical content demanding immediate user attention due to potential risks.
+
+> Whoa! This will not be shown.\
+> [!NOTE]\
+> This is a note.
+
+> Hello
+>> [!NOTE]\
+>> This is a note.
+
+
 
 ```mermaid
 graph TD;
