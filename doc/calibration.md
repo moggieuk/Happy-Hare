@@ -2,7 +2,7 @@
 
 This discussion assumes that you have setup and debugged your hardware configuration.  A detailed discusion can be [found here](hardware_config.md).
 
-> [!IMPORTANT]
+> [!IMPORTANT]  
 > When calibrating the first time you must perform in the prescribed order.  Once complete you can re-calibrate particular steps but remember that some calibration changes will cascade.  E.g. after calibrating the gear, you must recalibrate the encoder, the bowden and possibly all the gates.  Generally you can re-calibrate the selector (step 1) and the gates (step 5) at any time, but the gear, encoder and bowden must always be done in that order!
 
 ```mermaid
@@ -23,7 +23,8 @@ Let's start by getting the selector cailbrated in this easy step (it is importan
 
 Sit back and relax. The selector will move to find the extremes of movement and then use information about the geometry of the particular MMU and version/options you are using to generate and save the selector offsets automatically!
 
-> **Note** ERCF v1.1 users need to pay particular attention to letter suffixes after the version number in `mmu_parameters.cfg`<br>ERCF v1.1 users that are using a bypass block modification also need to specify the position of that block with `BYPASS_BLOCK=` (see command reference) to indicate which bearing block contains the bypass.
+> [!NOTE]  
+> ERCF v1.1 users need to pay particular attention to letter suffixes after the version number in `mmu_parameters.cfg`<br>ERCF v1.1 users that are using a bypass block modification also need to specify the position of that block with `BYPASS_BLOCK=` (see command reference) to indicate which bearing block contains the bypass.
 
 Although it should not be necessary, there are options to update a single position if you would like to or run into problems. See the command reference for more detailed information on options, but basically you turn MMU motors off, line up the desired gate with the selector and run:
 
@@ -51,7 +52,7 @@ Get out your ruler and very carefully measure the length of the emited filament.
     Gear calibration has been saved
 ```
 
-> [!NOTE]
+> [!NOTE]  
 > You can also measure over a different length by using something like `MMU_TEST_MOVE MOVE=200` and `MMU_CALIBRATE_GEAR LENGTH=200 MEASURED=205.25` for a 200mm length for example.
 
 **Validation:** If you want to test, snip the filament again flush with the ECAS connector and run `MMU_TEST_MOVE`.  Exactly 100mm should be moved this time.
@@ -115,8 +116,9 @@ Optionally the last calibration before use! Here you can calibrate the length of
     Bowden calibration and clog detection length have been saved for MMU ERCF v1.1sbTODO
 ```
 
-> [!NOTE]
-> (i) This calibration assumes that the selector has been calibrated first.<br>(ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
+> [!NOTE]  
+> (i) This calibration assumes that the selector has been calibrated first.
+> (ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
 
 <br>
 
@@ -145,12 +147,12 @@ You will see an output similar to:
     Calibration for gate #1 has been saved
 ```
 
-> [!NOTE]
+> [!NOTE]  
 > You can also quickly run through all gates (even pass the loose filament gate to gate) with `MMU_CALIBRATE_GATES ALL=1`
 
 <br>
 
-> [!IMPORTANT]
+> [!IMPORTANT]  
 > All of the calibration steps can be run in a "check/test" mode.  Simply add `SAVE=0` to the command and the calibration will be run but the results will not be saved.  This is very useful for verification.<br>Finally, remember that the results from all the calibration is stored in `mmu_vars.cfg` so you can also view/edit that file directly.
 
 <br>
