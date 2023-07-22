@@ -110,7 +110,7 @@ Similarly it is possible to specify a homing move:
 
 This would home the filament using synchronized motors to the nozzle using stallguard! Cool hey?!?
 
-> ![NOTE]  
+> [!NOTE]  
 > Homing moves can also be done in the reverse direction (and by therefore reversing the endstop switch) by specifying `STOP_ON_ENDSTOP=-1`. This should be familiar if you have ever used the Klipper `MANUAL_STEPPER` command.<br>If you are at all curious (and I know you will be after reading this) you can "dump" out the Happy Hare stepper configuration with the command `DUMP_MANUAL_STEPPER STEPPER=gear_stepper | extruder | selector_stepper`. I'll leave it to you to figure out the results.<br>Final note is that the generic `MANUAL_STEPPER` command has additional parameters `ENDSTOP=` and `EXTRUDER=` for specifying endstop or extruder to sync too when managing steppers defined with Happy Hare.
 
 For quick reference here are the two test MMU move commands:
