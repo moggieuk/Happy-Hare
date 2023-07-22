@@ -22,6 +22,35 @@ Possible action strings are:
     Unknown        Should not occur
 ```
 
+Here is the reference/example macro packaged in `mmu_software.cfg`:
+
+```yml
+[gcode_macro _MMU_ACTION_CHANGED]
+description: Called when an action has changed.
+gcode:
+    # This occurs when the MMU action status changes.  `printer.mmu.action` will contain
+    # the current action string. See Happy Hare README for full list
+    #
+    # This could be a place to set LED status or similar. The logic here
+    # demonstrates the three major action states
+    {% set ACTION = printer.mmu.action|string %}
+
+    {% if ACTION|string == "Idle" %}
+        # Add your logic here
+        # _STATUS_STANDBY
+    {% endif %}
+    
+    {% if ACTION|string == "Loading" %}
+        # Add your logic here
+        # _STATUS_LOADING
+    {% endif %}
+
+    {% if ACTION|string == "Unloading" %}
+        # Add your logic here
+        # _STATUS_UNLOADING
+    {% endif %}
+```
+
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ENDLESS_SPOOL_PRE_UNLOAD & _MMU_ENDLESS_SPOOL_POST_LOAD
@@ -184,40 +213,26 @@ gcode:
     {% if extruder_only %}
         _MMU_STEP_LOAD_TOOLHEAD EXTRUDER_ONLY=1
 
-    {% elif filament_pos <= 0 %}	# FILAMENT_POS_UNLOADED
-        _MMU_STEP_LOAD_ENCODER
-        _MMU_STEP_LOAD_BOWDEN LENGTH={length}
-        {% if home_extruder %}
-            _MMU_STEP_HOME_EXTRUDER
-        {% endif %}
-        {% if not skip_extruder %}
-            _MMU_STEP_LOAD_TOOLHEAD
-        {% endif %}
-
-    {% elif filament_pos < 3 %}		# FILAMENT_POS_END_BOWDEN
-        _MMU_STEP_LOAD_BOWDEN LENGTH={length}
-        {% if home_extruder %}
-            _MMU_STEP_HOME_EXTRUDER
-        {% endif %}
-        {% if not skip_extruder %}
-            _MMU_STEP_LOAD_TOOLHEAD
-        {% endif %}
-
-    {% elif filament_pos < 4 %}		# FILAMENT_POS_HOMED_EXTRUDER
-        {% if home_extruder %}
-            _MMU_STEP_HOME_EXTRUDER
-        {% endif %}
-        {% if not skip_extruder %}
-            _MMU_STEP_LOAD_TOOLHEAD
-        {% endif %}
-
-    {% elif filament_pos < 5 %}		# FILAMENT_POS_EXTRUDER_ENTRY
-        {% if not skip_extruder %}
-            _MMU_STEP_LOAD_TOOLHEAD
-        {% endif %}
+    {% elif filament_pos >= 5 %}
+        {action_raise_error("Can't load - already in extruder!")}
 
     {% else %}
-        {action_raise_error("Can't load - already in extruder!")}
+        {% if filament_pos <= 0 %}                      # FILAMENT_POS_UNLOADED
+            _MMU_STEP_LOAD_ENCODER
+        {% endif %}
+
+        {% if filament_pos < 3 %}                       # FILAMENT_POS_END_BOWDEN
+            _MMU_STEP_LOAD_BOWDEN LENGTH={length}
+        {% endif %}
+
+        {% if filament_pos < 4 and home_extruder %}     # FILAMENT_POS_HOMED_EXTRUDER
+            _MMU_STEP_HOME_EXTRUDER
+        {% endif %}
+
+        {% if not skip_extruder %}                      # FILAMENT_POS_PAST_EXTRUDER
+            _MMU_STEP_LOAD_TOOLHEAD
+        {% endif %}
+
     {% endif %}
 
 [gcode_macro _MMU_UNLOAD_SEQUENCE]
@@ -229,31 +244,36 @@ gcode:
     {% set park_pos = params.PARK_POS|float %}
 
     {% if extruder_only %}
-        {% if filament_pos >= 5 %}	# FILAMENT_POS_EXTRUDER_ENTRY
+        {% if filament_pos >= 5 %}                      # FILAMENT_POS_PAST_EXTRUDER
             _MMU_STEP_UNLOAD_TOOLHEAD EXTRUDER_ONLY=1 PARK_POS={park_pos}
         {% else %}
             {action_raise_error("Can't unload extruder - already unloaded!")}
         {% endif %}
 
-    {% elif filament_pos >= 5 %}	# FILAMENT_POS_EXTRUDER_ENTRY
-        # Exit extruder, fast unload of bowden, then slow unload encoder
-        _MMU_STEP_UNLOAD_TOOLHEAD PARK_POS={park_pos}
-        _MMU_STEP_UNLOAD_BOWDEN FULL=1
-        _MMU_STEP_UNLOAD_ENCODER
-
-    {% elif filament_pos >= 3 %}	# FILAMENT_POS_END_BOWDEN
-        # fast unload of bowden, then slow unload encoder
-        _MMU_STEP_UNLOAD_BOWDEN FULL=1
-        _MMU_STEP_UNLOAD_ENCODER
-
-    {% elif filament_pos >= 1 %}	# FILAMENT_POS_START_BOWDEN
-        # Have to do slow unload because we don't know exactly where in the bowden we are
-        _MMU_STEP_UNLOAD_ENCODER FULL=1
+    {% elif filament_pos == 0 %}
+        {action_raise_error("Can't unload - already unloaded!")}
 
     {% else %}
-        {action_raise_error("Can't unload - already unloaded!")}
+        {% if filament_pos >= 5 %}                      # FILAMENT_POS_PAST_EXTRUDER
+            # Exit extruder, fast unload of bowden, then slow unload encoder
+            _MMU_STEP_UNLOAD_TOOLHEAD PARK_POS={park_pos}
+        {% endif %}
+
+        {% if filament_pos >= 3 %}                      # FILAMENT_POS_END_BOWDEN
+            # Fast unload of bowden, then slow unload encoder
+            _MMU_STEP_UNLOAD_BOWDEN FULL=1
+            _MMU_STEP_UNLOAD_ENCODER
+
+        {% elif filament_pos >= 1 %}                    # FILAMENT_POS_START_BOWDEN
+            # Have to do slow unload because we don't know exactly where in the bowden we are
+            _MMU_STEP_UNLOAD_ENCODER FULL=1
+        {% endif %}
+
     {% endif %}
 ```
+
+> [!NOTE]  
+> Additional examples can be found at the end of `mmu_software.cfg`
 
 <br>
 

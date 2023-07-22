@@ -237,7 +237,7 @@ class Mmu:
         self.timeout_unlock = config.getint('timeout_unlock', -1)
         self.disable_heater = config.getint('disable_heater', 600)
         self.min_temp_extruder = config.getfloat('min_temp_extruder', 180.)
-        self.gcode_load_sequence = config.getint('gcode_load_sequence', 1)
+        self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.z_hop_height = config.getfloat('z_hop_height', 5., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
@@ -2606,55 +2606,38 @@ class Mmu:
                 current_action = self._set_action(self.ACTION_LOADING)
 
             # Note: Conditionals deliberately coded this way to match macro alternative
+            start_filament_pos = self.filament_pos
             if self.gcode_load_sequence:
-                self._log_debug("Calling user controlled loading sequence macro")
+                self._log_debug("Calling external user defined loading sequence macro")
                 try:
-                    self.gcode.run_script_from_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (self.filament_pos, length, full, home, skip_extruder, extruder_only))
+                    self.gcode.run_script_from_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (start_filament_pos, length, full, home, skip_extruder, extruder_only))
                 except Exception as e:
                     #raise MmuError("Error running user _MMU_LOAD_SEQUENCE macro\nReason: %s" % str(e))
                     raise MmuError("Error running user _MMU_LOAD_SEQUENCE macro")
 
             elif extruder_only:
-                if self.filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
+                if start_filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
                     self._load_extruder(extruder_stepper_only=True)
                 else:
-                    self._log_debug("Assertion failure - unexpected state %d in _load_sequence(extruder_only=True)" % self.filament_pos)
+                    self._log_debug("Assertion failure - unexpected state %d in _load_sequence(extruder_only=True)" % start_filament_pos)
                     raise MmuError("Cannot load extruder because already in extruder. Unload first")
-#            else
-#                self._load_bowden(length - self._load_encoder(), full)
-#                if home:
-#                    self._home_to_extruder(self.extruder_homing_max)
-#                if not skip_extruder:
-#                    self._load_extruder()
 
-            elif self.filament_pos <= self.FILAMENT_POS_UNLOADED:
-                self._load_encoder()
-                self._load_bowden(length - self.filament_distance, full)
-                if home:
-                    self._home_to_extruder(self.extruder_homing_max)
-                if not skip_extruder:
-                    self._load_extruder()
-
-            elif self.filament_pos < self.FILAMENT_POS_END_BOWDEN:
-                self._load_bowden(length - self.filament_distance, full)
-                if home:
-                    self._home_to_extruder(self.extruder_homing_max)
-                if not skip_extruder:
-                    self._load_extruder()
-
-            elif self.filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER: 
-                if home:
-                    self._home_to_extruder(self.extruder_homing_max)
-                if not skip_extruder:
-                    self._load_extruder()
-
-            elif self.filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
-                if not skip_extruder:
-                    self._load_extruder()
+            elif start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
+                self._log_debug("Assertion failure - unexpected state %d in _load_sequence()" % start_filament_pos)
+                raise MmuError("Cannot load because already in extruder. Unload first")
 
             else:
-                self._log_debug("Assertion failure - unexpected state %d in _load_sequence()" % self.filament_pos)
-                raise MmuError("Cannot load because already in extruder. Unload first")
+                if start_filament_pos <= self.FILAMENT_POS_UNLOADED:
+                    self._load_encoder()
+
+                if start_filament_pos < self.FILAMENT_POS_END_BOWDEN:
+                    self._load_bowden(length - self.filament_distance, full)
+
+                if start_filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER and home: 
+                    self._home_to_extruder(self.extruder_homing_max)
+
+                if not skip_extruder:
+                    self._load_extruder()
 
             self.toolhead.wait_moves()
             msg = "Loaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_LOADED else self.filament_distance)
@@ -2991,11 +2974,14 @@ class Mmu:
                 park_pos = 0.
 
             # Note: Conditionals deliberately coded this way to match macro alternative
+            start_filament_pos = self.filament_pos
             if self.gcode_unload_sequence:
-                self._log_debug("Calling user controlled unloading sequence macro")
-                unload_to_buffer = (self.filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
+                self._log_debug("Calling external user defined unloading sequence macro")
+                unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
                 try:
-                    self.gcode.run_script_from_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (self.filament_pos, length, extruder_only, park_pos))
+                    self.gcode.run_script_from_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (start_filament_pos, length, extruder_only, park_pos))
+                    if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
+                        self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
                 except Exception as e:
                     #raise MmuError("Error running user _MMU_UNLOAD_SEQUENCE macro\nReason: %s" % str(e))
                     raise MmuError("Error running user _MMU_UNLOAD_SEQUENCE macro")
@@ -3003,32 +2989,30 @@ class Mmu:
                     self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
             elif extruder_only:
-                if self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
+                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
                     self._unload_extruder(extruder_stepper_only=True, park_pos=park_pos)
                 else:
-                    self._log_debug("Assertion failure - unexpected state %d in _unload_sequence(extruder_only=True)" % self.filament_pos)
+                    self._log_debug("Assertion failure - unexpected state %d in _unload_sequence(extruder_only=True)" % start_filament_pos)
                     raise MmuError("Cannot unload extruder because filament not in extruder!")
 
-            elif self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                # Exit extruder, fast unload of bowden, then slow unload encoder
-                self._unload_extruder(park_pos=park_pos)
-                self._unload_bowden(length - self.encoder_unload_buffer)
-                self._unload_encoder(self.encoder_unload_max)
-                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
-
-            elif self.filament_pos >= self.FILAMENT_POS_END_BOWDEN:
-                # Fast unload of bowden, then slow unload encoder
-                self._unload_bowden(length - self.encoder_unload_buffer)
-                self._unload_encoder(self.encoder_unload_max)
-                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
-
-            elif self.filament_pos >= self.FILAMENT_POS_START_BOWDEN:
-                # Have to do slow unload because we don't know exactly where we are
-                self._unload_encoder(length) # Full slow unload
+            elif start_filament_pos == self.FILAMENT_POS_UNLOADED:
+                self._log_debug("Assertion failure - unexpected state %d in _unload_sequence()" % start_filament_pos)
+                raise MmuError("Cannot unload because already unloaded!")
 
             else:
-                self._log_debug("Assertion failure - unexpected state %d in _unload_sequence()" % self.filament_pos)
-                raise MmuError("Cannot unload because already unloaded!")
+                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
+                    # Exit extruder, fast unload of bowden, then slow unload encoder
+                    self._unload_extruder(park_pos=park_pos)
+
+                if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
+                    # Fast unload of bowden, then slow unload encoder
+                    self._unload_bowden(length - self.encoder_unload_buffer)
+                    self._unload_encoder(self.encoder_unload_max)
+                    self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
+
+                elif start_filament_pos >= self.FILAMENT_POS_START_BOWDEN:
+                    # Have to do slow unload because we don't know exactly where we are
+                    self._unload_encoder(length) # Full slow unload
 
             self.toolhead.wait_moves()
             movement = self._servo_up()
