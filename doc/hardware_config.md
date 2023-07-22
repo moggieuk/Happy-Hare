@@ -51,6 +51,9 @@ extra_endstop_names: mmu_ext_touch
 The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in your `printer.cfg` should be deleted or commented out.
 The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
 
+> [!Warning]  
+> If you see a Klipper error message like `mux command SET_PRESSURE_ADVANCE EXTRUDER None already registered` it almost certainly means that you have not commented out or disabled your extruder stepper in the original `[extruder]` section of `printer.cfg`
+
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
 If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
@@ -112,6 +115,8 @@ This would home the filament using synchronized motors to the nozzle using stall
 
 > [!NOTE]  
 > Homing moves can also be done in the reverse direction (and by therefore reversing the endstop switch) by specifying `STOP_ON_ENDSTOP=-1`. This should be familiar if you have ever used the Klipper `MANUAL_STEPPER` command.<br>If you are at all curious (and I know you will be after reading this) you can "dump" out the Happy Hare stepper configuration with the command `DUMP_MANUAL_STEPPER STEPPER=gear_stepper | extruder | selector_stepper`. I'll leave it to you to figure out the results.<br>Final note is that the generic `MANUAL_STEPPER` command has additional parameters `ENDSTOP=` and `EXTRUDER=` for specifying endstop or extruder to sync too when managing steppers defined with Happy Hare.
+
+<br>
 
 For quick reference here are the two test MMU move commands:
 
