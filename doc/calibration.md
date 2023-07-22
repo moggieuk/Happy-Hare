@@ -117,7 +117,7 @@ Optionally the last calibration before use! Here you can calibrate the length of
     Pass #3: Filament homed to extruder, encoder measured 683.9mm, filament sprung back 3.2mm
     - Bowden calibration based on this pass is 683.4
     Recommended calibration reference is 680.2mm. Clog detection length: 16.8mm
-    Bowden calibration and clog detection length have been saved for MMU ERCF v1.1sbTODO
+    Bowden calibration and clog detection length have been saved
 ```
 
 > [!NOTE]  
