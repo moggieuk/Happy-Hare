@@ -17,13 +17,13 @@ declare -A PIN 2>/dev/null || {
 # Pins for Fysetc Burrows ERB board, EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
 PIN[ERB,gear_uart_pin]="mmu:gpio20";         PIN[EASY-BRD,gear_uart_pin]="mmu:PA8";          PIN[EASY-BRD-RP2040,gear_uart_pin]="mmu:gpio6"
 PIN[ERB,gear_step_pin]="mmu:gpio10";         PIN[EASY-BRD,gear_step_pin]="mmu:PA4";          PIN[EASY-BRD-RP2040,gear_step_pin]="mmu:gpio27"
-PIN[ERB,gear_dir_pin]="!mmu:gpio9";          PIN[EASY-BRD,gear_dir_pin]="!mmu:PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="!mmu:gpio28"
-PIN[ERB,gear_enable_pin]="!mmu:gpio8";       PIN[EASY-BRD,gear_enable_pin]="!mmu:PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="!mmu:gpio26"
+PIN[ERB,gear_dir_pin]="mmu:gpio9";           PIN[EASY-BRD,gear_dir_pin]="mmu:PA10";          PIN[EASY-BRD-RP2040,gear_dir_pin]="mmu:gpio28"
+PIN[ERB,gear_enable_pin]="mmu:gpio8";        PIN[EASY-BRD,gear_enable_pin]="mmu:PA2";        PIN[EASY-BRD-RP2040,gear_enable_pin]="mmu:gpio26"
 PIN[ERB,gear_diag_pin]="mmu:gpio13";         PIN[EASY-BRD,gear_diag_pin]="";                 PIN[EASY-BRD-RP2040,gear_diag_pin]=""
 PIN[ERB,selector_uart_pin]="mmu:gpio17";     PIN[EASY-BRD,selector_uart_pin]="mmu:PA8";      PIN[EASY-BRD-RP2040,selector_uart_pin]="mmu:gpio6"
 PIN[ERB,selector_step_pin]="mmu:gpio16";     PIN[EASY-BRD,selector_step_pin]="mmu:PA9";      PIN[EASY-BRD-RP2040,selector_step_pin]="mmu:gpio7"
-PIN[ERB,selector_dir_pin]="!mmu:gpio15";     PIN[EASY-BRD,selector_dir_pin]="!mmu:PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="!mmu:gpio0"
-PIN[ERB,selector_enable_pin]="!mmu:gpio14";  PIN[EASY-BRD,selector_enable_pin]="!mmu:PA11";  PIN[EASY-BRD-RP2040,selector_enable_pin]="!mmu:gpio29"
+PIN[ERB,selector_dir_pin]="mmu:gpio15";      PIN[EASY-BRD,selector_dir_pin]="mmu:PB8";       PIN[EASY-BRD-RP2040,selector_dir_pin]="mmu:gpio0"
+PIN[ERB,selector_enable_pin]="mmu:gpio14";   PIN[EASY-BRD,selector_enable_pin]="mmu:PA11";   PIN[EASY-BRD-RP2040,selector_enable_pin]="mmu:gpio29"
 PIN[ERB,selector_diag_pin]="mmu:gpio19";     PIN[EASY-BRD,selector_diag_pin]="mmu:PA7";      PIN[EASY-BRD-RP2040,selector_diag_pin]="mmu:gpio2"
 PIN[ERB,selector_endstop_pin]="mmu:gpio24";  PIN[EASY-BRD,selector_endstop_pin]="mmu:PB9";   PIN[EASY-BRD-RP2040,selector_endstop_pin]="mmu:gpio1"
 PIN[ERB,servo_pin]="mmu:gpio23";             PIN[EASY-BRD,servo_pin]="mmu:PA5";              PIN[EASY-BRD-RP2040,servo_pin]="mmu:gpio4"
@@ -325,15 +325,15 @@ copy_config_files() {
 
             if [ "${SETUP_SELECTOR_TOUCH}" -eq 1 ]; then
                 cat ${src} | sed -e "\
-                    s/^#diag_pin: \^{selector_diag_pin}/diag_pin: \^{selector_diag_pin}/; \
-                    s/^#driver_SGTHRS: 65/driver_SGTHRS: 65/; \
-                    s/^endstop_pin: \^{selector_endstop_pin}/#endstop_pin: \^{selector_endstop_pin}/; \
-                    s/^#endstop_pin: tmc2209_selector_stepper/endstop_pin: tmc2209_selector_stepper/; \
+                    s/^#diag_pin: \^mmu:SEL_DIAG/diag_pin: \^mmu:SEL_DIAG/; \
+                    s/^#driver_SGTHRS: 75/driver_SGTHRS: 75/; \
+		    s/^#extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop/extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop/; \
+		    s/^#extra_endstop_names: mmu_sel_touch/extra_endstop_names: mmu_sel_touch/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
                     s/{brd_type}/${brd_type}/; \
                         " > ${dest}.tmp
             else
-                # This is the default template config without sensorless selector homing enabled
+                # This is the default template config without selector touch enabled
                 cat ${src} | sed -e "\
                     s/{brd_type}/${brd_type}/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
@@ -586,8 +586,8 @@ questionaire() {
             echo -e "${WARNING}Board Type: ${brd_type}"
 
             echo
-            echo -e "${PROMPT}Setup for option of sensorless touch operation? This uses TMC stallguard and allows for additional selector recovery steps (disables the 'extra' input on the EASY-BRD). Even if configured it will default disabled${INPUT}"
-            yn=$(prompt_yn "Enable sensorless selector operation")
+            echo -e "${PROMPT}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
+            yn=$(prompt_yn "Enable selector touch operation (recommend no if you are new to ERCF")
             case $yn in
                 y)
                     if [ "${brd_type}" == "EASY-BRD" ]; then
@@ -629,8 +629,8 @@ questionaire() {
             fi
 
             echo
-            echo -e "${PROMPT}Sensorless selector operation? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
-            yn=$(prompt_yn "Enable sensorless selector operation")
+            echo -e "${PROMPT}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
+            yn=$(prompt_yn "Enable selector touch operation (recommend no for now")
             case $yn in
                 y)
                     SETUP_SELECTOR_TOUCH=1
