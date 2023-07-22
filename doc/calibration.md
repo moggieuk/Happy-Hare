@@ -81,8 +81,11 @@ You will see an output similar to:
     Encoder calibration has been saved for MMU ERCF v1.1sb
 ```
 
-> [!NOTE]
-> (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences.<br>(ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions.<br>(iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-)<br>(iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
+> [!NOTE]  
+> (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences.<br>
+> (ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions.<br>
+> (iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-)<br>
+> (iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
 
 <br>
 
@@ -117,7 +120,7 @@ Optionally the last calibration before use! Here you can calibrate the length of
 ```
 
 > [!NOTE]  
-> (i) This calibration assumes that the selector has been calibrated first.
+> (i) This calibration assumes that the selector has been calibrated first.<br>
 > (ii) This may cause the extruder to be heated. This is to ensure that the extruder motor is energized and can resist the impact of the collision with the filament
 
 <br>
