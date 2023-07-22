@@ -981,7 +981,7 @@ extruder_sync_unload_speed: 25               # Synced gear and extruder unload s
 
 ### Advanced customized sequence (gcode macros)
 
-An experimental option is available for users with customized MMU's or for wanting even more control that exposes the loading and unloading sequences as gcode macros. This is a complex setup and requires knowlege of the state machine kept by Happy Hare. For the adventurous, the details are [documented here](doc/gcode_customization.md)
+An experimental option is available for users with customized MMU's or for wanting even more control that exposes the loading and unloading sequences as gcode macros. This is a complex setup and requires knowlege of the state machine kept by Happy Hare. For the adventurous, the details are [documented here](doc/gcode_customization.md#---_mmu_load_sequence--_mmu_unload_sequence).
 
 <br>
 
