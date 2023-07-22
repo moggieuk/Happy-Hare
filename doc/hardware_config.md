@@ -89,7 +89,7 @@ extra_endstop_names: mmu_ext_touch, my_test_endstop
 
 Defines two (non-default) endstops, the first is a virtual "touch" one leveraging stallguard and the second an example of a test switch.
 
-> [!NOTE]  
+> [!IMPORTANT]  
 > If equipped with a toolhead sensor, endstops for gear stepper and extruder stepper will automatically be created with the name `mmu_toolhead`
 
 Ok, so you can define lots of endstops. Why? and what next... Let's discuss syncing and homing moves first and then bring it all together with an example.
@@ -110,7 +110,7 @@ Similarly it is possible to specify a homing move:
 
 This would home the filament using synchronized motors to the nozzle using stallguard! Cool hey?!?
 
-> ![NOTE]
+> ![NOTE]  
 > Homing moves can also be done in the reverse direction (and by therefore reversing the endstop switch) by specifying `STOP_ON_ENDSTOP=-1`. This should be familiar if you have ever used the Klipper `MANUAL_STEPPER` command.<br>If you are at all curious (and I know you will be after reading this) you can "dump" out the Happy Hare stepper configuration with the command `DUMP_MANUAL_STEPPER STEPPER=gear_stepper | extruder | selector_stepper`. I'll leave it to you to figure out the results.<br>Final note is that the generic `MANUAL_STEPPER` command has additional parameters `ENDSTOP=` and `EXTRUDER=` for specifying endstop or extruder to sync too when managing steppers defined with Happy Hare.
 
 For quick reference here are the two test MMU move commands:
