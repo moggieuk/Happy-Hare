@@ -958,7 +958,7 @@ The "visual log" (set at level 2) above shows individual steps of a typical unlo
     <li>Tradrack: This is achived by a homing move to a specifc endstop. Note that the homing point is considered "point 0". TODO</li>
   </ul>
 
-> [!NOTE]
+> [!NOTE]  
 > When the state of the MMU is unknown, Happy Hare will perform other movements and look at its sensors to try to ascertain filament location. This may modify the above sequence and result in the omission of the fast bowden move for unloads.
 
 #### Unload Speeds:
@@ -974,7 +974,7 @@ extruder_unload_speed: 20                    # Extruder stepper only unload spee
 extruder_sync_unload_speed: 25               # Synced gear and extruder unload speed
 ```
 
-> [!NOTE]
+> [!NOTE]  
 > Happy Hare allows for easy change of loading/unloading sequence even during a print! If you have a toolhead sensor, it can interesting, for example, to switch between extruder homing and toolhead sensor homing. Each you intend to do this make sure you set both `toolhead_extruder_to_nozzle` and `toolhead_sensor_to_nozzle` distances. As an example, in my setup of Revo & Clockwork 2, the distances are 72mm or 62mm respectively. The difference in these two distances is also used in the logic for exiting the extruder to make exit fast and noise free.
 
 </details>
