@@ -25,9 +25,20 @@ mmu_num_gates: {num_gates}		# Number of selector gates
 
 # Servo configuration  -----------------------------------------------------------------------------------------------------
 #
-servo_up_angle: {servo_up_angle}			# Default: MG90S servo: Up=30    ; SAVOX SH0255MG: Up=140
-servo_down_angle: {servo_down_angle}			# Default: MG90S servo: Down=140 ; SAVOX SH0255MG: Down=30
-servo_duration: 0.2					# Duration of PWM burst sent to servo (automatically turns off)
+# Angle of the servo in three named positions:
+#   up   = tool is selected and filament is allowed to freely move through gate
+#   down = to grip filament
+#   move = ready the servo for selector move (optional - defaults to up)
+#
+# Note that leaving the servo active when down can stress the electronics and is not recommended with EASY-BRD or ERB board
+# unless the 5v power supply has been improved and it is not necessary with standard ERCF build.
+# Make sure your hardware is suitable for the job!
+#
+servo_up_angle: 125			# Default: MG90S servo: Up~30    ; SAVOX SH0255MG: Up~140
+servo_down_angle: 45			# Default: MG90S servo: Down~140 ; SAVOX SH0255MG: Down~30
+servo_move_angle: 110			# Optional angle used when selector is moved (defaults to up position)
+servo_duration: 0.2			# Duration of PWM burst sent to servo (automatically turns off)
+servo_active_down: 0			# CAUTION: 1=Force servo to stay active when down, 0=Release after movement
 
 
 # Logging ------------------------------------------------------------------------------------------------------------------
