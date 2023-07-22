@@ -15,19 +15,19 @@ declare -A PIN 2>/dev/null || {
 }
 
 # Pins for Fysetc Burrows ERB board, EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
-PIN[ERB,gear_uart_pin]="mmu:gpio20";         PIN[EASY-BRD,gear_uart_pin]="mmu:PA8";          PIN[EASY-BRD-RP2040,gear_uart_pin]="mmu:gpio6"
-PIN[ERB,gear_step_pin]="mmu:gpio10";         PIN[EASY-BRD,gear_step_pin]="mmu:PA4";          PIN[EASY-BRD-RP2040,gear_step_pin]="mmu:gpio27"
-PIN[ERB,gear_dir_pin]="mmu:gpio9";           PIN[EASY-BRD,gear_dir_pin]="mmu:PA10";          PIN[EASY-BRD-RP2040,gear_dir_pin]="mmu:gpio28"
-PIN[ERB,gear_enable_pin]="mmu:gpio8";        PIN[EASY-BRD,gear_enable_pin]="mmu:PA2";        PIN[EASY-BRD-RP2040,gear_enable_pin]="mmu:gpio26"
-PIN[ERB,gear_diag_pin]="mmu:gpio13";         PIN[EASY-BRD,gear_diag_pin]="";                 PIN[EASY-BRD-RP2040,gear_diag_pin]=""
-PIN[ERB,selector_uart_pin]="mmu:gpio17";     PIN[EASY-BRD,selector_uart_pin]="mmu:PA8";      PIN[EASY-BRD-RP2040,selector_uart_pin]="mmu:gpio6"
-PIN[ERB,selector_step_pin]="mmu:gpio16";     PIN[EASY-BRD,selector_step_pin]="mmu:PA9";      PIN[EASY-BRD-RP2040,selector_step_pin]="mmu:gpio7"
-PIN[ERB,selector_dir_pin]="mmu:gpio15";      PIN[EASY-BRD,selector_dir_pin]="mmu:PB8";       PIN[EASY-BRD-RP2040,selector_dir_pin]="mmu:gpio0"
-PIN[ERB,selector_enable_pin]="mmu:gpio14";   PIN[EASY-BRD,selector_enable_pin]="mmu:PA11";   PIN[EASY-BRD-RP2040,selector_enable_pin]="mmu:gpio29"
-PIN[ERB,selector_diag_pin]="mmu:gpio19";     PIN[EASY-BRD,selector_diag_pin]="mmu:PA7";      PIN[EASY-BRD-RP2040,selector_diag_pin]="mmu:gpio2"
-PIN[ERB,selector_endstop_pin]="mmu:gpio24";  PIN[EASY-BRD,selector_endstop_pin]="mmu:PB9";   PIN[EASY-BRD-RP2040,selector_endstop_pin]="mmu:gpio1"
-PIN[ERB,servo_pin]="mmu:gpio23";             PIN[EASY-BRD,servo_pin]="mmu:PA5";              PIN[EASY-BRD-RP2040,servo_pin]="mmu:gpio4"
-PIN[ERB,encoder_pin]="mmu:gpio22";           PIN[EASY-BRD,encoder_pin]="mmu:PA6";            PIN[EASY-BRD-RP2040,encoder_pin]="mmu:gpio3"
+PIN[ERB,gear_uart_pin]="gpio20";         PIN[EASY-BRD,gear_uart_pin]="PA8";          PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
+PIN[ERB,gear_step_pin]="gpio10";         PIN[EASY-BRD,gear_step_pin]="PA4";          PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
+PIN[ERB,gear_dir_pin]="gpio9";           PIN[EASY-BRD,gear_dir_pin]="PA10";          PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
+PIN[ERB,gear_enable_pin]="gpio8";        PIN[EASY-BRD,gear_enable_pin]="PA2";        PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
+PIN[ERB,gear_diag_pin]="gpio13";         PIN[EASY-BRD,gear_diag_pin]="";             PIN[EASY-BRD-RP2040,gear_diag_pin]=""
+PIN[ERB,selector_uart_pin]="gpio17";     PIN[EASY-BRD,selector_uart_pin]="PA8";      PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
+PIN[ERB,selector_step_pin]="gpio16";     PIN[EASY-BRD,selector_step_pin]="PA9";      PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
+PIN[ERB,selector_dir_pin]="gpio15";      PIN[EASY-BRD,selector_dir_pin]="PB8";       PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
+PIN[ERB,selector_enable_pin]="gpio14";   PIN[EASY-BRD,selector_enable_pin]="PA11";   PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
+PIN[ERB,selector_diag_pin]="gpio19";     PIN[EASY-BRD,selector_diag_pin]="PA7";      PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
+PIN[ERB,selector_endstop_pin]="gpio24";  PIN[EASY-BRD,selector_endstop_pin]="PB9";   PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
+PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";              PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
+PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";            PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
 
 # Screen Colors
 OFF='\033[0m'             # Text Reset

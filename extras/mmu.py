@@ -289,6 +289,7 @@ class Mmu:
         self.servo_up_angle = config.getfloat('servo_up_angle')
         self.servo_move_angle = config.getfloat('servo_move_angle', self.servo_up_angle)
         self.servo_duration = config.getfloat('servo_duration', 0.2, minval=0.1)
+        self.servo_active_down = config.getint('servo_active_down', 0, minval=0, maxval=1)
 
         # TMC current control
         self.extruder_homing_current = config.getint('extruder_homing_current', 50, minval=10, maxval=100)
@@ -1173,7 +1174,7 @@ class Mmu:
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_down_angle)
         if not self.servo_angle == self.servo_down_angle:
             self.toolhead.wait_moves()
-            self.servo.set_value(angle=self.servo_down_angle, duration=self.servo_duration)
+            self.servo.set_value(angle=self.servo_down_angle, duration=None if self.servo_active_down else self.servo_duration)
             if buzz_gear:
                 oscillations = 2
                 for i in range(oscillations):
@@ -1458,9 +1459,6 @@ class Mmu:
             self._select_tool(gate)
             self._set_gate_ratio(1.)
             encoder_moved = self._load_encoder(retry=False)
-#            self.toolhead.dwell(0.2)
-#            self.toolhead.wait_moves()
-#            self.encoder_sensor.reset_counts()    # Encoder 0000
             self._log_always("%s gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", gate, length))
 
             for x in range(repeats):
