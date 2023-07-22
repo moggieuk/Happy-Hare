@@ -104,16 +104,17 @@ This is probably the most important aspect of getting a reliable MMU after basic
   <li>Turning OFF all tip forming logic in your slicer</li>
   <li>Setting the `variable_standalone: 1` in the `T0` macro</li>
  </ul>
-<li>When tuning if is useful to pull the bowden from your extruder, load filament with the `MMU_LOAD EXTRUDER_ONLY=1` command, then call `MMU_FORM_TIP` (not the marco directly) or `MMU_EJECT EXTRUDER_ONLY=1`</li>
+<li>When tuning if is useful to pull the bowden from your extruder, load filament with the `MMU_LOAD EXTRUDER_ONLY=1` command, then call `MMU_FORM_TIP` command (and not the macro directly) or better still `MMU_EJECT EXTRUDER_ONLY=1`</li>
  <ul>
-  <li>The benefit of calling as desribed is the additional TMC current control and pressure advance restoration will occur so it exactly mimicks what will occur when called automatically</li>
+  <li>The benefit of calling as desribed is the additional TMC current control and pressure advance restoration will occur so it exactly mimicks what will occur when called automatically later</li>
   <li>If calling `MMU_FORM_TIP` you will want to set `variable_final_eject: 1` so that the filament is fully ejected for inspection (MMU_EJECT will automatically do this and therefore is recommended)
-  <li>Calling this way will also report on the final parking position of the filament</li>
+  <li>Calling with `MMU_EJECT EXTRUDER_ONLY=1` will also report on the final parking position of the filament</li>
  </ul>
 <li>Before you start tweaking, make sure the settings accurately represent the geometry of your extruder. The defaults are for my Voron Clockwork 2 extruder with Voron Revo hotend with 0.4mm tip</li>
+<li>Lastely there is a setting called `parking_distance` which, if set, will determine the final resting place measured from the nozzle. This should be a postive number!</li>
 </ul>
 
-Here are the default values for tip forming.  These are the exact values I used for non PLA filaments (PLA seems to like skinny dip for example):
+Here are the default values for tip forming.  These are the exact values I used for non PLA filaments (PLA seems to like skinny dip):
 
 ```yml
 # Unloading and Ramming values - Initial moves to form and shape tip
@@ -140,7 +141,7 @@ variable_cooling_zone_pause: 0         # in milliseconds - default 0 - If you ne
 variable_use_fast_skinnydip: 0         # Skip the toolhead temp change during skinnydip move - default 0
 
 # Park filament ready to eject
-# variable_parking_distance: 35        # Final filament parking position after final cooling move, 0 will leave filament where it naturally ends up
+variable_parking_distance: 35          # Final filament parking position after final cooling move, 0 will leave filament where it naturally ends up
 
 # Final Eject - for standalone tuning only
 variable_final_eject: 0                # default 0, enable during standalone tuning process to eject the filament
