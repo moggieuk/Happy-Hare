@@ -2053,7 +2053,7 @@ class Mmu:
         self.action = action
         try:
             self.printer.lookup_object('gcode_macro _MMU_ACTION_CHANGED')
-            self.gcode.run_script_from_command("_MMU_ACTION_CHANGED")
+            self.gcode.run_script_from_command("_MMU_ACTION_CHANGED ACTION=%s OLD_ACTION=%s" % (self.action, old_action))
         finally:
             return old_action
 

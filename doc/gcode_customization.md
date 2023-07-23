@@ -25,29 +25,34 @@ Possible action strings are:
 Here is the reference/example macro packaged in `mmu_software.cfg`:
 
 ```yml
+###########################################################################
+# This occurs when the MMU action status changes. The `ACTION` parameters will contain
+# the current action string (also available in `printer.mmu.action` printer variable).
+# Also the previous action is available in `OLD_ACTION`. See Happy Hare README for
+# full list of action strings.
+#
+# This could be a place to set LED status or similar. The logic here
+# demonstrates the three major action states
+#
 [gcode_macro _MMU_ACTION_CHANGED]
 description: Called when an action has changed.
 gcode:
-    # This occurs when the MMU action status changes.  `printer.mmu.action` will contain
-    # the current action string. See Happy Hare README for full list
-    #
-    # This could be a place to set LED status or similar. The logic here
-    # demonstrates the three major action states
-    {% set ACTION = printer.mmu.action|string %}
+    {% set ACTION = params.ACTION|string %}
+    {% set OLD_ACTION = params.OLD_ACTION|string %}
 
-    {% if ACTION|string == "Idle" %}
-        # Add your logic here
-        # _STATUS_STANDBY
-    {% endif %}
-    
     {% if ACTION|string == "Loading" %}
-        # Add your logic here
+        # Add your logic here, e.g. loading LED
         # _STATUS_LOADING
     {% endif %}
 
     {% if ACTION|string == "Unloading" %}
-        # Add your logic here
+        # Add your logic here, e.g. unloading LED
         # _STATUS_UNLOADING
+    {% endif %}
+
+    {% if ACTION|string == "Idle" %}
+        # Add your logic here, e.g. LED off
+        # _STATUS_STANDBY
     {% endif %}
 ```
 
@@ -62,35 +67,33 @@ Here are the default macros:
 
 ```yml
 ###########################################################################
-# Callback macros for modifying Happy Hare behavour
-# Note that EndlessSpool is an unsupervised filament change
-###########################################################################
-
+# This occurs prior to MMU forming tip and ejecting the remains of the old filament
+#
+# Typically you would move toolhead to your park position so oozing is not a problem
+#
+# This is probably similar to what you do in your PAUSE macro and you could simply call that here...
+# (this call works with reference PAUSE macro supplied in client_macros.cfg)
+#
 [gcode_macro _MMU_ENDLESS_SPOOL_PRE_UNLOAD]
 description: Pre unload routine for EndlessSpool changes
 gcode:
-    # This occurs prior to MMU forming tip and ejecting the remains of the old filament
-    #
-    # Typically you would move toolhead to your park position so oozing is not a problem
-    #
-    # This is probably similar to what you do in your PAUSE macro and you could simply call that here...
-    # (this call works with reference PAUSE macro supplied in client_macros.cfg)
-
     PAUSE
 
+
+###########################################################################
+# This occurs after MMU has loaded the new filament from the next spool in rotation
+# MMU will have loaded the new filament to the nozzle the same way as a normal filament
+# swap. Previously configured Pressure Advance will be retained.
+# 
+# This would be a place to purge additional filament if necessary (it really shouldn't be)
+# and clean nozzle if your printer is suitably equipped.
+#
+# This is probably similar to what you do in your RESUME macro and you could simply call that here...
+# (this call works with reference RESUME macro supplied in client_macros.cfg)
+#
 [gcode_macro _MMU_ENDLESS_SPOOL_POST_LOAD]
 description: Optional post load routine for EndlessSpool changes
 gcode:
-    # This occurs after MMU has loaded the new filament from the next spool in rotation
-    # MMU will have loaded the new filament to the nozzle the same way as a normal filament
-    # swap. Previously configured Pressure Advance will be retained.
-    # 
-    # This would be a place to purge additional filament if necessary (it really shouldn't be)
-    # and clean nozzle if your printer is suitably equipped.
-    #
-    # This is probably similar to what you do in your RESUME macro and you could simply call that here...
-    # (this call works with reference RESUME macro supplied in client_macros.cfg)
-
     RESUME
 ```
 
