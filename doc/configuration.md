@@ -1,6 +1,6 @@
-# Detailed Happy Hare Configuration Guide (mmu_parameters.cfg)
+# Detailed Configuration Guide
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Reference Configuration
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) mmu_parameters.cfg
 
 The first section specifies the type of MMU and is used by Happy Hare to adjust options. It is documented in the main [README.md](https://github.com/moggieuk/Happy-Hare#1-important-mmu-vendor--version-specification).
 
@@ -257,7 +257,7 @@ strict_filament_recovery: 0	# If '1' with toolhead sensor, will look for filamen
 
 This final section is commented out because it is not generally needed. It retains abilities that existed in earlier versions of Happy Hare which may still be useful in some specific cases.  Normally when reset Happy Hare will default to empty or simple values for these settings. However, you can define the default here so that after a MMU reset has been performed they will be the starting values perhaps saving some additional configuration. E.g. if you always have specific filament spools loaded on a particular gate (I always have ABS black on gate #8 for example) you can define that here by setting the starting `gate_material` and `gate_color` arrays. Read [here](https://github.com/moggieuk/Happy-Hare#3-tool-to-gate-ttg-mapping) and [here](https://github.com/moggieuk/Happy-Hare#12-gate-map-describing-filament-type-color-and-status) for more details.
 
-> [!Note]  
+> [!Note]
 > Happy Hare will report error if these arrays are not the same length as the configured number of gates.
 
 ```yml
