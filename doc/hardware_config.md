@@ -9,7 +9,7 @@ This can be daunting but the interactive installer will make the process easy fo
 
 Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
   
-```
+```yml
 # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
 # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing
 # and syncing options.  This definition replaces the stepper definition part of you existing [extruder] definition.
@@ -85,7 +85,7 @@ These would represent touch endstop on gear, touch on extruder, physical selecto
 
 In addition the default endstop which is only set on the selector in the out-of-the-box configuration you can specify a list of "extra" endstops each with a customized name.  These extra endstops can be switched in and out as needed. E.g.
 
-```
+```yml
 extra_endstop_pins: tmc2209_extruder:virtual_endstop, TEST_PIN
 extra_endstop_names: mmu_ext_touch, my_test_endstop
 ```
