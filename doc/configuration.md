@@ -106,6 +106,7 @@ encoder_parking_distance: 23.0		# Advanced: Controls parking postion in the gate
 
 For more information on the bowden correct move, read about the loading sequence [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).  The `bowden_num_moves` allows a long move to be broken into separate moves.  Only increase this if Klipper throws errors with very long moves - setting it higher than `1` will long down the loading process.
 
+```yml
 # Bowden tube loading/unloading --------------------------------------------------------------------------------------------
 #
 # In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to detect missed steps
@@ -116,10 +117,11 @@ For more information on the bowden correct move, read about the loading sequence
 bowden_apply_correction: 0		# 1 to enable, 0 disabled (default)
 bowden_load_tolerance: 15.0		# How close in mm the correction moves will attempt to get to target
 bowden_num_moves: 1			# Number of separate fast moves to make when loading or unloading bowden (>1 if you have TTC errors)
+```
 
 This section controls the optional extruder homing step. The `extruder_homing_endstop` is either a real endstop name or the string "collision" which causes Happy Hare to "feel" for the extruder entrance.  If other options dictate this homing step it will automatically be performed, however it is possible to force it even when not strickly needed by setting the `extruder_force_homing: 1`.
 
-
+```yml
 # Extruder entrance detection/homing ---------------------------------------------------------------------------------------
 #
 # If not using a toolhead sensor (homing endpoint) the driver can "feel" for the extruder gear entry by colliding with it
@@ -136,6 +138,7 @@ extruder_homing_current: 40		# % gear_stepper current (10%-100%) to use when hom
 # this setting, however if you have a toolhead sensor you can still force the additional (unecessary and not recommended)
 # step of homing to extruder entrance before then homing to the toolhead sensor
 extruder_force_homing: 0
+```
 
 This section controls the module responsible for loading filament into and unloading from the extruder/toolhead. There are many options and the notes below and in the file explain the options already.  Note that the default of synchronized loading and non-synchronized unloading is recommended. Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 
