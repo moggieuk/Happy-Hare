@@ -242,6 +242,7 @@ class Mmu:
         self.z_hop_height = config.getfloat('z_hop_height', 5., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
+        self.force_form_tip_standalone = config.getint('force_form_tip_standalone', 0, minval=0, maxval=1)
         self.persistence_level = config.getint('persistence_level', 0, minval=0, maxval=4)
         self.auto_calibrate_gates = config.getint('auto_calibrate_gates', 0, minval=0, maxval=1)
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
@@ -3623,7 +3624,7 @@ class Mmu:
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         tool = gcmd.get_int('TOOL', minval=0, maxval=self.mmu_num_gates - 1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
-        skip_tip = self._is_in_print() and not standalone
+        skip_tip = self._is_in_print() and not (standalone or self.force_form_tip_standalone)
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
             self._log_error("Unknown filament position, recovering state...")
             self._recover_filament_pos()
@@ -3974,7 +3975,8 @@ class Mmu:
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
-        self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', 0., minval=0.)
+        self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.slicer_tip_park_pos, minval=0.)
+        self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
 
@@ -4029,6 +4031,7 @@ class Mmu:
         msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
+        msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
         msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
         msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
         msg += "\nlog_level = %d" % self.log_level
