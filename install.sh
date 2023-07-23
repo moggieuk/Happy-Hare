@@ -29,6 +29,14 @@ PIN[ERB,selector_endstop_pin]="gpio24";  PIN[EASY-BRD,selector_endstop_pin]="PB9
 PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";              PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
 PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";            PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
 
+# TODO. These are example pins (mine!).  Update installer to look for them during install
+PIN[extruder_uart_pin]="PE1"
+PIN[extruder_diag_pin]="PG14"
+PIN[extruder_step_pin]="PE2"
+PIN[extruder_dir_pin]="PE3"
+PIN[extruder_enable_pin]="PD4"
+PIN[toolhead_sensor_pin]="PG13"
+
 # Screen Colors
 OFF='\033[0m'             # Text Reset
 BLACK='\033[0;30m'        # Black
@@ -343,12 +351,23 @@ copy_config_files() {
             # Now substitute pin tokens for correct brd_type
             if [ "${brd_type}" == "unknown" ]; then
                 cat ${dest}.tmp | sed -e "\
-                    s/{toolhead_sensor_pin}/${toolhead_sensor_pin}/; \
+                    s/{extruder_uart_pin}/${PIN[extruder_uart_pin]}/; \
+                    s/{extruder_step_pin}/${PIN[extruder_step_pin]}/; \
+                    s/{extruder_dir_pin}/${PIN[extruder_dir_pin]}/; \
+                    s/{extruder_enable_pin}/${PIN[extruder_enable_pin]}/; \
+                    s/{extruder_diag_pin}/${PIN[extruder_diag_pin]}/; \
+                    s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
                     s%{serial}%${serial}%; \
                     /^${magic_str1} START/,/${magic_str1} END/ s/^#//; \
                         " > ${dest} && rm ${dest}.tmp
             else
                 cat ${dest}.tmp | sed -e "\
+                    s/{extruder_uart_pin}/${PIN[extruder_uart_pin]}/; \
+                    s/{extruder_step_pin}/${PIN[extruder_step_pin]}/; \
+                    s/{extruder_dir_pin}/${PIN[extruder_dir_pin]}/; \
+                    s/{extruder_enable_pin}/${PIN[extruder_enable_pin]}/; \
+                    s/{extruder_diag_pin}/${PIN[extruder_diag_pin]}/; \
+                    s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
                     s/{gear_uart_pin}/${PIN[$brd_type,gear_uart_pin]}/; \
                     s/{gear_step_pin}/${PIN[$brd_type,gear_step_pin]}/; \
                     s/{gear_dir_pin}/${PIN[$brd_type,gear_dir_pin]}/; \
@@ -362,7 +381,6 @@ copy_config_files() {
                     s/{selector_endstop_pin}/${PIN[$brd_type,selector_endstop_pin]}/; \
                     s/{servo_pin}/${PIN[$brd_type,servo_pin]}/; \
                     s/{encoder_pin}/${PIN[$brd_type,encoder_pin]}/; \
-                    s/{toolhead_sensor_pin}/${toolhead_sensor_pin}/; \
                     s%{serial}%${serial}%; \
                     /^${magic_str1} START/,/${magic_str1} END/ s/^#//; \
                         " > ${dest} && rm ${dest}.tmp
@@ -664,12 +682,12 @@ questionaire() {
             echo -e "${PROMPT}    If you don't know just hit return, I can enter a default and you can change later${INPUT}"
             read -p "    Toolhead sensor pin name? " toolhead_sensor_pin
             if [ "${toolhead_sensor_pin}" = "" ]; then
-                toolhead_sensor_pin="{dummy_pin_must_set_me}"
+                PIN[toolhead_sensor_pin]="{dummy_pin_must_set_me}"
             fi
             ;;
         n)
             SETUP_TOOLHEAD_SENSOR=0
-            toolhead_sensor_pin="{dummy_pin_must_set_me}"
+            PIN[toolhead_sensor_pin]="{dummy_pin_must_set_me}"
             ;;
     esac
 
@@ -679,10 +697,12 @@ questionaire() {
     case $yn in
         y)
             servo_up_angle=30
+            servo_move_angle=30
             servo_down_angle=140
             ;;
         n)
             servo_up_angle=140
+            servo_move_angle=140
             servo_down_angle=30
             ;;
     esac

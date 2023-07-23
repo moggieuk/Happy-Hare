@@ -1111,7 +1111,7 @@ class Mmu:
         msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_paused_locked else "OPERATIONAL")
         msg += " with the servo in a %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
-        msg += ", Encoder reads %.2fmm" % self.encoder_sensor.get_distance()
+        msg += ", Encoder reads %.1fmm" % self.encoder_sensor.get_distance()
         msg += "\nSelector is %shomed" % ("" if self.is_homed else "NOT ")
         msg += ". Tool %s is selected " % self._selected_tool_string()
         msg += " on gate %s" % self._selected_gate_string()
