@@ -190,7 +190,10 @@ toolhead_delay_servo_release: 2.0	# Delay release on servo by (mm) when not usin
 toolhead_sync_unload: 0			# Extruder unloading (except stand alone tip forming) leverages motor synchronization
 ```
 
-Happy Hare has the ability to synchronize various motors during printing operation and this section controls those options. Make sure you have [understand the caution](https://github.com/moggieuk/Happy-Hare#4-synchronized-gearextruder-motors) needed when `sync_to_extruder: 1` is enabled.  
+Happy Hare has the ability to synchronize various motors during printing operation and this section controls those options. Make sure you have [understand the caution](https://github.com/moggieuk/Happy-Hare#4-synchronized-gearextruder-motors) needed when `sync_to_extruder: 1` is enabled.
+
+> [!NOTE]  
+> Setting `force_form_tip_standalone: 1` will cause Happy Hare to always run the supplied tip shaping macro.  If you set this then make sure your slicer is not adding tip shaping logic of its own else tips will attempt to be created twice and knowledge of the filament position in the extruder may become inaccurate
 
 ```yml
 # Synchronized gear/extruder movement and tip forming ----------------------------------------------------------------------
@@ -204,7 +207,13 @@ Happy Hare has the ability to synchronize various motors during printing operati
 sync_to_extruder: 0			# Gear motor is synchronized to extruder during print
 sync_gear_current: 50			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
 sync_form_tip: 0			# Synchronize during standalone tip formation (initial part of unload)
-extruder_form_tip_current: 120		# % of extruder current (100%-150%) to use when forming tip (100 to disable)
+#
+# Tip forming responsibity is typically split between slicer (in-print) and standalone macro (not in-print). Whilst there is
+# an option to choose for every toolchange, setting 'force_form_tip_standalone: 1' will always do the standalone sequence
+# Often it is useful to increase the current for this generally rapid movement
+#
+extruder_form_tip_current: 100		# % of extruder current (100%-150%) to use when forming tip (100 to disable)
+force_form_tip_standalone: 0		# 0 = Default smart behavor, 1 = Always do standalone tip forming (TURN SLICER OFF!)
 ```
 
 Clog detection and EndlessSpool feature is well documented [here](https://github.com/moggieuk/Happy-Hare#5-clogrunout-detection-endlessspool-and-flowrate-monitoring).
