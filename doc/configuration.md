@@ -2,7 +2,7 @@
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Reference Configuration
 
-The first section specifies the type of MMU and is used by Happy Hare to adjust options. It is documented in the main README.md.
+The first section specifies the type of MMU and is used by Happy Hare to adjust options. It is documented in the main [README.md](https://github.com/moggieuk/Happy-Hare#1-important-mmu-vendor--version-specification).
 
 ```yml
 [mmu]
@@ -46,7 +46,7 @@ servo_duration: 0.2			# Duration of PWM burst sent to servo (automatically turns
 servo_active_down: 0			# CAUTION: 1=Force servo to stay active when down, 0=Release after movement
 ```
 
-Logging controls - it really is unessessary to have verbose logging to the console so defaults are recommended.
+Logging controls control the verbosity level of logging to console and separate `mmu.log` file as well and fun visual filament position and various status messages - it really is unessessary to have verbose logging to the console so defaults are recommended.
 
 ```yml
 # Logging ------------------------------------------------------------------------------------------------------------------
@@ -62,7 +62,7 @@ log_visual: 2				# 1 log visual representation of filament, 2 compact form (defa
 log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = summary (default), 2 = full, 0 = disable
 ```
 
-Speeds. TODO
+All Happy Hare speeds can be configured in this section.  Most are self-explanatory and are separated into gear stepper speeds, speeds inside of the extruder (either just extruder motor or when synced with gear stepper) and selector movement.
 
 ```yml
 # Movement speeds ----------------------------------------------------------------------------------------------------------
@@ -92,7 +92,7 @@ selector_touch_speed: 80		# mm/s speed of all touch selector moves (if stallguar
 enable_selector_touch: 0		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
 ```
 
-TODO
+This section controls the module that controls filament loading and unload at the gate when an encoder is present. The `encoder_unload_buffer` represents how close to the gate the filament ends up after fast bowden move. You want it close (for speed) but not too close that it can overshoot.  `encoder_parking_distance` is how fast away from the gate exit the filament should be parked when unloaded.  It rarely needs to be changed from the default.
 
 ```yml
 # Encoder loading/unloading ------------------------------------------------------------------------------------------------
@@ -104,7 +104,7 @@ encoder_load_retries: 2			# Number of times MMU will attempt to grab the filamen
 encoder_parking_distance: 23.0		# Advanced: Controls parking postion in the gate (distance from encoder, range=12-30)
 ```
 
-TODO
+For more information on the bowden correct move, read about the loading sequence [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).  The `bowden_num_moves` allows a long move to be broken into separate moves.  Only increase this if Klipper throws errors with very long moves - setting it higher than `1` will long down the loading process.
 
 ```yml
 # Bowden tube loading/unloading --------------------------------------------------------------------------------------------
@@ -119,7 +119,7 @@ bowden_load_tolerance: 15.0		# How close in mm the correction moves will attempt
 bowden_num_moves: 1			# Number of separate fast moves to make when loading or unloading bowden (>1 if you have TTC errors)
 ```
 
-TODO
+This section controls the optional extruder homing step. The `extruder_homing_endstop` is either a real endstop name or the string "collision" which causes Happy Hare to "feel" for the extruder entrance.  If other options dictate this homing step it will automatically be performed, however it is possible to force it even when not strickly needed by setting the `extruder_force_homing: 1`.
 
 ```yml
 # Extruder entrance detection/homing ---------------------------------------------------------------------------------------
@@ -140,7 +140,7 @@ extruder_homing_current: 40		# % gear_stepper current (10%-100%) to use when hom
 extruder_force_homing: 0
 ```
 
-TODO
+This section controls the module responsible for loading filament into and unloading from the extruder/toolhead. There are many options and the notes below and in the file explain the options already.  Note that the default of synchronized loading and non-synchronized unloading is recommended. Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 
 ```yml
 # Built in default toolhead loading and unloading -------------------------------------------------------------------------
@@ -190,7 +190,7 @@ toolhead_delay_servo_release: 2.0	# Delay release on servo by (mm) when not usin
 toolhead_sync_unload: 0			# Extruder unloading (except stand alone tip forming) leverages motor synchronization
 ```
 
-TODO
+Happy Hare has the ability to synchronize various motors during printing operation and this section controls those options. Make sure you have [understand the caution](https://github.com/moggieuk/Happy-Hare#4-synchronized-gearextruder-motors) needed when `sync_to_extruder: 1` is enabled.  
 
 ```yml
 # Synchronized gear/extruder movement and tip forming ----------------------------------------------------------------------
