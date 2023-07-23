@@ -228,7 +228,7 @@ enable_clog_detection: 2	# 0 = disable, 1 = static length clog detection, 2 = au
 enable_endless_spool: 1		# 0 = disable endless spool,  1 = enable endless spool (requires clog detection)
 ```
 
-State persisence is a powerful feature of Happy Hare and is documented [here](https://github.com/moggieuk/Happy-Hare#2-state-and-persistence). I highly recommend level 4 as soon as you understand how it works.
+State persisence is a powerful feature of Happy Hare and is documented [here](https://github.com/moggieuk/Happy-Hare#2-state-and-persistence). I highly recommend level `4` as soon as you understand how it works.
 
 ```yml
 # Turn on behavior -------------------------------------------------------------------------------------------------------
@@ -246,7 +246,11 @@ State persisence is a powerful feature of Happy Hare and is documented [here](ht
 persistence_level: 3
 ```
 
-This section contains an eclectic set of remianing options. Ask on discord if any aren't clear.
+This section contains an eclectic set of remianing options. Ask on discord if any aren't clear, however a couple warrant further explantion:<br>
+`slicer_tip_park_pos` - If you use the default slicer tip shaping logic then it will leave the filament at a particular place in the extruder. Unfortunately Happy Hare has no way to detect this like it can when it takes care of tip shaping. This parameter usually exists in the slicer and setting it will pass on to Happy Hare for more efficient subsequent unloading.<br>
+`auto_calibrate_gates` - discussed in main readme but avoids having to calibrate since that are automatically calibrated on first use.<br>
+`strict_filament_recovery` - Occassionaly Happy Hare will be forced to try to figure our where the filament is. It employs various mechanisms to achive this depending on the capability of the MMU. Some of this steps are invasive (e.g. warming the extruder when it is cold) and are therefore skipped by default. Enabling this option will force extra detection steps.
+
 
 ```yml
 # Misc configurable, but fairly fixed values -----------------------------------------------------------------------------
