@@ -48,7 +48,7 @@ servo_active_down: 0			# CAUTION: 1=Force servo to stay active when down, 0=Rele
 
 Logging controls control the verbosity level of logging to console and separate `mmu.log` file as well and fun visual filament position and various status messages - it really is unessessary to have verbose logging to the console so defaults are recommended.
 
-```
+```yml
 # Logging ------------------------------------------------------------------------------------------------------------------
 #
 # log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
@@ -64,7 +64,7 @@ log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = sum
 
 All Happy Hare speeds can be configured in this section.  Most are self-explanatory and are separated into gear stepper speeds, speeds inside of the extruder (either just extruder motor or when synced with gear stepper) and selector movement.
 
-```
+```yml
 # Movement speeds ----------------------------------------------------------------------------------------------------------
 #
 # Long moves are faster than the small ones and used for the bulk of the bowden movement. Note that you can set two fast load
@@ -94,7 +94,7 @@ enable_selector_touch: 0		# If selector touch operation is possible this can be 
 
 This section controls the module that controls filament loading and unload at the gate when an encoder is present. The `encoder_unload_buffer` represents how close to the gate the filament ends up after fast bowden move. You want it close (for speed) but not too close that it can overshoot.  `encoder_parking_distance` is how fast away from the gate exit the filament should be parked when unloaded.  It rarely needs to be changed from the default.
 
-```
+```yml
 # Encoder loading/unloading ------------------------------------------------------------------------------------------------
 #
 # These setttings control the optional encoder to load and unload filament at the gate
@@ -106,7 +106,7 @@ encoder_parking_distance: 23.0		# Advanced: Controls parking postion in the gate
 
 For more information on the bowden correct move, read about the loading sequence [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).  The `bowden_num_moves` allows a long move to be broken into separate moves.  Only increase this if Klipper throws errors with very long moves - setting it higher than `1` will long down the loading process.
 
-```
+```yml
 # Bowden tube loading/unloading --------------------------------------------------------------------------------------------
 #
 # In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to detect missed steps
@@ -121,7 +121,7 @@ bowden_num_moves: 1			# Number of separate fast moves to make when loading or un
 
 This section controls the optional extruder homing step. The `extruder_homing_endstop` is either a real endstop name or the string "collision" which causes Happy Hare to "feel" for the extruder entrance.  If other options dictate this homing step it will automatically be performed, however it is possible to force it even when not strickly needed by setting the `extruder_force_homing: 1`.
 
-```
+```yml
 # Extruder entrance detection/homing ---------------------------------------------------------------------------------------
 #
 # If not using a toolhead sensor (homing endpoint) the driver can "feel" for the extruder gear entry by colliding with it
@@ -142,7 +142,7 @@ extruder_force_homing: 0
 
 This section controls the module responsible for loading filament into and unloading from the extruder/toolhead. There are many options and the notes below and in the file explain the options already.  Note that the default of synchronized loading and non-synchronized unloading is recommended. Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 
-```
+```yml
 # Built in default toolhead loading and unloading -------------------------------------------------------------------------
 #
 # It is possible to define highly customized loading and unloading sequences, however, unless you have a specialized setup
@@ -192,7 +192,7 @@ toolhead_sync_unload: 0			# Extruder unloading (except stand alone tip forming) 
 
 Happy Hare has the ability to synchronize various motors during printing operation and this section controls those options. Make sure you have [understand the caution](https://github.com/moggieuk/Happy-Hare#4-synchronized-gearextruder-motors) needed when `sync_to_extruder: 1` is enabled.  
 
-```
+```yml
 # Synchronized gear/extruder movement and tip forming ----------------------------------------------------------------------
 #
 # This controls whether the extruder and gear steppers are synchronized during printing operations
@@ -207,9 +207,9 @@ sync_form_tip: 0			# Synchronize during standalone tip formation (initial part o
 extruder_form_tip_current: 120		# % of extruder current (100%-150%) to use when forming tip (100 to disable)
 ```
 
-TODO
+Clog detection and EndlessSpool feature is well documented [here](https://github.com/moggieuk/Happy-Hare#5-clogrunout-detection-endlessspool-and-flowrate-monitoring).
 
-```
+```yml
 # Clog detection and Endless Spool ---------------------------------------------------------------------------------------
 # Selector (stallguard) operation. If configured for sensorless homing MMU can detect blocked filament path and try to recover
 # automatically but it is slower and more difficult to set up (sensorless still requires the physical endstop switch)
@@ -219,7 +219,9 @@ enable_clog_detection: 2	# 0 = disable, 1 = static length clog detection, 2 = au
 enable_endless_spool: 1		# 0 = disable endless spool,  1 = enable endless spool (requires clog detection)
 ```
 
-```
+State persisence is a powerful feature of Happy Hare and is documented [here](https://github.com/moggieuk/Happy-Hare#2-state-and-persistence). I highly recommend level 4 as soon as you understand how it works.
+
+```yml
 # Turn on behavior -------------------------------------------------------------------------------------------------------
 # MMU can auto-initialize based on previous persisted state. There are 5 levels with each level bringing in
 # additional state information requiring progressively less inital setup. The higher level assume that you don't touch
@@ -235,7 +237,7 @@ enable_endless_spool: 1		# 0 = disable endless spool,  1 = enable endless spool 
 persistence_level: 3
 ```
 
-TODO
+This section contains an eclectic set of remianing options. Ask on discord if any aren't clear.
 
 ```yml
 # Misc configurable, but fairly fixed values -----------------------------------------------------------------------------
@@ -253,7 +255,10 @@ auto_calibrate_gates: 0		# Automated gate (not gate#0) calibration. 1=calibrated
 strict_filament_recovery: 0	# If '1' with toolhead sensor, will look for filament trapped after extruder but before sensor
 ```
 
-TODO
+This final section is commented out because it is not generally needed. It retains abilities that existed in earlier versions of Happy Hare which may still be useful in some specific cases.  Normally when reset Happy Hare will default to empty or simple values for these settings. However, you can define the default here so that after a MMU reset has been performed they will be the starting values perhaps saving some additional configuration. E.g. if you always have specific filament spools loaded on a particular gate (I always have ABS black on gate #8 for example) you can define that here by setting the starting `gate_material` and `gate_color` arrays. Read [here](https://github.com/moggieuk/Happy-Hare#3-tool-to-gate-ttg-mapping) and [here](https://github.com/moggieuk/Happy-Hare#12-gate-map-describing-filament-type-color-and-status) for more details.
+
+> [!Note]  
+> Happy Hare will report error if these arrays are not the same length as the configured number of gates.
 
 ```yml
 # Advanced: re-initialize behavior --- ONLY SET IF YOU REALLY WANT NON DEFAULT INITIALIZATION ----------------------------
