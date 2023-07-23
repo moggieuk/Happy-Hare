@@ -721,7 +721,7 @@ MMU_RECOVER TOOL=5 LOADED=1 - tell Happy Hare that T5 is loaded and ready to pri
 MMU_RECOVER TOOL=1 GATE=2 LOADED=0 - tell Happy Hare that T1 is being serviced by gate #2 and the filament is Unloaded
 ```
 > [!NOTE]  
-> The default automatic recovery will avoid some expensive/invasive testing that can detect contions that would not normally be discovered (like filament trapped in extruder but not registering on toolhead sensor). Use can add the `MMU_RECOVER STRICT=1` parameter to force these extra tests or by configuring `strict_filament_recover: 1` in `mmu_parameters.cfg`. The reason this isn't the default behavor is that it could result in extruder heating up unexpectedly.
+> The default automatic recovery will avoid some expensive/invasive testing that can detect contions that would not normally be discovered (like filament trapped in extruder but not registering on toolhead sensor). Use can add the `MMU_RECOVER STRICT=1` parameter to force these extra tests or by configuring `strict_filament_recover: 1` in `mmu_parameters.cfg`. The reason this isn't the default behavor is that it could result in the extruder heating up unexpectedly.
 
 </details>
 
@@ -1045,7 +1045,7 @@ Good luck! You can find me on discord as _moggieuk#6538_
  
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Revision History
 <ul>
-<li>v2.0.0 - Initial Release (forked from my ERCF-Software-V3 project)</li>
+<li>v2.0.1 - Initial Release (forked from my ERCF-Software-V3 project)</li>
 </ul>
 
 <br>
