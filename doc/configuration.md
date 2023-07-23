@@ -119,6 +119,7 @@ bowden_num_moves: 1			# Number of separate fast moves to make when loading or un
 
 This section controls the optional extruder homing step. The `extruder_homing_endstop` is either a real endstop name or the string "collision" which causes Happy Hare to "feel" for the extruder entrance.  If other options dictate this homing step it will automatically be performed, however it is possible to force it even when not strickly needed by setting the `extruder_force_homing: 1`.
 
+
 # Extruder entrance detection/homing ---------------------------------------------------------------------------------------
 #
 # If not using a toolhead sensor (homing endpoint) the driver can "feel" for the extruder gear entry by colliding with it
@@ -138,6 +139,7 @@ extruder_force_homing: 0
 
 This section controls the module responsible for loading filament into and unloading from the extruder/toolhead. There are many options and the notes below and in the file explain the options already.  Note that the default of synchronized loading and non-synchronized unloading is recommended. Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 
+```yml
 # Built in default toolhead loading and unloading -------------------------------------------------------------------------
 #
 # It is possible to define highly customized loading and unloading sequences, however, unless you have a specialized setup
@@ -183,6 +185,7 @@ toolhead_delay_servo_release: 2.0	# Delay release on servo by (mm) when not usin
 # detect stuck filament, (ii) it can lead to additional noise, (iii) it is possible to "over unload". Nevertheless, it can
 # be employed if you extruder struggles to unload
 toolhead_sync_unload: 0			# Extruder unloading (except stand alone tip forming) leverages motor synchronization
+```
 
 Happy Hare has the ability to synchronize various motors during printing operation and this section controls those options. Make sure you have [understand the caution](https://github.com/moggieuk/Happy-Hare#4-synchronized-gearextruder-motors) needed when `sync_to_extruder: 1` is enabled.  
 
