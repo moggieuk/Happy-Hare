@@ -19,8 +19,8 @@ mmu/
 
   optional/
     mmu_menu.cfg
-    client_macros.cfg
     mmu_ercf_compat.cfg
+    client_macros.cfg
 
   mmu_vars.cfg
 ```
@@ -83,6 +83,15 @@ The second definion is the elements that define the extruder stepper motor taken
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
 If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
+
+#### mmu_vars.cfg
+This is the file where Happy Hare stores all calibration settings and state. It is pointed to by this section at the top of `mmu_software.cfg`:
+```yml
+[save_variables]
+filename: /home/pi/printer_data/config/mmu/mmu_vars.cfg
+```
+
+Klipper can only have one `save_variables` file and so if you are already using one you can simply comment out the lines above and Happy Hare will append into your existing "variables" file.
 
 <br>
 
