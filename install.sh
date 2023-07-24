@@ -258,13 +258,13 @@ read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parameters_cfg="mmu_parameters.cfg"
 
-    parse_file "${SRCDIR}/config/${parameters_cfg}"
+    parse_file "${SRCDIR}/config/base/${parameters_cfg}"
 }
 
 # Pull parameters from previous installation
 read_previous_config() {
     parameters_cfg="mmu_parameters.cfg"
-    dest_parameters_cfg=${KLIPPER_CONFIG_HOME}/mmu/${parameters_cfg}
+    dest_parameters_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${parameters_cfg}
 
     if [ ! -f "${dest_parameters_cfg}" ]; then
         echo -e "${WARNING}No previous ${parameters_cfg} found. Will install default"
@@ -286,7 +286,7 @@ read_previous_config() {
     fi
 
     software_cfg="mmu_software.cfg"
-    dest_software_cfg=${KLIPPER_CONFIG_HOME}/mmu/${software_cfg}
+    dest_software_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${software_cfg}
 
     if [ ! -f "${dest_software_cfg}" ]; then
         echo -e "${WARNING}No previous ${software_cfg} found. Will install default"
@@ -300,14 +300,16 @@ copy_config_files() {
     echo -e "${INFO}Copying configuration files into ${KLIPPER_CONFIG_HOME}/mmu directory..."
     if [ ! -d "${KLIPPER_CONFIG_HOME}/mmu" ]; then
         mkdir ${KLIPPER_CONFIG_HOME}/mmu
+        mkdir ${KLIPPER_CONFIG_HOME}/mmu/base
+        mkdir ${KLIPPER_CONFIG_HOME}/mmu/optional
     fi
 
-    for file in `cd ${SRCDIR}/config ; ls *.cfg`; do
-        src=${SRCDIR}/config/${file}
-        dest=${KLIPPER_CONFIG_HOME}/mmu/${file}
+    for file in `cd ${SRCDIR}/config/base ; ls *.cfg`; do
+        src=${SRCDIR}/config/base/${file}
+        dest=${KLIPPER_CONFIG_HOME}/mmu/base/${file}
 
         if [ -f "${dest}" ]; then
-	    if [ "${file}" == "mmu_hardware.cfg" -a "${INSTALL}" -eq 0 ]; then
+            if [ "${file}" == "mmu_hardware.cfg" -a "${INSTALL}" -eq 0 ] || [ "${file}" == "mmu.cfg"  -a "${INSTALL}" -eq 0 ]; then
                 echo -e "${WARNING}Skipping copy of hardware config file because already exists"
                 continue
             else
@@ -320,7 +322,7 @@ copy_config_files() {
         if [ "${file}" == "mmu_parameters.cfg" ]; then
             update_copy_file "$src" "$dest"
 
-	elif [ "${file}" == "mmu_hardware.cfg" ]; then
+	elif [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
             if [ "${SETUP_TOOLHEAD_SENSOR}" -eq 1 ]; then
                 magic_str1="## MMU Toolhead sensor"
             else
@@ -400,6 +402,23 @@ copy_config_files() {
             cp ${src} ${dest}
 	fi
     done
+
+    for file in `cd ${SRCDIR}/config/optional ; ls *.cfg`; do
+        src=${SRCDIR}/config/optional/${file}
+        dest=${KLIPPER_CONFIG_HOME}/mmu/optional/${file}
+        cp ${src} ${dest}
+    done
+
+    src=${SRCDIR}/config/mmu_vars.cfg
+    dest=${KLIPPER_CONFIG_HOME}/mmu/mmu_vars.cfg
+    cp ${src} ${dest}
+}
+
+uninstall_config_files() {
+    if [ -d "${KLIPPER_CONFIG_HOME}/mmu" ]; then
+        echo -e "${INFO}Removing MMU configuration files from ${KLIPPER_CONFIG_HOME}"
+        mv "${KLIPPER_CONFIG_HOME}/mmu" /tmp/mmu.uninstalled
+    fi
 }
 
 install_printer_includes() {
@@ -410,30 +429,28 @@ install_printer_includes() {
         echo -e "${INFO}Copying original printer.cfg file to ${next_dest}"
         cp ${dest} ${next_dest}
         if [ ${MENU_12864} -eq 1 ]; then
-            i='\[include mmu/mmu_menu.cfg\]'
+            i='\[include mmu/optional/mmu_menu.cfg\]'
             already_included=$(grep -c "${i}" ${dest} || true)
             if [ "${already_included}" -eq 0 ]; then
                 sed -i "1i ${i}" ${dest}
             fi
         fi
         if [ ${ERCF_COMPAT} -eq 1 ]; then
-            i='\[include mmu/mmu_ercf_compat.cfg\]'
+            i='\[include mmu/optional/mmu_ercf_compat.cfg\]'
             already_included=$(grep -c "${i}" ${dest} || true)
             if [ "${already_included}" -eq 0 ]; then
                 sed -i "1i ${i}" ${dest}
             fi
         fi
         if [ ${CLIENT_MACROS} -eq 1 ]; then
-            i='\[include mmu/client_macros.cfg\]'
+            i='\[include mmu/optional/client_macros.cfg\]'
             already_included=$(grep -c "${i}" ${dest} || true)
             if [ "${already_included}" -eq 0 ]; then
                 sed -i "1i ${i}" ${dest}
             fi
         fi
         for i in \
-                '\[include mmu/mmu_software.cfg\]' \
-                '\[include mmu/mmu_parameters.cfg\]' \
-                '\[include mmu/mmu_hardware.cfg\]' ; do
+                '\[include mmu/base/\*.cfg\]' ; do
             already_included=$(grep -c "${i}" ${dest} || true)
             if [ "${already_included}" -eq 0 ]; then
                 sed -i "1i ${i}" ${dest}
@@ -445,17 +462,6 @@ install_printer_includes() {
 }
 
 uninstall_printer_includes() {
-    prefix=${1}_
-    echo -e "${INFO}Removing ${prefix} MMU configuration files from ${KLIPPER_CONFIG_HOME}"
-    for file in `cd ${SRCDIR}/config ; ls *.cfg`; do
-        dest=${KLIPPER_CONFIG_HOME}/mmu/${file}
-
-        if test -f $dest; then
-            echo -e "${INFO}Removing config file ${file}"
-            mv -f ${dest} /tmp/${file}_uninstalled
-        fi
-    done
-
     echo -e "${INFO}Cleaning MMU references from printer.cfg"
     dest=${KLIPPER_CONFIG_HOME}/printer.cfg
     if test -f $dest; then
@@ -463,12 +469,14 @@ uninstall_printer_includes() {
         echo -e "${INFO}Copying original printer.cfg file to ${next_dest} before cleaning"
         cp ${dest} ${next_dest}
         cat "${dest}" | sed -e " \
-            /\[include mmu/client_macros.cfg\]/ d; \
-            /\[include mmu/mmu_software.cfg\]/ d; \
-            /\[include mmu/mmu_parameters.cfg\]/ d; \
-            /\[include mmu/mmu_hardware.cfg\]/ d; \
-            /\[include mmu/mmu_menu.cfg\]/ d; \
-            /\[include mmu/mmu_ercf_compat.cfg\]/ d; \
+            /\[include mmu\/optional\/client_macros.cfg\]/ d; \
+            /\[include mmu\/optional\/mmu_menu.cfg\]/ d; \
+            /\[include mmu\/optional\/mmu_ercf_compat.cfg\]/ d; \
+            /\[include mmu\/mmu_software.cfg\]/ d; \
+            /\[include mmu\/mmu_parameters.cfg\]/ d; \
+            /\[include mmu\/mmu_hardware.cfg\]/ d; \
+            /\[include mmu\/mmu.cfg\]/ d; \
+            /\[include mmu\/base\/\*.cfg\]/ d; \
 	        " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
     fi
 }
@@ -800,11 +808,11 @@ questionaire() {
         echo "     * Tweak motor speeds and current, especially if using non BOM motors"
         echo "     * Adjust motor direction with '!' on pin if necessary. No way to know here"
     fi
-    echo "     * Move you extruder stepper configuration into mmu_hardware.cfg"
+    echo "     * Move you extruder stepper configuration into mmu/base/mmu_hardware.cfg"
     echo "     * Adjust your config for loading and unloading preferences"
     echo 
     echo "    Advanced:"
-    echo "         * Tweak configurations like speed and distance in mmu_parameter.cfg"
+    echo "         * Tweak configurations like speed and distance in mmu/base/mmu_parameter.cfg"
     echo 
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."
     echo
@@ -817,7 +825,7 @@ usage() {
     echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]"
     echo
     echo "-i for interactive install"
-    echo "-u for uninstall"
+    echo "-d for uninstall"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
@@ -878,8 +886,9 @@ else
     case $yn in
         y)
             unlink_mmu_plugins
-            remove_template_files
             uninstall_update_manager
+            uninstall_printer_includes
+            uninstall_config_files
             echo -e "${INFO}Uninstall complete except for the Happy-Hare directory - you can now safely delete that as well"
             ;;
         n)

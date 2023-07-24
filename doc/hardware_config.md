@@ -5,45 +5,53 @@
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
 ### Step 1. Validate your hardware configuration
+
+#### Location of configuration files
+TODO
+
+#### MCU and Pin Validation
+TODO
+
+#### Hardware Configuration
 This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
 
 Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
   
 ```yml
 # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
-# With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing
-# and syncing options.  This definition replaces the stepper definition part of you existing [extruder] definition.
+# With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
+# options.  This definition replaces the stepper definition part of you existing [extruder] definition.
 #
 # IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here
 [tmc2209 manual_extruder_stepper extruder]
-uart_pin: E_TMCUART
+uart_pin: EXT_UART
 interpolate: true
-run_current: 0.55				# LDO 36STH20-1004AHG.  Match to macro below
+run_current: 0.55			# LDO 36STH20-1004AHG.  Match to macro below
 hold_current: 0.4
 sense_resistor: 0.110
-stealthchop_threshold: 0			# Spreadcycle (better for extruder)
+stealthchop_threshold: 0		# Spreadcycle (better for extruder)
 #
 # Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing to nozzle
-diag_pin: E_DIAG				# Set to MCU pin connected to TMC DIAG pin for extruder
-driver_SGTHRS: 60				# 255 is most sensitive value, 0 is least sensitive
-    
+diag_pin: EXT_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
+driver_SGTHRS: 100			# 255 is most sensitive value, 0 is least sensitive
+
 # Define just your printer's extruder stepper here. Valid config options are:
 # step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
 # pressure_advance, pressure_advance_smooth_time
 # IMPORTANT: REMOVE these settings from your existing [extruder] configuration BUT LEAVE ALL OTHER parameters!
 #
 [manual_extruder_stepper extruder]
-step_pin: E_STEP
-dir_pin: !E_DIR
-enable_pin: !E_ENABLE
+step_pin: EXT_STEP
+dir_pin: EXT_DIR
+enable_pin: EXT_ENABLE
 microsteps: 64
-rotation_distance: 22.4522			# Calibrated by hand
+rotation_distance: 22.4522		# Calibrated by hand
 gear_ratio: 50:10
 full_steps_per_rotation: 200
-pressure_advance: 0.035				# Fairly arbitary default
-pressure_advance_smooth_time: 0.040		# Recommended default
+pressure_advance: 0.035			# Fairly arbitary default
+pressure_advance_smooth_time: 0.040	# Recommended default
 #
-# Uncomment two lines below to allow the option of filament "touch" homing option to nozzle
+# Uncomment the two lines below to enable the option for filament "touch" homing option to nozzle!
 extra_endstop_pins: tmc2209_extruder:virtual_endstop
 extra_endstop_names: mmu_ext_touch
 ```
