@@ -7,10 +7,28 @@ This will vary slightly depending on your particular brand of MMU but the steps 
 ### Step 1. Validate your hardware configuration
 
 #### Location of configuration files
-TODO
+The Klipper configuration files for Happy Hare are modular and can be found in this layout in the Klipper config directory:
+
+```yml
+mmu/
+  base/
+    mmu.cfg
+    mmu_hardware.cfg
+    mmu_software.cfg
+    mmu_parameters.cfg
+
+  optional/
+    mmu_menu.cfg
+    client_macros.cfg
+    mmu_ercf_compat.cfg
+
+  mmu_vars.cfg
+```
+
+This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]'
 
 #### MCU and Pin Validation
-TODO
+The `mmu.cfg` file is part of the hardware configuration but defines aliases for all of the pins used in `mmu_hardware.cfg`. The benefit of this is that configuration frameworks like [Klippain](https://github.com/Frix-x/klippain) can most easily incorporate. It is also in keeping with an organized modular layout.
 
 #### Hardware Configuration
 This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
