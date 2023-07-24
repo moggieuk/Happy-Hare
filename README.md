@@ -806,6 +806,10 @@ To change for a particular gate use a command in this form:
 
 > MMU_SET_GATE_MAP GATE=8 MATERIAL=PLA COLOR=ff0000 AVAILABLE=1
 
+If you remove buffered filament from a gate and want to quickly tell Happy Hare that it is loading from spool again (for slower loads) the easiest way is simply this:
+
+> MMU_SET_GATE_MAP GATE=8 AVAILABLE=1
+
 > [!IMPORTANT]  
 > There is no enforcement of material names but it is recommended use all capital short names like PLA, ABS+, TPU95, PETG. The color string can be one of the [w3c standard color names](https://www.w3schools.com/tags/ref_colornames.asp) or a RRGGBB red/green/blue hex value. Because of a Klipper limitation don't add `#` to the color specification.
 
