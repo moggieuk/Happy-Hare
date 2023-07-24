@@ -7,10 +7,28 @@ This will vary slightly depending on your particular brand of MMU but the steps 
 ### Step 1. Validate your hardware configuration
 
 #### Location of configuration files
-TODO
+The Klipper configuration files for Happy Hare are modular and can be found in this layout in the Klipper config directory:
+
+```yml
+mmu/
+  base/
+    mmu.cfg
+    mmu_hardware.cfg
+    mmu_software.cfg
+    mmu_parameters.cfg
+
+  optional/
+    mmu_menu.cfg
+    mmu_ercf_compat.cfg
+    client_macros.cfg
+
+  mmu_vars.cfg
+```
+
+This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]'
 
 #### MCU and Pin Validation
-TODO
+The `mmu.cfg` file is part of the hardware configuration but defines aliases for all of the pins used in `mmu_hardware.cfg`. The benefit of this is that configuration frameworks like [Klippain](https://github.com/Frix-x/klippain) can more easily incorporate. It is also in keeping with an organized modular layout.
 
 #### Hardware Configuration
 This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
@@ -65,6 +83,15 @@ The second definion is the elements that define the extruder stepper motor taken
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
 If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
+
+#### mmu_vars.cfg
+This is the file where Happy Hare stores all calibration settings and state. It is pointed to by this section at the top of `mmu_software.cfg`:
+```yml
+[save_variables]
+filename: /home/pi/printer_data/config/mmu/mmu_vars.cfg
+```
+
+Klipper can only have one `save_variables` file and so if you are already using one you can simply comment out the lines above and Happy Hare will append into your existing "variables" file.
 
 <br>
 
