@@ -544,7 +544,7 @@ class Mmu:
             raise self.config.error("Missing [mmu_servo] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
         self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
         if not self.encoder_sensor:
-            raise self.config.error("Missing [mmu_encoder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
+            raise self.config.error("Missing [mmu_encoder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER) # TODO make warning
 
     def handle_connect(self):
         self._setup_logging()
@@ -616,16 +616,17 @@ class Mmu:
         self.ref_gear_rotation_distance = self.gear_stepper.stepper.get_rotation_distance()[0]
  
         # Configure encoder calibration (set with MMU_CALIBRATE_ENCODER)
-        self.encoder_sensor.set_logger(self._log_debug) # Combine with MMU log
-        self.encoder_sensor.set_extruder(self.extruder_name)
-        self.encoder_sensor.set_mode(self.enable_clog_detection)
-        resolution = self.variables.get(self.VARS_MMU_ENCODER_RESOLUTION, None)
-        if resolution:
-            self.encoder_sensor.set_resolution(resolution)
-            self._log_debug("Loaded saved encoder resolution: %.6f" % resolution)
-            self.calibration_status |= self.CALIBRATED_ENCODER
-        else:
-            self._log_always("Warning: Encoder resolution not found in mmu_vars.cfg. Probably not calibrated")
+        if self._has_encoder():
+            self.encoder_sensor.set_logger(self._log_debug) # Combine with MMU log
+            self.encoder_sensor.set_extruder(self.extruder_name)
+            self.encoder_sensor.set_mode(self.enable_clog_detection)
+            resolution = self.variables.get(self.VARS_MMU_ENCODER_RESOLUTION, None)
+            if resolution:
+                self.encoder_sensor.set_resolution(resolution)
+                self._log_debug("Loaded saved encoder resolution: %.6f" % resolution)
+                self.calibration_status |= self.CALIBRATED_ENCODER
+            else:
+                self._log_always("Warning: Encoder resolution not found in mmu_vars.cfg. Probably not calibrated")
 
         # Configure selector calibration (set with MMU_CALIBRATE_SELECTOR)
         selector_offsets = self.variables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
@@ -794,7 +795,8 @@ class Mmu:
 
     def _bootup_tasks(self, eventtime):
         try:
-            self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
+            if self._has_encoder():
+                self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
             self._log_always('(\_/)\n( *,*)\n(")_(") MMU Ready')
             if self.log_startup_status > 0:
                 self._log_always(self._tool_to_gate_map_to_human_string(self.log_startup_status == 1))
@@ -1031,7 +1033,7 @@ class Mmu:
     def _state_to_human_string(self, direction=None):
         tool_str = str(self.tool_selected) if self.tool_selected >=0 else "?"
         sensor_str = " [sensor] " if self._has_toolhead_sensor() else ""
-        counter_str = " (@%.1f mm)" % self.encoder_sensor.get_distance() if self._has_encoder() else ""
+        counter_str = " (@%.1f mm)" % self._get_encoder_distance() if self._has_encoder() else ""
         visual = visual2 = ""
         if self.tool_selected == self.TOOL_BYPASS and self.filament_pos == self.FILAMENT_POS_LOADED:
             visual = "MMU BYPASS ----- [encoder] ----------->> [nozzle] LOADED"
@@ -1112,7 +1114,7 @@ class Mmu:
         msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_paused_locked else "OPERATIONAL")
         msg += " with the servo in a %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
-        msg += ", Encoder reads %.1fmm" % self.encoder_sensor.get_distance()
+        msg += ", Encoder reads %.1fmm" % self._get_encoder_distance()
         msg += "\nSelector is %shomed" % ("" if self.is_homed else "NOT ")
         msg += ". Tool %s is selected " % self._selected_tool_string()
         msg += " on gate %s" % self._selected_gate_string()
@@ -1205,17 +1207,18 @@ class Mmu:
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
         delta = 0.
         if not self.servo_angle == self.servo_up_angle:
+            self.toolhead.dwell(0.2)
             self.toolhead.wait_moves()
-            initial_encoder_position = self.encoder_sensor.get_distance()
+            initial_encoder_position = self._get_encoder_distance()
             self.servo.set_value(angle=self.servo_up_angle, duration=self.servo_duration)
             self.servo_angle = self.servo_up_angle
             # Report on spring back in filament then reset counter
             self.toolhead.dwell(min(self.servo_duration, 0.4))
             self.toolhead.wait_moves()
-            delta = self.encoder_sensor.get_distance() - initial_encoder_position
+            delta = self._get_encoder_distance() - initial_encoder_position
             if delta > 0.:
                 self._log_debug("Spring in filament measured  %.1fmm - adjusting encoder" % delta)
-                self.encoder_sensor.set_distance(initial_encoder_position)
+                self._set_encoder_distance(initial_encoder_position)
         self.servo_state = self.SERVO_UP_STATE
         return delta
 
@@ -1331,18 +1334,18 @@ class Mmu:
                 # Move forward
                 self.toolhead.dwell(0.2)
                 self.toolhead.wait_moves()
-                self.encoder_sensor.reset_counts()    # Encoder 0000
+                self._reset_encoder_counts()    # Encoder 0000
                 self._gear_stepper_move_wait(length, wait=True, speed=test_speed, accel=accel, dwell=0.2)
-                counts = self.encoder_sensor.get_counts()
+                counts = self._get_encoder_counts()
                 pos_values.append(counts)
                 self._log_always("+ counts =  %d" % counts)
 
                 # Move backward
                 self.toolhead.dwell(0.2)
                 self.toolhead.wait_moves()
-                self.encoder_sensor.reset_counts()    # Encoder 0000
+                self._reset_encoder_counts()    # Encoder 0000
                 self._gear_stepper_move_wait(-length, wait=True, speed=test_speed, accel=accel, dwell=0.2)
-                counts = self.encoder_sensor.get_counts()
+                counts = self._get_encoder_counts()
                 neg_values.append(counts)
                 self._log_always("- counts =  %d" % counts)
 
@@ -1398,12 +1401,12 @@ class Mmu:
             reference_sum = spring_max = 0.
             successes = 0
             for i in range(repeats):
-                self.encoder_sensor.reset_counts()    # Encoder 0000
+                self._reset_encoder_counts()    # Encoder 0000
                 self._load_encoder(retry=False)
                 self._load_bowden(start_pos)
                 self._log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
-                measured_movement = self.encoder_sensor.get_distance()
+                measured_movement = self._get_encoder_distance()
                 spring = self._servo_up()
                 reference = measured_movement - (spring * 0.5)
                 if spring > 0:
@@ -1426,7 +1429,7 @@ class Mmu:
                     # No spring means we haven't reliably homed
                     self._log_always("Failed to detect a reliable home position on this attempt")
 
-                self.encoder_sensor.reset_counts()    # Encoder 0000
+                self._reset_encoder_counts()    # Encoder 0000
                 self._unload_bowden(reference - self.encoder_unload_buffer)
                 self._unload_encoder(self.encoder_unload_max)
                 self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
@@ -1465,17 +1468,17 @@ class Mmu:
             for x in range(repeats):
                 self.toolhead.dwell(0.2)
                 self.toolhead.wait_moves()
-                self.encoder_sensor.reset_counts()    # Encoder 0000
+                self._reset_encoder_counts()    # Encoder 0000
                 delta = self._trace_filament_move("Calibration load movement", length, dwell=0.2)
                 pos_values.append(length - delta)
-                self._log_always("+ measured =  %.1fmm (counts = %d)" % ((length - delta), self.encoder_sensor.get_counts()))
+                self._log_always("+ measured =  %.1fmm (counts = %d)" % ((length - delta), self._get_encoder_counts()))
 
                 self.toolhead.dwell(0.2)
                 self.toolhead.wait_moves()
-                self.encoder_sensor.reset_counts()    # Encoder 0000
+                self._reset_encoder_counts()    # Encoder 0000
                 delta = self._trace_filament_move("Calibration unload movement", -length, dwell=0.2)
                 neg_values.append(length - delta)
-                self._log_always("- measured =  %.1fmm (counts = %d)" % ((length - delta), self.encoder_sensor.get_counts()))
+                self._log_always("- measured =  %.1fmm (counts = %d)" % ((length - delta), self._get_encoder_counts()))
 
             self._log_always("Load direction: mean=%(mean).1f stdev=%(stdev).2f min=%(min).1f max=%(max).1f range=%(range).1f" % self._sample_stats(pos_values))
             self._log_always("Unload direction: mean=%(mean).1f stdev=%(stdev).2f min=%(min).1f max=%(max).1f range=%(range).1f" % self._sample_stats(neg_values))
@@ -1841,7 +1844,7 @@ class Mmu:
         if not self.printer.lookup_object(self.extruder_name).heater.can_extrude and self.paused_extruder_temp > 0:
             self._log_info("Enabling extruder heater (%.1f)" % self.paused_extruder_temp)
         self.gcode.run_script_from_command("M104 S%.1f" % self.paused_extruder_temp)
-        self.encoder_sensor.reset_counts()    # Encoder 0000
+        self._reset_encoder_counts()    # Encoder 0000
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_unlock)
         self._track_pause_end()
         self.is_paused_locked = False
@@ -1892,7 +1895,33 @@ class Mmu:
                 self._log_debug("Enabled encoder sensor. Status: %s" % self.encoder_sensor.get_status(0))
 
     def _has_encoder(self):
-        return True # TODO
+        return self.encoder_sensor is not None
+
+    def _check_has_encoder(self):
+        if not self._has_encoder():
+            self._log_error("No encoder fitted to MMU")
+            return True
+        return False
+
+    def _get_encoder_distance(self):
+        if self._has_encoder():
+            return self.encoder_sensor.get_distance()
+        else:
+            return -1.
+
+    def _set_encoder_distance(self, distance):
+        if self._has_encoder():
+            return self.encoder_sensor.set_distance(distance)
+        
+    def _get_encoder_counts(self):
+        if self._has_encoder():
+            return self.encoder_sensor.get_counts()
+        else:
+            return 0
+
+    def _reset_encoder_counts(self):
+        if self._has_encoder():
+            return self.encoder_sensor.reset_counts()
 
     def _has_toolhead_sensor(self):
         return self.toolhead_sensor != None and self.toolhead_sensor.runout_helper.sensor_enabled
@@ -2100,6 +2129,7 @@ class Mmu:
 
     cmd_MMU_ENCODER_help = "Display encoder position and stats or temporarily enable/disable detection logic in encoder"
     def cmd_MMU_ENCODER(self, gcmd):
+        if self._check_has_encoder(): return
         if self._check_is_disabled(): return
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
@@ -2108,7 +2138,7 @@ class Mmu:
         elif enable == 0:
             self._disable_encoder_sensor(True)
         elif value >= 0.:
-            self.encoder_sensor.set_distance(value)
+            self._set_encoder_distance(value)
         else:
             status = self.encoder_sensor.get_status(0)
             msg = "Encoder position: %.1f" % status['encoder_pos']
@@ -2182,7 +2212,7 @@ class Mmu:
         if dwell > 0:
             self.toolhead.dwell(dwell)
             self.toolhead.wait_moves()
-        start = self.encoder_sensor.get_distance()
+        start = self._get_encoder_distance()
         homed = False
         actual = 0.
 
@@ -2307,7 +2337,7 @@ class Mmu:
         else:
             self._log_error("Assertion Failure: Invalid motor specification")
 
-        end = self.encoder_sensor.get_distance()
+        end = self._get_encoder_distance()
         measured = end - start
         if homing_move != 0:
             delta = abs(actual) - measured # +ve means measured less than moved, -ve means measured more than moved
@@ -2356,12 +2386,12 @@ class Mmu:
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
 
     def _buzz_gear_motor(self):
-        initial_encoder_position = self.encoder_sensor.get_distance()
+        initial_encoder_position = self._get_encoder_distance()
         self._gear_stepper_move_wait(2.5, accel=self.gear_buzz_accel, wait=False)
         self._gear_stepper_move_wait(-2.5, accel=self.gear_buzz_accel)
-        delta = self.encoder_sensor.get_distance() - initial_encoder_position
+        delta = self._get_encoder_distance() - initial_encoder_position
         self._log_trace("After buzzing gear motor, encoder moved %.2f" % delta)
-        self.encoder_sensor.set_distance(initial_encoder_position)
+        self._set_encoder_distance(initial_encoder_position)
         return delta > self.encoder_min
 
     # Check for filament in encoder by wiggling MMU gear stepper and looking for movement on encoder
@@ -2589,7 +2619,7 @@ class Mmu:
         full = home = False
         self._set_filament_direction(self.DIRECTION_LOAD)
         self.toolhead.wait_moves()
-        self.encoder_sensor.set_distance(self.filament_distance)
+        self._set_encoder_distance(self.filament_distance)
         try:
             if not extruder_only:
                 self._display_visual_state()
@@ -2611,7 +2641,6 @@ class Mmu:
                 try:
                     self.gcode.run_script_from_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (start_filament_pos, length, full, home, skip_extruder, extruder_only))
                 except Exception as e:
-                    #raise MmuError("Error running user _MMU_LOAD_SEQUENCE macro\nReason: %s" % str(e))
                     raise MmuError("Error running user _MMU_LOAD_SEQUENCE macro")
 
             elif extruder_only:
@@ -2641,7 +2670,7 @@ class Mmu:
             self.toolhead.wait_moves()
             msg = "Loaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_LOADED else self.filament_distance)
             if self._has_encoder():
-                msg += " (encoder measured %.1fmm)" % self.encoder_sensor.get_distance()
+                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance()
             self._log_info(msg)
         except MmuError as ee:
             if full:
@@ -2659,7 +2688,7 @@ class Mmu:
     def _load_encoder(self, retry=True, adjust_servo_on_error=True):
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._servo_down()
-        initial_encoder_position = self.encoder_sensor.get_distance()
+        initial_encoder_position = self._get_encoder_distance()
         retries = self.encoder_load_retries if retry else 1
         for i in range(retries):
             msg = "Initial load into encoder" if i == 0 else ("Retry load into encoder #%d" % i)
@@ -2667,7 +2696,7 @@ class Mmu:
             if (self.LONG_MOVE_THRESHOLD - delta) > 6.0:
                 self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
                 self._set_filament_pos(self.FILAMENT_POS_START_BOWDEN)
-                self.filament_distance = self.encoder_sensor.get_distance() - initial_encoder_position
+                self.filament_distance = self._get_encoder_distance() - initial_encoder_position
                 return self.filament_distance
             else:
                 self._log_debug("Error loading filament - not enough detected at encoder. %s" % ("Retrying..." if i < retries - 1 else ""))
@@ -2724,7 +2753,7 @@ class Mmu:
                     if delta >= tolerance:
                         msg = "Correction load move #%d into bowden" % (i+1)
                         delta = self._trace_filament_move(msg, delta, track=True)
-                        self._log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self.encoder_sensor.get_distance())
+                        self._log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self._get_encoder_distance())
                     else:
                         break
                 self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
@@ -2788,12 +2817,12 @@ class Mmu:
             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=gear_stepper CURRENT=%.2f"
                                                 % ((run_current * self.extruder_homing_current) / 100.))
 
-        initial_encoder_position = self.encoder_sensor.get_distance()
+        initial_encoder_position = self._get_encoder_distance()
         homed = False
         for i in range(int(max_length / step)):
             msg = "Homing step #%d" % (i+1)
             delta = self._trace_filament_move(msg, step, speed=self.gear_homing_speed)
-            measured_movement = self.encoder_sensor.get_distance() - initial_encoder_position
+            measured_movement = self._get_encoder_distance() - initial_encoder_position
             total_delta = step*(i+1) - measured_movement
             if delta >= self.encoder_min or abs(total_delta) > step: # Not enough or strange measured movement means we've hit the extruder
                 homed = True
@@ -2874,7 +2903,7 @@ class Mmu:
 
             length = self._get_home_position_to_nozzle()
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
-            initial_encoder_position = self.encoder_sensor.get_distance()
+            initial_encoder_position = self._get_encoder_distance()
 
             if self.toolhead_sync_load and not extruder_stepper_only:
                 self._servo_down()
@@ -2904,7 +2933,7 @@ class Mmu:
 
             # Final sanity check if not bypass
             if self._has_encoder():
-                measured_movement = self.encoder_sensor.get_distance() - initial_encoder_position
+                measured_movement = self._get_encoder_distance() - initial_encoder_position
                 total_delta = self._get_home_position_to_nozzle() - measured_movement
                 self._log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured_movement, total_delta))
                 tolerance = max(self.encoder_sensor.get_clog_detection_length(), self._get_home_position_to_nozzle() * 0.50)
@@ -2939,7 +2968,7 @@ class Mmu:
     def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
         self._set_filament_direction(self.DIRECTION_UNLOAD)
         self.toolhead.wait_moves()
-        self.encoder_sensor.set_distance(self.filament_distance)
+        self._set_encoder_distance(self.filament_distance)
 
         if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
             # Let's determine where filament is and reset state before continuing
@@ -2974,18 +3003,13 @@ class Mmu:
 
             # Note: Conditionals deliberately coded this way to match macro alternative
             start_filament_pos = self.filament_pos
+            unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
             if self.gcode_unload_sequence:
                 self._log_debug("Calling external user defined unloading sequence macro")
-                unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
                 try:
                     self.gcode.run_script_from_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (start_filament_pos, length, extruder_only, park_pos))
-                    if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
-                        self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
                 except Exception as e:
-                    #raise MmuError("Error running user _MMU_UNLOAD_SEQUENCE macro\nReason: %s" % str(e))
                     raise MmuError("Error running user _MMU_UNLOAD_SEQUENCE macro")
-                if unload_to_buffer:
-                    self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
             elif extruder_only:
                 if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
@@ -3007,11 +3031,13 @@ class Mmu:
                     # Fast unload of bowden, then slow unload encoder
                     self._unload_bowden(length - self.encoder_unload_buffer)
                     self._unload_encoder(self.encoder_unload_max)
-                    self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
                 elif start_filament_pos >= self.FILAMENT_POS_START_BOWDEN:
                     # Have to do slow unload because we don't know exactly where we are
                     self._unload_encoder(length) # Full slow unload
+
+            if unload_to_buffer:
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
             self.toolhead.wait_moves()
             movement = self._servo_up()
@@ -3021,7 +3047,7 @@ class Mmu:
 
             msg = "Unloaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_UNLOADED else self.filament_distance)
             if self._has_encoder():
-                msg += " (encoder measured %.1fmm)" % self.encoder_sensor.get_distance()
+                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance()
             self._log_info(msg)
 
         except MmuError as ee:
@@ -3287,7 +3313,7 @@ class Mmu:
                                                     % (self.extruder_name, (extruder_run_current * self.extruder_form_tip_current)/100.))
 
             initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
-            initial_encoder_position = self.encoder_sensor.get_distance()
+            initial_encoder_position = self._get_encoder_distance()
 
             initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
             try:
@@ -3297,10 +3323,10 @@ class Mmu:
             self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
             self.toolhead.dwell(0.2)
             self.toolhead.wait_moves()
-            delta = self.encoder_sensor.get_distance() - initial_encoder_position
+            delta = self._get_encoder_distance() - initial_encoder_position
             park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
             self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos, delta))
-            self.encoder_sensor.set_distance(initial_encoder_position + park_pos)
+            self._set_encoder_distance(initial_encoder_position + park_pos)
             self.filament_distance += park_pos
             if self.extruder_tmc and self.extruder_form_tip_current > 100:
                 self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.extruder_name, extruder_run_current))
@@ -3728,7 +3754,7 @@ class Mmu:
         self._set_above_min_temp(self.paused_extruder_temp)
         self.gcode.run_script_from_command("__RESUME")
         self._restore_toolhead_position()
-        self.encoder_sensor.reset_counts()    # Encoder 0000
+        self._reset_encoder_counts()    # Encoder 0000
         self._enable_encoder_sensor(True)
         if self.sync_to_extruder:
             self._sync_gear_to_extruder(True, servo=True, in_print=True)
@@ -3861,6 +3887,7 @@ class Mmu:
 
     cmd_MMU_TEST_TRACKING_help = "Test the tracking of gear feed and encoder sensing"
     def cmd_MMU_TEST_TRACKING(self, gcmd):
+        if self._check_has_encoder(): return
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
         if self._check_not_homed(): return
@@ -3874,10 +3901,10 @@ class Mmu:
                 # Ready MMU for test if not already setup
                 self._unload_tool()
                 self._load_sequence(100 if direction == 1 else 200, skip_extruder=True)
-            self.encoder_sensor.reset_counts()    # Encoder 0000
+            self._reset_encoder_counts()    # Encoder 0000
             for i in range(1, int(100 / step)):
                 delta = self._trace_filament_move("Test move", direction * step)
-                measured = self.encoder_sensor.get_distance()
+                measured = self._get_encoder_distance()
                 moved = i * step
                 drift = int(round((moved - measured) / sensitivity))
                 if drift > 0:
@@ -4101,7 +4128,7 @@ class Mmu:
             except Exception as e:
                 raise MmuError("Error running _MMU_ENDLESS_SPOOL_PRE_UNLOAD: %s" % str(e))
             self._restore_toolhead_position()
-            self.encoder_sensor.reset_counts()    # Encoder 0000
+            self._reset_encoder_counts()    # Encoder 0000
             self._enable_encoder_sensor()
             if self.sync_to_extruder:
                 self._sync_gear_to_extruder(True, servo=True, in_print=True)
@@ -4306,18 +4333,18 @@ class Mmu:
     def cmd_MMU_SET_GATE_MAP(self, gcmd):
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
-        dump = gcmd.get_int('DISPLAY', 0, minval=0, maxval=1)
+        display = gcmd.get_int('DISPLAY', 0, minval=0, maxval=1)
         if reset == 1:
             self._reset_gate_map()
-        elif dump == 1:
+        elif display == 1:
             self._log_info(self._gate_map_to_human_string())
             return
         else:
             # Specifying one gate (filament)
             gate = gcmd.get_int('GATE', minval=0, maxval=self.mmu_num_gates - 1)
-            material = "".join(gcmd.get('MATERIAL').split()).replace('#', '').upper()[:10]
-            color = "".join(gcmd.get('COLOR').split()).replace('#', '').lower()
-            available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=0, maxval=1)
+            available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=0, maxval=2)
+            material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
+            color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
             if not self._validate_color(color):
                 raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
             self.gate_material[gate] = material
@@ -4334,7 +4361,7 @@ class Mmu:
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         enabled = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
-        dump = gcmd.get_int('DISPLAY', 0, minval=0, maxval=1)
+        display = gcmd.get_int('DISPLAY', 0, minval=0, maxval=1)
         if enabled >= 0:
             self.enable_endless_spool = enabled
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
@@ -4344,7 +4371,7 @@ class Mmu:
             self._log_debug("Resetting EndlessSpool groups")
             self.enable_endless_spool = self.default_enable_endless_spool
             self.endless_spool_groups = self.default_endless_spool_groups
-        elif dump == 1:
+        elif display == 1:
             self._log_info(self._tool_to_gate_map_to_human_string())
             return
         else:
@@ -4411,7 +4438,7 @@ class Mmu:
             for gate, tool in gates_tools:
                 try:
                     self._select_gate(gate)
-                    self.encoder_sensor.reset_counts()    # Encoder 0000
+                    self._reset_encoder_counts()    # Encoder 0000
                     self.calibrating = True # To suppress visual filament position
                     self._log_info("Checking gate #%d..." % gate)
                     encoder_moved = self._load_encoder(retry=False, adjust_servo_on_error=False)
@@ -4476,7 +4503,7 @@ class Mmu:
                 gate = self.gate_selected
             else:
                 self._select_gate(gate)
-            self.encoder_sensor.reset_counts()    # Encoder 0000
+            self._reset_encoder_counts()    # Encoder 0000
             for i in range(5):
                 self._log_always("Loading...")
                 try:
