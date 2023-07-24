@@ -8,6 +8,23 @@ Also, some folks have asked about making a donation to cover the cost of the all
 
 Thank you!
 
+<!-- TODO
+<p align="center">
+  <a aria-label="Downloads" href="https://github.com/protoloft/Happy-Hare/releases">
+    <img src="https://img.shields.io/github/release/protoloft/Happy-Hare?display_name=tag&style=flat-square">
+  </a>
+  <a aria-label="Stars" href="https://github.com/protoloft/klipper_z_calibration/stargazers">
+    <img src="https://img.shields.io/github/stars/protoloft/klipper_z_calibration?style=flat-square">
+  </a>
+  <a aria-label="Forks" href="https://github.com/protoloft/klipper_z_calibration/network/members">
+    <img src="https://img.shields.io/github/forks/protoloft/klipper_z_calibration?style=flat-square">
+  </a>
+  <a aria-label="License" href="https://github.com/protoloft/klipper_z_calibration/blob/master/LICENSE">
+    <img src="https://img.shields.io/github/license/protoloft/klipper_z_calibration?style=flat-square">
+  </a>
+</p>
+-->
+
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Readme Table of Contents
@@ -1059,3 +1076,4 @@ Good luck! You can find me on discord as _moggieuk#6538_
     (")_(") MMU Ready
 
 <br>
+
