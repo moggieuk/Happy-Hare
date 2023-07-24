@@ -8,7 +8,6 @@ Also, some folks have asked about making a donation to cover the cost of the all
 
 Thank you!
 
-<!-- TODO
 <p align="center">
   <a aria-label="Downloads" href="https://github.com/moggieuk/Happy-Hare/releases">
     <img src="https://img.shields.io/github/release/moggieuk/Happy-Hare?display_name=tag&style=flat-square">
@@ -23,7 +22,6 @@ Thank you!
     <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square">
   </a>
 </p>
--->
 
 <br>
 
