@@ -10,17 +10,17 @@ Thank you!
 
 <!-- TODO
 <p align="center">
-  <a aria-label="Downloads" href="https://github.com/protoloft/Happy-Hare/releases">
-    <img src="https://img.shields.io/github/release/protoloft/Happy-Hare?display_name=tag&style=flat-square">
+  <a aria-label="Downloads" href="https://github.com/moggieuk/Happy-Hare/releases">
+    <img src="https://img.shields.io/github/release/moggieuk/Happy-Hare?display_name=tag&style=flat-square">
   </a>
-  <a aria-label="Stars" href="https://github.com/protoloft/klipper_z_calibration/stargazers">
-    <img src="https://img.shields.io/github/stars/protoloft/klipper_z_calibration?style=flat-square">
+  <a aria-label="Stars" href="https://github.com/moggieuk/Happy-Hare/stargazers">
+    <img src="https://img.shields.io/github/stars/moggieuk/Happy-Hare?style=flat-square">
   </a>
-  <a aria-label="Forks" href="https://github.com/protoloft/klipper_z_calibration/network/members">
-    <img src="https://img.shields.io/github/forks/protoloft/klipper_z_calibration?style=flat-square">
+  <a aria-label="Forks" href="https://github.com/moggieuk/Happy-Hare/network/members">
+    <img src="https://img.shields.io/github/forks/moggieuk/Happy-Hare?style=flat-square">
   </a>
-  <a aria-label="License" href="https://github.com/protoloft/klipper_z_calibration/blob/master/LICENSE">
-    <img src="https://img.shields.io/github/license/protoloft/klipper_z_calibration?style=flat-square">
+  <a aria-label="License" href="https://github.com/moggieuk/Happy-Hare/blob/master/LICENSE">
+    <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square">
   </a>
 </p>
 -->
