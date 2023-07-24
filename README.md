@@ -7,6 +7,7 @@
 Universal MMU driver for Klipper
 </p>
 
+<!--
 <p align="center">
   <a aria-label="Downloads" href="https://github.com/moggieuk/Happy-Hare/releases">
     <img src="https://img.shields.io/github/release/moggieuk/Happy-Hare?display_name=tag&style=flat-square">
@@ -21,6 +22,7 @@ Universal MMU driver for Klipper
     <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square">
   </a>
 </p>
+-->
 
 ## :pushpin: IF YOU HAVE FOUND THIS PLEASE NOTE THAT IT IS IN A CLOSED BETA. Use ERCF-Software-V3 for ERCF. I will announce when this is ready (Very soon now)
 
