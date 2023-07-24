@@ -1,13 +1,13 @@
-# "Happy Hare" - Universal MMU driver for Klipper
+<p align="center">
+  <!--<img src="https://github.com/moggieuk/Happy-Hare/blob/main/doc/my_klipperscreen.png" alt='Happy Hare KlipperScreen' width='50%'>-->
+  <h1 align="center">Happy Hare</h1>
+</p>
 
-# :pushpin: IF YOU HAVE FOUND THIS PLEASE NOTE THAT IT IS IN A CLOSED BETA. Use ERCF-Software-V3 for ERCF. I will announce when this is ready (Very soon now)
+<p align="center">
+Universal MMU driver for Klipper
+</p>
 
-Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem. Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform. It is best partnered with [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
-
-Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). I'm not doing this for any financial reward but it you feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
-
-Thank you!
-
+<!--
 <p align="center">
   <a aria-label="Downloads" href="https://github.com/moggieuk/Happy-Hare/releases">
     <img src="https://img.shields.io/github/release/moggieuk/Happy-Hare?display_name=tag&style=flat-square">
@@ -22,6 +22,15 @@ Thank you!
     <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square">
   </a>
 </p>
+-->
+
+## :pushpin: IF YOU HAVE FOUND THIS PLEASE NOTE THAT IT IS IN A CLOSED BETA. Use ERCF-Software-V3 for ERCF. I will announce when this is ready (Very soon now)
+
+Happy Hare (v2) is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem. Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform. It is best partnered with [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
+
+Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). I'm not doing this for any financial reward but it you feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
+
+Thank you!
 
 <br>
 
@@ -1012,7 +1021,7 @@ An experimental option is available for users with customized MMU's or for wanti
 
 Even if not a KlipperScreen user yet you might be interested in my fork of KlipperScreen [Github link](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) simply to control your MMU. It makes using your MMU the way it should be. Dare I say as easy at Bambu Labs ;-) I run mine with a standalone Rasberry Pi attached to my buffer array and can control mutliple MMU's with it.
 
-Be sure to follow the install directions carefully and read the [panel-by-panel](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition/blob/master/docs/ERCF.md) documentation.
+Be sure to follow the install directions carefully and read the [panel-by-panel](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition/blob/master/docs/ERCF.md) documentation :tada:
 
 <br> 
  
