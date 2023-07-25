@@ -1530,7 +1530,7 @@ class Mmu:
         n = gate if gate >= 0 else (self.mmu_num_gates - 1)
         if self.mmu_version >= 2.0:
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
-            max_movement += (self.cad_last_gate_offset - self.cad_bypass_offset) if gate == self.GATE_BYPASS else 0.
+            max_movement += (self.cad_last_gate_offset - self.cad_bypass_offset) if gate == self.TOOL_BYPASS else 0.
         else:
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
         max_movement += self.cal_tolerance
