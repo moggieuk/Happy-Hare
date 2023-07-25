@@ -411,7 +411,11 @@ copy_config_files() {
 
     src=${SRCDIR}/config/mmu_vars.cfg
     dest=${KLIPPER_CONFIG_HOME}/mmu/mmu_vars.cfg
-    cp ${src} ${dest}
+    if [ -f "${dest}" ]; then
+        echo -e "${WARNING}Skipping copy of mmu_vars.cfg file because already exists"
+    else
+        cp ${src} ${dest}
+    fi
 }
 
 uninstall_config_files() {

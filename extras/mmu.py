@@ -521,7 +521,9 @@ class Mmu:
 
             # Add toolhead sensor pin as an extra endstop for gear_stepper
             ppins = self.printer.lookup_object('pins')
-            ppins.allow_multi_use_pin(toolhead_sensor_pin)
+            pin_params = ppins.parse_pin(toolhead_sensor_pin, True, True)
+            share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+            ppins.allow_multi_use_pin(share_name)
             mcu_endstop = self.gear_stepper._add_endstop(toolhead_sensor_pin, "mmu_toolhead")
 
             # Finally we might want to home the extruder to toolhead sensor in isolation
@@ -1213,7 +1215,7 @@ class Mmu:
             self.servo.set_value(angle=self.servo_up_angle, duration=self.servo_duration)
             self.servo_angle = self.servo_up_angle
             # Report on spring back in filament then reset counter
-            self.toolhead.dwell(min(self.servo_duration, 0.4))
+            self.toolhead.dwell(max(self.servo_duration, 0.4))
             self.toolhead.wait_moves()
             delta = self._get_encoder_distance() - initial_encoder_position
             if delta > 0.:
