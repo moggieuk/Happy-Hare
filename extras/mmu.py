@@ -2800,7 +2800,7 @@ class Mmu:
                 raise MmuError("Failed to reach extruder gear after moving %.1fmm" % max_length)
 
             if measured_movement > (max_length * 0.8):
-                self._log_info("Warning: 80% of 'extruder_homing_max' was used homing. You may want to increase your initial load distance ('%s') or increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
+                self._log_info("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase your initial load distance ('%s') or increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
 
             self._set_filament_pos(self.FILAMENT_POS_HOMED_EXTRUDER)
             self.filament_distance += distance_moved
