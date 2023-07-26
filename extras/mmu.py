@@ -202,7 +202,7 @@ class Mmu:
             else: # V1.1
                 self.cad_gate0_pos = 4.2
                 if "t" in self.mmu_version_string:
-                    self.cad_gate_width = 23. # Triple Decky is wider filament block
+                    self.cad_gate_width = 23.05 # Triple Decky is wider filament block
                 else:
                     self.cad_gate_width = 21.
                 self.cad_bypass_offset = 0.
@@ -1512,13 +1512,14 @@ class Mmu:
     def _measure_to_home(self, max_movement):
         selector_steps = self.selector_stepper.stepper.get_step_dist()
         init_mcu_pos = self.selector_stepper.stepper.get_mcu_position()
-        self.selector_stepper.do_set_position(0.)
         found_home = False
         try:
-            self._selector_stepper_move_wait(-max_movement, speed=self.selector_homing_speed, homing_move=1)
             self.selector_stepper.do_set_position(0.)
-            self._selector_stepper_move_wait(5, False)                    # Ensure some bump space
-            self._selector_stepper_move_wait(-5, speed=10, homing_move=1) # Slower more accurate homing move
+            self._selector_stepper_move_wait(-max_movement, speed=self.selector_homing_speed, homing_move=1) # Fast homing move
+            self.selector_stepper.do_set_position(0.)
+            self._selector_stepper_move_wait(5, True)                    # Ensure some bump space
+            self.selector_stepper.do_set_position(0.)
+            self._selector_stepper_move_wait(-6, speed=10, homing_move=1) # Slower more accurate homing move
             found_home = True
         except Exception as e:
             pass # Home definitely not found
@@ -1623,7 +1624,7 @@ class Mmu:
                 self._log_debug("Adjusted gate width: %.1f" % adj_gate_width)
                 self.selector_offsets = []
                 for i in range(num_gates):
-                    self.selector_offsets.append(round(gate0_pos + (i * adj_gate_width), 1) for i in range(num_gates))
+                    self.selector_offsets.append(round(gate0_pos + (i * adj_gate_width), 1))
                 self.bypass_offset = bypass_pos
 
             else:
@@ -1641,16 +1642,16 @@ class Mmu:
                     if ((i + 1) / 3) == v1_bypass_block:
                         self.bypass_offset = self.selector_offsets[i] + self.cad_bypass_block_delta
 
-                if num_gates != self.mmu_num_gates:
-                    self._log_error("You configued your MMU for %d gates but I counted %d! Please update `mmu_parameters`" % (self.mmu_num_gates, num_gates))
-                    return
+            if num_gates != self.mmu_num_gates:
+                self._log_error("You configued your MMU for %d gates but I counted %d! Please update `mmu_num_gates`" % (self.mmu_num_gates, num_gates))
+                return
 
-                self._log_always("Offsets %s and bypass %.1f" % (self.selector_offsets, self.bypass_offset))
-                if save:
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets))
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset))
-                    self._log_always("Selector calibration has been saved")
-                    self.calibration_status |= self.CALIBRATED_SELECTOR
+            self._log_always("Offsets %s and bypass %.1f" % (self.selector_offsets, self.bypass_offset))
+            if save:
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets))
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset))
+                self._log_always("Selector calibration has been saved")
+                self.calibration_status |= self.CALIBRATED_SELECTOR
 
             self._home(0, force_unload=0)
         except MmuError as ee:
@@ -3399,9 +3400,9 @@ class Mmu:
             self.selector_stepper.do_set_position(0.)
             self._selector_stepper_move_wait(-selector_length, speed=self.selector_homing_speed, homing_move=1) # Fast homing move
             self.selector_stepper.do_set_position(0.)
-            self._selector_stepper_move_wait(10, True)                     # Ensure some bump space
+            self._selector_stepper_move_wait(5, True)                      # Ensure some bump space
             self.selector_stepper.do_set_position(0.)
-            self._selector_stepper_move_wait(-10, speed=10, homing_move=1) # Slower more accurate homing move
+            self._selector_stepper_move_wait(-6, speed=10, homing_move=1) # Slower more accurate homing move
             self.is_homed = True
         except Exception as e:
             # Homing failed
