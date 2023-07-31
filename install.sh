@@ -10,11 +10,13 @@ KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 
 declare -A PIN 2>/dev/null || {
-    echo "Please run this script with ./bash $0"
+    echo "Please run this script with bash $0"
     exit 1
 }
 
 # Pins for Fysetc Burrows ERB board, EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
+# Note: uart pin is shared on EASY-BRD (with different uart addresses)
+#
 PIN[ERB,gear_uart_pin]="gpio20";         PIN[EASY-BRD,gear_uart_pin]="PA8";          PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
 PIN[ERB,gear_step_pin]="gpio10";         PIN[EASY-BRD,gear_step_pin]="PA4";          PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
 PIN[ERB,gear_dir_pin]="gpio9";           PIN[EASY-BRD,gear_dir_pin]="PA10";          PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
@@ -328,9 +330,11 @@ copy_config_files() {
             else
                 magic_str1="NO TOOLHEAD"
             fi
-            uart_comment=""
-            if [ "${brd_type}" == "ERB" -o "${brd_type}" == "EASY-BRD-RP2040" ]; then
-                uart_comment="#"
+            uart_comment="#"
+            sel_uart="_THIS_PATTERN_DOES_NOT_EXIST_"
+            if [ "${brd_type}" == "EASY-BRD" ]; then
+                uart_comment=""
+                sel_uart="MMU_SEL_UART"
             fi
 
             if [ "${SETUP_SELECTOR_TOUCH}" -eq 1 ]; then
@@ -340,6 +344,8 @@ copy_config_files() {
 		    s/^#extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop/extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop/; \
 		    s/^#extra_endstop_names: mmu_sel_touch/extra_endstop_names: mmu_sel_touch/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
+                    /${sel_uart}=/ d; \
+                    s/${sel_uart}/MMU_GEAR_UART/; \
                     s/{brd_type}/${brd_type}/; \
                         " > ${dest}.tmp
             else
@@ -347,6 +353,8 @@ copy_config_files() {
                 cat ${src} | sed -e "\
                     s/{brd_type}/${brd_type}/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
+                    /${sel_uart}=/ d; \
+                    s/${sel_uart}/MMU_GEAR_UART/; \
                         " > ${dest}.tmp
             fi
 
