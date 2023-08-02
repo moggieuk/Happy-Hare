@@ -671,13 +671,13 @@ class Mmu:
         self.tool_selected = self._next_tool = self._last_tool = self.TOOL_UNKNOWN
         self._last_toolchange = "Unknown"
         self.gate_selected = self.GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
-        self.servo_state = self.servo_angle = self.SERVO_UNKNOWN_STATE
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.counting_direction = self.DIRECTION_UNKNOWN
         self.filament_distance = self.last_filament_distance = 0. # Current absolute distance from gate (load) or nozzle (unload)
         self.action = self.ACTION_IDLE
         self.calibrating = False
         self.saved_toolhead_position = False
+        self._servo_reset_state()
         self._reset_statistics()
 
     def _load_persisted_state(self):
@@ -1169,8 +1169,13 @@ class Mmu:
 # SERVO AND MOTOR FUNCTIONS #
 #############################
 
+    def _servo_reset_state(self):
+        self.servo_state = self.SERVO_UNKNOWN_STATE
+        self.servo_angle = self.SERVO_UNKNOWN_STATE
+
     def _servo_set_angle(self, angle):
         self.servo.set_value(angle=angle, duration=self.servo_duration)
+        self.servo_angle = angle
         self.servo_state = self.SERVO_UNKNOWN_STATE
 
     def _servo_down(self, buzz_gear=True):
@@ -1267,6 +1272,7 @@ class Mmu:
     def cmd_MMU_MOTORS_OFF(self, gcmd):
         if self._check_is_disabled(): return
         self._motors_off()
+        self._servo_reset_state()
         self._servo_auto()
 
     cmd_MMU_TEST_BUZZ_MOTOR_help = "Simple buzz the selected motor (default gear) for setup testing"
