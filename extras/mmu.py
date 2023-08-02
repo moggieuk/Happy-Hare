@@ -2006,26 +2006,52 @@ class Mmu:
             self._log_trace("Determined print status as: %s from %s" % (print_status, source))
             return print_status
 
-    # Ensure we are above desired or min temperature and that target is set
-    def _set_above_min_temp(self, target_temp=-1):
-        extruder_heater = self.printer.lookup_object(self.extruder_name).heater
+    def _wait_for_target_temp(self):
+        target_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
         current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
 
-        target_temp = max(target_temp, extruder_heater.target_temp, self.min_temp_extruder)
-        new_target = False
+        if abs(target_temp - current_temp) < 1:
+            self._log_debug("Waiting for extruder to reach target temperature (%.1f)" % target_temp)
+            self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (target_temp - 1, target_temp + 1))
+
+    # Ensure we are above desired or min temperature and that target is set
+    def _set_above_min_temp(self, target_temp_override=-1):
+        extruder_heater = self.printer.lookup_object(self.extruder_name).heater
+        current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
+        target_temp = max(target_temp_override, extruder_heater.target_temp, self.min_temp_extruder)
+
+        # During a print, we likely want to defer to the slicer for temperature since doing so
+        # will prevent the following issues:
+        #   1. When printing with different temperature filaments, this prevents waiting for the higher
+        #      temperature before unloading the lower-temperature filament
+        #   2. Prevents setting the wrong temp if your `min_temp_extruder` is higher than the temp of the filament
+        #
+        # This does mean that we're trusting the slicer to have set the correct temperature, but that's a reasonable
+        # assumption and we do maintain the safeguard of Klipper's `can_extrude` flag
+        if (self._is_in_print() or self._is_in_pause()) and extruder_heater.can_extrude:
+            if target_temp_override == -1:
+                self._log_info("Deferring to slicer for extruder temperature (%.1f)" % extruder_heater.target_temp)
+            else:
+                # If a target temp has been explicitly specified, respect that instead. This is useful for ensuring correct
+                # temp after a pause/resume where the temp may have been changed
+                current_action = self._set_action(self.ACTION_HEATING)
+                self._log_info("Target temperature explicitly specified (%.1f). Ignoring slicer" % current_temp)
+                self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % target_temp_override)
+                self._wait_for_target_temp()
+                self._set_action(current_action)
+
+            return
+
         if extruder_heater.target_temp < target_temp:
             if (target_temp == self.min_temp_extruder):
                 self._log_error("Heating extruder to minimum temp (%.1f)" % target_temp)
             else:
                 self._log_info("Heating extruder to desired temp (%.1f)" % target_temp)
             self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % target_temp)
-            new_target = True
 
         if current_temp < target_temp - 1:
             current_action = self._set_action(self.ACTION_HEATING)
-            if not new_target:
-                self._log_info("Waiting for extruder to reach temp (%.1f)" % target_temp)
-            self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (target_temp - 1, target_temp + 1))
+            self._wait_for_target_temp()
             self._set_action(current_action)
 
     def _set_filament_pos(self, state, silent=False):
@@ -2899,6 +2925,10 @@ class Mmu:
         try:
             self._set_filament_direction(self.DIRECTION_LOAD)
             self._set_above_min_temp()
+            # This is important for filaments with wildy different print temps since`_set_above_min_temp`
+            # does not wait for temp changes if we're both printing and able to extrude. In practice, the time
+            # taken to perform a swap should be adequate to reach the target temp but better safe than sorry
+            self._wait_for_target_temp()
 
             if self._has_toolhead_sensor():
                 # With toolhead sensor we home to toolhead sensor past the extruder entrance
