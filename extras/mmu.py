@@ -2006,7 +2006,7 @@ class Mmu:
             self._log_trace("Determined print status as: %s from %s" % (print_status, source))
             return print_status
 
-    def _wait_for_target_temp(self):
+    def _wait_for_target_temperature(self):
         target_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
         current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
 
@@ -2014,8 +2014,7 @@ class Mmu:
             self._log_debug("Waiting for extruder to reach target temperature (%.1f)" % target_temp)
             self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (target_temp - 1, target_temp + 1))
 
-    # Ensure we are above desired or min temperature and that target is set
-    def _set_above_min_temp(self, target_temp_override=-1):
+    def _ensure_safe_extruder_temperature(self, target_temp_override=-1):
         extruder_heater = self.printer.lookup_object(self.extruder_name).heater
         current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
         target_temp = max(target_temp_override, extruder_heater.target_temp, self.min_temp_extruder)
@@ -2028,19 +2027,19 @@ class Mmu:
         #
         # This does mean that we're trusting the slicer to have set the correct temperature, but that's a reasonable
         # assumption and we do maintain the safeguard of Klipper's `can_extrude` flag
-        if (self._is_in_print() or self._is_in_pause()) and extruder_heater.can_extrude:
-            if target_temp_override == -1:
+        if self._is_in_print() or self._is_in_pause():
+            if target_temp_override == -1 and extruder_heater.can_extrude:
                 self._log_info("Deferring to slicer for extruder temperature (%.1f)" % extruder_heater.target_temp)
-            else:
+                return
+            elif target_temp_override > -1:
                 # If a target temp has been explicitly specified, respect that instead. This is useful for ensuring correct
                 # temp after a pause/resume where the temp may have been changed
                 current_action = self._set_action(self.ACTION_HEATING)
                 self._log_info("Target temperature explicitly specified (%.1f). Ignoring slicer" % current_temp)
                 self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % target_temp_override)
-                self._wait_for_target_temp()
+                self._wait_for_target_temperature()
                 self._set_action(current_action)
-
-            return
+                return
 
         if extruder_heater.target_temp < target_temp:
             if (target_temp == self.min_temp_extruder):
@@ -2051,7 +2050,7 @@ class Mmu:
 
         if current_temp < target_temp - 1:
             current_action = self._set_action(self.ACTION_HEATING)
-            self._wait_for_target_temp()
+            self._wait_for_target_temperature()
             self._set_action(current_action)
 
     def _set_filament_pos(self, state, silent=False):
@@ -2450,7 +2449,7 @@ class Mmu:
     # problem and indicate if we can unload the rest of the bowden more quickly
     def _check_filament_still_in_extruder(self):
         self._log_info("Checking for possibility of filament still in extruder gears...")
-        self._set_above_min_temp()
+        self._ensure_safe_extruder_temperature()
         self._servo_up()
         length = self.encoder_move_step_size
         delta = self._trace_filament_move("Checking extruder", -length, speed=self.extruder_unload_speed, motor="extruder")
@@ -2924,11 +2923,11 @@ class Mmu:
         distance_moved = 0.
         try:
             self._set_filament_direction(self.DIRECTION_LOAD)
-            self._set_above_min_temp()
-            # This is important for filaments with wildy different print temps since`_set_above_min_temp`
+            self._ensure_safe_extruder_temperature()
+            # This is important for filaments with wildy different print temps since`_ensure_safe_extruder_temperature`
             # does not wait for temp changes if we're both printing and able to extrude. In practice, the time
             # taken to perform a swap should be adequate to reach the target temp but better safe than sorry
-            self._wait_for_target_temp()
+            self._wait_for_target_temperature()
 
             if self._has_toolhead_sensor():
                 # With toolhead sensor we home to toolhead sensor past the extruder entrance
@@ -3129,7 +3128,7 @@ class Mmu:
         try:
             self._log_debug("Extracting filament from extruder")
             self._set_filament_direction(self.DIRECTION_UNLOAD)
-            self._set_above_min_temp()
+            self._ensure_safe_extruder_temperature()
             sync_allowed = self.toolhead_sync_unload and not extruder_stepper_only
             if sync_allowed:
                 self._servo_down()
@@ -3335,7 +3334,7 @@ class Mmu:
         current_action = self._set_action(self.ACTION_FORMING_TIP)
         try:
             self._log_info("Forming tip...")
-            self._set_above_min_temp()
+            self._ensure_safe_extruder_temperature()
             self._sync_gear_to_extruder(self.sync_form_tip and not extruder_stepper_only, servo=True)
 
             if self.extruder_tmc and self.extruder_form_tip_current > 100:
@@ -3784,7 +3783,7 @@ class Mmu:
                 self._log_always("State does not indicate flament is LOADED.  Please run `MMU_RECOVER LOADED=1` first")
                 return
 
-        self._set_above_min_temp(self.paused_extruder_temp)
+        self._ensure_safe_extruder_temperature(self.paused_extruder_temp)
         self.gcode.run_script_from_command("__RESUME")
         self._restore_toolhead_position()
         self._reset_encoder_counts()    # Encoder 0000
