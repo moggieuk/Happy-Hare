@@ -2019,7 +2019,7 @@ class Mmu:
         current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
         target_temp = max(target_temp_override, extruder_heater.target_temp, self.min_temp_extruder)
 
-        # During a print, we likely want to defer to the slicer for temperature since doing so
+        # During a print, we want to defer to the slicer for temperature since doing so
         # will prevent the following issues:
         #   1. When printing with different temperature filaments, this prevents waiting for the higher
         #      temperature before unloading the lower-temperature filament
@@ -2924,7 +2924,7 @@ class Mmu:
         try:
             self._set_filament_direction(self.DIRECTION_LOAD)
             self._ensure_safe_extruder_temperature()
-            # This is important for filaments with wildy different print temps since`_ensure_safe_extruder_temperature`
+            # This is important for filaments with wildy different print temps since `_ensure_safe_extruder_temperature`
             # does not wait for temp changes if we're both printing and able to extrude. In practice, the time
             # taken to perform a swap should be adequate to reach the target temp but better safe than sorry
             self._wait_for_target_temperature()
