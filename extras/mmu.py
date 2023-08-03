@@ -852,7 +852,8 @@ class Mmu:
                 'gate_color': list(self.gate_color),
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'action': self._get_action_string(),
-                'has_bypass': self.bypass_offset > 0.
+                'has_bypass': self.bypass_offset > 0.,
+                'sync_drive': self.gear_stepper.is_synced()
         }
 
     def _reset_statistics(self):

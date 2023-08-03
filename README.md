@@ -199,6 +199,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.endless_spool_groups : {list} group membership for each tool
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
+    printer.mmu.sync_drive : {int} 0 (not synced) | 1 (gear synced to extruder)
 ```
 
 Optionally exposed on mmu_encoder (if fitted):
