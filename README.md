@@ -190,13 +190,13 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled)
     printer.mmu.filament : {string} Loaded | Unloaded | Unknown
     printer.mmu.filament_pos : {int} state machine - exact location of filament
-    printer.mmu.filament_direction : {int} 1 (load) | -1 (unload)
-    printer.mmu.servo : {string} Up | Down | Unknown
+    printer.mmu.filament_direction : {int} 1 (load( | -1 (unload)
+    printer.mmu.servo : {string} Up | Down | Move | Unknown
     printer.mmu.ttg_map : {list} defined gate for each tool
-    printer.mmu.gate_status : {list} per gate: 0 empty | 1 available | -1 unknown
+    printer.mmu.gate_status : {list} per gate: 0 empty | 1 available | 2 available from buffer |  -1 unknown
     printer.mmu.gate_material : {list} of material names, one per gate
     printer.mmu.gate_color : {list} of color names, one per gate
-    printer.mmu.endless_spool_groups : {list} group membership for each tool
+    printer.mmu.endless_spool_groups : {list} membership group (int) for each tool
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
     printer.mmu.sync_drive : {bool} True if gear stepper is currently synced to extruder)
