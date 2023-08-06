@@ -3366,7 +3366,7 @@ class Mmu:
                 # Not synchronous gear/extruder movement
                 return (delta > self.encoder_min or filament_present == 1), park_pos
         finally:
-            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=self._is_in_print())
+            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=self._is_in_print() or self._is_in_pause())
             self._set_action(current_action)
 
 
