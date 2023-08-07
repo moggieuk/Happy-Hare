@@ -3485,6 +3485,7 @@ class Mmu:
         initial_tool_string = "Unknown" if self.tool_selected < 0 else ("T%d" % self.tool_selected)
         if tool == self.tool_selected and self.tool_to_gate_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
             self._log_always("Tool T%d is already ready" % tool)
+            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=True)
             return
 
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
