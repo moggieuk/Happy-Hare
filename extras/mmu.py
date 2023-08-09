@@ -185,7 +185,7 @@ class Mmu:
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
 
         # MMU hardware (steppers, servo, encoder and optional toolhead sensor)
-        self.selector_stepper = self.gear_stepper = self.mmu_extruder_stepper = self.toolhead_sensor = self.encoder_sensor = self.servo = None
+        self.selector_stepper = self.gear_stepper = self.mmu_extruder_stepper = self.toolhead_sensor = self.encoder_sensor = self.servo = self.file_processor = None
 
         # Specific vendor build parameters / tuning
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
@@ -548,6 +548,9 @@ class Mmu:
         if not self.encoder_sensor:
             raise self.config.error("Missing [mmu_encoder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER) # TODO make warning
 
+        # Get file processor setup
+        self.file_processor = self.printer.lookup_object('mmu_file_processor', None)
+
     def handle_connect(self):
         self._setup_logging()
         self.toolhead = self.printer.lookup_object('toolhead')
@@ -629,6 +632,9 @@ class Mmu:
                 self.calibration_status |= self.CALIBRATED_ENCODER
             else:
                 self._log_always("Warning: Encoder resolution not found in mmu_vars.cfg. Probably not calibrated")
+
+        if self.file_processor is not None:
+            self.file_processor.set_logger(self._log_debug) # Combine with MMU log
 
         # Configure selector calibration (set with MMU_CALIBRATE_SELECTOR)
         selector_offsets = self.variables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
@@ -4419,10 +4425,15 @@ class Mmu:
             gates_tools = []
             if tools != "!":
                 # Tools used in print (may be empty list)
+                if tools == 'AUTOMATIC':
+                    tool_numbers = self._get_toolchanges_from_file()['tools_used']
+                else:
+                    tool_numbers = map(int, tools.split(','))
+
                 try:
-                    for tool in tools.split(','):
-                        gate = int(self.tool_to_gate_map[int(tool)])
-                        gates_tools.append([gate, int(tool)])
+                    for tool in tool_numbers:
+                        gate = int(self.tool_to_gate_map[tool])
+                        gates_tools.append([gate, tool])
                     if len(gates_tools) == 0:
                         self._log_debug("No tools to check, assuming default tool is already loaded")
                         return
@@ -4535,6 +4546,22 @@ class Mmu:
             self.calibrating = False
             self._servo_auto()
             self._set_action(current_action)
+
+###################
+# FILE PROCCESSOR #
+###################
+
+    def _get_toolchanges_from_file(self):
+        current_file = self._currently_printing_filepath()
+
+        if current_file and (self._is_in_print or self._is_in_pause):
+            return self.file_processor.read_mmu_metadata(current_file, write_if_missing=True)
+
+        return {}
+
+    def _currently_printing_filepath(self):
+        return self.printer.lookup_object("virtual_sdcard").file_path()
+
 
 def load_config(config):
     return Mmu(config)
