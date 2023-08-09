@@ -1,4 +1,4 @@
-import re, textwrap, logging, os
+import re, textwrap
 from itertools import takewhile, dropwhile
 
 class MmuFileProcessor:
