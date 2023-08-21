@@ -1320,7 +1320,7 @@ class Mmu:
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         in_print = gcmd.get_int('IN_PRINT', fallback_print_state, minval=0, maxval=1)
-        self._sync_gear_to_extruder(sync, servo=servo, in_print=in_print)
+        self._sync_gear_to_extruder(sync, servo=servo, in_print=bool(in_print))
 
 
 #########################
