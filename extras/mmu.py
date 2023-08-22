@@ -247,6 +247,9 @@ class Mmu:
         self.auto_calibrate_gates = config.getint('auto_calibrate_gates', 0, minval=0, maxval=1)
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
 
+        # Internal macro overrides
+        self.pause_macro = config.get('pause_macro', 'PAUSE')
+
         # User MMU setup
         self.mmu_num_gates = config.getint('mmu_num_gates')
         self.selector_offsets = list(config.getfloatlist('selector_offsets', []))
@@ -1847,7 +1850,8 @@ class Mmu:
         if extra != "":
             self._log_always(extra)
         if run_pause:
-            self.gcode.run_script_from_command("PAUSE")
+            self.gcode.run_script_from_command(self.pause_macro)
+
 
     def _unlock(self):
         self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
@@ -4016,6 +4020,7 @@ class Mmu:
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
+        self.pause_macro = gcmd.get('PAUSE_MACRO', self.pause_macro)
 
         # Calibration
         self.calibrated_bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.calibrated_bowden_length, minval=10.)
@@ -4074,6 +4079,7 @@ class Mmu:
         msg += "\nlog_level = %d" % self.log_level
         msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
+        msg += "\npause_macro = %d" % self.pause_macro
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length

@@ -363,6 +363,7 @@ Running without any parameters will display the current values:
     log_level = 1
     log_visual = 2
     log_statistics = 1
+    pause_macro = PAUSE                          # Advanced
 
     CALIBRATION:
     mmu_calibration_bowden_length = 697.9
