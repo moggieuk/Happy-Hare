@@ -79,7 +79,7 @@ Thank you!
   <li>Sophisticated logging options (console and mmu.log file)</li>
   <li>Can define material type and color in each gate  for visualization and customized settings (like Pressure Advance)</li>
   <li>Automated calibration for easy setup</li>
-  <li>Supports ["gate bypass"](#10-filament-bypass) functionality</li>
+  <li>Supports MMU "bypass" gate functionality</li>
   <li>Ability to manipulate gear and extruder current (TMC) during various operations for reliable operation</li>
   <li>Moonraker update-manager support</li>
   <li>Complete persitance of state and statistics across restarts. That's right you don't even need to home!</li>
@@ -177,9 +177,9 @@ To additionaly see testing command set and macros.
 Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
 
 ```yml
-    printer.mmu.enabled : {bool}
-    printer.mmu.is_locked : {bool}
-    printer.mmu.is_homed : {bool}
+    printer.mmu.enabled : {bool} True if MMU is enabled
+    printer.mmu.is_locked : {bool} True if MMU is paused after an error
+    printer.mmu.is_homed : {bool} True if MMU has been homed
     printer.mmu.tool : {int} 0..n | -1 for unknown | -2 for bypass
     printer.mmu.gate : {int} 0..n | -1 for unknown
     printer.mmu.material : {string} Material type for current gate (useful for print_start macro)
@@ -190,15 +190,16 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled)
     printer.mmu.filament : {string} Loaded | Unloaded | Unknown
     printer.mmu.filament_pos : {int} state machine - exact location of filament
-    printer.mmu.filament_direction : {int} 1 (load) | -1 (unload)
-    printer.mmu.servo : {string} Up | Down | Unknown
+    printer.mmu.filament_direction : {int} 1 (load( | -1 (unload)
+    printer.mmu.servo : {string} Up | Down | Move | Unknown
     printer.mmu.ttg_map : {list} defined gate for each tool
-    printer.mmu.gate_status : {list} per gate: 0 empty | 1 available | -1 unknown
+    printer.mmu.gate_status : {list} per gate: 0 empty | 1 available | 2 available from buffer |  -1 unknown
     printer.mmu.gate_material : {list} of material names, one per gate
     printer.mmu.gate_color : {list} of color names, one per gate
-    printer.mmu.endless_spool_groups : {list} group membership for each tool
+    printer.mmu.endless_spool_groups : {list} membership group (int) for each tool
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
+    printer.mmu.sync_drive : {bool} True if gear stepper is currently synced to extruder)
 ```
 
 Optionally exposed on mmu_encoder (if fitted):
@@ -325,7 +326,7 @@ Running without any parameters will display the current values:
     selector_move_speed = 200.0
     selector_homing_speed = 60.0
     selector_touch_speed = 80.0
-    enable_selector_touch = 0                    # Advanced
+    selector_touch_enable = 0                    # Advanced
 
     TMC & MOTOR SYNC CONTROL:
     sync_to_extruder = 0
@@ -362,6 +363,7 @@ Running without any parameters will display the current values:
     log_level = 1
     log_visual = 2
     log_statistics = 1
+    pause_macro = PAUSE                          # Advanced
 
     CALIBRATION:
     mmu_calibration_bowden_length = 697.9
@@ -1043,10 +1045,10 @@ Firstly the importance of a reliable and fairly accurate encoder should not be u
   <li>Eliminate all points of friction in the filament path.  There is lots written about this already but I found some unusual places where filament was rubbing on plastic and drilling out the path improved things a good deal.
   <li>This version of the driver software both, compensates for, and exploits the spring that is inherently built when homing to the extruder (`extruder_homing_endstop: collision`).  The `MMU_CALIBRATE_BOWDEN` (which calibrates the `mmu_calibration_bowden_length` length) averages the measurement of multiple passes, measures the spring rebound and considers the configuration options when recommending and setting the bowden length.</li>
   <li>The dreaded "Timer too close" can occur but I believe I have worked around most of these cases.  The problem is not always an overloaded mcu as often cited -- there are a couple of bugs in Klipper that will delay messages between mcu and host and thus provoke this problem.  To minimize you hitting these, I recommend you use a step size of 8 for the gear motor. You don't need high fidelity and this greatly reduces the chance of this error. Also, increasing 'bowden_num_moves' also is a workaround.  I'm not experiencing this and have a high speed (250 mm/s) single move load/unload move with steps set to 8.</li>
-  <li>I can recommend the `enable_selector_touch` option if you have a reliable mcu to handle the TMC driver -- it works well once tuned and provides for additional recovery abilities if filament gets stuck in encoder preventing selection of a different gate. However there are some important things to note:
+  <li>I can recommend the `selector_touch_enable` option if you have a reliable mcu to handle the TMC driver -- it works well once tuned and provides for additional recovery abilities if filament gets stuck in encoder preventing selection of a different gate. However there are some important things to note:
   <ul>
     <li>The selector cart homing is always to the microswitch endstop. The "touch" operation is used only for movement and optionally sensing the rightmost limit in travel during calibration.</li>
-    <li>It is important to experiement and tune the `driver_SGTHRS` value which is the point at which the TMC driver detects the stepper has stalled. Lower values are less sensitive (selector can ram too hard) and too high a value can mean a bit of friction on the selector is detected as a stall and interpreted as a blocked selector.</li>
+    <li>It is important to experiement and tune the `driver_SGTHRS` value (or equivalent for your TMC driver) which is the point at which the TMC driver detects the stepper has stalled. Lower values are less sensitive (selector can ram too hard) and too high a value can mean a bit of friction on the selector is detected as a stall and interpreted as a blocked selector.</li>
   </ul>
   <li>Speeds.... watch out for speeds that are too high for the extruder stepper (listen for them carefully).  The resultant skipped steps can cause loading and unloading steps to fail</li>
 </ul>

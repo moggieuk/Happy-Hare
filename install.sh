@@ -32,12 +32,19 @@ PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";         
 PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";            PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
 
 # TODO. These are example pins (mine!).  Update installer to look for them during install
-PIN[extruder_uart_pin]="PE1"
-PIN[extruder_diag_pin]="PG14"
-PIN[extruder_step_pin]="PE2"
-PIN[extruder_dir_pin]="PE3"
-PIN[extruder_enable_pin]="PD4"
-PIN[toolhead_sensor_pin]="PG13"
+#PIN[extruder_uart_pin]="PE1"
+#PIN[extruder_diag_pin]="PG14"
+#PIN[extruder_step_pin]="PE2"
+#PIN[extruder_dir_pin]="PE3"
+#PIN[extruder_enable_pin]="PD4"
+#PIN[toolhead_sensor_pin]="PG13"
+
+PIN[extruder_uart_pin]="<set_me>"
+PIN[extruder_diag_pin]="<set_me>"
+PIN[extruder_step_pin]="<set_me>"
+PIN[extruder_dir_pin]="<set_me>"
+PIN[extruder_enable_pin]="<set_me>"
+PIN[toolhead_sensor_pin]="<set_me>"
 
 # Screen Colors
 OFF='\033[0m'             # Text Reset
@@ -62,10 +69,15 @@ ERROR="${B_RED}"
 WARNING="${B_YELLOW}"
 PROMPT="${CYAN}"
 INPUT="${OFF}"
+SECTION="----------\n"
 
 function nextfilename {
     local name="$1"
-    printf "%s-%s.%s" ${name%%.*} $(date '+%Y%m%d_%H%M%S') ${name#*.}
+    if [ -d "${name}" ]; then
+        printf "%s-%s" ${name%%.*} $(date '+%Y%m%d_%H%M%S')
+    else
+        printf "%s-%s.%s-old" ${name%%.*} $(date '+%Y%m%d_%H%M%S') ${name#*.}
+    fi
 }
 
 function nextsuffix {
@@ -85,13 +97,14 @@ verify_not_root() {
 }
 
 check_klipper() {
-    if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper.service")" ]; then
-        echo -e "${INFO}Klipper service found"
-    else
-        echo -e "${ERROR}Klipper service not found! Please install Klipper first"
-        exit -1
+    if [ "$NOSERVICE" -ne 1 ]; then
+        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper.service")" ]; then
+            echo -e "${INFO}Klipper service found"
+        else
+            echo -e "${ERROR}Klipper service not found! Please install Klipper first"
+            exit -1
+        fi
     fi
-
 }
 
 verify_home_dirs() {
@@ -172,7 +185,7 @@ link_mmu_plugins() {
             ln -sf "${SRCDIR}/extras/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
         done
     else
-        echo -e "${WARNING}MMU modules not installed because Klipper 'extras' directory not found!"
+        echo -e "${WARNING}Klipper extensions not installed because Klipper 'extras' directory not found!"
     fi
 }
 
@@ -255,6 +268,7 @@ update_copy_file() {
         fi
     done < "$src" >"$dest"
 }
+
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
@@ -271,14 +285,15 @@ read_previous_config() {
     if [ ! -f "${dest_parameters_cfg}" ]; then
         echo -e "${WARNING}No previous ${parameters_cfg} found. Will install default"
     else
-        echo -e "${INFO}Applying ${parameters_cfg} configuration from previous installation..."
+        echo -e "${INFO}Reading ${parameters_cfg} configuration from previous installation..."
         parse_file "${dest_parameters_cfg}"
 
         if [ ! -f "${dest_parameters_cfg}" ]; then
             # Upgrade / map / force old parameters
 	    echo
 
-# Nothing yet because Happy Hare is brand new and upgrade from ERCF-Software-V3 not supported
+        # Handle renaming of config parameters
+# (Nothing yet because Happy Hare is brand new and upgrade from ERCF-Software-V3 not supported)
 # E.g.
 #            selector_offsets=${colorselector}
 #            if [ "${sync_load_length}" -gt 0 ]; then
@@ -293,30 +308,37 @@ read_previous_config() {
     if [ ! -f "${dest_software_cfg}" ]; then
         echo -e "${WARNING}No previous ${software_cfg} found. Will install default"
     else
-        echo -e "${INFO}Applying ${software_cfg} configuration from previous installation..."
+        echo -e "${INFO}Reading ${software_cfg} configuration from previous installation..."
         parse_file "${dest_software_cfg}" "variable_"
     fi
 }
 
 copy_config_files() {
-    echo -e "${INFO}Copying configuration files into ${KLIPPER_CONFIG_HOME}/mmu directory..."
-    if [ ! -d "${KLIPPER_CONFIG_HOME}/mmu" ]; then
-        mkdir ${KLIPPER_CONFIG_HOME}/mmu
-        mkdir ${KLIPPER_CONFIG_HOME}/mmu/base
-        mkdir ${KLIPPER_CONFIG_HOME}/mmu/optional
+    mmu_dir="${KLIPPER_CONFIG_HOME}/mmu"
+    next_mmu_dir="$(nextfilename "${mmu_dir}")"
+
+    echo -e "${INFO}Copying configuration files into ${mmu_dir} directory..."
+    if [ ! -d "${mmu_dir}" ]; then
+        mkdir ${mmu_dir}
+        mkdir ${mmu_dir}/base
+        mkdir ${mmu_dir}/optional
+    else
+        echo -e "${DETAIL}Config directory ${mmu_dir} already exists - backing up old config files to ${next_mmu_dir}"
+        mkdir ${next_mmu_dir}
+        (cd "${mmu_dir}"; cp -r * "${next_mmu_dir}")
     fi
 
     for file in `cd ${SRCDIR}/config/base ; ls *.cfg`; do
         src=${SRCDIR}/config/base/${file}
-        dest=${KLIPPER_CONFIG_HOME}/mmu/base/${file}
+        dest=${mmu_dir}/base/${file}
+        next_dest=${next_mmu_dir}/base/${file}
 
         if [ -f "${dest}" ]; then
             if [ "${file}" == "mmu_hardware.cfg" -a "${INSTALL}" -eq 0 ] || [ "${file}" == "mmu.cfg"  -a "${INSTALL}" -eq 0 ]; then
-                echo -e "${WARNING}Skipping copy of hardware config file because already exists"
+                echo -e "${WARNING}Skipping copy of hardware config file ${file} because already exists"
                 continue
             else
-                next_dest="$(nextfilename "$dest")"
-                echo -e "${DETAIL}Config file ${file} already exists - moving old one to ${next_dest}"
+                echo -e "${INFO}Installing configuration file ${file}"
                 mv ${dest} ${next_dest}
             fi
         fi
@@ -402,8 +424,10 @@ copy_config_files() {
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                         " > ${dest}
             else
-                klipper_config_home="${KLIPPER_CONFIG_HOME}"
-                update_copy_file "$src" "$dest" "variable_"
+                cat ${src} | sed -e "\
+                    s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
+                        " > ${dest}.tmp
+                update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
 
         else
@@ -506,7 +530,7 @@ install_update_manager() {
             echo "" >> "${file}"
             restart_moonraker
         else
-            echo -e "${INFO}[update_manager happy-hare] already exist in moonraker.conf - skipping install"
+            echo -e "${WARNING}[update_manager happy-hare] already exists in moonraker.conf - skipping install"
         fi
     else
         echo -e "${WARNING}moonraker.conf not found!"
@@ -532,28 +556,48 @@ uninstall_update_manager() {
 }
 
 restart_klipper() {
-    echo -e "${INFO}Restarting Klipper..."
-    sudo systemctl restart klipper
+    if [ "$NOSERVICE" -ne 1 ]; then
+        echo -e "${INFO}Restarting Klipper..."
+        sudo systemctl restart klipper
+    else
+        echo -e "${WARNING}Klipper restart suppressed - Please restart by hand"
+    fi
 }
 
 restart_moonraker() {
-    echo -e "${INFO}Restarting Moonraker..."
-    sudo systemctl restart moonraker
+    if [ "$NOSERVICE" -ne 1 ]; then
+        echo -e "${INFO}Restarting Moonraker..."
+        sudo systemctl restart moonraker
+    else
+        echo -e "${WARNING}Moonraker restart suppressed - Please restart by hand"
+    fi
 }
 
 prompt_yn() {
     while true; do
-        read -p "$@ (y/n)?" yn
+        read -n1 -p "$@ (y/n)? " yn
         case "${yn}" in
-            Y|y|Yes|yes)
+            Y|y)
                 echo "y" 
                 break;;
-            N|n|No|no)
+            N|n)
                 echo "n" 
                 break;;
             *)
                 ;;
         esac
+    done
+}
+
+prompt_123() {
+    prompt=$1
+    max=$2
+    while true; do
+        read -p "${prompt} (1-${max})? " -n 1 number
+        if [[ "$number" =~ [1-${max}] ]]; then
+            echo ${number}
+            break
+        fi
     done
 }
 
@@ -565,17 +609,19 @@ questionaire() {
     echo
     brd_type="unknown"
     yn=$(prompt_yn "Are you using the EASY-BRD or Fysetc Burrows ERB controller?")
+    echo
     case $yn in
         y)
             echo -e "${INFO}Great, I can setup almost everything for you. Let's get started"
             serial=""
             echo
-            for line in `ls /dev/serial/by-id | egrep "Klipper_samd21|Klipper_rp2040"`; do
+            for line in `ls /dev/serial/by-id 2>/dev/null | egrep "Klipper_samd21|Klipper_rp2040"`; do
                 if echo ${line} | grep --quiet "Klipper_samd21"; then
                     brd_type="EASY-BRD"
                 else
-                    echo -e "${PROMPT}You seem to have a ${EMPHASIZE}RP2040-based${PROMPT} controller serial port.${INPUT}"
+                    echo -e "${PROMPT}${SECTION}You seem to have a ${EMPHASIZE}RP2040-based${PROMPT} controller serial port.${INPUT}"
                     yn=$(prompt_yn "Are you using the Fysetc Burrows ERB controller?")
+                    echo
                     case $yn in
                     y)
                         brd_type="ERB"
@@ -585,8 +631,9 @@ questionaire() {
                         ;;
                     esac
                 fi
-                echo -e "${PROMPT}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
+                echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
                 yn=$(prompt_yn "/dev/serial/by-id/${line}")
+                echo
                 case $yn in
                     y)
                         serial="/dev/serial/by-id/${line}"
@@ -598,23 +645,22 @@ questionaire() {
                 esac
             done
             if [ "${serial}" == "" ]; then
+                echo -e "${PROMPT}${SECTION}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
+                echo -e "Setup for which mcu?"
+                echo -e "1) ERB"
+                echo -e "2) Standard EASY-BRD (with SAMD21)"
+                echo -e "3) EASY-BRD with RP2040${INPUT}"
+                num=$(prompt_123 "MCU type?" 3)
                 echo
-                echo -e "${PROMPT}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later${INPUT}"
-                yn=$(prompt_yn "Setup for EASY-BRD? (Answer 'N' for Fysetc Burrows ERB)")
-                case $yn in
-                    y)
-                        yn1=$(prompt_yn "EASY-BRD with SAMD21 (default)? (Answer 'N' for EASY-BRD with RP2040)")
-                        case $yn1 in
-                            y)
-                                brd_type="EASY-BRD"
-                                ;;
-                            n)
-                                brd_type="EASY-BRD-RP2040"
-                                ;;
-                        esac
-                        ;;
-                    n)
+                case $num in
+                    1)
                         brd_type="ERB"
+                        ;;
+                    2)
+                        brd_type="EASY-BRD"
+                        ;;
+                    3)
+                        brd_type="EASY-BRD-RP2040"
                         ;;
                 esac
                 serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
@@ -624,8 +670,9 @@ questionaire() {
             echo -e "${WARNING}Board Type: ${brd_type}"
 
             echo
-            echo -e "${PROMPT}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
+            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
             yn=$(prompt_yn "Enable selector touch operation (recommend no if you are new to ERCF")
+            echo
             case $yn in
                 y)
                     if [ "${brd_type}" == "EASY-BRD" ]; then
@@ -644,14 +691,16 @@ questionaire() {
             esac
             ;;
 
+
         n)
             easy_brd=0
             echo -e "${INFO}Ok, I can only partially setup non EASY-BRD/ERB installations, but lets see what I can help with"
             serial=""
             echo
             for line in `ls /dev/serial/by-id`; do
-                echo -e "${PROMPT}Is this the serial port to your MMU mcu?${INPUT}"
+                echo -e "${PROMPT}${SECTION}Is this the serial port to your MMU mcu?${INPUT}"
                 yn=$(prompt_yn "/dev/serial/by-id/${line}")
+                echo
                 case $yn in
                     y)
                         serial="/dev/serial/by-id/${line}"
@@ -667,8 +716,9 @@ questionaire() {
             fi
 
             echo
-            echo -e "${PROMPT}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
+            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
             yn=$(prompt_yn "Enable selector touch operation (recommend no for now")
+            echo
             case $yn in
                 y)
                     SETUP_SELECTOR_TOUCH=1
@@ -682,7 +732,7 @@ questionaire() {
 
     mmu_num_gates=9
     echo
-    echo -e "${PROMPT}How many gates (selectors) do you have (eg 3, 6, 9, 12)?${INPUT}"
+    echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have (eg 3, 6, 9, 12)?${INPUT}"
     while true; do
         read -p "Number of gates? " mmu_num_gates
         if ! [ "${mmu_num_gates}" -ge 1 ] 2> /dev/null ;then
@@ -693,8 +743,10 @@ questionaire() {
     done
 
     echo
-    echo -e "${PROMPT}Do you have a toolhead sensor you would like to use? If reliable this provides the smoothest and most reliable loading and unloading operation${INPUT}"
+    echo -e "${PROMPT}${SECTION}Do you have a toolhead sensor you would like to use?"
+    echo -e "(if reliable this provides the smoothest and most reliable loading and unloading operation)${INPUT}"
     yn=$(prompt_yn "Enable toolhead sensor")
+    echo
     case $yn in
         y)
             SETUP_TOOLHEAD_SENSOR=1
@@ -712,15 +764,18 @@ questionaire() {
     esac
 
     echo
-    echo -e "${PROMPT}Using default MG-90S servo? (Answer 'N' for Savox SH0255MG, you can always change it later)${INPUT}"
-    yn=$(prompt_yn "MG-90S Servo?")
-    case $yn in
-        y)
+    echo -e "${PROMPT}${SECTION}Which servo are you using?"
+    echo -e "1) MG-90S"
+    echo -e "2) Savox SH0255MG${INPUT}"
+    num=$(prompt_123 "Servo?" 2)
+    echo
+    case $num in
+        1)
             servo_up_angle=30
             servo_move_angle=30
             servo_down_angle=140
             ;;
-        n)
+        2)
             servo_up_angle=140
             servo_move_angle=140
             servo_down_angle=30
@@ -728,13 +783,15 @@ questionaire() {
     esac
 
     echo
-    echo -e "${PROMPT}Clog detection? This uses the MMU encoder movement to detect clogs and can call your filament runout logic${INPUT}"
+    echo -e "${PROMPT}${SECTION}Clog detection? This uses the MMU encoder movement to detect clogs and can call your filament runout logic${INPUT}"
     yn=$(prompt_yn "Enable clog detection")
+    echo
     case $yn in
         y)
             enable_clog_detection=1
             echo -e "${PROMPT}    Would you like MMU to automatically adjust clog detection length (recommended)?${INPUT}"
             yn=$(prompt_yn "    Automatic")
+            echo
             if [ "${yn}" == "y" ]; then
                 enable_clog_detection=2
             fi
@@ -745,8 +802,9 @@ questionaire() {
     esac
 
     echo
-    echo -e "${PROMPT}EndlessSpool? This uses filament runout detection to automate switching to new spool without interruption${INPUT}"
+    echo -e "${PROMPT}${SECTION}EndlessSpool? This uses filament runout detection to automate switching to new spool without interruption${INPUT}"
     yn=$(prompt_yn "Enable EndlessSpool")
+    echo
     case $yn in
         y)
             enable_endless_spool=1
@@ -764,13 +822,15 @@ questionaire() {
     echo
     MENU_12864=0
     ERCF_COMPAT=0
-    echo -e "${PROMPT}Finally, would you like me to include all the MMU config files into your printer.cfg file${INPUT}"
+    echo -e "${PROMPT}${SECTION}Finally, would you like me to include all the MMU config files into your printer.cfg file${INPUT}"
     yn=$(prompt_yn "Add include?")
+    echo
     case $yn in
         y)
             INSTALL_PRINTER_INCLUDES=1
             echo -e "${PROMPT}    Would you like to include Mini 12864 menu configuration extension for MMU${INPUT}"
             yn=$(prompt_yn "    Include menu")
+            echo
             case $yn in
                 y)
                     MENU_12864=1
@@ -782,6 +842,7 @@ questionaire() {
 
             echo -e "${PROMPT}    Would you like to include legacy ERCF_ command compatibility module${INPUT}"
             yn=$(prompt_yn "    Include legacy ERCF command set")
+            echo
             case $yn in
                 y)
                     ERCF_COMPAT=1
@@ -793,6 +854,7 @@ questionaire() {
 
             echo -e "${PROMPT}    Would you like to include the default pause/resume macros supplied with Happy Hare${INPUT}"
             yn=$(prompt_yn "    Include client_macros.cfg")
+            echo
             case $yn in
                 y)
                     CLIENT_MACROS=1
@@ -854,13 +916,15 @@ SETUP_SELECTOR_TOUCH=0
 
 INSTALL=0
 UNINSTALL=0
+NOSERVICE=0
 INSTALL_KLIPPER_SCREEN_ONLY=0
-while getopts "k:c:id" arg; do
+while getopts "k:c:ids" arg; do
     case $arg in
         k) KLIPPER_HOME=${OPTARG};;
         c) KLIPPER_CONFIG_HOME=${OPTARG};;
         i) INSTALL=1;;
         d) UNINSTALL=1;;
+        s) NOSERVICE=1;;
         *) usage;;
     esac
 done
@@ -895,6 +959,7 @@ else
     echo -e "${WARNING}You have asked me to remove Happy Hare and cleanup"
     echo
     yn=$(prompt_yn "Are you sure you want to proceed with deleting Happy Hare?")
+    echo
     case $yn in
         y)
             unlink_mmu_plugins
