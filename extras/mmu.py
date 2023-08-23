@@ -1324,9 +1324,11 @@ class Mmu:
     def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
+        fallback_print_state = 1 if self._is_in_print() or self._is_in_pause() else 0
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
-        self._sync_gear_to_extruder(sync, servo)
+        in_print = gcmd.get_int('IN_PRINT', fallback_print_state, minval=0, maxval=1)
+        self._sync_gear_to_extruder(sync, servo=servo, in_print=bool(in_print))
 
 
 #########################
