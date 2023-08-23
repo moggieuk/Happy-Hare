@@ -2026,7 +2026,7 @@ class Mmu:
         target_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
         current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
 
-        if abs(target_temp - current_temp) < 1:
+        if abs(target_temp - current_temp) > 1:
             self._log_debug("Waiting for extruder to reach target temperature (%.1f)" % target_temp)
             self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (target_temp - 1, target_temp + 1))
 
