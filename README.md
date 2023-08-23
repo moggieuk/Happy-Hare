@@ -325,7 +325,7 @@ Running without any parameters will display the current values:
     selector_move_speed = 200.0
     selector_homing_speed = 60.0
     selector_touch_speed = 80.0
-    enable_selector_touch = 0                    # Advanced
+    selector_touch_enable = 0                    # Advanced
 
     TMC & MOTOR SYNC CONTROL:
     sync_to_extruder = 0
@@ -1043,10 +1043,10 @@ Firstly the importance of a reliable and fairly accurate encoder should not be u
   <li>Eliminate all points of friction in the filament path.  There is lots written about this already but I found some unusual places where filament was rubbing on plastic and drilling out the path improved things a good deal.
   <li>This version of the driver software both, compensates for, and exploits the spring that is inherently built when homing to the extruder (`extruder_homing_endstop: collision`).  The `MMU_CALIBRATE_BOWDEN` (which calibrates the `mmu_calibration_bowden_length` length) averages the measurement of multiple passes, measures the spring rebound and considers the configuration options when recommending and setting the bowden length.</li>
   <li>The dreaded "Timer too close" can occur but I believe I have worked around most of these cases.  The problem is not always an overloaded mcu as often cited -- there are a couple of bugs in Klipper that will delay messages between mcu and host and thus provoke this problem.  To minimize you hitting these, I recommend you use a step size of 8 for the gear motor. You don't need high fidelity and this greatly reduces the chance of this error. Also, increasing 'bowden_num_moves' also is a workaround.  I'm not experiencing this and have a high speed (250 mm/s) single move load/unload move with steps set to 8.</li>
-  <li>I can recommend the `enable_selector_touch` option if you have a reliable mcu to handle the TMC driver -- it works well once tuned and provides for additional recovery abilities if filament gets stuck in encoder preventing selection of a different gate. However there are some important things to note:
+  <li>I can recommend the `selector_touch_enable` option if you have a reliable mcu to handle the TMC driver -- it works well once tuned and provides for additional recovery abilities if filament gets stuck in encoder preventing selection of a different gate. However there are some important things to note:
   <ul>
     <li>The selector cart homing is always to the microswitch endstop. The "touch" operation is used only for movement and optionally sensing the rightmost limit in travel during calibration.</li>
-    <li>It is important to experiement and tune the `driver_SGTHRS` value which is the point at which the TMC driver detects the stepper has stalled. Lower values are less sensitive (selector can ram too hard) and too high a value can mean a bit of friction on the selector is detected as a stall and interpreted as a blocked selector.</li>
+    <li>It is important to experiement and tune the `driver_SGTHRS` value (or equivalent for your TMC driver) which is the point at which the TMC driver detects the stepper has stalled. Lower values are less sensitive (selector can ram too hard) and too high a value can mean a bit of friction on the selector is detected as a stall and interpreted as a blocked selector.</li>
   </ul>
   <li>Speeds.... watch out for speeds that are too high for the extruder stepper (listen for them carefully).  The resultant skipped steps can cause loading and unloading steps to fail</li>
 </ul>
