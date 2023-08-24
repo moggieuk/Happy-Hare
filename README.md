@@ -364,6 +364,7 @@ Running without any parameters will display the current values:
     log_level = 1
     log_visual = 2
     log_statistics = 1
+    pause_macro = PAUSE                          # Advanced
 
     CALIBRATION:
     mmu_calibration_bowden_length = 697.9
@@ -580,10 +581,11 @@ Synchronizion during printing is controlled by `sync_to_extruder` in `mmu_parame
 
 If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any MMU operation that necessitates exclusive gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles these actions. If the printer enters MMU_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted. Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the MMU during a pause use the `MMU_SYNC_GEAR_MOTOR` command.
 
-    The `MMU_SYNC_GEAR_MOTOR sync={0|1} servo={0|1}` command functions as follows:
-    - Defaults to `sync=1` and `servo=1`
+    The `MMU_SYNC_GEAR_MOTOR sync={0|1} servo={0|1} in_print={0|1}` command functions as follows:
+    - Defaults to `sync=1`, `servo=1`, and `in_print` is determined automatically
     - If `sync=1` and `servo=1`, it triggers the servo and executes the synchronization
     - If `sync=1` and `servo=0`, it performs only the synchronization
+    - In either of the above cases, `in_print=1` performs the synchronization and sets gear stepper current to `sync_gear_current`
     - If `sync=0` and `servo=1`, it disengages and lifts the servo
     - If `sync=0` and `servo=0`, it only disengages the synchronization
 
