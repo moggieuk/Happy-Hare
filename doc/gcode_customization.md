@@ -58,6 +58,36 @@ gcode:
 
 <br>
 
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_PRE_UNLOAD & _MMU_POST_LOAD
+These two macros which are empty by default allow for a convenient place to add logic just before the unload of old filament and after the load of new filament on a toolchange. This allows for logic to move the toolhead to purge area to avoid ooze as well as to perform a tip cleaning procedure prior to continuing the print. Note that it is excepected that `_MMU_POST_LOAD` will return the toolhead to the position saved in `_MMU_PRE_UNLOAD`, however, Happy Hare has optional built in control of the z-hop height (set with `z_hop_height_toolchange` parameter) and also will ensure than the toolhead returns to the correct postion in all situations (like user corrected errors during the toolchange).
+
+```yml
+###########################################################################
+# Callback macros for modifying Happy Hare behavour
+# This occurs prior to unloading filament on a toolchange
+#
+# Typically you would move toolhead to a position where oozing is not a problem
+# Note that the z_hop is automatically controlled by Happy Hare and is
+# specified with the 'z_hop_height_toolchange' parameter
+#
+[gcode_macro _MMU_PRE_UNLOAD]
+description: Optional pre unload routine for filament change
+gcode:
+
+###########################################################################
+# Callback macros for modifying Happy Hare behavour
+# This occurs after loading new filament on a toolchange
+#
+# Typically you would clean nozzle if equiped and return to previous position
+# Note that restoration to original toolhead position is ensured by Happy Hare.
+#
+[gcode_macro _MMU_POST_LOAD]
+description: Optional post load routine for filament change
+gcode:
+```
+
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ENDLESS_SPOOL_PRE_UNLOAD & _MMU_ENDLESS_SPOOL_POST_LOAD
 If EndlessSpool is enabled, Happy Hare will unload the remains of the filament from the exhausted spool and load the new spool. These macros are called at the beginning and end of that sequence.  `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` is called because Happy Hare initiates the tip forming and typically would move the toolhead to a suitable "park" position it doesn't ooze onto your print.  This is commonly exactly the same as your `PAUSE` macro and so that is what the default handler calls.<br>
 
@@ -67,9 +97,13 @@ Here are the default macros:
 
 ```yml
 ###########################################################################
+# Callback macros for modifying Happy Hare behavour
+# Note that EndlessSpool is an unsupervised filament change
 # This occurs prior to MMU forming tip and ejecting the remains of the old filament
 #
 # Typically you would move toolhead to your park position so oozing is not a problem
+# Note that the z_hop is automatically controlled by Happy Hare and is
+# specified with the 'z_hop_height_toolchange' parameter
 #
 # This is probably similar to what you do in your PAUSE macro and you could simply call that here...
 # (this call works with reference PAUSE macro supplied in client_macros.cfg)
@@ -79,14 +113,16 @@ description: Pre unload routine for EndlessSpool changes
 gcode:
     PAUSE
 
-
 ###########################################################################
+# Callback macros for modifying Happy Hare behavour
+# Note that EndlessSpool is an unsupervised filament change
 # This occurs after MMU has loaded the new filament from the next spool in rotation
 # MMU will have loaded the new filament to the nozzle the same way as a normal filament
 # swap. Previously configured Pressure Advance will be retained.
 # 
 # This would be a place to purge additional filament if necessary (it really shouldn't be)
 # and clean nozzle if your printer is suitably equipped.
+# Note that restoration to original toolhead position is ensured by Happy Hare.
 #
 # This is probably similar to what you do in your RESUME macro and you could simply call that here...
 # (this call works with reference RESUME macro supplied in client_macros.cfg)

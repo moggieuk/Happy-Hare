@@ -353,7 +353,8 @@ Running without any parameters will display the current values:
     gcode_unload_sequence = 0                    # Expert
 
     OTHER:
-    z_hop_height = 5.0
+    z_hop_height_error = 5.0
+    z_hop_height_toolchange = 0.0
     z_hop_speed = 15.0
     enable_clog_detection = 2
     enable_endless_spool = 1                     # Advanced
@@ -664,7 +665,7 @@ Since EndlessSpool is not something that triggers very often you can use the fol
 This will emulate a filament runout and force the MMU to interpret it as a true runout and not a possible clog. THe MMU will then run the following sequence:
 
 <ul>
-  <li>Move the toolhead up a little (defined by 'z_hop_distance & z_hop_speed') to avoid blobs
+  <li>Move the toolhead up a little (defined by 'z_hop_height_toolchange & z_hop_speed') to avoid blobs
   <li>Call '_MMU_ENDLESS_SPOOL_PRE_UNLOAD' macro (defined in `mmu_software.cfg`).  Typically this where you would quickly move the toolhead to your parking area
   <li>Perform the toolchange and map the new gate in the sequence
   <li>Call '_MMU_ENDLESS_SPOOL_POST_LOAD' macro.  Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where you picked it up in the PRE_UNLOAD macro
@@ -716,7 +717,7 @@ Regardless of whether you use your own PAUSE / RESUME / CANCEL_PRINT macros or u
 <details>
 <summary><sub>🔹 Read more aboout what Happy Hare adds to these macros...</sub></summary><br>
 
-During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height` at `z_hop_speed` (to prevent a blob). It will then call the user's PAUSE macro (which can be the example one supplied in `mmu_software.cfg`). As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.<br>
+During a print, if Happy Hare detects a problem, it will record the print position, safely lift the nozzle up to `z_hop_height_error` at `z_hop_speed` (to prevent a blob). It will then call the user's PAUSE macro (which can be the example one supplied in `mmu_software.cfg`). As can be seen with the provided examples it is expected that pause will save it's starting position (GCODE_SAVE_STATE) and move the toolhead to a park area, often above a purge bucket, at fast speed.<br>
 
 The user then addresses the issue and calls `RESUME` to continue with the print.<br>
 

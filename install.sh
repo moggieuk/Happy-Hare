@@ -31,14 +31,6 @@ PIN[ERB,selector_endstop_pin]="gpio24";  PIN[EASY-BRD,selector_endstop_pin]="PB9
 PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";              PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
 PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";            PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
 
-# TODO. These are example pins (mine!).  Update installer to look for them during install
-#PIN[extruder_uart_pin]="PE1"
-#PIN[extruder_diag_pin]="PG14"
-#PIN[extruder_step_pin]="PE2"
-#PIN[extruder_dir_pin]="PE3"
-#PIN[extruder_enable_pin]="PD4"
-#PIN[toolhead_sensor_pin]="PG13"
-
 PIN[extruder_uart_pin]="<set_me>"
 PIN[extruder_diag_pin]="<set_me>"
 PIN[extruder_step_pin]="<set_me>"
@@ -418,14 +410,23 @@ copy_config_files() {
                         " > ${dest} && rm ${dest}.tmp
             fi
 
-         elif [ "${file}" == "mmu_software.cfg" ]; then
+        elif [ "${file}" == "mmu_software.cfg" ]; then
+            tx_macros=""
+            for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
+            do
+                tx_macros+="[gcode_macro T${i}]\n"
+                tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
+            done
+
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} | sed -e "\
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
+                    s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}
             else
                 cat ${src} | sed -e "\
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
+                    s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}.tmp
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
@@ -602,8 +603,12 @@ prompt_123() {
 }
 
 questionaire() {
-    # PAUL TODO Vendor type and sub selections
-    VENDOR="ERCF"
+    echo
+    echo -e "${INFO}Only ERCF is currently ready but support for Tradrack is comming soon"
+    echo
+    VENDOR="ERCF" # TODO Vendor type and sub selections
+    # PAUL TODO .. add questions for ERCF about binky, springy (v1.1) and v2
+    
     echo
     echo -e "${INFO}Let me see if I can help you with initial config (you will still have some manual config to perform)...${INPUT}"
     echo

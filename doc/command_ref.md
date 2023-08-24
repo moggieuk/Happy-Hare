@@ -130,6 +130,8 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
 
   | Macro | Description | Supplied Parameters |
   | ----- | ----------- | ------------------- |
+  | `_MMU_PRE_UNLOAD` | Called prior to unloading on toolchange | |
+  | `_MMU_POST_LOAD` | Called subsequent to loading new filament on toolchange| |
   | `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` | Called prior to unloading the remains of the current filament | |
   | `_MMU_ENDLESS_SPOOL_POST_LOAD` | Called subsequent to loading filament in the new gate in the sequence | |
   | `_MMU_FORM_TIP_STANDALONE` | Called to create tip on filament when not in print (and under the control of the slicer). You tune this macro by modifying the defaults to the parameters | |

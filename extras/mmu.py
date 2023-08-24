@@ -239,7 +239,8 @@ class Mmu:
         self.min_temp_extruder = config.getfloat('min_temp_extruder', 180.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
-        self.z_hop_height = config.getfloat('z_hop_height', 5., minval=0.)
+        self.z_hop_height_error = config.getfloat('z_hop_height_error', 5., minval=0.)
+        self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 5., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
         self.force_form_tip_standalone = config.getint('force_form_tip_standalone', 0, minval=0, maxval=1)
@@ -549,7 +550,9 @@ class Mmu:
             raise self.config.error("Missing [mmu_servo] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
         self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
         if not self.encoder_sensor:
-            raise self.config.error("Missing [mmu_encoder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER) # TODO make warning
+            #raise self.config.error("Missing [mmu_encoder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
+            # MMU logging not set up so use main klippy logger
+            logging.warn("No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
 
     def handle_connect(self):
         self._setup_logging()
@@ -1213,8 +1216,8 @@ class Mmu:
         self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self):
-#        if self.tool_selected < 0:
-#            self._log_info("TODO TEMP DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
+        if self.tool_selected < 0:
+            self._log_info("TODO DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
         delta = 0.
@@ -1833,7 +1836,7 @@ class Mmu:
             self._track_pause_start()
             self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause)
             self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater)
-            self._save_toolhead_position_and_lift()
+            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error)
             msg = "An issue with the MMU has been detected. Print paused"
             reason = "Reason: %s" % reason
             extra = "After fixing the issue, call \'RESUME\' to continue printing"
@@ -1865,7 +1868,7 @@ class Mmu:
         self.is_paused_locked = False
         self._disable_encoder_sensor() # Precautionary, should already be disabled
 
-    def _save_toolhead_position_and_lift(self, remember=True):
+    def _save_toolhead_position_and_lift(self, remember=True, z_hop_height=None):
         if remember and not self.saved_toolhead_position:
             self.toolhead.wait_moves()
             self._log_debug("Saving toolhead position")
@@ -1878,14 +1881,14 @@ class Mmu:
             self.saved_toolhead_position = False
 
         # Immediately lift toolhead off print
-        if self.z_hop_height > 0:
+        if z_hop_height is not None and z_hop_height > 0:
             if 'z' not in self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']:
                 self._log_info("Warning: MMU cannot lift toolhead because toolhead not homed!")
             else:
-                self._log_debug("Lifting toolhead %.1fmm" % self.z_hop_height)
+                self._log_debug("Lifting toolhead %.1fmm" % z_hop_height)
                 act_z = self.toolhead.get_position()[2]
                 max_z = self.toolhead.get_status(self.printer.get_reactor().monotonic())['axis_maximum'].z
-                safe_z = self.z_hop_height if (act_z < (max_z - self.z_hop_height)) else (max_z - act_z)
+                safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
                 self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
 
     def _restore_toolhead_position(self):
@@ -2703,6 +2706,9 @@ class Mmu:
     # Load filament past encoder and return the actual measured distance detected by encoder
     # Returns the measured filament distance moved
     def _load_encoder(self, retry=True, adjust_servo_on_error=True):
+        if not self._has_encoder():
+            raise MmuError("Attempting to load encoder but not encoder is configured on MMU!")
+
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._servo_down()
         initial_encoder_position = self._get_encoder_distance()
@@ -3229,7 +3235,7 @@ class Mmu:
         tolerance = self.bowden_unload_tolerance
         self._servo_down()
 
-# TODO Old logic. Don't like this test move anymore. Complicates things and servo is now more reliable, althought it does prevent
+# TODO Old logic. Don't like this test move anymore. Complicates things and servo is now more reliable, although it does prevent
 #      significant chewing of the filament if it is really caught in extruder gears!
 #        # Initial short move allows for dealing with (servo) errors and prevent grinding filament if stuck
 #        if not self.calibrating:
@@ -3279,6 +3285,9 @@ class Mmu:
     # Slow (step) extract of filament from encoder to MMU park position
     # Returns the best assessment of distance moved, assume actual except for last parking step
     def _unload_encoder(self, max_length):
+        if not self._has_encoder():
+            raise MmuError("Attempting to unload encoder but not encoder is configured on MMU!")
+
         self._log_debug("Slow unload of the encoder")
         self._set_filament_direction(self.DIRECTION_UNLOAD)
         max_steps = int(max_length / self.encoder_move_step_size) + 5
@@ -3373,7 +3382,7 @@ class Mmu:
                 # Not synchronous gear/extruder movement
                 return (delta > self.encoder_min or filament_present == 1), park_pos
         finally:
-            self._sync_gear_to_extruder(prev_sync_state) # PAUL do we need to restore servo?
+            self._sync_gear_to_extruder(prev_sync_state) # TODO do we need to restore servo pos?
             self._set_action(current_action)
 
 
@@ -3386,6 +3395,10 @@ class Mmu:
         current_action = self._set_action(self.ACTION_HOMING)
         try:
             self._log_info("Homing MMU...")
+
+            # Notify start of selector homing operation
+            self.printer.send_event("mmu:homing", self)
+
             if force_unload != -1:
                 self._log_debug("(asked to %s)" % ("force unload" if force_unload == 1 else "not unload"))
             if force_unload == 1:
@@ -3518,10 +3531,30 @@ class Mmu:
             self._home(tool)
             skip_unload = True
 
+        # Notify start of actual toolchange operation
+        self.printer.send_event("mmu:toolchange", self, self._last_tool, self._next_tool)
+
+        self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange)
+        gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
+        if gcode is not None:
+            try:
+                self.gcode.run_script_from_command("_MMU_PRE_UNLOAD")
+            except Exception as e:
+                raise MmuError("Error running user _MMU_PRE_UNLOAD macro: %s" % str(e))
+
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
         self._select_and_load_tool(tool)
         self._track_swap_completed()
+
+        gcode = self.printer.lookup_object('gcode_macro _MMU_POST_LOAD', None)
+        if gcode is not None:
+            try:
+                self.gcode.run_script_from_command("_MMU_POST_LOAD")
+            except Exception as e:
+                raise MmuError("Error running user _MMU_POST_LOAD macro: %s" % str(e))
+        self._restore_toolhead_position()
+
         self.gcode.run_script_from_command("M117 T%s" % tool)
 
     def _unselect_tool(self):
@@ -3665,7 +3698,7 @@ class Mmu:
         if self._check_in_bypass(): return
         if self._check_is_calibrated(): return
 
-        # TODO currently not registered directly as Tx commands because not visable by Mainsail/Fluuid
+        # TODO currently not registered directly as Tx commands because not visible by Mainsail/Fluuid
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)
         if match:
@@ -3680,27 +3713,12 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
             self._log_error("Unknown filament position, recovering state...")
             self._recover_filament_pos()
+
         try:
             restore_encoder = self._disable_encoder_sensor(update_clog_detection_length=True) # Don't want runout accidently triggering during tool change
             self._last_tool = self.tool_selected
             self._next_tool = tool
-
-            gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
-            if gcode is not None:
-                try:
-                    self.gcode.run_script_from_command("_MMU_PRE_UNLOAD")
-                except Exception as e:
-                    raise MmuError("Error running user _MMU_PRE_UNLOAD macro: %s" % str(e))
-
             self._change_tool(tool, skip_tip)
-
-            gcode = self.printer.lookup_object('gcode_macro _MMU_POST_LOAD', None)
-            if gcode is not None:
-                try:
-                    self.gcode.run_script_from_command("_MMU_POST_LOAD")
-                except Exception as e:
-                    raise MmuError("Error running user _MMU_POST_LOAD macro: %s" % str(e))
-
             self._dump_statistics(quiet=quiet)
             self._enable_encoder_sensor(restore_encoder)
         except MmuError as ee:
@@ -3814,7 +3832,7 @@ class Mmu:
             self._unlock()
         self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
         self._sync_gear_to_extruder(False, servo=True, in_print=False)
-        self._save_toolhead_position_and_lift(False)
+        self._save_toolhead_position_and_lift(remember=False, z_hop_height=self.z_hop_height_error)
         self.gcode.run_script_from_command("__CANCEL_PRINT")
 
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
@@ -4037,7 +4055,8 @@ class Mmu:
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
 
         # Software behavior options
-        self.z_hop_height = gcmd.get_float('Z_HOP_HEIGHT', self.z_hop_height, minval=0.)
+        self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
+        self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.selector_touch = self.SELECTOR_TOUCH_ENDSTOP in self.selector_stepper.get_endstop_names() and self.selector_touch_enable
         self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
@@ -4097,7 +4116,8 @@ class Mmu:
         msg += "\ngcode_unload_sequence = %d" % self.gcode_unload_sequence
 
         msg += "\n\nOTHER:"
-        msg += "\nz_hop_height = %.1f" % self.z_hop_height
+        msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
+        msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
@@ -4124,7 +4144,7 @@ class Mmu:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
         self._log_info("Issue on tool T%d" % self.tool_selected)
-        self._save_toolhead_position_and_lift()
+        self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange)
 
         # Check for clog by looking for filament in the encoder
         self._log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)
