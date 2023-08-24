@@ -604,14 +604,49 @@ prompt_123() {
 
 questionaire() {
     echo
-    echo -e "${INFO}Only ERCF is currently ready but support for Tradrack is comming soon"
+    echo -e "${INFO}Let me see if I can help you with initial config (you will still have some manual config to perform)"
+    echo -e "(only ERCF is currently ready but support for Tradrack is comming soon)"
     echo
-    VENDOR="ERCF" # TODO Vendor type and sub selections
-    # PAUL TODO .. add questions for ERCF about binky, springy (v1.1) and v2
-    
+    echo -e "${PROMPT}What type of MMU are you running?${INPUT}"
+    echo -e "1) ERCF v1.1 (all variations)"
+    echo -e "2) ERCF v2.0"
+    num=$(prompt_123 "MMU Type?" 2)
     echo
-    echo -e "${INFO}Let me see if I can help you with initial config (you will still have some manual config to perform)...${INPUT}"
+    case $num in
+        1)
+            mmu_vendor="ERCF"
+            mmu_version="1.1"
+            echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 are supported. Let me ask you about them...${INPUT}"
+            yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
+            echo
+            case $yn in
+            y)
+                mmu_version+="s"
+                ;;
+            esac
+            yn=$(prompt_yn "Are you using the improved 'Binky' encoder")
+            echo
+            case $yn in
+            y)
+                mmu_version+="b"
+                ;;
+            esac
+            yn=$(prompt_yn "Are you using the wider 'Triple-Decky' filament blocks")
+            echo
+            case $yn in
+            y)
+                mmu_version+="t"
+                ;;
+            esac
+            ;;
+        2)
+            mmu_vendor="ERCF"
+            mmu_version="2.0"
+            ;;
+    esac
+
     echo
+    echo -e "${INFO}${SECTION}Let me see if I can help you with initial config (you will still have some manual config to perform)...${INPUT}"
     brd_type="unknown"
     yn=$(prompt_yn "Are you using the EASY-BRD or Fysetc Burrows ERB controller?")
     echo
@@ -873,6 +908,16 @@ questionaire() {
             INSTALL_PRINTER_INCLUDES=0
             ;;
     esac
+
+    echo -e "${WARNING}"
+    echo -e "mmu_vendor: ${mmu_vendor}"
+    echo -e "mmu_version: ${mmu_version}"
+    echo -e "mmu_num_gates: ${mmu_num_gates}"
+    echo -e "servo_up_angle: ${servo_up_angle}"
+    echo -e "servo_move_angle: ${servo_move_angle}"
+    echo -e "servo_down_angle: ${servo_down_angle}"
+    echo -e "enable_clog_detection: ${enable_clog_detection}"
+    echo -e "enable_endless_spool: ${enable_endless_spool}"
 
     echo
     echo -e "${INFO}"
