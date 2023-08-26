@@ -625,7 +625,7 @@ class Mmu:
         else:
             self._log_always("Warning: Gear rotation_distance not found in mmu_vars.cfg. Probably not calibrated")
         self.ref_gear_rotation_distance = self.gear_stepper.stepper.get_rotation_distance()[0]
- 
+
         # Configure encoder calibration (set with MMU_CALIBRATE_ENCODER)
         if self._has_encoder():
             self.encoder_sensor.set_logger(self._log_debug) # Combine with MMU log
@@ -1373,33 +1373,33 @@ class Mmu:
 
                 if counts == 0: break
                 test_speed += speed_incr
-    
+
             self._log_always("Load direction: mean=%(mean).2f stdev=%(stdev).2f min=%(min)d max=%(max)d range=%(range)d" % self._sample_stats(pos_values))
             self._log_always("Unload direction: mean=%(mean).2f stdev=%(stdev).2f min=%(min)d max=%(max)d range=%(range)d" % self._sample_stats(neg_values))
-    
+
             mean_pos = self._sample_stats(pos_values)['mean']
             mean_neg = self._sample_stats(neg_values)['mean']
             mean = (float(mean_pos) + float(mean_neg)) / 2
-    
+
             if mean == 0:
                 self._log_always("No counts measured. Ensure a tool was selected with servo down " +
                                   "before running calibration and that your encoder " +
                                   "is working properly")
                 return
-    
+
             resolution = length / mean
             old_result = mean * self.encoder_sensor.get_resolution()
             new_result = mean * resolution
-    
+
             # Sanity check to ensure all teeth are reflecting / being counted. 20% tolerance
             if (abs(resolution - self.encoder_min_resolution) / self.encoder_min_resolution) > 0.2:
                 self._log_always("Warning: Encoder is not detecting the expected number of counts. It is possible that reflections from some teeth are unreliable")
-    
+
             msg = "Before calibration measured length = %.2fmm" % old_result
             msg += "\nResulting resolution of the encoder = %.6fmm" % resolution
             msg += "\nAfter calibration measured length = %.2fmm" % new_result
             self._log_always(msg)
-    
+
             if save:
                 self.encoder_sensor.set_resolution(resolution)
                 self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.6f" % (self.VARS_MMU_ENCODER_RESOLUTION, resolution))
@@ -1936,7 +1936,7 @@ class Mmu:
     def _set_encoder_distance(self, distance):
         if self._has_encoder():
             return self.encoder_sensor.set_distance(distance)
-        
+
     def _get_encoder_counts(self):
         if self._has_encoder():
             return self.encoder_sensor.get_counts()
@@ -2712,7 +2712,7 @@ class Mmu:
                 if start_filament_pos < self.FILAMENT_POS_END_BOWDEN:
                     self._load_bowden(length - self.filament_distance, full)
 
-                if start_filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER and home: 
+                if start_filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER and home:
                     self._home_to_extruder(self.extruder_homing_max)
 
                 if not skip_extruder:
@@ -2949,6 +2949,8 @@ class Mmu:
         distance_moved = 0.
         try:
             self._set_filament_direction(self.DIRECTION_LOAD)
+            if self.is_paused_locked:
+                self._unlock()
             self._ensure_safe_extruder_temperature()
             # This is important for filaments with wildy different print temps since `_ensure_safe_extruder_temperature`
             # does not wait for temp changes if we're both printing and able to extrude. In practice, the time
@@ -3154,6 +3156,8 @@ class Mmu:
         try:
             self._log_debug("Extracting filament from extruder")
             self._set_filament_direction(self.DIRECTION_UNLOAD)
+            if self.is_paused_locked:
+                self._unlock()
             self._ensure_safe_extruder_temperature()
             sync_allowed = self.toolhead_sync_unload and not extruder_stepper_only
             if sync_allowed:
@@ -4316,7 +4320,7 @@ class Mmu:
             material = self.gate_material[g] if self.gate_material[g] != "" else "n/a"
             color = self.gate_color[g] if self.gate_color[g] != "" else "n/a"
             available = {
-                self.GATE_AVAILABLE_FROM_BUFFER: "Buffered", 
+                self.GATE_AVAILABLE_FROM_BUFFER: "Buffered",
                 self.GATE_AVAILABLE: "Available",
                 self.GATE_EMPTY: "Empty",
                 self.GATE_UNKNOWN: "Unknown"
