@@ -648,10 +648,10 @@ class Mmu:
                 self.calibration_status |= self.CALIBRATED_SELECTOR
             else:
                 self._log_error("Incorrect number of gates specified in %s" % self.VARS_MMU_SELECTOR_OFFSETS)
-                self.selector_offsets = []
+                self.selector_offsets = [0.] * self.mmu_num_gates
         else:
             self._log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
-            self.selector_offsets = []
+            self.selector_offsets = [0.] * self.mmu_num_gates
         bypass_offset = self.variables.get(self.VARS_MMU_SELECTOR_BYPASS, None)
         if bypass_offset:
             self.bypass_offset = bypass_offset
