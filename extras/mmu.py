@@ -4164,7 +4164,7 @@ class Mmu:
         msg += "\nlog_level = %d" % self.log_level
         msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
-        msg += "\npause_macro = %d" % self.pause_macro
+        msg += "\npause_macro = %s" % self.pause_macro
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
