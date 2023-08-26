@@ -31,7 +31,7 @@ Although it should not be necessary, there are options to update a single positi
 
   > MMU_CALIBRATE_SELECTOR GATE=...
 
-**Validation:** At the end of this step you should be able to select any tool/gate on your MMU. For instance, try running `MMU_HOME TOOL=3` to re-home and select too/gate #3.
+**Validation:** At the end of this step you should be able to select any tool/gate on your MMU. For instance, try running `MMU_HOME TOOL=3` to re-home and select tool/gate #3.
 
 <br>
 
