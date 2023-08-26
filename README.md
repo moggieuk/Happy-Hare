@@ -225,7 +225,7 @@ Configuration and calibration will vary slightly depending on your particular br
 
 ### 1\. Important MMU Vendor / Version Specification
 
-Happy Hare functionality will vary with MMU vendor. After running the installer ir is important to verify `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg` because they define the basic capabilities and options in Happy Hare. The only complication is that in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
+Happy Hare functionality will vary with MMU vendor. After running the installer it is important to verify `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg` because they define the basic capabilities and options in Happy Hare. The only complication is that in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
 
 <details>
 <summary><sub>🔹 Read more about vendor/version specification...</sub></summary>
