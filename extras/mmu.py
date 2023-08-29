@@ -13,7 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, logging.handlers, threading, queue, time
-import textwrap, math, os.path, re, json
+import math, os.path, re
 from random import randint
 import chelper
 
