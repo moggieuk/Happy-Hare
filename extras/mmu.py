@@ -236,7 +236,7 @@ class Mmu:
         self.timeout_pause = config.getint('timeout_pause', 72000)
         self.timeout_unlock = config.getint('timeout_unlock', -1)
         self.disable_heater = config.getint('disable_heater', 600)
-        self.default_extruder_temp = config.getfloat('default_extruder_temp', 180.)
+        self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 5., minval=0.)
