@@ -2647,7 +2647,7 @@ class Mmu:
     cmd_MMU_STEP_SET_FILAMENT_help = "User composable loading step: Set filament position state"
     def cmd_MMU_STEP_SET_FILAMENT(self, gcmd):
         state = gcmd.get_int('STATE', )
-        slient = gcmd.get_int('SILENT', 0)
+        silent = gcmd.get_int('SILENT', 0)
         if state >= self.FILAMENT_POS_UNLOADED and state <= self.FILAMENT_POS_LOADED:
             self._set_filament_pos(state, silent)
         else:
