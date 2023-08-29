@@ -12,7 +12,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, logging.handlers, threading, queue, time
+import logging, logging.handlers, threading, queue, time, contextlib
 import math, os.path, re
 from random import randint
 import chelper
@@ -2064,10 +2064,9 @@ class Mmu:
         # Optionally wait until temperature is stable or at minimum saftey temp and extruder can move
         if wait or current_temp < klipper_minimum_temp:
             if abs(new_target_temp - current_temp) > 1:
-                current_action = self._set_action(self.ACTION_HEATING)
-                self._log_info("Waiting for extruder to reach target temperature (%.1f)" % new_target_temp)
-                self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
-                self._set_action(current_action)
+                with self._wrap_action(self.ACTION_HEATING):
+                    self._log_info("Waiting for extruder to reach target temperature (%.1f)" % new_target_temp)
+                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _set_filament_pos(self, state, silent=False):
         self.filament_pos = state
@@ -2133,6 +2132,14 @@ class Mmu:
         finally:
             return old_action
 
+    @contextlib.contextmanager
+    def _wrap_action(self, new_action):
+        old_action = self._set_action(new_action)
+
+        try:
+            yield (old_action, new_action)
+        finally:
+            self._set_action(old_action)
 
 ### STATE GCODE COMMANDS
 
