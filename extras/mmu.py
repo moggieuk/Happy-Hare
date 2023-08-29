@@ -236,7 +236,7 @@ class Mmu:
         self.timeout_pause = config.getint('timeout_pause', 72000)
         self.timeout_unlock = config.getint('timeout_unlock', -1)
         self.disable_heater = config.getint('disable_heater', 600)
-        self.min_temp_extruder = config.getfloat('min_temp_extruder', 180.)
+        self.default_extruder_temp = config.getfloat('default_extruder_temp', 180.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 5., minval=0.)
@@ -2046,12 +2046,12 @@ class Mmu:
             target_temp = current_target_temp
             source = "current"
 
-        if ensure_min and target_temp < self.min_temp_extruder:
-            target_temp = self.min_temp_extruder
+        if ensure_min and target_temp < self.default_extruder_temp:
+            target_temp = self.default_extruder_temp
             source = "minimum"
 
         if target_temp > current_target_temp:
-            if target_temp == self.min_temp_extruder:
+            if target_temp == self.default_extruder_temp:
                 # We use error channel to aviod heating surprise and will cause popup in Klipperscreen
                 self._log_error("Heating extruder to %s temp (%.1f)" % (source, target_temp))
             else:
@@ -2059,7 +2059,7 @@ class Mmu:
         self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % target_temp)
 
         # Optionally wait until temperature is stable or at minimum saftey temp and extruder can move
-        if wait or (ensure_min and current_temp < self.min_temp_extruder):
+        if wait or (ensure_min and current_temp < self.default_extruder_temp):
             if abs(target_temp - current_temp) > 1:
                 current_action = self._set_action(self.ACTION_HEATING)
                 self._log_info("Waiting for extruder to reach target temperature (%.1f)" % target_temp)
