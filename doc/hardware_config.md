@@ -4,9 +4,9 @@
 
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
-### Step 1. Validate your hardware configuration
+## Step 1. Validate your hardware configuration
 
-#### Location of configuration files
+### Location of configuration files
 The Klipper configuration files for Happy Hare are modular and can be found in this layout in the Klipper config directory:
 
 ```yml
@@ -27,10 +27,12 @@ mmu/
 
 This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]'
 
-#### MCU and Pin Validation
+### a) MCU and Pin Validation (mmu.cfg)
 The `mmu.cfg` file is part of the hardware configuration but defines aliases for all of the pins used in `mmu_hardware.cfg`. The benefit of this is that configuration frameworks like [Klippain](https://github.com/Frix-x/klippain) can more easily incorporate. It is also in keeping with an organized modular layout.
 
-#### Hardware Configuration (mmu_hardware.cfg):
+<br>
+
+### b) Hardware Configuration (mmu_hardware.cfg):
 This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
 
 Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
@@ -88,10 +90,8 @@ Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
 
 <br>
-#### Pin Aliases File (mmu.cfg):
-TODO 
 
-#### Variables file (mmu_vars.cfg):
+### c) Variables file (mmu_vars.cfg):
 This is the file where Happy Hare stores all calibration settings and state. It is pointed to by this section at the top of `mmu_software.cfg`:
 ```yml
 [save_variables]
@@ -102,17 +102,17 @@ Klipper can only have one `save_variables` file and so if you are already using 
 
 <br>
 
-### Step 2. Check motor movement and direction
+## Step 2. Check motor movement and direction
 TODO .. help on basic motor movement and direction / changes
 
 <br>
 
-### Step 3. Check endstops & optional sensors
+## Step 3. Check endstops & optional sensors
 TODO .. help on how to validate endtops and reverse polarity
 
 <br>
 
-### Step 4. Check Encoder (if fitted)
+## Step 4. Check Encoder (if fitted)
 TODO .. help on validating that it is registering movement
 
 <br>
