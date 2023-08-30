@@ -463,7 +463,7 @@ install_printer_includes() {
     dest=${KLIPPER_CONFIG_HOME}/printer.cfg
     if test -f $dest; then
 
-        klippain_included=$(grep -c "[include config/hardware.mmu.cfg]" ${dest} || true)
+        klippain_included=$(grep -c "[include config/hardware/mmu.cfg]" ${dest} || true)
         if [ "${klippain_included}" -eq 1 ]; then
             echo -e "${WARNING}This looks like a Klippain config installation - skipping automatic config install. Please add config includes by hand"
         else
