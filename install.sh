@@ -462,37 +462,43 @@ install_printer_includes() {
     # Link in all includes if not already present
     dest=${KLIPPER_CONFIG_HOME}/printer.cfg
     if test -f $dest; then
-        next_dest="$(nextfilename "$dest")"
-        echo -e "${INFO}Copying original printer.cfg file to ${next_dest}"
-        cp ${dest} ${next_dest}
-        if [ ${MENU_12864} -eq 1 ]; then
-            i='\[include mmu/optional/mmu_menu.cfg\]'
-            already_included=$(grep -c "${i}" ${dest} || true)
-            if [ "${already_included}" -eq 0 ]; then
-                sed -i "1i ${i}" ${dest}
+
+        klippain_included=$(grep -c "[include config/hardware.mmu.cfg]" ${dest} || true)
+        if [ "${klippain_included}" -eq 1 ]; then
+            echo -e "${WARNING}This looks like a Klippain config installation - skipping automatic config install. Please add config includes by hand"
+        else
+            next_dest="$(nextfilename "$dest")"
+            echo -e "${INFO}Copying original printer.cfg file to ${next_dest}"
+            cp ${dest} ${next_dest}
+            if [ ${MENU_12864} -eq 1 ]; then
+                i='\[include mmu/optional/mmu_menu.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
             fi
+            if [ ${ERCF_COMPAT} -eq 1 ]; then
+                i='\[include mmu/optional/mmu_ercf_compat.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
+            if [ ${CLIENT_MACROS} -eq 1 ]; then
+                i='\[include mmu/optional/client_macros.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
+            for i in \
+                    '\[include mmu/base/\*.cfg\]' ; do
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            done
         fi
-        if [ ${ERCF_COMPAT} -eq 1 ]; then
-            i='\[include mmu/optional/mmu_ercf_compat.cfg\]'
-            already_included=$(grep -c "${i}" ${dest} || true)
-            if [ "${already_included}" -eq 0 ]; then
-                sed -i "1i ${i}" ${dest}
-            fi
-        fi
-        if [ ${CLIENT_MACROS} -eq 1 ]; then
-            i='\[include mmu/optional/client_macros.cfg\]'
-            already_included=$(grep -c "${i}" ${dest} || true)
-            if [ "${already_included}" -eq 0 ]; then
-                sed -i "1i ${i}" ${dest}
-            fi
-        fi
-        for i in \
-                '\[include mmu/base/\*.cfg\]' ; do
-            already_included=$(grep -c "${i}" ${dest} || true)
-            if [ "${already_included}" -eq 0 ]; then
-                sed -i "1i ${i}" ${dest}
-            fi
-        done
     else
         echo -e "${WARNING}File printer.cfg file not found! Cannot include MMU configuration files"
     fi
