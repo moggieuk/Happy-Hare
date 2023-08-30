@@ -622,6 +622,7 @@ questionaire() {
         1)
             mmu_vendor="ERCF"
             mmu_version="1.1"
+            encoder_parking_distance="23"
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 are supported. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
             echo
@@ -642,12 +643,14 @@ questionaire() {
             case $yn in
             y)
                 mmu_version+="t"
+                encoder_parking_distance="19"
                 ;;
             esac
             ;;
         2)
             mmu_vendor="ERCF"
             mmu_version="2.0"
+            encoder_parking_distance="19"
             ;;
     esac
 
@@ -815,18 +818,32 @@ questionaire() {
     echo -e "2) Savox SH0255MG${INPUT}"
     num=$(prompt_123 "Servo?" 2)
     echo
-    case $num in
-        1)
-            servo_up_angle=30
-            servo_move_angle=30
-            servo_down_angle=140
-            ;;
-        2)
-            servo_up_angle=140
-            servo_move_angle=140
-            servo_down_angle=30
-            ;;
-    esac
+    if [ "${mmu_vendor}" == "ERCF" ]; then
+        case $num in
+            1)
+                servo_up_angle=30
+                if [ "${mmu_version}" == "2.0" ]; then
+                    servo_move_angle=61
+                else
+                    servo_move_angle=${servo_up_angle}
+                fi
+                servo_down_angle=140
+                ;;
+            2)
+                servo_up_angle=140
+                if [ "${mmu_version}" == "2.0" ]; then
+                    servo_move_angle=109
+                else
+                    servo_move_angle=${servo_up_angle}
+                fi
+                servo_down_angle=30
+                ;;
+        esac
+    else
+        servo_up_angle=0
+        servo_move_angle=0
+        servo_down_angle=0
+    fi
 
     echo
     echo -e "${PROMPT}${SECTION}Clog detection? This uses the MMU encoder movement to detect clogs and can call your filament runout logic${INPUT}"
@@ -924,6 +941,7 @@ questionaire() {
     echo -e "servo_down_angle: ${servo_down_angle}"
     echo -e "enable_clog_detection: ${enable_clog_detection}"
     echo -e "enable_endless_spool: ${enable_endless_spool}"
+    echo -e "encoder_parking_distance: ${encoder_parking_distance}"
 
     echo
     echo -e "${INFO}"

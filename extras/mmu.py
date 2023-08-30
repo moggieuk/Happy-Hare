@@ -195,7 +195,7 @@ class Mmu:
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
             if self.mmu_version >= 2.0:
                 self.cad_gate0_pos = 4.0
-                self.cad_gate_width = 23.0
+                self.cad_gate_width = 23.05 # Triple Decky
                 self.cad_bypass_offset = 5.7
                 self.cad_last_gate_offset = 19.2
                 self.encoder_min_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
