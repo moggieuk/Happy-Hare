@@ -256,13 +256,13 @@ This section contains an eclectic set of remaining options. Ask on discord if an
 ```yml
 # Misc configurable, but fairly fixed values -----------------------------------------------------------------------------
 #
-extruder: extruder		    # Name of the toolhead extruder that MMU is using
+extruder: extruder		# Name of the toolhead extruder that MMU is using
 timeout_pause: 72000		# Time out in seconds used by the MMU_PAUSE
-disable_heater: 600		    # Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
+disable_heater: 600		# Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
 default_extruder_temp: 200	# The baseline temperature for performing swaps and forming tips outside of a print
 z_hop_height_error: 5		# Height in mm of z_hop move on pause to avoid blob on print
 z_hop_height_toolchange: 0	# Height in mm of z_hop move on runout or toolchange to avoid blob on print
-z_hop_speed: 15			    # mm/s Speed of z_hop move
+z_hop_speed: 15			# mm/s Speed of z_hop move
 slicer_tip_park_pos: 0		# This specifies the position of filament in extruder after slicer tip forming move
 gcode_load_sequence: 0		# Advanced: Gcode loading sequence 1=enabled, 0=internal logic (default)
 gcode_unload_sequence: 0	# Advanced: Gcode unloading sequence, 1=enabled, 0=internal logic (default)

@@ -2025,12 +2025,12 @@ class Mmu:
         extruder = self.printer.lookup_object(self.extruder_name)
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
-        klipper_minimum_temp = extruder.get_status(0)['min_extrude_temp']
+        klipper_minimum_temp = extruder.get_heater().min_extrude_temp
 
         # Determine correct target temp and hint as to where from to aid debugging
         if target_temp_override > -1:
             new_target_temp = target_temp_override
-            source = "specified"
+            source = "resume"
         elif self.is_paused_locked:
             # During a pause/resume window always restore to paused temperature
             new_target_temp = self.paused_extruder_temp
@@ -2050,18 +2050,18 @@ class Mmu:
             # utility and safety since Klipper's min is truly a bare minimum but our min should be
             # a more realistic temperature for printing.
             new_target_temp = self.default_extruder_temp
-            source = "minimum"
+            source = "default"
 
         if new_target_temp > current_target_temp:
-            if source == "minimum":
-                # We use error channel to aviod heating surprise and will cause popup in Klipperscreen
+            if source == "default":
+                # We use error channel to aviod heating surprise. THis will also cause popup in Klipperscreen
                 self._log_error("Heating extruder to %s temp (%.1f)" % (source, new_target_temp))
             else:
                 self._log_info("Heating extruder to %s temp (%.1f)" % (source, new_target_temp))
 
         self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % new_target_temp)
 
-        # Optionally wait until temperature is stable or at minimum saftey temp and extruder can move
+        # Optionally wait until temperature is stable or at minimum saftey temp so extruder can move
         if wait or current_temp < klipper_minimum_temp:
             if abs(new_target_temp - current_temp) > 1:
                 with self._wrap_action(self.ACTION_HEATING):
@@ -2135,7 +2135,6 @@ class Mmu:
     @contextlib.contextmanager
     def _wrap_action(self, new_action):
         old_action = self._set_action(new_action)
-
         try:
             yield (old_action, new_action)
         finally:
@@ -3365,8 +3364,8 @@ class Mmu:
         current_action = self._set_action(self.ACTION_FORMING_TIP)
         try:
             self._log_info("Forming tip...")
-            self._ensure_safe_extruder_temperature(wait=False)
             prev_sync_state = self._sync_gear_to_extruder(self.sync_form_tip and not extruder_stepper_only, servo=True)
+            self._ensure_safe_extruder_temperature(wait=False)
 
             if self.extruder_tmc and self.extruder_form_tip_current > 100:
                 extruder_run_current = self.extruder_tmc.get_status(0)['run_current']
