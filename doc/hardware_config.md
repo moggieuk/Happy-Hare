@@ -30,7 +30,7 @@ This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.
 #### MCU and Pin Validation
 The `mmu.cfg` file is part of the hardware configuration but defines aliases for all of the pins used in `mmu_hardware.cfg`. The benefit of this is that configuration frameworks like [Klippain](https://github.com/Frix-x/klippain) can more easily incorporate. It is also in keeping with an organized modular layout.
 
-#### Hardware Configuration
+#### Hardware Configuration (mmu_hardware.cfg):
 This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
 
 Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
@@ -77,14 +77,21 @@ extra_endstop_names: mmu_ext_touch
 The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in your `printer.cfg` should be deleted or commented out.
 The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
 
-> [!Warning]  
+> [!WARNING]  
 > If you see a Klipper error message like `mux command SET_PRESSURE_ADVANCE EXTRUDER None already registered` it almost certainly means that you have not commented out or disabled your extruder stepper in the original `[extruder]` section of `printer.cfg`
+
+**Still not clear?**  Here is a diagram that shows the change to my config (note that I was already using aliases for pin names so you might also be moving your direct pin names into the aliases file `mmu.py`).  Don't worry about adding DIAG and endstops now because you can do that later only if you want to experiment with extruder homing:
+<img src="/doc/extruder_config_move.png" width="980" alt="extruder config move">
 
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
 If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
 
-#### mmu_vars.cfg
+<br>
+#### Pin Aliases File (mmu.cfg):
+TODO 
+
+#### Variables file (mmu_vars.cfg):
 This is the file where Happy Hare stores all calibration settings and state. It is pointed to by this section at the top of `mmu_software.cfg`:
 ```yml
 [save_variables]
