@@ -12,8 +12,8 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, logging.handlers, threading, queue, time
-import textwrap, math, os.path, re, json
+import logging, logging.handlers, threading, queue, time, contextlib
+import math, os.path, re
 from random import randint
 import chelper
 
@@ -236,7 +236,7 @@ class Mmu:
         self.timeout_pause = config.getint('timeout_pause', 72000)
         self.timeout_unlock = config.getint('timeout_unlock', -1)
         self.disable_heater = config.getint('disable_heater', 600)
-        self.min_temp_extruder = config.getfloat('min_temp_extruder', 180.)
+        self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 5., minval=0.)
@@ -2022,49 +2022,51 @@ class Mmu:
             return print_status
 
     def _ensure_safe_extruder_temperature(self, target_temp_override=-1, wait=False):
-        extruder_heater = self.printer.lookup_object(self.extruder_name).heater
-        current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
-        current_target_temp = extruder_heater.target_temp
-        can_extrude = extruder_heater.can_extrude
+        extruder = self.printer.lookup_object(self.extruder_name)
+        current_temp = extruder.get_status(0)['temperature']
+        current_target_temp = extruder.heater.target_temp
+        klipper_minimum_temp = extruder.get_status(0)['min_extrude_temp']
 
         # Determine correct target temp and hint as to where from to aid debugging
-        ensure_min = True
         if target_temp_override > -1:
-            target_temp = target_temp_override
+            new_target_temp = target_temp_override
             source = "specified"
         elif self.is_paused_locked:
             # During a pause/resume window always restore to paused temperature
-            target_temp = self.paused_extruder_temp
+            new_target_temp = self.paused_extruder_temp
             source = "paused"
         elif self._is_in_print():
             # During a print, we want to defer to the slicer for temperature
-            target_temp = current_target_temp
+            new_target_temp = current_target_temp
             source = "slicer"
-            ensure_min = False
         else:
             # Standalone "just messing" case
-            target_temp = current_target_temp
+            new_target_temp = current_target_temp
             source = "current"
 
-        if ensure_min and target_temp < self.min_temp_extruder:
-            target_temp = self.min_temp_extruder
+        if new_target_temp < klipper_minimum_temp:
+            # If, for some reason, the target temp is below _Klipper's_ idea of a safe minimum,
+            # set the target to _Happy Hare's_ default minimum. This strikes a balance between
+            # utility and safety since Klipper's min is truly a bare minimum but our min should be
+            # a more realistic temperature for printing.
+            new_target_temp = self.default_extruder_temp
             source = "minimum"
 
-        if target_temp > current_target_temp:
-            if target_temp == self.min_temp_extruder:
+        if new_target_temp > current_target_temp:
+            if source == "minimum":
                 # We use error channel to aviod heating surprise and will cause popup in Klipperscreen
-                self._log_error("Heating extruder to %s temp (%.1f)" % (source, target_temp))
+                self._log_error("Heating extruder to %s temp (%.1f)" % (source, new_target_temp))
             else:
-                self._log_info("Heating extruder to %s temp (%.1f)" % (source, target_temp))
-        self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % target_temp)
+                self._log_info("Heating extruder to %s temp (%.1f)" % (source, new_target_temp))
+
+        self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % new_target_temp)
 
         # Optionally wait until temperature is stable or at minimum saftey temp and extruder can move
-        if wait or (ensure_min and current_temp < self.min_temp_extruder):
-            if abs(target_temp - current_temp) > 1:
-                current_action = self._set_action(self.ACTION_HEATING)
-                self._log_info("Waiting for extruder to reach target temperature (%.1f)" % target_temp)
-                self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (target_temp - 1, target_temp + 1))
-                self._set_action(current_action)
+        if wait or current_temp < klipper_minimum_temp:
+            if abs(new_target_temp - current_temp) > 1:
+                with self._wrap_action(self.ACTION_HEATING):
+                    self._log_info("Waiting for extruder to reach target temperature (%.1f)" % new_target_temp)
+                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _set_filament_pos(self, state, silent=False):
         self.filament_pos = state
@@ -2130,6 +2132,14 @@ class Mmu:
         finally:
             return old_action
 
+    @contextlib.contextmanager
+    def _wrap_action(self, new_action):
+        old_action = self._set_action(new_action)
+
+        try:
+            yield (old_action, new_action)
+        finally:
+            self._set_action(old_action)
 
 ### STATE GCODE COMMANDS
 
@@ -2637,7 +2647,7 @@ class Mmu:
     cmd_MMU_STEP_SET_FILAMENT_help = "User composable loading step: Set filament position state"
     def cmd_MMU_STEP_SET_FILAMENT(self, gcmd):
         state = gcmd.get_int('STATE', )
-        slient = gcmd.get_int('SILENT', 0)
+        silent = gcmd.get_int('SILENT', 0)
         if state >= self.FILAMENT_POS_UNLOADED and state <= self.FILAMENT_POS_LOADED:
             self._set_filament_pos(state, silent)
         else:

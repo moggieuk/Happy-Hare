@@ -247,6 +247,7 @@ persistence_level: 3
 ```
 
 This section contains an eclectic set of remaining options. Ask on discord if any aren't clear, however a couple warrant further explantion:<br>
+`default_extruder_temp` - This is the default temperature for performing swaps and tip forming when outside of a print. It's also a fallback in the event that your printer tries to print with an unsafe temperature after a pause. When printing, the slicer will be responsible for setting the temperature. You may want to set this to a middleground temperature that works "well enough" with the full range of filaments you regularly print.<br>
 `slicer_tip_park_pos` - If you use the default slicer tip shaping logic then it will leave the filament at a particular place in the extruder. Unfortunately Happy Hare has no way to detect this like it can when it takes care of tip shaping. This parameter usually exists in the slicer and setting it will pass on to Happy Hare for more efficient subsequent unloading.<br>
 `auto_calibrate_gates` - discussed in main readme but avoids having to calibrate since that are automatically calibrated on first use.<br>
 `strict_filament_recovery` - Occassionaly Happy Hare will be forced to try to figure our where the filament is. It employs various mechanisms to achive this depending on the capability of the MMU. Some of this steps are invasive (e.g. warming the extruder when it is cold) and are therefore skipped by default. Enabling this option will force extra detection steps.
@@ -255,13 +256,13 @@ This section contains an eclectic set of remaining options. Ask on discord if an
 ```yml
 # Misc configurable, but fairly fixed values -----------------------------------------------------------------------------
 #
-extruder: extruder		# Name of the toolhead extruder that MMU is using
+extruder: extruder		    # Name of the toolhead extruder that MMU is using
 timeout_pause: 72000		# Time out in seconds used by the MMU_PAUSE
-disable_heater: 600		# Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
-min_temp_extruder: 200		# Used to ensure we can move the extruder and form tips
+disable_heater: 600		    # Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
+default_extruder_temp: 200	# The baseline temperature for performing swaps and forming tips outside of a print
 z_hop_height_error: 5		# Height in mm of z_hop move on pause to avoid blob on print
 z_hop_height_toolchange: 0	# Height in mm of z_hop move on runout or toolchange to avoid blob on print
-z_hop_speed: 15			# mm/s Speed of z_hop move
+z_hop_speed: 15			    # mm/s Speed of z_hop move
 slicer_tip_park_pos: 0		# This specifies the position of filament in extruder after slicer tip forming move
 gcode_load_sequence: 0		# Advanced: Gcode loading sequence 1=enabled, 0=internal logic (default)
 gcode_unload_sequence: 0	# Advanced: Gcode unloading sequence, 1=enabled, 0=internal logic (default)
