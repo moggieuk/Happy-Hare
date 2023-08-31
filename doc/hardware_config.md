@@ -25,7 +25,7 @@ mmu/
   mmu_vars.cfg
 ```
 
-This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]'
+This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]`
 
 ### a) MCU and Pin Validation (mmu.cfg)
 The `mmu.cfg` file is part of the hardware configuration but defines aliases for all of the pins used in `mmu_hardware.cfg`. The benefit of this is that configuration frameworks like [Klippain](https://github.com/Frix-x/klippain) can more easily incorporate. It is also in keeping with an organized modular layout.
@@ -33,9 +33,9 @@ The `mmu.cfg` file is part of the hardware configuration but defines aliases for
 <br>
 
 ### b) Hardware Configuration (mmu_hardware.cfg):
-This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
+This can be daunting but the interactive installer will make the process easier for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc) and perform most of the setup for you.
 
-Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
+Assuming you have first run the installer (and perhaps familiar with the early incarnation of Happy Hare) there is one NEW IMPORTANT step that must be performed by hand:  You must move some of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
   
 ```yml
 # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
@@ -87,8 +87,6 @@ The second definion is the elements that define the extruder stepper motor taken
 
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
-If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
-
 <br>
 
 ### c) Variables file (mmu_vars.cfg):
@@ -99,6 +97,8 @@ filename: /home/pi/printer_data/config/mmu/mmu_vars.cfg
 ```
 
 Klipper can only have one `save_variables` file and so if you are already using one you can simply comment out the lines above and Happy Hare will append into your existing "variables" file.
+
+If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
 
 <br>
 
