@@ -1217,8 +1217,8 @@ class Mmu:
         self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self):
-        if self.tool_selected < 0:
-            self._log_info("TODO DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
+        #if self.tool_selected < 0:
+        #    self._log_info("TODO DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
         delta = 0.
@@ -1954,7 +1954,7 @@ class Mmu:
         return False
 
     def _check_in_bypass(self):
-        if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos != self.FILAMENT_POS_UNLOADED:
+        if self.tool_selected == self.TOOL_GATE_BYPASS and not (self.filament_pos == self.FILAMENT_POS_UNLOADED or self.filament_pos == self.FILAMENT_POS_UNKNOWN):
             self._log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
             return True
         return False
