@@ -91,7 +91,7 @@ Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
 ### c) Variables file (mmu_vars.cfg):
 This is the file where Happy Hare stores all calibration settings and state. It is pointed to by this section at the top of `mmu_software.cfg`:
-```yml
+```
 [save_variables]
 filename: /home/pi/printer_data/config/mmu/mmu_vars.cfg
 ```
@@ -106,43 +106,47 @@ If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 
 Once pins are correct it is important to verify direction.  It is not possible for the installer to ensure this because it depends on the actual stepper wiring.  The recommended procedure is:
 ```yml
 MMU_MOTORS_OFF
-(move selector to the center of travel)
+  # move selector to the center of travel
 MANUAL_STEPPER STEPPER=selector_stepper SET_POSITION=0 MOVE=-10
-(verify that the selector moves to the left towards the home position)
+  # verify that the selector moves to the left towards the home position
 MANUAL_STEPPER STEPPER=selector_stepper SET_POSITION=0 MOVE=10
-(verify that the selector moves to the right away from the home position)
+  # verify that the selector moves to the right away from the home position
 ```
 If the selector doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[manual_mh_stepper selector_stepper]`:
 If selector doesn't move it is likley that the pin configuration for `step_pin` and/or `enable_pin` are incorrect. Verify the pin names and prefix the pin with `!` to invert the signal. E.g.
-```
+```yml
 enable_pin: !mmu:MMU_SEL_ENABLE
-or
+  # or
 enable_pin: mmu:MMU_SEL_ENABLE
 ```
 If the selector moves the wrong way the `dir_pin` is inverted. Either add or remove the `!` prefix:
-```
+```yml
 dir_pin: !mmu:MMU_SEL_DIR
+  # or
+dir_pin: mmu:MMU_SEL_DIR
 ```
 
 Now repeat the exercise with the gear stepper:
 ```yml
 MMU_MOTORS_OFF
-(remove any filament from your MMU)
+  # remove any filament from your MMU
 MANUAL_STEPPER STEPPER=gear_stepper SET_POSITION=0 MOVE=-10
-(verify that the gear stepper would pull filament away from the extruder)
+  # verify that the gear stepper would pull filament away from the extruder
 MANUAL_STEPPER STEPPER=gear_stepper SET_POSITION=0 MOVE=10
-(verify that the gear stepper is push filament towards the extruder)
+  # verify that the gear stepper is push filament towards the extruder
 ```
 If the gear stepper doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[manual_extruder_stepper gear_stepper]`:
 If gear doesn't move it is likley that the pin configuration for `step_pin` and/or `enable_pin` are incorrect. Verify the pin names and prefix the pin with `!` to invert the signal. E.g.
-```
+```yml
 enable_pin: !mmu:MMU_GEAR_ENABLE
-or
+  # or
 enable_pin: mmu:MMU_GEAR_ENABLE
 ```
 If the gear moves the wrong way the `dir_pin` is inverted. Either add or remove the `!` prefix:
-```
+```yml
 dir_pin: !mmu:MMU_GEAR_DIR
+  # or
+dir_pin: mmu:MMU_GEAR_DIR
 ```
 
 <br>
@@ -151,14 +155,14 @@ dir_pin: !mmu:MMU_GEAR_DIR
 Next verify that the necessary endstops are working and the polarity is correct. The recommended procedure is:
 ```yml
 MMU_MOTORS_OFF
-(remove filament from ERCF and extruder, move selector to center of travel)
+  # remove filament from ERCF and extruder, move selector to center of travel
 QUERY_ENDSTOPS
-(or use the visual query in Mainsail or Fluuid)
+  # or use the visual query in Mainsail or Fluuid
 ```
 Validate that you can see:
-```
+```yml
 mmu_sel_home:open (Essential)
-mmu_toolhead:open (Optional: if you have a toolhead sensor)
+mmu_toolhead:open (Optional if you have a toolhead sensor)
 ```
 Then manually press and hold the selector microswitch and rerun `QUERY_ENDSTOPS`
 Validate that you can see `mmu_sel_home:TRIGGERED` in the list
@@ -172,7 +176,18 @@ Other endstops like "touch" operation are advanced and not cover by this inital 
 <br>
 
 ## Step 4. Check Encoder (if fitted)
-TODO .. help on validating that it is registering movement
+Ok, last sanity check.  If you have an encoder based design like the ERCF, need to check that it is wired correctly. Run the command `MMU_ENCODER` and note the position displayed.
+```yml
+MMU_ENCODER
+Encoder position: 23.4
+```
+Insert some filament (from either side) and pull backwards and forwards.  You should see the LED flashing.  Rerun `MMU_ENCODER` and validate the position displayed has increased (note that the encoder is not direction aware so it will always increase in reading)
+
+If the encoder postion does not change, validate the `encoder_pin` is correct. It shouldn't matter if it has a `!` (inverted) or not, but it might require a `^` (pull up resister) to function.
+```yml
+[mmu_encoder mmu_encoder]
+encoder_pin: ^mmu:MMU_ENCODER	
+```
 
 <br>
 
