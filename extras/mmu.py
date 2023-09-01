@@ -323,6 +323,8 @@ class Mmu:
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
+        self.enable_tool_extrusion_multiplier = config.getint('enable_tool_extrusion_multiplier', 0, minval=0, maxval=1)
+        self.tool_extrusion_multipliers = []
 
         # Logging
         self.log_level = config.getint('log_level', 1, minval=0, maxval=4)
@@ -379,6 +381,10 @@ class Mmu:
                 self.default_tool_to_gate_map.append(i)
         self.tool_to_gate_map = list(self.default_tool_to_gate_map)
 
+        # Tool extrusion multiplier
+        for i in range(self.mmu_num_gates):
+            self.tool_extrusion_multipliers.append(1.0)
+
         # Initialize state and statistics variables
         self._initialize_state()
 
@@ -388,6 +394,7 @@ class Mmu:
 
         # Register GCODE commands
         self.gcode = self.printer.lookup_object('gcode')
+        self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
         # Logging and Stats
         self.gcode.register_command('MMU_RESET', self.cmd_MMU_RESET, desc = self.cmd_MMU_RESET_help)
@@ -863,7 +870,8 @@ class Mmu:
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'action': self._get_action_string(),
                 'has_bypass': self.bypass_offset > 0.,
-                'sync_drive': self.gear_stepper.is_synced()
+                'sync_drive': self.gear_stepper.is_synced(),
+                'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
         }
 
     def _reset_statistics(self):
@@ -3533,6 +3541,22 @@ class Mmu:
         else:
             return False, travel
 
+    def _save_tool_extrude_factor(self, tool):
+        if self.enable_tool_extrusion_multiplier == 0:
+            return
+
+        current_factor = self.gcode_move.get_status(0)['extrude_factor']
+        self.tool_extrusion_multipliers[tool] = current_factor
+        self._log_debug("Saved extrusion multiplier for tool T%s as %.2f" % (tool, current_factor))
+
+    def _set_tool_extrude_factor(self, tool):
+        if self.enable_tool_extrusion_multiplier == 0:
+            return
+        
+        desired_factor = self.tool_extrusion_multipliers[tool] * 100
+        self.gcode.run_script_from_command("M221 S%.0f" % desired_factor)
+        self._log_debug("Restored extrusion multiplier for T%d as %.0f" % (tool, desired_factor))
+
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True):
         self._log_debug("Tool change initiated %s" % ("with slicer forming tip" if skip_tip else "with standalone MMU tip formation"))
@@ -3580,6 +3604,10 @@ class Mmu:
 
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
+
+            # Save extrusion multiplier for the tool we are unloading
+            self._save_tool_extrude_factor(self.tool_selected)
+
         self._select_and_load_tool(tool)
         self._track_swap_completed()
 
@@ -3591,6 +3619,7 @@ class Mmu:
                 raise MmuError("Error running user _MMU_POST_LOAD macro: %s" % str(e))
         self._restore_toolhead_position()
 
+        self._set_tool_extrude_factor(tool)
         self.gcode.run_script_from_command("M117 T%s" % tool)
 
     def _unselect_tool(self):
