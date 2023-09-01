@@ -103,12 +103,71 @@ If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 
 <br>
 
 ## Step 2. Check motor movement and direction
-TODO .. help on basic motor movement and direction / changes
+Once pins are correct it is important to verify direction.  It is not possible for the installer to ensure this because it depends on the actual stepper wiring.  The recommended procedure is:
+```yml
+MMU_MOTORS_OFF
+(move selector to the center of travel)
+MANUAL_STEPPER STEPPER=selector_stepper SET_POSITION=0 MOVE=-10
+(verify that the selector moves to the left towards the home position)
+MANUAL_STEPPER STEPPER=selector_stepper SET_POSITION=0 MOVE=10
+(verify that the selector moves to the right away from the home position)
+```
+If the selector doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[manual_mh_stepper selector_stepper]`:
+If selector doesn't move it is likley that the pin configuration for `step_pin` and/or `enable_pin` are incorrect. Verify the pin names and prefix the pin with `!` to invert the signal. E.g.
+```
+enable_pin: !mmu:MMU_SEL_ENABLE
+or
+enable_pin: mmu:MMU_SEL_ENABLE
+```
+If the selector moves the wrong way the `dir_pin` is inverted. Either add or remove the `!` prefix:
+```
+dir_pin: !mmu:MMU_SEL_DIR
+```
+
+Now repeat the exercise with the gear stepper:
+```yml
+MMU_MOTORS_OFF
+(remove any filament from your MMU)
+MANUAL_STEPPER STEPPER=gear_stepper SET_POSITION=0 MOVE=-10
+(verify that the gear stepper would pull filament away from the extruder)
+MANUAL_STEPPER STEPPER=gear_stepper SET_POSITION=0 MOVE=10
+(verify that the gear stepper is push filament towards the extruder)
+```
+If the gear stepper doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[manual_extruder_stepper gear_stepper]`:
+If gear doesn't move it is likley that the pin configuration for `step_pin` and/or `enable_pin` are incorrect. Verify the pin names and prefix the pin with `!` to invert the signal. E.g.
+```
+enable_pin: !mmu:MMU_GEAR_ENABLE
+or
+enable_pin: mmu:MMU_GEAR_ENABLE
+```
+If the gear moves the wrong way the `dir_pin` is inverted. Either add or remove the `!` prefix:
+```
+dir_pin: !mmu:MMU_GEAR_DIR
+```
 
 <br>
 
 ## Step 3. Check endstops & optional sensors
-TODO .. help on how to validate endtops and reverse polarity
+Next verify that the necessary endstops are working and the polarity is correct. The recommended procedure is:
+```yml
+MMU_MOTORS_OFF
+(remove filament from ERCF and extruder, move selector to center of travel)
+QUERY_ENDSTOPS
+(or use the visual query in Mainsail or Fluuid)
+```
+Validate that you can see:
+```
+mmu_sel_home:open (Essential)
+mmu_toolhead:open (Optional: if you have a toolhead sensor)
+```
+Then manually press and hold the selector microswitch and rerun `QUERY_ENDSTOPS`
+Validate that you can see `mmu_sel_home:TRIGGERED` in the list
+If you have toolhead sensor, feed filament into the extruder past the switch and rerun `QUERY_ENDSTOPS`
+Validate that you can see `mmu_toolhead:TRIGGERED` in the list
+
+If either of these don't change state then the pin assigned to the endstop is incorrect.  If the state is inverted (i.e. enstop transitions to `open` when pressed) the add/remove the `!` on the respective endstop pin either in the `[manual_mh_stepper selector_stepper]` block for selector endstop or in `[filament_switch_sensor toolhead_sensor]` block for toolhead sensor.
+
+Other endstops like "touch" operation are advanced and not cover by this inital setup.
 
 <br>
 
