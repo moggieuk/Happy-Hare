@@ -24,7 +24,7 @@ class ManualExtruderStepper(manual_mh_stepper.ManualMhStepper, kinematics_extrud
 
         # Register variation of MANUAL_STEPPER command for linked extruder control
         gcode = self.printer.lookup_object('gcode')
-        stepper_name = config.get_name().split()[1]
+        stepper_name = config.get_name().split()[-1]
         gcode.register_mux_command('MANUAL_EXTRUDER_STEPPER', "STEPPER",
                                    stepper_name, self.cmd_MANUAL_EXTRUDER_STEPPER,
                                    desc=self.cmd_MANUAL_EXTRUDER_STEPPER_help)

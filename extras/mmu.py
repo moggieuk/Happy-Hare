@@ -470,7 +470,7 @@ class Mmu:
         if self.log_file_level >= 0:
             logfile_path = self.printer.start_args['log_file']
             dirname = os.path.dirname(logfile_path)
-            if dirname == None:
+            if dirname is None:
                 mmu_log = '/tmp/mmu.log'
             else:
                 mmu_log = dirname + '/mmu.log'
@@ -772,7 +772,7 @@ class Mmu:
 
     def handle_disconnect(self):
         self._log_debug('MMU Shutdown')
-        if self.queue_listener != None:
+        if self.queue_listener is not None:
             self.queue_listener.stop()
 
     def handle_ready(self):
@@ -785,14 +785,14 @@ class Mmu:
         # This is a bit naughty to register commands here but I need to make sure I'm the outermost wrapper
         try:
             prev_resume = self.gcode.register_command('RESUME', None)
-            if prev_resume != None:
+            if prev_resume is not None:
                 self.gcode.register_command('__RESUME', prev_resume)
                 self.gcode.register_command('RESUME', self.cmd_MMU_RESUME, desc = self.cmd_MMU_RESUME_help)
             else:
                 self._log_always('No existing RESUME macro found!')
 
             prev_cancel = self.gcode.register_command('CANCEL_PRINT', None)
-            if prev_cancel != None:
+            if prev_cancel is not None:
                 self.gcode.register_command('__CANCEL_PRINT', prev_cancel)
                 self.gcode.register_command('CANCEL_PRINT', self.cmd_MMU_CANCEL_PRINT, desc = self.cmd_MMU_CANCEL_PRINT_help)
             else:
@@ -812,7 +812,7 @@ class Mmu:
             self._log_always('(\_/)\n( *,*)\n(")_(") MMU Ready')
             if self.log_startup_status > 0:
                 self._log_always(self._tool_to_gate_map_to_human_string(self.log_startup_status == 1))
-                self._display_visual_state(silent=(self.persistence_level < 4))
+                self._display_visual_state(silent=self.persistence_level < 4)
             self._servo_auto()
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
@@ -1037,7 +1037,7 @@ class Mmu:
 
     # Fun visual display of MMU state
     def _display_visual_state(self, direction=None, silent=False):
-        if not direction == None:
+        if direction is not None:
             self.filament_direction = direction
         if not silent and self.log_visual > 0 and not self.calibrating:
             visual_str = self._state_to_human_string()
@@ -1244,10 +1244,10 @@ class Mmu:
             self._servo_up()
 
     def _motors_off(self, motor="all"):
-        if motor == "all" or motor == "gear":
+        if motor in ("all", "gear"):
             self._sync_gear_to_extruder(False)
             self.gear_stepper.do_enable(False)
-        if motor == "all" or motor == "selector":
+        if motor in ("all", "selector"):
             self.is_homed = False
             self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
@@ -1347,7 +1347,7 @@ class Mmu:
             speed_incr = (max_speed - min_speed) / repeats
             test_speed = min_speed
             for x in range(repeats):
-                if (speed_incr > 0.):
+                if speed_incr > 0.:
                     self._log_always("Test run #%d, Speed=%.1f mm/s" % (x, test_speed))
 
                 # Move forward
@@ -1942,7 +1942,7 @@ class Mmu:
             return self.encoder_sensor.reset_counts()
 
     def _has_toolhead_sensor(self):
-        return self.toolhead_sensor != None and self.toolhead_sensor.runout_helper.sensor_enabled
+        return self.toolhead_sensor is not None and self.toolhead_sensor.runout_helper.sensor_enabled
 
     def _must_home_to_extruder(self):
         return self.extruder_force_homing or not self._has_toolhead_sensor()
@@ -1954,7 +1954,7 @@ class Mmu:
         return False
 
     def _check_in_bypass(self):
-        if self.tool_selected == self.TOOL_GATE_BYPASS and not (self.filament_pos == self.FILAMENT_POS_UNLOADED or self.filament_pos == self.FILAMENT_POS_UNKNOWN):
+        if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos not in (self.FILAMENT_POS_UNLOADED, self.FILAMENT_POS_UNKNOWN):
             self._log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
             return True
         return False
@@ -1972,7 +1972,7 @@ class Mmu:
         return False
 
     def _check_is_loaded(self):
-        if not (self.filament_pos == self.FILAMENT_POS_UNLOADED or self.filament_pos == self.FILAMENT_POS_UNKNOWN):
+        if self.filament_pos not in (self.FILAMENT_POS_UNLOADED, self.FILAMENT_POS_UNKNOWN):
             self._log_error("MMU has filament loaded")
             return True
         return False
@@ -2079,7 +2079,7 @@ class Mmu:
             self.counting_direction = self.filament_direction
 
         # Minimal save_variable writes
-        if state == self.FILAMENT_POS_LOADED or state == self.FILAMENT_POS_UNLOADED:
+        if state in (self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED):
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, state))
         elif self.variables.get(self.VARS_MMU_FILAMENT_POS, 0) != self.FILAMENT_POS_UNKNOWN:
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN))
@@ -2109,7 +2109,7 @@ class Mmu:
             return "#%d" % self.gate_selected
 
     def _is_filament_in_bowden(self):
-        if self.filament_pos == self.FILAMENT_POS_START_BOWDEN or self.filament_pos == self.FILAMENT_POS_IN_BOWDEN:
+        if self.filament_pos in (self.FILAMENT_POS_START_BOWDEN, self.FILAMENT_POS_IN_BOWDEN):
             return True
         return False
 
@@ -2271,7 +2271,7 @@ class Mmu:
 
         if homing_move != 0:
             # Generally homing speeds/accel are set here
-            if motor == "both" or motor == "gear+extruder" or motor == "extruder+gear":
+            if motor in ("both", "gear+extruder", "extruder+gear"):
                 speed = speed or min(self.gear_homing_speed, self.extruder_homing_speed)
                 accel = accel or min(self.gear_stepper.accel, self.extruder_accel)
             elif motor == "extruder":
@@ -2282,7 +2282,7 @@ class Mmu:
                 accel = accel or self.gear_stepper.accel
         else:
             # Generally the speed/accel will be specified but here are some saftely values
-            if motor == "both" or motor == "gear+extruder" or motor == "extruder+gear":
+            if motor in ("both", "gear+extruder", "extruder+gear"):
                 speed = speed or self.extruder_sync_load_speed
                 accel = accel or min(self.gear_stepper.accel, self.extruder_accel)
             elif motor == "extruder":
@@ -2510,7 +2510,7 @@ class Mmu:
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
-        if motor != "gear" and motor != "extruder" and motor != "gear+extruder" and motor != "extruder+gear":
+        if motor not in ("gear", "extruder", "gear+extruder", "extruder+gear"):
             raise gcmd.error("Valid motor names are 'gear', 'extruder' or 'gear+extruder' or 'extruder+gear'")
         if motor != "extruder":
             self._servo_down()
@@ -2527,7 +2527,7 @@ class Mmu:
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
-        if motor != "gear" and motor != "extruder" and motor != "gear+extruder" and motor != "extruder+gear":
+        if motor not in ("gear", "extruder", "gear+extruder", "extruder+gear"):
             raise gcmd.error("Valid motor names are 'gear', 'extruder' or 'gear+extruder' or 'extruder+gear'")
         direction = -1 if move < 0 else 1
         stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', direction, minval=-1, maxval=1)
@@ -2691,7 +2691,7 @@ class Mmu:
             if self.gcode_load_sequence:
                 self._log_debug("Calling external user defined loading sequence macro")
                 try:
-                    self.gcode.run_script_from_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (start_filament_pos, length, full, home, skip_extruder, extruder_only))
+                    self.gcode.run_script_from_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (start_filament_pos, length, int(full), int(home), int(skip_extruder), int(extruder_only)))
                 except Exception as e:
                     raise MmuError("Error running user _MMU_LOAD_SEQUENCE macro")
 
@@ -3002,7 +3002,7 @@ class Mmu:
                         self._set_filament_pos(self.FILAMENT_POS_IN_EXTRUDER)
                         raise MmuError(msg)
                     else:
-                       self._log_always("Ignoring: %s" % msg)
+                        self._log_always("Ignoring: %s" % msg)
 
             self.filament_distance += distance_moved
             self._set_filament_pos(self.FILAMENT_POS_LOADED)
@@ -3739,7 +3739,7 @@ class Mmu:
         match = re.match(r'[Tt](\d{1,3})$', cmd)
         if match:
             tool = int(match.group(1))
-            if not 0 <= tool <= self.mmu_num_gates - 1:
+            if tool < 0 or tool > self.mmu_num_gates - 1:
                 raise gcmd.error("Invalid tool")
         else:
             tool = gcmd.get_int('TOOL', minval=0, maxval=self.mmu_num_gates - 1)
@@ -4372,7 +4372,7 @@ class Mmu:
         # Try RGB color
         color = "#" + color
         x = re.search("^#?([a-f\d]{6})$", color)
-        if x != None and x.group() == color:
+        if x is not None and x.group() == color:
             return True
 
         return False
@@ -4620,7 +4620,6 @@ class Mmu:
                 except MmuError as ee:
                     # Exception just means filament is not loaded yet, so continue
                     self._log_trace("Exception on encoder load move: %s" % str(ee))
-                    pass
             self._set_gate_status(gate, self.GATE_EMPTY)
             self._log_always("Filament not detected in gate #%d" % gate)
         except MmuError as ee:
@@ -4632,4 +4631,3 @@ class Mmu:
 
 def load_config(config):
     return Mmu(config)
-

@@ -1,0 +1,5 @@
+[FORMAT]
+max-line-length=99999
+
+[MESSAGES CONTROL]
+disable=attribute-defined-outside-init, consider-using-f-string, too-many-lines, fixme, multiple-imports, invalid-name, multiple-statements, missing-function-docstring, unused-import, too-many-public-methods, too-many-return-statements, too-many-branches, too-many-statements, too-many-nested-blocks, missing-module-docstring, missing-class-docstring, too-many-instance-attributes, raise-missing-from, bare-except, broad-except, no-else-return, too-many-locals, too-many-arguments, no-else-raise, unused-argument, lost-exception

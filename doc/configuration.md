@@ -89,7 +89,7 @@ extruder_homing_speed: 20		# mm/s speed of extruder only homing moves (e.g. to t
 selector_move_speed: 200        	# mm/s speed of selector movement (not touch)
 selector_homing_speed: 60       	# mm/s speed of initial selector homing move (not touch)
 selector_touch_speed: 80		# mm/s speed of all touch selector moves (if stallguard configured)
-enable_selector_touch: 0		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
+selector_touch_enable: 0		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
 ```
 
 This section controls the module that controls filament loading and unload at the gate when an encoder is present. The `encoder_unload_buffer` represents how close to the gate the filament ends up after fast bowden move. You want it close (for speed) but not too close that it can overshoot.  `encoder_parking_distance` is how fast away from the gate exit the filament should be parked when unloaded.  It rarely needs to be changed from the default.
