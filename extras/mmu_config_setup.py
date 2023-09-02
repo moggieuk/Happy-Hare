@@ -16,7 +16,7 @@ class MmuConfigSetup():
     """Optional runtime manipulation and validation of klipper config to ease Happy Hare configuration"""
 
     def __init__(self, config):
-        # Validate that user has removed all stepper parameters from extruder section
+        # Pull extruder stepper definition from default [extruder] and nullify original if present
         options = [ 'step_pin', 'dir_pin', 'enable_pin',
                     'rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation',
                     'pressure_advance', 'pressure_advance_smooth_time' ]
