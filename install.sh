@@ -412,6 +412,9 @@ copy_config_files() {
 
         elif [ "${file}" == "mmu_software.cfg" ]; then
             tx_macros=""
+            if [ "${mmu_num_gates}" == "{mmu_num_gates}" ]; then
+                mmu_num_gates=12
+	    fi 
             for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
             do
                 tx_macros+="[gcode_macro T${i}]\n"
