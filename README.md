@@ -125,7 +125,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 ```
 
 > [!WARNING]  
-> ERCF v1.1 users: the original encoder can be problematic. A new backward compatible alternative is available in the ERCF v2.0 project and is strongly recommended. If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](./doc/ercf_encoder_v11.md) - the better the encoder the better this software will work with ERCF design.
+> ERCF v1.1 users: the original encoder can be problematic. A new backward compatible alternative is available in the ERCF v2.0 project and is strongly recommended. If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](doc/ercf_encoder_v11.md) - the better the encoder the better this software will work with ERCF design.
 
 <br>
 
