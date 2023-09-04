@@ -29,7 +29,7 @@ class MmuConfigSetup():
                 elif value != config.fileconfig.get('manual_extruder_stepper extruder', i):
                     logging.error("MMU Warning: Config option '%s' exists in both '[extruder]' and '[manual_extruder_stepper extruder]' with different values" % i)
                 config.fileconfig.remove_option('extruder', i)
-            elif not i.startswith("pressure_") and not config.fileconfig.has_option('manual_extruder_stepper extruder', i):
+            elif i not in ("pressure_advance", "pressure_advance_smooth_time", "gear_ratio") and not config.fileconfig.has_option('manual_extruder_stepper extruder', i):
                 raise config.error("MMU Config Error: Option '%s' is missing from '[manual_extruder_stepper extruder]' or '[extruder]' config section" % i)
 
 def load_config(config):
