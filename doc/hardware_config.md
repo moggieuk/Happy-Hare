@@ -4,9 +4,9 @@
 
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
-### Step 1. Validate your hardware configuration
+## Step 1. Validate your hardware configuration
 
-#### Location of configuration files
+### Location of configuration files
 The Klipper configuration files for Happy Hare are modular and can be found in this layout in the Klipper config directory:
 
 ```yml
@@ -25,24 +25,30 @@ mmu/
   mmu_vars.cfg
 ```
 
-This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]'
+This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]`
 
-#### MCU and Pin Validation
+### a) MCU and Pin Validation (mmu.cfg)
 The `mmu.cfg` file is part of the hardware configuration but defines aliases for all of the pins used in `mmu_hardware.cfg`. The benefit of this is that configuration frameworks like [Klippain](https://github.com/Frix-x/klippain) can more easily incorporate. It is also in keeping with an organized modular layout.
 
-#### Hardware Configuration
-This can be daunting but the interactive installer will make the process easy for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc)
+<br>
 
-Assuming you are familiar with all that there is one new IMPORTANT step that must be performed by hand.  You must move most of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
+### b) Hardware Configuration (mmu_hardware.cfg):
+This can be daunting but the interactive installer will make the process easier for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc) and perform most of the setup for you.
+
+Assuming you have first run the installer (and perhaps familiar with the early incarnation of Happy Hare) there is one NEW IMPORTANT step that must be performed by hand:  You must move some of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
   
 ```yml
+[mmu_config_setup]
+
 # HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
 # With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
 # options.  This definition replaces the stepper definition part of you existing [extruder] definition.
+
+# IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here and comment out the
+# original driver config
 #
-# IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here
 [tmc2209 manual_extruder_stepper extruder]
-uart_pin: EXT_UART
+uart_pin: E_TMCUART
 interpolate: true
 run_current: 0.55			# LDO 36STH20-1004AHG.  Match to macro below
 hold_current: 0.4
@@ -50,63 +56,135 @@ sense_resistor: 0.110
 stealthchop_threshold: 0		# Spreadcycle (better for extruder)
 #
 # Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing to nozzle
-diag_pin: EXT_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
-driver_SGTHRS: 100			# 255 is most sensitive value, 0 is least sensitive
+#diag_pin: E_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
+#driver_SGTHRS: 100			# 255 is most sensitive value, 0 is least sensitive
 
-# Define just your printer's extruder stepper here. Valid config options are:
-# step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
-# pressure_advance, pressure_advance_smooth_time
-# IMPORTANT: REMOVE these settings from your existing [extruder] configuration BUT LEAVE ALL OTHER parameters!
+
+# NOTE: The [mmu_config_setup] line earlier in this file will now automatically pull the required [extruder] stepper config
+# options here so you now only need to add supplementary ones like endstops!
+#
+#  If you do decide to define your printer's extruder stepper here instead of in the [extruder] then valid config options are ONLY:
+#    step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
+#    pressure_advance, pressure_advance_smooth_time
+#  Leave all other options in your [extruder] config
 #
 [manual_extruder_stepper extruder]
-step_pin: EXT_STEP
-dir_pin: EXT_DIR
-enable_pin: EXT_ENABLE
-microsteps: 64
-rotation_distance: 22.4522		# Calibrated by hand
-gear_ratio: 50:10
-full_steps_per_rotation: 200
-pressure_advance: 0.035			# Fairly arbitary default
-pressure_advance_smooth_time: 0.040	# Recommended default
 #
 # Uncomment the two lines below to enable the option for filament "touch" homing option to nozzle!
-extra_endstop_pins: tmc2209_extruder:virtual_endstop
-extra_endstop_names: mmu_ext_touch
+#extra_endstop_pins: tmc2209_extruder:virtual_endstop
+#extra_endstop_names: mmu_ext_touch
 ```
 
-The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in your `printer.cfg` should be deleted or commented out.
-The second definion is the elements that define the extruder stepper motor taken from my original `[extruder]` definition. These parameters include only: `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time`.  Leave all the other parameters (things like pid controls, sensor type, etc) in the original `[extruder]` definition in your `printer.cfg` file. Make sense? The stepper definition moved here, the rest of the toolhead extruder definition left where it was originally.
+The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in `printer.cfg` most be deleted or commented out. **Note that tmc2209 is most common but obviously adjust the driver to match your particular driver chip and added "manual_extruder_stepper" into the section name.**
 
-> [!Warning]  
-> If you see a Klipper error message like `mux command SET_PRESSURE_ADVANCE EXTRUDER None already registered` it almost certainly means that you have not commented out or disabled your extruder stepper in the original `[extruder]` section of `printer.cfg`
+The second definion is the elements that define the extruder stepper. The standard list of `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time` will all be AUTOMATICALLY added during bootup and nullified on the original extruder.
+
+**Still not clear?**  Here is a diagram that shows the change to my config (note that I was already using aliases for pin names so you might also be moving your direct pin names into the aliases file `mmu.py`).  Don't worry about adding DIAG and endstops now because you can do that later only if you want to experiment with extruder homing:
+<img src="/doc/extruder_config_move.png" width="980" alt="extruder config move">
 
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
-If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
+<br>
 
-#### mmu_vars.cfg
+### c) Variables file (mmu_vars.cfg):
 This is the file where Happy Hare stores all calibration settings and state. It is pointed to by this section at the top of `mmu_software.cfg`:
-```yml
+```
 [save_variables]
 filename: /home/pi/printer_data/config/mmu/mmu_vars.cfg
 ```
 
 Klipper can only have one `save_variables` file and so if you are already using one you can simply comment out the lines above and Happy Hare will append into your existing "variables" file.
 
-<br>
-
-### Step 2. Check motor movement and direction
-TODO .. help on basic motor movement and direction / changes
+If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 2.
 
 <br>
 
-### Step 3. Check endstops & optional sensors
-TODO .. help on how to validate endtops and reverse polarity
+## Step 2. Check motor movement and direction
+Once pins are correct it is important to verify direction.  It is not possible for the installer to ensure this because it depends on the actual stepper wiring.  The recommended procedure is:
+```yml
+MMU_MOTORS_OFF
+  # move selector to the center of travel
+MANUAL_STEPPER STEPPER=selector_stepper SET_POSITION=0 MOVE=-10
+  # verify that the selector moves to the left towards the home position
+MANUAL_STEPPER STEPPER=selector_stepper SET_POSITION=0 MOVE=10
+  # verify that the selector moves to the right away from the home position
+```
+If the selector doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[manual_mh_stepper selector_stepper]`:
+If selector doesn't move it is likley that the pin configuration for `step_pin` and/or `enable_pin` are incorrect. Verify the pin names and prefix the pin with `!` to invert the signal. E.g.
+```yml
+enable_pin: !mmu:MMU_SEL_ENABLE
+  # or
+enable_pin: mmu:MMU_SEL_ENABLE
+```
+If the selector moves the wrong way the `dir_pin` is inverted. Either add or remove the `!` prefix:
+```yml
+dir_pin: !mmu:MMU_SEL_DIR
+  # or
+dir_pin: mmu:MMU_SEL_DIR
+```
+
+Now repeat the exercise with the gear stepper:
+```yml
+MMU_MOTORS_OFF
+  # remove any filament from your MMU
+MANUAL_STEPPER STEPPER=gear_stepper SET_POSITION=0 MOVE=-10
+  # verify that the gear stepper would pull filament away from the extruder
+MANUAL_STEPPER STEPPER=gear_stepper SET_POSITION=0 MOVE=10
+  # verify that the gear stepper is push filament towards the extruder
+```
+If the gear stepper doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[manual_extruder_stepper gear_stepper]`:
+If gear doesn't move it is likley that the pin configuration for `step_pin` and/or `enable_pin` are incorrect. Verify the pin names and prefix the pin with `!` to invert the signal. E.g.
+```yml
+enable_pin: !mmu:MMU_GEAR_ENABLE
+  # or
+enable_pin: mmu:MMU_GEAR_ENABLE
+```
+If the gear moves the wrong way the `dir_pin` is inverted. Either add or remove the `!` prefix:
+```yml
+dir_pin: !mmu:MMU_GEAR_DIR
+  # or
+dir_pin: mmu:MMU_GEAR_DIR
+```
 
 <br>
 
-### Step 4. Check Encoder (if fitted)
-TODO .. help on validating that it is registering movement
+## Step 3. Check endstops & optional sensors
+Next verify that the necessary endstops are working and the polarity is correct. The recommended procedure is:
+```yml
+MMU_MOTORS_OFF
+  # remove filament from ERCF and extruder, move selector to center of travel
+QUERY_ENDSTOPS
+  # or use the visual query in Mainsail or Fluuid
+```
+Validate that you can see:
+```yml
+mmu_sel_home:open (Essential)
+mmu_toolhead:open (Optional if you have a toolhead sensor)
+```
+Then manually press and hold the selector microswitch and rerun `QUERY_ENDSTOPS`
+Validate that you can see `mmu_sel_home:TRIGGERED` in the list
+If you have toolhead sensor, feed filament into the extruder past the switch and rerun `QUERY_ENDSTOPS`
+Validate that you can see `mmu_toolhead:TRIGGERED` in the list
+
+If either of these don't change state then the pin assigned to the endstop is incorrect.  If the state is inverted (i.e. enstop transitions to `open` when pressed) the add/remove the `!` on the respective endstop pin either in the `[manual_mh_stepper selector_stepper]` block for selector endstop or in `[filament_switch_sensor toolhead_sensor]` block for toolhead sensor.
+
+Other endstops like "touch" operation are advanced and not cover by this inital setup.
+
+<br>
+
+## Step 4. Check Encoder (if fitted)
+Ok, last sanity check.  If you have an encoder based design like the ERCF, need to check that it is wired correctly. Run the command `MMU_ENCODER` and note the position displayed.
+```yml
+MMU_ENCODER
+Encoder position: 23.4
+```
+Insert some filament (from either side) and pull backwards and forwards.  You should see the LED flashing.  Rerun `MMU_ENCODER` and validate the position displayed has increased (note that the encoder is not direction aware so it will always increase in reading)
+
+If the encoder postion does not change, validate the `encoder_pin` is correct. It shouldn't matter if it has a `!` (inverted) or not, but it might require a `^` (pull up resister) to function.
+```yml
+[mmu_encoder mmu_encoder]
+encoder_pin: ^mmu:MMU_ENCODER	
+```
 
 <br>
 

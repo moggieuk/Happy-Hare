@@ -89,7 +89,7 @@ extruder_homing_speed: 20		# mm/s speed of extruder only homing moves (e.g. to t
 selector_move_speed: 200        	# mm/s speed of selector movement (not touch)
 selector_homing_speed: 60       	# mm/s speed of initial selector homing move (not touch)
 selector_touch_speed: 80		# mm/s speed of all touch selector moves (if stallguard configured)
-enable_selector_touch: 0		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
+selector_touch_enable: 0		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
 ```
 
 This section controls the module that controls filament loading and unload at the gate when an encoder is present. The `encoder_unload_buffer` represents how close to the gate the filament ends up after fast bowden move. You want it close (for speed) but not too close that it can overshoot.  `encoder_parking_distance` is how fast away from the gate exit the filament should be parked when unloaded.  It rarely needs to be changed from the default.
@@ -246,7 +246,8 @@ State persisence is a powerful feature of Happy Hare and is documented [here](ht
 persistence_level: 3
 ```
 
-This section contains an eclectic set of remianing options. Ask on discord if any aren't clear, however a couple warrant further explantion:<br>
+This section contains an eclectic set of remaining options. Ask on discord if any aren't clear, however a couple warrant further explantion:<br>
+`default_extruder_temp` - This is the default temperature for performing swaps and tip forming when outside of a print. It's also a fallback in the event that your printer tries to print with an unsafe temperature after a pause. When printing, the slicer will be responsible for setting the temperature. You may want to set this to a middleground temperature that works "well enough" with the full range of filaments you regularly print.<br>
 `slicer_tip_park_pos` - If you use the default slicer tip shaping logic then it will leave the filament at a particular place in the extruder. Unfortunately Happy Hare has no way to detect this like it can when it takes care of tip shaping. This parameter usually exists in the slicer and setting it will pass on to Happy Hare for more efficient subsequent unloading.<br>
 `auto_calibrate_gates` - discussed in main readme but avoids having to calibrate since that are automatically calibrated on first use.<br>
 `strict_filament_recovery` - Occassionaly Happy Hare will be forced to try to figure our where the filament is. It employs various mechanisms to achive this depending on the capability of the MMU. Some of this steps are invasive (e.g. warming the extruder when it is cold) and are therefore skipped by default. Enabling this option will force extra detection steps.
@@ -258,14 +259,37 @@ This section contains an eclectic set of remianing options. Ask on discord if an
 extruder: extruder		# Name of the toolhead extruder that MMU is using
 timeout_pause: 72000		# Time out in seconds used by the MMU_PAUSE
 disable_heater: 600		# Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
-min_temp_extruder: 200		# Used to ensure we can move the extruder and form tips
-z_hop_height: 5			# Height in mm of z_hop move on pause or runout to avoid blob on print
-z_hop_speed: 15			# mm/s Speed of z_hop move
+default_extruder_temp: 200	# The baseline temperature for performing swaps and forming tips outside of a print
+z_hop_height_error: 5		# Height in mm of z_hop move on pause to avoid blob on print
+z_hop_height_toolchange: 0	# Height in mm of z_hop move on toolchange or runout to avoid blob on print
+z_hop_speed: 15			# Speed of z_hop move (mm/s)
 slicer_tip_park_pos: 0		# This specifies the position of filament in extruder after slicer tip forming move
 gcode_load_sequence: 0		# Advanced: Gcode loading sequence 1=enabled, 0=internal logic (default)
 gcode_unload_sequence: 0	# Advanced: Gcode unloading sequence, 1=enabled, 0=internal logic (default)
-auto_calibrate_gates: 0		# Automated gate (not gate#0) calibration. 1=calibrated on first load, 0=disabled
-strict_filament_recovery: 0	# If '1' with toolhead sensor, will look for filament trapped after extruder but before sensor
+auto_calibrate_gates: 0		# Automated gate (not gate#0) calibration. 1=calibrated automatically on first load, 0=disabled
+strict_filament_recovery: 0	# If enabled with MMU with toolhead sensor, this will cause filament position recovery to
+				# perform extra moves to look for filament trapped in the space after extruder but before sensor
+retry_tool_change_on_error: 0	# Whether to automatically retry a failed tool change. If enabled Happy Hare will perform
+				# the equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary
+				# to recover. Note that enabling this can mask problems with your MMU
+```
+
+This section contains a list of overrides for macros that Happy Hare calls internally. Currently, there's only the option to override the `PAUSE` macro but other macros or arguments may be added in the future.
+
+```yml
+# Advanced: MMU macro overrides --- ONLY SET IF YOU'RE COMFORTABLE WITH KLIPPER MACROS -----------------------------------
+#
+# When a print or the MMU should be paused, Happy Hare will call the `PAUSE` macro by default. If you want additional
+# behaviour, you can override the macro that is called by Happy Hare. Some examples as to why you may want this:
+# 1. You are using a sparse purge tower and you want Happy Hare errors to park above your purge tower as to not hit
+#    any models that are between your tower and normal pause location
+# 2. You want to additionally call a macro that sends a push notification on filament swap error
+# 3. You want to set additional static arguments to either the default pause macro or your own macro
+#
+# IMPORTANT: Whatever macro you call _must_ ultimately leave the printer in a paused state. Failure to do so will result
+#            in failed prints, jams, and physical hardware crashes
+#
+#pause_macro: PAUSE
 ```
 
 This final section is commented out because it is not generally needed. It retains abilities that existed in earlier versions of Happy Hare which may still be useful in some specific cases.  Normally when reset Happy Hare will default to empty or simple values for these settings. However, you can define the default here so that after a MMU reset has been performed they will be the starting values perhaps saving some additional configuration. E.g. if you always have specific filament spools loaded on a particular gate (I always have ABS black on gate #8 for example) you can define that here by setting the starting `gate_material` and `gate_color` arrays. Read [here](https://github.com/moggieuk/Happy-Hare#3-tool-to-gate-ttg-mapping) and [here](https://github.com/moggieuk/Happy-Hare#12-gate-map-describing-filament-type-color-and-status) for more details.

@@ -12,7 +12,7 @@ graph TD;
     Hardware_Working --> MMU_CALIBRATE_GEAR
     MMU_CALIBRATE_GEAR --> MMU_CALIBRATE_ENCODER
     MMU_CALIBRATE_ENCODER --> MMU_CALIBRATE_BOWDEN
-    MMU_CALIBRATE_BOWDEN --> MMU_CALIBRATE_GEARS
+    MMU_CALIBRATE_BOWDEN --> MMU_CALIBRATE_GATES
 ```
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Calibration Steps
@@ -31,7 +31,7 @@ Although it should not be necessary, there are options to update a single positi
 
   > MMU_CALIBRATE_SELECTOR GATE=...
 
-**Validation:** At the end of this step you should be able to select any tool/gate on your MMU. For instance, try running `MMU_HOME TOOL=3` to re-home and select too/gate #3.
+**Validation:** At the end of this step you should be able to select any tool/gate on your MMU. For instance, try running `MMU_HOME TOOL=3` to re-home and select tool/gate #3.
 
 <br>
 

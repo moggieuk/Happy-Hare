@@ -106,7 +106,7 @@ class MmuEncoder:
         else:
             return 0.
 
-    # Called periodically to check filament movement 
+    # Called periodically to check filament movement
     def _extruder_pos_update_event(self, eventtime):
         if self._enabled:
             extruder_pos = self._get_extruder_pos(eventtime)
@@ -265,7 +265,7 @@ class MmuEncoder:
             self._last_time = count_time
             new_counts = count - self._last_count
             self._counts += new_counts
-            self._movement = (new_counts > 0)
+            self._movement = new_counts > 0
         else:  # No counts since last sample
             self._last_time = time
         self._last_count = count
@@ -302,4 +302,3 @@ class MmuEncoder:
 
 def load_config_prefix(config):
     return MmuEncoder(config)
-
