@@ -2142,21 +2142,36 @@ class Mmu:
         finally:
             self._set_action(old_action)
 
+    def _enable_mmu(self):
+        if self.is_enabled:
+            return
+
+        self._log_always("MMU enabled and reset")
+        self._initialize_state()
+        if not self._check_is_calibrated(silent=True):
+            self._load_persisted_state()
+        self._log_always(self._tool_to_gate_map_to_human_string(summary=True))
+        self._display_visual_state()
+
+    def _disable_mmu(self):
+        if not self.is_enabled:
+            return
+
+        self._log_always("MMU disabled")
+        self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
+        self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_unlock)
+        self.is_enabled = False
+
 ### STATE GCODE COMMANDS
 
     cmd_MMU_help = "Enable/Disable functionality and reset state"
     def cmd_MMU(self, gcmd):
         enable = gcmd.get_int('ENABLE', minval=0, maxval=1)
-        if enable == 1 and not self.is_enabled:
-            self._log_always("MMU enabled and reset")
-            self._initialize_state()
-            if not self._check_is_calibrated(silent=True):
-                self._load_persisted_state()
-            self._log_always(self._tool_to_gate_map_to_human_string(summary=True))
-            self._display_visual_state()
-        elif enable == 0 and self.is_enabled:
-            self._log_always("MMU disabled")
-            self.is_enabled = False
+
+        if enable == 1:
+            self._enable_mmu()
+        else:
+            self._disable_mmu()
 
     cmd_MMU_HELP_help = "Display the complete set of MMU commands and function"
     def cmd_MMU_HELP(self, gcmd):
