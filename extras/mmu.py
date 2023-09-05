@@ -247,6 +247,7 @@ class Mmu:
         self.persistence_level = config.getint('persistence_level', 0, minval=0, maxval=4)
         self.auto_calibrate_gates = config.getint('auto_calibrate_gates', 0, minval=0, maxval=1)
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
+        self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
@@ -1195,7 +1196,7 @@ class Mmu:
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_down_angle)
         self.toolhead.wait_moves()
         self.servo.set_value(angle=self.servo_down_angle, duration=None if self.servo_active_down else self.servo_duration)
-        if buzz_gear:
+        if self.servo_angle != self.servo_down_angle and buzz_gear:
             oscillations = 2
             for i in range(oscillations):
                 self.toolhead.dwell(0.05)
@@ -1217,23 +1218,22 @@ class Mmu:
         self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self):
-        #if self.tool_selected < 0:
-        #    self._log_info("TODO DEBUGING: ****** Assertion failure - servo_up() called but no tool loaded")
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
         delta = 0.
-        self.toolhead.dwell(0.2)
-        self.toolhead.wait_moves()
-        initial_encoder_position = self._get_encoder_distance()
-        self.servo.set_value(angle=self.servo_up_angle, duration=self.servo_duration)
-        self.servo_angle = self.servo_up_angle
-        # Report on spring back in filament then reset counter
-        self.toolhead.dwell(max(self.servo_duration, 0.4))
-        self.toolhead.wait_moves()
-        delta = self._get_encoder_distance() - initial_encoder_position
-        if delta > 0.:
-            self._log_debug("Spring in filament measured  %.1fmm - adjusting encoder" % delta)
-            self._set_encoder_distance(initial_encoder_position)
+        if self.servo_angle != self.servo_up_angle:
+            self.toolhead.dwell(0.2)
+            self.toolhead.wait_moves()
+            initial_encoder_position = self._get_encoder_distance()
+            self.servo.set_value(angle=self.servo_up_angle, duration=self.servo_duration)
+            self.servo_angle = self.servo_up_angle
+            # Report on spring back in filament then reset counter
+            self.toolhead.dwell(max(self.servo_duration, 0.4))
+            self.toolhead.wait_moves()
+            delta = self._get_encoder_distance() - initial_encoder_position
+            if delta > 0.:
+                self._log_debug("Spring in filament measured  %.1fmm - adjusting encoder" % delta)
+                self._set_encoder_distance(initial_encoder_position)
         self.servo_state = self.SERVO_UP_STATE
         return delta
 
@@ -1544,13 +1544,14 @@ class Mmu:
         traveled = abs(mcu_position - init_mcu_pos) * selector_steps
         return traveled, found_home
 
-    def _get_max_movement(self, gate):
+    def _get_max_movement(self, gate=-1):
         n = gate if gate >= 0 else (self.mmu_num_gates - 1)
         if self.mmu_version >= 2.0:
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
             max_movement += (self.cad_last_gate_offset - self.cad_bypass_offset) if gate == self.TOOL_GATE_BYPASS else 0.
         else:
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
+
         max_movement += self.cal_tolerance
         return max_movement
 
@@ -1853,6 +1854,7 @@ class Mmu:
             reason = "Reason: %s" % reason
             extra = ""
 
+        self._recover_filament_pos(strict=False, message=True)
         self._sync_gear_to_extruder(False, servo=True, in_print=False)
         self._log_error("%s\n%s" % (msg, reason))
         if extra != "":
@@ -2473,7 +2475,7 @@ class Mmu:
     # and can only happen if filament is the short distance from sensor to gears. This check will eliminate that
     # problem and indicate if we can unload the rest of the bowden more quickly
     def _check_filament_still_in_extruder(self):
-        self._log_info("Checking for possibility of filament still in extruder gears...")
+        self._log_debug("Checking for possibility of filament still in extruder gears...")
         self._ensure_safe_extruder_temperature(wait=False)
         self._servo_up()
         length = self.encoder_move_step_size
@@ -2802,7 +2804,7 @@ class Mmu:
                 self._set_gate_ratio(ratio)
 
         elif delta >= tolerance and not self.calibrating and current_ratio:
-        # Correction attempts to load the filament according to encoder reporting
+            # Correction attempts to load the filament according to encoder reporting
             if self.bowden_apply_correction:
                 for i in range(2):
                     if delta >= tolerance:
@@ -2940,7 +2942,7 @@ class Mmu:
             self.filament_distance += distance_moved
             return distance_moved
         else:
-            self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
+            self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
             raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
     # Step 4 of the load sequence
@@ -3031,8 +3033,7 @@ class Mmu:
 
         if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
             # Let's determine where filament is and reset state before continuing
-            self._log_error("Unsure of filament position, recovering state...")
-            self._recover_filament_pos()
+            self._recover_filament_pos(message=True)
 
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self._log_debug("Filament already ejected")
@@ -3087,7 +3088,7 @@ class Mmu:
                     self._unload_extruder(park_pos=park_pos)
 
                 if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
-                    # Fast unload of bowden, then slow unload encoder
+                    # Fast unload of bowden, then unload encoder
                     self._unload_bowden(length - self.encoder_unload_buffer)
                     self._unload_encoder(self.encoder_unload_max)
 
@@ -3120,7 +3121,9 @@ class Mmu:
                 self._set_action(current_action)
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
-    def _recover_filament_pos(self, strict=False):
+    def _recover_filament_pos(self, strict=False, message=False):
+        if message:
+            self._log_info("Attempting to recover filament position...")
         toolhead_sensor_state = self._check_toolhead_sensor()
         if toolhead_sensor_state == -1:     # Not installed
             if self._check_filament_in_encoder():
@@ -3455,9 +3458,8 @@ class Mmu:
         self.is_homed = False
         self.gate_selected = self.TOOL_GATE_UNKNOWN
         self._servo_move()
-        num_channels = self.mmu_num_gates
-        selector_length = 10. + (num_channels-1)*21. + ((num_channels-1)//3)*5. + (self.bypass_offset > 0)
-        self._log_debug("Moving up to %.1fmm to home a %d channel MMU" % (selector_length, num_channels))
+        selector_length = self._get_max_movement()
+        self._log_debug("Moving up to %.1fmm to home a %d channel MMU" % (selector_length, self.mmu_num_gates))
         self.toolhead.wait_moves()
         try:
             self.selector_stepper.do_set_position(0.)
@@ -3747,22 +3749,31 @@ class Mmu:
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
         skip_tip = self._is_in_print() and not (standalone or self.force_form_tip_standalone)
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
-            self._log_error("Unknown filament position, recovering state...")
-            self._recover_filament_pos()
+            self._recover_filament_pos(message=True)
 
+        restore_encoder = self._disable_encoder_sensor(update_clog_detection_length=True) # Don't want runout accidently triggering during tool change
+        self._last_tool = self.tool_selected
+        self._next_tool = tool
         try:
-            restore_encoder = self._disable_encoder_sensor(update_clog_detection_length=True) # Don't want runout accidently triggering during tool change
-            self._last_tool = self.tool_selected
-            self._next_tool = tool
             self._change_tool(tool, skip_tip)
-            self._dump_statistics(quiet=quiet)
-            self._enable_encoder_sensor(restore_encoder)
         except MmuError as ee:
-            self._pause("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
-        finally:
-            self._next_tool = self.TOOL_GATE_UNKNOWN
-            # Ready for printing, this might signify call from print_start()
-            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=self._is_in_print())
+            if self.retry_tool_change_on_error:
+                self._log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), self._last_toolchange))
+                try:
+                    # Try again but recover_filament_pos will ensure conservative treatment of unload
+                    self._recover_filament_pos()
+                    self._change_tool(tool, skip_tip)
+                except MmuError as ee:
+                    self._pause("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
+            else:
+                self._pause("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
+                return
+
+        self._dump_statistics(quiet=quiet)
+        self._enable_encoder_sensor(restore_encoder)
+        self._next_tool = self.TOOL_GATE_UNKNOWN
+        # Ready for printing, this might also signify call from print_start()
+        self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=self._is_in_print())
 
     cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)"
     def cmd_MMU_LOAD(self, gcmd):
@@ -3915,8 +3926,7 @@ class Mmu:
             return
 
         # Filament position not specified so auto recover
-        self._log_info("Recovering filament position/state...")
-        self._recover_filament_pos(strict)
+        self._recover_filament_pos(strict=strict, message=True)
         self._servo_auto()
 
 
@@ -4108,6 +4118,7 @@ class Mmu:
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
+        self.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.retry_tool_change_on_error, minval=0, maxval=1)
         self.pause_macro = gcmd.get('PAUSE_MACRO', self.pause_macro)
 
         # Calibration
@@ -4165,6 +4176,7 @@ class Mmu:
         msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
         msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
         msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
+        msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
         msg += "\nlog_level = %d" % self.log_level
         msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics

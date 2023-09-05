@@ -75,7 +75,7 @@ stealthchop_threshold: 0		# Spreadcycle (better for extruder)
 #extra_endstop_names: mmu_ext_touch
 ```
 
-The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in `printer.cfg` most be deleted or commented out. Note that tmc2209 is most common but obviously adjust the driver to match your particular driver chip.
+The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in `printer.cfg` most be deleted or commented out. **Note that tmc2209 is most common but obviously adjust the driver to match your particular driver chip and added "manual_extruder_stepper" into the section name.**
 
 The second definion is the elements that define the extruder stepper. The standard list of `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time` will all be AUTOMATICALLY added during bootup and nullified on the original extruder.
 
