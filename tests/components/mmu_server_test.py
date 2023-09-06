@@ -56,7 +56,6 @@ class TestMmuServerFileProcessor(unittest.TestCase):
         with open(self.TOOLCHANGE_FILEPATH, 'r') as f:
             file_contents = f.read()
             self.assertIn('PRINT_START MMU_TOOLS_USED=0,1,2,5,11\n', file_contents)
-            self.assertNotIn('[mmu_inject_tools_used]', file_contents)
 
     def test_write_mmu_metadata_when_no_toolchanges(self):
         self.subject._write_mmu_metadata(self.NO_TOOLCHANGE_FILEPATH)
@@ -64,5 +63,26 @@ class TestMmuServerFileProcessor(unittest.TestCase):
         with open(self.NO_TOOLCHANGE_FILEPATH, 'r') as f:
             file_contents = f.read()
             self.assertIn('PRINT_START MMU_TOOLS_USED=\n', file_contents)
-            self.assertNotIn('[mmu_inject_tools_used]', file_contents)
 
+    def test_write_mmu_metadata_does_not_replace_comments(self):
+        self.subject._write_mmu_metadata(self.TOOLCHANGE_FILEPATH)
+
+        with open(self.TOOLCHANGE_FILEPATH, 'r') as f:
+            file_contents = f.read()
+            self.assertIn('; start_gcode: PRINT_START MMU_TOOLS_USED=!mmu_inject_tools_used!', file_contents)
+
+    def test_inject_tool_usage_called_if_placeholder(self):
+        self.subject._inject_tool_usage = MagicMock()
+
+        self.subject._write_mmu_metadata(self.TOOLCHANGE_FILEPATH)
+
+        self.subject._inject_tool_usage.assert_called()
+
+    def test_inject_tool_usage_not_called_if_no_placeholder(self):
+        # Call it once to remove the placeholder
+        self.subject._write_mmu_metadata(self.TOOLCHANGE_FILEPATH)
+        self.subject._inject_tool_usage = MagicMock()
+
+        self.subject._write_mmu_metadata(self.TOOLCHANGE_FILEPATH)
+
+        self.subject._inject_tool_usage.assert_not_called()

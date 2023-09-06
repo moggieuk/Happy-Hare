@@ -31,3 +31,5 @@ G1 X162.313 Y174.145 E.0077
 G1 X162.633 Y174.049 E.01521
 T5
 G1 X162.964 Y174.006 E.01519
+; simulating slicer metadata below (should not be replaced)
+; start_gcode: PRINT_START MMU_TOOLS_USED=!mmu_inject_tools_used!
