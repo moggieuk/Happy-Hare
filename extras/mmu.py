@@ -477,7 +477,7 @@ class Mmu:
                 mmu_log = dirname + '/mmu.log'
             self._log_debug("mmu_log=%s" % mmu_log)
             self.queue_listener = QueueListener(mmu_log)
-            self.queue_listener.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%I:%M:%S'))
+            self.queue_listener.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S'))
             queue_handler = QueueHandler(self.queue_listener.bg_queue)
             self.mmu_logger = logging.getLogger('mmu')
             self.mmu_logger.setLevel(logging.INFO)
