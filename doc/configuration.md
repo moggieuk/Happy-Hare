@@ -251,13 +251,14 @@ This section contains an eclectic set of remaining options. Ask on discord if an
 `slicer_tip_park_pos` - If you use the default slicer tip shaping logic then it will leave the filament at a particular place in the extruder. Unfortunately Happy Hare has no way to detect this like it can when it takes care of tip shaping. This parameter usually exists in the slicer and setting it will pass on to Happy Hare for more efficient subsequent unloading.<br>
 `auto_calibrate_gates` - discussed in main readme but avoids having to calibrate since that are automatically calibrated on first use.<br>
 `strict_filament_recovery` - Occassionaly Happy Hare will be forced to try to figure our where the filament is. It employs various mechanisms to achive this depending on the capability of the MMU. Some of this steps are invasive (e.g. warming the extruder when it is cold) and are therefore skipped by default. Enabling this option will force extra detection steps.
+`retry_tool_change_on_error` - This setting defaults to off (0) because it can hide problems with your MMU, however, if enabled (1) it will cause Happy Hare to automatically retry a failed tool change but performing the equivalent commands as `MMU_RECOVER` + `Tx`.  It is useful for long prints to minimize "baby-sitting" false failures.
 
 
 ```yml
 # Misc configurable, but fairly fixed values -----------------------------------------------------------------------------
 #
 extruder: extruder		# Name of the toolhead extruder that MMU is using
-timeout_pause: 72000		# Time out in seconds used by the MMU_PAUSE
+timeout_pause: 72000		# Idle time out in seconds used when in MMU pause state
 disable_heater: 600		# Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
 default_extruder_temp: 200	# The baseline temperature for performing swaps and forming tips outside of a print
 z_hop_height_error: 5		# Height in mm of z_hop move on pause to avoid blob on print

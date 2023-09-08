@@ -195,6 +195,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
     printer.mmu.sync_drive : {bool} True if gear stepper is currently synced to extruder
+    printer.mmu.print_job_state : {string} current job state seen by MMU (standby|started|printing|paused|unlocked|complete|cancelled|error)
 ```
 
 Optionally exposed on mmu_encoder (if fitted):
@@ -356,6 +357,7 @@ Running without any parameters will display the current values:
     slicer_tip_park_pos = 0.0
     auto_calibrate_gates = 0
     strict_filament_recovery = 0
+    retry_tool_change_on_error = 0
     log_level = 1
     log_visual = 2
     log_statistics = 1

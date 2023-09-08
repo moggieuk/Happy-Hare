@@ -57,7 +57,7 @@ class MmuEncoder:
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '__MMU_ENCODER_RUNOUT')
         self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '__MMU_ENCODER_INSERT')
-        self._enabled = True
+        self._enabled = True # Runout/Clog functionality
         self.min_event_systime = self.reactor.NEVER
         self.extruder = self.estimated_print_time = None
         self.filament_detected = False

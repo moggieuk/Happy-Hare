@@ -63,7 +63,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | Command | Description | Parameters |
   | ------- | ----------- | ---------- |
   | `MMU_RESET` | Reset the MMU persisted state back to defaults | `CONFIRM=[0\|1]` Must be sepcifed for affirmative action of this dangerous command |
-  | `MMU_STATS` | Dump (and optionally reset) the MMU statistics. Note that gate statistics are sent to debug level - usually the logfile) | `RESET=[0\|1]` If 1 the stored statistics will be reset |
+  | `MMU_STATS` | Dump (and optionally reset) the MMU statistics for current print job or total | `RESET=[0\|1]` If 1 the persisted statistics will be reset <br> `TOTAL=[0\|1]` whether to also show the total swap stats in addition to the current/last print job <br> `DETAIL=[0\|1]` Whether to display additional details about the per-gate statistics |
   | `MMU_STATUS` | Report on MMU state, capabilities and Tool-to-Gate map | `DETAIL=[0\|1]` Whether to show a more detailed view including EndlessSpool groups and full Tool-To-Gate mapping <br>`SHOWCONFIG=[0\|1]` (default 0) Whether or not to describe the machine configuration in status message |
   <br>
   
