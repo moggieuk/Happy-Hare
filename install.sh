@@ -234,7 +234,7 @@ update_copy_file() {
             echo "$line"
         else
             # Split the line into the part before # and the part after #
-            parameterAndValueAndSpace=$(echo "$line" | cut -d'#' -f1)
+            parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | cut -d'#' -f1)
             comment=$(echo "$line" | cut -s -d'#' -f2-)
             space=`printf "%s" "$parameterAndValueAndSpace" | sed 's/.*[^[:space:]]\(.*\)$/\1/'`
 
