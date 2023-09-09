@@ -486,7 +486,7 @@ class Mmu:
                 mmu_log = dirname + '/mmu.log'
             self._log_debug("mmu_log=%s" % mmu_log)
             self.queue_listener = QueueListener(mmu_log)
-            self.queue_listener.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%I:%M:%S'))
+            self.queue_listener.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S'))
             queue_handler = QueueHandler(self.queue_listener.bg_queue)
             self.mmu_logger = logging.getLogger('mmu')
             self.mmu_logger.setLevel(logging.INFO)
@@ -4452,7 +4452,9 @@ class Mmu:
                 self._log_info(self._tool_to_gate_map_to_human_string())
                 raise MmuError("No more EndlessSpool spools available after checking gates %s" % checked_gates)
             self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
-
+            # save the extruder temperature for the resume after swapping filaments.
+            if self.paused_extruder_temp == 0.: # Only save the initial pause temp
+                self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
             try:
                 self._log_trace("Running macro: _MMU_ENDLESS_SPOOL_PRE_UNLOAD")
                 self.gcode.run_script_from_command("_MMU_ENDLESS_SPOOL_PRE_UNLOAD")
