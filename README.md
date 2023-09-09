@@ -140,29 +140,31 @@ Happy Hare has a built in help system to aid remembering the command set. It can
 
 ```yml
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
-    MMU - Enable/Disable functionality and reset state
-    MMU_CHANGE_TOOL - Perform a tool swap
-    MMU_CHECK_GATES - Automatically inspects gate(s), parks filament and marks availability
-    MMU_STATS - Dump (and optionally reset) the MMU statistics
-    MMU_EJECT - Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
-    MMU_ENCODER - Display encoder position or temporarily enable/disable detection logic in encoder
-    MMU_ENDLESS_SPOOL - Redefine the EndlessSpool groups
-    MMU_FORM_TIP - Convenience macro for calling the standalone tip forming functionality
-    MMU_HELP - Display the complete set of MMU commands and function
-    MMU_HOME - Home the MMU selector
-    MMU_LOAD - Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)
-    MMU_MOTORS_OFF - Turn off both MMU motors
-    MMU_PAUSE - Pause the current print and lock the MMU operations
-    MMU_PRELOAD - Preloads filament at specified or current gate
-    MMU_RECOVER - Recover the filament location and set MMU state after manual intervention/movement
-    MMU_REMAP_TTG - Remap a tool to a specific gate and set gate availability
-    MMU_RESET - Forget persisted state and re-initialize defaults
-    MMU_SELECT - Select the specified logical tool (following TTG map) or physical gate
-    MMU_SELECT_BYPASS - Select the filament bypass
-    MMU_SERVO - Move MMU servo to position specified position or angle
-    MMU_SET_GATE_MAP - Define the type and color of filaments on each gate
-    MMU_STATUS - Complete dump of current MMU state and important configuration
-    MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder stepper
+    MMU : Enable/Disable functionality and reset state
+    MMU_CHANGE_TOOL : Perform a tool swap
+    MMU_CHECK_GATES : Automatically inspects gate(s), parks filament and marks availability
+    MMU_STATS : Dump (and optionally reset) the MMU statistics
+    MMU_EJECT : Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
+    MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
+    MMU_ENDLESS_SPOOL : Redefine the EndlessSpool groups
+    MMU_FORM_TIP : Convenience macro for calling the standalone tip forming functionality
+    MMU_HELP : Display the complete set of MMU commands and function
+    MMU_HOME : Home the MMU selector
+    MMU_LOAD : Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)
+    MMU_MOTORS_OFF : Turn off both MMU motors
+    MMU_PAUSE : Pause the current print and lock the MMU operations
+    MMU_PRELOAD : Preloads filament at specified or current gate
+    MMU_PRINT_END : Restore MMU idle state after print (include in print end macro)
+    MMU_PRINT_START : Initialize MMU state and ready for print (include in print start macro)
+    MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
+    MMU_REMAP_TTG : Remap a tool to a specific gate and set gate availability
+    MMU_RESET : Forget persisted state and re-initialize defaults
+    MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
+    MMU_SELECT_BYPASS : Select the filament bypass
+    MMU_SERVO : Move MMU servo to position specified position or angle
+    MMU_SET_GATE_MAP : Define the type and color of filaments on each gate
+    MMU_STATUS : Complete dump of current MMU state and important configuration
+    MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder stepper
 ```
 
 > MMU_HELP MACROS=1 TESTING=1
