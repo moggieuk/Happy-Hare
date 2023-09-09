@@ -4244,7 +4244,9 @@ class Mmu:
                 self._log_info(self._tool_to_gate_map_to_human_string())
                 raise MmuError("No more EndlessSpool spools available after checking gates %s" % checked_gates)
             self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
-
+            # save the extruder temperature for the resume after swapping filaments.
+            if self.paused_extruder_temp == 0.: # Only save the initial pause temp
+                self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
             try:
                 self.gcode.run_script_from_command("_MMU_ENDLESS_SPOOL_PRE_UNLOAD")
             except Exception as e:
