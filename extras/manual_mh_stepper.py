@@ -21,7 +21,7 @@ class PrinterRailWithMockEndstop(stepper.PrinterRail, object):
     class MockEndstop:
         def add_stepper(self, *args, **kwargs):
             pass
-    
+
     def __init__(self, *args, **kwargs):
         self._in_setup = True
         super(PrinterRailWithMockEndstop, self).__init__(*args, **kwargs)
@@ -217,4 +217,3 @@ class ManualMhStepper(manual_stepper.ManualStepper, object):
 
 def load_config_prefix(config):
     return ManualMhStepper(config)
-

@@ -56,11 +56,11 @@ Thank you!
 
 #### Other Docs:
 
-**[Command Reference](doc/command_ref.md)**<br>
-**[Harware Configuration, Movement and Homing](doc/hardware_config.md)**<br>
-**[Calibration Guide](doc/calibration.md)**<br>
-**[Configuation Reference](doc/configuration.md)**<br>
-**[Gcode Customization](doc/gcode_customization.md)**<br>
+**[Command Reference](./doc/command_ref.md)**<br>
+**[Harware Configuration, Movement and Homing](./doc/hardware_config.md)**<br>
+**[Calibration Guide](./doc/calibration.md)**<br>
+**[Configuation Reference](./doc/configuration.md)**<br>
+**[Gcode Customization](./doc/gcode_customization.md)**<br>
 
 <br>
  
@@ -111,8 +111,7 @@ Note that the installer will look for Klipper install and config in standard loc
 <br>
 
 > [!IMPORTANT]  
-> `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file with `mmu_hardware.cfg` listed first. `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
-
+> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the easiest way to achieve this is simply with `[include mmu/base/*.cfg]`) . `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
 <br>
 
 **Pro tip:** if you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp. You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
@@ -131,7 +130,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Basic Commands and Printer Variables
 
-Happy Hare has a built in help system to aid remembering the command set. It can accessed with the `MMU_HELP` command and can also be used to view testing commands and user extensible macros which are called by Happy Hare on certain conditions. The full list of commands and options can be [found here](doc/command_ref.md). Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
+Happy Hare has a built in help system to aid remembering the command set. It can accessed with the `MMU_HELP` command and can also be used to view testing commands and user extensible macros which are called by Happy Hare on certain conditions. The full list of commands and options can be [found here](./doc/command_ref.md). Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
 
 <details>
 <summary><sub>🔹 Click to read more....</sub></summary>
@@ -257,7 +256,7 @@ mmu_num_gates: 9                        # Number of selector gates
 
 ### 2\. Validate your mmu_hardware.cfg configuration and basic operation
 
-Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propel the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [hardware configuration doc](doc/hardware_config.md) for detailed instructions.
+Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propel the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [hardware configuration doc](./doc/hardware_config.md) for detailed instructions.
 
 <details>
 <summary><sub>🔹 Details on optional hardware...</sub></summary>
@@ -290,11 +289,11 @@ Normally the encoder is automatically enabled when needed and disabled when not 
 
 ### 3\. Calibration Commands
 
-Before using your MMU you will need to calibrate it to adjust for the differences in components used on your particular build. Be careful to calibrate in the recommended order because some settings build on earlier ones. Happy Hare now has automated calibration for some of the traditionally longer steps and does not require any Klipper restarts so the process is quick and painless. See [MMU Calibration doc](doc/calibration.md) for detailed instructions
+Before using your MMU you will need to calibrate it to adjust for the differences in components used on your particular build. Be careful to calibrate in the recommended order because some settings build on earlier ones. Happy Hare now has automated calibration for some of the traditionally longer steps and does not require any Klipper restarts so the process is quick and painless. See [MMU Calibration doc](./doc/calibration.md) for detailed instructions
 
 ### 4\. Setup configuration in mmu_parameters.cfg
 
-After calibration you might want to review and tweak the configuration and options in `mmu_parameters.cfg`. The default values set by the installer are good starting points although you will always have to specify things like the dimensions of your extruder which are very specific. The [MMU Configuration guide](doc/configuration.md) contains an in-depth reference but some of the selected features are also discussed in more detail in the following sections.
+After calibration you might want to review and tweak the configuration and options in `mmu_parameters.cfg`. The default values set by the installer are good starting points although you will always have to specify things like the dimensions of your extruder which are very specific. The [MMU Configuration guide](./doc/configuration.md) contains an in-depth reference but some of the selected features are also discussed in more detail in the following sections.
 
 ### 5\. Tweak configuration at runtime
 
@@ -407,7 +406,7 @@ To proceed you need to address the specific issue. You can move the filament by 
 
 > MMU_RECOVER
 
-This is optional and ONLY needed if you may have confused the MMU state. I.e. if you left everything where the MMU expects it there is no need to run and indeed if you use MMU commands then the state will be correct and there is never a need to run. However, this can be useful to force Happy Hare to run it's own checks to, for example, confirm the position of the filament. By default this command will automatically fix essential state, but you can also force it by specifying additional options. E.g. `MMU_RECOVER TOOL=1 GATE=1 LOADED=1`. See the [Command Reference](doc/command_ref.md) for more details.
+This is optional and ONLY needed if you may have confused the MMU state. I.e. if you left everything where the MMU expects it there is no need to run and indeed if you use MMU commands then the state will be correct and there is never a need to run. However, this can be useful to force Happy Hare to run it's own checks to, for example, confirm the position of the filament. By default this command will automatically fix essential state, but you can also force it by specifying additional options. E.g. `MMU_RECOVER TOOL=1 GATE=1 LOADED=1`. See the [Command Reference](./doc/command_ref.md) for more details.
 
 When you ready to continue with the print:
 
@@ -846,7 +845,7 @@ If you remove buffered filament from a gate and want to quickly tell Happy Hare 
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Filament loading and unloading sequences
 
-Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`. These are grouped into "modular phases" that control each step of the process and vary slightly based on the capabilities of your particular MMU. Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later in the [gcode guide](doc/gcode_customization.md).
+Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`. These are grouped into "modular phases" that control each step of the process and vary slightly based on the capabilities of your particular MMU. Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later in the [gcode guide](./doc/gcode_customization.md).
 
 ### Understanding the load sequence:
 
@@ -1011,7 +1010,7 @@ extruder_sync_unload_speed: 25               # Synced gear and extruder unload s
 
 ### Advanced customized sequence (gcode macros)
 
-An experimental option is available for users with customized MMU's or for wanting even more control that exposes the loading and unloading sequences as gcode macros. This is a complex setup and requires knowlege of the state machine kept by Happy Hare. For the adventurous, the details are [documented here](doc/gcode_customization.md#---_mmu_load_sequence--_mmu_unload_sequence).
+An experimental option is available for users with customized MMU's or for wanting even more control that exposes the loading and unloading sequences as gcode macros. This is a complex setup and requires knowlege of the state machine kept by Happy Hare. For the adventurous, the details are [documented here](./doc/gcode_customization.md#---_mmu_load_sequence--_mmu_unload_sequence).
 
 <br>
 
@@ -1037,7 +1036,7 @@ This new v2 Happy Hare software is largely rewritten and so, despite best effort
 <details>
 <summary><sub>🔹 Read move about my learnings of ERCF v1.1...</sub></summary>
 <br>
-Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `MMU_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](doc/ercf_encoder_v11.md) on fixing many possible problems with encoder.  <ul>
+Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `MMU_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](./doc/ercf_encoder_v11.md) on fixing many possible problems with encoder.  <ul>
   <li>If using a toolhead sensor, that must be reliable too.  The hall effect based switch is very awkward to get right because of so many variables: strength of magnet, amount of iron in washer, even temperature, therefore I strongly recommend a simple microswitch based detection.  They work first time, every time.
   <li>The longer the bowden length the more important it is to calibrate correctly (do a couple of times to check for consistency).  Small errors multiply with longer moves!
   <li>Eliminate all points of friction in the filament path.  There is lots written about this already but I found some unusual places where filament was rubbing on plastic and drilling out the path improved things a good deal.

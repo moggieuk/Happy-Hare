@@ -234,7 +234,7 @@ update_copy_file() {
             echo "$line"
         else
             # Split the line into the part before # and the part after #
-            parameterAndValueAndSpace=$(echo "$line" | cut -d'#' -f1)
+            parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | cut -d'#' -f1)
             comment=$(echo "$line" | cut -s -d'#' -f2-)
             space=`printf "%s" "$parameterAndValueAndSpace" | sed 's/.*[^[:space:]]\(.*\)$/\1/'`
 
@@ -412,6 +412,9 @@ copy_config_files() {
 
         elif [ "${file}" == "mmu_software.cfg" ]; then
             tx_macros=""
+            if [ "${mmu_num_gates}" == "{mmu_num_gates}" ]; then
+                mmu_num_gates=12
+	    fi 
             for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
             do
                 tx_macros+="[gcode_macro T${i}]\n"
@@ -803,12 +806,12 @@ questionaire() {
             echo -e "${PROMPT}    If you don't know just hit return, I can enter a default and you can change later${INPUT}"
             read -p "    Toolhead sensor pin name? " toolhead_sensor_pin
             if [ "${toolhead_sensor_pin}" = "" ]; then
-                PIN[toolhead_sensor_pin]="{dummy_pin_must_set_me}"
+                PIN[toolhead_sensor_pin]="<set_me>"
             fi
             ;;
         n)
             SETUP_TOOLHEAD_SENSOR=0
-            PIN[toolhead_sensor_pin]="{dummy_pin_must_set_me}"
+            PIN[toolhead_sensor_pin]="<set_me>"
             ;;
     esac
 
@@ -1049,7 +1052,12 @@ else
             ;;
     esac
 fi
-restart_klipper
+
+if [ "$INSTALL" -eq 0 ]; then
+    restart_klipper
+else
+    echo -e "${WARNING}Klipper not restarted automatically because you need to validate and complete config"
+fi
 
 if [ "$UNINSTALL" -eq 0 ]; then
     echo -e "${EMPHASIZE}"
