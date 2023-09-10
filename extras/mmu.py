@@ -1967,6 +1967,7 @@ class Mmu:
         except Exception:
             logging.exception("Error running job state initializer/finalizer")
 
+    # MMU job state machine: standby|started|printing|complete|cancelled|error|pause_locked|paused
     def _set_print_job_state(self, print_state):
         if print_state != self.print_job_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout

@@ -49,6 +49,7 @@ Thank you!
 \- [10. Filament bypass](#10-filament-bypass)<br>
 \- [11. Pre-print functions](#11-useful-pre-print-functionality)<br>
 \- [12. Gate map, Filament type and color](#12-gate-map-describing-filament-type-color-and-status)<br>
+\- [13. Job state transitions](#13-job-state-transitions-and-print-start/end-handling)<br>
 **[Loading and Unloading Sequences](#---filament-loading-and-unloading-sequences)**<br>
 **[KlipperScreen Happy Hare Edition](#---klipperscreen-happy-hare-edition)**<br>
 **[My Testing / Setup](#---my-testing)**<br>
@@ -841,6 +842,47 @@ If you remove buffered filament from a gate and want to quickly tell Happy Hare 
 
 > [!NOTE]  
 > KlipperScreen Happy Hare edition has a nice editor with color picker for easy updating.
+
+</details>
+
+### 13. Job state transistions and print start/end handling
+
+Happy Hare keeps track of the current print state in a similar way to the klipper `print_stats` module. It is subtly difference and can even work when streaming a job for Octoprint (altough some special precautions must be taken). The current state is available via the printer variable `printer.mmu.print_job_state` and can be one of the following: standby, started, printing, complete, error, cancelled, pause_locked or paused. This can be useful in your own custom gcode macros but also ensures that Happy Hare restores things like temperatures, stepper motor current and idle_timeout at the right time.
+
+> [!IMPORTANT]  
+> Users printing from the "virtual SD-card" via Mainsail or Fluuid don't have any extras steps to take but if streaming a job (e.g. from Octoprint) the user is responsible to add `_MMU_PRINT_START` to their print_start macro or sequence and `_MMU_PRINT_END` to their end_print macro or sequence. The addition of those commands on "virtual sd-card print" will not cause harm but they are but are unecessary and will be ignored (hence the underscore naming).
+
+<details>
+<summary><sub>🔹 Review state machine transitions in detail...</sub></summary><br>
+
+```mermaid
+stateDiagram-v2
+    standby --> started: <i>(print_start)</i>
+    note left of standby: idle_timeout
+    started --> printing
+    printing --> complete: (print_complete))
+    printing --> error: (print_error)
+    printing --> cancelled: CANCEL_PRINT
+    printing --> PAUSE: <center><i>mmu error</i><br>or MMU_PAUSE</center>
+    state PAUSE {
+        direction LR
+        pause_locked --> paused: (MMU_UNLOCK)
+    }
+    PAUSE --> printing: RESUME
+    PAUSE --> standby: RESUME
+```
+
+**Explanation:**
+MMU starts in `standby` state. On printing it will briefly enter `started` (until _MMU_PRINT_START is complete) then transition to `printing`. On job completion (at end of _MMU_PRINT_END) or job error the state will transition to `complete` or `error` respectively.  If the print is explicitly cancelled the `CANCEL_PRINT` interception transitions to `cancelled`. If `idle_timeout` is experience the state will transition back to `standby`.
+
+While printing, if an mmu error occurs (or the user explicitly calls `MMU_PAUSE`) the state will transition to `pause_locked`.  If the user is quick to respond (before extruder temp drops) the print can be resumed with `RESUME` command.  The `MMU_UNLOCK` is optional and will restore temperatures allowing for direct MMU interaction and thus can be considered a half-step towards resuming (must still run `RESUME` to continue printing).
+
+> [!NOTE]  
+> - `MMU_PAUSE` outside of a print will have no effect unless `MMU_PAUSE FORCE_IN_PRINT=1` is specified to mimick the behavor (like z-hop move and running PAUSE macro, etc).
+> - Directly calling `PAUSE` will stop the job but will have no effect on the MMU (i.e. it does not put the MMU into the `pause_locked` state, only MMU_PAUSE does that.
+> - When entering `pause_locked` Happy Hare will always remember the toolhead position and, if configured, perform a z-hop, but will also run the user PAUSE macro
+> - When `RESUME` is called the user RESUME macro will be called, finally followed by Happy Hare restoring the original toolhead position.
+> - Outside of a print the toolhead is never moved by Happy Hare (only user's PAUSE/RESUME macros).
 
 </details>
 
