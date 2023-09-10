@@ -353,7 +353,7 @@ copy_config_files() {
 
             if [ "${SETUP_SELECTOR_TOUCH}" -eq 1 ]; then
                 cat ${src} | sed -e "\
-                    s/^#diag_pin: \^mmu:SEL_DIAG/diag_pin: \^mmu:SEL_DIAG/; \
+                    s/^#diag_pin: \^mmu:MMU_SEL_DIAG/diag_pin: \^mmu:MMU_SEL_DIAG/; \
                     s/^#driver_SGTHRS: 75/driver_SGTHRS: 75/; \
 		    s/^#extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop/extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop/; \
 		    s/^#extra_endstop_names: mmu_sel_touch/extra_endstop_names: mmu_sel_touch/; \
@@ -365,10 +365,10 @@ copy_config_files() {
             else
                 # This is the default template config without selector touch enabled
                 cat ${src} | sed -e "\
-                    s/{brd_type}/${brd_type}/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
                     /${sel_uart}=/ d; \
                     s/${sel_uart}/MMU_GEAR_UART/; \
+                    s/{brd_type}/${brd_type}/; \
                         " > ${dest}.tmp
             fi
 
@@ -723,7 +723,7 @@ questionaire() {
 
             echo
             echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
-            yn=$(prompt_yn "Enable selector touch operation (recommend no if you are new to ERCF")
+            yn=$(prompt_yn "Enable selector touch operation (not recommend if you are new to ERCF")
             echo
             case $yn in
                 y)
