@@ -3927,7 +3927,9 @@ class Mmu:
             else:
                 self._log_always("State does not indicate flament is LOADED.  Please run `MMU_RECOVER LOADED=1` first")
                 return
-
+        # In case a manual pause was called where we do not intercept and set the extruder temp
+        if self.paused_extruder_temp == 0:
+            self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
         # Important to wait for stable temperature to resume exactly how we paused
         self._ensure_safe_extruder_temperature(self.paused_extruder_temp, wait=True)
         self.paused_extruder_temp = 0. # Reset so doesn't remain set when print is finished
