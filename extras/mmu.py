@@ -2040,8 +2040,13 @@ class Mmu:
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
 
+        # Check type for safety
+        if (isinstance(target_temp_override, int) or isinstance(target_temp_override, float)) is False:
+            self._log_error("Invalid target_temp_override type: %s" % type(target_temp_override))
+            target_temp_override = -1
+
         # Determine correct target temp and hint as to where from to aid debugging
-        if target_temp_override > -1:
+        if target_temp_override >= klipper_minimum_temp:
             new_target_temp = target_temp_override
             source = "resume"
         elif self.is_paused_locked:
