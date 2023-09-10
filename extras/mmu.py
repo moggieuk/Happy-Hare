@@ -861,10 +861,11 @@ class Mmu:
             self._log_trace("Running macro: %s" % macro)
             self.gcode.run_script_from_command(command)
         except Exception as e:
-            if exception:
-                raise MmuError("Error running %s: %s" % (macro, str(e)))
-            else:
-                self._log_debug("Error running %s: %s" % (macro, str(e)))
+            if exception is not None:
+                if exception:
+                    raise MmuError("Error running %s: %s" % (macro, str(e)))
+                else:
+                    self._log_debug("Error running %s: %s" % (macro, str(e)))
 
 ####################################
 # LOGGING AND STATISTICS FUNCTIONS #
@@ -1962,8 +1963,10 @@ class Mmu:
 
             self.last_print_stats = new_ps
 
-        if event_type == "idle" and self._is_in_endstate():
-            self._set_print_job_state("standby")
+#        if event_type == "idle" and self._is_in_endstate():
+#            self._set_print_job_state("standby")
+        if event_type == "idle":
+            self._exec_gcode("_MMU_PRINT_END STATE=standby")
 
 #    def _print_start_event_handler(self, eventtime):
 #        self._exec_gcode("_MMU_PRINT_START")
@@ -2003,7 +2006,7 @@ class Mmu:
             self._enable_encoder_sensor(True) # Enable runout/clog detection
             self._reset_encoder_counts() # Encoder 0000
 
-            # Ricky to perform during event processing(?)
+            # Risky to perform during event processing(?)
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=True)
             msg = "MMU initialized ready for print"
             if self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -2060,10 +2063,11 @@ class Mmu:
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
         # Important to wait for stable temperature to resume exactly how we paused
         self._ensure_safe_extruder_temperature(self.paused_extruder_temp, wait=True)
-        self.paused_extruder_temp = None
 
     def _mmu_resume(self):
         self._log_trace("_mmu_resume()")
+        self._ensure_safe_extruder_temperature(self.paused_extruder_temp, wait=True)
+        self.paused_extruder_temp = None
         self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=True)
         self._enable_encoder_sensor(True) # Enable runout/clog detection
         self._reset_encoder_counts() # Encoder 0000
@@ -2083,7 +2087,7 @@ class Mmu:
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._disable_encoder_sensor() # Disable runout/clog detection
 
-            # Ricky to perform during event processing(?)
+            # Risky to perform during event processing(?)
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
             self._sync_gear_to_extruder(False, servo=True, in_print=False)
@@ -4099,7 +4103,7 @@ class Mmu:
     cmd_MMU_RESUME_help = "Wrapper around default RESUME macro"
     def cmd_MMU_RESUME(self, gcmd):
         if not self.is_enabled:
-            self._wrap_gcode_command("__RESUME") # User defined or Klipper default behavior
+            self._wrap_gcode_command("__RESUME", None) # User defined or Klipper default behavior
             return
 
         self._log_trace("MMU RESUME wrapper called")
@@ -4120,7 +4124,7 @@ class Mmu:
                     self._log_always("State does not indicate flament is LOADED.  Please run `MMU_RECOVER LOADED=1` first")
                     return
 
-        self._wrap_gcode_command("__RESUME")
+        self._wrap_gcode_command("__RESUME", None)
         self._mmu_resume()
         # Continue printing...
 
@@ -4129,8 +4133,9 @@ class Mmu:
     def cmd_PAUSE(self, gcmd):
         if self.is_enabled:
             self._log_trace("MMU PAUSE wrapper called")
-            # TODO what is the semantic meaning for mmu if called during a print?
-        self._wrap_gcode_command("__PAUSE") # User defined or Klipper default behavior
+            if not self.paused_extruder_temp: # Only save the initial pause temp
+                self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
+        self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
     cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
@@ -4138,18 +4143,18 @@ class Mmu:
         if self.is_enabled:
             self._log_trace("MMU CLEAR_PAUSE wrapper called")
             # TODO what is the semantic meaning for mmu if called during a print?
-        self._wrap_gcode_command("__CLEAR_PAUSE") # User defined or Klipper default behavior
+        self._wrap_gcode_command("__CLEAR_PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
     cmd_MMU_CANCEL_PRINT_help = "Wrapper around default CANCEL_PRINT macro"
     def cmd_MMU_CANCEL_PRINT(self, gcmd):
         if not self.is_enabled:
-            self._wrap_gcode_command("__CANCEL_PRINT") # User defined or Klipper default behavior
+            self._wrap_gcode_command("__CANCEL_PRINT", None) # User defined or Klipper default behavior
             return
 
         self._log_debug("MMU_CANCEL_PRINT wrapper called")
         self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error)
-        self._wrap_gcode_command("__CANCEL_PRINT")
+        self._wrap_gcode_command("__CANCEL_PRINT", None)
         self._on_print_end("cancelled")
 
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
