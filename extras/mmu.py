@@ -2704,7 +2704,7 @@ class Mmu:
         try:
             webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool)
         except self.printer.command_error:
-            logging.exception("_select_and_load_tool: CommandError while calling spoolman_set_active_spool")
+            logging.exception("_spoolman_activate_spool: CommandError while calling spoolman_set_active_spool")
 
 
     # Primary method to selects and loads tool. Assumes we are unloaded.
