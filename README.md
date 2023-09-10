@@ -154,8 +154,6 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     MMU_MOTORS_OFF : Turn off both MMU motors
     MMU_PAUSE : Pause the current print and lock the MMU operations
     MMU_PRELOAD : Preloads filament at specified or current gate
-    MMU_PRINT_END : Restore MMU idle state after print (include in print end macro)
-    MMU_PRINT_START : Initialize MMU state and ready for print (include in print start macro)
     MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
     MMU_REMAP_TTG : Remap a tool to a specific gate and set gate availability
     MMU_RESET : Forget persisted state and re-initialize defaults
@@ -197,7 +195,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
     printer.mmu.sync_drive : {bool} True if gear stepper is currently synced to extruder
-    printer.mmu.print_job_state : {string} current job state seen by MMU (standby|started|printing|paused|unlocked|complete|cancelled|error)
+    printer.mmu.print_job_state : {string} current job state seen by MMU (standby|started|printing|pause_locked|paused|complete|cancelled|error)
 ```
 
 Optionally exposed on mmu_encoder (if fitted):

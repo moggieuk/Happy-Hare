@@ -253,7 +253,7 @@ class Mmu:
         self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
 
         # Internal macro overrides
-        self.pause_macro = config.get('pause_macro', 'PAUSE')
+        self.pause_macro = config.get('pause_macro', 'PAUSE') # PAUL - not sure I want this
 
         # User MMU setup
         self.mmu_num_gates = config.getint('mmu_num_gates')
@@ -383,8 +383,9 @@ class Mmu:
                 self.default_tool_to_gate_map.append(i)
         self.tool_to_gate_map = list(self.default_tool_to_gate_map)
 
-        # Initialize state and statistics variables
+        # Initialize state
         self._initialize_state()
+        self._reset_statistics()
 
         # Logging
         self.queue_listener = None
@@ -412,8 +413,8 @@ class Mmu:
 
         # Core MMU functionality
         self.gcode.register_command('MMU', self.cmd_MMU, desc = self.cmd_MMU_help)
-        self.gcode.register_command('MMU_PRINT_START', self.cmd_MMU_PRINT_START, desc = self.cmd_MMU_PRINT_START_help) # Automatically called if printing from virtual SD-card
-        self.gcode.register_command('MMU_PRINT_END', self.cmd_MMU_PRINT_END, desc = self.cmd_MMU_PRINT_END_help) # Automatically called if printing from virtual SD-card
+        self.gcode.register_command('_MMU_PRINT_START', self.cmd_MMU_PRINT_START, desc = self.cmd_MMU_PRINT_START_help) # Automatically called if printing from virtual SD-card
+        self.gcode.register_command('_MMU_PRINT_END', self.cmd_MMU_PRINT_END, desc = self.cmd_MMU_PRINT_END_help) # Automatically called if printing from virtual SD-card
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
@@ -445,7 +446,7 @@ class Mmu:
 
         # Runout, TTG and Endless spool
         self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help) # Internal
-        #self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help) # Internal
+        #self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help) # TODO Internal
         self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help)
         self.gcode.register_command('MMU_SET_GATE_MAP', self.cmd_MMU_SET_GATE_MAP, desc = self.cmd_MMU_SET_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
@@ -455,7 +456,7 @@ class Mmu:
         self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_FORM_TIP, desc = self.cmd_MMU_FORM_TIP_help)
         self.gcode.register_command('_MMU_STEP_LOAD_ENCODER', self.cmd_MMU_STEP_LOAD_ENCODER, desc = self.cmd_MMU_STEP_LOAD_ENCODER_help)
         self.gcode.register_command('_MMU_STEP_UNLOAD_ENCODER', self.cmd_MMU_STEP_UNLOAD_ENCODER, desc = self.cmd_MMU_STEP_UNLOAD_ENCODER_help)
-        #self.gcode.register_command('_MMU_STEP_LOAD_GATE', self.cmd_MMU_STEP_LOAD_GATE, desc = self.cmd_MMU_STEP_LOAD_GATE_help)
+        #self.gcode.register_command('_MMU_STEP_LOAD_GATE', self.cmd_MMU_STEP_LOAD_GATE, desc = self.cmd_MMU_STEP_LOAD_GATE_help) # TODO Tradrack
         self.gcode.register_command('_MMU_STEP_LOAD_BOWDEN', self.cmd_MMU_STEP_LOAD_BOWDEN, desc = self.cmd_MMU_STEP_LOAD_BOWDEN_help)
         self.gcode.register_command('_MMU_STEP_UNLOAD_BOWDEN', self.cmd_MMU_STEP_UNLOAD_BOWDEN, desc = self.cmd_MMU_STEP_UNLOAD_BOWDEN_help)
         self.gcode.register_command('_MMU_STEP_HOME_EXTRUDER', self.cmd_MMU_STEP_HOME_EXTRUDER, desc = self.cmd_MMU_STEP_HOME_EXTRUDER_help)
@@ -465,9 +466,9 @@ class Mmu:
         self.gcode.register_command('_MMU_STEP_MOVE', self.cmd_MMU_STEP_MOVE, desc = self.cmd_MMU_STEP_MOVE_help)
         self.gcode.register_command('_MMU_STEP_SET_FILAMENT', self.cmd_MMU_STEP_SET_FILAMENT, desc = self.cmd_MMU_STEP_SET_FILAMENT_help)
 
-        gcode_macro = self.printer.load_object(config, 'gcode_macro')
-        self.print_start_gcode = gcode_macro.load_template(config, 'print_start_gcode', 'MMU_PRINT_START') # PAUL
-        self.print_end_gcode = gcode_macro.load_template(config, 'print_end_gcode', 'MMU_PRINT_END') # PAUL
+#        gcode_macro = self.printer.load_object(config, 'gcode_macro') # PAUL
+#        self.print_start_gcode = gcode_macro.load_template(config, 'print_start_gcode', '_MMU_PRINT_START') # PAUL
+#        self.print_end_gcode = gcode_macro.load_template(config, 'print_end_gcode', '_MMU_PRINT_END') # PAUL
 
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
@@ -690,8 +691,7 @@ class Mmu:
 
     def _initialize_state(self):
         self.is_enabled = True
-#PAUL        self.is_paused_locked = False
-        self.paused_extruder_temp = 0.
+        self.paused_extruder_temp = None
         self.is_homed = False
         self.last_print_stats = None
         self.tool_selected = self._next_tool = self._last_tool = self.TOOL_GATE_UNKNOWN
@@ -705,7 +705,7 @@ class Mmu:
         self.calibrating = False
         self.saved_toolhead_position = None
         self._servo_reset_state()
-        self._reset_statistics()
+        self._reset_job_statistics()
         self.print_job_state = self.resume_to_state = "standby"
 
     def _load_persisted_state(self):
@@ -797,21 +797,35 @@ class Mmu:
 
         # This is a bit naughty to register commands here but I need to make sure I'm the outermost wrapper
         try:
+            prev_pause = self.gcode.register_command('PAUSE', None)
+            if prev_pause is not None:
+                self.gcode.register_command('__PAUSE', prev_pause)
+                self.gcode.register_command('PAUSE', self.cmd_MMU_PAUSE, desc = self.cmd_MMU_PAUSE_help)
+            else:
+                self._log_error('No existing PAUSE macro found!')
+
             prev_resume = self.gcode.register_command('RESUME', None)
             if prev_resume is not None:
                 self.gcode.register_command('__RESUME', prev_resume)
-                self.gcode.register_command('RESUME', self.cmd_MMU_RESUME, desc = self.cmd_MMU_RESUME_help)
+                self.gcode.register_command('RESUME', self.cmd_RESUME, desc = self.cmd_RESUME_help)
             else:
-                self._log_always('No existing RESUME macro found!')
+                self._log_error('No existing RESUME macro found!')
+
+            prev_clear_pause = self.gcode.register_command('CLEAR_PAUSE', None)
+            if prev_clear_pause is not None:
+                self.gcode.register_command('__CLEAR_PAUSE', prev_clear_pause)
+                self.gcode.register_command('CLEAR_PAUSE', self.cmd_CLEAR_PAUSE, desc = self.cmd_CLEAR_PAUSE_help)
+            else:
+                self._log_error('No existing CLEAR_PAUSE macro found!')
 
             prev_cancel = self.gcode.register_command('CANCEL_PRINT', None)
             if prev_cancel is not None:
                 self.gcode.register_command('__CANCEL_PRINT', prev_cancel)
                 self.gcode.register_command('CANCEL_PRINT', self.cmd_MMU_CANCEL_PRINT, desc = self.cmd_MMU_CANCEL_PRINT_help)
             else:
-                self._log_always('No existing CANCEL_PRINT macro found!')
+                self._log_error('No existing CANCEL_PRINT macro found!')
         except Exception as e:
-            self._log_always('Warning: Error trying to wrap RESUME/CANCEL_PRINT macros: %s' % str(e))
+            self._log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
@@ -830,6 +844,17 @@ class Mmu:
             self._servo_move()
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
+
+    def _wrap_gcode_command(self, command, exception=False):
+        try:
+            macro = command.split()[0]
+            self._log_trace("Running macro: %s" % macro)
+            self.gcode.run_script_from_command(command)
+        except Exception as e:
+            if exception:
+                raise MmuError("Error running %s: %s" % (macro, str(e)))
+            else:
+                self._log_error("Error running %s: %s" % (macro, str(e)))
 
 ####################################
 # LOGGING AND STATISTICS FUNCTIONS #
@@ -851,7 +876,7 @@ class Mmu:
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
-                'is_locked': self._is_pause_locked(),
+                'is_locked': self._is_mmu_paused(),
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
@@ -1158,7 +1183,7 @@ class Mmu:
 
         msg = "MMU %s v%s" % (self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
-        msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_pause_locked() else "OPERATIONAL")
+        msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_mmu_paused() else "OPERATIONAL")
         msg += " Servo %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
         msg += ", Encoder reads %.1fmm" % self._get_encoder_distance()
@@ -1439,7 +1464,7 @@ class Mmu:
                 self._log_always("Encoder calibration has been saved")
                 self.calibration_status |= self.CALIBRATED_ENCODER
 
-        except MmuError as ee:
+        except nmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration of encoder failed. Aborting, because:\n%s" % str(ee))
         finally:
@@ -1617,7 +1642,7 @@ class Mmu:
                     self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset))
                 self._log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
         finally:
             self.calibrating = False
             self._motors_off()
@@ -1709,7 +1734,7 @@ class Mmu:
 
             self._home(0, force_unload=0)
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
             self._motors_off()
         finally:
             self.calibrating = False
@@ -1764,7 +1789,7 @@ class Mmu:
             self.calibrating = True
             self._calibrate_encoder(length, repeats, speed, min_speed, max_speed, accel, save)
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
         finally:
             self.calibrating = False
 
@@ -1803,7 +1828,7 @@ class Mmu:
             self.calibrating = True
             self._calibrate_bowden_length(approx_bowden_length, extruder_homing_max, repeats, save)
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
         finally:
             self.calibrating = False
 
@@ -1834,7 +1859,7 @@ class Mmu:
             else:
                 self._calibrate_gate(gate, length, repeats, save=(save and gate != 0))
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
         finally:
             self.calibrating = False
 
@@ -1860,37 +1885,48 @@ class Mmu:
     def _handle_idle_timeout_idle(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "idle")
 
-    # Track print state and notify MMU of critical state changes such as
-    # print_start, print_end & print_error (states where we don't
-    # want to trust that the user is doing the right thing)
+    def _is_in_print(self):
+        return self.print_job_state in ("started", "printing")
+
+    def _is_paused(self): # Printer is paused
+         return self.printer.lookup_object("pause_resume").is_paused
+
+    def _is_mmu_paused(self): # The MMU is paused
+        return self.print_job_state in ("pause_locked", "paused")
+
+    def _is_mmu_pause_locked(self): # The MMU is paused (and locked)
+        return self.print_job_state in ("pause_locked")
+
+    def _is_in_endstate(self):
+        return self.print_job_state in ("complete", "cancelled", "error")
+
+    # Track print events simply to ease internal print state transitions. Specificly we want to detect
+    # the start and end of a print and falling back to 'standby' state
     #
     # Klipper reference sources for state:
     # print_stats: {'filename': '', 'total_duration': 0.0, 'print_duration': 0.0,
     #               'filament_used': 0.0, 'state': error|paused|standby|printing|complete|cancelled,
     #               'message': '', 'info': {'total_layer': None, 'current_layer': None}}
     # idle_status: {'state': Idle|Ready|Printing, `printing_time`: 0.0}
+    # pause_resume: {'is_paused': True|False}
     #
     def _handle_idle_timeout_event(self, eventtime, event_type):
         if not self.is_enabled: return
         self._log_trace("Processing idle_timeout '%s' event" % event_type)
 
         print_stats = self.printer.lookup_object("print_stats", None)
-        ps = print_stats.get_status(eventtime)
-        self._log_debug("PAUL: Current Job State: %s, print_stats: %s" % (self.print_job_state.upper(), ps))
-
         if print_stats is not None:
             ps = print_stats.get_status(eventtime)
             if self.last_print_stats is None:
                 self.last_print_stats = dict(ps)
             prev_ps = self.last_print_stats
             new_ps = dict(ps)
-            old_state = prev_ps['state']
-            new_state = ps['state']
-
             new_ps.pop('info')
             new_ps.pop('message')
             new_ps.pop('filament_used')
-            self._log_debug("PAUL: print_stats: %s" % new_ps)
+            old_state = prev_ps['state']
+            new_state = ps['state']
+            self._log_debug("PAUL: Current Job State: %s, print_stats: %s" % (self.print_job_state.upper(), new_ps)) # PAUL temp
 
             if new_state is not old_state:
                 if new_state == "printing":
@@ -1901,52 +1937,56 @@ class Mmu:
                     else:
                         # This is a 'started' state
                         self._log_error("PAUL: DETECTED JOB START, new_state=%s, current state=%s" % (new_state, self.print_job_state))
-# PAUL                  self.gcode.run_script_from_command("MMU_PRINT_START")
                         self.reactor.register_callback(self._print_start_event_handler)
-                elif new_state in ("complete", "error"): # `cancelled` handled by macro wrapper
-                    self._log_error("PAUL: DETECTED JOB ERROR/COMPLETE, new_state=%s, current state=%s" % (new_state, self.print_job_state))
-# PAUL              self.gcode.run_script_from_command("MMU_PRINT_END STATE=%s" % new_state) # Clean up after print
-                    self.reactor.register_callback(self._print_end_event_handler)
+                elif new_state == "complete":
+                    self._log_error("PAUL: DETECTED JOB COMPLETE, new_state=%s, current state=%s" % (new_state, self.print_job_state))
+                    self.reactor.register_callback(self._print_complete_event_handler)
+                elif new_state == "error":
+                    self._log_error("PAUL: DETECTED JOB ERROR, new_state=%s, current state=%s" % (new_state, self.print_job_state))
+                    self.reactor.register_callback(self._print_error_event_handler)
 
             self.last_print_stats = new_ps
-        else:
-            pass # PAUL TODO non print_stats logic
-        # PAUL TODO. If we get 'idle' event on idle_status and we are in end state, reset endstate to 'standby'
-        # idle_status:ready could signify print_end if "still printing"
-        # idle_status:printing and print_stats 'started' signify print_start
+
+        if event_type == "idle" and self._is_in_endstate():
+            self._set_print_job_state("standby")
 
     def _print_start_event_handler(self, eventtime):
-        self._exec_gcode(self.print_start_gcode)
+        self._exec_gcode("_MMU_PRINT_START")
+# PAUL        self._exec_gcode(self.print_start_gcode)
 
-    def _print_end_event_handler(self, eventtime):
-        self._exec_gcode(self.print_end_gcode)
+    def _print_complete_event_handler(self, eventtime):
+        self._exec_gcode("_MMU_PRINT_END STATE=complete")
 
-    def _exec_gcode(self, template):
+    def _print_error_event_handler(self, eventtime):
+        self._exec_gcode("_MMU_PRINT_END STATE=error")
+
+# PAUL    def _exec_gcode(self, template):
+# PAUL        try:
+# PAUL            self.gcode.run_script(template.render())
+    def _exec_gcode(self, command):
         try:
-            self.gcode.run_script(template.render())
+            self.gcode.run_script_from_command(command)
         except Exception:
-            logging.exception("Script running error")
-
+            logging.exception("Error running job state initializer/finalizer")
 
     def _set_print_job_state(self, print_state):
         if print_state != self.print_job_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
             # PAUL this should be trace
-            self._log_error("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Position saved: %s, MMU Pause locked: %s, Printer paused: %s, Idle timeout: %.2fs)"
+            self._log_error("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Position saved: %s, Printer paused: %s, Idle timeout: %.2fs)"
                     % (self.print_job_state.upper(), print_state.upper(), self._get_encoder_state(), self.gear_stepper.is_synced(), self.paused_extruder_temp,
-                        self.saved_toolhead_position, self._is_pause_locked(), self.printer.lookup_object("pause_resume").is_paused, idle_timeout))
+                        self.saved_toolhead_position, self._is_paused(), idle_timeout))
             self.print_job_state = print_state
 
     # If this is called automatically it will occur immediately the first gcode action
     # that causes idle_timeout to transition into 'printing' state.
     # Therefore don't do anything that requires operating kinematics (we might not be homed yet)
     def _on_print_start(self):
-        if self.print_job_state in ("standby", "complete", "error", "cancelled"):
+        if self.print_job_state not in ("started", "printing"): # Otherwise can get stuck in paused state until idle_timeout
             self._log_trace("_on_print_start()")
             self._set_print_job_state("started")
             self.saved_toolhead_position = None
-#PAUL        self.is_paused_locked = False
-            self.paused_extruder_temp = 0.
+            self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._enable_encoder_sensor(True) # Enable runout/clog detection
@@ -1962,14 +2002,14 @@ class Mmu:
             self._log_info(msg)
             self._set_print_job_state("printing")
 
-    def _pause(self, reason, force_in_print=False):
-        self._log_trace("_pause()")
+    def _mmu_pause(self, reason, force_in_print=False):
+        self._log_trace("_mmu_pause()")
         run_pause_macro = False
-        if self.paused_extruder_temp == 0.: # Only save the initial pause temp
+        if not self.paused_extruder_temp: # Only save the initial pause temp
             self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
 
         if self._is_in_print() or force_in_print:
-            if self._is_pause_locked():
+            if self._is_mmu_paused():
                 self._log_debug("Assertion failure: Pause called from within pause state")
                 return
             self.resume_to_state = "printing" if self._is_in_print() else "standby"
@@ -1982,10 +2022,9 @@ class Mmu:
             reason = "Reason: %s" % reason
             extra = "After fixing the issue, call \'RESUME\' to continue printing"
             run_pause_macro = True
-#PAUL            self.is_paused_locked = True
-            self._set_print_job_state("paused")
+            self._set_print_job_state("pause_locked")
 
-        elif self._is_paused():
+        elif self._is_mmu_paused():
             msg = "An issue with the MMU has been detected whilst printer is paused"
             reason = "Reason: %s" % reason
             extra = ""
@@ -2000,21 +2039,19 @@ class Mmu:
         if extra != "":
             self._log_always(extra)
         if run_pause_macro:
-            self._log_trace("Running macro: %s" % self.pause_macro)
-            self.gcode.run_script_from_command(self.pause_macro)
+            self._wrap_gcode_command(self.pause_macro)
 
-    def _unlock(self):
-        self._log_trace("_unlock()")
-        self._set_print_job_state("unlocked")
+    def _mmu_unlock(self):
+        self._log_trace("_mmu_unlock()")
+        self._set_print_job_state("paused")
         self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
         # Important to wait for stable temperature to resume exactly how we paused
         self._ensure_safe_extruder_temperature(self.paused_extruder_temp, wait=True)
-        self.paused_extruder_temp = 0.
-#PAUL        self.is_paused_locked = False
+        self.paused_extruder_temp = None
 
-    def _resume(self):
-        self._log_trace("_resume()")
+    def _mmu_resume(self):
+        self._log_trace("_mmu_resume()")
         self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, in_print=True)
         self._enable_encoder_sensor(True) # Enable runout/clog detection
         self._reset_encoder_counts() # Encoder 0000
@@ -2023,15 +2060,23 @@ class Mmu:
         self._set_print_job_state(self.resume_to_state)
         self.resume_to_state = "standby"
 
+# PAUL
+#    def _pause(self):
+#        # PAUL? self.resume_to_state = "printing" if self._is_in_print() else "standby"
+#
+#    def _resume(self):
+#        self._set_print_job_state(self.resume_to_state)
+#        self.resume_to_state = "standby"
+#        # Put back anythig done in _pause()
+
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics
     def _on_print_end(self, state="complete"):
         if not self.print_job_state in ("standby", "complete", "error", "cancelled"):
             self._log_trace("_on_print_end(%s)" % state)
             self.saved_toolhead_position = None
-#PAUL        self.is_paused_locked = False
             self.resume_to_state = "standby"
-            self.paused_extruder_temp = 0.
+            self.paused_extruder_temp = None
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._disable_encoder_sensor() # Disable runout/clog detection
 
@@ -2178,59 +2223,19 @@ class Mmu:
             return True
         return False
 
-# PAUL vvv can just use self.state ??
-    def _is_in_print(self):
-        return self.print_job_state in ("started", "printing")
-# PAUL
-#        printing = self.print_job_state in ("printing", "started", "resumed")
-#        old_method = self._get_print_status() == "printing"
-#        if printing != old_method:
-#            self._log_info("PAUL: FATAL PROBLEM WITH is_in_print. get_print_status=%s" % self._get_print_status())
-#        return self._get_print_status() == "printing"
-
-    def _is_paused(self):
-        return self.print_job_state in ("paused", "unlocked")
-# PAUL
-#        paused = self.print_job_state in ("paused")
-#        old_method = self._get_print_status() == "paused"
-#        if printing != old_method:
-#            self._log_info("PAUL: FATAL PROBLEM WITH is_paused. get_print_status=%s" % self._get_print_status())
-#        return self._get_print_status() == "paused"
-
-    def _is_pause_locked(self):
-        return self.print_job_state == "paused"
-
-# PAUL
-#    def _get_print_status(self):
-#        try:
-#            # If using virtual sdcard this is the most reliable method
-#            source = "print_stats"
-#            print_status = self.printer.lookup_object("print_stats").get_status(self.printer.get_reactor().monotonic())['state']
-#        except:
-#            # Otherwise we fallback to idle_timeout
-#            source = "idle_timeout"
-#            if self.printer.lookup_object("pause_resume").is_paused:
-#                print_status = "paused"
-#            else:
-#                idle_timeout = self.printer.lookup_object("idle_timeout").get_status(self.printer.get_reactor().monotonic())
-#                print_status = idle_timeout['state'].lower()
-#        finally:
-#            self._log_trace("Determined print status as: %s from %s" % (print_status, source))
-#            return print_status
-
-    def _ensure_safe_extruder_temperature(self, target_temp_override=-1, wait=False):
+    def _ensure_safe_extruder_temperature(self, target_temp_override=None, wait=False):
         extruder = self.printer.lookup_object(self.extruder_name)
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
 
         # Determine correct target temp and hint as to where from to aid debugging
-        if target_temp_override > -1:
+        if target_temp_override:
             new_target_temp = target_temp_override
             source = "resume"
-        elif self._is_pause_locked():
+        elif self._is_mmu_paused():
             # During a pause/resume window always restore to paused temperature
-            new_target_temp = self.paused_extruder_temp
+            new_target_temp = self.paused_extruder_temp if self.paused_extruder_temp else 0. # paused_extruder_temp should be set
             source = "paused"
         elif self._is_in_print():
             # During a print, we want to defer to the slicer for temperature
@@ -2251,7 +2256,7 @@ class Mmu:
 
         if new_target_temp > current_target_temp:
             if source == "default":
-                # We use error channel to aviod heating surprise. THis will also cause popup in Klipperscreen
+                # We use error channel to aviod heating surprise. This will also cause popup in Klipperscreen
                 self._log_error("Warning: Automatically heating extruder to %s temp (%.1f)" % (source, new_target_temp))
             else:
                 self._log_info("Heating extruder to %s temp (%.1f)" % (source, new_target_temp))
@@ -2319,14 +2324,10 @@ class Mmu:
     def _set_action(self, action):
         old_action = self.action
         self.action = action
-        try:
-            gcode = self.printer.lookup_object('gcode_macro _MMU_ACTION_CHANGED', None)
-            if gcode is not None:
-                self.gcode.run_script_from_command("_MMU_ACTION_CHANGED ACTION=%s OLD_ACTION=%s" % (self.action, old_action))
-        except Exception as e:
-            raise MmuError("Error running user _MMU_ACTION_CHANGED macro: %s" % str(e))
-        finally:
-            return old_action
+        gcode = self.printer.lookup_object('gcode_macro _MMU_ACTION_CHANGED', None)
+        if gcode is not None:
+            self._wrap_gcode_command("_MMU_ACTION_CHANGED ACTION=%s OLD_ACTION=%s" % (self.action, old_action))
+        return old_action
 
     @contextlib.contextmanager
     def _wrap_action(self, new_action):
@@ -2416,6 +2417,7 @@ class Mmu:
             self._log_always("You must re-run and add 'CONFIRM=1' to reset all state back to default")
             return
         self._initialize_state()
+        self._reset_statistics()
         self.enable_endless_spool = self.default_enable_endless_spool
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
         self.endless_spool_groups = list(self.default_endless_spool_groups)
@@ -2897,10 +2899,7 @@ class Mmu:
             start_filament_pos = self.filament_pos
             if self.gcode_load_sequence:
                 self._log_debug("Calling external user defined loading sequence macro")
-                try:
-                    self.gcode.run_script_from_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (start_filament_pos, length, int(full), int(home), int(skip_extruder), int(extruder_only)))
-                except Exception as e:
-                    raise MmuError("Error running user _MMU_LOAD_SEQUENCE macro")
+                self._wrap_gcode_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (start_filament_pos, length, int(full), int(home), int(skip_extruder), int(extruder_only)), exception=True)
 
             elif extruder_only:
                 if start_filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
@@ -3271,10 +3270,7 @@ class Mmu:
             unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
             if self.gcode_unload_sequence:
                 self._log_debug("Calling external user defined unloading sequence macro")
-                try:
-                    self.gcode.run_script_from_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (start_filament_pos, length, extruder_only, park_pos))
-                except Exception as e:
-                    raise MmuError("Error running user _MMU_UNLOAD_SEQUENCE macro")
+                self._wrap_gcode_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (start_filament_pos, length, extruder_only, park_pos), exception=True)
 
             elif extruder_only:
                 if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
@@ -3586,11 +3582,7 @@ class Mmu:
             initial_encoder_position = self._get_encoder_distance()
 
             initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
-            try:
-                self._log_trace("Running macro: __MMU_FROM_TIP_STANDALONE")
-                self.gcode.run_script_from_command("_MMU_FORM_TIP_STANDALONE")
-            except Exception as e:
-                raise MmuError("Error running _MMU_FORM_TIP_STANDALONE: %s" % str(e))
+            self._wrap_gcode_command("_MMU_FORM_TIP_STANDALONE", exception=True)
             self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
             self.toolhead.dwell(0.2)
             self.toolhead.wait_moves()
@@ -3781,11 +3773,7 @@ class Mmu:
         self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
         gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
         if gcode is not None:
-            try:
-                self._log_trace("Running macro: __MMU_PRE_UNLOAD")
-                self.gcode.run_script_from_command("_MMU_PRE_UNLOAD")
-            except Exception as e:
-                raise MmuError("Error running user _MMU_PRE_UNLOAD macro: %s" % str(e))
+            self._wrap_gcode_command("_MMU_PRE_UNLOAD", exception=True)
 
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
@@ -3794,11 +3782,7 @@ class Mmu:
 
         gcode = self.printer.lookup_object('gcode_macro _MMU_POST_LOAD', None)
         if gcode is not None:
-            try:
-                self._log_trace("Running macro: __MMU_POST_LOAD")
-                self.gcode.run_script_from_command("_MMU_POST_LOAD")
-            except Exception as e:
-                raise MmuError("Error running user _MMU_POST_LOAD macro: %s" % str(e))
+            self._wrap_gcode_command("_MMU_POST_LOAD", exception=True)
 
         self._restore_toolhead_position("change_tool")
         self.gcode.run_script_from_command("M117 T%s" % tool)
@@ -3883,7 +3867,7 @@ class Mmu:
 
 
 ################################
-# Generic Motor move functions #
+# GENERIC MOTOR MOVE FUNCTIONS #
 ################################
 
 ### CORE GCODE COMMANDS ##########################################################
@@ -3903,7 +3887,7 @@ class Mmu:
             if tool == -1:
                 self._log_always("Homed")
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
 
     cmd_MMU_SELECT_help = "Select the specified logical tool (following TTG map) or physical gate"
     def cmd_MMU_SELECT(self, gcmd):
@@ -3934,7 +3918,7 @@ class Mmu:
                     if not tool_found:
                         self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
         finally:
             self._servo_auto()
 
@@ -3971,7 +3955,7 @@ class Mmu:
                     continue
                 except MmuError as ee:
                     if i == attempts - 1:
-                        self._pause("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
+                        self._mmu_pause("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
                         return
                     self._log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), self._last_toolchange))
                     # Try again but recover_filament_pos will ensure conservative treatment of unload
@@ -3999,7 +3983,7 @@ class Mmu:
                 self._log_always("Filament already loaded")
             self._enable_encoder_sensor(restore_encoder)
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
             if self.tool_selected == self.TOOL_GATE_BYPASS:
                 self._set_filament_pos(self.FILAMENT_POS_UNKNOWN)
 
@@ -4025,7 +4009,7 @@ class Mmu:
                 self._log_always("Filament not loaded")
             self._enable_encoder_sensor(restore_encoder)
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
 
     cmd_MMU_SELECT_BYPASS_help = "Select the filament bypass"
     def cmd_MMU_SELECT_BYPASS(self, gcmd):
@@ -4036,19 +4020,14 @@ class Mmu:
         try:
             self._select_bypass()
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
 
     cmd_MMU_PRINT_START_help = "Initialize MMU state and ready for print"
     def cmd_MMU_PRINT_START(self, gcmd):
-        # If we are in endstate run initializer
-#        if self.print_job_state in ("standby", "complete", "error", "cancelled"):
-#        if not self.print_job_state in ("started", "printing"): # PAUL this better?
         self._on_print_start()
 
     cmd_MMU_PRINT_END_help = "Restore MMU idle state after print"
     def cmd_MMU_PRINT_END(self, gcmd):
-        # If not already in endstate run finalizer
-#        if not self.print_job_state in ("standby", "complete", "error", "cancelled"):
         end_state = gcmd.get('STATE', "complete")
         self._on_print_end(end_state)
 
@@ -4056,55 +4035,99 @@ class Mmu:
     def cmd_MMU_PAUSE(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
-        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1))
-        self._pause("Pause macro was directly called", force_in_print)
+        force_in_prrnt = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1))
+        self._mmu_pause("Pause macro was directly called", force_in_print)
+
+    cmd_MMU_UNLOCK_help = "Wakeup the MMU prior to resume to restore temperatures and timeouts"
+    def cmd_MMU_UNLOCK(self, gcmd):
+        if self._check_is_disabled(): return
+        if self._is_mmu_paused_locked():
+            self._mmu_unlock()
 
     # Not a user facing command - used in automatic wrapper
-    cmd_MMU_RESUME_help = "Wrapper around default RESUME macro"
-    def cmd_MMU_RESUME(self, gcmd):
+    cmd_RESUME_help = "Wrapper around default RESUME macro"
+    def cmd_RESUME(self, gcmd):
         if not self.is_enabled:
-            self.gcode.run_script_from_command("__RESUME") # User defined or Klipper default
+            self._wrap_gcode_command("__RESUME") # User defined or Klipper default behavior
             return
 
-        self._log_debug("MMU_RESUME wrapper called")
-        if self._is_pause_locked():
-            self._unlock()
-
-        if not self.printer.lookup_object("pause_resume").is_paused:
+        self._log_trace("MMU RESUME wrapper called")
+        if not self._is_paused() and not self._is_mmu_paused():
             self._log_always("Print is not paused")
             return
 
-        # Sanity check we are ready to go
-        if self._is_in_print() and self.filament_pos != self.FILAMENT_POS_LOADED:
-            if self._check_toolhead_sensor() == 1:
-                self._set_filament_pos(self.FILAMENT_POS_LOADED, silent=True)
-                self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
-            else:
-                self._log_always("State does not indicate flament is LOADED.  Please run `MMU_RECOVER LOADED=1` first")
-                return
+        if self._is_mmu_pause_locked():
+            self._mmu_unlock()
 
-        try:
-            self._log_trace("Running macro: __RESUME")
-            self.gcode.run_script_from_command("__RESUME")
-        except Exception as e:
-            self._log_error("Error running __RESUME: %s" % str(e))
-        self._resume()
+        if self._is_mmu_paused():
+            # Sanity check we are ready to go
+            if self._is_in_print() and self.filament_pos != self.FILAMENT_POS_LOADED:
+                if self._check_toolhead_sensor() == 1:
+                    self._set_filament_pos(self.FILAMENT_POS_LOADED, silent=True)
+                    self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
+                else:
+                    self._log_always("State does not indicate flament is LOADED.  Please run `MMU_RECOVER LOADED=1` first")
+                    return
+
+        self._wrap_gcode_command("__RESUME")
+        self._mmu_resume()
         # Continue printing...
+
+    # Not a user facing command - used in automatic wrapper
+    cmd_PAUSE_help = "Wrapper around default PAUSE macro"
+    def cmd_PAUSE(self, gcmd): # PAUL WIP
+        if self.is_enabled:
+            self._log_trace("MMU PAUSE wrapper called")
+            # TODO what is the meaning for mmu if called during a print?
+        self._wrap_gcode_command("__PAUSE") # User defined or Klipper default behavior
+
+    # Not a user facing command - used in automatic wrapper
+    cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
+    def cmd_CLEAR_PAUSE(self, gcmd):
+        if self.is_enabled:
+            self._log_trace("MMU CLEAR_PAUSE wrapper called")
+            # TODO what is the meaning for mmu if called during a print?
+        self._wrap_gcode_command("__CLEAR_PAUSE") # User defined or Klipper default behavior
+
+# PAUL old MMU_RESUME
+#    # Not a user facing command - used in automatic wrapper
+#    cmd_MMU_RESUME_help = "Wrapper around default RESUME macro"
+#    def cmd_MMU_RESUME(self, gcmd):
+#        if not self.is_enabled:
+#            self._wrap_gcode_command("__RESUME") # User defined or Klipper default behavior
+#            return
+#
+#        self._log_debug("MMU_RESUME wrapper called")
+#        if self._is_mmu_paused():
+#            self._mmu_unlock()
+#
+#        if not self.printer.lookup_object("pause_resume").is_paused:
+#            self._log_always("Print is not paused")
+#            return
+#
+#        # Sanity check we are ready to go
+#        if self._is_in_print() and self.filament_pos != self.FILAMENT_POS_LOADED:
+#            if self._check_toolhead_sensor() == 1:
+#                self._set_filament_pos(self.FILAMENT_POS_LOADED, silent=True)
+#                self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
+#            else:
+#                self._log_always("State does not indicate flament is LOADED.  Please run `MMU_RECOVER LOADED=1` first")
+#                return
+#
+#        self._wrap_gcode_command("__RESUME")
+#        self._resume()
+#        # Continue printing...
 
     # Not a user facing command - used in automatic wrapper
     cmd_MMU_CANCEL_PRINT_help = "Wrapper around default CANCEL_PRINT macro"
     def cmd_MMU_CANCEL_PRINT(self, gcmd):
         if not self.is_enabled:
-            self.gcode.run_script_from_command("__CANCEL_PRINT") # User defined or Klipper default
+            self._wrap_gcode_command("__CANCEL_PRINT") # User defined or Klipper default behavior
             return
 
         self._log_debug("MMU_CANCEL_PRINT wrapper called")
         self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error)
-        try:
-            self._log_trace("Running macro: __CANCEL_PRINT")
-            self.gcode.run_script_from_command("__CANCEL_PRINT")
-        except Exception as e:
-            self._log_error("Error running _MMU_ENDLESS_SPOOL_PRE_UNLOAD: %s" % str(e))
+        self._wrap_gcode_command("__CANCEL_PRINT")
         self._on_print_end("cancelled")
 
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
@@ -4209,7 +4232,7 @@ class Mmu:
                             self._unload_tool()
             self._select_tool(0)
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
 
     cmd_MMU_TEST_GRIP_help = "Test the MMU grip for a Tool"
     def cmd_MMU_TEST_GRIP(self, gcmd):
@@ -4453,24 +4476,16 @@ class Mmu:
                 raise MmuError("No more EndlessSpool spools available after checking gates %s" % checked_gates)
             self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
             # save the extruder temperature for the resume after swapping filaments.
-            if self.paused_extruder_temp == 0.: # Only save the initial pause temp
+            if not self.paused_extruder_temp: # Only save the initial pause temp
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
-            try:
-                self._log_trace("Running macro: _MMU_ENDLESS_SPOOL_PRE_UNLOAD")
-                self.gcode.run_script_from_command("_MMU_ENDLESS_SPOOL_PRE_UNLOAD")
-            except Exception as e:
-                raise MmuError("Error running _MMU_ENDLESS_SPOOL_PRE_UNLOAD: %s" % str(e))
+            self._wrap_gcode_command("__MMU_ENDLESS_SPOOL_PRE_UNLOAD")
             detected, park_pos = self._form_tip_standalone(extruder_stepper_only=True)
             if not detected:
                 self._log_info("Filament didn't reach encoder after tip forming move")
             self._unload_tool(skip_tip=True)
             self._remap_tool(self.tool_selected, next_gate, 1)
             self._select_and_load_tool(self.tool_selected)
-            try:
-                self._log_trace("Running macro: _MMU_ENDLESS_SPOOL_POST_LOAD")
-                self.gcode.run_script_from_command("_MMU_ENDLESS_SPOOL_POST_LOAD")
-            except Exception as e:
-                raise MmuError("Error running _MMU_ENDLESS_SPOOL_PRE_UNLOAD: %s" % str(e))
+            self._wrap_gcode_command("__MMU_ENDLESS_SPOOL_POST_LOAD")
             self._restore_toolhead_position("runout")
             self._reset_encoder_counts()    # Encoder 0000
             self._enable_encoder_sensor(restore_encoder)
@@ -4626,7 +4641,7 @@ class Mmu:
         try:
             self._handle_runout(force_runout)
         except MmuError as ee:
-            self._pause(str(ee))
+            self._mmu_pause(str(ee))
 
     cmd_MMU_ENCODER_INSERT_help = "Internal encoder filament detection handler"
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
@@ -4636,7 +4651,7 @@ class Mmu:
 #        try:
 #            self._handle_detection()
 #        except MmuError as ee:
-#            self._pause(str(ee))
+#            self._mmu_pause(str(ee))
 
     cmd_MMU_REMAP_TTG_help = "Remap a tool to a specific gate and set gate availability"
     def cmd_MMU_REMAP_TTG(self, gcmd):
@@ -4762,7 +4777,7 @@ class Mmu:
                 except ValueError as ve:
                     msg = "Invalid TOOLS parameter: %s" % tools
                     if self._is_in_print():
-                        self._pause(msg)
+                        self._mmu_pause(msg)
                     else:
                         self._log_always(msg)
                     return
@@ -4798,7 +4813,7 @@ class Mmu:
                     except MmuError as ee:
                         msg = "Failure during check gate #%d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
                         if self._is_in_print():
-                            self._pause(msg)
+                            self._mmu_pause(msg)
                         else:
                             self._log_always(msg)
                         return
@@ -4810,7 +4825,7 @@ class Mmu:
                     else:
                         msg = "Gate #%d - filament not detected. Marked empty" % gate
                     if self._is_in_print():
-                        self._pause(msg)
+                        self._mmu_pause(msg)
                     else:
                         self._log_info(msg)
                 finally:
