@@ -163,6 +163,7 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     MMU_SET_GATE_MAP : Define the type and color of filaments on each gate
     MMU_STATUS : Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder stepper
+    MMU_UNLOCK : Wakeup the MMU prior to resume to restore temperatures and timeouts
 ```
 
 > MMU_HELP MACROS=1 TESTING=1
