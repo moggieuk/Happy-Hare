@@ -788,7 +788,10 @@ class Mmu:
         swap_stats = self.variables.get(self.VARS_MMU_SWAP_STATISTICS, {})
         self.statistics.update(swap_stats)
         for gate in range(self.mmu_num_gates):
-            self.gate_statistics[gate] = self.variables.get("%s%d" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate), self.EMPTY_GATE_STATS_ENTRY.copy())
+            self.gate_statistics[gate] = self.EMPTY_GATE_STATS_ENTRY.copy()
+            gstats = self.variables.get("%s%d" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate), None)
+            if gstats:
+                self.gate_statistics[gate].update(gstats)
 
     def handle_disconnect(self):
         self._log_debug('MMU Shutdown')
@@ -1024,15 +1027,17 @@ class Mmu:
             # Give the gate a reliability grading based on "quality" which is based on slippage
             if quality < 0:
                 status = "n/a"
-            elif quality > 0.98:
+            elif quality >= 0.98:
+                status = "Perfect"
+            elif quality >= 0.96:
                 status = "Great"
-            elif quality > 0.96:
+            elif quality >= 0.94:
                 status = "Good"
-            elif quality > 0.94:
+            elif quality >= 0.92:
                 status = "Marginal"
-            elif quality > 0.92:
-                status = "Dequality"
-            elif quality > 0.90:
+            elif quality >= 0.90:
+                status = "Degraded"
+            elif quality >= 0.85:
                 status = "Poor"
             else:
                 status = "Terrible"
@@ -4770,9 +4775,9 @@ class Mmu:
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates)
         speed = gcmd.get_int('M220', None, minval=0, maxval=200)
         extrusion = gcmd.get_int('M221', None, minval=0, maxval=200)
-        clear = gcmd.get_int('CLEAR', 0, minval=0, maxval=1)
+        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
 
-        if clear == 1:
+        if reset == 1:
             self._set_tool_override(tool, 100, 100)
         elif tool >= 0:
             self._set_tool_override(tool, speed_factor=speed, extrude_factor=extrusion)
