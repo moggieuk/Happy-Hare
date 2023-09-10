@@ -31,6 +31,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_SET_GATE_MAP : Define the type and color of filaments on each gate
     MMU_STATUS : Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder motor
+    MMU_TOOL_OVERRIDES : Displays, sets or clears tool speed and extrusion factors (M220 & M221)
     MMU_UNLOCK : Wakeup the MMU prior to resume to restore temperatures and timeouts
 ```
 
@@ -50,6 +51,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_PAUSE` | Pause the current print and lock the MMU operations. (`MMU_UNLOCK + RESUME` or just `RESUME` to continue print) | `FORCE_IN_PRINT=[0\|1]` This option forces the handling of pause as if it occurred in print and is useful for testing. Calls `PAUSE` by default or your `pause_macro` if set |
   | `MMU_RECOVER` | Recover filament position and optionally reset MMU state. Useful to call prior to RESUME if you intervene/manipulate filament by hand | `TOOL=[0..n]\|-2` Optionally force set the currently selected tool (-2 = bypass). Use caution! <br>`GATE=[0..n]` Optionally force set the currently selected gate if TTG mapping is being leveraged otherwise it will get the gate associated with current tool. Use caution! <br>`LOADED=[0\|1]` Optionally specify if the filamanet is fully loaded or fully unloaded. Use caution! If not specified, MMU will try to discover filament position <br>`STRICT=[0\|1]` If automatically detecting impose stricter testing for filament position (temporarily sets 'strict_filament_recovery' parameter) |
   | `MMU_ENCODER` | Displays the current value of the MMU encoder or explicitly enable or disable the encoder. Note that the encoder state is set automatically so this will only be sticky until next tool change | `ENABLE=[0\|1]` Enable/Disable <br>`VALUE=..` Set the current distance |
+  | `MMU_TOOL_OVERRIDES` | Displays, sets or clears tool speed and extrusion factors (M220 & M221) | `TOOL=[0..n]` Specify tool to set <br> `M220=[0-200]` Speed (feedrate) multiplier percentage <br> `M221=[0-200]` Extrusion multiplier percentage <br> `RESET=1` Reset specified override for specified tool to default 100%. Note that omitting `TOOL=` will reset all tools |
   | `MMU_UNLOCK` | Wakeup the MMU prior to RESUME to restore temperatures and timeouts | None |
   | `MMU_HELP` | Generate reminder list of command set | `TESTING=[0\|1]` Also list the testing commands <br>`MACROS=[0\|1]` Also list the callback backros |
   <br>
