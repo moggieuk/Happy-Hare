@@ -213,7 +213,7 @@ sync_form_tip: 0			# Synchronize during standalone tip formation (initial part o
 # Often it is useful to increase the current for this generally rapid movement
 #
 extruder_form_tip_current: 100		# % of extruder current (100%-150%) to use when forming tip (100 to disable)
-force_form_tip_standalone: 0		# 0 = Default smart behavor, 1 = Always do standalone tip forming (TURN SLICER OFF!)
+force_form_tip_standalone: 0		# 0 = Default smart behavior, 1 = Always do standalone tip forming (TURN SLICER OFF!)
 ```
 
 Clog detection and EndlessSpool feature is well documented [here](https://github.com/moggieuk/Happy-Hare#5-clogrunout-detection-endlessspool-and-flowrate-monitoring).
@@ -281,7 +281,7 @@ This section contains a list of overrides for macros that Happy Hare calls inter
 # Advanced: MMU macro overrides --- ONLY SET IF YOU'RE COMFORTABLE WITH KLIPPER MACROS -----------------------------------
 #
 # When a print or the MMU should be paused, Happy Hare will call the `PAUSE` macro by default. If you want additional
-# behaviour, you can override the macro that is called by Happy Hare. Some examples as to why you may want this:
+# behavior, you can override the macro that is called by Happy Hare. Some examples as to why you may want this:
 # 1. You are using a sparse purge tower and you want Happy Hare errors to park above your purge tower as to not hit
 #    any models that are between your tower and normal pause location
 # 2. You want to additionally call a macro that sends a push notification on filament swap error

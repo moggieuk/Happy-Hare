@@ -59,11 +59,11 @@ gcode:
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_PRE_UNLOAD & _MMU_POST_LOAD
-These two macros which are empty by default allow for a convenient place to add logic just before the unload of old filament and after the load of new filament on a toolchange. This allows for logic to move the toolhead to purge area to avoid ooze as well as to perform a tip cleaning procedure prior to continuing the print. Note that it is excepected that `_MMU_POST_LOAD` will return the toolhead to the position saved in `_MMU_PRE_UNLOAD`, however, Happy Hare has optional built in control of the z-hop height (set with `z_hop_height_toolchange` parameter) and also will ensure than the toolhead returns to the correct postion in all situations (like user corrected errors during the toolchange).
+When in a print, these two macros which are empty by default allow for a convenient place to add logic just before the unload of old filament and after the load of new filament on a toolchange. This allows for logic to move the toolhead to purge area to avoid ooze as well as to perform a tip cleaning procedure prior to continuing the print. Note that it is excepected that `_MMU_POST_LOAD` will return the toolhead to the position saved in `_MMU_PRE_UNLOAD`, however, Happy Hare has optional built in control of the z-hop height (set with `z_hop_height_toolchange` parameter) and also will ensure than the toolhead returns to the correct postion in all situations (like user corrected errors during the toolchange).
 
 ```yml
 ###########################################################################
-# Callback macros for modifying Happy Hare behavour
+# Callback macros for modifying Happy Hare behavior
 # This occurs prior to unloading filament on a toolchange
 #
 # Typically you would move toolhead to a position where oozing is not a problem
@@ -75,7 +75,7 @@ description: Optional pre unload routine for filament change
 gcode:
 
 ###########################################################################
-# Callback macros for modifying Happy Hare behavour
+# Callback macros for modifying Happy Hare behavior
 # This occurs after loading new filament on a toolchange
 #
 # Typically you would clean nozzle if equiped and return to previous position
@@ -97,7 +97,7 @@ Here are the default macros:
 
 ```yml
 ###########################################################################
-# Callback macros for modifying Happy Hare behavour
+# Callback macros for modifying Happy Hare behavior
 # Note that EndlessSpool is an unsupervised filament change
 # This occurs prior to MMU forming tip and ejecting the remains of the old filament
 #
@@ -114,7 +114,7 @@ gcode:
     PAUSE
 
 ###########################################################################
-# Callback macros for modifying Happy Hare behavour
+# Callback macros for modifying Happy Hare behavior
 # Note that EndlessSpool is an unsupervised filament change
 # This occurs after MMU has loaded the new filament from the next spool in rotation
 # MMU will have loaded the new filament to the nozzle the same way as a normal filament
@@ -228,7 +228,7 @@ In additon to these states the macros are passed some additional information and
 # This reference example load sequence mimicks the internal ones exactly. It uses the
 # high level "modular" movements that are all controlled by parameters defined in
 # mmu_parameters.cfg and automatically keep the internal filament position state up-to-date.
-# Switching to these macros should not change behavor and can serve as a starting point for
+# Switching to these macros should not change behavior and can serve as a starting point for
 # your customizations
 #
 # State Machine:

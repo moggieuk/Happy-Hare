@@ -610,8 +610,11 @@ class Mmu:
             raise self.config.error("Extruder named `%s` not found on printer" % self.extruder_name)
 
         # Sanity check required klipper options are enabled
-        pause_resume = self.printer.lookup_object('pause_resume', None)
-        if pause_resume is None:
+        self.print_stats = self.printer.lookup_object("print_stats", None)
+        if self.print_stats is None:
+            self._log_debug("[virtual_sdcard] is not found in config, advanced state control is not possible")
+        self.pause_resume = self.printer.lookup_object('pause_resume', None)
+        if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
         if self.toolhead_sensor is None:
@@ -1397,7 +1400,7 @@ class Mmu:
     def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
-        fallback_print_state = 1 if self._is_in_print() or self._is_paused() else 0
+        fallback_print_state = 1 if self._is_in_print() or self._is_mmu_paused() else 0 # PAUL
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         in_print = gcmd.get_int('IN_PRINT', fallback_print_state, minval=0, maxval=1)
@@ -1897,11 +1900,13 @@ class Mmu:
     def _handle_idle_timeout_idle(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "idle")
 
-    def _is_in_print(self):
-        return self.print_job_state in ("started", "printing")
+    def _is_in_print(self, force_in_print=False):
+        return self.print_job_state in ("started", "printing") or force_in_print # shouldn't this include pause and pause_locked?
+        # PAUL If no print_stats, then use idle_timeout printing state.
+        # PAUL could look at resume_to_state!
 
     def _is_paused(self): # Printer is paused
-         return self.printer.lookup_object("pause_resume").is_paused
+        return self.pause_resume.is_paused
 
     def _is_mmu_paused(self): # The MMU is paused
         return self.print_job_state in ("pause_locked", "paused")
@@ -1917,7 +1922,7 @@ class Mmu:
     #
     # Klipper reference sources for state:
     # print_stats: {'filename': '', 'total_duration': 0.0, 'print_duration': 0.0,
-    #               'filament_used': 0.0, 'state': error|paused|standby|printing|complete|cancelled,
+    #               'filament_used': 0.0, 'state': standby|printing|paused|complete|cancelled|error,
     #               'message': '', 'info': {'total_layer': None, 'current_layer': None}}
     # idle_status: {'state': Idle|Ready|Printing, `printing_time`: 0.0}
     # pause_resume: {'is_paused': True|False}
@@ -1926,34 +1931,39 @@ class Mmu:
         if not self.is_enabled: return
         self._log_trace("Processing idle_timeout '%s' event" % event_type)
 
-        print_stats = self.printer.lookup_object("print_stats", None)
-        if print_stats is not None:
-            ps = print_stats.get_status(eventtime)
+        if self.print_stats is not None:
+            new_ps = self.print_stats.get_status(eventtime)
             if self.last_print_stats is None:
-                self.last_print_stats = dict(ps)
+                self.last_print_stats = dict(new_ps)
             prev_ps = self.last_print_stats
-            new_ps = dict(ps)
-            new_ps.pop('info')
-            new_ps.pop('message')
-            new_ps.pop('filament_used')
             old_state = prev_ps['state']
-            new_state = ps['state']
+            new_state = new_ps['state']
             #self._log_trace("Current Job State: %s, print_stats: %s" % (self.print_job_state.upper(), new_ps))
-
             if new_state is not old_state:
                 if new_state == "printing":
                     # Figure out the difference between initial job start and resume
                     if prev_ps['state'] == "paused" and prev_ps['filename'] == new_ps['filename'] and prev_ps['total_duration'] < new_ps['total_duration']:
                         # This is a 'resumed' state so ignore
-                        pass
+                        self._log_trace("Automaticaly detected RESUME (ignored), new_state=%s, current state=%s" % (new_state, self.print_job_state))
                     else:
                         # This is a 'started' state
                         self._log_trace("Automaticaly detected JOB START, new_state=%s, current state=%s" % (new_state, self.print_job_state))
                         self._exec_gcode("_MMU_PRINT_START")
-#                        self.reactor.register_callback(self._print_start_event_handler)
                 elif new_state in ("complete", "error"):
                     self._log_trace("Automatically detected JOB %s, new_state=%s, current state=%s" % (new_state.upper(), new_state, self.print_job_state))
                     self._exec_gcode("_MMU_PRINT_END STATE=%s" % new_state)
+                self.last_print_stats = dict(new_ps)
+
+        if event_type == "idle":
+            if self.print_stats is not None and self.last_print_stats['state'] not in ("printing", "paused") and not self._is_mmu_paused():
+                self._exec_gcode("_MMU_PRINT_END STATE=standby")
+            elif self.print_stats is None:
+                pass # PAUL what to do here? Nothing?
+
+
+# PAUL old ref code
+#                        self.reactor.register_callback(self._print_start_event_handler)
+
 #                elif new_state == "complete":
 #                    self._log_trace("Automatically detected JOB COMPLETE, new_state=%s, current state=%s" % (new_state, self.print_job_state))
 #                    self.reactor.register_callback(self._print_complete_event_handler)
@@ -1961,13 +1971,8 @@ class Mmu:
 #                    self._log_trace("Automatically detected JOB ERROR, new_state=%s, current state=%s" % (new_state, self.print_job_state))
 #                    self.reactor.register_callback(self._print_error_event_handler)
 
-            self.last_print_stats = new_ps
-
 #        if event_type == "idle" and self._is_in_endstate():
 #            self._set_print_job_state("standby")
-        if event_type == "idle":
-            self._exec_gcode("_MMU_PRINT_END STATE=standby")
-
 #    def _print_start_event_handler(self, eventtime):
 #        self._exec_gcode("_MMU_PRINT_START")
 #
@@ -1987,9 +1992,10 @@ class Mmu:
     def _set_print_job_state(self, print_state):
         if print_state != self.print_job_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
-            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Position saved: %s, Printer paused: %s, Idle timeout: %.2fs)"
+            # PAUL should be debug level
+            self._log_error("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, pause_resume: %s, Idle timeout: %.2fs)"
                     % (self.print_job_state.upper(), print_state.upper(), self._get_encoder_state(), self.gear_stepper.is_synced(), self.paused_extruder_temp,
-                        self.saved_toolhead_position, self._is_paused(), idle_timeout))
+                        self.resume_to_state, self.saved_toolhead_position, self._is_paused(), idle_timeout))
             self.print_job_state = print_state
 
     # If this is called automatically it will occur immediately the first gcode action
@@ -2023,11 +2029,15 @@ class Mmu:
         if not self.paused_extruder_temp: # Only save the initial pause temp
             self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
 
-        if self._is_in_print() or force_in_print:
+        # When entering pause establish if we were in print or just standby
+        if not self._is_mmu_paused():
+            self.resume_to_state = "printing" if self._is_in_print() else "standby"
+
+        if self._is_in_print(force_in_print):
             if self._is_mmu_paused():
+                # Should only occur with mulitple calls with FORCE_IN_PRINT=1
                 self._log_debug("Assertion failure: Pause called from within pause state")
                 return
-            self.resume_to_state = "printing" if self._is_in_print() else "standby"
             self._track_pause_start()
             self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
             self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
@@ -2035,7 +2045,7 @@ class Mmu:
             self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_error)
             msg = "An issue with the MMU has been detected. Print paused"
             reason = "Reason: %s" % reason
-            extra = "After fixing the issue, call \'RESUME\' to continue printing"
+            extra = "After fixing the issue, call \'RESUME\' to continue printing (MMU_UNLOCK can restore temperature)"
             run_pause_macro = True
             self._set_print_job_state("pause_locked")
 
@@ -2064,6 +2074,8 @@ class Mmu:
         # Important to wait for stable temperature to resume exactly how we paused
         self._ensure_safe_extruder_temperature(self.paused_extruder_temp, wait=True)
 
+# PAUL split into _mmu_resume() ONE TIME  and _resume() MANY TIMES OK
+# PAUL ABOVE is NOT CORRECT. _mmu_resume must be called one only. 
     def _mmu_resume(self):
         self._log_trace("_mmu_resume()")
         self._ensure_safe_extruder_temperature(self.paused_extruder_temp, wait=True)
@@ -2072,6 +2084,8 @@ class Mmu:
         self._enable_encoder_sensor(True) # Enable runout/clog detection
         self._reset_encoder_counts() # Encoder 0000
         self._restore_toolhead_position("pause")
+
+        # PAUL .. protect against multiple calls and only track if was mmu_pause
         self._track_pause_end()
         self._set_print_job_state(self.resume_to_state)
         self.resume_to_state = "standby"
@@ -2079,7 +2093,7 @@ class Mmu:
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics
     def _on_print_end(self, state="complete"):
-        if not self.print_job_state in ("standby", "complete", "error", "cancelled"):
+        if not self.print_job_state in ("complete", "error", "cancelled", "standby"):
             self._log_trace("_on_print_end(%s)" % state)
             self.saved_toolhead_position = None
             self.resume_to_state = "standby"
@@ -2891,6 +2905,7 @@ class Mmu:
         if self.gate_status[gate] == self.GATE_EMPTY:
             raise MmuError("Gate %d is empty!" % gate)
         self._load_sequence(self.calibrated_bowden_length)
+    # PAUL should _MMU_POST_LOAD be called? if_in_print
 
     def _load_sequence(self, length, skip_extruder=False, extruder_only=False):
         self._log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
@@ -3245,6 +3260,7 @@ class Mmu:
             self._log_debug("Tool already unloaded")
             return
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
+    # PAUL should _MMU_PRE_UNLOAD be called? if_in_print
         self._unload_sequence(self.calibrated_bowden_length, skip_tip=skip_tip)
 
     def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
@@ -3787,8 +3803,8 @@ class Mmu:
             self._log_debug("Set speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor, extrude_factor))
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
-    def _change_tool(self, tool, skip_tip=True):
-        self._log_debug("Tool change initiated %s" % ("with slicer forming tip" if skip_tip else "with standalone MMU tip formation"))
+    def _change_tool(self, tool, in_print, skip_tip=True):
+        self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
         self._sync_gear_to_extruder(False) # Safety
         skip_unload = False
         initial_tool_string = "Unknown" if self.tool_selected < 0 else ("T%d" % self.tool_selected)
@@ -3823,10 +3839,11 @@ class Mmu:
         # Notify start of actual toolchange operation
         self.printer.send_event("mmu:toolchange", self, self._last_tool, self._next_tool)
 
-        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
-        gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
-        if gcode is not None:
-            self._wrap_gcode_command("_MMU_PRE_UNLOAD", exception=True)
+        if in_print:
+            self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
+            gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
+            if gcode is not None:
+                self._wrap_gcode_command("_MMU_PRE_UNLOAD", exception=True)
 
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
@@ -3834,11 +3851,12 @@ class Mmu:
 
         self._select_and_load_tool(tool)
         self._track_swap_completed()
-        gcode = self.printer.lookup_object('gcode_macro _MMU_POST_LOAD', None)
-        if gcode is not None:
-            self._wrap_gcode_command("_MMU_POST_LOAD", exception=True)
+        if in_print:
+            gcode = self.printer.lookup_object('gcode_macro _MMU_POST_LOAD', None)
+            if gcode is not None:
+                self._wrap_gcode_command("_MMU_POST_LOAD", exception=True)
+            self._restore_toolhead_position("change_tool")
 
-        self._restore_toolhead_position("change_tool")
         self._restore_tool_override(self.tool_selected)
         self.gcode.run_script_from_command("M117 T%s" % tool)
 
@@ -3994,6 +4012,7 @@ class Mmu:
             tool = gcmd.get_int('TOOL', minval=0, maxval=self.mmu_num_gates - 1)
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
+        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1))
         skip_tip = self._is_in_print() and not (standalone or self.force_form_tip_standalone)
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
             self._recover_filament_pos(message=True)
@@ -4002,11 +4021,11 @@ class Mmu:
         self._last_tool = self.tool_selected
         self._next_tool = tool
 
-        attempts = 2 if self.retry_tool_change_on_error and (self._is_in_print() or standalone) else 1
+        attempts = 2 if self.retry_tool_change_on_error and (self._is_in_print(force_in_print) or standalone) else 1
         try:
             for i in range(attempts):
                 try:
-                    self._change_tool(tool, skip_tip)
+                    self._change_tool(tool, self._is_in_print(force_in_print), skip_tip)
                     continue
                 except MmuError as ee:
                     if i == attempts - 1:
@@ -4116,16 +4135,16 @@ class Mmu:
 
         if self._is_mmu_paused():
             # Sanity check we are ready to go
-            if self._is_in_print() and self.filament_pos != self.FILAMENT_POS_LOADED:
+            if self._is_in_print() and self.filament_pos != self.FILAMENT_POS_LOADED: # PAUL: Should really be a "really in print" test
                 if self._check_toolhead_sensor() == 1:
                     self._set_filament_pos(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
                 else:
-                    self._log_always("State does not indicate flament is LOADED.  Please run `MMU_RECOVER LOADED=1` first")
+                    self._log_always("State does not indicate flament is LOADED. Run `MMU_RECOVER LOADED=1` to indicate filament is loaded")
                     return
 
         self._wrap_gcode_command("__RESUME", None)
-        self._mmu_resume()
+        self._mmu_resume() # PAUL not correct
         # Continue printing...
 
     # Not a user facing command - used in automatic wrapper
