@@ -3420,7 +3420,9 @@ class Mmu:
             self.toolhead.dwell(0.2)
             self.toolhead.wait_moves()
             delta = self._get_encoder_distance() - initial_encoder_position
-            park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
+            park_pos = self.printer.lookup_object("gcode_macro _MMU_FORM_TIP_STANDALONE").variables.get("output_park_pos", -1)
+            if park_pos < 0:
+                park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
             self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos, delta))
             self._set_encoder_distance(initial_encoder_position + park_pos)
             self.filament_distance += park_pos
