@@ -3423,7 +3423,9 @@ class Mmu:
             park_pos = self.printer.lookup_object("gcode_macro _MMU_FORM_TIP_STANDALONE").variables.get("output_park_pos", -1)
             if park_pos < 0:
                 park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
-            self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos, delta))
+                self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos, delta))
+            else:
+                self._log_trace("After tip formation, park_pos reported as: %.2f (encoder moved %.2f)" % (park_pos, delta))
             self._set_encoder_distance(initial_encoder_position + park_pos)
             self.filament_distance += park_pos
             if self.extruder_tmc and self.extruder_form_tip_current > 100:
@@ -3641,7 +3643,8 @@ class Mmu:
         # Notify start of actual toolchange operation
         self.printer.send_event("mmu:toolchange", self, self._last_tool, self._next_tool)
 
-        self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange)
+        if self._is_in_print():
+            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange)
         gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
         if gcode is not None:
             try:
@@ -3661,7 +3664,8 @@ class Mmu:
                 self.gcode.run_script_from_command("_MMU_POST_LOAD")
             except Exception as e:
                 raise MmuError("Error running user _MMU_POST_LOAD macro: %s" % str(e))
-        self._restore_toolhead_position()
+        if self._is_in_print():
+            self._restore_toolhead_position()
         self._restore_tool_override(self.tool_selected)
         self.gcode.run_script_from_command("M117 T%s" % tool)
 
