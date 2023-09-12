@@ -184,7 +184,20 @@ variable_parking_distance: 35          # Final filament parking position after f
 
 # Final Eject - for standalone tuning only
 variable_final_eject: 0                # default 0, enable during standalone tuning process to eject the filament
+
+# The park position of the filament is relative to the nozzle and represents where the end of the filament is
+# after tip forming. The park position is important and used by Happy Hare to finish unloading the extruder.
+# A negative value means that Happy hare will automatically calculate the park position based on the aggregate
+# movement of the extruder.  However, in some tip forming setups (e.g. filament cutter), the tip forming procedure
+# must decide its own park position and report this back to Happy Hare by setting the output variable to a
+# positive value.
+variable_output_park_pos: -1           # The park position (output variable passed back to Happy Hare)
 ```
+
+> [!NOTE]  
+> The `output_park_pos` variable is used to pass the resultant position of the filament back to Happy Hare.  Only change this if you are doing something clever like filament cutting otherwise the default behavior of Happy Hare measuring where it ends up (i.e. -1 value)
+> You can set the return value with:
+> `SET_GCODE_VARIABLE MACRO=_MMU_FORM_TIP_STANDALONE VARIABLE=output_park_pos VALUE=`
 
 <br>
 
