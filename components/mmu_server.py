@@ -32,7 +32,7 @@ class MmuServer:
         if has_placeholder:
             self._log("Writing MMU metadata to file: " + file_path)
             return self._inject_tool_usage(file_path, tools_used)
-        else :
+        else:
             self._log("No MMU metadata placeholder found in file: " + file_path)
             return False
 
