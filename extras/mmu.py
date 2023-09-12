@@ -3824,29 +3824,17 @@ class Mmu:
         # Notify start of actual toolchange operation
         self.printer.send_event("mmu:toolchange", self, self._last_tool, self._next_tool)
 
-<<<<<<< HEAD
         if in_print:
             self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
             gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
             if gcode is not None:
                 self._wrap_gcode_command("_MMU_PRE_UNLOAD", exception=True)
-=======
-        if self._is_in_print():
-            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange)
-        gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
-        if gcode is not None:
-            try:
-                self.gcode.run_script_from_command("_MMU_PRE_UNLOAD")
-            except Exception as e:
-                raise MmuError("Error running user _MMU_PRE_UNLOAD macro: %s" % str(e))
->>>>>>> main
 
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
 
         self._select_and_load_tool(tool)
         self._track_swap_completed()
-<<<<<<< HEAD
 
         if in_print:
             gcode = self.printer.lookup_object('gcode_macro _MMU_POST_LOAD', None)
@@ -3855,17 +3843,6 @@ class Mmu:
             self._restore_toolhead_position("change_tool")
         self._restore_tool_override(self.tool_selected) # Must be after _restore_toolhead_position()
 
-=======
-        gcode = self.printer.lookup_object('gcode_macro _MMU_POST_LOAD', None)
-        if gcode is not None:
-            try:
-                self.gcode.run_script_from_command("_MMU_POST_LOAD")
-            except Exception as e:
-                raise MmuError("Error running user _MMU_POST_LOAD macro: %s" % str(e))
-        if self._is_in_print():
-            self._restore_toolhead_position()
-        self._restore_tool_override(self.tool_selected)
->>>>>>> main
         self.gcode.run_script_from_command("M117 T%s" % tool)
 
     def _unselect_tool(self):
