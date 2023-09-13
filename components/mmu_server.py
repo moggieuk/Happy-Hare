@@ -1,3 +1,15 @@
+# Happy Hare MMU Software
+# Moonraker support for a file-preprocessor that injects MMU metadata into gcode files
+#
+# Copyright (C) 2023  Kieran Eglin <@kierantheman (discord)>, <kieran.eglin@gmail.com>
+#
+# (\_/)
+# ( *,*)
+# (")_(") MMU Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
 import logging, os, re, fileinput
 
 class MmuServer:
