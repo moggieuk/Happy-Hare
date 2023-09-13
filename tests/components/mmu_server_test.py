@@ -69,7 +69,7 @@ class TestMmuServerFileProcessor(unittest.TestCase):
 
         with open(self.TOOLCHANGE_FILEPATH, 'r') as f:
             file_contents = f.read()
-            self.assertIn('; start_gcode: PRINT_START MMU_TOOLS_USED=!mmu_inject_tools_used!', file_contents)
+            self.assertIn('; start_gcode: PRINT_START MMU_TOOLS_USED=!mmu_inject_referenced_tools!', file_contents)
 
     def test_inject_tool_usage_called_if_placeholder(self):
         self.subject._inject_tool_usage = MagicMock()
