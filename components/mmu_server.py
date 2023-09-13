@@ -1,7 +1,7 @@
 import logging, os, re, fileinput
 
 class MmuServer:
-    TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL.*?TOOL=)|(^T))(?P<tool>\d{1,2})"
+    TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<tool>\d{1,2})"
     METADATA_REPLACEMENT_STRING = "!mmu_inject_tools_used!"
 
     def __init__(self, config):

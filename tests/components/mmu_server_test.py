@@ -55,7 +55,7 @@ class TestMmuServerFileProcessor(unittest.TestCase):
 
         with open(self.TOOLCHANGE_FILEPATH, 'r') as f:
             file_contents = f.read()
-            self.assertIn('PRINT_START MMU_TOOLS_USED=0,1,3,4,12\n', file_contents)
+            self.assertIn('PRINT_START MMU_TOOLS_USED=0,1,3,4,5,12\n', file_contents)
 
     def test_write_mmu_metadata_when_no_toolchanges(self):
         self.subject._write_mmu_metadata(self.NO_TOOLCHANGE_FILEPATH)
