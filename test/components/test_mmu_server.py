@@ -6,13 +6,13 @@ from unittest.mock import MagicMock
 from components.mmu_server import MmuServer
 
 class TestMmuServerFileProcessor(unittest.TestCase):
-    TOOLCHANGE_FILEPATH = 'tests/support/toolchange.gcode'
-    NO_TOOLCHANGE_FILEPATH = 'tests/support/no_toolchange.gcode'
+    TOOLCHANGE_FILEPATH = 'test/support/toolchange.gcode'
+    NO_TOOLCHANGE_FILEPATH = 'test/support/no_toolchange.gcode'
 
     def setUp(self):
         self.subject = MmuServer(MagicMock())
-        shutil.copyfile('tests/support/toolchange.orig.gcode', self.TOOLCHANGE_FILEPATH)
-        shutil.copyfile('tests/support/no_toolchange.orig.gcode', self.NO_TOOLCHANGE_FILEPATH)
+        shutil.copyfile('test/support/toolchange.orig.gcode', self.TOOLCHANGE_FILEPATH)
+        shutil.copyfile('test/support/no_toolchange.orig.gcode', self.NO_TOOLCHANGE_FILEPATH)
 
     def tearDown(self):
         os.remove(self.TOOLCHANGE_FILEPATH)
