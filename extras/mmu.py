@@ -3703,7 +3703,7 @@ class Mmu:
 
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
-            self._record_tool_override(self.tool_selected)
+            self._record_tool_override()
 
         self._select_and_load_tool(tool)
         self._track_swap_completed()
