@@ -2837,18 +2837,6 @@ class Mmu:
         # Restore original macro variables
         gcode_macro.variables = orig_v
 
-# PAUL
-#                park_pos = self.printer.lookup_object("gcode_macro _MMU_FORM_TIP_STANDALONE").variables.get("output_park_pos", -1)
-#        final_eject = bool(gcmd.get_int('FINAL_EJECT', 1))
-#        extruder_stepper_only = bool(gcmd.get_int('EXTRUDER_ONLY', 1))
-#        try:
-#            detected, park_pos = self._form_tip_standalone(extruder_stepper_only, final_eject=final_eject)
-#            msg = "Filament: %s" % ("Detected" if detected else "Not detected")
-#            msg += (", Park Position: %.1f" % park_pos) if detected else ""
-#            self._log_always(msg)
-#        except MmuError as ee:
-#            raise gcmd.error(str(ee))
-
     cmd_MMU_STEP_LOAD_ENCODER_help = "User composable loading step: Move filament from gate to start of bowden using encoder"
     def cmd_MMU_STEP_LOAD_ENCODER(self, gcmd):
         try:
