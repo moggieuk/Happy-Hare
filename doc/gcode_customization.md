@@ -190,7 +190,12 @@ variable_final_eject: 0                # default 0, enable during standalone tun
 # A negative value means that Happy hare will automatically calculate the park position based on the aggregate
 # movement of the extruder.  However, in some tip forming setups (e.g. filament cutter), the tip forming procedure
 # must decide its own park position and report this back to Happy Hare by setting the output variable to a
-# positive value.
+# positive value. Also note that one side effect of setting this is the reduced ability to sense if filament was
+# really loaded in the extruder.
+#
+# The value can be set dynamically in gcode with this construct:
+#   SET_GCODE_VARIABLE MACRO=_MMU_FORM_TIP_STANDALONE VARIABLE=output_park_pos VALUE=-1
+#
 variable_output_park_pos: -1           # The park position (output variable passed back to Happy Hare)
 ```
 
