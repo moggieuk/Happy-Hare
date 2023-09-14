@@ -699,6 +699,7 @@ class Mmu:
         self.saved_toolhead_position = False
         self._servo_reset_state()
         self._reset_statistics()
+        self.form_tip_vars = None
 
     def _load_persisted_state(self):
         self._log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
@@ -826,6 +827,18 @@ class Mmu:
             self._servo_auto()
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
+
+    def _wrap_gcode_command(self, command, exception=False):
+        try:
+            macro = command.split()[0]
+            self._log_trace("Running macro: %s" % macro)
+            self.gcode.run_script_from_command(command)
+        except Exception as e:
+            if exception is not None:
+                if exception:
+                    raise MmuError("Error running %s: %s" % (macro, str(e)))
+                else:
+                    self._log_debug("Error running %s: %s" % (macro, str(e)))
 
 ####################################
 # LOGGING AND STATISTICS FUNCTIONS #
@@ -2587,14 +2600,42 @@ class Mmu:
 
     cmd_MMU_FORM_TIP_help = "Convenience macro for calling the standalone tip forming functionality"
     def cmd_MMU_FORM_TIP(self, gcmd):
-        extruder_stepper_only = gcmd.get_int('EXTRUDER_ONLY', 1)
-        try:
-            detected, park_pos = self._form_tip_standalone(extruder_stepper_only)
-            msg = "Filament: %s" % ("Detected" if detected else "Not detected")
-            msg += (", Park Position: %.1f" % park_pos) if detected else ""
-            self._log_always(msg)
-        except MmuError as ee:
-            raise gcmd.error(str(ee))
+        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
+        if reset:
+            self.form_tip_vars = None
+            self._log_always("Reset _MMU_FORM_TIP_STANDALONE variables to defaults in mmu_software.cfg")
+            return
+
+        gcode_macro = self.printer.lookup_object("gcode_macro _MMU_FORM_TIP_STANDALONE")
+        params = gcmd.get_command_parameters()
+        orig_v = gcode_macro.variables
+        if self.form_tip_vars:
+            gcode_vars = self.form_tip_vars
+        else:
+            gcode_vars = dict(orig_v)
+        for param in params:
+            value = gcmd.get(param)
+            param = param.lower()
+            if param.startswith("variable_"):
+                self._log_always("Removing 'variable_' from %s" % param)
+                param = param[9:]
+            if param in gcode_vars:
+                gcode_vars[param] = value
+            else:
+                self._log_always("Parameter %s does not exist for _MMU_FORM_TIP_STANDALONE macro" % param)
+
+        # Update variables and run the macro ensuring final eject
+        gcode_vars['final_eject'] = 1
+        msg = "Running _MMU_FORM_TIP_STANDALONE with the following variable settings:"
+        for k, v in gcode_vars.items():
+            msg += "\nvariable_%s: %s" % (k, v)
+        self._log_always(msg)
+        gcode_macro.variables = gcode_vars
+        self.form_tip_vars = gcode_vars # Save for later
+        self._wrap_gcode_command("_MMU_FORM_TIP_STANDALONE")
+
+        # Restore original macro variables
+        gcode_macro.variables = orig_v
 
     cmd_MMU_STEP_LOAD_ENCODER_help = "User composable loading step: Move filament from gate to start of bowden using encoder"
     def cmd_MMU_STEP_LOAD_ENCODER(self, gcmd):
