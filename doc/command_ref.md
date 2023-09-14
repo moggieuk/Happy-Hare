@@ -29,6 +29,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_SET_GATE_MAP - Define the type and color of filaments on each gate
     MMU_STATUS - Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR - Sync the MMU gear motor to the extruder motor
+    MMU_TOOL_OVERRIDES : Displays, sets or clears tool speed and extrusion factors (M220 & M221)
 ```
 
 
@@ -46,6 +47,8 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_PRELOAD` | Helper for filament loading. Feed filament into gate, MMU will catch it and correctly position at the specified gate | `GATE=[0..n]` The specific gate to preload. If omitted the currently selected gate can be loaded |
   | `MMU_PAUSE` | Pause the current print and lock the MMU operations | `FORCE_IN_PRINT=[0\|1]` This option forces the handling of pause as if it occurred in print and is useful for testing. Calls `PAUSE` by default or your `pause_macro` if set |
   | `MMU_RECOVER` | Recover filament position and optionally reset MMU state. Useful to call prior to RESUME if you intervene/manipulate filament by hand | `TOOL=[0..n]\|-2` Optionally force set the currently selected tool (-2 = bypass). Use caution! <br>`GATE=[0..n]` Optionally force set the currently selected gate if TTG mapping is being leveraged otherwise it will get the gate associated with current tool. Use caution! <br>`LOADED=[0\|1]` Optionally specify if the filamanet is fully loaded or fully unloaded. Use caution! If not specified, MMU will try to discover filament position <br>`STRICT=[0\|1]` If automatically detecting impose stricter testing for filament position (temporarily sets 'strict_filament_recovery' parameter) |
+  | `MMU_FORM_TIP` : Convenience macro to call to test the standalone tip forming functionality | Any valid `_MMU_FORM_TIP_STANDALONE` gcode variable can be supplied as a parameter and will override the defaults in the `mmu_software.cfg` file. overrides will remain active (sticky) until called with `RESET=1` which will cause Happy Hare to revert to starting values in `mmu_software.cfg` |
+  | `MMU_TOOL_OVERRIDES` | Displays, sets or clears tool speed and extrusion factors (M220 & M221) | `TOOL=[0..n]` Specify tool to set <br> `M220=[0-200]` Speed (feedrate) multiplier percentage <br> `M221=[0-200]` Extrusion multiplier percentage <br> `RESET=1` Reset specified override for specified tool to default 100%. Note that omitting `TOOL=` will reset all tools |
   | `MMU_ENCODER` | Displays the current value of the MMU encoder or explicitly enable or disable the encoder. Note that the encoder state is set automatically so this will only be sticky until next tool change | `ENABLE=[0\|1]` Enable/Disable <br>`VALUE=..` Set the current distance |
   | `MMU_HELP` | Generate reminder list of command set | `TESTING=[0\|1]` Also list the testing commands <br>`MACROS=[0\|1]` Also list the callback backros |
   <br>
