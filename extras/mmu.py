@@ -603,9 +603,10 @@ class Mmu:
         if self.gear_tmc is None:
             self._log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
 
-        # Establish gear_stepper initial current
+        # Establish gear_stepper initial gear_stepper and extruder currents
         self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
-        self.gear_percentage_run_current = 100.
+        self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
+        self.gear_percentage_run_current = self.extruder_percentage_run_current = 100.
 
         # Sanity check extruder name
         self.extruder = self.printer.lookup_object(self.extruder_name, None)
@@ -1203,7 +1204,7 @@ class Mmu:
         config = gcmd.get_int('SHOWCONFIG', 0, minval=0, maxval=1)
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
 
-        msg = "MMU %s v%s" % (self.mmu_vendor, self.mmu_version_string)
+        msg = "%s v%s" % (self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
         msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_mmu_paused() else "OPERATIONAL")
         msg += " Servo %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
@@ -2025,6 +2026,7 @@ class Mmu:
             extra = "After fixing the issue, call \'RESUME\' to continue printing (MMU_UNLOCK can restore temperature)"
             run_pause_macro = True
             self._set_print_state("pause_locked")
+            self.printer.send_event("mmu:mmu_paused", self) # Notify MMU paused event
 
         elif self._is_mmu_paused():
             msg = "An issue with the MMU has been detected whilst printer is paused"
@@ -2054,13 +2056,14 @@ class Mmu:
         if self._is_mmu_paused():
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.paused_extruder_temp = None
-            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=self.resume_to_state == "printing")
+            self._sync_gear_to_extruder(self.sync_to_extruder and self.resume_to_state == "printing", servo=True, current=self.resume_to_state == "printing")
             self._reset_encoder_counts() # Encoder 0000
             self._restore_toolhead_position("pause")
             self._track_pause_end()
             self._set_print_state(self.resume_to_state)
             self._enable_encoder_sensor() # Enable runout/clog detection if printing
             self.resume_to_state = "standby"
+            self.printer.send_event("mmu:mmu_resumed", self) # Notify MMU resumed event
 
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics
@@ -2232,7 +2235,7 @@ class Mmu:
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
-        self._log_trace("PAUL: paused_temp=%s, current_temp=%s, current_target_temp=%s, klip_min=%s, source=%s" % (self.paused_extruder_temp, current_temp, current_target_temp, klipper_minimum_temp, source)) # PAUL
+        self._log_trace("PAUL: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, self.default_extruder_temp, source)) # PAUL
 
         if source == "pause":
             new_target_temp = self.paused_extruder_temp
@@ -2246,8 +2249,12 @@ class Mmu:
                 source = "slicer"
             else:
                 # Standalone "just messing" case
-                new_target_temp = self.default_extruder_temp
-                source = "default"
+                if current_target_temp > self.default_extruder_temp:
+                    new_target_temp = current_target_temp
+                    source = "current"
+                else:
+                    new_target_temp = self.default_extruder_temp
+                    source = "default"
 
             if new_target_temp < klipper_minimum_temp:
                 # If, for some reason, the target temp is below Klipper's minimum, set to minimum
@@ -2256,6 +2263,9 @@ class Mmu:
                 # a more realistic temperature for safe operation.
                 new_target_temp = self.default_extruder_temp
                 source = "minimum"
+
+        if current_temp < new_target_temp:
+            wait = True
 
         if new_target_temp > current_target_temp:
             if source in ("default", "minimum"):
@@ -2720,15 +2730,6 @@ class Mmu:
             self._restore_gear_current()
         return prev_sync_state
 
-# PAUL
-#    @contextlib.contextmanager
-#    def _wrap_sync_gear(self, sync=True, servo=False, in_print=False):
-#        was_synced = self._sync_gear_to_extruder(sync, servo, in_print)
-#        try:
-#            yield self
-#        finally:
-#            self._sync_gear_to_extruder(was_synced, servo, in_print)
-
     def _adjust_gear_current(self, percent=100, reason=""):
          if self.gear_tmc and percent != self.gear_percentage_run_current and percent > 0 and percent < 200:
              self._log_info("Modifying gear_stepper run current to %d%% %s" % (percent, reason))
@@ -2748,6 +2749,26 @@ class Mmu:
             yield self
         finally:
             self._restore_gear_current()
+
+    def _adjust_extruder_current(self, percent=100, reason=""):
+         if self.extruder_tmc and percent != self.extruder_percentage_run_current and percent > 0 and percent < 200:
+             self._log_info("Modifying extruder_stepper run current to %d%% %s" % (percent, reason))
+             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.extruder_name, (self.extruder_default_run_current * percent) / 100.))
+             self.extruder_percentage_run_current = percent
+
+    def _restore_extruder_current(self):
+        if self.extruder_tmc and self.extruder_percentage_run_current != 100:
+            self._log_info("Restoring extruder_stepper run current to 100% configured")
+            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.extruder_name, self.extruder_default_run_current))
+            self.extruder_percentage_run_current = 100
+
+    @contextlib.contextmanager
+    def _extruder_current(self, percent=100, reason=""):
+        self._adjust_extruder_current(percent, reason)
+        try:
+            yield self
+        finally:
+            self._restore_extruder_current()
 
     def _move_cmd(self, gcmd, trace_str):
         if self._check_is_disabled(): return
@@ -3290,16 +3311,16 @@ class Mmu:
         self.toolhead.wait_moves()
         self._set_encoder_distance(self.filament_distance)
 
-        if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
-            # Let's determine where filament is and reset state before continuing
-            self._recover_filament_pos(message=True)
-
-        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-            self._log_debug("Filament already ejected")
-            self._servo_auto()
-            return
-
         try:
+            if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
+                # Let's determine where filament is and reset state before continuing
+                self._recover_filament_pos(message=True)
+
+            if self.filament_pos == self.FILAMENT_POS_UNLOADED:
+                self._log_debug("Filament already ejected")
+                self._servo_auto()
+                return
+
             self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
@@ -3509,7 +3530,7 @@ class Mmu:
     # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
     # Return True if filament is out of extruder and distance filament moved during test
     def _test_filament_in_extruder_by_retracting(self, length=None):
-        self._log_debug("Testing for filament in extruder by retracting")
+        self._log_debug("Testing for filament in extruder by retracting on extruder stepper only")
         if not length:
             length = self.encoder_move_step_size
         self._servo_up()
@@ -3605,8 +3626,8 @@ class Mmu:
     # Form tip and return True if filament detected and the filament park position
     def _form_tip_standalone(self, extruder_stepper_only=False):
         self.toolhead.wait_moves()
-        filament_present = self._check_toolhead_sensor()
-        if filament_inititally_present == 0:
+        filament_initially_present = self._check_toolhead_sensor()
+        if filament_initially_present == 0:
             self._log_debug("Tip forming skipped because no filament was detected")
             if self.filament_pos != self.FILAMENT_POS_LOADED:
                 return False, 0.
@@ -3623,7 +3644,7 @@ class Mmu:
             self._ensure_safe_extruder_temperature(wait=False)
 
             # Perform the tip forming move and establish park_pos
-            with self._gear_current(self.extruder_form_tip_current, "for tip forming move"):
+            with self._extruder_current(self.extruder_form_tip_current, "for tip forming move"):
                 initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
                 initial_encoder_position = self._get_encoder_distance()
 
@@ -3651,9 +3672,9 @@ class Mmu:
                     if sync:
                         if delta > self.encoder_min:
                             # Encoder sees movement cases
-                            if filament_inititally_present == 1:
+                            if filament_initially_present == 1:
                                 return True, park_pos
-                            elif filament_inititally_present == 0:
+                            elif filament_initially_present == 0:
                                 # Believe the toolhead sensor
                                 return False, park_pos
                             else:
@@ -3662,12 +3683,9 @@ class Mmu:
                                 park_pos += moved
                                 self.filament_distance += moved
                                 return not out_of_extruder, park_pos
-    
-                                # TODO Just assume filament is found because the extruder test is disruptive if servo is already down
-                                # return True, park_pos
                         else:
                             # No encoder movement cases
-                            if filament_inititally_present == 1:
+                            if filament_initially_present == 1:
                                 # Encoder doesn't see movement but filament was initially detected. Big clog!
                                 raise MmuError("Filament stuck in extruder")
                             else:
@@ -3675,7 +3693,7 @@ class Mmu:
                                 return False, park_pos
                     else:
                         # Not synced. Filament was present if encoder moved or we initially detected with toolhead sensor
-                        return (delta > self.encoder_min or filament_inititally_present == 1), park_pos
+                        return (delta > self.encoder_min or filament_initially_present == 1), park_pos
                 else:
                     # Filament cutter case. Unless the toolhead sensor doesn't detect we assume filament is present
                     return filament_initially_present != 0, park_pos
@@ -3814,29 +3832,33 @@ class Mmu:
         if tool == self.tool_selected:
             current_speed_factor = self.gcode_move.get_status(0)['speed_factor']
             current_extrude_factor = self.gcode_move.get_status(0)['extrude_factor']
-            speed_factor = self.tool_speed_multipliers[tool] * 100
-            extrude_factor = self.tool_extrusion_multipliers[tool] * 100
-            self.gcode.run_script_from_command("M220 S%.0f" % speed_factor)
-            self.gcode.run_script_from_command("M221 S%.0f" % extrude_factor)
+            speed_factor = self.tool_speed_multipliers[tool]
+            extrude_factor = self.tool_extrusion_multipliers[tool]
+            self.gcode.run_script_from_command("M220 S%d" % (speed_factor * 100))
+            self.gcode.run_script_from_command("M221 S%d" % (extrude_factor * 100))
             if current_speed_factor != speed_factor or current_extrude_factor != extrude_factor:
-                self._log_debug("Restored speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor, extrude_factor))
+                self._log_debug("Restored speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor * 100, extrude_factor * 100))
 
-    def _set_tool_override(self, tool, speed_factor=None, extrude_factor=None):
+    def _set_tool_override(self, tool, speed_percent, extrude_percent):
         if tool == -1:
             for i in range(self.mmu_num_gates):
-                if speed_factor:
-                    self.tool_speed_multipliers[i] = speed_factor / 100
-                if extrude_factor:
-                    self.tool_extrusion_multipliers[i] = extrude_factor / 100
+                if speed_percent is not None:
+                    self.tool_speed_multipliers[i] = speed_percent / 100
+                if extrude_percent is not None:
+                    self.tool_extrusion_multipliers[i] = extrude_percent / 100
                 self._restore_tool_override(i)
-            self._log_debug("Set speed/extrusion multiplier for all tools as %d%% and %d%%" % (speed_factor, extrude_factor))
+            if speed_percent is not None:
+                self._log_debug("Set speed multiplier for all tools as %d%%" % speed_percent)
+            if extrude_percent is not None:
+                self._log_debug("Set extrusion multiplier for all tools as %d%%" % extrude_percent)
         else:
-            if speed_factor:
-                self.tool_speed_multipliers[tool] = speed_factor / 100
-            if extrude_factor:
-                self.tool_extrusion_multipliers[tool] = extrude_factor / 100
+            if speed_percent is not None:
+                self.tool_speed_multipliers[tool] = speed_percent / 100
+                self._log_debug("Set speed multiplier for tool T%d as %d%%" % (tool, speed_percent))
+            if extrude_percent is not None:
+                self.tool_extrusion_multipliers[tool] = extrude_percent / 100
+                self._log_debug("Set extrusion multiplier for tool T%d as %d%%" % (tool, extrude_percent))
             self._restore_tool_override(tool)
-            self._log_debug("Set speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor, extrude_factor))
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, in_print, skip_tip=True):
@@ -4073,9 +4095,7 @@ class Mmu:
 
             self._dump_statistics(job=not quiet)
             self._enable_encoder_sensor(restore_encoder)
-
-            # Ready for printing...
-            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=self._is_in_print())
+            self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(), servo=True, current=self._is_in_print())
         finally:
             self._next_tool = self.TOOL_GATE_UNKNOWN
 
@@ -4570,7 +4590,7 @@ class Mmu:
             self._wrap_gcode_command("__MMU_ENDLESS_SPOOL_POST_LOAD")
             self._restore_toolhead_position("runout")
             self._enable_encoder_sensor(restore_encoder)
-            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=not force_runout)
+            self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(), servo=True, current=self._is_in_print())
             self._reset_encoder_counts()    # Encoder 0000
             # Continue printing...
         else:
@@ -4840,7 +4860,7 @@ class Mmu:
         if reset == 1:
             self._set_tool_override(tool, 100, 100)
         elif tool >= 0:
-            self._set_tool_override(tool, speed_factor=speed, extrude_factor=extrusion)
+            self._set_tool_override(tool, speed, extrusion)
 
         msg = ""
         msg_tool = "Tools: "
