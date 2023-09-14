@@ -2739,6 +2739,7 @@ class Mmu:
         if self.gate_status[gate] == self.GATE_EMPTY:
             raise MmuError("Gate %d is empty!" % gate)
         self._load_sequence(self.calibrated_bowden_length)
+        self._restore_tool_override(self.tool_selected)
 
     def _load_sequence(self, length, skip_extruder=False, extruder_only=False):
         self._log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
@@ -3096,6 +3097,7 @@ class Mmu:
             self._log_debug("Tool already unloaded")
             return
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
+        self._record_tool_override()
         self._unload_sequence(self.calibrated_bowden_length, skip_tip=skip_tip)
 
     def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
@@ -3611,41 +3613,47 @@ class Mmu:
         else:
             return False, travel
 
-    def _record_tool_override(self, tool):
-        current_speed_factor = self.gcode_move.get_status(0)['speed_factor']
-        current_extrude_factor = self.gcode_move.get_status(0)['extrude_factor']
-        if self.tool_speed_multipliers[tool] != current_speed_factor or self.tool_extrusion_multipliers[tool] != current_extrude_factor:
-            self.tool_speed_multipliers[tool] = current_speed_factor
-            self.tool_extrusion_multipliers[tool] = current_extrude_factor
-            self._log_debug("Saved speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, current_speed_factor * 100, current_extrude_factor * 100))
+    def _record_tool_override(self):
+        tool = self.tool_selected
+        if tool >= 0:
+            current_speed_factor = self.gcode_move.get_status(0)['speed_factor']
+            current_extrude_factor = self.gcode_move.get_status(0)['extrude_factor']
+            if self.tool_speed_multipliers[tool] != current_speed_factor or self.tool_extrusion_multipliers[tool] != current_extrude_factor:
+                self.tool_speed_multipliers[tool] = current_speed_factor
+                self.tool_extrusion_multipliers[tool] = current_extrude_factor
+                self._log_debug("Saved speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, current_speed_factor * 100, current_extrude_factor * 100))
 
     def _restore_tool_override(self, tool):
         if tool == self.tool_selected:
             current_speed_factor = self.gcode_move.get_status(0)['speed_factor']
             current_extrude_factor = self.gcode_move.get_status(0)['extrude_factor']
-            speed_factor = self.tool_speed_multipliers[tool] * 100
-            extrude_factor = self.tool_extrusion_multipliers[tool] * 100
-            self.gcode.run_script_from_command("M220 S%.0f" % speed_factor)
-            self.gcode.run_script_from_command("M221 S%.0f" % extrude_factor)
+            speed_factor = self.tool_speed_multipliers[tool]
+            extrude_factor = self.tool_extrusion_multipliers[tool]
+            self.gcode.run_script_from_command("M220 S%d" % (speed_factor * 100))
+            self.gcode.run_script_from_command("M221 S%d" % (extrude_factor * 100))
             if current_speed_factor != speed_factor or current_extrude_factor != extrude_factor:
-                self._log_debug("Restored speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor, extrude_factor))
+                self._log_debug("Restored speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor * 100, extrude_factor * 100))
 
-    def _set_tool_override(self, tool, speed_factor=None, extrude_factor=None):
+    def _set_tool_override(self, tool, speed_percent, extrude_percent):
         if tool == -1:
             for i in range(self.mmu_num_gates):
-                if speed_factor:
-                    self.tool_speed_multipliers[i] = speed_factor / 100
-                if extrude_factor:
-                    self.tool_extrusion_multipliers[i] = extrude_factor / 100
+                if speed_percent is not None:
+                    self.tool_speed_multipliers[i] = speed_percent / 100
+                if extrude_percent is not None:
+                    self.tool_extrusion_multipliers[i] = extrude_percent / 100
                 self._restore_tool_override(i)
-            self._log_debug("Set speed/extrusion multiplier for all tools as %d%% and %d%%" % (speed_factor, extrude_factor))
+            if speed_percent is not None:
+                self._log_debug("Set speed multiplier for all tools as %d%%" % speed_percent)
+            if extrude_percent is not None:
+                self._log_debug("Set extrusion multiplier for all tools as %d%%" % extrude_percent)
         else:
-            if speed_factor:
-                self.tool_speed_multipliers[tool] = speed_factor / 100
-            if extrude_factor:
-                self.tool_extrusion_multipliers[tool] = extrude_factor / 100
+            if speed_percent is not None:
+                self.tool_speed_multipliers[tool] = speed_percent / 100
+                self._log_debug("Set speed multiplier for tool T%d as %d%%" % (tool, speed_percent))
+            if extrude_percent is not None:
+                self.tool_extrusion_multipliers[tool] = extrude_percent / 100
+                self._log_debug("Set extrusion multiplier for tool T%d as %d%%" % (tool, extrude_percent))
             self._restore_tool_override(tool)
-            self._log_debug("Set speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor, extrude_factor))
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True):
@@ -3707,7 +3715,7 @@ class Mmu:
                 raise MmuError("Error running user _MMU_POST_LOAD macro: %s" % str(e))
         if self._is_in_print():
             self._restore_toolhead_position()
-        self._restore_tool_override(self.tool_selected)
+        self._restore_tool_override(self.tool_selected) # Must be after _restore_toolhead_position()
         self.gcode.run_script_from_command("M117 T%s" % tool)
 
     def _unselect_tool(self):
@@ -4630,12 +4638,12 @@ class Mmu:
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates)
         speed = gcmd.get_int('M220', None, minval=0, maxval=200)
         extrusion = gcmd.get_int('M221', None, minval=0, maxval=200)
-        clear = gcmd.get_int('CLEAR', 0, minval=0, maxval=1)
+        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
 
-        if clear == 1:
+        if reset == 1:
             self._set_tool_override(tool, 100, 100)
         elif tool >= 0:
-            self._set_tool_override(tool, speed_factor=speed, extrude_factor=extrusion)
+            self._set_tool_override(tool, speed, extrusion)
 
         msg = ""
         msg_tool = "Tools: "
