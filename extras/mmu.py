@@ -324,6 +324,7 @@ class Mmu:
         # Optional features
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
+        self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=1)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
         self.tool_extrusion_multipliers = []
@@ -376,12 +377,9 @@ class Mmu:
         self.gate_color = list(self.default_gate_color)
        
         # SpoolID for each gate
-        self.enable_spoolman=False
         if len(self.default_gate_spool_id) > 0:
             if not len(self.default_gate_spool_id) == self.mmu_num_gates:
                 raise self.config.error("gate_spool_id has different number of entries than the number of gates")
-            else:
-                self.enable_spoolman=True
         else:
             for i in range(self.mmu_num_gates):
                 self.default_gate_spool_id.append(-1)
@@ -764,7 +762,6 @@ class Mmu:
                 self.gate_spool_id = gate_spool_id
             else:
                 errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_SPOOL_ID)
-
 
         if self.persistence_level >= 4:
             # Load selected tool and gate
@@ -2756,17 +2753,17 @@ class Mmu:
 # FILAMENT LOAD FUNCTIONS #
 ###########################
 
-    def _spoolman_activate_spool(self,spool):
+    def _spoolman_activate_spool(self, spool=-1):
+        if not self.enable_spoolman: return
         if spool > -1:
-            self._log_info("activating spool %s..." % (spool))
+            self._log_debug("Activating spool %s..." % spool)
         else:
-            self._log_info("deactivating spool ...")
+            self._log_debug("Deactivating spool ...")
         webhooks = self.printer.lookup_object('webhooks')
         try:
             webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool)
-        except self.printer.command_error:
-            logging.exception("_spoolman_activate_spool: CommandError while calling spoolman_set_active_spool")
-
+        except Exception as e:
+            self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
     # Primary method to selects and loads tool. Assumes we are unloaded.
     def _select_and_load_tool(self, tool):
@@ -2774,14 +2771,17 @@ class Mmu:
         self._select_tool(tool, move_servo=False)
         gate = self.tool_to_gate_map[tool]
 
-        # Activate the spool in SpoolMan, if enabled
-        spool = self.gate_spool_id[gate]
-        if self.enable_spoolman and spool > -1:
-            self._spoolman_activate_spool(spool)
-
         if self.gate_status[gate] == self.GATE_EMPTY:
             raise MmuError("Gate %d is empty!" % gate)
+
         self._load_sequence(self.calibrated_bowden_length)
+
+        # Activate the spool in SpoolMan, if enabled
+        spool = self.gate_spool_id[gate]
+        if spool > -1:
+            self._spoolman_activate_spool(spool)
+
+        # Restore M220 and M221 overrides
         self._restore_tool_override(self.tool_selected)
 
     def _load_sequence(self, length, skip_extruder=False, extruder_only=False):
@@ -3139,10 +3139,11 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self._log_debug("Tool already unloaded")
             return
-        if self.enable_spoolman:
-            self._spoolman_activate_spool(-1)
+
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
+        # Remember M220 and M221 overrides, potentially deactivate in SpoolMan
         self._record_tool_override()
+        self._spoolman_activate_spool(-1)
         self._unload_sequence(self.calibrated_bowden_length, skip_tip=skip_tip)
 
     def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
@@ -4520,7 +4521,7 @@ class Mmu:
                 msg += "?, " if prefix == "" else ", "
             else:
                 msg += ("\nGate #%d: " % g)
-            msg += ("Material: %s, Color: %s, Status: %s" % (material, color, available))
+            msg += ("Material: %s, Color: %s, Status: %s" % (material, color, available, spool_id))
             if self.enable_spoolman:
                 spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] != -1 else "n/a"
                 msg += (", SpoolID: %s" % (spool_id))
