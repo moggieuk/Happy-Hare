@@ -1767,7 +1767,7 @@ class Mmu:
                 gate = self.TOOL_GATE_BYPASS
 
         if gate != -1:
-            self._calibrate_selector(gate)
+            self._calibrate_selector(gate, save=save)
         else:
             v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
             self._calibrate_selector_auto(v1_bypass_block, save=save)
