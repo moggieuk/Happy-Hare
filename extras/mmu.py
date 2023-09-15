@@ -4636,7 +4636,7 @@ class Mmu:
             available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=0, maxval=2)
             material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
             color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
-            spool_id = gcmd.get_int('SPOOLID', -1, minval=-1)
+            spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
             if not self._validate_color(color):
                 raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
             self.gate_material[gate] = material
