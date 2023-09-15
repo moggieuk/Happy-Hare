@@ -367,6 +367,7 @@ Running without any parameters will display the current values:
     log_visual = 2
     log_statistics = 1
     pause_macro = PAUSE                          # Advanced
+    form_tip_macro = _MMU_FORM_TIP_STANDALONE    # Advanced
 
     CALIBRATION:
     mmu_calibration_bowden_length = 697.9

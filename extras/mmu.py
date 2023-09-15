@@ -253,6 +253,7 @@ class Mmu:
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
+        self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP_STANDALONE')
 
         # User MMU setup
         self.mmu_num_gates = config.getint('mmu_num_gates')
@@ -447,6 +448,7 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_TRACKING', self.cmd_MMU_TEST_TRACKING, desc=self.cmd_MMU_TEST_TRACKING_help)
         self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
         self.gcode.register_command('MMU_TEST_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
+        self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_FORM_TIP, desc = self.cmd_MMU_FORM_TIP_help)
 
         # Soak Testing
         self.gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
@@ -462,7 +464,6 @@ class Mmu:
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
 
         # For use in user controlled load and unload macros
-        self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_FORM_TIP, desc = self.cmd_MMU_FORM_TIP_help)
         self.gcode.register_command('_MMU_STEP_LOAD_ENCODER', self.cmd_MMU_STEP_LOAD_ENCODER, desc = self.cmd_MMU_STEP_LOAD_ENCODER_help)
         self.gcode.register_command('_MMU_STEP_UNLOAD_ENCODER', self.cmd_MMU_STEP_UNLOAD_ENCODER, desc = self.cmd_MMU_STEP_UNLOAD_ENCODER_help)
         #self.gcode.register_command('_MMU_STEP_LOAD_GATE', self.cmd_MMU_STEP_LOAD_GATE, desc = self.cmd_MMU_STEP_LOAD_GATE_help) # TODO Tradrack
@@ -720,7 +721,7 @@ class Mmu:
         self._servo_reset_state()
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "standby"
-        self.form_tip_vars = None
+        self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
 
     def _load_persisted_state(self):
         self._log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
@@ -862,10 +863,13 @@ class Mmu:
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
 
-    def _wrap_gcode_command(self, command, exception=False):
+    def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
             macro = command.split()[0]
-            self._log_trace("Running macro: %s" % macro)
+            if variables is not None:
+                gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro)
+                gcode_macro.variables.update(variables)
+            self._log_trace("Running macro: %s%s" % (macro, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
         except Exception as e:
             if exception is not None:
@@ -1274,6 +1278,7 @@ class Mmu:
     def _servo_down(self, buzz_gear=True):
         if self.gate_selected == self.TOOL_GATE_BYPASS: return
         if self.servo_state == self.SERVO_DOWN_STATE: return
+        self._log_error("PAUL: servo down")
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_down_angle)
         self.toolhead.wait_moves()
         self.servo.set_value(angle=self.servo_down_angle, duration=None if self.servo_active_down else self.servo_duration)
@@ -1290,6 +1295,7 @@ class Mmu:
 
     def _servo_move(self): # Position servo for selector movement
         if self.servo_state == self.SERVO_MOVE_STATE: return
+        self._log_error("PAUL: servo move")
         self._log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_move_angle)
         self.toolhead.wait_moves()
         self.servo.set_value(angle=self.servo_move_angle, duration=self.servo_duration)
@@ -1301,6 +1307,7 @@ class Mmu:
     def _servo_up(self):
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
+        self._log_error("PAUL: servo up")
         delta = 0.
         if self.servo_angle != self.servo_up_angle:
             self.toolhead.dwell(0.2)
@@ -1326,7 +1333,7 @@ class Mmu:
 
     def _motors_off(self, motor="all"):
         if motor in ("all", "gear"):
-            self._sync_gear_to_extruder(False)
+            self._sync_gear_to_extruder(False, servo=True)
             self.gear_stepper.do_enable(False)
         if motor in ("all", "selector"):
             self.is_homed = False
@@ -2819,44 +2826,58 @@ class Mmu:
 # STEP FILAMENT LOAD/UNLOAD MACROS FOR USER COMPOSITION #
 #########################################################
 
-    cmd_MMU_FORM_TIP_help = "Convenience macro for calling the standalone tip forming functionality"
+    cmd_MMU_FORM_TIP_help = "Convenience macro for calling the standalone tip forming functionality (or cutter logic)"
     def cmd_MMU_FORM_TIP(self, gcmd):
-        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        show = bool(gcmd.get_int('SHOW', 0, minval=0, maxval=1))
+        run = bool(gcmd.get_int('RUN', 1, minval=0, maxval=1))
+        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1))
+
+        gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, None)
+        if gcode_macro is None:
+            raise gcmd.error("Filament tip forming macro '%s' not found" % self.form_tip_macro)
+
         if reset:
-            self.form_tip_vars = None
-            self._log_always("Reset _MMU_FORM_TIP_STANDALONE variables to defaults in mmu_software.cfg")
+            if self.form_tip_vars is not None:
+                gcode_macro.variables = dict(self.form_tip_vars)
+                self.form_tip_vars = None
+                self._log_always("Reset '%s' macro variables to defaults" % self.form_tip_macro)
+            show = True
+
+        if show:
+            msg = "Variable settings for macro '%s':" % self.form_tip_macro
+            for k, v in gcode_macro.variables.items():
+                msg += "\nvariable_%s: %s" % (k, v)
+            self._log_always(msg)
             return
 
-        gcode_macro = self.printer.lookup_object("gcode_macro _MMU_FORM_TIP_STANDALONE")
-        params = gcmd.get_command_parameters()
-        orig_v = gcode_macro.variables
-        if self.form_tip_vars:
-            gcode_vars = self.form_tip_vars
-        else:
-            gcode_vars = dict(orig_v)
-        for param in params:
+        # Save restore point on first call
+        if self.form_tip_vars is None:
+            self.form_tip_vars = dict(gcode_macro.variables)
+
+        for param in gcmd.get_command_parameters():
             value = gcmd.get(param)
             param = param.lower()
             if param.startswith("variable_"):
-                self._log_always("Removing 'variable_' from %s" % param)
+                self._log_always("Removing 'variable_' prefix from '%s' - not necessary" % param)
                 param = param[9:]
-            if param in gcode_vars:
-                gcode_vars[param] = value
+            if param in gcode_macro.variables:
+                gcode_macro.variables[param] = value
             else:
-                self._log_always("Parameter %s does not exist for _MMU_FORM_TIP_STANDALONE macro" % param)
+                self._log_always("Variable '%s' is not defined for '%s' macro" % (param, self.form_tip_macro))
 
-        # Update variables and run the macro ensuring final eject
-        gcode_vars['final_eject'] = 1
-        msg = "Running _MMU_FORM_TIP_STANDALONE with the following variable settings:"
-        for k, v in gcode_vars.items():
-            msg += "\nvariable_%s: %s" % (k, v)
-        self._log_always(msg)
-        gcode_macro.variables = gcode_vars
-        self.form_tip_vars = gcode_vars # Save for later
-        self._wrap_gcode_command("_MMU_FORM_TIP_STANDALONE")
-
-        # Restore original macro variables
-        gcode_macro.variables = orig_v
+        # Run the macro ensuring final eject is set
+        if run:
+            self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print))
+            with self._extruder_current(self.extruder_form_tip_current, "for tip forming move"):
+                gcode_macro.variables['final_eject'] = 1
+                msg = "Running '%s' with the following variable settings:" % self.form_tip_macro
+                for k, v in gcode_macro.variables.items():
+                    msg += "\nvariable_%s: %s" % (k, v)
+                self._log_always(msg)
+                self._wrap_gcode_command(self.form_tip_macro)
+                gcode_macro.variables['final_eject'] = 0
+            self._sync_gear_to_extruder(False, servo=True)
 
     cmd_MMU_STEP_LOAD_ENCODER_help = "User composable loading step: Move filament from gate to start of bowden using encoder"
     def cmd_MMU_STEP_LOAD_ENCODER(self, gcmd):
@@ -3187,12 +3208,12 @@ class Mmu:
             # We shouldn't be here and probably means the toolhead sensor is malfunctioning/blocked
             raise MmuError("Toolhead sensor malfunction - filament detected before it entered extruder")
 
-        sync = self.toolhead_sync_load and not extruder_stepper_only
+        synced = self.toolhead_sync_load and not extruder_stepper_only
         self._log_debug("Homing up to %.1fmm to toolhead sensor%s" % (self.toolhead_homing_max, (" (synced)" if sync else "")))
         distance_moved = 0.
         homed = False
 
-        if sync:
+        if synced:
             homed, actual, delta = self._trace_filament_move("Synchronously homing to toolhead sensor",
                     self.toolhead_homing_max, motor="gear+extruder", homing_move=1, endstop="mmu_toolhead")
             distance_moved += actual
@@ -3311,16 +3332,16 @@ class Mmu:
         self.toolhead.wait_moves()
         self._set_encoder_distance(self.filament_distance)
 
-        try:
-            if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
+        if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
                 # Let's determine where filament is and reset state before continuing
-                self._recover_filament_pos(message=True)
+            self._recover_filament_pos(message=True)
 
-            if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-                self._log_debug("Filament already ejected")
-                self._servo_auto()
-                return
+        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
+            self._log_debug("Filament already ejected")
+            self._servo_auto()
+            return
 
+        try:
             self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
@@ -3434,12 +3455,14 @@ class Mmu:
             distance_moved = 0.
             self._log_debug("Extracting filament from extruder")
             self._set_filament_direction(self.DIRECTION_UNLOAD)
+            synced = self.toolhead_sync_unload and not extruder_stepper_only
+            self._sync_gear_to_extruder(synced, servo=True, self._is_in_print()) # PAUL new
             self._ensure_safe_extruder_temperature(wait=False)
-            sync_allowed = self.toolhead_sync_unload and not extruder_stepper_only
-            if sync_allowed:
-                self._servo_down()
-            else:
-                self._servo_up()
+# PAUL
+#            if synced:
+#                self._servo_down()
+#            else:
+#                self._servo_up()
 
             # Goal is to exit extruder. Strategies depend on availability of toolhead sensor and synced motor option
             out_of_extruder = False
@@ -3448,8 +3471,8 @@ class Mmu:
             if self._has_toolhead_sensor():
                 # This strategy supports both extruder only and 'synced' modes of operation
                 # Home to toolhead sensor, then move the remained fixed distance
-                motor = "gear+extruder" if sync_allowed else "extruder"
-                speed = self.extruder_sync_unload_speed if sync_allowed else self.extruder_unload_speed
+                motor = "gear+extruder" if synced else "extruder"
+                speed = self.extruder_sync_unload_speed if synced else self.extruder_unload_speed
                 length = self._get_home_position_to_nozzle() - park_pos + safety_margin
                 homed, actual, delta = self._trace_filament_move("Reverse homing to toolhead sensor",
                         -length, motor=motor, homing_move=-1, endstop="mmu_toolhead")
@@ -3462,10 +3485,10 @@ class Mmu:
                         length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle + safety_margin
                     delta = self._trace_filament_move("Move from toolhead sensor to exit",
                             -length, speed=speed, motor=motor)
-                    distance_moved += (length if sync_allowed else length - delta)
+                    distance_moved += (length if synced else length - delta)
                     out_of_extruder = True
 
-            elif not sync_allowed:
+            elif not synced:
                 # No toolhead sensor and not syncing gear and extruder motors:
                 # Back up around 15mm at a time until either the encoder doesn't see any movement
                 # Do this until we have traveled more than the length of the extruder
@@ -3639,8 +3662,9 @@ class Mmu:
 
         self._log_info("Forming tip...")
         with self._wrap_action(self.ACTION_FORMING_TIP):
-            sync = self.sync_form_tip and not extruder_stepper_only
-            prev_sync_state = self._sync_gear_to_extruder(sync, servo=True)
+            synced = self.sync_form_tip and not extruder_stepper_only
+            # PAUL prev_sync_state = self._sync_gear_to_extruder(sync, servo=True)
+            self._sync_gear_to_extruder(sync, servo=True, self._is_in_print()) # PAUL new
             self._ensure_safe_extruder_temperature(wait=False)
 
             # Perform the tip forming move and establish park_pos
@@ -3649,12 +3673,12 @@ class Mmu:
                 initial_encoder_position = self._get_encoder_distance()
 
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
-                self._wrap_gcode_command("_MMU_FORM_TIP_STANDALONE", exception=True)
+                self._wrap_gcode_command(self.form_tip_macro, exception=True)
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
                 self.toolhead.dwell(0.2)
                 self.toolhead.wait_moves()
                 delta = self._get_encoder_distance() - initial_encoder_position
-                park_pos = self.printer.lookup_object("gcode_macro _MMU_FORM_TIP_STANDALONE").variables.get("output_park_pos", -1)
+                park_pos = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro).variables.get("output_park_pos", -1)
                 filament_check = True
                 if park_pos < 0:
                     park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
@@ -3669,7 +3693,7 @@ class Mmu:
             # Logic to try to validate success and actual presence of filament
             try:
                 if filament_check:
-                    if sync:
+                    if synced:
                         if delta > self.encoder_min:
                             # Encoder sees movement cases
                             if filament_initially_present == 1:
@@ -3698,15 +3722,9 @@ class Mmu:
                     # Filament cutter case. Unless the toolhead sensor doesn't detect we assume filament is present
                     return filament_initially_present != 0, park_pos
             finally:
-                self._sync_gear_to_extruder(prev_sync_state, servo=True)
-
-# PAUL called from unload_sequence
-# Entry        Servo   tip sync?      Servo on exit
-# synced       down     synced        down
-# not synced   up       synced
-# synced       down     non synced    down
-# not synced   up       non synced
-
+                pass # PAUL
+                # PAUL TODO don't we always want to unsync and put servo up?
+                #self._sync_gear_to_extruder(prev_sync_state, servo=False) # PAUL was SERVO=TRUE
 
 #################################################
 # TOOL SELECTION AND SELECTOR CONTROL FUNCTIONS #
@@ -3863,7 +3881,6 @@ class Mmu:
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, in_print, skip_tip=True):
         self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
-## PAUL        self._sync_gear_to_extruder(False) # Safety
         skip_unload = False
         initial_tool_string = "Unknown" if self.tool_selected < 0 else ("T%d" % self.tool_selected)
         if tool == self.tool_selected and self.tool_to_gate_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -4469,6 +4486,12 @@ class Mmu:
         self.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.retry_tool_change_on_error, minval=0, maxval=1)
         self.pause_macro = gcmd.get('PAUSE_MACRO', self.pause_macro)
 
+        form_tip_macro = gcmd.get('FORM_TIP_MACRO', self.form_tip_macro)
+        if form_tip_macro != self.form_tip_macro:
+            self.form_tip_vars = None # If macro is changed invalidate defaults
+        self.form_tip_macro = form_tip_macro
+
+
         # Calibration
         self.calibrated_bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.calibrated_bowden_length, minval=10.)
         clog_length = gcmd.get_float('MMU_CALIBRATION_CLOG_LENGTH', self.encoder_sensor.get_clog_detection_length(), minval=1., maxval=100.)
@@ -4529,6 +4552,7 @@ class Mmu:
         msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
         msg += "\npause_macro = %s" % self.pause_macro
+        msg += "\nform_tip_macro = %s" % self.form_tip_macro
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
@@ -4901,6 +4925,7 @@ class Mmu:
         current_action = self._set_action(self.ACTION_CHECKING)
         try:
             tool_selected = self.tool_selected
+            filament_pos = self.filament_pos
             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
             gates_tools = []
             if tools != "!":
@@ -4930,6 +4955,10 @@ class Mmu:
                 # No parameters means all gates
                 for gate in range(self.mmu_num_gates):
                     gates_tools.append([gate, -1])
+
+            # Force initial eject
+            if not filament_pos == self.FILAMENT_POS_UNLOADED:
+                self._unload_tool()
 
             for gate, tool in gates_tools:
                 try:
@@ -4969,11 +4998,15 @@ class Mmu:
                 finally:
                     self.calibrating = False
 
+            # Reselect original tool and load filament if necessary
             try:
                 if tool_selected == self.TOOL_GATE_BYPASS:
                     self._select_bypass()
                 elif tool_selected != self.TOOL_GATE_UNKNOWN:
-                    self._select_tool(tool_selected)
+                    if filament_pos == self.FILAMENT_POS_LOADED:
+                        self._select_and_load_tool(tool_selected)
+                    else:
+                        self._select_tool(tool_selected)
             except MmuError as ee:
                 self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
 

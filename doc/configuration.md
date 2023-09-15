@@ -275,11 +275,11 @@ retry_tool_change_on_error: 0	# Whether to automatically retry a failed tool cha
 				# to recover. Note that enabling this can mask problems with your MMU
 ```
 
-This section contains a list of overrides for macros that Happy Hare calls internally. Currently, there's only the option to override the `PAUSE` macro but other macros or arguments may be added in the future.
+This section contains a list of overrides for macros that Happy Hare calls internally. Currently, there's the option to override the `PAUSE` macro and the `_MMU_FORM_TIP_STANDALONE` macro but other macros or arguments may be added in the future.
 
 ```yml
 # Advanced: MMU macro overrides --- ONLY SET IF YOU'RE COMFORTABLE WITH KLIPPER MACROS -----------------------------------
-#
+
 # When a print or the MMU should be paused, Happy Hare will call the `PAUSE` macro by default. If you want additional
 # behavior, you can override the macro that is called by Happy Hare. Some examples as to why you may want this:
 # 1. You are using a sparse purge tower and you want Happy Hare errors to park above your purge tower as to not hit
@@ -291,6 +291,16 @@ This section contains a list of overrides for macros that Happy Hare calls inter
 #            in failed prints, jams, and physical hardware crashes
 #
 #pause_macro: PAUSE
+
+# When Happy Hare is asked to form a tip it will run this macro. It can be convenient to change it if you want to replace
+# with a macro that performs filament cutting.
+#
+# IMPORTANT: Because Happy Hare watches the filament movement during the tool tip procedure to establish the park_position after
+#            the move, you must override this behavior by setting the `output_park_pos` variable if you cut the filament.
+#            The value can be set dynamically in gcode with this construct:
+#                SET_GCODE_VARIABLE MACRO=_MMU_FORM_TIP_STANDALONE VARIABLE=output_park_pos VALUE=-1
+#
+#form_tip_macro: _MMU_FORM_TIP_STANDALONE
 ```
 
 This final section is commented out because it is not generally needed. It retains abilities that existed in earlier versions of Happy Hare which may still be useful in some specific cases.  Normally when reset Happy Hare will default to empty or simple values for these settings. However, you can define the default here so that after a MMU reset has been performed they will be the starting values perhaps saving some additional configuration. E.g. if you always have specific filament spools loaded on a particular gate (I always have ABS black on gate #8 for example) you can define that here by setting the starting `gate_material` and `gate_color` arrays. Read [here](https://github.com/moggieuk/Happy-Hare#3-tool-to-gate-ttg-mapping) and [here](https://github.com/moggieuk/Happy-Hare#12-gate-map-describing-filament-type-color-and-status) for more details.
