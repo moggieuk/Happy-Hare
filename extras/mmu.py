@@ -137,6 +137,7 @@ class Mmu:
     VARS_MMU_GATE_STATUS            = "mmu_state_gate_status"
     VARS_MMU_GATE_MATERIAL          = "mmu_state_gate_material"
     VARS_MMU_GATE_COLOR             = "mmu_state_gate_color"
+    VARS_MMU_GATE_SPOOL_ID          = "mmu_state_gate_spool_id"
     VARS_MMU_GATE_SELECTED          = "mmu_state_gate_selected"
     VARS_MMU_TOOL_SELECTED          = "mmu_state_tool_selected"
     VARS_MMU_FILAMENT_POS           = "mmu_state_filament_pos"
@@ -263,6 +264,7 @@ class Mmu:
         self.default_gate_status = list(config.getintlist('gate_status', []))
         self.default_gate_material = list(config.getlist('gate_material', []))
         self.default_gate_color = list(config.getlist('gate_color', []))
+        self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
 
         # Homing, loading and unloading controls for built-in logic
         self.encoder_unload_buffer = config.getfloat('encoder_unload_buffer', 30., minval=15.)
@@ -325,6 +327,7 @@ class Mmu:
         # Optional features
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
+        self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=1)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
         self.tool_extrusion_multipliers = []
@@ -375,6 +378,15 @@ class Mmu:
             for i in range(self.mmu_num_gates):
                 self.default_gate_color.append("")
         self.gate_color = list(self.default_gate_color)
+       
+        # SpoolID for each gate
+        if len(self.default_gate_spool_id) > 0:
+            if not len(self.default_gate_spool_id) == self.mmu_num_gates:
+                raise self.config.error("gate_spool_id has different number of entries than the number of gates")
+        else:
+            for i in range(self.mmu_num_gates):
+                self.default_gate_spool_id.append(-1)
+        self.gate_spool_id = list(self.default_gate_spool_id)
 
         # Tool to gate mapping
         if len(self.default_tool_to_gate_map) > 0:
@@ -458,7 +470,7 @@ class Mmu:
         self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help) # Internal
         #self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help) # TODO Internal
         self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help)
-        self.gcode.register_command('MMU_SET_GATE_MAP', self.cmd_MMU_SET_GATE_MAP, desc = self.cmd_MMU_SET_GATE_MAP_help)
+        self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
         self.gcode.register_command('MMU_CHECK_GATES', self.cmd_MMU_CHECK_GATES, desc = self.cmd_MMU_CHECK_GATES_help)
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
@@ -766,6 +778,13 @@ class Mmu:
             else:
                 errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_COLOR)
 
+            # Load filament spool ID at each gate
+            gate_spool_id = self.variables.get(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
+            if len(gate_status) == self.mmu_num_gates:
+                self.gate_spool_id = gate_spool_id
+            else:
+                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_SPOOL_ID)
+
         if self.persistence_level >= 4:
             # Load selected tool and gate
             tool_selected = self.variables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
@@ -869,7 +888,7 @@ class Mmu:
             if variables is not None:
                 gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro)
                 gcode_macro.variables.update(variables)
-            self._log_trace("Running macro: %s%s" % (macro, " (with override variables)" if variables is not None else ""))
+            self._log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
         except Exception as e:
             if exception is not None:
@@ -921,6 +940,7 @@ class Mmu:
                 'gate_status': list(self.gate_status),
                 'gate_material': list(self.gate_material),
                 'gate_color': list(self.gate_color),
+                'gate_spool_id': list(self.gate_spool_id),
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'tool_extrusion_multipliers': list(self.tool_extrusion_multipliers),
                 'tool_speed_multipliers': list(self.tool_speed_multipliers),
@@ -1079,6 +1099,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ("\'%s\'" %x), self.gate_material))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ("\'%s\'" %x), self.gate_color))))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
 
     def _log_error(self, message):
         if self.mmu_logger:
@@ -1242,6 +1263,7 @@ class Mmu:
             msg += "\nClog detection is %s" % ("AUTOMATIC" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_AUTOMATIC else "ENABLED" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_STATIC else "DISABLED")
             msg += " (%.1fmm runout)" % self.encoder_sensor.get_clog_detection_length()
             msg += " and EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
+            msg += " and SpoolMan is %s" % ("ENABLED" if self.enable_spoolman else "DISABLED")
             p = self.persistence_level
             msg += "\n%s state is persisted across restarts" % ("All" if p == 4 else "Gate status & TTG map & EndlessSpool groups" if p == 3 else "TTG map & EndlessSpool groups" if p == 2 else "EndlessSpool groups" if p == 1 else "No")
             msg += "\nLogging levels: Console %d(%s)" % (self.log_level, self._log_level_to_human_string(self.log_level))
@@ -2023,7 +2045,7 @@ class Mmu:
 
         if self._is_printing(force_in_print) and not self._is_mmu_paused():
             self._track_pause_start()
-            self._log_trace("Extruder heater will be disabled in %d seconds" % self.disable_heater)
+            self._log_trace("Extruder heater will be disabled in %d seconds" % self._seconds_to_human_string(self.disable_heater))
             self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
             self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
             self._disable_encoder_sensor() # Disable runout/clog detection
@@ -2448,6 +2470,7 @@ class Mmu:
         self.gate_status = list(self.default_gate_status)
         self.gate_material = list(self.default_gate_material)
         self.gate_color = list(self.default_gate_color)
+        self.gate_spool_id = list(self.default_gate_spool_id)
         self._persist_gate_map()
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
@@ -2973,14 +2996,35 @@ class Mmu:
 # FILAMENT LOAD FUNCTIONS #
 ###########################
 
+    def _spoolman_activate_spool(self, spool=-1):
+        if not self.enable_spoolman: return
+        if spool > -1:
+            self._log_debug("Activating spool %s..." % spool)
+        else:
+            self._log_debug("Deactivating spool ...")
+        webhooks = self.printer.lookup_object('webhooks')
+        try:
+            webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool)
+        except Exception as e:
+            self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
+
     # Primary method to selects and loads tool. Assumes we are unloaded.
     def _select_and_load_tool(self, tool):
         self._log_debug('Loading tool T%d...' % tool)
         self._select_tool(tool, move_servo=False)
         gate = self.tool_to_gate_map[tool]
+
         if self.gate_status[gate] == self.GATE_EMPTY:
             raise MmuError("Gate %d is empty!" % gate)
+
         self._load_sequence(self.calibrated_bowden_length)
+
+        # Activate the spool in SpoolMan, if enabled
+        spool = self.gate_spool_id[gate]
+        if spool > -1:
+            self._spoolman_activate_spool(spool)
+
+        # Restore M220 and M221 overrides
         self._restore_tool_override(self.tool_selected)
 
     def _load_sequence(self, length, skip_extruder=False, extruder_only=False):
@@ -3209,7 +3253,7 @@ class Mmu:
             raise MmuError("Toolhead sensor malfunction - filament detected before it entered extruder")
 
         synced = self.toolhead_sync_load and not extruder_stepper_only
-        self._log_debug("Homing up to %.1fmm to toolhead sensor%s" % (self.toolhead_homing_max, (" (synced)" if sync else "")))
+        self._log_debug("Homing up to %.1fmm to toolhead sensor%s" % (self.toolhead_homing_max, (" (synced)" if synced else "")))
         distance_moved = 0.
         homed = False
 
@@ -3323,8 +3367,11 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self._log_debug("Tool already unloaded")
             return
+
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
+        # Remember M220 and M221 overrides, potentially deactivate in SpoolMan
         self._record_tool_override()
+        self._spoolman_activate_spool(-1)
         self._unload_sequence(self.calibrated_bowden_length, skip_tip=skip_tip)
 
     def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
@@ -3456,7 +3503,7 @@ class Mmu:
             self._log_debug("Extracting filament from extruder")
             self._set_filament_direction(self.DIRECTION_UNLOAD)
             synced = self.toolhead_sync_unload and not extruder_stepper_only
-            self._sync_gear_to_extruder(synced, servo=True, self._is_in_print()) # PAUL new
+            self._sync_gear_to_extruder(synced, servo=True, current=self._is_in_print()) # PAUL new
             self._ensure_safe_extruder_temperature(wait=False)
 # PAUL
 #            if synced:
@@ -3663,8 +3710,8 @@ class Mmu:
         self._log_info("Forming tip...")
         with self._wrap_action(self.ACTION_FORMING_TIP):
             synced = self.sync_form_tip and not extruder_stepper_only
-            # PAUL prev_sync_state = self._sync_gear_to_extruder(sync, servo=True)
-            self._sync_gear_to_extruder(sync, servo=True, self._is_in_print()) # PAUL new
+            # PAUL prev_sync_state = self._sync_gear_to_extruder(synced, servo=True)
+            self._sync_gear_to_extruder(synced, servo=True, current=self._is_in_print()) # PAUL new
             self._ensure_safe_extruder_temperature(wait=False)
 
             # Perform the tip forming move and establish park_pos
@@ -4476,6 +4523,7 @@ class Mmu:
         self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
         self.encoder_sensor.set_mode(self.enable_clog_detection)
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
+        self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=1)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
@@ -4543,6 +4591,7 @@ class Mmu:
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
+        msg += "\nenable_spoolman = %d" % self.enable_spoolman
         msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
         msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
         msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
@@ -4718,6 +4767,9 @@ class Mmu:
             else:
                 msg += ("\nGate #%d: " % g)
             msg += ("Material: %s, Color: %s, Status: %s" % (material, color, available))
+            if self.enable_spoolman:
+                spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] != -1 else "n/a"
+                msg += (", SpoolID: %s" % (spool_id))
             if detail and g == self.gate_selected:
                 msg += " [SELECTED%s]" % ((" supporting tool T%d" % self.tool_selected) if self.tool_selected >= 0 else "")
         return msg
@@ -4737,6 +4789,7 @@ class Mmu:
         self.gate_status = self.default_gate_status
         self.gate_material = self.default_gate_material
         self.gate_color = self.default_gate_color
+        self.gate_spool_id = self.default_gate_spool_id
         self._persist_gate_map()
 
     def _validate_color(self, color):
@@ -4779,15 +4832,19 @@ class Mmu:
 #        except MmuError as ee:
 #            self._mmu_pause(str(ee))
 
-    cmd_MMU_REMAP_TTG_help = "Remap a tool to a specific gate and set gate availability"
+    cmd_MMU_REMAP_TTG_help = "Display or remap a tool to a specific gate and set gate availability"
     def cmd_MMU_REMAP_TTG(self, gcmd):
         if self._check_is_disabled(): return
-        quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
-        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
-        ttg_map = gcmd.get('MAP', "")
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        ttg_map = gcmd.get('MAP', "!")
+        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
+        tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
+        available = gcmd.get_int('AVAILABLE', -1, minval=0, maxval=1)
+
         if reset == 1:
             self._reset_ttg_mapping()
-        elif ttg_map != "":
+        elif ttg_map != "!":
             ttg_map = gcmd.get('MAP').split(",")
             if len(ttg_map) != self.mmu_num_gates:
                 self._log_always("The number of map values (%d) is not the same as number of gates (%d)" % (len(ttg_map), self.mmu_num_gates))
@@ -4799,66 +4856,67 @@ class Mmu:
                 else:
                     self.tool_to_gate_map.append(0)
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+        elif gate != -1:
+            if available == -1:
+                available = self.gate_status[gate]
+            if tool == -1:
+                self._set_gate_status(gate, available)
+            else:
+                self._remap_tool(tool, gate, available)
         else:
-            gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
-            tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
-            available = gcmd.get_int('AVAILABLE', -1, minval=0, maxval=1)
-            if gate != -1:
-                if available == -1:
-                    available = self.gate_status[gate]
-                if tool == -1:
-                    self._set_gate_status(gate, available)
-                else:
-                    self._remap_tool(tool, gate, available)
+            quiet = False # Display current TTG map
         if not quiet:
             self._log_info(self._tool_to_gate_map_to_human_string())
 
-    cmd_MMU_SET_GATE_MAP_help = "Define the type and color of filaments on each gate"
-    def cmd_MMU_SET_GATE_MAP(self, gcmd):
-        quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
-        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
-        display = gcmd.get_int('DISPLAY', 0, minval=0, maxval=1)
+    cmd_MMU_GATE_MAP_help = "Display or define the type and color of filaments on each gate"
+    def cmd_MMU_GATE_MAP(self, gcmd):
+        if self._check_is_disabled(): return
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
+
         if reset == 1:
             self._reset_gate_map()
-        elif display == 1:
-            self._log_info(self._gate_map_to_human_string())
-            return
-        else:
+        elif gate >= 0:
             # Specifying one gate (filament)
             gate = gcmd.get_int('GATE', minval=0, maxval=self.mmu_num_gates - 1)
             available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=0, maxval=2)
             material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
             color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
+            spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
             if not self._validate_color(color):
                 raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
             self.gate_material[gate] = material
             self.gate_color[gate] = color
             self.gate_status[gate] = available
+            self.gate_spool_id[gate] = spool_id
             self._persist_gate_map()
-
+        else:
+            quiet = False # Display current map
         if not quiet:
             self._log_info(self._gate_map_to_human_string())
 
-    cmd_MMU_ENDLESS_SPOOL_help = "Manager EndlessSpool functionality and groups"
+    cmd_MMU_ENDLESS_SPOOL_help = "Diplay or Manage EndlessSpool functionality and groups"
     def cmd_MMU_ENDLESS_SPOOL(self, gcmd):
         if self._check_is_disabled(): return
-        quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         enabled = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
-        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
-        display = gcmd.get_int('DISPLAY', 0, minval=0, maxval=1)
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        groups = gcmd.get('GROUPS', "!")
+
         if enabled >= 0:
             self.enable_endless_spool = enabled
+            self._log_always("EndlessSpool is enabled")
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
         if not self.enable_endless_spool:
             self._log_always("EndlessSpool is disabled")
-        if reset == 1:
+            return
+
+        if reset:
             self._log_debug("Resetting EndlessSpool groups")
             self.enable_endless_spool = self.default_enable_endless_spool
             self.endless_spool_groups = self.default_endless_spool_groups
-        elif display == 1:
-            self._log_info(self._tool_to_gate_map_to_human_string())
-            return
-        else:
+        elif groups != "!":
             groups = gcmd.get('GROUPS', ",".join(map(str, self.endless_spool_groups))).split(",")
             if len(groups) != self.mmu_num_gates:
                 self._log_always("The number of group values (%d) is not the same as number of gates (%d)" % (len(groups), self.mmu_num_gates))
@@ -4869,19 +4927,21 @@ class Mmu:
                     self.endless_spool_groups.append(int(group))
                 else:
                     self.endless_spool_groups.append(0)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
-
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
+        else:
+            quiet = False # Display current map
         if not quiet:
             self._log_info(self._tool_to_gate_map_to_human_string())
 
     cmd_MMU_TOOL_OVERRIDES_help = "Displays, sets or clears tool speed and extrusion factors (M220 & M221)"
     def cmd_MMU_TOOL_OVERRIDES(self, gcmd):
+        if self._check_is_disabled(): return
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates)
         speed = gcmd.get_int('M220', None, minval=0, maxval=200)
         extrusion = gcmd.get_int('M221', None, minval=0, maxval=200)
-        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
 
-        if reset == 1:
+        if reset:
             self._set_tool_override(tool, 100, 100)
         elif tool >= 0:
             self._set_tool_override(tool, speed, extrusion)

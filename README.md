@@ -147,7 +147,7 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     MMU_STATS : Dump (and optionally reset) the MMU statistics
     MMU_EJECT : Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
-    MMU_ENDLESS_SPOOL : Redefine the EndlessSpool groups
+    MMU_ENDLESS_SPOOL : Display TTG map or redefine the EndlessSpool groups
     MMU_FORM_TIP : Convenience macro for calling the standalone tip forming functionality
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
@@ -156,12 +156,12 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     MMU_PAUSE : Pause the current print and lock the MMU operations
     MMU_PRELOAD : Preloads filament at specified or current gate
     MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
-    MMU_REMAP_TTG : Remap a tool to a specific gate and set gate availability
+    MMU_REMAP_TTG : Display TTG map or remap a tool to a specific gate and set gate availability
     MMU_RESET : Forget persisted state and re-initialize defaults
     MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS : Select the filament bypass
     MMU_SERVO : Move MMU servo to position specified position or angle
-    MMU_SET_GATE_MAP : Define the type and color of filaments on each gate
+    MMU_GATE_MAP : Display or define the type and color of filaments on each gate
     MMU_STATUS : Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder stepper
     MMU_TOOL_OVERRIDES : Displays, sets or clears tool speed and extrusion factors (M220 & M221)
@@ -194,6 +194,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.gate_status : {list} per gate: 0 empty | 1 available | 2 available from buffer |  -1 unknown
     printer.mmu.gate_material : {list} of material names, one per gate
     printer.mmu.gate_color : {list} of color names, one per gate
+    printer.mmu.gate_spool_id : {list} of IDs for Spoolman, one per gate
     printer.mmu.endless_spool_groups : {list} membership group (int) for each tool
     printer.mmu.tool_extrusion_multipliers : {list} current M221 extrusion multipliers (float), one per tool
     printer.mmu.tool_speed_multipliers : {list} current M220 extrusion multipliers (float), one per tool
@@ -480,8 +481,8 @@ Generally there is no downside of setting the level to 2 or 3 (the suggested def
 `MMU_RESET` - Reset all persisted state back to default/unknown except for print stats and per-gate health stats<br>
 `MMU_STATS RESET=1` - Reset print stats and per-gate health stats back to 0<br>
 `MMU_REMAP_TTG RESET=1` - Reset just the tool-to-gate mapping<br>
-`MMU_ENDLESS_SPOOL_GROUPS RESET=1` - Reset just the endless spool groups back to default<br>
-`MMU_SET_GATE_MAP RESET=1` - Reset information about the filament type, color and availability<br>
+`MMU_ENDLESS_SPOOL RESET=1` - Reset just the endless spool groups back to default<br>
+`MMU_GATE_MAP RESET=1` - Reset information about the filament type, color and availability<br>
 `MMU_RECOVER` - Automatically discover or manually reset filament position, selected gate, selected tool, filament availability (lots of options)<br>
 Needless to say, other operations can update specific state<br>
 
@@ -626,9 +627,9 @@ These default values makes the autotune logic try to maintain 5mm of "headroom" 
 
 ### EndlessSpool
 
-As mentioned earlier, EndlessSpool will, if configured, spring into action when a filament runs out. It will map the current tool to the next gate in the defined sequence (see below) and continue printing. To see the current EndlessSpool groups run:
+As mentioned earlier, EndlessSpool will, if configured, spring into action when a filament runs out. It will map the current tool to the next gate in the defined sequence (see below) and continue printing. To see the current EndlessSpool groups simply run with no parameters:
 
-> MMU_ENDLESS_SPOOL DISPLAY=1
+> MMU_ENDLESS_SPOOL
 
 To enable or disable the functionality use:
 
@@ -811,14 +812,14 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or the o
 
 ### 12. Gate map describing filament type, color and status
 
-Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material` and `printer.mmu.gate_color`) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
+Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material`, `printer.mmu.gate_color` and `printer.mmu.gate_spool_id` if spoolman is enabled) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
 
 <details>
 <summary><sub>🔹 Read more on editing the gate map...</sub></summary><br>
 
-The gate map can be viewed with the following command:<br>
+The gate map can be viewed with the following command with no parameters:<br>
 
-> MMU_SET_GATE_MAP DISPLAY=1
+> MMU_GATE_MAP
 
 ```
     MMU Gates / Filaments:
@@ -835,11 +836,11 @@ The gate map can be viewed with the following command:<br>
 
 To change for a particular gate use a command in this form:
 
-> MMU_SET_GATE_MAP GATE=8 MATERIAL=PLA COLOR=ff0000 AVAILABLE=1
+> MMU_GATE_MAP GATE=8 MATERIAL=PLA COLOR=ff0000 AVAILABLE=1
 
 If you remove buffered filament from a gate and want to quickly tell Happy Hare that it is loading from spool again (for slower loads) the easiest way is simply this:
 
-> MMU_SET_GATE_MAP GATE=8 AVAILABLE=1
+> MMU_GATE_MAP GATE=8 AVAILABLE=1
 
 > [!IMPORTANT]  
 > There is no enforcement of material names but it is recommended use all capital short names like PLA, ABS+, TPU95, PETG. The color string can be one of the [w3c standard color names](https://www.w3schools.com/tags/ref_colornames.asp) or a RRGGBB red/green/blue hex value. Because of a Klipper limitation don't add `#` to the color specification.

@@ -12,7 +12,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_STATS : Dump or reset the MMU statistics
     MMU_EJECT : Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
-    MMU_ENDLESS_SPOOL : Redefine the EndlessSpool groups
+    MMU_ENDLESS_SPOOL : Display or redefine the EndlessSpool groups
     MMU_FORM_TIP : Convenience macro to call the standalone tip forming functionality
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
@@ -23,12 +23,12 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_PRINT_END : Restore MMU idle state after print
     MMU_PRINT_START : Initialize MMU state and ready for print
     MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
-    MMU_REMAP_TTG : Remap a tool to a specific gate and set gate availability
+    MMU_REMAP_TTG : Display or remap a tool to a specific gate and set gate availability
     MMU_RESET : Forget persisted state and re-initialize defaults
     MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS : Select the filament bypass
     MMU_SERVO : Move MMU servo to position specified position or angle
-    MMU_SET_GATE_MAP : Define the type and color of filaments on each gate
+    MMU_GATE_MAP - Display or define the type and color of filaments on each gate and optionally spoolman ID
     MMU_STATUS : Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder motor
     MMU_TOOL_OVERRIDES : Displays, sets or clears tool speed and extrusion factors (M220 & M221)
@@ -67,9 +67,9 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | Command | Description | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Parameters&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp |
   | ------- | ----------- | ---------- |
   | `MMU_CHECK_GATES` | Inspect the gate(s) and mark availability | `GATE=[0..n]` The specific gate to check <br>`TOOL=[0..n]` The specific too to check (same as gate if no TTG mapping in place) <br>`TOOLS={csv}` The list of tools to check. Typically used in print start macro to validate all necessary tools <br>If all parameters are omitted all gates will be checked (the default) <br>`QUIET=[0\|1]` Optional. Supresses dump of gate status at end of checking procedure |
-  | `MMU_SET_GATE_MAP` | Optionally configure the filament type, color and availabilty. Used in colored UI's and available via printer variables in your print_start macro | `RESET=[0\|1]` If specified the 'gate_materials, 'gate_colors' and 'gate_status' will be reset to that defined in mmu_parameters.cfg <br>`DISPLAY=[0\|1]` To simply display the current gate map <br>The following must be specified together to create a complete entry in the gate map: <br>`GATE=[0..n]` Gate numer <br>`MATERIAL=..` The material type. Short, no spaces. e.g. "PLA+" <br>`COLOR=..` The color of the filament. Can be a string representing one of the [w3c color names](https://www.w3.org/TR/css-color-4/#named-colors) e.g. "violet" or a color string in the hexadeciaml format RRGGBB e.g. "ff0000" for red. NO space or # symbols. Empty string for no color <br>`AVAILABLE=[0\|1\|2]` Optionally marks gate as empty (0) or available from spool (1) or available from buffer (2) <br>`QUIET=[0\|1]` Optional. Supresses dump of current gate map to log file |
+  | `MMU_GATE_MAP` | Without parameters this will display the current gate map. Optionally configure the filament type, color and availabilty. Used in colored UI's and available via printer variables in your print_start macro | `RESET=[0\|1]` If specified the 'gate_materials, 'gate_colors' and 'gate_status' will be reset to that defined in mmu_parameters.cfg <br>The following must be specified together to create a complete entry in the gate map: <br>`GATE=[0..n]` Gate numer <br>`MATERIAL=..` The material type. Short, no spaces. e.g. "PLA+" <br>`COLOR=..` The color of the filament. Can be a string representing one of the [w3c color names](https://www.w3.org/TR/css-color-4/#named-colors) e.g. "violet" or a color string in the hexadeciaml format RRGGBB e.g. "ff0000" for red. NO space or # symbols. Empty string for no color <br>`AVAILABLE=[0\|1\|2]` Optionally marks gate as empty (0) or available from spool (1) or available from buffer (2) <br>`SPOOLID=..` The SpoolMan SpoolID (integer) if SpoolMan support is enabled <br>`QUIET=[0\|1]` Optional. Supresses dump of current gate map to log file |
   | `MMU_REMAP_TTG` | Reconfiguration of the Tool - to - Gate (TTG) map.  Can also set gates as empty! | `RESET=[0\|1]` If specified the Tool -> Gate mapping will be reset to that defined in mmu_parameters.cfg <br>`TOOL=[0..n]` Tool to set in TTG map <br>`GATE=[0..n]` Maps specified tool to this gate (multiple tools can point to same gate) <br>`AVAILABLE=[0\|1]`  Marks gate as available or empty <br>`QUIET=[0\|1]` Optional. Supresses dump of current TTG map to log file <br>`MAP={csv}` List of gates, one for each tool to specify the entire TTG map for bulk updates |
-  | `MMU_ENDLESS_SPOOL` | Modify the defined EndlessSpool groups at runtime | `RESET=[0\|1]` If specified the EndlessSpool groups will be reset to that defined in mmu_parameters.cfg <br>`GROUPS={csv of groups}` The same format as the default groups defined in mmu_parameters.cfg. Must be the same length as the number of MMU gates | `QUIET=[0\|1]` Optional. Supresses dump of current TTG and endless spool map to log file <br>`ENABLE=[0\|1]` Optional. Force the enabling or disabling of endless spool at runtime (not persisted) |
+  | `MMU_ENDLESS_SPOOL` | With parameters this will display the EndlessSpool groups. It can also modify the defined EndlessSpool groups at runtime | `RESET=[0\|1]` If specified the EndlessSpool groups will be reset to that defined in mmu_parameters.cfg <br>`GROUPS={csv of groups}` The same format as the default groups defined in mmu_parameters.cfg. Must be the same length as the number of MMU gates | `QUIET=[0\|1]` Optional. Supresses dump of current TTG and endless spool map to log file <br>`ENABLE=[0\|1]` Optional. Force the enabling or disabling of endless spool at runtime (not persisted) |
   <br>
 
   ### Status, Logging and Persisted state

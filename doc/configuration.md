@@ -324,7 +324,7 @@ This final section is commented out because it is not generally needed. It retai
 # Tx to Gate #x, or no Endless Spool groups.  However you have the option to define starting values here.
 # IMPORTANT: the arrays of values must be the same length as the number of gates on your MMU otherwise they will be rejected.
 #
-# This group of settings collectively form the default gate map which can be updated with the `MMU_SET_GATE_MAP` command
+# This group of settings collectively form the default gate map which can be updated with the `MMU_GATE_MAP` command
 # or similar commands that determine gate status. They must all be the same length at the number of gates (0 .. n)
 # Note that these are the defaults and will be overriden by saved values in mmu_vars.cfg
 #
@@ -334,16 +334,16 @@ This final section is commented out because it is not generally needed. It retai
 #
 # 2. Whether gate has filament available (2=available from buffer, 1=available from spool, 0=empty). If not specified or commentet
 #    out the system default of all gates in an unknown state will be assumed
-#    'MMU_SET_GATE_MAP' is used to adjust and persist during use
+#    'MMU_GATE_MAP' is used to adjust and persist during use
 #gate_status: 1, 1, 1, 1, 1, 1, 1, 1, 1
 #
 # 3. Similarly this specifies the material type present in the gate. If not specified or commented out the name will be empty
-#    'MMU_SET_GATE_MAP' is used to adjust and persist during use
+#    'MMU_GATE_MAP' is used to adjust and persist during use
 #gate_material: PLA, ABS+, ABS, ABS, PLA, PLA, PETG, ABS, ABS
 #
 # 4. Similarly this specifies the color of the filament in each gate. If not specified or commented out the color will be default
 #    Color can be w3c color name or RRGGBB (no leading #)
-#    'MMU_SET_GATE_MAP' is used to adjust and persist during use
+#    'MMU_GATE_MAP' is used to adjust and persist during use
 #gate_color: red, orange, yellow, green, blue, indigo, violet, ffffff, black
 #
 # 5. If endless spool is turned on, you should define a list of EndlessSpool groups here, one entry for each gate in your MMU
