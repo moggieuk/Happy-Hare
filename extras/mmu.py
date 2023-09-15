@@ -261,7 +261,7 @@ class Mmu:
         self.default_gate_status = list(config.getintlist('gate_status', []))
         self.default_gate_material = list(config.getlist('gate_material', []))
         self.default_gate_color = list(config.getlist('gate_color', []))
-        self.default_gate_spool_id = list(config.getlist('gate_spool_id', []))
+        self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
 
         # Homing, loading and unloading controls for built-in logic
         self.encoder_unload_buffer = config.getfloat('encoder_unload_buffer', 30., minval=15.)
@@ -373,15 +373,17 @@ class Mmu:
                 self.default_gate_color.append("")
         self.gate_color = list(self.default_gate_color)
        
-       # SpoolID for each gate
+        # SpoolID for each gate
+        self.enable_spoolman=False
         if len(self.default_gate_spool_id) > 0:
             if not len(self.default_gate_spool_id) == self.mmu_num_gates:
                 raise self.config.error("gate_spool_id has different number of entries than the number of gates")
+            else:
+                self.enable_spoolman=True
         else:
             for i in range(self.mmu_num_gates):
-                self.default_gate_spool_id.append("")
+                self.default_gate_spool_id.append(-1)
         self.gate_spool_id = list(self.default_gate_spool_id)
-
 
         # Tool to gate mapping
         if len(self.default_tool_to_gate_map) > 0:
@@ -1019,7 +1021,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ("\'%s\'" %x), self.gate_material))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ("\'%s\'" %x), self.gate_color))))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, list(map(lambda x: ("\'%s\'" %x), self.gate_spool_id))))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
 
     def _log_error(self, message):
         if self.mmu_logger:
@@ -2698,8 +2700,10 @@ class Mmu:
 ###########################
 
     def _spoolman_activate_spool(self,spool):
-        self._log_info("Selecting Spool %s..." % (spool))
-
+        if spool > -1:
+            self._log_info("activating spool %s..." % (spool))
+        else:
+            self._log_info("deactivating spool ...")
         webhooks = self.printer.lookup_object('webhooks')
         try:
             webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool)
@@ -2715,7 +2719,8 @@ class Mmu:
 
         # Activate the spool in SpoolMan, if enabled
         spool = self.gate_spool_id[gate]
-        self._spoolman_activate_spool(spool)
+        if self.enable_spoolman and spool > -1:
+            self._spoolman_activate_spool(spool)
 
         if self.gate_status[gate] == self.GATE_EMPTY:
             raise MmuError("Gate %d is empty!" % gate)
@@ -3076,7 +3081,8 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self._log_debug("Tool already unloaded")
             return
-        self._spoolman_activate_spool(-1)
+        if self.enable_spoolman:
+            self._spoolman_activate_spool(-1)
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
         self._unload_sequence(self.calibrated_bowden_length, skip_tip=skip_tip)
 
@@ -4406,6 +4412,9 @@ class Mmu:
             else:
                 msg += ("\nGate #%d: " % g)
             msg += ("Material: %s, Color: %s, Status: %s" % (material, color, available))
+            if self.enable_spoolman:
+                spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] != -1 else "n/a"
+                msg += (", SpoolID: %s" % (spool_id))
             if detail and g == self.gate_selected:
                 msg += " [SELECTED%s]" % ((" supporting tool T%d" % self.tool_selected) if self.tool_selected >= 0 else "")
         return msg
@@ -4518,11 +4527,13 @@ class Mmu:
             available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=0, maxval=2)
             material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
             color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
+            spool_id = gcmd.get_int('SPOOLID', -1, minval=-1)
             if not self._validate_color(color):
                 raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
             self.gate_material[gate] = material
             self.gate_color[gate] = color
             self.gate_status[gate] = available
+            self.gate_spool_id[gate] = spool_id
             self._persist_gate_map()
 
         if not quiet:

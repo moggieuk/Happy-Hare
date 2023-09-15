@@ -804,7 +804,7 @@ Similarly the `MMU_CHECK_GATES` command will run through all the gates (or the o
 
 ### 12. Gate map describing filament type, color and status
 
-Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material` and `printer.mmu.gate_color`) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
+Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material` and `printer.mmu.gate_color` - and `printer.mmu.gate_spool_id` if spoolman is enabled) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
 
 <details>
 <summary><sub>🔹 Read more on editing the gate map...</sub></summary><br>
