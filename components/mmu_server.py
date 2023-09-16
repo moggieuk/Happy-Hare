@@ -1,8 +1,20 @@
+# Happy Hare MMU Software
+# Moonraker support for a file-preprocessor that injects MMU metadata into gcode files
+#
+# Copyright (C) 2023  Kieran Eglin <@kierantheman (discord)>, <kieran.eglin@gmail.com>
+#
+# (\_/)
+# ( *,*)
+# (")_(") MMU Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
 import logging, os, re, fileinput
 
 class MmuServer:
-    TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL.*?TOOL=)|(^T))(?P<tool>\d{1,2})"
-    METADATA_REPLACEMENT_STRING = "!mmu_inject_tools_used!"
+    TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<tool>\d{1,2})"
+    METADATA_REPLACEMENT_STRING = "!mmu_inject_referenced_tools!"
 
     def __init__(self, config):
         self.config = config
