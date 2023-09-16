@@ -857,9 +857,6 @@ Happy Hare keeps track of the current print state in a similar way to the klippe
 > [!IMPORTANT]  
 > Users printing from the "virtual SD-card" via Mainsail or Fluuid don't have any extras steps to take but if streaming a job (e.g. from Octoprint) the user is responsible to add `_MMU_PRINT_START` to their print_start macro or sequence and `_MMU_PRINT_END` to their end_print macro or sequence. The addition of those commands on "virtual sd-card print" will not cause harm but they are but are unecessary and will be ignored (hence the underscore naming).
 
-<details>
-<summary><sub>🔹 Review state machine transitions in detail...</sub></summary><br>
-
 ```mermaid
 stateDiagram-v2
     standby --> started: <i>(print_start)</i>
@@ -876,6 +873,9 @@ stateDiagram-v2
     PAUSE --> printing: RESUME
     PAUSE --> standby: RESUME
 ```
+
+<details>
+<summary><sub>🔹 Review state machine transitions in detail...</sub></summary><br>
 
 **Explanation:**
 MMU starts in `standby` state. On printing it will briefly enter `started` (until _MMU_PRINT_START is complete) then transition to `printing`. On job completion (at end of _MMU_PRINT_END) or job error the state will transition to `complete` or `error` respectively.  If the print is explicitly cancelled the `CANCEL_PRINT` interception transitions to `cancelled`. If `idle_timeout` is experience the state will transition back to `standby`.
