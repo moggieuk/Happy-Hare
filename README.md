@@ -49,7 +49,7 @@ Thank you!
 \- [10. Filament bypass](#10-filament-bypass)<br>
 \- [11. Pre-print functions](#11-useful-pre-print-functionality)<br>
 \- [12. Gate map, Filament type and color](#12-gate-map-describing-filament-type-color-and-status)<br>
-\- [13. Job state transitions](#13-job-state-transitions-and-print-start/end-handling)<br>
+\- [13. Job state transitions](#13-job-state-transistions-and-print-startend-handling)<br>
 **[Loading and Unloading Sequences](#---filament-loading-and-unloading-sequences)**<br>
 **[KlipperScreen Happy Hare Edition](#---klipperscreen-happy-hare-edition)**<br>
 **[My Testing / Setup](#---my-testing)**<br>
