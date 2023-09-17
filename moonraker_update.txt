@@ -5,3 +5,6 @@ origin: https://github.com/moggieuk/Happy-Hare.git
 primary_branch: main
 install_script: install.sh
 managed_services: klipper
+
+[mmu_server]
+enable_file_preprocessor: False

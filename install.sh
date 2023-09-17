@@ -5,9 +5,11 @@
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
 KLIPPER_HOME="${HOME}/klipper"
+MOONRAKER_HOME="${HOME}/moonraker"
 KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
 KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
+
 
 declare -A PIN 2>/dev/null || {
     echo "Please run this script with bash $0"
@@ -112,6 +114,11 @@ verify_home_dirs() {
         KLIPPER_CONFIG_HOME="${OLD_KLIPPER_CONFIG_HOME}"
     fi
     echo -e "${INFO}Klipper config directory (${KLIPPER_CONFIG_HOME}) found"
+
+    if [ ! -d "${MOONRAKER_HOME}" ]; then
+        echo -e "${ERROR}Moonraker home directory (${MOONRAKER_HOME}) not found. Use '-m <dir>' option to override"
+        exit -1
+    fi
 }
 
 # Silently cleanup legacy ERCF-Software-V3 files...
@@ -171,7 +178,7 @@ cleanup_old_ercf() {
 }
 
 link_mmu_plugins() {
-    echo -e "${INFO}Linking mmu extension to Klipper..."
+    echo -e "${INFO}Linking mmu extensions to Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
         for file in `cd ${SRCDIR}/extras ; ls *.py`; do
             ln -sf "${SRCDIR}/extras/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
@@ -179,16 +186,34 @@ link_mmu_plugins() {
     else
         echo -e "${WARNING}Klipper extensions not installed because Klipper 'extras' directory not found!"
     fi
+
+    echo -e "${INFO}Linking mmu extension to Moonraker..."
+    if [ -d "${MOONRAKER_HOME}/moonraker/components" ]; then
+        for file in `cd ${SRCDIR}/components ; ls *.py`; do
+            ln -sf "${SRCDIR}/components/${file}" "${MOONRAKER_HOME}/moonraker/components/${file}"
+        done
+    else
+        echo -e "${WARNING}Moonraker extensions not installed because Moonraker 'components' directory not found!"
+    fi
 }
 
 unlink_mmu_plugins() {
-    echo -e "${INFO}Unlinking mmu extension to Klipper..."
+    echo -e "${INFO}Unlinking mmu extensions from Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
         for file in `cd ${SRCDIR}/extras ; ls *.py`; do
             rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
         done
     else
         echo -e "${WARNING}MMU modules not uninstalled because Klipper 'extras' directory not found!"
+    fi
+
+    echo -e "${INFO}Unlinking mmu extension from Moonraker..."
+    if [ -d "${MOONRAKER_HOME}/moonraker/components" ]; then
+        for file in `cd ${SRCDIR}/components ; ls *.py`; do
+            rm -f "${MOONRAKER_HOME}/moonraker/components/${file}"
+        done
+    else
+        echo -e "${WARNING}MMU modules not uninstalled because Moonraker 'components' directory not found!"
     fi
 }
 
@@ -531,6 +556,8 @@ install_update_manager() {
     echo -e "${INFO}Adding update manager to moonraker.conf"
     file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
     if [ -f "${file}" ]; then
+        restart=0
+
         update_section=$(grep -c '\[update_manager happy-hare\]' ${file} || true)
         if [ "${update_section}" -eq 0 ]; then
             echo "" >> "${file}"
@@ -538,9 +565,26 @@ install_update_manager() {
                 echo -e "${line}" >> "${file}"
             done < "${SRCDIR}/moonraker_update.txt"
             echo "" >> "${file}"
-            restart_moonraker
+            restart=1
         else
             echo -e "${WARNING}[update_manager happy-hare] already exists in moonraker.conf - skipping install"
+        fi
+
+        # Quick "catch-up" update for new mmu_service
+        enable_preprocessor="True"
+        update_section=$(grep -c '\[mmu_server\]' ${file} || true)
+        if [ "${update_section}" -eq 0 ]; then
+            echo "" >> "${file}"
+            echo "[mmu_server]" >> "${file}"
+            echo "enable_file_preprocessor: ${enable_preprocessor}" >> "${file}"
+            echo "" >> "${file}"
+            restart=1
+        else
+            echo -e "${WARNING}[update_manager happy-hare] already exists in moonraker.conf - skipping install"
+        fi
+
+        if [ "$restart" -eq 1 ]; then
+            restart_moonraker
         fi
     else
         echo -e "${WARNING}moonraker.conf not found!"
@@ -551,6 +595,8 @@ uninstall_update_manager() {
     echo -e "${INFO}Removing update manager from moonraker.conf"
     file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
     if [ -f "${file}" ]; then
+        restart=0
+
         update_section=$(grep -c '\[update_manager happy-hare\]' ${file} || true)
         if [ "${update_section}" -eq 0 ]; then
             echo -e "${INFO}[update_manager happy-hare] not found in moonraker.conf - skipping removal"
@@ -558,6 +604,20 @@ uninstall_update_manager() {
             cat "${file}" | sed -e " \
                 /\[update_manager happy-hare\]/,+6 d; \
                     " > "${file}.new" && mv "${file}.new" "${file}"
+            restart=1
+        fi
+
+        update_section=$(grep -c '\[mmu_server\]' ${file} || true)
+        if [ "${update_section}" -eq 0 ]; then
+            echo -e "${INFO}[mmu_server] not found in moonraker.conf - skipping removal"
+        else
+            cat "${file}" | sed -e " \
+                /\[mmu_server\]/,+1 d; \
+                    " > "${file}.new" && mv "${file}.new" "${file}"
+            restart=1
+        fi
+
+        if [ "$restart" -eq 1 ]; then
             restart_moonraker
         fi
     else
@@ -973,7 +1033,7 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]"
+    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-i] [-u]"
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
@@ -995,9 +1055,10 @@ INSTALL=0
 UNINSTALL=0
 NOSERVICE=0
 INSTALL_KLIPPER_SCREEN_ONLY=0
-while getopts "k:c:ids" arg; do
+while getopts "k:c:m:ids" arg; do
     case $arg in
         k) KLIPPER_HOME=${OPTARG};;
+        m) MOONRAKER_HOME=${OPTARG};;
         c) KLIPPER_CONFIG_HOME=${OPTARG};;
         i) INSTALL=1;;
         d) UNINSTALL=1;;
