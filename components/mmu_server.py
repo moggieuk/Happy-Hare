@@ -14,7 +14,7 @@ import logging, os, re, fileinput
 
 class MmuServer:
     TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<tool>\d{1,2})"
-    METADATA_REPLACEMENT_STRING = "{referenced_tools}"
+    METADATA_REPLACEMENT_STRING = "!referenced_tools!"
 
     def __init__(self, config):
         self.config = config
@@ -56,11 +56,9 @@ class MmuServer:
         tools_used = set()
         has_placeholder = False
 
-        self._log("has_placeholder=%s, meta=%s" % (has_placeholder, self.METADATA_REPLACEMENT_STRING))
         with open(file_path, "r") as f:
             for line in f:
                 if not has_placeholder and not line.startswith(";") and self.METADATA_REPLACEMENT_STRING in line:
-                    self._log("GOT IT")
                     has_placeholder = True
 
                 match = regex.match(line)
