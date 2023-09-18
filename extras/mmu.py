@@ -184,8 +184,9 @@ class Mmu:
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
 
-        # MMU hardware (steppers, servo, encoder and optional toolhead sensor)
-        self.selector_stepper = self.gear_stepper = self.mmu_extruder_stepper = self.toolhead_sensor = self.encoder_sensor = self.servo = None
+        # MMU hardware (steppers, servo, encoder and optional sensors)
+        self.selector_stepper = self.gear_stepper = self.mmu_extruder_stepper = self.encoder_sensor = self.servo = None
+        self.sensors = {}
 
         # Specific vendor build parameters / tuning
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
@@ -554,32 +555,43 @@ class Mmu:
         if self.mmu_extruder_stepper is None:
             raise self.config.error("Missing [manual_extruder_stepper extruder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
-        # Optional toolhead sensor (assumed to be after extruder gears)
-        self.toolhead_sensor = self.printer.lookup_object("filament_switch_sensor toolhead_sensor", None)
-        if self.toolhead_sensor:
-            self.toolhead_sensor.runout_helper.runout_pause = False # With MMU this must not pause nor call user defined macros
-            toolhead_sensor_pin = self.config.getsection("filament_switch_sensor toolhead_sensor").get("switch_pin")
+        # Configure sensor options:
+        # "toolhead" - assumed to be after extruder gears inside of extruder
+        #              Must be done first and gear/extruder endstops synced afterwards
+        # "mmu_gate" - shared homing point for parking at the gate
+        # "extruder" - assumed to be just prior to extruder gears
+        for name in ["toolhead", "gate", "extruder"]:
+            sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
+            if sensor is not None:
+                self.sensors[name] = sensor
+                # With MMU this must not pause nor call user defined macros
+                self.sensors[name].runout_helper.runout_pause = False
+                self.sensors[name].runout_helper.runout_gcode = None
+                self.sensors[name].runout_helper.insert_gcode = None
+                sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
+    
+                # Add sensor pin as an extra endstop for gear_stepper
+                ppins = self.printer.lookup_object('pins')
+                pin_params = ppins.parse_pin(sensor_pin, True, True)
+                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+                ppins.allow_multi_use_pin(share_name)
+                mcu_endstop = self.gear_stepper._add_endstop(sensor_pin, "mmu_%s" % name)
 
-            # Add toolhead sensor pin as an extra endstop for gear_stepper
-            ppins = self.printer.lookup_object('pins')
-            pin_params = ppins.parse_pin(toolhead_sensor_pin, True, True)
-            share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-            ppins.allow_multi_use_pin(share_name)
-            mcu_endstop = self.gear_stepper._add_endstop(toolhead_sensor_pin, "mmu_toolhead")
+                if name == "toolhead":
+                    # Finally we might want to home the extruder to toolhead sensor in isolation
+                    self.mmu_extruder_stepper._add_endstop(sensor_pin, "mmu_toolhead", register=False)
 
-            # Finally we might want to home the extruder to toolhead sensor in isolation
-            self.mmu_extruder_stepper._add_endstop(toolhead_sensor_pin, "mmu_toolhead", register=False)
-
-        # To allow for homing moves on extruder synced with gear and gear synced with extruder we need
-        # each to share each others endstops
-        for en in self.mmu_extruder_stepper.get_endstop_names():
-            mcu_es = self.mmu_extruder_stepper.get_endstop(en)
-            for s in self.gear_stepper.steppers:
-                mcu_es.add_stepper(s)
-        for en in self.gear_stepper.get_endstop_names():
-            mcu_es = self.gear_stepper.get_endstop(en)
-            for s in self.mmu_extruder_stepper.steppers:
-                mcu_es.add_stepper(s)
+            if name == "toolhead":
+                # After adding just toolhead, to allow for homing moves on extruder synced with gear
+                # and gear synced with extruder we need each to share each others endstops
+                for en in self.mmu_extruder_stepper.get_endstop_names():
+                    mcu_es = self.mmu_extruder_stepper.get_endstop(en)
+                    for s in self.gear_stepper.steppers:
+                        mcu_es.add_stepper(s)
+                for en in self.gear_stepper.get_endstop_names():
+                    mcu_es = self.gear_stepper.get_endstop(en)
+                    for s in self.mmu_extruder_stepper.steppers:
+                        mcu_es.add_stepper(s)
 
         # Get servo and encoder setup -----
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
@@ -638,7 +650,7 @@ class Mmu:
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-        if self.toolhead_sensor is None:
+        if not self._has_sensor("toolhead"):
             self.extruder_force_homing = 1
             self._log_debug("No toolhead sensor detected, setting 'extruder_force_homing: 1'")
 
@@ -1152,7 +1164,7 @@ class Mmu:
 
     def _state_to_human_string(self, direction=None):
         tool_str = str(self.tool_selected) if self.tool_selected >=0 else "?"
-        sensor_str = " [sensor] " if self._has_toolhead_sensor() else ""
+        sensor_str = " [sensor] " if self._has_sensor("toolhead") else ""
         counter_str = " (@%.1f mm)" % self._get_encoder_distance() if self._has_encoder() else ""
         visual = visual2 = ""
         if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -1252,9 +1264,9 @@ class Mmu:
                     msg += " to EXTRUDER using COLLISION DETECTION (current %d%%)" % self.extruder_homing_current
                 else:
                     msg += " to EXTRUDER to endstop '%s'" % self.extruder_homing_endstop
-                if self._has_toolhead_sensor():
+                if self._has_sensor("toolhead"):
                     msg += " and then"
-            msg += " to TOOLHEAD SENSOR" if self._has_toolhead_sensor() else ""
+            msg += " to TOOLHEAD SENSOR" if self._has_sensor("toolhead") else ""
             msg += " after an initial %.1fmm fast move" % self.calibrated_bowden_length
             if self.toolhead_sync_load or self.toolhead_sync_unload or self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
@@ -1617,7 +1629,7 @@ class Mmu:
             mean = (float(mean_pos) + float(mean_neg)) / 2
             ratio = mean / length
 
-            self._log_always("Calibration move of %dx %.1fmm, average encoder measurement: %.1fmm - Ratio is %.6f" % (repeats * 2, length, mean, ratio))
+            self._log_always("Calibration move of %d x %.1fmm, average encoder measurement: %.1fmm - Ratio is %.6f" % (repeats * 2, length, mean, ratio))
             self._log_always("(Gate #%d rotation_distance: %.6f vs Gate #0: %.6f)" % (gate, ratio * self.ref_gear_rotation_distance, self.ref_gear_rotation_distance))
             if not gate == 0: # Gate #0 is not calibrated, it is the reference
                 if ratio > 0.8 and ratio < 1.2:
@@ -2067,7 +2079,9 @@ class Mmu:
             reason = "Reason: %s" % reason
             extra = ""
 
-        self._recover_filament_pos(strict=False, message=True)
+        if self._is_printing(force_in_print):
+            self._recover_filament_pos(strict=False, message=True)
+
         self._sync_gear_to_extruder(False, servo=True)
         self._log_error("%s\n%s" % (msg, reason))
         if extra != "":
@@ -2173,7 +2187,8 @@ class Mmu:
             self._enable_encoder_sensor(old_enable)
 
     def _has_encoder(self):
-        return self.encoder_sensor is not None
+#        return False # PAUL temp testing without encoder!
+        return self.encoder_sensor is not None # PAUL
 
     def _check_has_encoder(self):
         if not self._has_encoder():
@@ -2191,7 +2206,7 @@ class Mmu:
         if self._has_encoder():
             return self.encoder_sensor.get_distance()
         else:
-            return -1.
+            return self.filament_distance
 
     def _set_encoder_distance(self, distance):
         if self._has_encoder():
@@ -2207,11 +2222,28 @@ class Mmu:
         if self._has_encoder():
             return self.encoder_sensor.reset_counts()
 
-    def _has_toolhead_sensor(self):
-        return self.toolhead_sensor is not None and self.toolhead_sensor.runout_helper.sensor_enabled
+    def _has_sensor(self, name):
+        return self.sensors[name].runout_helper.sensor_enabled if name in self.sensors else False
+
+    # Return sensor state or None if not installed
+    def _check_sensor(self, name):
+        sensor = self.sensors.get(name, None)
+        if sensor is not None and sensor.runout_helper.sensor_enabled:
+            detected = sensor.runout_helper.filament_present
+            self._log_trace("(%s sensor %s filament)" % (name, "detects" if detected else "does not detect"))
+            return detected
+        else:
+            return None
+
+    # Return dict of all sensor states (or None if sensor disabled)
+    def _check_all_sensors(self):
+        result = {}
+        for name, sensor in self.sensors.items():
+            result[name] = sensor.runout_helper.filament_present if sensor.runout_helper.sensor_enabled else None
+        return result
 
     def _must_home_to_extruder(self):
-        return self.extruder_force_homing or not self._has_toolhead_sensor()
+        return self.extruder_force_homing or not self._has_sensor("toolhead")
 
     def _check_is_disabled(self):
         if not self.is_enabled:
@@ -2364,7 +2396,7 @@ class Mmu:
         return False
 
     def _get_home_position_to_nozzle(self):
-        if self._has_toolhead_sensor():
+        if self._has_sensor("toolhead"):
             return self.toolhead_sensor_to_nozzle
         else:
             return self.toolhead_extruder_to_nozzle
@@ -2705,6 +2737,30 @@ class Mmu:
             self.toolhead.wait_moves()
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
 
+    # Check for filament in selected gate using available sensors or encoder
+    def _check_filament_in_mmu(self):
+        self._log_debug("Checking for filament at gate...")
+        if True in self._check_all_sensors():
+            self._log_debug("Filament detected in gate. Sensors:" % self._check_all_sensors())
+            return True
+        elif not self._has_sensor("gate") and self._has_encoder():
+            self._servo_down()
+            found = self._buzz_gear_motor()
+            self._log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
+            return found
+        return False
+
+    # Check for filament at selected gate
+    def _check_filament_at_gate(self):
+        if self._check_sensor("gate"):
+            return True
+        elif not self._has_sensor("gate") and self._has_encoder():
+            self._servo_down()
+            found = self._buzz_gear_motor()
+            self._log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
+            return found
+        return False
+
     def _buzz_gear_motor(self):
         initial_encoder_position = self._get_encoder_distance()
         self._gear_stepper_move_wait(2.5, accel=self.gear_buzz_accel, wait=False)
@@ -2713,28 +2769,6 @@ class Mmu:
         self._log_trace("After buzzing gear motor, encoder moved %.2f" % delta)
         self._set_encoder_distance(initial_encoder_position)
         return delta > self.encoder_min
-
-    # Check for filament in encoder by wiggling MMU gear stepper and looking for movement on encoder
-    def _check_filament_in_encoder(self):
-        self._log_debug("Checking for filament in encoder...")
-        if self._check_toolhead_sensor() == 1:
-            self._log_debug("Filament must be in encoder because reported in extruder by toolhead sensor")
-            return True
-        self._servo_down()
-        found = self._buzz_gear_motor()
-        self._log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
-        return found
-
-    # Return toolhead sensor or -1 if not installed
-    def _check_toolhead_sensor(self):
-        if self._has_toolhead_sensor():
-            if self.toolhead_sensor.runout_helper.filament_present:
-                self._log_trace("(Toolhead sensor detects filament)")
-                return 1
-            else:
-                self._log_trace("(Toolhead sensor does not detect filament)")
-                return 0
-        return -1
 
     # Check for filament in extruder by moving extruder motor. This is only used with toolhead sensor
     # and can only happen if filament is the short distance from sensor to gears. This check will eliminate that
@@ -3152,6 +3186,8 @@ class Mmu:
         else:
             reference_load = False
             dwell = 0.
+        if current_ratio is None and not self.calibrating:
+            self._log_info("Warning: Gate %d not calibrated! Using default 1.0 gear ratio!" % self.gate_selected)
 
         # Fast load
         moves = 1 if length < (self.calibrated_bowden_length / self.bowden_num_moves) else self.bowden_num_moves
@@ -3258,7 +3294,7 @@ class Mmu:
     # 'extruder_stepper_only' forces only extruder stepper movement regardless of configuration
     # Returns the distance moved
     def _home_to_toolhead_sensor(self, extruder_stepper_only):
-        if self.toolhead_sensor.runout_helper.filament_present:
+        if self.sensors["toolhead"].runout_helper.filament_present:
             # We shouldn't be here and probably means the toolhead sensor is malfunctioning/blocked
             raise MmuError("Toolhead sensor malfunction - filament detected before it entered extruder")
 
@@ -3315,7 +3351,7 @@ class Mmu:
             # to perform a swap should be adequate to reach the target temp but better safe than sorry
             self._ensure_safe_extruder_temperature(wait=True)
 
-            if self._has_toolhead_sensor():
+            if self._has_sensor("toolhead"):
                 # With toolhead sensor we home to toolhead sensor past the extruder entrance
                 distance_moved += self._home_to_toolhead_sensor(extruder_stepper_only)
 
@@ -3328,7 +3364,7 @@ class Mmu:
                 delta = self._trace_filament_move("Synchronously loading filament to nozzle", length,
                         speed=self.extruder_sync_load_speed, motor="gear+extruder")
             else:
-                if not self._has_toolhead_sensor() and not extruder_stepper_only:
+                if not self._has_sensor("toolhead") and not extruder_stepper_only:
                     # Extruder transition moves...
                     if self.toolhead_delay_servo_release > 0:
                         # Delay servo release by a few mm to keep filament tension for reliable transition
@@ -3480,19 +3516,19 @@ class Mmu:
     def _recover_filament_pos(self, strict=False, message=False):
         if message:
             self._log_info("Attempting to recover filament position...")
-        toolhead_sensor_state = self._check_toolhead_sensor()
-        if toolhead_sensor_state == -1:     # Not installed
-            if self._check_filament_in_encoder():
+        ts = self._check_sensor("toolhead")
+        if ts is None: # Not installed
+            if self._check_filament_in_mmu():
                 if self._check_filament_still_in_extruder():
                     self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
                 else:
                     self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
             else:
                 self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
-        elif toolhead_sensor_state == 1:    # Filament detected in toolhead
+        elif ts: # Filament detected in toolhead
             self._set_filament_pos(self.FILAMENT_POS_LOADED)
-        else:                               # Filament not detected in toolhead
-            if self._check_filament_in_encoder():
+        else: # Filament not detected in toolhead
+            if self._check_filament_in_mmu():
                 if self.strict_filament_recovery or strict:
                     if self._check_filament_still_in_extruder():
                         self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
@@ -3521,7 +3557,7 @@ class Mmu:
             out_of_extruder = False
             safety_margin = 5.
 
-            if self._has_toolhead_sensor():
+            if self._has_sensor("toolhead"):
                 # This strategy supports both extruder only and 'synced' modes of operation
                 # Home to toolhead sensor, then move the remained fixed distance
                 motor = "gear+extruder" if synced else "extruder"
@@ -3703,19 +3739,26 @@ class Mmu:
                 distance_moved += self.encoder_move_step_size
         raise MmuError("Unable to get the filament out of the encoder cart")
 
-    # Form tip and return True if filament detected and the filament park position
+    # Form tip and return True if filament was detected and the assumed filament (park) position
     def _form_tip_standalone(self, extruder_stepper_only=False):
         self.toolhead.wait_moves()
-        filament_initially_present = self._check_toolhead_sensor()
-        if filament_initially_present == 0:
+
+        # Pre check to validate the presence of filament in the extruder and case where we don't need to form tip
+        if self._check_sensor("extruder") or self._check_sensor("toolhead"):
+            filament_initially_present = True
+        else:
+            # Only the "extruder" sensor can definitely answer but believe toolhead if that is all we have
+            filament_initially_present = self._check_sensor("extruder")
+            if filament_initially_present is None:
+                filament_initially_present = self._check_sensor("toolhead")
+        if filament_initially_present is False:
             self._log_debug("Tip forming skipped because no filament was detected")
             if self.filament_pos != self.FILAMENT_POS_LOADED:
                 return False, 0.
             else:
-                # Filament could be between extruder gears and toolhead sensor
-                out_of_extruder, moved = self._test_filament_in_extruder_by_retracting()
-                self.filament_distance += moved
-                return not out_of_extruder, moved
+                # TODO what is the right logic here? Is is Assertion Failure, recover pos (or do nothing)?
+                #self._recover_filament_pos(self, strict=False, message=True)
+                return False, 0.
 
         self._log_info("Forming tip...")
         with self._wrap_action(self.ACTION_FORMING_TIP):
@@ -3726,56 +3769,46 @@ class Mmu:
             # Perform the tip forming move and establish park_pos
             with self._extruder_current(self.extruder_form_tip_current, "for tip forming move"):
                 initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
-                initial_encoder_position = self._get_encoder_distance()
-
+                initial_encoder_position = self._get_encoder_distance() # PAUL harmless without encooder
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._wrap_gcode_command(self.form_tip_macro, exception=True)
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
                 self.toolhead.dwell(0.2)
                 self.toolhead.wait_moves()
-                delta = self._get_encoder_distance() - initial_encoder_position
+                delta = self._get_encoder_distance() - initial_encoder_position # PAUL harmless without encooder
                 park_pos = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro).variables.get("output_park_pos", -1)
                 filament_check = True
                 if park_pos < 0:
                     park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
                     self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos, delta))
                 else:
-                    # Means the macro reported it so assume filament cutting
+                    # Means the macro reported it (usually for filament cutting)
                     self._log_trace("After tip formation, park_pos reported as: %.2f (encoder moved %.2f)" % (park_pos, delta))
                     filament_check = False
-                self._set_encoder_distance(initial_encoder_position + park_pos)
-                self.filament_distance += park_pos
+                self._set_encoder_distance(initial_encoder_position + park_pos) # PAUL harmless without encooder
+                self.filament_distance += park_pos # PAUL shouldn't this be assignment and not increment?
 
-            # Logic to try to validate success and actual presence of filament
-            if filament_check:
-                if synced:
-                    if delta > self.encoder_min:
-                        # Encoder sees movement cases
-                        if filament_initially_present == 1:
-                            return True, park_pos
-                        elif filament_initially_present == 0:
-                            # Believe the toolhead sensor
-                            return False, park_pos
-                        else:
-                            # A further test is needed to see if the filament is actually in the extruder
-                            out_of_extruder, moved = self._test_filament_in_extruder_by_retracting()
-                            park_pos += moved
-                            self.filament_distance += moved
-                            return not out_of_extruder, park_pos
-                    else:
-                        # No encoder movement cases
-                        if filament_initially_present == 1:
-                            # Encoder doesn't see movement but filament was initially detected. Big clog!
-                            raise MmuError("Filament stuck in extruder")
-                        else:
-                            # Confident we are empty
-                            return False, park_pos
-                else:
-                    # Not synced. Filament was present if encoder moved or we initially detected with toolhead sensor
-                    return (delta > self.encoder_min or filament_initially_present == 1), park_pos
+            # Logic to try to validate success and update presence of filament based on movement
+            if filament_initially_present is True:
+                # With encoder we might be able to check for clog now
+                if self._has_encoder() and filament_check and not delta > self.encoder_min:
+                    raise MmuError("Filament stuck in extruder")
+                return True, park_pos
             else:
-                # Filament cutter case. Unless the toolhead sensor doesn't detect we assume filament is present
-                return filament_initially_present != 0, park_pos
+                # Couldn't determine if we initially had filament at start (lack of sensors)
+                if self._has_encoder() and filament_check:
+                    if not delta > self.encoder_min:
+                        # No movement. We can be confident we are empty
+                        return False, park_pos
+                    if synced:
+                        # A further test is needed to see if the filament is actually in the extruder
+                        out_of_extruder, moved = self._test_filament_in_extruder_by_retracting()
+                        park_pos += moved
+                        self.filament_distance += moved
+                        return not out_of_extruder, park_pos
+
+            # We have to assume filament present because no way to be sure
+            return True, park_pos
 
 #################################################
 # TOOL SELECTION AND SELECTOR CONTROL FUNCTIONS #
@@ -3838,8 +3871,7 @@ class Mmu:
                 self._selector_stepper_move_wait(-travel)
 
                 # See if we can detect filament in the encoder
-                self._servo_down()
-                found = self._buzz_gear_motor()
+                found = self._check_filament_at_gate()
                 if not found:
                     # Try to engage filament to the encoder
                     delta = self._trace_filament_move("Trying to re-enguage encoder", 45.)
@@ -4258,7 +4290,7 @@ class Mmu:
         if self._is_mmu_paused():
             # Sanity check we are ready to go
             if self._is_printing() and self.filament_pos != self.FILAMENT_POS_LOADED:
-                if self._check_toolhead_sensor() == 1:
+                if self._check_sensor("toolhead") is True:
                     self._set_filament_pos(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
                 else:
@@ -4625,9 +4657,7 @@ class Mmu:
 
         # Check for clog by looking for filament in the encoder
         self._log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)
-        self._servo_down()
-        found = self._buzz_gear_motor()
-        self._servo_up()
+        found = self._check_filament_at_gate()
         if found and not force_runout:
             if self._has_encoder():
                 self.encoder_sensor.update_clog_detection_length()
