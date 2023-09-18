@@ -686,6 +686,7 @@ class Mmu:
             self.encoder_sensor.set_logger(self._log_debug) # Combine with MMU log
             self.encoder_sensor.set_extruder(self.extruder_name)
             self.encoder_sensor.set_mode(self.enable_clog_detection)
+
             resolution = self.variables.get(self.VARS_MMU_ENCODER_RESOLUTION, None)
             if resolution:
                 self.encoder_resolution = resolution
@@ -2187,8 +2188,7 @@ class Mmu:
             self._enable_encoder_sensor(old_enable)
 
     def _has_encoder(self):
-#        return False # PAUL temp testing without encoder!
-        return self.encoder_sensor is not None # PAUL
+        return self.encoder_sensor is not None
 
     def _check_has_encoder(self):
         if not self._has_encoder():
@@ -2275,24 +2275,24 @@ class Mmu:
             return True
         return False
 
-    def _check_is_calibrated(self, required_calibration=None, silent=False):
-        if not required_calibration:
-            required_calibration = self.CALIBRATED_ALL
-        if not (self.calibration_status & required_calibration == required_calibration):
+    def _check_is_calibrated(self, required=None, silent=False):
+        if not required:
+            required = self.CALIBRATED_ALL
+        if not (self.calibration_status & required == required):
             steps = []
-            if self.CALIBRATED_GEAR & required_calibration:
-                steps.append("MMU_CALIBRATE_GEAR")
-            if self.CALIBRATED_ENCODER & required_calibration:
+            if self.CALIBRATED_GEAR & required and not self.calibration_status & self.CALIBRATED_GEAR:
+                    steps.append("MMU_CALIBRATE_GEAR")
+            if self.CALIBRATED_ENCODER & required and not self.calibration_status & self.CALIBRATED_ENCODER:
                 steps.append("MMU_CALIBRATE_ENCODER")
-            if self.CALIBRATED_SELECTOR & required_calibration:
+            if self.CALIBRATED_SELECTOR & required and not self.calibration_status & self.CALIBRATED_SELECTOR:
                 steps.append("MMU_CALIBRATE_SELECTOR")
-            if self.CALIBRATED_BOWDEN & required_calibration:
+            if self.CALIBRATED_BOWDEN & required and not self.calibration_status & self.CALIBRATED_BOWDEN:
                 steps.append("MMU_CALIBRATE_BOWDEN")
-            if self.CALIBRATED_GATES & required_calibration:
+            if self.CALIBRATED_GATES & required and not self.calibration_status & self.CALIBRATED_GATES:
                 steps.append("MMU_CALIBRATE_GATES")
             msg = "Prerequsite calibration steps are not complete. Please run:"
             if not silent:
-                self._log_error("%s %s" % (msg, ",".join(steps)))
+                self._log_error("%s %s" % (msg, ", ".join(steps)))
             return True
         return False
 
@@ -3555,7 +3555,7 @@ class Mmu:
 
             # Goal is to exit extruder. Strategies depend on availability of toolhead sensor and synced motor option
             out_of_extruder = False
-            safety_margin = 5.
+            safety_margin = 10.
 
             if self._has_sensor("toolhead"):
                 # This strategy supports both extruder only and 'synced' modes of operation
@@ -3769,13 +3769,13 @@ class Mmu:
             # Perform the tip forming move and establish park_pos
             with self._extruder_current(self.extruder_form_tip_current, "for tip forming move"):
                 initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
-                initial_encoder_position = self._get_encoder_distance() # PAUL harmless without encooder
+                initial_encoder_position = self._get_encoder_distance()
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._wrap_gcode_command(self.form_tip_macro, exception=True)
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
                 self.toolhead.dwell(0.2)
                 self.toolhead.wait_moves()
-                delta = self._get_encoder_distance() - initial_encoder_position # PAUL harmless without encooder
+                delta = self._get_encoder_distance() - initial_encoder_position
                 park_pos = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro).variables.get("output_park_pos", -1)
                 filament_check = True
                 if park_pos < 0:
@@ -3785,8 +3785,8 @@ class Mmu:
                     # Means the macro reported it (usually for filament cutting)
                     self._log_trace("After tip formation, park_pos reported as: %.2f (encoder moved %.2f)" % (park_pos, delta))
                     filament_check = False
-                self._set_encoder_distance(initial_encoder_position + park_pos) # PAUL harmless without encooder
-                self.filament_distance += park_pos # PAUL shouldn't this be assignment and not increment?
+                self._set_encoder_distance(initial_encoder_position + park_pos)
+                self.filament_distance += park_pos
 
             # Logic to try to validate success and update presence of filament based on movement
             if filament_initially_present is True:
