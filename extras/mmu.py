@@ -918,17 +918,20 @@ class Mmu:
 # LOGGING AND STATISTICS FUNCTIONS #
 ####################################
 
-    def _get_action_string(self):
-        return ("Idle" if self.action == self.ACTION_IDLE else
-                "Loading" if self.action == self.ACTION_LOADING else
-                "Unloading" if self.action == self.ACTION_UNLOADING else
-                "Loading Ext" if self.action == self.ACTION_LOADING_EXTRUDER else
-                "Exiting Ext" if self.action == self.ACTION_UNLOADING_EXTRUDER else
-                "Forming Tip" if self.action == self.ACTION_FORMING_TIP else
-                "Heating" if self.action == self.ACTION_HEATING else
-                "Checking" if self.action == self.ACTION_CHECKING else
-                "Homing" if self.action == self.ACTION_HOMING else
-                "Selecting" if self.action == self.ACTION_SELECTING else
+    def _get_action_string(self, action=None):
+        if action is None:
+            action = self.action
+
+        return ("Idle" if action == self.ACTION_IDLE else
+                "Loading" if action == self.ACTION_LOADING else
+                "Unloading" if action == self.ACTION_UNLOADING else
+                "Loading Ext" if action == self.ACTION_LOADING_EXTRUDER else
+                "Exiting Ext" if action == self.ACTION_UNLOADING_EXTRUDER else
+                "Forming Tip" if action == self.ACTION_FORMING_TIP else
+                "Heating" if action == self.ACTION_HEATING else
+                "Checking" if action == self.ACTION_CHECKING else
+                "Homing" if action == self.ACTION_HOMING else
+                "Selecting" if action == self.ACTION_SELECTING else
                 "Unknown") # Error case - should not happen
 
     def get_status(self, eventtime):
@@ -2406,7 +2409,7 @@ class Mmu:
         self.action = action
         gcode = self.printer.lookup_object('gcode_macro _MMU_ACTION_CHANGED', None)
         if gcode is not None:
-            self._wrap_gcode_command("_MMU_ACTION_CHANGED ACTION=%s OLD_ACTION=%s" % (self.action, old_action))
+            self._wrap_gcode_command("_MMU_ACTION_CHANGED ACTION=%s OLD_ACTION=%s" % (self._get_action_string(), self._get_action_string(old_action)))
         return old_action
 
     @contextlib.contextmanager
