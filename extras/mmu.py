@@ -245,6 +245,7 @@ class Mmu:
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 5., minval=0.)
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 5., minval=0.)
+        self.z_hop_height_runout = config.getfloat('z_hop_height_runout', 5., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
         self.force_form_tip_standalone = config.getint('force_form_tip_standalone', 0, minval=0, maxval=1)
@@ -4553,6 +4554,7 @@ class Mmu:
         # Software behavior options
         self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
         self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
+        self.z_hop_height_runout = gcmd.get_float('Z_HOP_HEIGHT_RUNOUT', self.z_hop_height_runout, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.selector_touch = self.SELECTOR_TOUCH_ENDSTOP in self.selector_stepper.get_endstop_names() and self.selector_touch_enable
         self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
@@ -4626,6 +4628,7 @@ class Mmu:
         msg += "\n\nOTHER:"
         msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
         msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
+        msg += "\nz_hop_height_runout = %.1f" % self.z_hop_height_runout
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
@@ -4656,7 +4659,7 @@ class Mmu:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
         self._log_info("Issue on tool T%d" % self.tool_selected)
-        self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_runout)
 
         # Check for clog by looking for filament in the encoder
         self._log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)

@@ -358,6 +358,7 @@ Running without any parameters will display the current values:
     OTHER:
     z_hop_height_error = 5.0
     z_hop_height_toolchange = 0.0
+    z_hop_height_runout: 5.0
     z_hop_speed = 15.0
     enable_clog_detection = 2
     enable_endless_spool = 1                     # Advanced

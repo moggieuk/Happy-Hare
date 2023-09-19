@@ -262,7 +262,8 @@ timeout_pause: 72000		# Idle time out in seconds used when in MMU pause state
 disable_heater: 600		# Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
 default_extruder_temp: 200	# The baseline temperature for performing swaps and forming tips outside of a print
 z_hop_height_error: 5		# Height in mm of z_hop move on pause to avoid blob on print
-z_hop_height_toolchange: 0	# Height in mm of z_hop move on toolchange or runout to avoid blob on print
+z_hop_height_toolchange: 0	# Height in mm of z_hop move on toolchange to avoid blob on print
+z_hop_height_runout: 5		# Height in mm of z_hop move on runout to avoid blob on print
 z_hop_speed: 15			# Speed of z_hop move (mm/s)
 slicer_tip_park_pos: 0		# This specifies the position of filament in extruder after slicer tip forming move
 gcode_load_sequence: 0		# Advanced: Gcode loading sequence 1=enabled, 0=internal logic (default)
