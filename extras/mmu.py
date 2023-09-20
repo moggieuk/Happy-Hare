@@ -746,7 +746,7 @@ class Mmu:
         self.filament_distance = self.last_filament_distance = 0. # Current absolute distance from gate (load) or nozzle (unload)
         self.action = self.ACTION_IDLE
         self.calibrating = False
-        self.saved_toolhead_position = None
+        self._clear_saved_toolhead_position()
         self._servo_reset_state()
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "standby"
@@ -847,7 +847,7 @@ class Mmu:
         self.printer.register_event_handler("idle_timeout:ready", self._handle_idle_timeout_ready)
         self.printer.register_event_handler("idle_timeout:idle", self._handle_idle_timeout_idle)
         self._setup_heater_off_reactor()
-        self.saved_toolhead_position = None
+        self._clear_saved_toolhead_position()
 
         # This is a bit naughty to register commands here but I need to make sure we are the outermost wrapper
         try:
@@ -2024,9 +2024,9 @@ class Mmu:
     def _set_print_state(self, print_state):
         if print_state != self.print_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
-            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, pause_resume: %s, Idle timeout: %.2fs)"
+            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s (z_hop @%.1fmm), pause_resume: %s, Idle timeout: %.2fs)"
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.gear_stepper.is_synced(), self.paused_extruder_temp,
-                        self.resume_to_state, self.saved_toolhead_position, self._is_paused(), idle_timeout))
+                        self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_paused(), idle_timeout))
             self.print_state = print_state
 
     # If this is called automatically it will occur immediately the first gcode action
@@ -2036,7 +2036,7 @@ class Mmu:
         if self.print_state not in ("started", "printing"): # Otherwise can get stuck in paused state until idle_timeout
             self._log_trace("_on_print_start()")
             self._set_print_state("started")
-            self.saved_toolhead_position = None
+            self._clear_saved_toolhead_position()
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
@@ -2119,7 +2119,7 @@ class Mmu:
         if not self.print_state in ("complete", "error", "cancelled", "standby"):
             self._log_trace("_on_print_end(%s)" % state)
             self.toolhead.wait_moves()
-            self.saved_toolhead_position = None
+            self._clear_saved_toolhead_position()
             self.resume_to_state = "standby"
             self.paused_extruder_temp = None
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
@@ -2143,13 +2143,12 @@ class Mmu:
             else:
                 self._log_info("Warning: MMU cannot save toolhead position because toolhead not homed!")
         elif operation:
-            self._log_debug("Asked to save toolhead position but it is already saved for %s. Ignored" % self.saved_toolhead_position)
-            return
-        else:
-            self.saved_toolhead_position = None
+            self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
-        # Immediately lift toolhead off print
-        if z_hop_height is not None and z_hop_height > 0:
+        # Immediately lift toolhead off print (potentially going higher but not multiple times)
+        if z_hop_height is not None and z_hop_height > 0 and z_hop_height > self.saved_toolhead_height:
+            z_hop_height -= self.saved_toolhead_height
+            self.saved_toolhead_height += z_hop_height
             if 'z' not in self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']:
                 self._log_info("Warning: MMU cannot lift toolhead because toolhead not homed!")
             else:
@@ -2165,9 +2164,13 @@ class Mmu:
             if 'xyz' in homed:
                 self._log_debug("Restoring toolhead position for %s" % operation)
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
-                self.saved_toolhead_position = None
+                self._clear_saved_toolhead_position()
             else:
                 self._log_info("Warning: MMU cannot restore toolhead position because toolhead not homed!")
+
+    def _clear_saved_toolhead_position(self):
+        self.saved_toolhead_position = None
+        self.saved_toolhead_height = 0.
 
     def _disable_encoder_sensor(self):
         if self._has_encoder() and self.encoder_sensor.is_enabled():
@@ -4187,7 +4190,7 @@ class Mmu:
             try:
                 for i in range(attempts):
                     try:
-                        self._change_tool(tool, self._is_in_print(force_in_print), skip_tip)
+                        self._change_tool(tool, self._is_printing(force_in_print), skip_tip)
                         continue
                     except MmuError as ee:
                         if i == attempts - 1:
