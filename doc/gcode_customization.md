@@ -103,7 +103,7 @@ Here are the default macros:
 #
 # Typically you would move toolhead to your park position so oozing is not a problem
 # Note that the z_hop is automatically controlled by Happy Hare and is
-# specified with the 'z_hop_height_runout' parameter
+# specified with the 'z_hop_height_toolchange' parameter
 #
 # This is probably similar to what you do in your PAUSE macro and you could simply call that here...
 # (this call works with reference PAUSE macro supplied in client_macros.cfg)
