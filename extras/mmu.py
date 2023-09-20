@@ -2161,7 +2161,7 @@ class Mmu:
 
     def _restore_toolhead_position(self, operation):
         homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
-        if self.saved_toolhead_position is not None:
+        if self.saved_toolhead_position:
             if 'xyz' in homed:
                 self._log_debug("Restoring toolhead position for %s" % operation)
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
@@ -4783,7 +4783,7 @@ class Mmu:
                 if not detected:
                     self._log_info("Filament didn't reach encoder after tip forming move")
                 self._unload_tool(skip_tip=True)
-                self._remap_tool(self.tool_selected, next_gate, 1)
+                self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
 
                 gcode = self.printer.lookup_object('gcode_macro _MMU_ENDLESS_SPOOL_POST_LOAD', None)
@@ -4903,9 +4903,10 @@ class Mmu:
                 msg += " [SELECTED%s]" % ((" supporting tool T%d" % self.tool_selected) if self.tool_selected >= 0 else "")
         return msg
 
-    def _remap_tool(self, tool, gate, available):
+    def _remap_tool(self, tool, gate, available=None):
         self._set_tool_to_gate(tool, gate)
-        self._set_gate_status(gate, available)
+        if available is not None:
+            self._set_gate_status(gate, available)
 
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
