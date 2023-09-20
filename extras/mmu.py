@@ -2024,9 +2024,9 @@ class Mmu:
     def _set_print_state(self, print_state):
         if print_state != self.print_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
-            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, pause_resume: %s, Idle timeout: %.2fs)"
+            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s (%.1fmm), pause_resume: %s, Idle timeout: %.2fs)"
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.gear_stepper.is_synced(), self.paused_extruder_temp,
-                        self.resume_to_state, self.saved_toolhead_position, self._is_paused(), idle_timeout))
+                        self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_paused(), idle_timeout))
             self.print_state = print_state
 
     # If this is called automatically it will occur immediately the first gcode action
@@ -2106,7 +2106,7 @@ class Mmu:
             self.paused_extruder_temp = None
             self._sync_gear_to_extruder(self.sync_to_extruder and self.resume_to_state == "printing", servo=True, current=self.resume_to_state == "printing")
             self._reset_encoder_counts() # Encoder 0000
-            self._restore_toolhead_position("pause")
+            self._restore_toolhead_position("resume")
             self._track_pause_end()
             self._set_print_state(self.resume_to_state)
             self._enable_encoder_sensor() # Enable runout/clog detection if printing
@@ -2132,17 +2132,17 @@ class Mmu:
             self.toolhead.wait_moves()
             self._set_print_state(state)
 
-    def _save_toolhead_position_and_lift(self, remember=None, z_hop_height=None):
+    def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None):
         homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
-        if remember and not self.saved_toolhead_position:
+        if operation and not self.saved_toolhead_position:
             if 'xyz' in homed:
                 self.toolhead.wait_moves()
-                self._log_debug("Saving toolhead position for %s" % remember)
+                self._log_debug("Saving toolhead position for %s" % operation)
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
-                self.saved_toolhead_position = remember
+                self.saved_toolhead_position = operation
             else:
                 self._log_info("Warning: MMU cannot save toolhead position because toolhead not homed!")
-        elif remember:
+        elif operation:
             self._log_debug("Asked to save toolhead position but it is already saved for %s. Ignored" % self.saved_toolhead_position)
             return
         else:
@@ -2159,11 +2159,11 @@ class Mmu:
                 safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
                 self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
 
-    def _restore_toolhead_position(self, remember):
+    def _restore_toolhead_position(self, operation):
         homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
-        if self.saved_toolhead_position == remember:
+        if self.saved_toolhead_position is not None:
             if 'xyz' in homed:
-                self._log_debug("Restoring toolhead position for %s" % remember)
+                self._log_debug("Restoring toolhead position for %s" % operation)
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
                 self.saved_toolhead_position = None
             else:
@@ -4771,18 +4771,26 @@ class Mmu:
                     self._log_info(self._tool_to_gate_map_to_human_string())
                     raise MmuError("No more EndlessSpool spools available after checking gates %s" % checked_gates)
                 self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
-                # save the extruder temperature for the resume after swapping filaments.
+                # Save the extruder temperature for the resume after swapping filaments.
                 if not self.paused_extruder_temp: # Only save the initial pause temp
                     self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
-                self._wrap_gcode_command("_MMU_ENDLESS_SPOOL_PRE_UNLOAD")
+
+                gcode = self.printer.lookup_object('gcode_macro _MMU_ENDLESS_SPOOL_PRE_UNLOAD', None)
+                if gcode is not None:
+                    self._wrap_gcode_command("_MMU_ENDLESS_SPOOL_PRE_UNLOAD", exception=True)
+
                 detected, park_pos = self._form_tip_standalone(extruder_stepper_only=True)
                 if not detected:
                     self._log_info("Filament didn't reach encoder after tip forming move")
                 self._unload_tool(skip_tip=True)
                 self._remap_tool(self.tool_selected, next_gate, 1)
                 self._select_and_load_tool(self.tool_selected)
-                self._wrap_gcode_command("_MMU_ENDLESS_SPOOL_POST_LOAD")
-                self._restore_toolhead_position("runout")
+
+                gcode = self.printer.lookup_object('gcode_macro _MMU_ENDLESS_SPOOL_POST_LOAD', None)
+                if gcode is not None:
+                    self._wrap_gcode_command("_MMU_ENDLESS_SPOOL_POST_LOAD", exception=True)
+                self._restore_toolhead_position("EndlessSpool")
+
                 self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(), servo=True, current=self._is_in_print())
                 self._reset_encoder_counts()    # Encoder 0000
                 # Continue printing...
