@@ -1372,7 +1372,7 @@ class Mmu:
 
     def _motors_off(self, motor="all"):
         if motor in ("all", "gear"):
-            self._sync_gear_to_extruder(False, servo=True)
+            self._sync_gear_to_extruder(False, servo=False)
             self.gear_stepper.do_enable(False)
         if motor in ("all", "selector"):
             self.is_homed = False
