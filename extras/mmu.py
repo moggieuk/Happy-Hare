@@ -1256,7 +1256,7 @@ class Mmu:
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
         msg += ", Encoder reads %.1fmm" % self._get_encoder_distance()
         msg += "\nPrint state is %s" % self.print_state.upper()
-        msg += ". Selector is %shomed" % ("" if self.is_homed else "NOT ")
+        msg += ". Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
         msg += ". Tool %s is selected " % self._selected_tool_string()
         msg += " on gate %s" % self._selected_gate_string()
         msg += ". Toolhead position saved" if self.saved_toolhead_position else ""
@@ -1375,6 +1375,7 @@ class Mmu:
             self._sync_gear_to_extruder(False, servo=False)
             self.gear_stepper.do_enable(False)
         if motor in ("all", "selector"):
+            self._servo_move()
             self.is_homed = False
             self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
