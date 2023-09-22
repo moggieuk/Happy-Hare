@@ -2436,6 +2436,7 @@ class Mmu:
 
     def _disable_mmu(self):
         if not self.is_enabled: return
+        self._initialize_state()
         self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.is_enabled = False
@@ -4930,7 +4931,7 @@ class Mmu:
         elif gate >= 0:
             # Specifying one gate (filament)
             gate = gcmd.get_int('GATE', minval=0, maxval=self.mmu_num_gates - 1)
-            available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=0, maxval=2)
+            available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
             material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
             color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
             spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
