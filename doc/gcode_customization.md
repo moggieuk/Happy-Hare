@@ -210,7 +210,7 @@ variable_output_park_pos: -1           # The park position (output variable pass
 
 While you can modify this macro, perhaps a cleaner way to add filament cutting support is to flesh out this supplied macro tempate:
 
-```
+```yml
 ########################################################################
 # Standalone Tip Cutting template
 #
