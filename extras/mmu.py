@@ -2129,7 +2129,6 @@ class Mmu:
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
             self._sync_gear_to_extruder(False, servo=True)
-            self.toolhead.wait_moves()
             self._set_print_state(state)
 
     def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None):
@@ -4201,7 +4200,7 @@ class Mmu:
                         # Try again but recover_filament_pos will ensure conservative treatment of unload
                         self._recover_filament_pos()
     
-                self._dump_statistics(job=not quiet)
+                self._dump_statistics(job=not quiet, gate=not quiet)
                 self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(), servo=True, current=self._is_in_print())
             finally:
                 self._next_tool = self.TOOL_GATE_UNKNOWN
