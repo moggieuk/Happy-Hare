@@ -3435,7 +3435,7 @@ class Mmu:
         self._set_encoder_distance(self.filament_distance)
 
         if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
-                # Let's determine where filament is and reset state before continuing
+            # Let's determine where filament is and reset state before continuing
             self._recover_filament_pos(message=True)
 
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
@@ -3996,12 +3996,6 @@ class Mmu:
             self.gcode.run_script_from_command("M117 T%s" % tool)
             return
 
-        # Identify the unitialized startup use case and make it easy for user
-        if not self.is_homed and self.tool_selected == self.TOOL_GATE_UNKNOWN:
-            self._log_info("MMU not homed, homing it before continuing...")
-            self._home(tool)
-            skip_unload = True
-
         # Notify start of actual toolchange operation
         self.printer.send_event("mmu:toolchange", self, self._last_tool, self._next_tool)
 
@@ -4010,6 +4004,12 @@ class Mmu:
             gcode = self.printer.lookup_object('gcode_macro _MMU_PRE_UNLOAD', None)
             if gcode is not None:
                 self._wrap_gcode_command("_MMU_PRE_UNLOAD", exception=True)
+
+        # Identify the unitialized startup use case and make it easy for user
+        if not self.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
+            self._log_info("MMU not homed, homing it before continuing...")
+            self._home(tool)
+            skip_unload = True
 
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
