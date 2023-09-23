@@ -2052,7 +2052,6 @@ class Mmu:
             else:
                 msg += " (no filament loaded)"
             self._log_info(msg)
-            self.toolhead.wait_moves()
             self._set_print_state("printing")
 
     def _mmu_pause(self, reason, force_in_print=False):

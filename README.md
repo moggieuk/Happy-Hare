@@ -58,7 +58,7 @@ Thank you!
 #### Other Docs:
 
 **[Command Reference](./doc/command_ref.md)**<br>
-**[Harware Configuration, Movement and Homing](./doc/hardware_config.md)**<br>
+**[Hardware Configuration, Movement and Homing](./doc/hardware_config.md)**<br>
 **[Calibration Guide](./doc/calibration.md)**<br>
 **[Configuation Reference](./doc/configuration.md)**<br>
 **[Gcode Customization](./doc/gcode_customization.md)**<br>
