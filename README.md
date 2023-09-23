@@ -87,6 +87,8 @@ Thank you!
   <li>Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!</li>
   <li>Vast customization options most of which can be changed and tested at runtime</li>
   <li>Integrated help, testing and soak-testing procedures</li>
+  <li>Spoolman integration</li>
+  <li>Gcode pre-processor check that all the required tools are avaialble!</li>
 </ul>
 
 Companion customized [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) for easy touchscreen MMU control!
