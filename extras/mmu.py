@@ -1340,27 +1340,30 @@ class Mmu:
         self.toolhead.wait_moves()
         self.servo.set_value(angle=self.servo_move_angle, duration=self.servo_duration)
         self.toolhead.dwell(min(self.servo_duration, 0.4))
-        self.toolhead.wait_moves()
         self.servo_angle = self.servo_move_angle
         self.servo_state = self.SERVO_MOVE_STATE
 
-    def _servo_up(self):
+    def _servo_up(self, measure=False):
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
         delta = 0.
         if self.servo_angle != self.servo_up_angle:
-            self.toolhead.dwell(0.2)
-            self.toolhead.wait_moves()
-            initial_encoder_position = self._get_encoder_distance()
+            if measure:
+                self.toolhead.dwell(0.2)
+                self.toolhead.wait_moves()
+                initial_encoder_position = self._get_encoder_distance()
+            else:
+                self.toolhead.wait_moves()
             self.servo.set_value(angle=self.servo_up_angle, duration=self.servo_duration)
             self.servo_angle = self.servo_up_angle
-            # Report on spring back in filament then reset counter
             self.toolhead.dwell(max(self.servo_duration, 0.4))
-            self.toolhead.wait_moves()
-            delta = self._get_encoder_distance() - initial_encoder_position
-            if delta > 0.:
-                self._log_debug("Spring in filament measured  %.1fmm - adjusting encoder" % delta)
-                self._set_encoder_distance(initial_encoder_position)
+            if measure:
+                # Report on spring back in filament then revert counter
+                self.toolhead.wait_moves()
+                delta = self._get_encoder_distance() - initial_encoder_position
+                if delta > 0.:
+                    self._log_debug("Spring in filament measured  %.1fmm - adjusting encoder" % delta)
+                    self._set_encoder_distance(initial_encoder_position)
         self.servo_state = self.SERVO_UP_STATE
         return delta
 
@@ -1553,7 +1556,7 @@ class Mmu:
                 self._log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
                 measured_movement = self._get_encoder_distance()
-                spring = self._servo_up()
+                spring = self._servo_up(measure=True)
                 reference = measured_movement - (spring * 0.5)
                 if spring > 0:
                     if self._must_home_to_extruder():
@@ -3498,7 +3501,7 @@ class Mmu:
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
             self.toolhead.wait_moves()
-            movement = self._servo_up()
+            movement = self._servo_up(measure=True)
             if movement > self.encoder_min:
                 self._set_filament_pos(self.FILAMENT_POS_UNKNOWN)
                 raise MmuError("It may be time to get the pliers out! Filament appears to stuck somewhere")
@@ -3626,7 +3629,7 @@ class Mmu:
                         break
                 if not stuck_in_extruder:
                     out_of_extruder = True
-# TODO This causes unecessary servo movement and is probably unecessary although could be put under 'strict' option:
+# TODO This causes unecessary servo movement and is probably unecessary although probably ok under 'strict' option:
 #                    if self.strict_filament_recovery:
 #                        # Back up just a bit with only the extruder, if we don't see any movement.
 #                        # then the filament is out of the extruder
