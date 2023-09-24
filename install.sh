@@ -305,18 +305,24 @@ read_previous_config() {
         echo -e "${INFO}Reading ${parameters_cfg} configuration from previous installation..."
         parse_file "${dest_parameters_cfg}"
 
-        if [ ! -f "${dest_parameters_cfg}" ]; then
-            # Upgrade / map / force old parameters
-	    echo
-
-        # Handle renaming of config parameters
-# (Nothing yet because Happy Hare is brand new and upgrade from ERCF-Software-V3 not supported)
-# E.g.
-#            selector_offsets=${colorselector}
-#            if [ "${sync_load_length}" -gt 0 ]; then
-#                sync_load_extruder=1
-#            fi
+        # Upgrade / map / force old parameters
+        if [ ! "${encoder_unload_buffer}" == "" ]; then
+            gate_unload_buffer=${encoder_unload_buffer}
         fi
+        if [ ! "${encoder_unload_max}" == "" ]; then
+            gate_homing_max=${encoder_unload_max}
+        fi
+        if [ ! "${encoder_parking_distance}" == "" ]; then
+            gate_parking_distance=${encoder_parking_distance}
+        fi
+        if [ ! "${encoder_load_retries}" == "" ]; then
+            gate_load_retries=${encoder_load_retries}
+        fi
+# E.g.
+#        selector_offsets=${colorselector}
+#        if [ "${sync_load_length}" -gt 0 ]; then
+#            sync_load_extruder=1
+#        fi
     fi
 
     software_cfg="mmu_software.cfg"
@@ -713,7 +719,7 @@ questionaire() {
         2)
             mmu_vendor="ERCF"
             mmu_version="2.0"
-            encoder_parking_distance="19"
+            gate_parking_distance="19"
             ;;
     esac
 
@@ -1004,7 +1010,7 @@ questionaire() {
     echo -e "servo_down_angle: ${servo_down_angle}"
     echo -e "enable_clog_detection: ${enable_clog_detection}"
     echo -e "enable_endless_spool: ${enable_endless_spool}"
-    echo -e "encoder_parking_distance: ${encoder_parking_distance}"
+    echo -e "gate_parking_distance: ${gate_parking_distance}"
 
     echo
     echo -e "${INFO}"
