@@ -299,6 +299,8 @@ This section contains a list of overrides for macros that Happy Hare calls inter
 #            the move, you must override this behavior by setting the `output_park_pos` variable if you cut the filament.
 #            The value can be set dynamically in gcode with this construct:
 #                SET_GCODE_VARIABLE MACRO=_MMU_FORM_TIP_STANDALONE VARIABLE=output_park_pos VALUE=-1
+#            or preset as a variable like this:
+#                variable_output_park_pos: -1
 #
 #form_tip_macro: _MMU_FORM_TIP_STANDALONE
 ```
