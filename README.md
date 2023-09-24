@@ -58,7 +58,7 @@ Thank you!
 #### Other Docs:
 
 **[Command Reference](./doc/command_ref.md)**<br>
-**[Harware Configuration, Movement and Homing](./doc/hardware_config.md)**<br>
+**[Hardware Configuration, Movement and Homing](./doc/hardware_config.md)**<br>
 **[Calibration Guide](./doc/calibration.md)**<br>
 **[Configuation Reference](./doc/configuration.md)**<br>
 **[Gcode Customization](./doc/gcode_customization.md)**<br>
@@ -87,6 +87,8 @@ Thank you!
   <li>Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!</li>
   <li>Vast customization options most of which can be changed and tested at runtime</li>
   <li>Integrated help, testing and soak-testing procedures</li>
+  <li>Spoolman integration</li>
+  <li>Gcode pre-processor check that all the required tools are avaialble!</li>
 </ul>
 
 Companion customized [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) for easy touchscreen MMU control!
