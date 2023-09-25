@@ -2546,7 +2546,7 @@ class Mmu:
 ####################################################################################
 
     def _gear_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, sync=True, dwell=0.):
-        self._sync_gear_to_extruder(False) # Safety
+        self._sync_gear_to_extruder(False, current=None) # Safety
         is_long_move = abs(dist) > self.LONG_MOVE_THRESHOLD
         if speed is None:
             if is_long_move:
@@ -2577,7 +2577,7 @@ class Mmu:
     # Nomal moves return measured_movement
     # All move distances are interpreted as relative and stepper commanded position will be reset
     def _trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop="default", track=False, dwell=0.):
-        self._sync_gear_to_extruder(False) # Safety
+        self._sync_gear_to_extruder(False, current=None) # Safety
         if dwell > 0:
             self.toolhead.dwell(dwell)
             self.toolhead.wait_moves()
@@ -2818,10 +2818,11 @@ class Mmu:
             self.gear_stepper.sync_to_extruder(self.extruder_name if sync else None)
 
         # Option to reduce current during print
-        if current and sync:
-            self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
-        elif current:
-            self._restore_gear_current()
+        if current is not None:
+            if current and sync:
+                self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
+            else:
+                self._restore_gear_current()
         return prev_sync_state
 
     def _adjust_gear_current(self, percent=100, reason=""):
