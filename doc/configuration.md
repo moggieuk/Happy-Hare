@@ -252,6 +252,7 @@ This section contains an eclectic set of remaining options. Ask on discord if an
 `auto_calibrate_gates` - discussed in main readme but avoids having to calibrate since that are automatically calibrated on first use.<br>
 `strict_filament_recovery` - Occassionaly Happy Hare will be forced to try to figure our where the filament is. It employs various mechanisms to achive this depending on the capability of the MMU. Some of this steps are invasive (e.g. warming the extruder when it is cold) and are therefore skipped by default. Enabling this option will force extra detection steps.
 `retry_tool_change_on_error` - This setting defaults to off (0) because it can hide problems with your MMU, however, if enabled (1) it will cause Happy Hare to automatically retry a failed tool change but performing the equivalent commands as `MMU_RECOVER` + `Tx`.  It is useful for long prints to minimize "baby-sitting" false failures.
+`print_start_detection` - Default is `1` which will cause Happy Hare to correctly initialize the MMU on print start and finalize on print end. Set to `0` if you wish to include `_MMU_PRINT_START` and `_MMU_PRINT_END` directly in your own print start/end macros.
 
 
 ```yml
@@ -273,6 +274,8 @@ strict_filament_recovery: 0	# If enabled with MMU with toolhead sensor, this wil
 retry_tool_change_on_error: 0	# Whether to automatically retry a failed tool change. If enabled Happy Hare will perform
 				# the equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary
 				# to recover. Note that enabling this can mask problems with your MMU
+print_start_detection: 1	# Enabled for Happy Hare to automatically detect start and end of print and call
+				# _MMU_START_PRINT and _MMU_END_PRINT. Disable if you want to include in your own macros
 ```
 
 This section contains a list of overrides for macros that Happy Hare calls internally. Currently, there's the option to override the `PAUSE` macro and the `_MMU_FORM_TIP_STANDALONE` macro but other macros or arguments may be added in the future.
