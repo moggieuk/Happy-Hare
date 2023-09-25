@@ -2003,10 +2003,17 @@ class Mmu:
                     else:
                         # This is a 'started' state
                         self._log_trace("Automaticaly detected JOB START, new_state=%s, current print_state=%s" % (new_state, self.print_state))
-                        self._exec_gcode("_MMU_PRINT_START")
+                        #self._exec_gcode("_MMU_PRINT_START")
+                        if self.print_state not in ("started", "printing"):
+                            self._set_print_state("started")
+                            self.reactor.register_callback(self._print_start_event_handler)
                 elif new_state in ("complete", "error") and event_type == "ready":
                     self._log_trace("Automatically detected JOB %s, new_state=%s, current print_state=%s" % (new_state.upper(), new_state, self.print_state))
-                    self._exec_gcode("_MMU_PRINT_END STATE=%s" % new_state)
+                    #self._exec_gcode("_MMU_PRINT_END STATE=%s" % new_state)
+                    if new_state == "error":
+                        self.reactor.register_callback(self._print_error_event_handler)
+                    else:
+                        self.reactor.register_callback(self._print_complete_event_handler)
                 self.last_print_stats = dict(new_ps)
         else:
             # Otherwise we fallback to idle_timeout
@@ -2024,6 +2031,16 @@ class Mmu:
         except Exception:
             logging.exception("Error running job state initializer/finalizer")
 
+    def _print_start_event_handler(self, eventtime):
+        self._log_trace("_print_start_event_handler()")
+        self._exec_gcode("_MMU_PRINT_START")
+    def _print_complete_event_handler(self, eventtime):
+        self._log_trace("_print_complete_event_handler()")
+        self._exec_gcode("_MMU_PRINT_END STATE=complete")
+    def _print_error_event_handler(self, eventtime):
+        self._log_trace("_print_error_event_handler()")
+        self._exec_gcode("_MMU_PRINT_END STATE=error")
+
     # MMU job state machine: standby|started|printing|complete|cancelled|error|pause_locked|paused
     def _set_print_state(self, print_state):
         if print_state != self.print_state:
@@ -2037,7 +2054,7 @@ class Mmu:
     # that causes idle_timeout to transition into 'printing' state.
     # Therefore don't do anything that requires operating kinematics (we might not be homed yet)
     def _on_print_start(self):
-        if self.print_state not in ("started", "printing"): # Otherwise can get stuck in paused state until idle_timeout
+        if self.print_state not in ("printing"):
             self._log_trace("_on_print_start()")
             self._set_print_state("started")
             self._clear_saved_toolhead_position()
