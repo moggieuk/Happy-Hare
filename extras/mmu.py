@@ -252,6 +252,7 @@ class Mmu:
         self.auto_calibrate_gates = config.getint('auto_calibrate_gates', 0, minval=0, maxval=1)
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
         self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
+        self.print_start_detection = config.getint('print_start_detection', 1, minval=0, maxval=1)
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
@@ -341,9 +342,8 @@ class Mmu:
         self.log_visual = config.getint('log_visual', 1, minval=0, maxval=2)
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
 
-        # Hidden options to facilitate testing
-        self.test_octoprint = bool(config.getint('test_octoprint', 0, minval=0, maxval=1))
-        self.test_random_failures = bool(config.getint('test_random_failures', 0, minval=0, maxval=1))
+        # Currently hidden and testing options
+        self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
 
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg
 
@@ -1100,7 +1100,6 @@ class Mmu:
             dbg += "; Unload: (monitored: %.1fmm slippage: %.1f%%)" % (rounded['unload_distance'], unload_slip_percent)
             dbg += "; Failures: (servo: %d load: %d unload: %d pauses: %d)" % (rounded['servo_retries'], rounded['load_failures'], rounded['unload_failures'], rounded['pauses'])
             dbg += "; Quality: %.1f%%" % ((rounded['quality'] * 100.) if rounded['quality'] >= 0. else 0.)
-            self._log_debug(dbg)
         return msg, dbg
 
     def _persist_gate_statistics(self):
@@ -1986,7 +1985,7 @@ class Mmu:
         if not self.is_enabled: return
         self._log_trace("Processing idle_timeout '%s' event" % event_type)
 
-        if self.print_stats is not None and not self.test_octoprint:
+        if self.print_stats is not None and self.print_start_detection:
             new_ps = self.print_stats.get_status(eventtime)
             if self.last_print_stats is None:
                 self.last_print_stats = dict(new_ps)
@@ -3263,8 +3262,8 @@ class Mmu:
         self._servo_down()
         self._set_filament_direction(self.DIRECTION_LOAD)
         try:
-            self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead so we can force enable to lock motors
-            self.mmu_extruder_stepper.do_enable(True)
+            self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead
+            self.mmu_extruder_stepper.do_enable(True) # Lock the extruder stepper
 
             if self.extruder_homing_endstop != self.EXTRUDER_COLLISION_ENDSTOP:
                 self._log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
@@ -4590,6 +4589,7 @@ class Mmu:
         self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
         self.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.retry_tool_change_on_error, minval=0, maxval=1)
+        self.print_start_detection = gcmd.get_int('PRINT_START_DETECTION', self.print_start_detection, minval=0, maxval=1)
         self.pause_macro = gcmd.get('PAUSE_MACRO', self.pause_macro)
 
         form_tip_macro = gcmd.get('FORM_TIP_MACRO', self.form_tip_macro)
@@ -4603,9 +4603,8 @@ class Mmu:
         if clog_length != self.encoder_sensor.get_clog_detection_length():
             self.encoder_sensor.set_clog_detection_length(clog_length)
 
-        # Hidden testing options
-        self.test_octoprint = gcmd.get_float('TEST_OCTOPRINT', self.test_octoprint, minval=0, maxval=1)
-        self.test_random_failures = gcmd.get_float('TEST_RANDOM_FAILURES', self.test_random_failures, minval=0, maxval=1)
+        # Currently hidden and testing options
+        self.test_random_failures = gcmd.get_int('TEST_RANDOM_FAILURES', self.test_random_failures, minval=0, maxval=1)
 
         msg = "SPEEDS:"
         msg += "\ngear_short_move_speed = %.1f" % self.gear_short_move_speed
@@ -4658,6 +4657,7 @@ class Mmu:
         msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
         msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
         msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
+        msg += "\nprint_start_detection = %d" % self.print_start_detection
         msg += "\nlog_level = %d" % self.log_level
         msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics

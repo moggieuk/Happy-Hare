@@ -367,6 +367,7 @@ Running without any parameters will display the current values:
     auto_calibrate_gates = 0
     strict_filament_recovery = 0
     retry_tool_change_on_error = 0
+    print_start_detection = 1
     log_level = 1
     log_visual = 2
     log_statistics = 1
@@ -858,7 +859,7 @@ If you remove buffered filament from a gate and want to quickly tell Happy Hare 
 Happy Hare keeps track of the current print state in a similar way to the klipper `print_stats` module. It is subtly difference and can even work when streaming a job for Octoprint (altough some special precautions must be taken). The current state is available via the printer variable `printer.mmu.print_job_state` and can be one of the following: standby, started, printing, complete, error, cancelled, pause_locked or paused. This can be useful in your own custom gcode macros but also ensures that Happy Hare restores things like temperatures, stepper motor current and idle_timeout at the right time.
 
 > [!IMPORTANT]  
-> Users printing from the "virtual SD-card" via Mainsail or Fluuid don't have any extras steps to take but if streaming a job (e.g. from Octoprint) the user is responsible to add `_MMU_PRINT_START` to their print_start macro or sequence and `_MMU_PRINT_END` to their end_print macro or sequence. The addition of those commands on "virtual sd-card print" will not cause harm but they are but are unecessary and will be ignored (hence the underscore naming).
+> Users printing from the "virtual SD-card" via Mainsail or Fluuid don't have any extras steps to take but if streaming a job (e.g. from Octoprint) the user is responsible to add `_MMU_PRINT_START` to their print_start macro or sequence and `_MMU_PRINT_END` to their end_print macro or sequence. The addition of those commands on "virtual sd-card print" will not cause harm but they are but are unecessary and will be ignored (hence the underscore naming). Also note that the `print_start_detection` setting can be used to disable the automatic behavior.`
 
 ```mermaid
 stateDiagram-v2
