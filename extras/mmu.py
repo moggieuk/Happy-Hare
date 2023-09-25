@@ -269,11 +269,11 @@ class Mmu:
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
 
         # Configuration for gate loading and unloading
-        self.gate_homing_endstop = config.get('gate_homing_endstop', "encoder") # "encoder" or endstop name e.g. "mmu_gear_gate"  # PAUL NEW
-        self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting # PAUL TODO was encoder_unload_buffer
-        self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer) # PAUL TODO was encoder_unload_max
-        self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve # PAUL TODO was encoder_parking_distance # PAUL set on ercf
-        self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5) # PAUL was encoder_load_retries
+        self.gate_homing_endstop = config.get('gate_homing_endstop', "encoder") # "encoder" or endstop name e.g. "mmu_gear_gate"
+        self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
+        self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
+        self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
+        self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.)
 
         # Configuration for (fast) bowden move
@@ -2036,9 +2036,11 @@ class Mmu:
     def _print_start_event_handler(self, eventtime):
         self._log_trace("_print_start_event_handler()")
         self._exec_gcode("_MMU_PRINT_START")
+
     def _print_complete_event_handler(self, eventtime):
         self._log_trace("_print_complete_event_handler()")
         self._exec_gcode("_MMU_PRINT_END STATE=complete")
+
     def _print_error_event_handler(self, eventtime):
         self._log_trace("_print_error_event_handler()")
         self._exec_gcode("_MMU_PRINT_END STATE=error")
