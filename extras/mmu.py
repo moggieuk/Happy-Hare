@@ -2820,7 +2820,7 @@ class Mmu:
         # Option to reduce current during print
         if current and sync:
             self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
-        else:
+        elif current:
             self._restore_gear_current()
         return prev_sync_state
 
