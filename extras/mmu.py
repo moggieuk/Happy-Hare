@@ -2006,13 +2006,11 @@ class Mmu:
                     else:
                         # This is a 'started' state
                         self._log_trace("Automaticaly detected JOB START, new_state=%s, current print_state=%s" % (new_state, self.print_state))
-                        #self._exec_gcode("_MMU_PRINT_START")
                         if self.print_state not in ("started", "printing"):
                             self._set_print_state("started")
                             self.reactor.register_callback(self._print_start_event_handler)
                 elif new_state in ("complete", "error") and event_type == "ready":
                     self._log_trace("Automatically detected JOB %s, new_state=%s, current print_state=%s" % (new_state.upper(), new_state, self.print_state))
-                    #self._exec_gcode("_MMU_PRINT_END STATE=%s" % new_state)
                     if new_state == "error":
                         self.reactor.register_callback(self._print_error_event_handler)
                     else:
@@ -4987,7 +4985,7 @@ class Mmu:
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         self._log_debug("Filament insertion not implemented yet! Check back later")
-# TODO Future feature :-)
+# TODO Future preload feature :-)
 #        try:
 #            self._handle_detection()
 #        except MmuError as ee:
