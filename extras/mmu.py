@@ -635,7 +635,7 @@ class Mmu:
         # Establish gear_stepper initial gear_stepper and extruder currents
         self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
         self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
-        self.gear_percentage_run_current = self.extruder_percentage_run_current = 100.
+        self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
         # Sanity check extruder name
         self.extruder = self.printer.lookup_object(self.extruder_name, None)
@@ -1259,6 +1259,7 @@ class Mmu:
         msg += ". Tool %s is selected " % self._selected_tool_string()
         msg += " on gate %s" % self._selected_gate_string()
         msg += ". Toolhead position saved" if self.saved_toolhead_position else ""
+        msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "synced" if self.gear_stepper.is_synced() else "not synced")
 
         if config:
             msg += "\n\nConfiguration:\nFilament homes"
@@ -1374,7 +1375,7 @@ class Mmu:
 
     def _motors_off(self, motor="all"):
         if motor in ("all", "gear"):
-            self._sync_gear_to_extruder(False, servo=False)
+            self._sync_gear_to_extruder(False)
             self.gear_stepper.do_enable(False)
         if motor in ("all", "selector"):
             self._servo_move()
@@ -2063,7 +2064,6 @@ class Mmu:
             self._enable_encoder_sensor(True) # Enable runout/clog detection
             self._reset_encoder_counts() # Encoder 0000
 
-            # Risky to perform during event processing(?)
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
             msg = "MMU initialized ready for print"
             if self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -2071,6 +2071,7 @@ class Mmu:
             else:
                 msg += " (no filament loaded)"
             self._log_info(msg)
+            self.toolhead.wait_moves()
             self._set_print_state("printing")
 
     def _mmu_pause(self, reason, force_in_print=False):
@@ -2144,7 +2145,6 @@ class Mmu:
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._disable_encoder_sensor() # Disable runout/clog detection after print
 
-            # Risky to perform during event processing(?)
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
             self._sync_gear_to_extruder(False, servo=True)
@@ -2546,7 +2546,7 @@ class Mmu:
 ####################################################################################
 
     def _gear_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, sync=True, dwell=0.):
-        self._sync_gear_to_extruder(False, current=None) # Safety
+        self._sync_gear_to_extruder(False) # Ensure we reset extruder syncing
         is_long_move = abs(dist) > self.LONG_MOVE_THRESHOLD
         if speed is None:
             if is_long_move:
@@ -2577,7 +2577,7 @@ class Mmu:
     # Nomal moves return measured_movement
     # All move distances are interpreted as relative and stepper commanded position will be reset
     def _trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop="default", track=False, dwell=0.):
-        self._sync_gear_to_extruder(False, current=None) # Safety
+        self._sync_gear_to_extruder(False) # Ensure we reset extruder syncing
         if dwell > 0:
             self.toolhead.dwell(dwell)
             self.toolhead.wait_moves()
@@ -2791,7 +2791,7 @@ class Mmu:
         self._gear_stepper_move_wait(2.5, accel=self.gear_buzz_accel, wait=False)
         self._gear_stepper_move_wait(-2.5, accel=self.gear_buzz_accel)
         delta = self._get_encoder_distance() - initial_encoder_position
-        self._log_trace("After buzzing gear motor, encoder moved %.2f" % delta)
+        self._log_trace("After buzzing gear motor, encoder measured %.2f" % delta)
         self._set_encoder_distance(initial_encoder_position)
         return delta > self.encoder_min
 
@@ -2804,8 +2804,13 @@ class Mmu:
         self._servo_up()
         length = self.encoder_move_step_size
         delta = self._trace_filament_move("Checking extruder", -length, speed=self.extruder_unload_speed, motor="extruder")
-        return (length - delta) > self.encoder_min
+        found = (length - delta) > self.encoder_min
+        self._log_debug("Filament %s in extruder" % ("detected" if found else "not detected"))
+        return found
 
+    # Sync/unsync gear motor with extruder
+    # servo: True=move, False=don't mess
+    # current: True=optionally reduce, False=restore to current default
     def _sync_gear_to_extruder(self, sync, servo=False, current=False):
         prev_sync_state = self.gear_stepper.is_synced()
         if servo:
@@ -2818,11 +2823,10 @@ class Mmu:
             self.gear_stepper.sync_to_extruder(self.extruder_name if sync else None)
 
         # Option to reduce current during print
-        if current is not None:
-            if current and sync:
-                self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
-            else:
-                self._restore_gear_current()
+        if current and sync:
+            self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
+        else:
+            self._restore_gear_current()
         return prev_sync_state
 
     def _adjust_gear_current(self, percent=100, reason=""):
@@ -2832,17 +2836,19 @@ class Mmu:
              self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
-        if self.gear_tmc and self.gear_percentage_run_current != 100:
-            self._log_info("Restoring gear_stepper run current to 100% configured")
+        if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
+            self._log_info("Restoring gear_stepper run current to %d%% configured" % self.gear_restore_percent_run_current)
             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=gear_stepper CURRENT=%.2f" % self.gear_default_run_current)
-            self.gear_percentage_run_current = 100
+            self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
     @contextlib.contextmanager
     def _gear_current(self, percent=100, reason=""):
         self._adjust_gear_current(percent, reason)
+        self.gear_restore_percent_run_current = percent # This force restoration to this current not original (collision detection case)
         try:
             yield self
         finally:
+            self.gear_restore_percent_run_current = 100
             self._restore_gear_current()
 
     def _adjust_extruder_current(self, percent=100, reason=""):
@@ -2959,16 +2965,37 @@ class Mmu:
             else:
                 self._log_always("Variable '%s' is not defined for '%s' macro" % (param, self.form_tip_macro))
 
-        # Run the macro ensuring final eject is set
+        # Run the macro ensuring final_eject is set
         if run:
-            self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print))
+            self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print)) # current mimick in print
             with self._extruder_current(self.extruder_form_tip_current, "for tip forming move"):
                 gcode_macro.variables['final_eject'] = 1
                 msg = "Running '%s' with the following variable settings:" % self.form_tip_macro
                 for k, v in gcode_macro.variables.items():
                     msg += "\nvariable_%s: %s" % (k, v)
                 self._log_always(msg)
+
+                # Perform the tip forming move and establish park_pos
+                initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
+                initial_encoder_position = self._get_encoder_distance()
+                initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._wrap_gcode_command(self.form_tip_macro)
+                self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
+                self.toolhead.dwell(0.2)
+                self.toolhead.wait_moves()
+                delta = self._get_encoder_distance() - initial_encoder_position
+                park_pos = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro).variables.get("output_park_pos", -1)
+                try:
+                    park_pos = float(park_pos)
+                except ValueError:
+                    park_pos = -1
+                if park_pos < 0:
+                    park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
+                    self._log_always("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (park_pos, delta))
+                else:
+                    # Means the macro reported it (usually for filament cutting)
+                    self._log_always("After tip formation, park_pos reported as: %.2f (encoder measured %.2f)" % (park_pos, delta))
+
                 gcode_macro.variables['final_eject'] = 0
             self._sync_gear_to_extruder(False, servo=True)
 
@@ -3576,7 +3603,7 @@ class Mmu:
             self._log_debug("Extracting filament from extruder")
             self._set_filament_direction(self.DIRECTION_UNLOAD)
             synced = self.toolhead_sync_unload and not extruder_stepper_only
-            self._sync_gear_to_extruder(synced, servo=True, current=self._is_in_print())
+            self._sync_gear_to_extruder(synced, servo=True)
             self._ensure_safe_extruder_temperature(wait=False)
 
             # Goal is to exit extruder. Strategies depend on availability of toolhead sensor and synced motor option
@@ -3586,7 +3613,7 @@ class Mmu:
             if self._has_sensor("toolhead"):
                 # This strategy supports both extruder only and 'synced' modes of operation
                 # Home to toolhead sensor, then move the remained fixed distance
-                motor = "gear+extruder" if synced else "extruder"
+                motor = "gear+extruder" if synced else "extruder" # change to synced extruder??
                 speed = self.extruder_sync_unload_speed if synced else self.extruder_unload_speed
                 length = self._get_home_position_to_nozzle() - park_pos + safety_margin
                 homed, actual, delta = self._trace_filament_move("Reverse homing to toolhead sensor",
@@ -3667,15 +3694,18 @@ class Mmu:
 
     # Retract the filament by the extruder stepper only and see if we do not have any encoder movement
     # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
-    # Return True if filament is out of extruder and distance filament moved during test
+    # Return if filament detected and distance filament moved during test
     def _test_filament_in_extruder_by_retracting(self, length=None):
         self._log_debug("Testing for filament in extruder by retracting on extruder stepper only")
         if not length:
             length = self.encoder_move_step_size
         self._servo_up()
-        delta = self._trace_filament_move("Moving extruder to test for exit",
+        delta = self._trace_filament_move("Moving extruder to test for filament exit",
                 -length, speed=self.extruder_unload_speed, motor="extruder")
-        return (length - delta) < self.encoder_min, (length - delta)
+        movement = length - delta
+        detected = movement > self.encoder_min
+        self._log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
+        return detected, movement
 
     # Step 2 of the unload sequence
     # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (but still in encoder)
@@ -3786,10 +3816,10 @@ class Mmu:
                 #self._recover_filament_pos(self, strict=False, message=True)
                 return False, 0.
 
-        self._log_info("Forming tip...")
+        self._log_debug("Preparing to form tip...")
         with self._wrap_action(self.ACTION_FORMING_TIP):
             synced = self.sync_form_tip and not extruder_stepper_only
-            self._sync_gear_to_extruder(synced, servo=True, current=self._is_in_print())
+            self._sync_gear_to_extruder(synced, servo=True, current=False)
             self._ensure_safe_extruder_temperature(wait=False)
 
             # Perform the tip forming move and establish park_pos
@@ -3797,19 +3827,24 @@ class Mmu:
                 initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
                 initial_encoder_position = self._get_encoder_distance()
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
+                self._log_info("Forming tip...")
                 self._wrap_gcode_command(self.form_tip_macro, exception=True)
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
                 self.toolhead.dwell(0.2)
                 self.toolhead.wait_moves()
                 delta = self._get_encoder_distance() - initial_encoder_position
                 park_pos = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro).variables.get("output_park_pos", -1)
+                try:
+                    park_pos = float(park_pos)
+                except ValueError:
+                    park_pos = -1
                 filament_check = True
                 if park_pos < 0:
                     park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
-                    self._log_trace("After tip formation, extruder moved: %.2f, encoder moved %.2f" % (park_pos, delta))
+                    self._log_trace("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (park_pos, delta))
                 else:
                     # Means the macro reported it (usually for filament cutting)
-                    self._log_trace("After tip formation, park_pos reported as: %.2f (encoder moved %.2f)" % (park_pos, delta))
+                    self._log_trace("After tip formation, park_pos reported as: %.2f (encoder measured %.2f)" % (park_pos, delta))
                     filament_check = False
                 self._set_encoder_distance(initial_encoder_position + park_pos)
                 self.filament_distance += park_pos
@@ -3828,12 +3863,12 @@ class Mmu:
                         return False, park_pos
                     if synced:
                         # A further test is needed to see if the filament is actually in the extruder
-                        out_of_extruder, moved = self._test_filament_in_extruder_by_retracting()
+                        detected, moved = self._test_filament_in_extruder_by_retracting()
                         park_pos += moved
                         self.filament_distance += moved
-                        return not out_of_extruder, park_pos
+                        return detected, park_pos
 
-            # We have to assume filament present because no way to be sure
+            # We have to assume filament was present because no way to be sure
             return True, park_pos
 
 #################################################
@@ -4221,7 +4256,7 @@ class Mmu:
                         self._recover_filament_pos()
     
                 self._dump_statistics(job=not quiet, gate=not quiet)
-                self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(), servo=True, current=self._is_in_print())
+                self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print))
             finally:
                 self._next_tool = self.TOOL_GATE_UNKNOWN
 
@@ -4731,7 +4766,7 @@ class Mmu:
                     self._wrap_gcode_command("_MMU_ENDLESS_SPOOL_POST_LOAD", exception=True)
                 self._restore_toolhead_position("EndlessSpool")
 
-                self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(), servo=True, current=self._is_in_print())
+                self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(force_runout), servo=True, current=self._is_in_print())
                 self._reset_encoder_counts()    # Encoder 0000
                 # Continue printing...
             else:
