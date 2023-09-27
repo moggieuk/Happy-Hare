@@ -4558,7 +4558,7 @@ class Mmu:
 
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"
     def cmd_MMU_TEST_HOMING_MOVE(self, gcmd):
-        move, homed, actual, delta = self._homing_move_cmd(gcmd, "Test homing move")
+        homed, actual, delta = self._homing_move_cmd(gcmd, "Test homing move")
         measured_movement = abs(actual) - delta
         self._log_always("%s after %.1fmm (measured %.1fmm)" % (("Homed" if homed else "Did not home"), actual, measured_movement))
 
