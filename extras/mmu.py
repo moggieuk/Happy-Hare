@@ -3207,7 +3207,11 @@ class Mmu:
     # Fast load of filament to (approximate) end of bowden
     # Handles setting of cailbration ratio if not set
     # Returns the measured distance moved if encoder equipped else actual
-    def _load_bowden(self, length, full=False):
+    # PAUL pass length - how far to load (could take starting position of self.filament_distance
+    # PAUL into account automatically to spare caller from calculating)
+    # PAUL length = None can indicate a full length move
+    # PAUL
+    def _load_bowden(self, length, full=False): # PAUL full is only used for setting position state to end of bowden
         if length <= 0: return
         self._log_debug("Loading bowden tube")
         tolerance = self.bowden_load_tolerance
@@ -3323,27 +3327,12 @@ class Mmu:
         self.filament_distance += length
         return length - delta
 
+# ----------------------------------------------------------------
 
 
-
-    # Primary method to selects and loads tool. Assumes we are unloaded.
-    def _select_and_load_tool(self, tool):
-        self._log_debug('Loading tool T%d...' % tool)
-        self._select_tool(tool, move_servo=False)
-        gate = self.tool_to_gate_map[tool]
-
-        if self.gate_status[gate] == self.GATE_EMPTY:
-            raise MmuError("Gate %d is empty!" % gate)
-
-        self._load_sequence(self.calibrated_bowden_length)
-
-        # Activate the spool in SpoolMan, if enabled
-        spool = self.gate_spool_id[gate]
-        if spool > -1:
-            self._spoolman_activate_spool(spool)
-
-        # Restore M220 and M221 overrides
-        self._restore_tool_override(self.tool_selected)
+###########################
+# LOAD / UNLOAD SEQUENCES #
+###########################
 
     def _load_sequence(self, length, skip_extruder=False, extruder_only=False):
         self._log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
@@ -3388,7 +3377,7 @@ class Mmu:
                     self._load_gate()
 
                 if start_filament_pos < self.FILAMENT_POS_END_BOWDEN:
-                    self._load_bowden(length - self.filament_distance, full)
+                    self._load_bowden(length - self.filament_distance, full) # PAUL self._load_bowden(length)
 
                 if start_filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER and home:
                     self._home_to_extruder(self.extruder_homing_max)
@@ -3410,6 +3399,141 @@ class Mmu:
                 self._track_load_end()
             if not extruder_only:
                 self._set_action(current_action)
+
+    def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
+        self._set_filament_direction(self.DIRECTION_UNLOAD)
+        self.toolhead.wait_moves()
+        self._set_encoder_distance(self.filament_distance)
+
+        if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
+            # Let's determine where filament is and reset state before continuing
+            self._recover_filament_pos(message=True)
+
+        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
+            self._log_debug("Filament already ejected")
+            self._servo_auto()
+            return
+
+        try:
+            self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
+            if not extruder_only:
+                current_action = self._set_action(self.ACTION_UNLOADING)
+                self._track_unload_start()
+                self._display_visual_state()
+
+            # Check for cases where we must form tip
+            if skip_tip:
+                park_pos = self.slicer_tip_park_pos
+            elif self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER:
+                detected, park_pos = self._form_tip_standalone()
+                if detected:
+                    # Definitely in extruder
+                    self._set_filament_pos(self.FILAMENT_POS_IN_EXTRUDER)
+                else:
+                    # No detection means we can assume we are somewhere in the bowden
+                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
+            else:
+                park_pos = 0.
+
+            # Note: Conditionals deliberately coded this way to match macro alternative
+            start_filament_pos = self.filament_pos
+            unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
+            if self.gcode_unload_sequence:
+                self._log_debug("Calling external user defined unloading sequence macro")
+                self._wrap_gcode_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (start_filament_pos, length, extruder_only, park_pos), exception=True)
+
+            elif extruder_only:
+                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
+                    self._unload_extruder(extruder_stepper_only=True, park_pos=park_pos)
+                else:
+                    self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence(extruder_only=True)" % start_filament_pos)
+                    raise MmuError("Cannot unload extruder because filament not in extruder!")
+
+            elif start_filament_pos == self.FILAMENT_POS_UNLOADED:
+                self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence()" % start_filament_pos)
+                raise MmuError("Cannot unload because already unloaded!")
+
+            else:
+                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
+                    # Exit extruder, fast unload of bowden, then slow unload encoder
+                    self._unload_extruder(park_pos=park_pos)
+
+                if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
+                    # Fast unload of bowden, then unload encoder
+                    self._unload_bowden(length - self.gate_unload_buffer)
+                    self._unload_gate()
+
+                elif start_filament_pos >= self.FILAMENT_POS_START_BOWDEN:
+                    # Have to do slow unload because we don't know exactly where we are
+                    self._unload_gate(homing_max=length) # Full slow unload
+
+            if unload_to_buffer:
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
+
+            self.toolhead.wait_moves()
+            movement = self._servo_up(measure=True)
+            if movement > self.encoder_min:
+                self._set_filament_pos(self.FILAMENT_POS_UNKNOWN)
+                raise MmuError("It may be time to get the pliers out! Filament appears to stuck somewhere")
+
+            msg = "Unloaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_UNLOADED else self.filament_distance)
+            if self._has_encoder():
+                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance()
+            self._log_info(msg)
+
+        except MmuError as ee:
+            if not extruder_only:
+                self._track_gate_statistics('unload_failures', self.gate_selected)
+            raise MmuError("Unload sequence failed: %s" % (str(ee)))
+
+        finally:
+            if not extruder_only:
+                self._track_unload_end()
+                self._set_action(current_action)
+
+    # This is a recovery routine to determine the most conservative location of the filament for unload purposes
+    def _recover_filament_pos(self, strict=False, message=False):
+        if message:
+            self._log_info("Attempting to recover filament position...")
+        ts = self._check_sensor("toolhead")
+        if ts is None: # Not installed
+            if self._check_filament_in_mmu():
+                if self._check_filament_still_in_extruder():
+                    self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                else:
+                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
+            else:
+                self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
+        elif ts: # Filament detected in toolhead
+            self._set_filament_pos(self.FILAMENT_POS_LOADED)
+        else: # Filament not detected in toolhead
+            if self._check_filament_in_mmu():
+                if self.strict_filament_recovery or strict:
+                    if self._check_filament_still_in_extruder():
+                        self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                    else:
+                        self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
+                else:
+                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN) # Slight risk of it still being gripped by extruder
+            else:
+                self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
+
+    # Retract the filament by the extruder stepper only and see if we do not have any encoder movement
+    # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
+    # Return if filament detected and distance filament moved during test
+    def _test_filament_in_extruder_by_retracting(self, length=None):
+        self._log_debug("Testing for filament in extruder by retracting on extruder stepper only")
+        if not length:
+            length = self.encoder_move_step_size
+        self._servo_up()
+        delta = self._trace_filament_move("Moving extruder to test for filament exit",
+                -length, speed=self.extruder_unload_speed, motor="extruder")
+        movement = length - delta
+        detected = movement > self.encoder_min
+        self._log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
+        return detected, movement
+
+# ----------------------------------------------------------------
 
     # Step 3a of the load sequence
     # This optional step snugs the filament up to the extruder gears
@@ -3590,136 +3714,6 @@ class Mmu:
 # FILAMENT UNLOAD FUNCTIONS #
 #############################
 
-    # Primary method to unload current tool but retains selection
-    def _unload_tool(self, skip_tip=False):
-        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-            self._log_debug("Tool already unloaded")
-            return
-
-        self._log_debug("Unloading tool %s" % self._selected_tool_string())
-        # Remember M220 and M221 overrides, potentially deactivate in SpoolMan
-        self._record_tool_override()
-        self._spoolman_activate_spool(-1)
-        self._unload_sequence(self.calibrated_bowden_length, skip_tip=skip_tip)
-
-    def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
-        self._set_filament_direction(self.DIRECTION_UNLOAD)
-        self.toolhead.wait_moves()
-        self._set_encoder_distance(self.filament_distance)
-
-        if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
-            # Let's determine where filament is and reset state before continuing
-            self._recover_filament_pos(message=True)
-
-        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-            self._log_debug("Filament already ejected")
-            self._servo_auto()
-            return
-
-        try:
-            self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
-            if not extruder_only:
-                current_action = self._set_action(self.ACTION_UNLOADING)
-                self._track_unload_start()
-                self._display_visual_state()
-
-            # Check for cases where we must form tip
-            if skip_tip:
-                park_pos = self.slicer_tip_park_pos
-            elif self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER:
-                detected, park_pos = self._form_tip_standalone()
-                if detected:
-                    # Definitely in extruder
-                    self._set_filament_pos(self.FILAMENT_POS_IN_EXTRUDER)
-                else:
-                    # No detection means we can assume we are somewhere in the bowden
-                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
-            else:
-                park_pos = 0.
-
-            # Note: Conditionals deliberately coded this way to match macro alternative
-            start_filament_pos = self.filament_pos
-            unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
-            if self.gcode_unload_sequence:
-                self._log_debug("Calling external user defined unloading sequence macro")
-                self._wrap_gcode_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (start_filament_pos, length, extruder_only, park_pos), exception=True)
-
-            elif extruder_only:
-                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                    self._unload_extruder(extruder_stepper_only=True, park_pos=park_pos)
-                else:
-                    self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence(extruder_only=True)" % start_filament_pos)
-                    raise MmuError("Cannot unload extruder because filament not in extruder!")
-
-            elif start_filament_pos == self.FILAMENT_POS_UNLOADED:
-                self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence()" % start_filament_pos)
-                raise MmuError("Cannot unload because already unloaded!")
-
-            else:
-                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                    # Exit extruder, fast unload of bowden, then slow unload encoder
-                    self._unload_extruder(park_pos=park_pos)
-
-                if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
-                    # Fast unload of bowden, then unload encoder
-                    self._unload_bowden(length - self.gate_unload_buffer)
-                    self._unload_gate()
-
-                elif start_filament_pos >= self.FILAMENT_POS_START_BOWDEN:
-                    # Have to do slow unload because we don't know exactly where we are
-                    self._unload_gate(homing_max=length) # Full slow unload
-
-            if unload_to_buffer:
-                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
-
-            self.toolhead.wait_moves()
-            movement = self._servo_up(measure=True)
-            if movement > self.encoder_min:
-                self._set_filament_pos(self.FILAMENT_POS_UNKNOWN)
-                raise MmuError("It may be time to get the pliers out! Filament appears to stuck somewhere")
-
-            msg = "Unloaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_UNLOADED else self.filament_distance)
-            if self._has_encoder():
-                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance()
-            self._log_info(msg)
-
-        except MmuError as ee:
-            if not extruder_only:
-                self._track_gate_statistics('unload_failures', self.gate_selected)
-            raise MmuError("Unload sequence failed: %s" % (str(ee)))
-
-        finally:
-            if not extruder_only:
-                self._track_unload_end()
-                self._set_action(current_action)
-
-    # This is a recovery routine to determine the most conservative location of the filament for unload purposes
-    def _recover_filament_pos(self, strict=False, message=False):
-        if message:
-            self._log_info("Attempting to recover filament position...")
-        ts = self._check_sensor("toolhead")
-        if ts is None: # Not installed
-            if self._check_filament_in_mmu():
-                if self._check_filament_still_in_extruder():
-                    self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                else:
-                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
-            else:
-                self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
-        elif ts: # Filament detected in toolhead
-            self._set_filament_pos(self.FILAMENT_POS_LOADED)
-        else: # Filament not detected in toolhead
-            if self._check_filament_in_mmu():
-                if self.strict_filament_recovery or strict:
-                    if self._check_filament_still_in_extruder():
-                        self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                    else:
-                        self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
-                else:
-                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN) # Slight risk of it still being gripped by extruder
-            else:
-                self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
-
     # Step 1 of the unload sequence
     # Extract filament past extruder gear (to end of bowden)
     # Assume that tip has already been formed and we are parked somewhere in the extruder
@@ -3820,20 +3814,6 @@ class Mmu:
             self._set_filament_pos(self.FILAMENT_POS_END_BOWDEN)
             return distance_moved
 
-    # Retract the filament by the extruder stepper only and see if we do not have any encoder movement
-    # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
-    # Return if filament detected and distance filament moved during test
-    def _test_filament_in_extruder_by_retracting(self, length=None):
-        self._log_debug("Testing for filament in extruder by retracting on extruder stepper only")
-        if not length:
-            length = self.encoder_move_step_size
-        self._servo_up()
-        delta = self._trace_filament_move("Moving extruder to test for filament exit",
-                -length, speed=self.extruder_unload_speed, motor="extruder")
-        movement = length - delta
-        detected = movement > self.encoder_min
-        self._log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
-        return detected, movement
 
 
     # Form tip and return True if filament was detected and the assumed filament (park) position
@@ -4063,6 +4043,37 @@ class Mmu:
                 self.tool_extrusion_multipliers[tool] = extrude_percent / 100
                 self._log_debug("Set extrusion multiplier for tool T%d as %d%%" % (tool, extrude_percent))
             self._restore_tool_override(tool)
+
+    # Primary method to selects and loads tool. Assumes we are unloaded.
+    def _select_and_load_tool(self, tool):
+        self._log_debug('Loading tool T%d...' % tool)
+        self._select_tool(tool, move_servo=False)
+        gate = self.tool_to_gate_map[tool]
+
+        if self.gate_status[gate] == self.GATE_EMPTY:
+            raise MmuError("Gate %d is empty!" % gate)
+
+        self._load_sequence(self.calibrated_bowden_length) # PAUL could be (None)
+
+        # Activate the spool in SpoolMan, if enabled
+        spool = self.gate_spool_id[gate]
+        if spool > -1:
+            self._spoolman_activate_spool(spool)
+
+        # Restore M220 and M221 overrides
+        self._restore_tool_override(self.tool_selected)
+
+    # Primary method to unload current tool but retains selection
+    def _unload_tool(self, skip_tip=False):
+        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
+            self._log_debug("Tool already unloaded")
+            return
+
+        self._log_debug("Unloading tool %s" % self._selected_tool_string())
+        # Remember M220 and M221 overrides, potentially deactivate in SpoolMan
+        self._record_tool_override()
+        self._spoolman_activate_spool(-1)
+        self._unload_sequence(self.calibrated_bowden_length, skip_tip=skip_tip)
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, in_print, skip_tip=True):
@@ -4606,13 +4617,13 @@ class Mmu:
 
     cmd_MMU_TEST_MOVE_help = "Test filament move to help debug setup / options"
     def cmd_MMU_TEST_MOVE(self, gcmd):
-        move, delta = self._move_cmd(gcmd, "User defined step move")
-        measured_movement = abs(move) - delta
-        self._log_always("Moved %.1fmm, Encoder measured %.1fmm)" % (move, measured_movement))
+        actual, delta = self._move_cmd(gcmd, "User defined step move")
+        measured_movement = abs(actual) - delta
+        self._log_always("Moved %.1fmm, Encoder measured %.1fmm)" % (actual, measured_movement))
 
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"
     def cmd_MMU_TEST_HOMING_MOVE(self, gcmd):
-        move, homed, actual, delta = self._homing_move_cmd(gcmd, "Test homing move")
+        homed, actual, delta = self._homing_move_cmd(gcmd, "Test homing move")
         measured_movement = abs(actual) - delta
         self._log_always("%s after %.1fmm (measured %.1fmm)" % (("Homed" if homed else "Did not home"), actual, measured_movement))
 
