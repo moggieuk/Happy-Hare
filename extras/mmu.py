@@ -2342,7 +2342,7 @@ class Mmu:
                 source = "slicer"
             else:
                 # Standalone "just messing" case
-                if current_target_temp > self.default_extruder_temp:
+                if current_target_temp > klipper_minimum_temp: # default_extruder_temp: # PAUL should this be > klipper_minimum_temp
                     new_target_temp = current_target_temp
                     source = "current"
                 else:
@@ -2374,7 +2374,7 @@ class Mmu:
         if wait:
             if abs(new_target_temp - current_temp) > 1:
                 with self._wrap_action(self.ACTION_HEATING):
-                    self._log_info("Waiting for extruder to reach target temperature (%.1f)" % new_target_temp)
+                    self._log_info("Waiting for extruder to reach target (%s) temperature (%.1f)" % (source, new_target_temp))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _set_filament_pos(self, state, silent=False):
@@ -2969,6 +2969,7 @@ class Mmu:
                 self._log_always("Variable '%s' is not defined for '%s' macro" % (param, self.form_tip_macro))
 
         # Run the macro ensuring final_eject is set
+        self._ensure_safe_extruder_temperature(wait=False)
         if run:
             self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print)) # current mimick in print
             with self._extruder_current(self.extruder_form_tip_current, "for tip forming move"):
