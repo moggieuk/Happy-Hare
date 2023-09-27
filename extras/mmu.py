@@ -2071,7 +2071,7 @@ class Mmu:
             else:
                 msg += " (no filament loaded)"
             self._log_info(msg)
-            self.toolhead.wait_moves()
+#            self.toolhead.wait_moves() # Causes klipper flush() error if called immediately after homing move
             self._set_print_state("printing")
 
     def _mmu_pause(self, reason, force_in_print=False):
