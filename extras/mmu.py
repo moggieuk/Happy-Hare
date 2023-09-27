@@ -2028,7 +2028,7 @@ class Mmu:
 
     def _exec_gcode(self, command):
         try:
-            self.gcode.run_script_from_command(command)
+            self.gcode.run_script(command)
         except Exception:
             logging.exception("Error running job state initializer/finalizer")
 
@@ -2060,6 +2060,7 @@ class Mmu:
         if self.print_state not in ("printing"):
             self._log_trace("_on_print_start()")
             self._set_print_state("started")
+            self.toolhead.wait_moves()
             self._clear_saved_toolhead_position()
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
@@ -2074,7 +2075,6 @@ class Mmu:
             else:
                 msg += " (no filament loaded)"
             self._log_info(msg)
-#            self.toolhead.wait_moves() # Causes klipper flush() error if called immediately after homing move
             self._set_print_state("printing")
 
     def _mmu_pause(self, reason, force_in_print=False):
@@ -2342,7 +2342,7 @@ class Mmu:
                 source = "slicer"
             else:
                 # Standalone "just messing" case
-                if current_target_temp > klipper_minimum_temp: # default_extruder_temp: # PAUL should this be > klipper_minimum_temp
+                if current_target_temp > klipper_minimum_temp:
                     new_target_temp = current_target_temp
                     source = "current"
                 else:
@@ -2765,28 +2765,33 @@ class Mmu:
             self.toolhead.wait_moves()
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
 
-    # Check for filament in selected gate using available sensors or encoder
+    # Check for filament in MMU using available sensors or encoder
     def _check_filament_in_mmu(self):
-        self._log_debug("Checking for filament at gate...")
+        self._log_debug("Checking for filament in MMU...")
         if True in self._check_all_sensors():
-            self._log_debug("Filament detected in gate. Sensors:" % self._check_all_sensors())
+            self._log_debug("Filament detected by:" % ', '.join([key for key, value in self._check_all_sensors().items() if value]))
             return True
         elif not self._has_sensor("gate") and self._has_encoder():
             self._servo_down()
             found = self._buzz_gear_motor()
             self._log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
             return found
+        self._log_debug("Filament not detected. Sensors:" % self._check_all_sensors().items())
         return False
 
     # Check for filament at selected gate
     def _check_filament_at_gate(self):
-        if self._check_sensor("gate"):
-            return True
-        elif not self._has_sensor("gate") and self._has_encoder():
+        self._log_debug("Checking for filament at gate...")
+        if self._has_sensor("gate"):
+            detected = self._check_sensor("gate")
+            self._log_debug("Filament %s by gate sensor" % "detected" if detected else "not detected")
+            return detected
+        elif self._has_encoder():
             self._servo_down()
             found = self._buzz_gear_motor()
             self._log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
             return found
+        self._log_debug("No sensors configured!")
         return False
 
     def _buzz_gear_motor(self):
@@ -2803,6 +2808,7 @@ class Mmu:
     # problem and indicate if we can unload the rest of the bowden more quickly
     def _check_filament_still_in_extruder(self):
         self._log_debug("Checking for possibility of filament still in extruder gears...")
+        # PAUL TODO add toolhead sensor check
         self._ensure_safe_extruder_temperature(wait=False)
         self._servo_up()
         length = self.encoder_move_step_size
