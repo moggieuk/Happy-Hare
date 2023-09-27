@@ -2027,7 +2027,7 @@ class Mmu:
 
     def _exec_gcode(self, command):
         try:
-            self.gcode.run_script_from_command(command)
+            self.gcode.run_script(command)
         except Exception:
             logging.exception("Error running job state initializer/finalizer")
 
@@ -2057,6 +2057,7 @@ class Mmu:
         if self.print_state not in ("printing"):
             self._log_trace("_on_print_start()")
             self._set_print_state("started")
+            self.toolhead.wait_moves()
             self._clear_saved_toolhead_position()
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
@@ -2071,7 +2072,6 @@ class Mmu:
             else:
                 msg += " (no filament loaded)"
             self._log_info(msg)
-#            self.toolhead.wait_moves() # Causes klipper flush() error if called immediately after homing move
             self._set_print_state("printing")
 
     def _mmu_pause(self, reason, force_in_print=False):
