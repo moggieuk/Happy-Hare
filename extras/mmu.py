@@ -2769,14 +2769,14 @@ class Mmu:
     def _check_filament_in_mmu(self):
         self._log_debug("Checking for filament in MMU...")
         if True in self._check_all_sensors():
-            self._log_debug("Filament detected by:" % ', '.join([key for key, value in self._check_all_sensors().items() if value]))
+            self._log_debug("Filament detected by sensors: %s" % ', '.join([key for key, value in self._check_all_sensors().items() if value]))
             return True
         elif not self._has_sensor("gate") and self._has_encoder():
             self._servo_down()
             found = self._buzz_gear_motor()
             self._log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
             return found
-        self._log_debug("Filament not detected. Sensors:" % self._check_all_sensors().items())
+        self._log_debug("Filament not detected by sensors: %s" % ', '.join([key for key, value in self._check_all_sensors().items()]))
         return False
 
     # Check for filament at selected gate
@@ -2794,6 +2794,21 @@ class Mmu:
         self._log_debug("No sensors configured!")
         return False
 
+    # Check for filament in extruder by moving extruder motor. This is only used with toolhead sensor
+    # and can only happen if filament is the short distance from sensor to gears. This check will eliminate that
+    # problem and indicate if we can unload the rest of the bowden more quickly
+    def _check_filament_still_in_extruder(self):
+        if self._has_encoder():
+            self._log_debug("Checking for possibility of filament still in extruder gears...")
+            self._ensure_safe_extruder_temperature(wait=False)
+            self._servo_up()
+            length = self.encoder_move_step_size
+            delta = self._trace_filament_move("Checking extruder", -length, speed=self.extruder_unload_speed, motor="extruder")
+            detected = (length - delta) > self.encoder_min
+            self._log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
+            return found
+        return False
+
     def _buzz_gear_motor(self):
         initial_encoder_position = self._get_encoder_distance()
         self._gear_stepper_move_wait(2.5, accel=self.gear_buzz_accel, wait=False)
@@ -2802,20 +2817,6 @@ class Mmu:
         self._log_trace("After buzzing gear motor, encoder measured %.2f" % delta)
         self._set_encoder_distance(initial_encoder_position)
         return delta > self.encoder_min
-
-    # Check for filament in extruder by moving extruder motor. This is only used with toolhead sensor
-    # and can only happen if filament is the short distance from sensor to gears. This check will eliminate that
-    # problem and indicate if we can unload the rest of the bowden more quickly
-    def _check_filament_still_in_extruder(self):
-        self._log_debug("Checking for possibility of filament still in extruder gears...")
-        # PAUL TODO add toolhead sensor check
-        self._ensure_safe_extruder_temperature(wait=False)
-        self._servo_up()
-        length = self.encoder_move_step_size
-        delta = self._trace_filament_move("Checking extruder", -length, speed=self.extruder_unload_speed, motor="extruder")
-        found = (length - delta) > self.encoder_min
-        self._log_debug("Filament %s in extruder" % ("detected" if found else "not detected"))
-        return found
 
     # Sync/unsync gear motor with extruder
     # servo: True=move, False=don't mess
