@@ -2768,7 +2768,7 @@ class Mmu:
     # Check for filament in MMU using available sensors or encoder
     def _check_filament_in_mmu(self):
         self._log_debug("Checking for filament in MMU...")
-        if True in self._check_all_sensors():
+        if any(self._check_all_sensors().values):
             self._log_debug("Filament detected by sensors: %s" % ', '.join([key for key, value in self._check_all_sensors().items() if value]))
             return True
         elif not self._has_sensor("gate") and self._has_encoder():
