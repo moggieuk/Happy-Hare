@@ -60,3 +60,10 @@ PIN[MELLOW_FLY_ERCF,encoder_pin]="ercf:gpio15";
 22. Make encoder optional
 
 23. Add back initial bowden pull test .. (note can be endstop test if fitted)... could be module with mode "encoder" or "endstop"
+
+24. Need to use ES groups for initial load if desired gate is empty!
+I forced T9 empty, hopping that T2 will load and start the print. 
+It didn't. It just stop the print. Although T2 and T9 are mapped together for ES.
+
+25. Gate calibration - throw away the first measure unless the gate is buffered for more accurate results
+

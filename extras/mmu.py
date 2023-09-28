@@ -2072,6 +2072,7 @@ class Mmu:
             else:
                 msg += " (no filament loaded)"
             self._log_info(msg)
+            self.toolhead.wait_moves()
             self._set_print_state("printing")
 
     def _mmu_pause(self, reason, force_in_print=False):
@@ -3541,7 +3542,7 @@ class Mmu:
                     # Have to do slow unload because we don't know exactly where we are
                     self._unload_encoder(length) # Full slow unload
 
-            if unload_to_buffer:
+            if unload_to_buffer and self.gate_status[self.gate_selected] != self.GATE_EMPTY:
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
             self.toolhead.wait_moves()
