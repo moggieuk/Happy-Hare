@@ -2072,7 +2072,6 @@ class Mmu:
             else:
                 msg += " (no filament loaded)"
             self._log_info(msg)
-            self.toolhead.wait_moves()
             self._set_print_state("printing")
 
     def _mmu_pause(self, reason, force_in_print=False):
@@ -4068,7 +4067,12 @@ class Mmu:
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
 
+        if in_print:
+            gcode = self.printer.lookup_object('gcode_macro _MMU_POST_UNLOAD', None)
+            if gcode is not None:
+                self._wrap_gcode_command("_MMU_POST_UNLOAD", exception=True)
         self._select_and_load_tool(tool)
+
         self._track_swap_completed()
 
         if in_print:
