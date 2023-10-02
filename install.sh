@@ -586,7 +586,7 @@ install_update_manager() {
             echo "" >> "${file}"
             restart=1
         else
-            echo -e "${WARNING}[update_manager happy-hare] already exists in moonraker.conf - skipping install"
+            echo -e "${WARNING}[mmu_server] already exists in moonraker.conf - skipping install"
         fi
 
         if [ "$restart" -eq 1 ]; then
