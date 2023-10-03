@@ -200,6 +200,7 @@ class Mmu:
         self.calibration_status = 0b0
         self.calibrated_bowden_length = -1
         self.ref_gear_rotation_distance = 1.
+        self.next_extruder_load_reduction = 0.
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
@@ -248,7 +249,7 @@ class Mmu:
 
                 # Still allow some 'cad' parameters to be customized, possibly temporary
                 self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
-            self.cal_max_gates = 12
+# PAUL             self.cal_max_gates = 12
             self.cal_tolerance = 5.0
         else:
             raise self.config.error("Support for non-ERCF systems is comming soon!")
@@ -343,8 +344,8 @@ class Mmu:
         self.extruder_unload_speed = config.getfloat('extruder_unload_speed', 15, minval=1.)
         self.extruder_sync_load_speed = config.getfloat('extruder_sync_load_speed', 15., minval=1.)
         self.extruder_sync_unload_speed = config.getfloat('extruder_sync_unload_speed', 15., minval=1.)
-        self.extruder_accel = config.getfloat('extruder_accel', 1000, minval=100.) # For when not synced to toolhead
-        self.gear_buzz_accel = config.getfloat('gear_buzz_accel', 2000, minval=100.)
+        self.extruder_accel = config.getfloat('extruder_accel', 1000, minval=100.) # For when not synced to toolhead # PAUL
+        self.gear_buzz_accel = config.getfloat('gear_buzz_accel', 2000, minval=100.) # PAUL
         # Selector speeds
         self.selector_move_speed = config.getfloat('selector_move_speed', 200, minval=1.)
         self.selector_homing_speed = config.getfloat('selector_homing_speed', 100, minval=1.)
@@ -532,19 +533,19 @@ class Mmu:
         speed = gcmd.get_float('SPEED', 10)
         wait = bool(gcmd.get_int('WAIT', 1))
         stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', 0)
-        if endstop is not None:
-            valid_endstops = list(self.selector_rail.get_extra_endstop_names())
-            if not endstop in valid_endstops:
-                raise gcmd.error("Endstop name '%s' is not valid for motor '%s'. Options are: %s" % (endstop, motor, ', '.join(valid_endstops)))
-        elif select is not None:
+        if select is not None:
             self._select_gate(select)
         else:
+            if endstop is not None:
+                valid_endstops = list(self.selector_rail.get_extra_endstop_names())
+                if not endstop in valid_endstops:
+                    raise gcmd.error("Endstop name '%s' is not valid for stepper motor. Options are: %s" % (endstop, ', '.join(valid_endstops)))
             if self.selector_rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
                 raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
             if home:
                 self._home_selector()
             else:
-                halt_pos, homed, trig_pos = self._trace_selector_move(None, move, wait=wait, speed=speed, homing_move=stop_on_endstop, endstop_name=endstop)
+                halt_pos, homed, trig_pos = self._trace_selector_move("PAUL", move, wait=wait, speed=speed, homing_move=stop_on_endstop, endstop_name=endstop)
                 self._log_always("halt_pos=%s, homed=%s, trig_pos=%s" % (halt_pos, homed, trig_pos))
 
     def _setup_mmu_hardware(self, config):
@@ -555,7 +556,7 @@ class Mmu:
             # Inject important options into selector stepper config
             config.fileconfig.set(self.SELECTOR_STEPPER_CONFIG, 'position_min', -1.)
             config.fileconfig.set(self.SELECTOR_STEPPER_CONFIG, 'position_max', self._get_max_selector_movement())
-            config.fileconfig.set(self.SELECTOR_STEPPER_CONFIG, 'homing_speed', self.selector_homing_speed) # PAUL TODO this must be updated with MMU_TEST_CONFIG
+            config.fileconfig.set(self.SELECTOR_STEPPER_CONFIG, 'homing_speed', self.selector_homing_speed)
         self.mmu_toolhead = MmuToolHead(config)
         self.mmu_kinematics = self.mmu_toolhead.get_kinematics()
         rails = self.mmu_toolhead.get_kinematics().rails
@@ -1457,15 +1458,18 @@ class Mmu:
             self._servo_up()
 
     def _motors_off(self, motor="all"):
+        stepper_enable = self.printer.lookup_object('stepper_enable')
         if motor in ("all", "gear"):
             self._sync_gear_to_extruder(False)
-            self.gear_stepper.do_enable(False)
+            ge = stepper_enable.lookup_enable(self.gear_stepper.get_name())
+            ge.motor_disable(self.mmu_toolhead.get_last_move_time())
         if motor in ("all", "selector"):
             self._servo_move()
             self.is_homed = False
             self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
-            self.selector_stepper.do_enable(False)
+            se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
+            se.motor_disable(self.mmu_toolhead.get_last_move_time())
 
 ### SERVO AND MOTOR GCODE FUNCTIONS
 
@@ -1757,15 +1761,21 @@ class Mmu:
             self.calibrating = True
             self._servo_move()
             max_movement = self._get_max_selector_movement(gate)
-            self._log_always("Measuring the selector position for %s. Up to %.1fmm" % (gate_str(gate), max_movement))
-            traveled, found_home = self._measure_to_home(max_movement)
+            self._log_always("Measuring the selector position for %s" % gate_str(gate))
+            traveled, found_home = self._measure_to_home()
 
-            # Test we actually homed, if not we didn't move far enough
+            # Test we actually homed
             if not found_home:
-                self._log_always("Selector didn't find home position. Are you sure you selected the correct gate?")
+                self._log_always("Selector didn't find home position")
                 return
 
-            self._log_always("Selector move measured %.1fmm" % traveled)
+            # Warn and don't save if the measurement is unexpected
+            if traveled > max_movement:
+                self._log_always("Selector move measured %.1fmm. More than the anticipated maximum of %.1fmm. Save disabled" % (traveled, max_movement))
+                save = 0
+            else:
+                self._log_always("Selector move measured %.1fmm" % traveled)
+
             if save:
                 if gate >= 0:
                     self.selector_offsets[gate] = round(traveled, 1)
@@ -1792,26 +1802,22 @@ class Mmu:
 
             # Step 1 - position of gate #0
             self._log_always("Measuring the selector position for gate #0...")
-            traveled, found_home = self._measure_to_home(self.cad_gate0_pos + self.cal_tolerance)
-            if not found_home:
-                self._log_always("Selector didn't find home position. Are you sure you aligned selector with gate #0 and removed filament?")
+            traveled, found_home = self._measure_to_home()
+            if not found_home or traveled > self.cad_gate0_pos + self.cal_tolerance:
+                self._log_always("Selector didn't find home position or measurement (%.1fmm) unexpected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
                 return
             gate0_pos = traveled
 
             # Step 2 - end of selector
-            max_movement = self._get_max_selector_movement(self.cal_max_gates - 1)
+            max_movement = self._get_max_selector_movement()
             self._log_always("Searching for end of selector... (up to %.1fmm)" % max_movement)
-            self.selector_stepper.do_set_position(0.) # PAUL no good
-            self._selector_stepper_move_wait(self.cad_gate0_pos) # Get off endstop
+            self._trace_selector_move("Moving off endstop", self.cad_gate0_pos)
             if self.selector_touch:
-                try:
-                    self._selector_stepper_move_wait(max_movement, speed=self.selector_touch_speed, homing_move=1, endstop=self.SELECTOR_TOUCH_ENDSTOP)
-                    found_home = True
-                except Exception as e:
-                    found_home = False
+                halt_pos, found_home, trig_pos = self._trace_selector_move("Detecting end of selector movement",
+			max_movement, speed=self.selector_touch_speed, homing_move=1, endstop_name=self.SELECTOR_TOUCH_ENDSTOP)
             else:
                 # This might not sound good!
-                self._selector_stepper_move_wait(max_movement, speed=self.selector_homing_speed)
+                self._trace_selector_move("Forceably detecting end of selector movement", max_movement, speed=self.selector_homing_speed)
                 found_home = True
             if not found_home:
                 self._log_always("Didn't detect the end of the selector")
@@ -1819,7 +1825,7 @@ class Mmu:
 
             # Step 3 - bypass (v2) and last gate position
             self._log_always("Measuring the full selector length...")
-            traveled, found_home = self._measure_to_home(max_movement)
+            traveled, found_home = self._measure_to_home()
             if not found_home:
                 self._log_always("Selector didn't find home position after full length move")
                 return
@@ -2606,234 +2612,9 @@ class Mmu:
         self._log_always("MMU state reset")
 
 
-####################################################################################
-# GENERAL MOTOR HELPERS - All stepper movements should go through here for tracing #
-####################################################################################
-
-    def _gear_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, sync=True, dwell=0.):
-        return # PAUL TEMP
-
-        self._sync_gear_to_extruder(False) # Ensure we reset extruder syncing
-        is_long_move = abs(dist) > self.LONG_MOVE_THRESHOLD
-        if speed is None:
-            if is_long_move:
-                if (dist > 0 and self.gate_selected >= 0 and self.gate_status[self.gate_selected] != self.GATE_AVAILABLE_FROM_BUFFER):
-                    # Long pulling move when we are sure that we are at a gate but the filament buffer might be empty
-                    speed = self.gear_from_spool_speed
-                else:
-                   speed = self.gear_from_buffer_speed
-            else:
-                speed = self.gear_short_move_speed
-        accel = accel or self.gear_stepper.accel
-
-        self.gear_stepper.do_set_position(0.)   # All gear moves are relative # PAUL no good
-        self._log_stepper("GEAR: dist=%.1f, speed=%.1f, accel=%.1f sync=%s wait=%s" % (dist, speed, accel, sync, wait))
-        self.gear_stepper.do_move(dist, speed, accel, sync)
-        if wait:
-            if dwell > 0: self.toolhead.dwell(dwell)
-            self.toolhead.wait_moves()
-
-    # Convenience wrapper around all gear and extruder motor movement that tracks measured movement and create trace log entry
-    # motor = "gear" - gear only
-    #         "extruder" - extruder only
-    #         "both" - gear and extruder together but independent (legacy, homing move not possible))
-    #         "gear+extruder" - gear driving and extruder linked
-    #         "extruder+gear" - extruder driving and gear linked
-    # If homing move then endstop name can be specified.
-    # Homing moves return (homed, actual_movement, measured_movement)
-    # Nomal moves return measured_movement
-    # All move distances are interpreted as relative and stepper commanded position will be reset
-    def _trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop="default", track=False, dwell=0.):
-        if homing_move != 0: # PAUL TEMP vvv
-            return True, 0, 0
-        else:
-            return 0 # PAUL TEMP ^^^
-
-        self._sync_gear_to_extruder(False) # Ensure we reset extruder syncing
-        if dwell > 0:
-            self.toolhead.dwell(dwell)
-            self.toolhead.wait_moves()
-        start = self._get_encoder_distance()
-        homed = False
-        actual = 0.
-
-        if homing_move != 0:
-            # Generally homing speeds/accel are set here
-            if motor in ("both", "gear+extruder", "extruder+gear"):
-                speed = speed or min(self.gear_homing_speed, self.extruder_homing_speed)
-                accel = accel or min(self.gear_stepper.accel, self.extruder_accel)
-            elif motor == "extruder":
-                speed = speed or self.extruder_homing_speed
-                accel = accel or self.extruder_accel
-            else:
-                speed = speed or self.gear_homing_speed
-                accel = accel or self.gear_stepper.accel
-        else:
-            # Generally the speed/accel will be specified but here are some saftely values
-            if motor in ("both", "gear+extruder", "extruder+gear"):
-                speed = speed or self.extruder_sync_load_speed
-                accel = accel or min(self.gear_stepper.accel, self.extruder_accel)
-            elif motor == "extruder":
-                speed = speed or self.extruder_load_speed
-            else:
-                pass # Set later based on a few factors
-
-        if motor == "both":
-            if homing_move != 0:
-                self._log_error("Not possible to perform homing move on two independent steppers")
-            else:
-                self._log_stepper("BOTH: dist=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
-                self.gear_stepper.do_set_position(0.) # Force relative move # PAUL no good
-                pos = self.toolhead.get_position()
-                pos[3] += dist
-                self.gear_stepper.do_move(dist, speed, accel, False)
-                self.toolhead.manual_move(pos, speed)
-                self.toolhead.dwell(dwell+0.05) # "MCU Timer too close" protection
-                self.toolhead.wait_moves()
-                self.toolhead.set_position(pos) # Force subsequent incremental move
-
-        elif motor == "gear":
-            if homing_move != 0:
-                self._log_stepper("GEAR HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s" % (dist, speed, accel, endstop))
-                try:
-                    self.gear_stepper.do_set_position(0.) # Force relative move # PAUL no good
-                    init_mcu_pos = self.gear_stepper.get_mcu_position()
-                    self.gear_stepper.do_mh_homing_move(dist, speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop)
-                    homed = True
-                except Exception as e:
-                    self._log_stepper("Did not home: %s" % str(e))
-                finally:
-                    actual = (self.gear_stepper.get_mcu_position() - init_mcu_pos) * self.gear_stepper.get_step_dist()
-            else:
-                self._gear_stepper_move_wait(dist, speed=speed, accel=accel, wait=True, dwell=dwell)
-
-        elif motor == "extruder":
-            if homing_move != 0:
-                self._log_stepper("EXTRUDER HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s" % (dist, speed, accel, endstop))
-                try:
-                    self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead motion queue
-                    self.mmu_extruder_stepper.do_set_position(0.) # Force relative move
-                    init_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
-                    self.mmu_extruder_stepper.do_mh_homing_move(dist,
-                            speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop)
-                    homed = True
-                except Exception as e:
-                    self._log_stepper("Did not home: %s" % str(e))
-                finally:
-                    actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
-                    self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Sync back to toolhead
-            else:
-                self._log_stepper("EXTRUDER: dist=%.1f, speed=%.1f" % (dist, speed))
-                pos = self.toolhead.get_position()
-                pos[3] += dist
-                self.toolhead.manual_move(pos, speed)
-                if dwell > 0: self.toolhead.dwell(dwell)
-                self.toolhead.wait_moves()
-                self.toolhead.set_position(pos) # Force subsequent incremental move
-
-        elif motor == "gear+extruder":
-            if homing_move != 0:
-                self._log_stepper("GEAR+EXTRUDER HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s, linked_stepper=%s" % (dist, speed, accel, endstop, self.extruder_name))
-                try:
-                    self.gear_stepper.do_set_position(0.) # Force relative move
-                    init_mcu_pos = self.gear_stepper.get_mcu_position()
-                    self.gear_stepper.do_linked_homing_move(dist,
-                            speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop, linked_extruder=self.extruder_name)
-                    homed = True
-                except Exception as e:
-                    self._log_stepper("Did not home: %s" % str(e))
-                finally:
-                    actual = (self.gear_stepper.get_mcu_position() - init_mcu_pos) * self.gear_stepper.get_step_dist()
-            else:
-                self._log_stepper("GEAR+EXTRUDER: dist=%.1f, speed=%.1f, accel=%.1f, linked_stepper=%s" % (dist, speed, accel, self.extruder_name))
-                self.gear_stepper.do_set_position(0.) # Force relative move
-                self.gear_stepper.do_linked_move(dist, speed, accel, linked_extruder=self.extruder_name)
-                if dwell > 0: self.toolhead.dwell(dwell)
-                self.toolhead.wait_moves()
-
-        elif motor == "extruder+gear":
-            if homing_move != 0:
-                self._log_stepper("EXTRUDER+GEAR HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s, linked_stepper=%s" % (dist, speed, accel, endstop, "gear_stepper"))
-                try:
-                    self.mmu_extruder_stepper.sync_to_extruder(None) # Disssociate/unsync with toolhead
-                    self.mmu_extruder_stepper.do_set_position(0.) # Force relative move
-                    init_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
-                    self.mmu_extruder_stepper.do_linked_homing_move(dist,
-                            speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop, linked_extruder="gear_stepper")
-                    homed = True
-                except Exception as e:
-                    self._log_stepper("Did not home: %s" % str(e))
-                finally:
-                    actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
-                    self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Restore toolhead association/syncing
-            else:
-                self._log_stepper("EXTRUDER+GEAR: dist=%.1f, speed=%.1f, accel=%.1f, linked_stepper=%s" % (dist, speed, accel, "gear_stepper"))
-                self.mmu_extruder_stepper.sync_to_extruder(None) # Disssociate/unsync with toolhead
-                self.mmu_extruder_stepper.do_set_position(0.) # Force relative move
-                self.mmu_extruder_stepper.do_linked_move(dist, speed, accel, linked_extruder="gear_stepper")
-                if dwell > 0: self.toolhead.dwell(dwell)
-                self.toolhead.wait_moves()
-                self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Restore toolhead association/syncing
-
-        else:
-            self._log_error("Assertion failure: Invalid motor specification")
-
-        end = self._get_encoder_distance()
-        measured = end - start
-        if homing_move != 0:
-            delta = abs(actual) - measured # +ve means measured less than moved, -ve means measured more than moved
-            trace_str += ". Stepper: '%s' %s after moving %.1fmm (of max %.1fmm), encoder measured %.1fmm (delta %.1fmm)"
-            self._log_trace(trace_str % (motor, ("homed" if homed else "did not home"), actual, dist, measured, delta))
-        else:
-            delta = abs(dist) - measured # +ve means measured less than moved, -ve means measured more than moved
-            trace_str += ". Stepper: '%s' moved %.1fmm, encoder measured %.1fmm (delta %.1fmm)"
-            self._log_trace(trace_str % (motor, dist, measured, delta))
-        trace_str += ". Counter: @%.1fmm" % end
-
-        if motor == "gear" and track:
-            if dist > 0:
-                self._track_gate_statistics('load_distance', self.gate_selected, dist)
-                self._track_gate_statistics('load_delta', self.gate_selected, delta)
-            else:
-                self._track_gate_statistics('unload_distance', self.gate_selected, -dist)
-                self._track_gate_statistics('unload_delta', self.gate_selected, delta)
-            if dist != 0:
-                quality = abs(1. - delta / dist)
-                cur_quality = self.gate_statistics[self.gate_selected]['quality']
-                if cur_quality < 0:
-                    self.gate_statistics[self.gate_selected]['quality'] = quality
-                else:
-                    # Average down over 10 swaps
-                    self.gate_statistics[self.gate_selected]['quality'] = (cur_quality * 9 + quality) / 10
-
-        if homing_move != 0:
-            return homed, actual, delta
-        else:
-            return delta
-
-# PAUL - replaced
-#    def _selector_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, homing_move=0, endstop="default"):
-#        speed = speed or self.selector_move_speed
-#        speed = min(self.selector_stepper.velocity, speed) # Cap max speed
-#        accel = accel or self.selector_stepper.accel
-#        if homing_move != 0:
-#            self._log_stepper("SELECTOR: dist=%.1f, speed=%.1f, accel=%.1f homing_move=%d, endstop=%s" % (dist, speed, accel, homing_move, endstop))
-#            # Don't allow stallguard home moves in rapid succession (TMC limitation)
-#            if self.selector_touch:
-#                current_time = self.estimated_print_time(self.reactor.monotonic())
-#                time_since_last = self.last_selector_move_time + 1.0 - current_time # 1 sec recovery time
-#                if (time_since_last) > 0:
-#                    self._log_trace("Waiting %.2f seconds before next sensorless homing move" % time_since_last)
-#                    self.toolhead.dwell(time_since_last)
-#            elif abs(dist - self.selector_stepper.get_position()[0]) < 12: # Workaround for Timer Too Close error with short homing moves
-#                self.toolhead.dwell(1)
-#            self.selector_stepper.do_mh_homing_move(dist, speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop)
-#        else:
-#            self._log_stepper("SELECTOR: dist=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
-#            self.selector_stepper.do_move(dist, speed, accel)
-#        if wait:
-#            self.toolhead.wait_moves()
-#        self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
+#########################
+# GENERAL MOTOR HELPERS #
+#########################
 
     # Check for filament in MMU using available sensors or encoder
     def _check_filament_in_mmu(self):
@@ -3070,12 +2851,15 @@ class Mmu:
                     park_pos = float(park_pos)
                 except ValueError:
                     park_pos = -1
+                measured_park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
                 if park_pos < 0:
-                    park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
+                    park_pos = measured_park_pos
                     self._log_always("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (park_pos, delta))
+                    self.next_extruder_load_reduction = 0
                 else:
                     # Means the macro reported it (usually for filament cutting)
                     self._log_always("After tip formation, park_pos reported as: %.2f (encoder measured %.2f)" % (park_pos, delta))
+                    self.next_extruder_load_reduction = park_pos - measured_park_pos
 
                 gcode_macro.variables['final_eject'] = 0
             self._sync_gear_to_extruder(False, servo=True)
@@ -3621,7 +3405,7 @@ class Mmu:
         self._set_filament_direction(self.DIRECTION_LOAD)
         try:
             self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead
-            self.mmu_extruder_stepper.do_enable(True) # Lock the extruder stepper
+            self.mmu_extruder_stepper.do_enable(True) # Lock the extruder stepper 
 
             if self.extruder_homing_endstop != self.EXTRUDER_COLLISION_ENDSTOP:
                 self._log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
@@ -3738,7 +3522,9 @@ class Mmu:
                 # With toolhead sensor we home to toolhead sensor past the extruder entrance
                 distance_moved += self._home_to_toolhead_sensor(extruder_stepper_only)
 
-            length = self._get_home_position_to_nozzle()
+            # Length may be reduced by previous unload in filament cutting use case. Ensure it is used only one time
+            length = self._get_home_position_to_nozzle() - self.next_extruder_load_reduction
+            self.next_extruder_load_reduction = 0.
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             initial_encoder_position = self._get_encoder_distance()
 
@@ -3977,12 +3763,8 @@ class Mmu:
 
     def _home(self, tool = -1, force_unload = -1):
         if self._check_in_bypass(): return
-        current_action = self._set_action(self.ACTION_HOMING)
-        try:
+        with self._wrap_action(self.ACTION_HOMING):
             self._log_info("Homing MMU...")
-
-            # Notify start of selector homing operation
-            self.printer.send_event("mmu:homing", self)
 
             if force_unload != -1:
                 self._log_debug("(asked to %s)" % ("force unload" if force_unload == 1 else "not unload"))
@@ -3997,8 +3779,6 @@ class Mmu:
             self._home_selector()
             if tool >= 0:
                 self._select_tool(tool)
-        finally:
-            self._set_action(current_action)
 
     def _home_selector(self):
         self.is_homed = False
@@ -4010,8 +3790,7 @@ class Mmu:
         try:
             self.mmu_kinematics.home(homing_state)
             self.is_homed = True
-        except Exception as e:
-            # Homing failed
+        except Exception as e: # Homing failed
             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
@@ -4028,7 +3807,7 @@ class Mmu:
                     self._log_info("Selector is blocked by inside filament, trying to recover...")
                     msg = "Resetting selector by a distance of: %.1fmm" % -travel
                     self._trace_selector_move(msg, -travel) # Realign selector
-                    return # PAUL TEMP until filament moves with toolhead complete and can test
+                    return # PAUL PAUL PAUL TEMP until filament moves with toolhead complete and can test
     
                     # See if we can detect filament in the encoder
                     found = self._check_filament_at_gate()
@@ -4098,12 +3877,10 @@ class Mmu:
                 if (time_since_last) > 0:
                     self._log_trace("Waiting %.2f seconds before next touch move" % time_since_last)
                     self.mmu_toolhead.dwell(time_since_last)
-# PAUL double check if we need this
+# PAUL doesn't look like we need this based on testing
 #            elif abs(dist - self.mmu_toolhead.get_position()[0]) < 12: # Workaround for Timer Too Close error with short homing moves
 #                self.mmu_toolhead.dwell(1)
 
-            selector_steps = self.selector_stepper.get_step_dist() # PAUL TEMP
-            init_mcu_pos = self.selector_stepper.get_mcu_position() # PAUL TEMP
             hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
             try:
                 pos[0] = dist
@@ -4118,9 +3895,6 @@ class Mmu:
                 trig_pos = [0., 0., 0., 0.]
                 homed = False
             halt_pos = self.mmu_toolhead.get_position()
-            mcu_position = self.selector_stepper.get_mcu_position() # PAUL TEMP
-            traveled = abs(mcu_position - init_mcu_pos) * selector_steps # PAUL TEMP
-            self._log_always("PAUL: Travelled=%.2f" % traveled) # PAUL TEMP
             return halt_pos[0], homed, trig_pos[0] # halt_pos is where we really are, trig_pos is the location of the endstop if triggered
         else:
             self._log_stepper("SELECTOR: dist=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
@@ -4139,7 +3913,7 @@ class Mmu:
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
         se.motor_enable(self.mmu_toolhead.get_last_move_time())
 
-    def _measure_to_home(self, max_movement): # PAUL GOOD except don't need max_movement anymore
+    def _measure_to_home(self):
         selector_steps = self.selector_stepper.get_step_dist()
         init_mcu_pos = self.selector_stepper.get_mcu_position()
         found_home = False
@@ -4153,6 +3927,212 @@ class Mmu:
         mcu_position = self.selector_stepper.get_mcu_position()
         traveled = abs(mcu_position - init_mcu_pos) * selector_steps
         return traveled, found_home
+
+
+########################################
+# GEAR (FILAMENT) MOVEMENT AND CONTROL #
+######################$$$$$$$###########
+
+    def _gear_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, sync=True, dwell=0.):
+        return # PAUL TEMP
+
+        self._sync_gear_to_extruder(False) # Ensure we reset extruder syncing
+        is_long_move = abs(dist) > self.LONG_MOVE_THRESHOLD
+        if speed is None:
+            if is_long_move:
+                if (dist > 0 and self.gate_selected >= 0 and self.gate_status[self.gate_selected] != self.GATE_AVAILABLE_FROM_BUFFER):
+                    # Long pulling move when we are sure that we are at a gate but the filament buffer might be empty
+                    speed = self.gear_from_spool_speed
+                else:
+                   speed = self.gear_from_buffer_speed
+            else:
+                speed = self.gear_short_move_speed
+        accel = accel or self.gear_stepper.accel
+
+        self.gear_stepper.do_set_position(0.)   # All gear moves are relative # PAUL no good
+        self._log_stepper("GEAR: dist=%.1f, speed=%.1f, accel=%.1f sync=%s wait=%s" % (dist, speed, accel, sync, wait))
+        self.gear_stepper.do_move(dist, speed, accel, sync)
+        if wait:
+            if dwell > 0: self.toolhead.dwell(dwell)
+            self.toolhead.wait_moves()
+
+    # Convenience wrapper around all gear and extruder motor movement that tracks measured movement and create trace log entry
+    # motor = "gear" - gear only
+    #         "extruder" - extruder only
+    #         "both" - gear and extruder together but independent (legacy, homing move not possible))
+    #         "gear+extruder" - gear driving and extruder linked
+    #         "extruder+gear" - extruder driving and gear linked
+    # If homing move then endstop name can be specified.
+    # Homing moves return (homed, actual_movement, measured_movement)
+    # Nomal moves return measured_movement
+    # All move distances are interpreted as relative and stepper commanded position will be reset
+    def _trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop="default", track=False, dwell=0.):
+        if homing_move != 0: # PAUL TEMP vvv
+            return True, 0, 0
+        else:
+            return 0 # PAUL TEMP ^^^
+
+        self._sync_gear_to_extruder(False) # Ensure we reset extruder syncing
+        if dwell > 0:
+            self.toolhead.dwell(dwell)
+            self.toolhead.wait_moves()
+        start = self._get_encoder_distance()
+        homed = False
+        actual = 0.
+
+        if homing_move != 0:
+            # Generally homing speeds/accel are set here
+            if motor in ("both", "gear+extruder", "extruder+gear"):
+                speed = speed or min(self.gear_homing_speed, self.extruder_homing_speed)
+                accel = accel or min(self.gear_stepper.accel, self.extruder_accel)
+            elif motor == "extruder":
+                speed = speed or self.extruder_homing_speed
+                accel = accel or self.extruder_accel
+            else:
+                speed = speed or self.gear_homing_speed
+                accel = accel or self.gear_stepper.accel
+        else:
+            # Generally the speed/accel will be specified but here are some saftely values
+            if motor in ("both", "gear+extruder", "extruder+gear"):
+                speed = speed or self.extruder_sync_load_speed
+                accel = accel or min(self.gear_stepper.accel, self.extruder_accel)
+            elif motor == "extruder":
+                speed = speed or self.extruder_load_speed
+            else:
+                pass # Set later based on a few factors
+
+        if motor == "both":
+            if homing_move != 0:
+                self._log_error("Not possible to perform homing move on two independent steppers")
+            else:
+                self._log_stepper("BOTH: dist=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
+                self.gear_stepper.do_set_position(0.) # Force relative move # PAUL no good
+                pos = self.toolhead.get_position()
+                pos[3] += dist
+                self.gear_stepper.do_move(dist, speed, accel, False)
+                self.toolhead.manual_move(pos, speed)
+                self.toolhead.dwell(dwell+0.05) # "MCU Timer too close" protection
+                self.toolhead.wait_moves()
+                self.toolhead.set_position(pos) # Force subsequent incremental move
+
+        elif motor == "gear":
+            if homing_move != 0:
+                self._log_stepper("GEAR HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s" % (dist, speed, accel, endstop))
+                try:
+                    self.gear_stepper.do_set_position(0.) # Force relative move # PAUL no good
+                    init_mcu_pos = self.gear_stepper.get_mcu_position()
+                    self.gear_stepper.do_mh_homing_move(dist, speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop)
+                    homed = True
+                except Exception as e:
+                    self._log_stepper("Did not home: %s" % str(e))
+                finally:
+                    actual = (self.gear_stepper.get_mcu_position() - init_mcu_pos) * self.gear_stepper.get_step_dist()
+            else:
+                self._gear_stepper_move_wait(dist, speed=speed, accel=accel, wait=True, dwell=dwell)
+
+        elif motor == "extruder":
+            if homing_move != 0:
+                self._log_stepper("EXTRUDER HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s" % (dist, speed, accel, endstop))
+                try:
+                    self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead motion queue
+                    self.mmu_extruder_stepper.do_set_position(0.) # Force relative move
+                    init_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
+                    self.mmu_extruder_stepper.do_mh_homing_move(dist,
+                            speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop)
+                    homed = True
+                except Exception as e:
+                    self._log_stepper("Did not home: %s" % str(e))
+                finally:
+                    actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
+                    self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Sync back to toolhead
+            else:
+                self._log_stepper("EXTRUDER: dist=%.1f, speed=%.1f" % (dist, speed))
+                pos = self.toolhead.get_position()
+                pos[3] += dist
+                self.toolhead.manual_move(pos, speed)
+                if dwell > 0: self.toolhead.dwell(dwell)
+                self.toolhead.wait_moves()
+                self.toolhead.set_position(pos) # Force subsequent incremental move
+
+        elif motor == "gear+extruder":
+            if homing_move != 0:
+                self._log_stepper("GEAR+EXTRUDER HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s, linked_stepper=%s" % (dist, speed, accel, endstop, self.extruder_name))
+                try:
+                    self.gear_stepper.do_set_position(0.) # Force relative move
+                    init_mcu_pos = self.gear_stepper.get_mcu_position()
+                    self.gear_stepper.do_linked_homing_move(dist,
+                            speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop, linked_extruder=self.extruder_name)
+                    homed = True
+                except Exception as e:
+                    self._log_stepper("Did not home: %s" % str(e))
+                finally:
+                    actual = (self.gear_stepper.get_mcu_position() - init_mcu_pos) * self.gear_stepper.get_step_dist()
+            else:
+                self._log_stepper("GEAR+EXTRUDER: dist=%.1f, speed=%.1f, accel=%.1f, linked_stepper=%s" % (dist, speed, accel, self.extruder_name))
+                self.gear_stepper.do_set_position(0.) # Force relative move
+                self.gear_stepper.do_linked_move(dist, speed, accel, linked_extruder=self.extruder_name)
+                if dwell > 0: self.toolhead.dwell(dwell)
+                self.toolhead.wait_moves()
+
+        elif motor == "extruder+gear":
+            if homing_move != 0:
+                self._log_stepper("EXTRUDER+GEAR HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop=%s, linked_stepper=%s" % (dist, speed, accel, endstop, "gear_stepper"))
+                try:
+                    self.mmu_extruder_stepper.sync_to_extruder(None) # Disssociate/unsync with toolhead
+                    self.mmu_extruder_stepper.do_set_position(0.) # Force relative move
+                    init_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
+                    self.mmu_extruder_stepper.do_linked_homing_move(dist,
+                            speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop, linked_extruder="gear_stepper")
+                    homed = True
+                except Exception as e:
+                    self._log_stepper("Did not home: %s" % str(e))
+                finally:
+                    actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
+                    self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Restore toolhead association/syncing
+            else:
+                self._log_stepper("EXTRUDER+GEAR: dist=%.1f, speed=%.1f, accel=%.1f, linked_stepper=%s" % (dist, speed, accel, "gear_stepper"))
+                self.mmu_extruder_stepper.sync_to_extruder(None) # Disssociate/unsync with toolhead
+                self.mmu_extruder_stepper.do_set_position(0.) # Force relative move
+                self.mmu_extruder_stepper.do_linked_move(dist, speed, accel, linked_extruder="gear_stepper")
+                if dwell > 0: self.toolhead.dwell(dwell)
+                self.toolhead.wait_moves()
+                self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Restore toolhead association/syncing
+
+        else:
+            self._log_error("Assertion failure: Invalid motor specification")
+
+        end = self._get_encoder_distance()
+        measured = end - start
+        if homing_move != 0:
+            delta = abs(actual) - measured # +ve means measured less than moved, -ve means measured more than moved
+            trace_str += ". Stepper: '%s' %s after moving %.1fmm (of max %.1fmm), encoder measured %.1fmm (delta %.1fmm)"
+            self._log_trace(trace_str % (motor, ("homed" if homed else "did not home"), actual, dist, measured, delta))
+        else:
+            delta = abs(dist) - measured # +ve means measured less than moved, -ve means measured more than moved
+            trace_str += ". Stepper: '%s' moved %.1fmm, encoder measured %.1fmm (delta %.1fmm)"
+            self._log_trace(trace_str % (motor, dist, measured, delta))
+        trace_str += ". Counter: @%.1fmm" % end
+
+        if motor == "gear" and track:
+            if dist > 0:
+                self._track_gate_statistics('load_distance', self.gate_selected, dist)
+                self._track_gate_statistics('load_delta', self.gate_selected, delta)
+            else:
+                self._track_gate_statistics('unload_distance', self.gate_selected, -dist)
+                self._track_gate_statistics('unload_delta', self.gate_selected, delta)
+            if dist != 0:
+                quality = abs(1. - delta / dist)
+                cur_quality = self.gate_statistics[self.gate_selected]['quality']
+                if cur_quality < 0:
+                    self.gate_statistics[self.gate_selected]['quality'] = quality
+                else:
+                    # Average down over 10 swaps
+                    self.gate_statistics[self.gate_selected]['quality'] = (cur_quality * 9 + quality) / 10
+
+        if homing_move != 0:
+            return homed, actual, delta
+        else:
+            return delta
 
 
 ############################
@@ -5308,101 +5288,100 @@ class Mmu:
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
 
-        current_action = self._set_action(self.ACTION_CHECKING)
-        try:
-            tool_selected = self.tool_selected
-            filament_pos = self.filament_pos
-            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
-            gates_tools = []
-            if tools != "!":
-                # Tools used in print (may be empty list)
-                try:
-                    for tool in tools.split(','):
-                        gate = int(self.tool_to_gate_map[int(tool)])
-                        gates_tools.append([gate, int(tool)])
-                    if len(gates_tools) == 0:
-                        self._log_debug("No tools to check, assuming default tool is already loaded")
-                        return
-                except ValueError as ve:
-                    msg = "Invalid TOOLS parameter: %s" % tools
-                    if self._is_in_print():
-                        self._mmu_pause(msg)
-                    else:
-                        self._log_always(msg)
-                    return
-            elif tool >= 0:
-                # Individual tool
-                gate = self.tool_to_gate_map[tool]
-                gates_tools.append([gate, tool])
-            elif gate >= 0:
-                # Individual gate
-                gates_tools.append([gate, -1])
-            else :
-                # No parameters means all gates
-                for gate in range(self.mmu_num_gates):
-                    gates_tools.append([gate, -1])
-
-            # Force initial eject
-            if not filament_pos == self.FILAMENT_POS_UNLOADED:
-                self._log_info("Unloading current tool prior to checking gates")
-                self._unload_tool()
-
-            for gate, tool in gates_tools:
-                try:
-                    self._select_gate(gate)
-                    self._reset_encoder_counts()    # Encoder 0000
-                    self.calibrating = True # To suppress visual filament position
-                    self._log_info("Checking gate #%d..." % gate)
-                    encoder_moved = self._load_gate(allow_retry=False, adjust_servo_on_error=False)
-                    if tool >= 0:
-                        self._log_info("Tool T%d - Filament detected. Gate #%d marked available" % (tool, gate))
-                    else:
-                        self._log_info("Gate #%d - Filament detected. Marked available" % gate)
-                    self._set_gate_status(gate, max(self.gate_status[gate], self.GATE_AVAILABLE))
+        with self._wrap_action(self.ACTION_CHECKING):
+            try:
+                tool_selected = self.tool_selected
+                filament_pos = self.filament_pos
+                self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
+                gates_tools = []
+                if tools != "!":
+                    # Tools used in print (may be empty list)
                     try:
-                        if encoder_moved > self.encoder_min:
-                            self._unload_gate()
-                        else:
-                            self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
-                    except MmuError as ee:
-                        msg = "Failure during check gate #%d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
+                        for tool in tools.split(','):
+                            gate = int(self.tool_to_gate_map[int(tool)])
+                            gates_tools.append([gate, int(tool)])
+                        if len(gates_tools) == 0:
+                            self._log_debug("No tools to check, assuming default tool is already loaded")
+                            return
+                    except ValueError as ve:
+                        msg = "Invalid TOOLS parameter: %s" % tools
                         if self._is_in_print():
                             self._mmu_pause(msg)
                         else:
                             self._log_always(msg)
                         return
+                elif tool >= 0:
+                    # Individual tool
+                    gate = self.tool_to_gate_map[tool]
+                    gates_tools.append([gate, tool])
+                elif gate >= 0:
+                    # Individual gate
+                    gates_tools.append([gate, -1])
+                else :
+                    # No parameters means all gates
+                    for gate in range(self.mmu_num_gates):
+                        gates_tools.append([gate, -1])
+    
+                # Force initial eject
+                if not filament_pos == self.FILAMENT_POS_UNLOADED:
+                    self._log_info("Unloading current tool prior to checking gates")
+                    self._unload_tool()
+    
+                for gate, tool in gates_tools:
+                    try:
+                        self._select_gate(gate)
+                        self._reset_encoder_counts()    # Encoder 0000
+                        self.calibrating = True # To suppress visual filament position
+                        self._log_info("Checking gate #%d..." % gate)
+                        encoder_moved = self._load_gate(allow_retry=False, adjust_servo_on_error=False)
+                        if tool >= 0:
+                            self._log_info("Tool T%d - Filament detected. Gate #%d marked available" % (tool, gate))
+                        else:
+                            self._log_info("Gate #%d - Filament detected. Marked available" % gate)
+                        self._set_gate_status(gate, max(self.gate_status[gate], self.GATE_AVAILABLE))
+                        try:
+                            if encoder_moved > self.encoder_min:
+                                self._unload_gate()
+                            else:
+                                self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
+                        except MmuError as ee:
+                            msg = "Failure during check gate #%d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
+                            if self._is_in_print():
+                                self._mmu_pause(msg)
+                            else:
+                                self._log_always(msg)
+                            return
+                    except MmuError as ee:
+                        self._set_gate_status(gate, self.GATE_EMPTY)
+                        self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
+                        if tool >= 0:
+                            msg = "Tool T%d - filament not detected. Gate #%d marked empty" % (tool, gate)
+                        else:
+                            msg = "Gate #%d - filament not detected. Marked empty" % gate
+                        if self._is_in_print():
+                            self._mmu_pause(msg)
+                        else:
+                            self._log_info(msg)
+                    finally:
+                        self.calibrating = False
+    
+                # Reselect original tool and load filament if necessary
+                try:
+                    if tool_selected == self.TOOL_GATE_BYPASS:
+                        self._select_bypass()
+                    elif tool_selected != self.TOOL_GATE_UNKNOWN:
+                        if filament_pos == self.FILAMENT_POS_LOADED:
+                            self._log_info("Restoring tool loaded prior to checking gates")
+                            self._select_and_load_tool(tool_selected)
+                        else:
+                            self._select_tool(tool_selected)
                 except MmuError as ee:
-                    self._set_gate_status(gate, self.GATE_EMPTY)
-                    self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
-                    if tool >= 0:
-                        msg = "Tool T%d - filament not detected. Gate #%d marked empty" % (tool, gate)
-                    else:
-                        msg = "Gate #%d - filament not detected. Marked empty" % gate
-                    if self._is_in_print():
-                        self._mmu_pause(msg)
-                    else:
-                        self._log_info(msg)
-                finally:
-                    self.calibrating = False
-
-            # Reselect original tool and load filament if necessary
-            try:
-                if tool_selected == self.TOOL_GATE_BYPASS:
-                    self._select_bypass()
-                elif tool_selected != self.TOOL_GATE_UNKNOWN:
-                    if filament_pos == self.FILAMENT_POS_LOADED:
-                        self._log_info("Restoring tool loaded prior to checking gates")
-                        self._select_and_load_tool(tool_selected)
-                    else:
-                        self._select_tool(tool_selected)
-            except MmuError as ee:
-                self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
-
-            if not quiet:
-                self._log_info(self._tool_to_gate_map_to_human_string(summary=True))
-        finally:
-            self._set_action(current_action)
-            self._servo_auto()
+                    self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
+    
+                if not quiet:
+                    self._log_info(self._tool_to_gate_map_to_human_string(summary=True))
+            finally:
+                self._servo_auto()
 
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
     def cmd_MMU_PRELOAD(self, gcmd):
@@ -5412,39 +5391,34 @@ class Mmu:
         if self._check_is_loaded(): return
         if self._check_is_calibrated(): return
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
-        current_action = self._set_action(self.ACTION_CHECKING)
-        try:
-            self.calibrating = True # To suppress visual filament position display
-            # If gate not specified assume current gate
-            if gate == -1:
-                gate = self.gate_selected
-            else:
-                self._select_gate(gate)
-            self._reset_encoder_counts()    # Encoder 0000
-            for i in range(5):
-                self._log_always("Loading...")
-                try:
-                    self._load_gate(allow_retry=False, adjust_servo_on_error=False)
-                    # Caught the filament, so now park it in the gate
-                    self._log_always("Parking...")
-                    self._unload_gate()
-                    self._log_always("Filament detected and parked in gate #%d" % gate)
-                    return
-                except MmuError as ee:
-                    # Exception just means filament is not loaded yet, so continue
-                    self._log_trace("Exception on encoder load move: %s" % str(ee))
-            self._set_gate_status(gate, self.GATE_EMPTY)
-            self._log_always("Filament not detected in gate #%d" % gate)
-        except MmuError as ee:
-            self._log_always("Filament preload for gate #%d failed: %s" % (gate, str(ee)))
-        finally:
-            self.calibrating = False
-            self._servo_auto()
-            self._set_action(current_action)
-
-###############################
-# MMU TOOLHEAD IMPLEMENTATION #
-###############################
+        with self._wrap_action(self.ACTION_CHECKING):
+            try:
+                self.calibrating = True # To suppress visual filament position display
+                # If gate not specified assume current gate
+                if gate == -1:
+                    gate = self.gate_selected
+                else:
+                    self._select_gate(gate)
+                self._reset_encoder_counts()    # Encoder 0000
+                for i in range(5):
+                    self._log_always("Loading...")
+                    try:
+                        self._load_gate(allow_retry=False, adjust_servo_on_error=False)
+                        # Caught the filament, so now park it in the gate
+                        self._log_always("Parking...")
+                        self._unload_gate()
+                        self._log_always("Filament detected and parked in gate #%d" % gate)
+                        return
+                    except MmuError as ee:
+                        # Exception just means filament is not loaded yet, so continue
+                        self._log_trace("Exception on encoder load move: %s" % str(ee))
+                self._set_gate_status(gate, self.GATE_EMPTY)
+                self._log_always("Filament not detected in gate #%d" % gate)
+            except MmuError as ee:
+                self._log_always("Filament preload for gate #%d failed: %s" % (gate, str(ee)))
+            finally:
+                self.calibrating = False
+                self._servo_auto()
 
 def load_config(config):
     return Mmu(config)

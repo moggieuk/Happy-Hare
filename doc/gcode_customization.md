@@ -188,10 +188,6 @@ variable_parking_distance: 35          # Final filament parking position after f
 
 # Final Eject - for standalone tuning only. Automatically set by `MMU_FORM_TIP` command
 variable_final_eject: 0                # default 0, enable during standalone tuning process to eject the filament
-
-# Advanced:
-# The output variable `variable_output_park_pos` works like it does with the supplied filament cutting macro but generally isn't useful
-# when forming tips because Happy Hare will monitor movement and set it automatically
 ```
 
 > [!NOTE]  
@@ -199,7 +195,7 @@ variable_final_eject: 0                # default 0, enable during standalone tun
 > You can set the return value with:
 > `SET_GCODE_VARIABLE MACRO=_MMU_FORM_TIP_STANDALONE VARIABLE=output_park_pos VALUE=`
 
-While you can modify this macro, perhaps a cleaner way to add filament cutting support is to flesh out this supplied macro tempate:
+While you can modify this macro, a cleaner way to add filament cutting support is to flesh out this supplied macro tempate:
 
 ```yml
 ########################################################################
@@ -216,9 +212,12 @@ description: Standalone macro for filament tip cutting logic
 variable_final_eject: 0                # Default 0, enable during standalone tuning process to eject the filament after cut
 
 # The park position of the filament is relative to the nozzle and represents where the end of the filament is
-# after tip forming. The park position is important and used by Happy Hare to finish unloading the extruder.
-# If the filament is cut it is important to report back the position your cutter leaves the filament in the
-# extruder relative to the nozzle.
+# after tip forming. The park position is important and used by Happy Hare to finish unloading the extruder
+# and for how far to advance the filament on the subsequent load. If the filament is cut it is important
+# to report back the position your cutter leaves the filament in the extruder relative to the nozzle.
+# The starting value for this should be the distance from the nozzle to the cutting blade. Note that
+# if you do a tip retraction before cutting, Happy Hare will measure and account for this on the
+# subsequent load.
 #
 # The value can be set dynamically in gcode with this construct:
 #   SET_GCODE_VARIABLE MACRO=_MMU_CUT_TIP VARIABLE=output_park_pos VALUE=-1

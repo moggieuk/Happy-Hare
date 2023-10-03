@@ -276,7 +276,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         self.extra_endstops = []
         self.virtual_endstops = []
         self._in_init = True
-        super(MmuPrinterRail, self).__init__(config, **kwargs) # PAUL TODO .. this creates query_endstop called 'mmu_selector' Rename it?
+        super(MmuPrinterRail, self).__init__(config, **kwargs)
         self._in_init = False
 
         # Setup default endstop similarly to "extra" endstops with vanity sensor name
@@ -294,11 +294,18 @@ class MmuPrinterRail(stepper.PrinterRail, object):
 
     def add_extra_stepper(self, config, **kwargs):
         logging.info("PAUL: add_extra_stepper()")
+        mock = False
         if self._in_init and not self.endstops and config.get('endstop_pin', None) is None:
             # No endstop defined, so configure a mock endstop. The rail is, of course, only homable
             # if it has a properly configured endstop at runtime
             self.endstops = [(self.MockEndstop(), "mock")] # Hack: pretend we have a default endstop so super class will work
+            mock = True
         super(MmuPrinterRail, self).add_extra_stepper(config, **kwargs)
+
+        # Remove the default endstop name just created in query endstops for consistency and remove if virtual
+        qee = self.query_endstops.endstops
+        if not mock and qee:
+            qee.pop()
 
         # Handle any extra endstops
         extra_endstop_pins = config.getlist('extra_endstop_pins', [])
@@ -308,9 +315,9 @@ class MmuPrinterRail(stepper.PrinterRail, object):
                 raise self.config.error("`extra_endstop_pins` and `extra_endstop_names` are different lengths")
             for idx, pin in enumerate(extra_endstop_pins):
                 name = extra_endstop_names[idx]
-                self.add_extra_endstop(pin, name)
                 if 'virtual_endstop' in pin:
                     self.virtual_endstops.append(name)
+                self.add_extra_endstop(pin, name)
 
     def add_extra_endstop(self, pin, name, register=True):
         logging.info("PAUL: add_extra_endstop(pin=%s, name=%s, register=%s)" % (pin, name, register))
@@ -322,10 +329,6 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         if register and not self.is_endstop_virtual(name):
             self.query_endstops.register_endstop(mcu_endstop, name)
         return mcu_endstop
-
-# PAUL do we need .. confusing
-#    def get_extra_endstops(self):
-#        return list(self.extra_endstops)
 
     def get_extra_endstop_names(self):
         return [x[1] for x in self.extra_endstops]
