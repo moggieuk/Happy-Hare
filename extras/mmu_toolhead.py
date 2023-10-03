@@ -123,9 +123,9 @@ class MmuKinematics:
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
 
-        # Setup "axis" rails.  TODO Really should be MmuLookupMultiRail(..) but tricky with multiple endstops
+        # Setup "axis" rails
         self.axes = [('x', 'selector', True), ('y', 'gear', False)]
-        self.rails = [MmuPrinterRail(config.getsection('stepper_mmu_' + s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
+        self.rails = [MmuLookupMultiRail(config.getsection('stepper_mmu_' + s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
         for rail, axis in zip(self.rails, 'xy'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
 
@@ -194,8 +194,10 @@ class MmuKinematics:
             self._check_endstops(move)
         
         if move.axes_d[0]: # Selector
+            logging.info("PAUL: move.limit_speed(%s, %s)" % (self.selector_max_velocity, self.selector_max_accel))
             move.limit_speed(self.selector_max_velocity, self.selector_max_accel)
         elif move.axes_d[1]: # Gear
+            logging.info("PAUL: move.limit_speed(%s, %s)" % (self.gear_max_velocity, self.gear_max_accel))
             move.limit_speed(self.gear_max_velocity, self.gear_max_accel)
 
     def get_status(self, eventtime):
@@ -274,7 +276,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         self.extra_endstops = []
         self.virtual_endstops = []
         self._in_init = True
-        super(MmuPrinterRail, self).__init__(config, **kwargs)
+        super(MmuPrinterRail, self).__init__(config, **kwargs) # PAUL TODO .. this creates query_endstop called 'mmu_selector' Rename it?
         self._in_init = False
 
         # Setup default endstop similarly to "extra" endstops with vanity sensor name
@@ -286,22 +288,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
             else:
                 self.query_endstops.register_endstop(self.endstops[0][0], endstop_name)
 
-# PAUL old
-#        self.default_endstops = self.endstops
-#        endstop_pin = config.get('endstop_pin', None)
-#        if endstop_pin is not None:
-#            self.mcu_endstops['default'] = {'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
-#            # Vanity rename of default endstop in query_endstops
-#            endstop_name = config.get('endstop_name', None)
-#            logging.info("PAUL: endstop_name=%s" % endstop_name)
-#            if endstop_name is not None:
-#                for idx, es in enumerate(self.query_endstops.endstops):
-#                    if es[1] == self.default_endstops[0][1]:
-#                        self.query_endstops.endstops[idx] = (self.default_endstops[0][0], endstop_name)
-#                        # Also add vanity name so we can lookup
-#                        self.mcu_endstops[endstop_name.lower()] = {'mcu_endstop': self.default_endstops[0], 'virtual': "virtual_endstop" in endstop_pin}
-#                        break
-
+        # Add useful debugging command
         gcode = self.printer.lookup_object("gcode")
         gcode.register_mux_command('DUMP_RAIL', "RAIL", config.get_name(), self.cmd_DUMP_RAIL, desc=self.cmd_DUMP_RAIL_help)
 
@@ -336,38 +323,24 @@ class MmuPrinterRail(stepper.PrinterRail, object):
             self.query_endstops.register_endstop(mcu_endstop, name)
         return mcu_endstop
 
-    def get_extra_endstops(self):
-        return list(self.extra_endstops)
+# PAUL do we need .. confusing
+#    def get_extra_endstops(self):
+#        return list(self.extra_endstops)
 
     def get_extra_endstop_names(self):
         return [x[1] for x in self.extra_endstops]
 
-# PAUL not needed
-#    def activate_endstop(self, name):
-#        current_endstop_name = "default"
-#        if len(self.endstops) > 0:
-#            current_mcu_endstop, stepper_name = self.endstops[0]
-#            for i in self.mcu_endstops:
-#                if self.mcu_endstops[i]['mcu_endstop'][0] == current_mcu_endstop:
-#                    current_endstop_name = i
-#                    break
-#        endstop = self.mcu_endstops.get(name.lower())
-#        if endstop is not None:
-#            self.endstops = [endstop['mcu_endstop']]
-#        else:
-#            self.endstops = self.default_endstops
-#        return current_endstop_name
-
-    # Returns mcu_endstop of given name
+    # Returns the mcu_endstop of given name
     def get_extra_endstop(self, name):
          matches = [x for x in self.extra_endstops if x[1] == name]
          if matches:
-             return list(matches[0]) # List for easy use in Homing moves
+             logging.info("PAUL: matches=%s, [0]=%s, [0][0]=%s, list=%s" % (matches, matches[0], matches[0][0], list(matches)))
+             return list(matches)
          else:
              return None
 
     def is_endstop_virtual(self, name):
-        return name in self.virtual_endstops
+        return name in self.virtual_endstops if name else False
 
     cmd_DUMP_RAIL_help = "For debugging: dump configuration of rail with multiple endstops"
     def cmd_DUMP_RAIL(self, gcmd):
@@ -382,8 +355,9 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         msg += "Steppers:\n"
         for idx, s in enumerate(self.get_steppers()):
             msg += "- Stepper %d: %s\n" % (idx, s.get_name())
-            msg += "- - Commanded Position: %.1f\n" % s.get_commanded_position()
-            msg += "- - MCU Position: %.1f\n" % s.get_mcu_position()
+            msg += "- - Commanded Position: %.2f\n" % s.get_commanded_position()
+            msg += "- - MCU Position: %.2f\n" % s.get_mcu_position()
+            msg += "- - Rotation Distance: %.6f (in %d steps)\n" % s.get_rotation_distance()
         msg += "Endstops:\n"
         for (mcu_endstop, name) in self.endstops:
             if mcu_endstop.__class__.__name__ == "MockEndstop":
@@ -405,4 +379,13 @@ class MmuPrinterRail(stepper.PrinterRail, object):
     class MockEndstop:
         def add_stepper(self, *args, **kwargs):
             pass
+
+# Wrapper for dual stepper motor support
+def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
+    rail = MmuPrinterRail(config, need_position_minmax=need_position_minmax, default_position_endstop=default_position_endstop, units_in_radians=units_in_radians)
+    for i in range(1, 99):
+        if not config.has_section(config.get_name() + str(i)):
+            break
+        rail.add_extra_stepper(config.getsection(config.get_name() + str(i)))
+    return rail
 

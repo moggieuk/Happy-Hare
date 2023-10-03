@@ -522,6 +522,31 @@ class Mmu:
         # the installer by default already guarantees this order
         self._setup_mmu_hardware(config)
 
+        self.gcode.register_command('PAUL', self.cmd_PAUL)
+
+    def cmd_PAUL(self, gcmd):
+        home = bool(gcmd.get_int('HOME', 0))
+        select = gcmd.get_int('SELECT', None)
+        endstop = gcmd.get('ENDSTOP', None)
+        move = gcmd.get_float('MOVE', 100.)
+        speed = gcmd.get_float('SPEED', 10)
+        wait = bool(gcmd.get_int('WAIT', 1))
+        stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', 0)
+        if endstop is not None:
+            valid_endstops = list(self.selector_rail.get_extra_endstop_names())
+            if not endstop in valid_endstops:
+                raise gcmd.error("Endstop name '%s' is not valid for motor '%s'. Options are: %s" % (endstop, motor, ', '.join(valid_endstops)))
+        elif select is not None:
+            self._select_gate(select)
+        else:
+            if self.selector_rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
+                raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
+            if home:
+                self._home_selector()
+            else:
+                halt_pos, homed, trig_pos = self._trace_selector_move(None, move, wait=wait, speed=speed, homing_move=stop_on_endstop, endstop_name=endstop)
+                self._log_always("halt_pos=%s, homed=%s, trig_pos=%s" % (halt_pos, homed, trig_pos))
+
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
 
@@ -957,6 +982,16 @@ class Mmu:
                 else:
                     self._log_debug("Error running %s: %s" % (macro, str(e)))
 
+    def _movequeues_wait_moves(self):
+        self._log_error("wait_moves")
+        self.toolhead.wait_moves()
+        self.mmu_toolhead.wait_moves()
+
+    def _movequeues_dwell(self, delay):
+        self._log_error("dwell")
+        self.toolhead.dwell(delay)
+        self.mmu_toolhead.dwell(delay)
+
 ####################################
 # LOGGING AND STATISTICS FUNCTIONS #
 ####################################
@@ -1360,49 +1395,54 @@ class Mmu:
         self.servo_angle = angle
         self.servo_state = self.SERVO_UNKNOWN_STATE
 
+    # PAUL servo moves .. wait on mmu_toolhead?
     def _servo_down(self, buzz_gear=True):
         if self.gate_selected == self.TOOL_GATE_BYPASS: return
         if self.servo_state == self.SERVO_DOWN_STATE: return
+        self._log_error("servo_down")
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_down_angle)
-        self.toolhead.wait_moves()
+        self._movequeues_wait_moves()
         self.servo.set_value(angle=self.servo_down_angle, duration=None if self.servo_active_down else self.servo_duration)
         if self.servo_angle != self.servo_down_angle and buzz_gear:
             oscillations = 2
             for i in range(oscillations):
-                self.toolhead.dwell(0.05)
+                self.mmu_toolhead.dwell(0.05)
                 self._gear_stepper_move_wait(0.5, speed=25, accel=self.gear_buzz_accel, wait=False, sync=False)
-                self.toolhead.dwell(0.05)
+                self.mmu_toolhead.dwell(0.05)
                 self._gear_stepper_move_wait(-0.5, speed=25, accel=self.gear_buzz_accel, wait=False, sync=(i == oscillations - 1))
-            self.toolhead.dwell(max(0., self.servo_duration - (0.1 * oscillations)))
+            self._movequeues_dwell(max(0., self.servo_duration - (0.1 * oscillations)))
         self.servo_angle = self.servo_down_angle
         self.servo_state = self.SERVO_DOWN_STATE
 
     def _servo_move(self): # Position servo for selector movement
         if self.servo_state == self.SERVO_MOVE_STATE: return
+        self._log_error("servo_move")
         self._log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_move_angle)
-        self.toolhead.wait_moves()
-        self.servo.set_value(angle=self.servo_move_angle, duration=self.servo_duration)
-        self.toolhead.dwell(min(self.servo_duration, 0.4))
-        self.servo_angle = self.servo_move_angle
-        self.servo_state = self.SERVO_MOVE_STATE
+        if self.servo_angle != self.servo_move_angle:
+            self._movequeues_wait_moves()
+            self.servo.set_value(angle=self.servo_move_angle, duration=self.servo_duration)
+            self._movequeues_dwell(min(self.servo_duration, 0.4))
+            self.servo_angle = self.servo_move_angle
+            self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self, measure=False):
         if self.servo_state == self.SERVO_UP_STATE: return 0.
+        self._log_error("servo_up")
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_up_angle)
         delta = 0.
         if self.servo_angle != self.servo_up_angle:
             if measure:
-                self.toolhead.dwell(0.2)
-                self.toolhead.wait_moves()
+                self._movequeues_dwell(0.2)
+                self._movequeues_wait_moves()
                 initial_encoder_position = self._get_encoder_distance()
             else:
-                self.toolhead.wait_moves()
+                self._movequeues_wait_moves()
             self.servo.set_value(angle=self.servo_up_angle, duration=self.servo_duration)
             self.servo_angle = self.servo_up_angle
-            self.toolhead.dwell(max(self.servo_duration, 0.4))
+            self._movequeues_dwell(max(self.servo_duration, 0.4))
             if measure:
                 # Report on spring back in filament then revert counter
-                self.toolhead.wait_moves()
+                self._movequeues_wait_moves()
                 delta = self._get_encoder_distance() - initial_encoder_position
                 if delta > 0.:
                     self._log_debug("Spring in filament measured  %.1fmm - adjusting encoder" % delta)
@@ -1468,7 +1508,7 @@ class Mmu:
             self._log_info("Filament %s by gear motor buzz" % ("detected" if found else "not detected"))
         elif motor == "selector":
             pos = self.selector_stepper.get_commanded_position()
-            self._selector_stepper_move_wait(pos + 5, wait=False)
+            self._selector_stepper_move_wait(pos + 5, wait=False) # PAUL change to _selector_move()
             self._selector_stepper_move_wait(pos - 5, wait=False)
             self._selector_stepper_move_wait(pos + 5, wait=False)
             self._selector_stepper_move_wait(pos - 5, wait=False)
@@ -2571,6 +2611,8 @@ class Mmu:
 ####################################################################################
 
     def _gear_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, sync=True, dwell=0.):
+        return # PAUL TEMP
+
         self._sync_gear_to_extruder(False) # Ensure we reset extruder syncing
         is_long_move = abs(dist) > self.LONG_MOVE_THRESHOLD
         if speed is None:
@@ -2602,6 +2644,11 @@ class Mmu:
     # Nomal moves return measured_movement
     # All move distances are interpreted as relative and stepper commanded position will be reset
     def _trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop="default", track=False, dwell=0.):
+        if homing_move != 0: # PAUL TEMP vvv
+            return True, 0, 0
+        else:
+            return 0 # PAUL TEMP ^^^
+
         self._sync_gear_to_extruder(False) # Ensure we reset extruder syncing
         if dwell > 0:
             self.toolhead.dwell(dwell)
@@ -3954,117 +4001,143 @@ class Mmu:
             self._set_action(current_action)
 
     def _home_selector(self):
-        self.is_homed = False # PAUL cahnge to function
+        self.is_homed = False
         self.gate_selected = self.TOOL_GATE_UNKNOWN
         self._servo_move()
-        #selector_length = self._get_max_selector_movement() # PAUL not necessary
-        #self._log_debug("Moving up to %.1fmm to home a %d channel MMU" % (selector_length, self.mmu_num_gates)) # PAUL change message
-        #self.toolhead.wait_moves() # PAUL need this?
+        self.mmu_toolhead.wait_moves()
         homing_state = MmuHoming(self.printer, self.mmu_toolhead)
         homing_state.set_axes([0])
         try:
             self.mmu_kinematics.home(homing_state)
+            self.is_homed = True
         except Exception as e:
             # Homing failed
             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
-        # PAUL, not needed self.selector_stepper.do_set_position(0.)
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
 
-    def _move_selector(self, dist, wait=True, speed=None, accel=None, homing_move=0, endstop="default"): # PAUL was _selector_stepper_move_wait
+    def _position_selector(self, target):
+        if not self.selector_touch:
+            self._trace_selector_move("Positioning selector", target)
+        else:
+            init_pos = self.mmu_toolhead.get_position()[0]
+            successful, halt_pos = self._attempt_selector_touch_move(target)
+            travel = abs(init_pos - halt_pos)
+            if not successful:
+                if travel < 3.0: # Filament stuck in the current selector
+                    self._log_info("Selector is blocked by inside filament, trying to recover...")
+                    msg = "Resetting selector by a distance of: %.1fmm" % -travel
+                    self._trace_selector_move(msg, -travel) # Realign selector
+                    return # PAUL TEMP until filament moves with toolhead complete and can test
+    
+                    # See if we can detect filament in the encoder
+                    found = self._check_filament_at_gate()
+                    if not found:
+                        # Try to engage filament to the encoder
+                        delta = self._trace_filament_move("Trying to re-enguage encoder", 45.)
+                        if delta == 45.: # No movement
+                            raise MmuError("Selector recovery failed. Path is probably internally blocked and unable to move filament to clear")
+    
+                    # Now try a full unload sequence
+                    try:
+                        self._unload_sequence(self.calibrated_bowden_length, check_state=True)
+                    except MmuError as ee:
+                        # Add some more context to the error and re-raise
+                        raise MmuError("Selector recovery failed because: %s" % (str(ee)))
+    
+                    # Ok, now check if selector can now reach proper target
+                    self._home_selector()
+                    successful, halt_pos = self._attempt_selector_touch_move(target)
+                    if not successful:
+                        # Selector path is still blocked
+                        self.is_homed = False
+                        self._unselect_tool()
+                        raise MmuError("Selector recovery failed. Path is probably internally blocked")
+                else: # Selector path is blocked, probably not internally
+                    self.is_homed = False
+                    self._unselect_tool()
+                    raise MmuError("Selector path is probably externally blocked")
+
+    def _attempt_selector_touch_move(self, target):
+        halt_pos,_,_ = self._trace_selector_move("Attempting selector 'touch' movement", target, homing_move=1, endstop_name=self.SELECTOR_TOUCH_ENDSTOP)
+        delta = abs(target - halt_pos)
+        if delta <= 1.5:
+            msg = "Truing selector %.1fmm to %.1fmm" % (delta, target)
+            halt_pos,_,_ = self._trace_selector_move(msg, target)
+            return True, halt_pos
+        else:
+            return False, halt_pos
+
+    # Raw wrapper around all selector moves except homing
+    # Returns position after move, if homed (homing moves), trigger position (homing moves)
+    def _trace_selector_move(self, trace_str, dist, wait=True, speed=None, homing_move=0, endstop_name=None):
+        if trace_str:
+            self._log_trace(trace_str)
         speed = speed or self.selector_move_speed
-        #speed = min(self.selector_stepper.velocity, speed) # Cap max speed
-        #accel = accel or self.selector_stepper.accel
-        accel = accel or 1001.
+        accel = self.mmu_toolhead.get_selector_limits()[1]
+        pos = self.mmu_toolhead.get_position()
+        null_rtn = (pos[0], False, 0.)
         if homing_move != 0:
-            self._log_stepper("SELECTOR: dist=%.1f, speed=%.1f, accel=%.1f homing_move=%d, endstop=%s" % (dist, speed, accel, homing_move, endstop))
+            self._log_stepper("SELECTOR: dist=%.1f, speed=%.1f, accel=%.1f homing_move=%d, endstop=%s" % (dist, speed, accel, homing_move, endstop_name))
+
+            # Klipper generates TTC errors for tiny homing moves!
+            if abs(dist - pos[0]) < 0.01: # Workaround for Timer Too Close error with short homing moves
+                self._log_trace("Warning: short homing move detected on selector - ignored")
+                return null_rtn
+
+            # Check for valid endstop
+            endstop = self.selector_rail.get_extra_endstop(endstop_name) if endstop_name is not None else self.selector_rail.get_endstops()
+            if endstop is None:
+                self._log_error("Endstop '%s' not found on selector rail" % endstop_name)
+                return null_rtn
+
             # Don't allow stallguard home moves in rapid succession (TMC limitation)
-            if self.selector_touch:
+            if endstop and self.selector_rail.is_endstop_virtual(endstop_name):
                 current_time = self.estimated_print_time(self.reactor.monotonic())
                 time_since_last = self.last_selector_move_time + 1.0 - current_time # 1 sec recovery time
                 if (time_since_last) > 0:
                     self._log_trace("Waiting %.2f seconds before next touch move" % time_since_last)
                     self.mmu_toolhead.dwell(time_since_last)
-            # PAUL maybe not needed anymore
-            #elif abs(dist - self.selector_stepper.get_position()[0]) < 12: # Workaround for Timer Too Close error with short homing moves
-            #    self.toolhead.dwell(1)
+# PAUL double check if we need this
+#            elif abs(dist - self.mmu_toolhead.get_position()[0]) < 12: # Workaround for Timer Too Close error with short homing moves
+#                self.mmu_toolhead.dwell(1)
 
-            # PAUL TODO self.selector_stepper.do_mh_homing_move(dist, speed, accel, homing_move > 0, abs(homing_move) == 1, endstop_name=endstop)
+            selector_steps = self.selector_stepper.get_step_dist() # PAUL TEMP
+            init_mcu_pos = self.selector_stepper.get_mcu_position() # PAUL TEMP
+            hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
+            try:
+                pos[0] = dist
+                trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=abs(homing_move) == 1) # PAUL 2 & -2 not useful DELETE them
+                homed = True
+                if self.selector_rail.is_endstop_virtual(endstop_name):
+                    # Stallguard doesn't do well at slow speed. Try to infer move completion
+                    if abs(trig_pos[0] - dist) < 1.0:
+                        homed = False
+            except self.printer.command_error as e:
+                self._log_always("PAUL: e=%s" % str(e))
+                trig_pos = [0., 0., 0., 0.]
+                homed = False
+            halt_pos = self.mmu_toolhead.get_position()
+            mcu_position = self.selector_stepper.get_mcu_position() # PAUL TEMP
+            traveled = abs(mcu_position - init_mcu_pos) * selector_steps # PAUL TEMP
+            self._log_always("PAUL: Travelled=%.2f" % traveled) # PAUL TEMP
+            return halt_pos[0], homed, trig_pos[0] # halt_pos is where we really are, trig_pos is the location of the endstop if triggered
         else:
             self._log_stepper("SELECTOR: dist=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
-            pos = self.mmu_toolhead.get_position()
             pos[0] = dist
             self.mmu_toolhead.move(pos, speed)
-        if wait:
-            self.mmu_toolhead.wait_moves()
+            if wait:
+                self.mmu_toolhead.wait_moves()
+            return null_rtn
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
 
-    def _move_selector_touch(self, target):
-        successful, travel = self._attempt_selector_move(target)
-        if not successful:
-            if abs(travel) < 3.0:       # Filament stuck in the current selector
-                self._log_info("Selector is blocked by inside filament, trying to recover...")
-                # Realign selector
-                self.selector_stepper.do_set_position(0.)
-                self._log_trace("Resetting selector by a distance of: %.1fmm" % -travel)
-                self._selector_stepper_move_wait(-travel)
-
-                # See if we can detect filament in the encoder
-                found = self._check_filament_at_gate()
-                if not found:
-                    # Try to engage filament to the encoder
-                    delta = self._trace_filament_move("Trying to re-enguage encoder", 45.)
-                    if delta == 45.:    # No movement
-                        # Could not reach encoder
-                        raise MmuError("Selector recovery failed. Path is probably internally blocked and unable to move filament to clear")
-
-                # Now try a full unload sequence
-                try:
-                    self._unload_sequence(self.calibrated_bowden_length, check_state=True)
-                except MmuError as ee:
-                    # Add some more context to the error and re-raise
-                    raise MmuError("Selector recovery failed because: %s" % (str(ee)))
-
-                # Ok, now check if selector can now reach proper target
-                self._home_selector()
-                successful, travel = self._attempt_selector_move(target)
-                if not successful:
-                    # Selector path is still blocked
-                    self.is_homed = False
-                    self._unselect_tool()
-                    raise MmuError("Selector recovery failed. Path is probably internally blocked")
-            else :                          # Selector path is blocked, probably not internally
-                self.is_homed = False
-                self._unselect_tool()
-                raise MmuError("Selector path is probably externally blocked")
-
-    def _attempt_selector_move(self, target):
-        selector_steps = self.selector_stepper.get_step_dist()
-#        init_position = self.selector_stepper.get_position()[0] # PAUL no attribure get_position()
-        init_position = self.selector_rail.get_commanded_position()
-        init_mcu_pos = self.selector_stepper.get_mcu_position()
-        target_move = target - init_position
-
-#        phoming = self.printer.lookup_object("homing")
-        hmove = HomingMove(self.printer, self.selector_rail.get_extra_endstop(self.SELECTOR_TOUCH_ENDSTOP), self.mmu_toolhead) # PAUL TODO with self.SELECTOR_TOUCH_ENDSTOP
-        try:
-            hmove.homing_move(pos, self.selector_touch_speed, probe_pos=False, triggered=True, check_triggered=False)
-        except Exception as e:
-            self._log_trace("PAUL: GOT Exception: %s" % str(e))
-        #self._selector_stepper_move_wait(target, speed=self.selector_touch_speed, homing_move=2, endstop=self.SELECTOR_TOUCH_ENDSTOP) # PAUL ORIG how to set speed?
-
-        mcu_position = self.selector_stepper.get_mcu_position()
-        travel = (mcu_position - init_mcu_pos) * selector_steps
-        delta = abs(target_move - travel)
-        self._log_trace("Selector moved %.1fmm of intended travel from: %.1fmm to: %.1fmm (delta: %.1fmm)" % (travel, init_position, target, delta))
-        if delta <= 1.5:
-            # True up position
-            self._log_trace("Truing selector %.1fmm to %.1fmm" % (delta, target))
-            #self.selector_stepper.do_set_position(init_position + travel)
-            #self._selector_stepper_move_wait(target)
-            return True, travel
-        else:
-            return False, travel
+    def _set_selector_pos(self, dist):
+        pos = self.mmu_toolhead.get_position()
+        pos[0] = dist
+        self.mmu_toolhead.set_position(pos, homing_axes=(0,))
+        stepper_enable = self.printer.lookup_object('stepper_enable')
+        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
+        se.motor_enable(self.mmu_toolhead.get_last_move_time())
 
     def _measure_to_home(self, max_movement): # PAUL GOOD except don't need max_movement anymore
         selector_steps = self.selector_stepper.get_step_dist()
@@ -4080,14 +4153,6 @@ class Mmu:
         mcu_position = self.selector_stepper.get_mcu_position()
         traveled = abs(mcu_position - init_mcu_pos) * selector_steps
         return traveled, found_home
-
-    def _set_selector_pos(self, dist):
-        pos = self.mmu_toolhead.get_position()
-        pos[0] = dist
-        self.mmu_toolhead.set_position(pos, homing_axes=(0,))
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_enable(self.mmu_toolhead.get_last_move_time())
 
 
 ############################
@@ -4249,37 +4314,27 @@ class Mmu:
             self._servo_auto()
         self._log_info("Tool T%d enabled%s" % (tool, (" on gate #%d" % gate) if tool != gate else ""))
 
-    def _select_gate(self, gate):
-        if gate == self.gate_selected: return
-        current_action = self._set_action(self.ACTION_SELECTING)
-        try:
-            self._servo_move()
-            if gate == self.TOOL_GATE_BYPASS:
-                offset = self.bypass_offset
-            else:
-                offset = self.selector_offsets[gate]
-            if self.selector_touch:
-                self._move_selector_touch(offset)
-            else:
-                self._selector_stepper_move_wait(offset)
-            self._set_gate_selected(gate)
-        finally:
-            self._set_action(current_action)
-
     def _select_bypass(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS and self.gate_selected == self.TOOL_GATE_BYPASS: return
         if self.bypass_offset == 0:
             self._log_always("Bypass not configured")
             return
-        current_action = self._set_action(self.ACTION_SELECTING)
-        try:
-            self._log_info("Selecting filament bypass...")
-            self._select_gate(self.TOOL_GATE_BYPASS)
-            self.filament_direction = self.DIRECTION_LOAD
-            self._set_tool_selected(self.TOOL_GATE_BYPASS)
-            self._log_info("Bypass enabled")
-        finally:
-            self._set_action(current_action)
+        self._log_info("Selecting filament bypass...")
+        self._select_gate(self.TOOL_GATE_BYPASS)
+        self.filament_direction = self.DIRECTION_LOAD
+        self._set_tool_selected(self.TOOL_GATE_BYPASS)
+        self._log_info("Bypass enabled")
+
+    def _select_gate(self, gate):
+        if gate == self.gate_selected: return
+        with self._wrap_action(self.ACTION_SELECTING):
+            self._servo_move()
+            if gate == self.TOOL_GATE_BYPASS:
+                offset = self.bypass_offset
+            else:
+                offset = self.selector_offsets[gate]
+            self._position_selector(offset)
+            self._set_gate_selected(gate)
 
     def _set_gate_selected(self, gate):
         self.gate_selected = gate
@@ -4567,6 +4622,7 @@ class Mmu:
         if tool == self.TOOL_GATE_BYPASS:
             self._set_gate_selected(self.TOOL_GATE_BYPASS)
             self._set_tool_selected(self.TOOL_GATE_BYPASS)
+            self._set_selector_pos(self.bypass_offset) # In case selector stepper was turned off
         elif tool >= 0: # If tool is specified then use and optionally override the gate
             self._set_tool_selected(tool)
             gate = self.tool_to_gate_map[tool]
@@ -4575,6 +4631,7 @@ class Mmu:
             if gate >= 0:
                 self._remap_tool(tool, gate, loaded)
                 self._set_gate_selected(gate)
+                self._set_selector_pos(self.selector_offsets[self.gate_selected]) # In case selector stepper was turned off
         elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
             # This is to be able to get out of "stuck in bypass" state
             self._log_info("Warning: Making assumption that bypass is unloaded")
@@ -4606,6 +4663,7 @@ class Mmu:
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
         loops = gcmd.get_int('LOOP', 100)
         servo = bool(gcmd.get_int('SERVO', 0))
+        home = bool(gcmd.get_int('HOME', 1))
         try:
             self._home()
             for l in range(loops):
@@ -4614,7 +4672,7 @@ class Mmu:
                 if tool == self.mmu_num_gates:
                     self._select_bypass()
                 else:
-                    if randint(0, 10) == 0:
+                    if randint(0, 10) == 0 and home:
                         self._home(tool)
                     else:
                         self._select_tool(tool, move_servo=servo)
@@ -4774,7 +4832,7 @@ class Mmu:
         self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
         self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
-        self.selector_touch = self.SELECTOR_TOUCH_ENDSTOP in self.selector_rail.get_endstop_names() and self.selector_touch_enable
+        self.selector_touch = self.SELECTOR_TOUCH_ENDSTOP in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
         self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
         self.encoder_sensor.set_mode(self.enable_clog_detection)
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
