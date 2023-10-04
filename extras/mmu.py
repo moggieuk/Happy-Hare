@@ -200,7 +200,6 @@ class Mmu:
         self.calibration_status = 0b0
         self.calibrated_bowden_length = -1
         self.ref_gear_rotation_distance = 1.
-        self.next_extruder_load_reduction = 0.
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
@@ -524,17 +523,46 @@ class Mmu:
         self._setup_mmu_hardware(config)
 
         self.gcode.register_command('PAUL', self.cmd_PAUL)
+        self.gcode.register_command('PAUL2', self.cmd_PAUL2)
 
     def cmd_PAUL(self, gcmd):
         home = bool(gcmd.get_int('HOME', 0))
         select = gcmd.get_int('SELECT', None)
+        sync_g = bool(gcmd.get_int('SYNC_GEAR_TO_EXTRUDER', 0))
+        sync_e = bool(gcmd.get_int('SYNC_EXTRUDER_TO_GEAR', 0))
+        unsync = bool(gcmd.get_int('UNSYNC', 0))
+        dump = bool(gcmd.get_int('DUMP', 0))
         endstop = gcmd.get('ENDSTOP', None)
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', 10)
         wait = bool(gcmd.get_int('WAIT', 1))
         stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', 0)
+
+        if sync_g:
+            self._log_always("Syncing gear to extruder")
+            self.mmu_toolhead.sync_gear_to_extruder("extruder")
+            self._log_always("is_gear_synced_to_extruder() returns: %s" % self.mmu_toolhead.is_gear_synced_to_extruder())
+            self._log_always("is_extruder_synced_to_gear() returns: %s" % self.mmu_toolhead.is_extruder_synced_to_gear())
+            return
+        elif sync_e:
+            self._log_always("Syncing extruder to gear")
+            self.mmu_toolhead.sync_extruder_to_gear("extruder")
+            self._log_always("is_gear_synced_to_extruder() returns: %s" % self.mmu_toolhead.is_gear_synced_to_extruder())
+            self._log_always("is_extruder_synced_to_gear() returns: %s" % self.mmu_toolhead.is_extruder_synced_to_gear())
+            return
+        elif unsync:
+            self.mmu_toolhead.sync_gear_to_extruder(None)
+            self.mmu_toolhead.sync_extruder_to_gear(None)
+            self._log_always("is_gear_synced_to_extruder() returns: %s" % self.mmu_toolhead.is_gear_synced_to_extruder())
+            self._log_always("is_extruder_synced_to_gear() returns: %s" % self.mmu_toolhead.is_extruder_synced_to_gear())
+            return
+        elif dump:
+            self.gcode.run_script_from_command("DUMP_RAIL RAIL=stepper_mmu_gear")
+            return
+
         if select is not None:
             self._select_gate(select)
+            return
         else:
             if endstop is not None:
                 valid_endstops = list(self.selector_rail.get_extra_endstop_names())
@@ -548,15 +576,34 @@ class Mmu:
                 halt_pos, homed, trig_pos = self._trace_selector_move("PAUL", move, wait=wait, speed=speed, homing_move=stop_on_endstop, endstop_name=endstop)
                 self._log_always("halt_pos=%s, homed=%s, trig_pos=%s" % (halt_pos, homed, trig_pos))
 
+    def cmd_PAUL2(self, gcmd):
+        move = gcmd.get_int('MOVE', 20)
+        speed = gcmd.get_float('SPEED', 20)
+        pwait = bool(gcmd.get_int('PWAIT', 0))
+        mwait = bool(gcmd.get_int('MWAIT', 0))
+
+        pos = self.mmu_toolhead.get_position()
+        self._log_always("Current toolhead pos=%s" % pos)
+        pos[1] = move
+        self.mmu_toolhead.move(pos, speed)
+        if pwait:
+            self.toolhead.wait_moves()
+        if mwait:
+            self.mmu_toolhead.wait_moves()
+        #self._movequeues_wait_moves()
+        pos = self.mmu_toolhead.get_position()
+        self._log_always("Toolhead pos after move=%s" % pos)
+
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
 
         # Selector and Gear h/w setup ------
-        if config.has_section(self.SELECTOR_STEPPER_CONFIG):
-            # Inject important options into selector stepper config
-            config.fileconfig.set(self.SELECTOR_STEPPER_CONFIG, 'position_min', -1.)
-            config.fileconfig.set(self.SELECTOR_STEPPER_CONFIG, 'position_max', self._get_max_selector_movement())
-            config.fileconfig.set(self.SELECTOR_STEPPER_CONFIG, 'homing_speed', self.selector_homing_speed)
+        section = self.SELECTOR_STEPPER_CONFIG
+        if config.has_section(section):
+            # Inject options into selector stepper config regardless or what user sets
+            config.fileconfig.set(section, 'position_min', -1.)
+            config.fileconfig.set(section, 'position_max', self._get_max_selector_movement())
+            config.fileconfig.set(section, 'homing_speed', self.selector_homing_speed)
         self.mmu_toolhead = MmuToolHead(config)
         self.mmu_kinematics = self.mmu_toolhead.get_kinematics()
         rails = self.mmu_toolhead.get_kinematics().rails
@@ -569,12 +616,13 @@ class Mmu:
         self.selector_touch = self.SELECTOR_TOUCH_ENDSTOP in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
 
         # Extruder h/w setup ------
-        for manual_stepper in self.printer.lookup_objects('manual_extruder_stepper'):
-            stepper_name = manual_stepper[1].get_steppers()[0].get_name()
-            if stepper_name == "manual_extruder_stepper extruder":
-                self.mmu_extruder_stepper = manual_stepper[1]
-        if self.mmu_extruder_stepper is None:
-            raise self.config.error("Missing [manual_extruder_stepper extruder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
+# PAUL
+#        for manual_stepper in self.printer.lookup_objects('manual_extruder_stepper'):
+#            stepper_name = manual_stepper[1].get_steppers()[0].get_name()
+#            if stepper_name == "manual_extruder_stepper extruder":
+#                self.mmu_extruder_stepper = manual_stepper[1]
+#        if self.mmu_extruder_stepper is None:
+#            raise self.config.error("Missing [manual_extruder_stepper extruder] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
 
         # Setup filament homing sensors ------
         for name in ["toolhead", "gate", "extruder"]:
@@ -724,9 +772,10 @@ class Mmu:
         if self.enable_endless_spool == 1 and self.enable_clog_detection == 0:
             self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled")
 
-        # Add the MCU defined (real) extruder stepper to the toolhead extruder and sync it to complete the setup
-        self.extruder.extruder_stepper = self.mmu_extruder_stepper
-        self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name)
+# PAUL
+#        # Add the MCU defined (real) extruder stepper to the toolhead extruder and sync it to complete the setup
+#        self.extruder.extruder_stepper = self.mmu_extruder_stepper
+#        self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name)
 
         # Sanity check to see that mmu_vars.cfg is included. This will verify path because default has single entry
         self.variables = self.printer.lookup_object('save_variables').allVariables
@@ -813,6 +862,7 @@ class Mmu:
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.counting_direction = self.DIRECTION_UNKNOWN
         self.filament_distance = self.last_filament_distance = 0. # Current absolute distance from gate (load) or nozzle (unload)
+        self.next_extruder_load_reduction = 0. # Tracker of filament left in extruder by cutter
         self.action = self.ACTION_IDLE
         self.calibrating = False
         self._clear_saved_toolhead_position()
@@ -953,7 +1003,7 @@ class Mmu:
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
         waketime = self.reactor.monotonic() + self.BOOT_DELAY
-        # PAUL TEMP self.reactor.register_callback(self._bootup_tasks, waketime)
+        self.reactor.register_callback(self._bootup_tasks, waketime)
 
     def _bootup_tasks(self, eventtime):
         try:
@@ -1338,7 +1388,7 @@ class Mmu:
         msg += ". Tool %s is selected " % self._selected_tool_string()
         msg += " on gate %s" % self._selected_gate_string()
         msg += ". Toolhead position saved" if self.saved_toolhead_position else ""
-        msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "synced" if self.mmu_toolhead.is_synced() else "not synced")
+        msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "synced" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
 
         if config:
             msg += "\n\nConfiguration:\nFilament homes"
@@ -2117,7 +2167,7 @@ class Mmu:
         if print_state != self.print_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
             self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s (z_hop @%.1fmm), pause_resume: %s, Idle timeout: %.2fs)"
-                    % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_synced(), self.paused_extruder_temp,
+                    % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_paused(), idle_timeout))
             self.print_state = print_state
 
@@ -2673,7 +2723,7 @@ class Mmu:
     # servo: True=move, False=don't mess
     # current: True=optionally reduce, False=restore to current default
     def _sync_gear_to_extruder(self, sync, servo=False, current=False):
-        prev_sync_state = self.mmu_toolhead.is_synced()
+        prev_sync_state = self.mmu_toolhead.is_gear_synced_to_extruder()
         if servo:
             if sync:
                 self._servo_down()
@@ -2681,7 +2731,7 @@ class Mmu:
                 self._servo_auto()
         if prev_sync_state != sync:
             self._log_debug("%s gear stepper and extruder" % ("Syncing" if sync else "Unsyncing"))
-            self.gear_stepper.sync_to_extruder(self.extruder_name if sync else None)
+            self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name if sync else None)
 
         # Option to reduce current during print
         if current and sync:
@@ -2791,6 +2841,7 @@ class Mmu:
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         show = bool(gcmd.get_int('SHOW', 0, minval=0, maxval=1))
         run = bool(gcmd.get_int('RUN', 1, minval=0, maxval=1))
+        eject = bool(gcmd.get_int('EJECT', 0, minval=0, maxval=1))
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1))
 
         gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, None)
@@ -2831,7 +2882,7 @@ class Mmu:
         if run:
             self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print)) # current mimick in print
             with self._extruder_current(self.extruder_form_tip_current, "for tip forming move"):
-                gcode_macro.variables['final_eject'] = 1
+                gcode_macro.variables['final_eject'] = 1 if eject else 0
                 msg = "Running '%s' with the following variable settings:" % self.form_tip_macro
                 for k, v in gcode_macro.variables.items():
                     msg += "\nvariable_%s: %s" % (k, v)
@@ -2853,13 +2904,10 @@ class Mmu:
                     park_pos = -1
                 measured_park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
                 if park_pos < 0:
-                    park_pos = measured_park_pos
-                    self._log_always("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (park_pos, delta))
-                    self.next_extruder_load_reduction = 0
+                    self._log_always("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (measured_park_pos, delta))
                 else:
                     # Means the macro reported it (usually for filament cutting)
-                    self._log_always("After tip formation, park_pos reported as: %.2f (encoder measured %.2f)" % (park_pos, delta))
-                    self.next_extruder_load_reduction = park_pos - measured_park_pos
+                    self._log_always("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, delta))
 
                 gcode_macro.variables['final_eject'] = 0
             self._sync_gear_to_extruder(False, servo=True)
@@ -3523,7 +3571,7 @@ class Mmu:
                 distance_moved += self._home_to_toolhead_sensor(extruder_stepper_only)
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure it is used only one time
-            length = self._get_home_position_to_nozzle() - self.next_extruder_load_reduction
+            length = max(self._get_home_position_to_nozzle() - self.next_extruder_load_reduction, 0)
             self.next_extruder_load_reduction = 0.
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             initial_encoder_position = self._get_encoder_distance()
@@ -3724,12 +3772,15 @@ class Mmu:
                 except ValueError:
                     park_pos = -1
                 filament_check = True
+                measured_park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
                 if park_pos < 0:
-                    park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
+                    park_pos = measured_park_pos
                     self._log_trace("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (park_pos, delta))
+                    self.next_extruder_load_reduction = 0.
                 else:
                     # Means the macro reported it (usually for filament cutting)
-                    self._log_trace("After tip formation, park_pos reported as: %.2f (encoder measured %.2f)" % (park_pos, delta))
+                    self._log_always("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, delta))
+                    self.next_extruder_load_reduction = park_pos - measured_park_pos
                     filament_check = False
                 self._set_encoder_distance(initial_encoder_position + park_pos)
                 self.filament_distance += park_pos

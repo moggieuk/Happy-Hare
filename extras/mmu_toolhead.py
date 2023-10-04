@@ -1,5 +1,8 @@
 # Happy Hare MMU Software
-# Implementation of "MMU Toolhead" primarily to allow for "drip" homing and movement without pauses
+# Implementation of "MMU Toolhead" to allow for:
+#   - "drip" homing and movement without pauses
+#   - bi-directional syncing of extruder to gear rail or gear rail to extruder
+#   - extruder endstops
 #
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
@@ -13,8 +16,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, importlib, math, os, time
+import stepper, chelper, toolhead
 from extras.homing import Homing, HomingMove
-import stepper, chelper, toolhead, kinematics.extruder
+from kinematics.extruder import PrinterExtruder, DummyExtruder
 
 SDS_CHECK_TIME = 0.001 # step+dir+step filter in stepcompress.c
 
@@ -30,6 +34,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.mcu.is_fileoutput():
             self.can_pause = False
         self.move_queue = toolhead.MoveQueue(self) # Use base class MoveQueue
+        self.gear_motion_queue = self.extruder_synced_to_gear = None # For bi-directional syncing of gear and extruder
         self.commanded_pos = [0., 0., 0., 0.]
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
 
@@ -74,7 +79,15 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Create kinematics class
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
-        self.extruder = kinematics.extruder.DummyExtruder(self.printer)
+        self.extruder = DummyExtruder(self.printer) # PAUL: What if this was a real extruder (for gear)
+
+        # Setup extruder kinematics for when gear rail is synced to extruder
+        ffi_main, ffi_lib = chelper.get_ffi()
+        self.sk_extruder = ffi_main.gc(ffi_lib.extruder_stepper_alloc(), ffi_lib.free)
+
+        # Normal gear rail kinematics
+        ffi_main, ffi_lib = chelper.get_ffi()
+        self.sk_default = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'y'), ffi_lib.free)
         
         # Fix kinematics to MMU type
         try:
@@ -108,8 +121,100 @@ class MmuToolHead(toolhead.ToolHead, object):
                 thcoord[i] = coord[i]
         return thcoord
 
+    # Is gear rail synced to extruder (for in print syncing)
+    def is_gear_synced_to_extruder(self):
+        return self.gear_motion_queue is not None
+
+    # Is extruder stepper synced to gear rail (general MMU synced movement)
+    def is_extruder_synced_to_gear(self):
+        return self.extruder_synced_to_gear is not None
+
     def is_synced(self):
-        return False # PAUL TODO
+        return self.is_gear_synced_to_extruder() or self.is_extruder_synced_to_gear()
+
+    def sync_gear_to_extruder(self, extruder_name):
+        if self.extruder_synced_to_gear:
+            self.sync_extruder_to_gear(None) # Mutually exclusive so unsync first
+
+        printer_toolhead = self.printer.lookup_object('toolhead')
+        printer_toolhead.flush_step_generation()
+        self.flush_step_generation()
+        gear_rail = self.get_kinematics().rails[1]
+
+        if extruder_name:
+            # Syncing
+            if self.gear_motion_queue: return
+            extruder = self.printer.lookup_object(extruder_name, None)
+            if extruder is None or not isinstance(extruder, PrinterExtruder):
+                raise self.printer.command_error("'%s' is not a valid extruder" % extruder_name)
+
+            for s in gear_rail.get_steppers():
+                s.set_stepper_kinematics(self.sk_extruder)
+            gear_rail.set_trapq(extruder.get_trapq())
+            gear_rail.set_position([0., extruder.last_position, 0.])
+            self.gear_motion_queue = extruder_name
+        else:
+            # Unsyncing
+            if not self.gear_motion_queue: return
+            for s in gear_rail.get_steppers():
+                s.set_stepper_kinematics(self.sk_default)
+            gear_rail.set_trapq(self.get_trapq())
+            gear_rail.set_position([0., 0., 0.])
+            self.gear_motion_queue = None
+
+    def sync_extruder_to_gear(self, extruder_name):
+        if self.gear_motion_queue:
+            self.sync_gear_to_extruder(None) # Mutually exclusive so unsync first
+
+        printer_toolhead = self.printer.lookup_object('toolhead')
+        printer_toolhead.flush_step_generation()
+        self.flush_step_generation()
+        gear_rail = self.get_kinematics().rails[1]
+
+        if extruder_name:
+            # Syncing
+            if self.extruder_synced_to_gear: return
+            extruder = self.printer.lookup_object(extruder_name, None)
+            if extruder is None or not isinstance(extruder, PrinterExtruder):
+                raise self.printer.command_error("'%s' is not a valid extruder" % extruder_name)
+            extruder_stepper = extruder.extruder_stepper.stepper
+
+            # Injecting the extruder stepper into the gear rail
+            gear_rail.steppers.append(extruder_stepper)
+
+            # Switch extruder stepper to use MMU toolhead kinematics and trapq
+            self.prev_sk = extruder_stepper.set_stepper_kinematics(self.sk_default)
+            self.prev_trapq = extruder_stepper.set_trapq(self.get_trapq())
+            extruder_stepper.set_position([0., gear_rail.get_commanded_position(), 0.])
+
+            # Shift extruder step generator to mmu toolhead
+            handler = extruder_stepper.generate_steps
+            printer_toolhead.step_generators.remove(handler)
+            self.register_step_generator(handler)
+
+            # We are synced!
+            self.extruder_synced_to_gear = extruder_name
+        else:
+            # Unsyncing
+            if not self.extruder_synced_to_gear: return
+            extruder = self.printer.lookup_object(self.extruder_synced_to_gear)
+            extruder_stepper = extruder.extruder_stepper.stepper
+
+            # Restore gear rail steppers
+            gear_rail.steppers.pop()
+
+            # Restore extruder kinematics and trap queue
+            extruder_stepper.set_trapq(self.prev_trapq)
+            extruder_stepper.set_stepper_kinematics(self.prev_sk)
+            extruder_stepper.set_position([0., 0., 0.])
+
+            # Shift extruder step generator back to printer toolhead
+            handler = extruder_stepper.generate_steps
+            self.step_generators.remove(handler)
+            printer_toolhead.register_step_generator(handler)
+
+            # We are synced!
+            self.extruder_synced_to_gear = None
 
     def get_status(self, eventtime):
         res = super(MmuToolHead, self).get_status(eventtime)
@@ -190,7 +295,8 @@ class MmuKinematics:
     def check_move(self, move):
         limits = self.limits
         xpos, ypos = move.end_pos[:2]
-        if (xpos < limits[0][0] or xpos > limits[0][1] or ypos < limits[1][0] or ypos > limits[1][1]):
+# PAUL        if (xpos < limits[0][0] or xpos > limits[0][1] or ypos < limits[1][0] or ypos > limits[1][1]):
+        if xpos < limits[0][0] or xpos > limits[0][1]:
             self._check_endstops(move)
         
         if move.axes_d[0]: # Selector
@@ -202,7 +308,9 @@ class MmuKinematics:
 
     def get_status(self, eventtime):
         return {
-            'selector_homed': self.limits[0][0] <= self.limits[0][1]
+            'selector_homed': self.limits[0][0] <= self.limits[0][1],
+            'gear_synced_to_extruder': self.is_gear_synced_to_extruder(),
+            'extruder_synced_to_gear': self.is_extruder_synced_to_gear()
         }
 
 # Extend Klipper homing module to leverage MMU "toolhead"
@@ -283,6 +391,11 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         endstop_pin = config.get('endstop_pin', None)
         endstop_name = config.get('endstop_name', None)
         if endstop_pin and endstop_name:
+            # Remove the default endstop name if alternative name is specified
+            qee = self.query_endstops.endstops
+            if qee:
+                qee.pop()
+            # I don't see the value is registering virtual endstops(?)
             if 'virtual_endstop' in endstop_pin:
                 self.virtual_endstops.append(name)
             else:
@@ -301,11 +414,6 @@ class MmuPrinterRail(stepper.PrinterRail, object):
             self.endstops = [(self.MockEndstop(), "mock")] # Hack: pretend we have a default endstop so super class will work
             mock = True
         super(MmuPrinterRail, self).add_extra_stepper(config, **kwargs)
-
-        # Remove the default endstop name just created in query endstops for consistency and remove if virtual
-        qee = self.query_endstops.endstops
-        if not mock and qee:
-            qee.pop()
 
         # Handle any extra endstops
         extra_endstop_pins = config.getlist('extra_endstop_pins', [])
@@ -374,7 +482,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
             msg += "- '%s', mcu: '%s', pin: '%s', obj_id: %s" % (name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin, id(mcu_endstop))
             msg += " (virtual)\n" if self.is_endstop_virtual(name) else "\n"
             msg += "- - Registed on steppers: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
-# PAUL TODO
+# PAUL
 #        if self.__class__.__name__ == "ManualExtruderStepper" and self.is_synced():
 #            msg += "Synced to extruder '%s'" % self.synced_extruder_name
         return msg
