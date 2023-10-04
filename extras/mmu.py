@@ -744,6 +744,7 @@ class Mmu:
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.counting_direction = self.DIRECTION_UNKNOWN
         self.filament_distance = self.last_filament_distance = 0. # Current absolute distance from gate (load) or nozzle (unload)
+        self.next_extruder_load_reduction = 0. # Tracker of filament left in extruder by cutter
         self.action = self.ACTION_IDLE
         self.calibrating = False
         self._clear_saved_toolhead_position()
@@ -2930,6 +2931,7 @@ class Mmu:
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         show = bool(gcmd.get_int('SHOW', 0, minval=0, maxval=1))
         run = bool(gcmd.get_int('RUN', 1, minval=0, maxval=1))
+        eject = bool(gcmd.get_int('EJECT', 1, minval=0, maxval=1))
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1))
 
         gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, None)
@@ -2969,7 +2971,7 @@ class Mmu:
         if run:
             self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print)) # current mimick in print
             with self._extruder_current(self.extruder_form_tip_current, "for tip forming move"):
-                gcode_macro.variables['final_eject'] = 1
+                gcode_macro.variables['final_eject'] = 1 if eject else 0
                 msg = "Running '%s' with the following variable settings:" % self.form_tip_macro
                 for k, v in gcode_macro.variables.items():
                     msg += "\nvariable_%s: %s" % (k, v)
@@ -2989,12 +2991,13 @@ class Mmu:
                     park_pos = float(park_pos)
                 except ValueError:
                     park_pos = -1
+                measured_park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
                 if park_pos < 0:
-                    park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
+                    park_pos = measured_park_pos
                     self._log_always("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (park_pos, delta))
                 else:
                     # Means the macro reported it (usually for filament cutting)
-                    self._log_always("After tip formation, park_pos reported as: %.2f (encoder measured %.2f)" % (park_pos, delta))
+                    self._log_always("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, delta))
 
                 gcode_macro.variables['final_eject'] = 0
             self._sync_gear_to_extruder(False, servo=True)
@@ -3408,7 +3411,9 @@ class Mmu:
                 # With toolhead sensor we home to toolhead sensor past the extruder entrance
                 distance_moved += self._home_to_toolhead_sensor(extruder_stepper_only)
 
-            length = self._get_home_position_to_nozzle()
+            # Length may be reduced by previous unload in filament cutting use case. Ensure it is used only one time
+            length = self._get_home_position_to_nozzle() - self.next_extruder_load_reduction
+            self.next_extruder_load_reduction = 0.
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             initial_encoder_position = self._get_encoder_distance()
 
@@ -3839,12 +3844,15 @@ class Mmu:
                 except ValueError:
                     park_pos = -1
                 filament_check = True
+                measured_park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
                 if park_pos < 0:
-                    park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
-                    self._log_trace("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (park_pos, delta))
+                    park_pos = measured_park_pos
+                    self._log_always("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (park_pos, delta))
+                    self.next_extruder_load_reduction = 0
                 else:
                     # Means the macro reported it (usually for filament cutting)
-                    self._log_trace("After tip formation, park_pos reported as: %.2f (encoder measured %.2f)" % (park_pos, delta))
+                    self._log_always("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, delta))
+                    self.next_extruder_load_reduction = park_pos - measured_park_pos
                     filament_check = False
                 self._set_encoder_distance(initial_encoder_position + park_pos)
                 self.filament_distance += park_pos
