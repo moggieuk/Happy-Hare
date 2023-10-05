@@ -248,7 +248,6 @@ class Mmu:
 
                 # Still allow some 'cad' parameters to be customized, possibly temporary
                 self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
-# PAUL             self.cal_max_gates = 12
             self.cal_tolerance = 5.0
         else:
             raise self.config.error("Support for non-ERCF systems is comming soon!")
@@ -523,7 +522,6 @@ class Mmu:
         self._setup_mmu_hardware(config)
 
         self.gcode.register_command('PAUL', self.cmd_PAUL)
-        self.gcode.register_command('PAUL2', self.cmd_PAUL2)
 
     def cmd_PAUL(self, gcmd):
         home = bool(gcmd.get_int('HOME', 0))
@@ -531,12 +529,17 @@ class Mmu:
         sync_g = bool(gcmd.get_int('SYNC_GEAR_TO_EXTRUDER', 0))
         sync_e = bool(gcmd.get_int('SYNC_EXTRUDER_TO_GEAR', 0))
         unsync = bool(gcmd.get_int('UNSYNC', 0))
-        dump = bool(gcmd.get_int('DUMP', 0))
+        sdump = bool(gcmd.get_int('SDUMP', 0))
+        gdump = bool(gcmd.get_int('GDUMP', 0))
         endstop = gcmd.get('ENDSTOP', None)
-        move = gcmd.get_float('MOVE', 100.)
+        smove = gcmd.get_float('SMOVE', -1)
+        gmove = gcmd.get_float('GMOVE', -1)
+        ssetpos = gcmd.get_float('SSETPOS', -1)
+        gsetpos = gcmd.get_float('GSETPOS', -1)
         speed = gcmd.get_float('SPEED', 10)
-        wait = bool(gcmd.get_int('WAIT', 1))
         stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', 0)
+        pwait = bool(gcmd.get_int('PWAIT', 1))
+        mwait = bool(gcmd.get_int('MWAIT', 1))
 
         if sync_g:
             self._log_always("Syncing gear to extruder")
@@ -556,43 +559,64 @@ class Mmu:
             self._log_always("is_gear_synced_to_extruder() returns: %s" % self.mmu_toolhead.is_gear_synced_to_extruder())
             self._log_always("is_extruder_synced_to_gear() returns: %s" % self.mmu_toolhead.is_extruder_synced_to_gear())
             return
-        elif dump:
+        elif sdump:
+            self.gcode.run_script_from_command("DUMP_RAIL RAIL=stepper_mmu_selector")
+            return
+        elif gdump:
             self.gcode.run_script_from_command("DUMP_RAIL RAIL=stepper_mmu_gear")
             return
-
-        if select is not None:
+        elif ssetpos >= 0:
+            self._set_selector_pos(ssetpos)
+            return
+        elif gsetpos >= 0:
+            self._set_selector_pos(gsetpos)
+            return
+        elif select is not None:
             self._select_gate(select)
             return
+        elif home:
+            self._home_selector()
+            return
         else:
-            if endstop is not None:
-                valid_endstops = list(self.selector_rail.get_extra_endstop_names())
-                if not endstop in valid_endstops:
-                    raise gcmd.error("Endstop name '%s' is not valid for stepper motor. Options are: %s" % (endstop, ', '.join(valid_endstops)))
-            if self.selector_rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
-                raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
-            if home:
-                self._home_selector()
-            else:
-                halt_pos, homed, trig_pos = self._trace_selector_move("PAUL", move, wait=wait, speed=speed, homing_move=stop_on_endstop, endstop_name=endstop)
-                self._log_always("halt_pos=%s, homed=%s, trig_pos=%s" % (halt_pos, homed, trig_pos))
+            # Move options
+            pos = self.mmu_toolhead.get_position()
+            self._log_always("Current toolhead pos=%s" % pos)
 
-    def cmd_PAUL2(self, gcmd):
-        move = gcmd.get_int('MOVE', 20)
-        speed = gcmd.get_float('SPEED', 20)
-        pwait = bool(gcmd.get_int('PWAIT', 0))
-        mwait = bool(gcmd.get_int('MWAIT', 0))
+            if gmove >= 0:
+                if endstop is not None:
+                    valid_endstops = list(self.gear_rail.get_extra_endstop_names())
+                    if not endstop in valid_endstops:
+                        raise gcmd.error("Endstop name '%s' is not valid for gear stepper motor. Options are: %s" % (endstop, ', '.join(valid_endstops)))
+                if self.selector_rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
+                    raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
+                else:
+                    pos[1] = gmove
+                    self.mmu_toolhead.move(pos, speed)
+# PAUL TODO
+#                    halt_pos, homed, trig_pos = self._trace_selector_move("PAUL", move, wait=wait, speed=speed, homing_move=stop_on_endstop, endstop_name=endstop)
+#                    self._log_always("halt_pos=%s, homed=%s, trig_pos=%s" % (halt_pos, homed, trig_pos))
 
-        pos = self.mmu_toolhead.get_position()
-        self._log_always("Current toolhead pos=%s" % pos)
-        pos[1] = move
-        self.mmu_toolhead.move(pos, speed)
+            if smove >= 0:
+                if endstop is not None:
+                    valid_endstops = list(self.selector_rail.get_extra_endstop_names())
+                    if not endstop in valid_endstops:
+                        raise gcmd.error("Endstop name '%s' is not valid for selector stepper motor. Options are: %s" % (endstop, ', '.join(valid_endstops)))
+                if self.selector_rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
+                    raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
+                else:
+                    halt_pos, homed, trig_pos = self._trace_selector_move("PAUL", smove, wait=mwait, speed=speed, homing_move=stop_on_endstop, endstop_name=endstop)
+                    self._log_always("halt_pos=%s, homed=%s, trig_pos=%s" % (halt_pos, homed, trig_pos))
+
+            pos = self.mmu_toolhead.get_position()
+            self._log_always("Toolhead pos after move=%s" % pos)
+
         if pwait:
             self.toolhead.wait_moves()
         if mwait:
             self.mmu_toolhead.wait_moves()
-        #self._movequeues_wait_moves()
+
         pos = self.mmu_toolhead.get_position()
-        self._log_always("Toolhead pos after move=%s" % pos)
+        self._log_always("Toolhead pos after waits=%s" % pos)
 
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
@@ -3982,7 +4006,7 @@ class Mmu:
 
 ########################################
 # GEAR (FILAMENT) MOVEMENT AND CONTROL #
-######################$$$$$$$###########
+########################################
 
     def _gear_stepper_move_wait(self, dist, wait=True, speed=None, accel=None, sync=True, dwell=0.):
         return # PAUL TEMP

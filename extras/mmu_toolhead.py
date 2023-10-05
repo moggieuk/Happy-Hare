@@ -147,12 +147,22 @@ class MmuToolHead(toolhead.ToolHead, object):
             extruder = self.printer.lookup_object(extruder_name, None)
             if extruder is None or not isinstance(extruder, PrinterExtruder):
                 raise self.printer.command_error("'%s' is not a valid extruder" % extruder_name)
+            #extruder_stepper = extruder.extruder_stepper.stepper # PAUL
 
             for s in gear_rail.get_steppers():
                 s.set_stepper_kinematics(self.sk_extruder)
             gear_rail.set_trapq(extruder.get_trapq())
-            gear_rail.set_position([0., extruder.last_position, 0.])
-            self.gear_motion_queue = extruder_name
+            #gear_rail.set_position([0., extruder.last_position, 0.])
+            gear_rail.set_position([extruder.last_position, 0., 0.])
+
+            # Shift gear rail step generator to printer toolhead. Each stepper is registered individually
+            for s in gear_rail.get_steppers():
+                handler = s.generate_steps
+                self.step_generators.remove(handler)
+                printer_toolhead.register_step_generator(handler)
+                logging.info("PAUL: shifted to printer toolhead gear_rail_handler=%s" % handler)
+
+            self.gear_motion_queue = extruder_name # We are synced!
         else:
             # Unsyncing
             if not self.gear_motion_queue: return
@@ -160,6 +170,14 @@ class MmuToolHead(toolhead.ToolHead, object):
                 s.set_stepper_kinematics(self.sk_default)
             gear_rail.set_trapq(self.get_trapq())
             gear_rail.set_position([0., 0., 0.])
+
+            # Shift gear rail steppers step generator back to MMU toolhead
+            for s in gear_rail.get_steppers():
+                handler = s.generate_steps
+                printer_toolhead.step_generators.remove(handler)
+                self.register_step_generator(handler)
+                logging.info("PAUL: shifted back to gear rail gear_rail_handler=%s" % handler)
+
             self.gear_motion_queue = None
 
     def sync_extruder_to_gear(self, extruder_name):
@@ -192,8 +210,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             printer_toolhead.step_generators.remove(handler)
             self.register_step_generator(handler)
 
-            # We are synced!
-            self.extruder_synced_to_gear = extruder_name
+            self.extruder_synced_to_gear = extruder_name # We are synced!
         else:
             # Unsyncing
             if not self.extruder_synced_to_gear: return
@@ -213,8 +230,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             self.step_generators.remove(handler)
             printer_toolhead.register_step_generator(handler)
 
-            # We are synced!
-            self.extruder_synced_to_gear = None
+            self.extruder_synced_to_gear = None #
 
     def get_status(self, eventtime):
         res = super(MmuToolHead, self).get_status(eventtime)
@@ -257,32 +273,26 @@ class MmuKinematics:
             if i in homing_axes:
                 self.limits[i] = rail.get_range()
     
-    def home_axis(self, homing_state, axis, rail):
-        # Determine movement
-        position_min, position_max = rail.get_range()
-        hi = rail.get_homing_info()
-        homepos = [None, None, None, None]
-        homepos[axis] = hi.position_endstop
-        forcepos = list(homepos)
-        if hi.positive_dir:
-            forcepos[axis] -= 1.5 * (hi.position_endstop - position_min)
-        else:
-            forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
-        # Perform homing
-        homing_state.home_rails([rail], forcepos, homepos)
-
     def home(self, homing_state):
-        # Typically each axis is homed independently and in order but for MMU only selector (x) can be homed
         for axis in homing_state.get_axes():
-            if axis == 0:
-                self.home_axis(homing_state, axis, self.rails[axis])
+            if not axis == 0: # Saftey: Only selector (axis[0]) can be homed
+                continue
+            rail = self.rails[axis]
+            position_min, position_max = rail.get_range()
+            hi = rail.get_homing_info()
+            homepos = [None, None, None, None]
+            homepos[axis] = hi.position_endstop
+            forcepos = list(homepos)
+            if hi.positive_dir:
+                forcepos[axis] -= 1.5 * (hi.position_endstop - position_min)
             else:
-                pass
+                forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
+            homing_state.home_rails([rail], forcepos, homepos) # Perform homing
 
     def _motor_off(self, print_time):
         self.limits = [(1.0, -1.0)] * len(self.rails)
 
-    def _check_endstops(self, move):
+    def _check_endstops(self, move): # PAUL need this?
         end_pos = move.end_pos
         for i in range(len(self.rails)):
             if (move.axes_d[i]
@@ -297,7 +307,7 @@ class MmuKinematics:
         xpos, ypos = move.end_pos[:2]
 # PAUL        if (xpos < limits[0][0] or xpos > limits[0][1] or ypos < limits[1][0] or ypos > limits[1][1]):
         if xpos < limits[0][0] or xpos > limits[0][1]:
-            self._check_endstops(move)
+            self._check_endstops(move) # PAUL need this?
         
         if move.axes_d[0]: # Selector
             logging.info("PAUL: move.limit_speed(%s, %s)" % (self.selector_max_velocity, self.selector_max_accel))
