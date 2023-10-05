@@ -86,11 +86,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         ffi_main, ffi_lib = chelper.get_ffi()
         self.sk_extruder = ffi_main.gc(ffi_lib.extruder_stepper_alloc(), ffi_lib.free)
 
-        # Normal gear rail kinematics
+        # Normal gear rail kinematics when extruder is synced to gear rail
         ffi_main, ffi_lib = chelper.get_ffi()
         self.sk_default = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'y'), ffi_lib.free)
         
-        # Fix kinematics to MMU type
+        # Create MMU kinematics
         try:
             self.kin = MmuKinematics(self, config)
         except config.error as e:
@@ -105,24 +105,37 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Add useful debugging command
         gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
     
+    # Ensure the correct number of axes for convenience - MMU only has two
     def set_position(self, newpos, homing_axes=()):
+        logging.info("PAUL: IN:Toolhead.set_position(%s, %s)" % (newpos, homing_axes))
         for _ in range(4 - len(newpos)):
             newpos.append(0.)
+        logging.info("PAUL: OUT:Toolhead.set_position(%s, %s)" % (newpos, homing_axes))
         super(MmuToolHead, self).set_position(newpos, homing_axes)
+
+    # Version of move that allows for per-move accelaration modification
+    def move_accel(self, newpos, speed, accel):
+        if not accel:
+            super(MmuToolHead, self).move(newpos, speed)
+        else:
+            move = toolhead.Move(self, self.commanded_pos, newpos, speed)
+            move.limit_speed(speed, accel)
+            if not move.move_d:
+                return
+            if move.is_kinematic_move:
+                self.kin.check_move(move)
+            if move.axes_d[3]:
+                self.extruder.check_move(move)
+            self.commanded_pos[:] = move.end_pos
+            self.move_queue.add_move(move)
+            if self.print_time > self.need_check_stall:
+                self._check_stall()
     
     def get_selector_limits(self):
         return self.selector_max_velocity, self.selector_max_accel
 
     def get_gear_limits(self):
         return self.gear_max_velocity, self.gear_max_accel
-
-    def fill_coord(self, coord):
-        # Fill in any None entries in 'coord' with current toolhead position
-        thcoord = list(self.toolhead.get_position())
-        for i in range(len(coord)):
-            if coord[i] is not None:
-                thcoord[i] = coord[i]
-        return thcoord
 
     # Is gear rail synced to extruder (for in print syncing)
     def is_gear_synced_to_extruder(self):
@@ -151,8 +164,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             if extruder is None or not isinstance(extruder, PrinterExtruder):
                 raise self.printer.command_error("'%s' is not a valid extruder" % extruder_name)
 
-            for s in gear_rail.get_steppers():
-                s.set_stepper_kinematics(self.sk_extruder)
+            self.prev_g_sk = [s.set_stepper_kinematics(self.sk_extruder) for s in gear_rail.get_steppers()]
             gear_rail.set_trapq(extruder.get_trapq())
             g_pos = extruder.last_position
             gear_rail.set_position([g_pos, 0., 0.])
@@ -167,11 +179,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         else:
             # Unsyncing
             if not self.gear_motion_queue: return
-            for s in gear_rail.get_steppers():
-                s.set_stepper_kinematics(self.sk_default)
+            for s, sk in zip(gear_rail.get_steppers(), self.prev_g_sk):
+                s.set_stepper_kinematics(sk)
             gear_rail.set_trapq(self.get_trapq())
             g_pos = self.get_position()[1]
-            gear_rail.set_position([0, g_pos, 0,])
+            gear_rail.set_position([0., g_pos, 0.])
 
             # Shift gear rail steppers step generator back to MMU toolhead
             for s in gear_rail.get_steppers():
@@ -205,7 +217,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             self.prev_sk = extruder_stepper.set_stepper_kinematics(self.sk_default)
             self.prev_trapq = extruder_stepper.set_trapq(self.get_trapq())
             e_pos = self.get_position()[1]
-            extruder_stepper.set_position([0, e_pos, 0.])
+            extruder_stepper.set_position([0., e_pos, 0.])
 
             # Shift extruder step generator to mmu toolhead
             handler = extruder_stepper.generate_steps
