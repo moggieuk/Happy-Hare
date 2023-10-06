@@ -113,23 +113,28 @@ class MmuToolHead(toolhead.ToolHead, object):
         logging.info("PAUL: OUT:Toolhead.set_position(%s, %s)" % (newpos, homing_axes))
         super(MmuToolHead, self).set_position(newpos, homing_axes)
 
-    # Version of move that allows for per-move accelaration modification
+    # Version of move that allows for per-move acceleration modification
     def move_accel(self, newpos, speed, accel):
         if not accel:
+            logging.info("PAUL: move_accel() calling super.move()")
             super(MmuToolHead, self).move(newpos, speed)
         else:
             move = toolhead.Move(self, self.commanded_pos, newpos, speed)
-            move.limit_speed(speed, accel)
+            logging.info("PAUL: A")
             if not move.move_d:
                 return
+            logging.info("PAUL: B")
+            move.limit_speed(speed, accel)
             if move.is_kinematic_move:
                 self.kin.check_move(move)
-            if move.axes_d[3]:
-                self.extruder.check_move(move)
+#            if move.axes_d[3]:
+#                self.extruder.check_move(move)
             self.commanded_pos[:] = move.end_pos
+            logging.info("add_move()")
             self.move_queue.add_move(move)
             if self.print_time > self.need_check_stall:
                 self._check_stall()
+            logging.info("dome")
     
     def get_selector_limits(self):
         return self.selector_max_velocity, self.selector_max_accel
@@ -313,7 +318,7 @@ class MmuKinematics:
         self.printer = config.get_printer()
 
         # Setup "axis" rails
-        self.axes = [('x', 'selector', True), ('y', 'gear', False)]
+        self.axes = [('x', 'selector', True), ('y', 'gear', True)]
         self.rails = [MmuLookupMultiRail(config.getsection('stepper_mmu_' + s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
         for rail, axis in zip(self.rails, 'xy'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
@@ -342,6 +347,7 @@ class MmuKinematics:
                 self.limits[i] = rail.get_range()
     
     def home(self, homing_state):
+        logging.info("PAUL: home()")
         for axis in homing_state.get_axes():
             if not axis == 0: # Saftey: Only selector (axis[0]) can be homed
                 continue
