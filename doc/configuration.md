@@ -73,8 +73,10 @@ All Happy Hare speeds can be configured in this section.  Most are self-explanat
 # 100mm/s should be "quiet" with the NEMA14 motor or a NEMA17 pancake, but you can go lower for really low noise
 # NOTE: Encoder cannot keep up much above 250mm/s so make sure `apply_bowden_correction` is off at very high speeds!
 #
-gear_from_buffer_speed: 160		# mm/s Conservative value is 100mm/s, Max around 350mm/s
+gear_from_buffer_speed: 160		# mm/s Normal speed when loading filament. Conservative is 100mm/s, Max around 300mm/s
+gear_from_buffer_accel: 400		# Normal accelaration when loading filament
 gear_from_spool_speed: 60		# mm/s Use (lower) speed when loading from a gate for the first time (i.e. pulling from spool)
+gear_from_spool_accel: 100		# Accelaration when loading from spool
 gear_short_move_speed: 60		# mm/s Conservative value is 35mm/s. Max around 100mm/s
 gear_homing_speed: 50			# mm/s Speed of gear stepper only homing moves (e.g. extruder homing)
 
@@ -84,12 +86,6 @@ extruder_unload_speed: 20		# mm/s speed of unload moves inside of extruder (very
 extruder_sync_load_speed: 20		# mm/s speed of synchronized extruder load moves
 extruder_sync_unload_speed: 25		# mm/s speed of synchronized extruder unload moves
 extruder_homing_speed: 20		# mm/s speed of extruder only homing moves (e.g. to toolhead sensor)
-
-# Selector movement speeds
-selector_move_speed: 200        	# mm/s speed of selector movement (not touch)
-selector_homing_speed: 60       	# mm/s speed of initial selector homing move (not touch)
-selector_touch_speed: 80		# mm/s speed of all touch selector moves (if stallguard configured)
-selector_touch_enable: 0		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
 ```
 
 This section controls the module that controls filament loading and unload at the gate when an encoder is present. The `encoder_unload_buffer` represents how close to the gate the filament ends up after fast bowden move. You want it close (for speed) but not too close that it can overshoot.  `encoder_parking_distance` is how fast away from the gate exit the filament should be parked when unloaded.  It rarely needs to be changed from the default.

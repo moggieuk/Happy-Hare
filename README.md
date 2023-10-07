@@ -323,7 +323,9 @@ Running without any parameters will display the current values:
     SPEEDS:
     gear_short_move_speed = 60.0
     gear_from_buffer_speed = 160.0
+    gear_from_buffer_accel = 400.0
     gear_from_spool_speed = 60.0
+    gear_from_spool_accel = 100.0
     gear_homing_speed = 50.0
     extruder_homing_speed = 20.0
     extruder_load_speed = 15.0
@@ -339,7 +341,7 @@ Running without any parameters will display the current values:
     sync_to_extruder = 0
     sync_form_tip = 0
     sync_gear_current = 50
-    extruder_homing_current = 40
+    extruder_homing_current = 30
     extruder_form_tip_current = 120
 
     LOADING/UNLOADING:
@@ -366,7 +368,7 @@ Running without any parameters will display the current values:
     enable_clog_detection = 2
     enable_endless_spool = 1                     # Advanced
     slicer_tip_park_pos = 0.0
-    auto_calibrate_gates = 0
+    auto_calibrate_gates = 0                     # Advanced
     strict_filament_recovery = 0
     retry_tool_change_on_error = 0
     print_start_detection = 1
@@ -976,17 +978,19 @@ Filament movement speeds for all operations are detailed in the `mmu_parameters.
 # 100mm/s should be "quiet" with the NEMA14 motor or a NEMA17 pancake, but you can go lower for really low noise
 # NOTE: Encoder cannot keep up much above 250mm/s so make sure `apply_bowden_correction` is off at very high speeds!
 #
-gear_from_buffer_speed: 160             # mm/s Conservative value is 100mm/s, Max around 350mm/s
-gear_from_spool_speed: 60               # mm/s Use (lower) speed when loading from a gate for the first time (i.e. pulling from spool)
-gear_short_move_speed: 60               # mm/s Conservative value is 35mm/s. Max around 100mm/s
-gear_homing_speed: 50                   # mm/s Speed of gear stepper only homing moves (e.g. extruder homing)
+gear_from_buffer_speed: 160		# mm/s Normal speed when loading filament. Conservative is 100mm/s, Max around 300mm/s
+gear_from_buffer_accel: 400		# Normal accelaration when loading filament
+gear_from_spool_speed: 60		# mm/s Use (lower) speed when loading from a gate for the first time (i.e. pulling from spool)
+gear_from_spool_accel: 100		# Accelaration when loading from spool
+gear_short_move_speed: 60		# mm/s Conservative value is 35mm/s. Max around 100mm/s
+gear_homing_speed: 50			# mm/s Speed of gear stepper only homing moves (e.g. extruder homing)
 
 # Speeds of extruder movement. The 'sync' speeds will be used when gear and extruder steppers are moving in sync
-extruder_load_speed: 15                 # mm/s speed of load move inside extruder from homing position to meltzone
-extruder_unload_speed: 20               # mm/s speed of unload moves inside of extruder (very initial move from meltzone is 50% of this)
-extruder_sync_load_speed: 20            # mm/s speed of synchronized extruder load moves
-extruder_sync_unload_speed: 25          # mm/s speed of synchronized extruder unload moves
-extruder_homing_speed: 20               # mm/s speed of extruder only homing moves (e.g. to toolhead sensor)
+extruder_load_speed: 15			# mm/s speed of load move inside extruder from homing position to meltzone
+extruder_unload_speed: 20		# mm/s speed of unload moves inside of extruder (very initial move from meltzone is 50% of this)
+extruder_sync_load_speed: 20		# mm/s speed of synchronized extruder load moves
+extruder_sync_unload_speed: 25		# mm/s speed of synchronized extruder unload moves
+extruder_homing_speed: 20		# mm/s speed of extruder only homing moves (e.g. to toolhead sensor)
 ```
 
 </details>

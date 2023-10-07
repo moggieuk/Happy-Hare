@@ -113,28 +113,23 @@ class MmuToolHead(toolhead.ToolHead, object):
         logging.info("PAUL: OUT:Toolhead.set_position(%s, %s)" % (newpos, homing_axes))
         super(MmuToolHead, self).set_position(newpos, homing_axes)
 
-    # Version of move that allows for per-move acceleration modification
-    def move_accel(self, newpos, speed, accel):
-        if not accel:
-            logging.info("PAUL: move_accel() calling super.move()")
-            super(MmuToolHead, self).move(newpos, speed)
-        else:
-            move = toolhead.Move(self, self.commanded_pos, newpos, speed)
-            logging.info("PAUL: A")
-            if not move.move_d:
-                return
-            logging.info("PAUL: B")
-            move.limit_speed(speed, accel)
-            if move.is_kinematic_move:
-                self.kin.check_move(move)
-#            if move.axes_d[3]:
-#                self.extruder.check_move(move)
-            self.commanded_pos[:] = move.end_pos
-            logging.info("add_move()")
-            self.move_queue.add_move(move)
-            if self.print_time > self.need_check_stall:
-                self._check_stall()
-            logging.info("dome")
+#
+#    # Version of move that allows for per-move acceleration modification
+#    def move_accel(self, newpos, speed, accel):
+#        if not accel:
+#            logging.info("PAUL: move_accel() calling super.move()")
+#            super(MmuToolHead, self).move(newpos, speed)
+#        else:
+#            move = toolhead.Move(self, self.commanded_pos, newpos, speed)
+#            if not move.move_d:
+#                return
+#            move.limit_speed(speed, accel)
+#            if move.is_kinematic_move:
+#                self.kin.check_move(move)
+#            self.commanded_pos[:] = move.end_pos
+#            self.move_queue.add_move(move)
+#            if self.print_time > self.need_check_stall:
+#                self._check_stall()
     
     def get_selector_limits(self):
         return self.selector_max_velocity, self.selector_max_accel
@@ -250,7 +245,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             self.step_generators.remove(handler)
             printer_toolhead.register_step_generator(handler)
 
-            self.extruder_synced_to_gear = None #
+            self.extruder_synced_to_gear = None
 
     def get_status(self, eventtime):
         res = super(MmuToolHead, self).get_status(eventtime)
@@ -293,7 +288,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 msg += "- - Registed on steppers: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
             if axis == 1:
                 if self.gear_motion_queue:
-                    msg += "Rail SYNCED to extruder '%s'\n" % self.gear_motion_queue
+                    msg += "Gear rail SYNCED to extruder '%s'\n" % self.gear_motion_queue
                     extruder_name = self.gear_motion_queue
                 if self.extruder_synced_to_gear:
                     msg += "Extruder '%s' SYNCED to gear rail\n" % self.extruder_synced_to_gear
@@ -308,7 +303,12 @@ class MmuToolHead(toolhead.ToolHead, object):
             msg += "- - Commanded Position: %.2f, " % extruder_stepper.get_commanded_position()
             msg += "MCU Position: %.2f, " % extruder_stepper.get_mcu_position()
             msg += "Rotation Distance: %.6f (in %d steps)\n" % extruder_stepper.get_rotation_distance()
-            # TODO add extruder endstops
+            gear_rail = self.get_kinematics().rails[1]
+            ees = []
+            for (mcu_endstop, name) in gear_rail.extra_endstops:
+                if extruder_name in [s.get_name() for s in mcu_endstop.get_steppers()]:
+                    ees.append(" %s%s" % (name, " (virtual)" if gear_rail.is_endstop_virtual(name) else ""))
+            msg += "Extra Endstops: %s" % ", ".join(ees)
         return msg
 
 # MMU Kinematics class
@@ -316,9 +316,10 @@ class MmuToolHead(toolhead.ToolHead, object):
 class MmuKinematics:
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
+        self.toolhead = toolhead
 
         # Setup "axis" rails
-        self.axes = [('x', 'selector', True), ('y', 'gear', True)]
+        self.axes = [('x', 'selector', True), ('y', 'gear', False)]
         self.rails = [MmuLookupMultiRail(config.getsection('stepper_mmu_' + s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
         for rail, axis in zip(self.rails, 'xy'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
@@ -332,6 +333,7 @@ class MmuKinematics:
         # Setup boundary checks
         self.selector_max_velocity, self.selector_max_accel = toolhead.get_selector_limits()
         self.gear_max_velocity, self.gear_max_accel = toolhead.get_gear_limits()
+        self.move_accel = None
         self.limits = [(1.0, -1.0)] * len(self.rails)
     
     def get_steppers(self):
@@ -364,7 +366,8 @@ class MmuKinematics:
             homing_state.home_rails([rail], forcepos, homepos) # Perform homing
 
     def _motor_off(self, print_time):
-        self.limits = [(1.0, -1.0)] * len(self.rails)
+        pass # Retain MMU selector home position
+#        self.limits = [(1.0, -1.0)] * len(self.rails)
 
     def _check_endstops(self, move):
         end_pos = move.end_pos
@@ -375,6 +378,9 @@ class MmuKinematics:
                     raise move.move_error("Must home axis first")
                 raise move.move_error()
 
+    def set_accel_limit(self, accel):
+        self.move_accel = accel
+
     def check_move(self, move):
         limits = self.limits
         xpos, ypos = move.end_pos[:2]
@@ -383,11 +389,9 @@ class MmuKinematics:
             self._check_endstops(move)
         
         if move.axes_d[0]: # Selector
-            logging.info("PAUL: move.limit_speed(%s, %s)" % (self.selector_max_velocity, self.selector_max_accel))
             move.limit_speed(self.selector_max_velocity, self.selector_max_accel)
         elif move.axes_d[1]: # Gear
-            logging.info("PAUL: move.limit_speed(%s, %s)" % (self.gear_max_velocity, self.gear_max_accel))
-            move.limit_speed(self.gear_max_velocity, self.gear_max_accel)
+            move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel) if self.move_accel else self.gear_max_accel)
 
     def get_status(self, eventtime):
         return {
@@ -481,15 +485,16 @@ class MmuPrinterRail(stepper.PrinterRail, object):
                 self.virtual_endstops.append(name)
             else:
                 self.query_endstops.register_endstop(self.endstops[0][0], endstop_name)
+        es = self.get_endstops()
+        if self.endstops and self.endstops[0][0].__class__.__name__ != "MockEndstop":
+            self.extra_endstops.append((self.endstops[0][0], "default"))
 
     def add_extra_stepper(self, config, **kwargs):
         logging.info("PAUL: add_extra_stepper()")
-        mock = False
         if self._in_init and not self.endstops and config.get('endstop_pin', None) is None:
             # No endstop defined, so configure a mock endstop. The rail is, of course, only homable
             # if it has a properly configured endstop at runtime
             self.endstops = [(self.MockEndstop(), "mock")] # Hack: pretend we have a default endstop so super class will work
-            mock = True
         super(MmuPrinterRail, self).add_extra_stepper(config, **kwargs)
 
         # Handle any extra endstops
@@ -506,6 +511,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
 
     def add_extra_endstop(self, pin, name, register=True):
         ppins = self.printer.lookup_object('pins')
+        logging.info("PAUL: setup_endstop_pin: %s" % pin)
         mcu_endstop = ppins.setup_pin('endstop', pin)
         self.extra_endstops.append((mcu_endstop, name))
         for s in self.steppers:
