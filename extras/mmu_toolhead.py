@@ -19,7 +19,7 @@
 import logging, importlib, math, os, time
 import stepper, chelper, toolhead
 from extras.homing import Homing, HomingMove
-from kinematics.extruder import PrinterExtruder, DummyExtruder
+from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
 
 SDS_CHECK_TIME = 0.001 # step+dir+step filter in stepcompress.c
 
@@ -27,6 +27,7 @@ SDS_CHECK_TIME = 0.001 # step+dir+step filter in stepcompress.c
 # (code pulled from toolhead.py)
 class MmuToolHead(toolhead.ToolHead, object):
     def __init__(self, config):
+        logging.info("PAUL: MmuToolHead.__init__()")
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
@@ -102,35 +103,35 @@ class MmuToolHead(toolhead.ToolHead, object):
             logging.exception(msg)
             raise config.error(msg)
 
+        # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
+        self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder')) # Only first extruder is handled
+
+        # Nullify original extruder stepper definition so Klipper doesn't try to create it again
+        options = [ 'step_pin', 'dir_pin', 'enable_pin',
+                    'rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation',
+                    'pressure_advance', 'pressure_advance_smooth_time', 'endstop_pin' ]
+        for i in options:
+            if config.fileconfig.has_option('extruder', i):
+                config.fileconfig.remove_option('extruder', i)
+        logging.info("PAUL: Nullified original stepper definition")
+        self.printer.register_event_handler('klippy:connect', self.handle_connect)
+
         # Add useful debugging command
         gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
-    
+
+    def handle_connect(self):
+        # Now we can switch in MmuExtruderStepper
+        toolhead = self.printer.lookup_object('toolhead')
+        printer_extruder = toolhead.get_extruder()
+        printer_extruder.extruder_stepper = self.mmu_extruder_stepper
+        self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
+
     # Ensure the correct number of axes for convenience - MMU only has two
     def set_position(self, newpos, homing_axes=()):
-        logging.info("PAUL: IN:Toolhead.set_position(%s, %s)" % (newpos, homing_axes))
         for _ in range(4 - len(newpos)):
             newpos.append(0.)
-        logging.info("PAUL: OUT:Toolhead.set_position(%s, %s)" % (newpos, homing_axes))
         super(MmuToolHead, self).set_position(newpos, homing_axes)
 
-#
-#    # Version of move that allows for per-move acceleration modification
-#    def move_accel(self, newpos, speed, accel):
-#        if not accel:
-#            logging.info("PAUL: move_accel() calling super.move()")
-#            super(MmuToolHead, self).move(newpos, speed)
-#        else:
-#            move = toolhead.Move(self, self.commanded_pos, newpos, speed)
-#            if not move.move_d:
-#                return
-#            move.limit_speed(speed, accel)
-#            if move.is_kinematic_move:
-#                self.kin.check_move(move)
-#            self.commanded_pos[:] = move.end_pos
-#            self.move_queue.add_move(move)
-#            if self.print_time > self.need_check_stall:
-#                self._check_stall()
-    
     def get_selector_limits(self):
         return self.selector_max_velocity, self.selector_max_accel
 
@@ -297,19 +298,19 @@ class MmuToolHead(toolhead.ToolHead, object):
         extruder = self.printer.lookup_object(extruder_name, None)
         if extruder and isinstance(extruder, PrinterExtruder):
             msg +=  "\nPRINTER TOOLHEAD: %s\n" % printer_toolhead.get_position()
-            header = "EXTRUDER: %s %s" % (extruder_name, '-' * 100)
+            header = "Extruder Stepper: %s %s" % (extruder_name, '-' * 100)
             msg += header[:100] + "\n"
             extruder_stepper = extruder.extruder_stepper.stepper
             msg += "- - Commanded Position: %.2f, " % extruder_stepper.get_commanded_position()
             msg += "MCU Position: %.2f, " % extruder_stepper.get_mcu_position()
             msg += "Rotation Distance: %.6f (in %d steps)\n" % extruder_stepper.get_rotation_distance()
-            gear_rail = self.get_kinematics().rails[1]
-            ees = []
-            for (mcu_endstop, name) in gear_rail.extra_endstops:
-                if extruder_name in [s.get_name() for s in mcu_endstop.get_steppers()]:
-                    ees.append(" %s%s" % (name, " (virtual)" if gear_rail.is_endstop_virtual(name) else ""))
-            msg += "Extra Endstops: %s" % ", ".join(ees)
+            msg += "Endstop:\n"
+            for (mcu_endstop, name) in extruder.extruder_stepper.endstops:
+                msg += "- '%s', mcu: '%s', pin: '%s', obj_id: %s" % (name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin, id(mcu_endstop))
+                msg += " (virtual)\n"
+                msg += "- - Registed on steppers: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
         return msg
+
 
 # MMU Kinematics class
 # (loosely based on corexy.py)
@@ -327,8 +328,6 @@ class MmuKinematics:
         for s in self.get_steppers():
             s.set_trapq(toolhead.get_trapq())
             toolhead.register_step_generator(s.generate_steps)
-
-        self.printer.register_event_handler("stepper_enable:motor_off", self._motor_off)
 
         # Setup boundary checks
         self.selector_max_velocity, self.selector_max_accel = toolhead.get_selector_limits()
@@ -365,10 +364,6 @@ class MmuKinematics:
                 forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
             homing_state.home_rails([rail], forcepos, homepos) # Perform homing
 
-    def _motor_off(self, print_time):
-        pass # Retain MMU selector home position
-#        self.limits = [(1.0, -1.0)] * len(self.rails)
-
     def _check_endstops(self, move):
         end_pos = move.end_pos
         for i in range(len(self.rails)):
@@ -399,6 +394,7 @@ class MmuKinematics:
             'gear_synced_to_extruder': self.is_gear_synced_to_extruder(),
             'extruder_synced_to_gear': self.is_extruder_synced_to_gear()
         }
+
 
 # Extend Klipper homing module to leverage MMU "toolhead"
 # (code pulled from homing.py)
@@ -459,6 +455,7 @@ class MmuHoming(Homing, object):
                 homepos[axis] = newpos[axis]
             self.toolhead.set_position(homepos)
 
+
 # Extend PrinterRail to allow for multiple (switchable) endstops and allow no default endstop
 # (defined in stepper.py)
 class MmuPrinterRail(stepper.PrinterRail, object):
@@ -516,7 +513,8 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         self.extra_endstops.append((mcu_endstop, name))
         for s in self.steppers:
             mcu_endstop.add_stepper(s)
-        if register and not self.is_endstop_virtual(name):
+        #if register and not self.is_endstop_virtual(name):
+        if register:
             self.query_endstops.register_endstop(mcu_endstop, name)
         return mcu_endstop
 
@@ -546,4 +544,28 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
             break
         rail.add_extra_stepper(config.getsection(config.get_name() + str(i)))
     return rail
+
+
+# Extend ExtruderStepper to allow for adding and managing endstops (useful only when not operating as an Extruder)
+class MmuExtruderStepper(ExtruderStepper, object):
+    def __init__(self, config):
+        super(MmuExtruderStepper, self).__init__(config)
+        tmc_chips = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
+        for chip in tmc_chips:
+            tmc = self.printer.lookup_object('%s stepper_mmu_selector' % chip, None)
+            if tmc:
+                _ = self.printer.load_object(config, '%s extruder' % chip) # Prevent error if loading after real "[extruder]" section
+                break
+        self.endstops = []
+        logging.info("PAUL: Created MmuExtruderStepper")
+
+        # Setup default endstop similarly to "extra" endstops with vanity sensor name
+        endstop_pin = config.get('endstop_pin', None)
+        if endstop_pin:
+            ppins = self.printer.lookup_object('pins')
+            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
+            self.endstops.append((mcu_endstop, 'mmu_ext_touch'))
+            query_endstops = self.printer.load_object(config, 'query_endstops')
+            query_endstops.register_endstop(mcu_endstop, 'mmu_ext_touch')
+            mcu_endstop.add_stepper(self.stepper)
 

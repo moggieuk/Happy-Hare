@@ -28,33 +28,33 @@ class MmuConfigSetup():
         for i in options:
             if config.fileconfig.has_option('extruder', i):
                 value = config.fileconfig.get('extruder', i)
-                if not config.fileconfig.has_option('manual_extruder_stepper extruder', i):
-                    logging.warning("MMU Info: Automatically moved config option '%s' from '[extruder]' config section to '[manual_extruder_stepper extruder]'" % i)
-                    config.fileconfig.set('manual_extruder_stepper extruder', i, value)
-                elif value != config.fileconfig.get('manual_extruder_stepper extruder', i):
-                    logging.warning("MMU Warning: Config option '%s' exists in both '[extruder]' and '[manual_extruder_stepper extruder]' with different values" % i)
+                if not config.fileconfig.has_option('mmu_extruder', i):
+                    logging.warning("MMU Info: Automatically moved config option '%s' from '[extruder]' config section to '[mmu_extruder]'" % i)
+                    config.fileconfig.set('mmu_extruder', i, value)
+                elif value != config.fileconfig.get('mmu_extruder', i):
+                    logging.warning("MMU Warning: Config option '%s' exists in both '[extruder]' and '[mmu_extruder]' with different values" % i)
                 config.fileconfig.remove_option('extruder', i)
             elif i not in ("pressure_advance", "pressure_advance_smooth_time", "gear_ratio") and not config.fileconfig.has_option('manual_extruder_stepper extruder', i):
-                raise config.error("MMU Config Error: Option '%s' is missing from '[manual_extruder_stepper extruder]' or '[extruder]' config section" % i)
+                raise config.error("MMU Config Error: Option '%s' is missing from '[mmu_extruder]' or '[extruder]' config section" % i)
 
-        # Some klipper modules reference the stepper name in their config. Change references from 'extruder'
-        # to 'manual_extruder_stepper extruder' to prevent user frustration
-        for s in [('controller_fan', 'stepper', True, True), ('homing_heaters', 'steppers', False, True), ('angle', 'stepper', True, False)]:
-            for i in config.fileconfig.sections():
-                update = False
-                if s[2] and i.split()[0] == s[0] or not s[2] and i == s[0]:
-                    update = True
-
-                if update and config.fileconfig.has_option(i, s[1]):
-                    v = orig_v = config.fileconfig.get(i, s[1])
-                    if s[3]: # treat as list
-                        vl = [j.strip() for j in v.split(',')]
-                        vl[:] = ['manual_extruder_stepper extruder' if j == 'extruder' else j for j in vl]
-                        v = ", ".join(vl)
-                    else:
-                        v = 'manual_extruder_stepper extruder' if v == 'extruder' else v
-                    config.fileconfig.set(i, s[1], v)
-                    logging.warning("MMU Info: Changed config section '%s' option '%s' from: '%s' to: '%s'" % (i, s[1], orig_v, v))
+#        # Some klipper modules reference the stepper name in their config. Change references from 'extruder'
+#        # to 'manual_extruder_stepper extruder' to prevent user frustration
+#        for s in [('controller_fan', 'stepper', True, True), ('homing_heaters', 'steppers', False, True), ('angle', 'stepper', True, False)]:
+#            for i in config.fileconfig.sections():
+#                update = False
+#                if s[2] and i.split()[0] == s[0] or not s[2] and i == s[0]:
+#                    update = True
+#
+#                if update and config.fileconfig.has_option(i, s[1]):
+#                    v = orig_v = config.fileconfig.get(i, s[1])
+#                    if s[3]: # treat as list
+#                        vl = [j.strip() for j in v.split(',')]
+#                        vl[:] = ['manual_extruder_stepper extruder' if j == 'extruder' else j for j in vl]
+#                        v = ", ".join(vl)
+#                    else:
+#                        v = 'manual_extruder_stepper extruder' if v == 'extruder' else v
+#                    config.fileconfig.set(i, s[1], v)
+#                    logging.warning("MMU Info: Changed config section '%s' option '%s' from: '%s' to: '%s'" % (i, s[1], orig_v, v))
 
     def _rename_section(self, cp, section_from, section_to):
         items = cp.fileconfig.items(section_from)
