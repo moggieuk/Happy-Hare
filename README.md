@@ -134,6 +134,11 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 <br>
 
+### Other resources:
+If you are german speaking here is a great instructional [video created by the Crydteam](https://www.youtube.com/watch?v=uaPLuWJBdQU)
+
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Basic Commands and Printer Variables
 
 Happy Hare has a built in help system to aid remembering the command set. It can accessed with the `MMU_HELP` command and can also be used to view testing commands and user extensible macros which are called by Happy Hare on certain conditions. The full list of commands and options can be [found here](./doc/command_ref.md). Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
