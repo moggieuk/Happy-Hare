@@ -135,6 +135,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 <br>
 
 ### Other resources:
+<a href="https://www.youtube.com/watch?v=uaPLuWJBdQU"><img src="https://github.com/moggieuk/Happy-Hare/blob/main/doc/youtube1.png" width="30%"></a>
 If you are german speaking here is a great instructional [video created by the Crydteam](https://www.youtube.com/watch?v=uaPLuWJBdQU)
 
 <br>
