@@ -138,7 +138,8 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Video Tutorials
 
-### English: follow soon
+### English: 
+follow soon
 ### German:
 <div align="left">
       <a href="https://www.youtube.com/watch?v=uaPLuWJBdQU">
