@@ -99,12 +99,7 @@ Companion customized [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare
 
 <br>
  
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Installation
-
-### 1. Installation Guide
-### 2. Video Tutorials
-
-## 1. Installation Guide
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Installation Guide
 
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
 
@@ -140,8 +135,20 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 <br>
 
-## 2. Video Tutorials:
-If you are german speaking here is a great instructional [![Watch the video](https://i9.ytimg.com/vi_webp/uaPLuWJBdQU/maxresdefault.webp?v=6522d1a6&sqp=CKycn6kG&rs=AOn4CLBCiHQsjGJ0c8ywvkxy9uWEk_yUXw)](https://www.youtube.com/watch?v=uaPLuWJBdQU)
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Installation Guide
+
+English: follow soon
+German:
+<div align="right">
+      <a href="https://www.youtube.com/watch?v=uaPLuWJBdQU">
+     <img 
+      src="https://i9.ytimg.com/vi_webp/uaPLuWJBdQU/maxresdefault.webp?v=6522d1a6&sqp=CKycn6kG&rs=AOn4CLBCiHQsjGJ0c8ywvkxy9uWEk_yUXw" 
+      alt="Everything Is AWESOME" 
+      style="width:50%;">
+      </a>
+    </div>
+
+[![Watch the video](https://i9.ytimg.com/vi_webp/uaPLuWJBdQU/maxresdefault.webp?v=6522d1a6&sqp=CKycn6kG&rs=AOn4CLBCiHQsjGJ0c8ywvkxy9uWEk_yUXw)](https://www.youtube.com/watch?v=uaPLuWJBdQU)
 
 <br>
 
