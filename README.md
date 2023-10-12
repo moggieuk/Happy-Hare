@@ -35,7 +35,8 @@ Thank you!
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Readme Table of Contents
 
 **[Major feature](#---major-features)**<br>
-**[Installation](#---installation)**<br>
+**[Installation Guide](#---Installation-Guide)**<br>
+**[Video Tutorials](#---Video-Tutorials)**<br>
 **[Basic Commands](#---basic-commands-and-printer-variables)**<br>
 **[Setup & Calibration](#---setup-and-calibration)**<br>
 **[Important Concepts and Features](#---important-concepts-and-features)**<br>
@@ -135,7 +136,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Installation Guide
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Video Tutorials
 
 ### English: follow soon
 ### German:
