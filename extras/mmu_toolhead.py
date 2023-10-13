@@ -218,6 +218,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             extruder_stepper = extruder.extruder_stepper.stepper
 
             # Switch extruder stepper to use MMU toolhead kinematics and trapq
+            logging.info("PAUL: !!! syning: Setting extruder stepper kinematics to sk_default")
             self.prev_sk = extruder_stepper.set_stepper_kinematics(self.sk_default)
             self.prev_trapq = extruder_stepper.set_trapq(self.get_trapq())
             g_pos = gear_rail.get_commanded_position()
@@ -232,19 +233,23 @@ class MmuToolHead(toolhead.ToolHead, object):
                 gear_rail.calc_position_from_coord = extruder_stepper.calc_position_from_coord
             else:
                 gear_rail.steppers.append(extruder_stepper)
+            logging.info("PAUL: !!! syning: gear_rail.steppers = %s" % gear_rail.steppers)
 
             # Shift extruder step generator to mmu toolhead
             handler = extruder_stepper.generate_steps
             printer_toolhead.step_generators.remove(handler)
             self.register_step_generator(handler)
+            logging.info("PAUL: !!! syning: moved extruder step generator to mmu toolhead")
 
             # Remove handlers for default gear steppers if necessary
             if extruder_only:
+                logging.info("PAUL: !!! syning: removing gear stepper step_generator mmu from toolhead")
                 for s in self.prev_rail_steppers:
                     handler = s.generate_steps
                     self.step_generators.remove(handler)
 
             self.extruder_synced_to_gear = extruder_name # We are synced!
+            logging.info("PAUL:\n%s" % self.dump_rails())
         else:
             # Unsyncing
             if not self.extruder_synced_to_gear: return
@@ -253,26 +258,34 @@ class MmuToolHead(toolhead.ToolHead, object):
 
             # Restore handlers for normal gear steppers and reset position if necessary
             if self.prev_rail_steppers:
-                g_pos = gear_rail.get_commanded_position()
-                #g_pos = extruder_stepper.get_commanded_position()
+                logging.info("PAUL: !!! unsync: added gear step_generators back to mmu toolhead")
                 for s in self.prev_rail_steppers:
                     handler = s.generate_steps
                     self.register_step_generator(handler)
+
+                g_pos = gear_rail.get_commanded_position()
+                g_pos2 = extruder_stepper.get_commanded_position() # PAUL Temp
+                logging.info("PAUL: !!! unsync: g_pos to restore to: %s" % g_pos)
                 gear_rail.steppers = self.prev_rail_steppers
                 gear_rail.get_commanded_position = gear_rail.steppers[0].get_commanded_position
                 gear_rail.calc_position_from_coord = gear_rail.steppers[0].calc_position_from_coord
+                logging.info("PAUL: !!! setting gear_rail.set_position [0, %s, 0] alt %s" % (g_pos, g_pos2))
                 gear_rail.set_position([0., g_pos, 0.])
                 self.prev_rail_steppers = None
             else:
+                logging.info("PAUL: !!! unsync: poped extruder stepper from gear_rail")
                 gear_rail.steppers.pop() # Extruder stepper
 
             # Restore extruder kinematics and trap queue
+            logging.info("PAUL: !!! unsync: restoring extruder kinematics")
             extruder_stepper.set_trapq(self.prev_trapq)
             extruder_stepper.set_stepper_kinematics(self.prev_sk)
             e_pos = printer_toolhead.get_position()[3]
+            logging.info("PAUL: !!! unsync: restoring extruder positionn to [%s, 0, 0]" % e_pos)
             extruder_stepper.set_position([e_pos, 0., 0.])
 
             # Shift extruder step generator back to printer toolhead
+            logging.info("PAUL: !!! unsync: extruder step_generator moved back to printer toolhead")
             handler = extruder_stepper.generate_steps
             self.step_generators.remove(handler)
             printer_toolhead.register_step_generator(handler)

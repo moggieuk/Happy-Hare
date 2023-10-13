@@ -296,7 +296,7 @@ class Mmu:
         self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.)
         self.encoder_dwell = config.getfloat('encoder_dwell', 0.1, minval=0., maxval=2.) # Not exposed
-        self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Apply dwell to ensure accurate reading
+        self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement # PAUL add to TEST_CONFIG
 
         # Configuration for (fast) bowden move
         self.bowden_num_moves = config.getint('bowden_num_moves', 1, minval=1)
@@ -335,20 +335,24 @@ class Mmu:
         self.extruder_form_tip_current = config.getint('extruder_form_tip_current', 100, minval=100, maxval=150)
         self.sync_gear_current = config.getint('sync_gear_current', 50, minval=10, maxval=100)
 
-        # Speeds and accelaration
-        self.gear_short_move_speed = config.getfloat('gear_short_move_speed', 60., minval=1.)
+        # Filament move speeds and accelaration
         self.gear_from_buffer_speed = config.getfloat('gear_from_buffer_speed', 150., minval=10.)
         self.gear_from_buffer_accel = config.getfloat('gear_from_buffer_accel', 400, minval=10.)
         self.gear_from_spool_speed = config.getfloat('gear_from_spool_speed', 60, minval=10.)
         self.gear_from_spool_accel = config.getfloat('gear_from_spool_accel', 100, minval=10.)
-        self.gear_homing_speed = config.getfloat('gear_homing_speed', 50, minval=1.) # PAUL want this? why not high speed?
-        self.gear_buzz_accel = config.getfloat('gear_buzz_accel', 1000, minval=10.) # Not exposed
-        self.extruder_homing_speed = config.getfloat('extruder_homing_speed', 15, minval=1.) # PAUL check this
+        self.gear_short_move_speed = config.getfloat('gear_short_move_speed', 60., minval=1.)
+        self.gear_short_move_accel = config.getfloat('gear_short_move_accel', 400, minval=10.)
+        self.gear_homing_speed = config.getfloat('gear_homing_speed', 150, minval=1.) # PAUL want this? why not high speed?
+
         self.extruder_load_speed = config.getfloat('extruder_load_speed', 15, minval=1.)
         self.extruder_unload_speed = config.getfloat('extruder_unload_speed', 15, minval=1.)
         self.extruder_sync_load_speed = config.getfloat('extruder_sync_load_speed', 15., minval=1.)
         self.extruder_sync_unload_speed = config.getfloat('extruder_sync_unload_speed', 15., minval=1.)
-        self.extruder_accel = config.getfloat('extruder_accel', 1000, above=10.) # For when not synced and not homing move # PAUL this is not currently exposed, should be?
+        self.extruder_accel = config.getfloat('extruder_accel', 400, above=10.)
+        self.extruder_homing_speed = config.getfloat('extruder_homing_speed', 15, minval=1.)
+
+        self.gear_buzz_accel = config.getfloat('gear_buzz_accel', 1000, minval=10.) # Not exposed
+
         # Selector speeds
         self.selector_move_speed = config.getfloat('selector_move_speed', 200, minval=1.)
         self.selector_homing_speed = config.getfloat('selector_homing_speed', 100, minval=1.)
@@ -527,6 +531,7 @@ class Mmu:
         # the installer by default already guarantees this order
         self._setup_mmu_hardware(config)
 
+
         self.gcode.register_command('PAUL', self.cmd_PAUL)
         self.gcode.register_command('PAUL2', self.cmd_PAUL2)
     def cmd_PAUL(self, gcmd):
@@ -629,6 +634,7 @@ class Mmu:
         mwait = bool(gcmd.get_int('MWAIT', 0))
         test = gcmd.get_float('TEST', 0.)
         servo = bool(gcmd.get_int('SERVO', 0))
+        lock_extruder = bool(gcmd.get_int('LOCK_EXTRUDER', 0))
         if sync:
             self._movequeues_sync()
         elif dwell != 0:
@@ -656,6 +662,11 @@ class Mmu:
             self._log_always("after servo.set_value ")
             self._movequeues_dwell(min(self.servo_duration, 0.5))
             self._movequeues_wait_moves()
+        elif lock_extruder:
+            stepper_enable = self.printer.lookup_object('stepper_enable')
+            ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
+            ge.motor_enable(self.toolhead.get_last_move_time())
+#            self.mmu_extruder_stepper.do_enable(True) # Lock the extruder stepper  # PAUL does this work when extruder is "free" in toolhead?
         else:
             self._log_always("INVALID COMMAND")
         self._log_always("DONE")
@@ -866,8 +877,9 @@ class Mmu:
         self.gate_selected = self.TOOL_GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
         self.servo_state = self.servo_angle = self.SERVO_UNKNOWN_STATE
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
-        self.filament_direction = self.counting_direction = self.DIRECTION_UNKNOWN
-        self.filament_distance = self.last_filament_distance = 0. # Current absolute distance from gate (load) or nozzle (unload)
+        self.filament_direction = self.DIRECTION_UNKNOWN
+# PAUL        self.filament_direction = self.counting_direction = self.DIRECTION_UNKNOWN # PAUL do we need counting_direction?
+# PAUL        self.filament_distance = self.last_filament_distance = 0. # Current absolute distance from gate (load) or nozzle (unload) # PAUL OLD -- do we need this?
         self.next_extruder_load_reduction = 0. # Tracker of filament left in extruder by cutter
         self.action = self.ACTION_IDLE
         self.calibrating = False
@@ -963,7 +975,7 @@ class Mmu:
                 self.gate_statistics[gate].update(gstats)
 
     def handle_disconnect(self):
-        self._log_debug('MMU Shutdown')
+        self._log_debug('Klipper disconnected! MMU Shutdown')
         if self.queue_listener is not None:
             self.queue_listener.stop()
 
@@ -1047,13 +1059,14 @@ class Mmu:
             self.mmu_toolhead.wait_moves()
 
     def _movequeues_dwell(self, dwell, toolhead=True, mmu_toolhead=True):
-        self._log_error("PAUL: DWELL dwell=%s, toolhead=%s, mmu=%s" % (dwell, toolhead, mmu_toolhead))
-        if toolhead and mmu_toolhead:
-            self._movequeues_sync()
-        if toolhead:
-            self.toolhead.dwell(dwell)
-        if mmu_toolhead:
-            self.mmu_toolhead.dwell(dwell)
+        if dwell > 0.:
+            self._log_error("PAUL: DWELL dwell=%s, toolhead=%s, mmu_toolhead=%s" % (dwell, toolhead, mmu_toolhead))
+            if toolhead and mmu_toolhead:
+                self._movequeues_sync()
+            if toolhead:
+                self.toolhead.dwell(dwell)
+            if mmu_toolhead:
+                self.mmu_toolhead.dwell(dwell)
 
     def _movequeues_sync(self):
         mmu_last_move = self.mmu_toolhead.get_last_move_time()
@@ -1320,8 +1333,7 @@ class Mmu:
     def _state_to_human_string(self, direction=None):
         tool_str = str(self.tool_selected) if self.tool_selected >=0 else "?"
         sensor_str = " [sensor] " if self._has_sensor("toolhead") else ""
-        counter_str = " (@%.1f mm)" % self._get_encoder_distance() if self._has_encoder() else ""
-        visual = visual2 = ""
+        counter_str = " (@%.1fmm%s)" % (self.mmu_toolhead.get_position()[1], ", ~%.1fmm" % self._get_encoder_distance() if self._has_encoder() and self.encoder_move_validation else "")
         if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos == self.FILAMENT_POS_LOADED:
             visual = "MMU BYPASS ----- [encoder] ----------->> [nozzle] LOADED"
         elif self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos == self.FILAMENT_POS_UNLOADED:
@@ -1491,7 +1503,7 @@ class Mmu:
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel)
                 self._movequeues_dwell(0.2, mmu_toolhead=False) # PAUL needed? constant movement better?
                 self._trace_filament_move(None, -0.8, speed=25, accel=self.gear_buzz_accel)
-            self._movequeues_dwell(max(self.servo_dwell - (0.4 * oscillations), self.servo_dwell))
+            self._movequeues_dwell(max(self.servo_dwell - (0.4 * oscillations), self.servo_dwell), mmu_toolhead=False)
         self.servo_angle = self.servo_down_angle
         self.servo_state = self.SERVO_DOWN_STATE
 
@@ -1502,7 +1514,7 @@ class Mmu:
         if self.servo_angle != self.servo_move_angle:
             self._movequeues_wait_moves()
             self.servo.set_value(angle=self.servo_move_angle, duration=self.servo_duration)
-            self._movequeues_dwell(max(self.servo_dwell, self.servo_duration))
+            self._movequeues_dwell(max(self.servo_dwell, self.servo_duration), mmu_toolhead=False)
             self.servo_angle = self.servo_move_angle
             self.servo_state = self.SERVO_MOVE_STATE
 
@@ -1513,10 +1525,10 @@ class Mmu:
         delta = 0.
         if self.servo_angle != self.servo_up_angle:
             if measure:
-                initial_encoder_position = self._get_encoder_distance(True)
+                initial_encoder_position = self._get_encoder_distance(False)
             self._movequeues_wait_moves()
             self.servo.set_value(angle=self.servo_up_angle, duration=self.servo_duration)
-            self._movequeues_dwell(max(self.servo_dwell, self.servo_duration))
+            self._movequeues_dwell(max(self.servo_dwell, self.servo_duration), mmu_toolhead=False)
             if measure:
                 # Report on spring back in filament then revert counter
                 delta = self._get_encoder_distance(True) - initial_encoder_position
@@ -1642,14 +1654,14 @@ class Mmu:
                     self._log_always("Test run #%d, Speed=%.1f mm/s" % (x, test_speed))
 
                 # Move forward
-                self._initialize_filament_pos(True)    # Encoder 0000
+                self._initialize_filament_position(True)    # Encoder 0000
                 self._trace_filament_move(None, length, speed=test_speed, accel=accel, wait=True)
                 counts = self._get_encoder_counts(True)
                 pos_values.append(counts)
                 self._log_always("+ counts =  %d" % counts)
 
                 # Move backward
-                self._initialize_filament_pos(True)    # Encoder 0000
+                self._initialize_filament_position(True)    # Encoder 0000
                 self._trace_filament_move(None, -length, speed=test_speed, accel=accel, wait=True)
                 counts = self._get_encoder_counts(True)
                 neg_values.append(counts)
@@ -1695,9 +1707,9 @@ class Mmu:
             raise MmuError("Calibration of encoder failed. Aborting, because:\n%s" % str(ee))
         finally:
             if mean == 0:
-                self._set_filament_pos(self.FILAMENT_POS_UNKNOWN)
+                self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
             else:
-                self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
     def _calibrate_bowden_length(self, start_pos, extruder_homing_max, repeats, save=True):
         try:
@@ -1707,12 +1719,12 @@ class Mmu:
             reference_sum = spring_max = 0.
             successes = 0
             for i in range(repeats):
-                self._initialize_filament_pos()    # Encoder 0000
+                self._initialize_filament_position(True)    # Encoder 0000
                 self._load_gate(allow_retry=False)
                 self._load_bowden(start_pos)
                 self._log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
-                measured_movement = self._get_encoder_distance()
+                measured_movement = self._get_encoder_distance(False)
                 spring = self._servo_up(measure=True)
                 reference = measured_movement - (spring * 0.5)
                 if spring > 0:
@@ -1735,10 +1747,10 @@ class Mmu:
                     # No spring means we haven't reliably homed
                     self._log_always("Failed to detect a reliable home position on this attempt")
 
-                self._initialize_filament_pos()    # Encoder 0000
+                self._initialize_filament_position(True)    # Encoder 0000
                 self._unload_bowden(reference - self.gate_unload_buffer)
                 self._unload_gate()
-                self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
 
             if successes > 0:
                 average_reference = reference_sum / successes
@@ -1772,11 +1784,11 @@ class Mmu:
             self._log_always("%s gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", gate, length))
 
             for x in range(repeats):
-                self._initialize_filament_pos(True)    # Encoder 0000
+                self._initialize_filament_position(True)    # Encoder 0000
                 delta = self._trace_filament_move("Calibration load movement", length, encoder_dwell=True)
                 pos_values.append(length - delta)
                 self._log_always("+ measured =  %.1fmm (counts = %d)" % ((length - delta), self._get_encoder_counts()))
-                self._initialize_filament_pos(True)    # Encoder 0000
+                self._initialize_filament_position(True)    # Encoder 0000
                 delta = self._trace_filament_move("Calibration unload movement", -length, encoder_dwell=True)
                 neg_values.append(length - delta)
                 self._log_always("- measured =  %.1fmm (counts = %d)" % ((length - delta), self._get_encoder_counts()))
@@ -1801,7 +1813,7 @@ class Mmu:
                 else:
                     self._log_always("Calibration ratio ignored because it is not considered valid (0.8 < ratio < 1.2)")
             self._unload_gate()
-            self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
+            self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
         except MmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration for gate #%d failed. Aborting, because: %s" % (gate, str(ee)))
@@ -2199,7 +2211,7 @@ class Mmu:
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._enable_encoder_sensor(True) # Enable runout/clog detection
-            self._initialize_filament_pos() # Encoder 0000
+            self._initialize_filament_position() # Encoder 0000
 
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
             msg = "MMU initialized ready for print"
@@ -2261,7 +2273,7 @@ class Mmu:
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.paused_extruder_temp = None
             self._sync_gear_to_extruder(self.sync_to_extruder and self.resume_to_state == "printing", servo=True, current=self.resume_to_state == "printing")
-            self._initialize_filament_pos() # Encoder 0000
+            self._initialize_filament_position() # Encoder 0000
             self._restore_toolhead_position("resume")
             self._track_pause_end()
             self._set_print_state(self.resume_to_state)
@@ -2362,45 +2374,81 @@ class Mmu:
         else:
             return "n/a"
 
-    def _get_encoder_distance(self, dwell=False):
+    # For all encoder methods, 'dwell' means:
+    #   None -  default behavior to use encoder if exists and move validation enabled (includes wait)
+    #   True -  force use encoder if fitted and dwell to ensure accurate measurement (critical measurement)
+    #   False - force use encoder if fitted without dwell (can occasionally measure slightly short)
+    def _get_encoder_distance(self, dwell=None):
         if self._has_encoder():
-            if dwell and self.encoder_move_validation:
-                self._movequeues_dwell(self.encoder_dwell)
-                self._movequeues_wait_moves()
-            return self.encoder_sensor.get_distance()
-        else:
-            pos = self.mmu_toolhead.get_position()
-            #return pos[1] # PAUL TODO new method
-            if self.filament_distance != abs(pos[1]):
-                self._log_error("PAUL: ****** pos[1]=%s, filament_distance=%s")
-            return self.filament_distance # PAUL old way
+            if self.encoder_move_validation:
+                if dwell is not None:
+                    self._movequeues_dwell(self.encoder_dwell if dwell else 0)
+                    self._movequeues_wait_moves()
+                return self.encoder_sensor.get_distance()
 
-    def _set_encoder_distance(self, distance, dwell=False):
-        if self._has_encoder():
-            if dwell and self.encoder_move_validation:
-                self._movequeues_dwell(self.encoder_dwell)
-                self._movequeues_wait_moves()
-            return self.encoder_sensor.set_distance(distance)
+        # If we don't care about encoder measurement this will ensure all validation passes
+        return self.mmu_toolhead.get_position()[1]
 
     # Used only for calibration of encoder and gates
-    def _get_encoder_counts(self, dwell=False):
+    def _get_encoder_counts(self, dwell=None):
         if self._has_encoder():
-            if dwell and self.encoder_move_validation:
-                self._movequeues_dwell(self.encoder_dwell)
-                self._movequeues_wait_moves()
-            return self.encoder_sensor.get_counts()
-        else:
-            return 0
+            if self.encoder_move_validation:
+                if dwell is not None:
+                    self._movequeues_dwell(self.encoder_dwell if dwell else 0)
+                    self._movequeues_wait_moves()
+                return self.encoder_sensor.get_counts()
 
-    def _initialize_filament_pos(self, dwell=False):
+        return 0
+
+    def _set_encoder_distance(self, distance, dwell=None):
         if self._has_encoder():
-            if dwell and self.encoder_move_validation:
-                self._movequeues_dwell(self.encoder_dwell)
-                self._movequeues_wait_moves()
+            if self.encoder_move_validation:
+                if dwell is not None:
+                    self._movequeues_dwell(self.encoder_dwell if dwell else 0)
+                    self._movequeues_wait_moves()
+            self.encoder_sensor.set_distance(distance)
+
+    def _initialize_filament_position(self, dwell=None):
+        if self._has_encoder():
+            if self.encoder_move_validation:
+                if dwell is not None:
+                    self._movequeues_dwell(self.encoder_dwell if dwell else 0)
+                    self._movequeues_wait_moves()
             self.encoder_sensor.reset_counts()
+
+    def _set_filament_position(self, position = 0.):
+        self.mmu_toolhead.get_last_move_time() # Flush lookahead
         pos = self.mmu_toolhead.get_position()
-        pos[1] = 0.
+        pos[1] = position
         self.mmu_toolhead.set_position(pos)
+        return position
+
+    def _set_filament_pos_state(self, state, silent=False):
+        self.filament_pos = state
+        if self.gate_selected != self.TOOL_GATE_BYPASS or state == self.FILAMENT_POS_UNLOADED or state == self.FILAMENT_POS_LOADED:
+            self._display_visual_state(silent=silent)
+
+# PAUL vvv OLD?
+#        if state == self.FILAMENT_POS_UNLOADED or state == self.FILAMENT_POS_LOADED or self.counting_direction != self.filament_direction:
+#            self.last_filament_distance = self.filament_distance
+#            self.filament_distance = 0.           # Reset global distance tracking
+#            self.counting_direction = self.filament_direction
+# PAUL ^^^
+
+        # Minimal save_variable writes
+        if state in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, state))
+        elif self.variables.get(self.VARS_MMU_FILAMENT_POS, 0) != self.FILAMENT_POS_UNKNOWN:
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN))
+
+    def _set_filament_direction(self, direction):
+        self.filament_direction = direction
+
+# PAUL
+#        if self.counting_direction != self.filament_direction:
+#            self.last_filament_distance = self.filament_distance
+#            self.filament_distance = 0.           # Reset global distance tracking
+#            self.counting_direction = self.filament_direction
 
     def _has_sensor(self, name):
         return self.sensors[name].runout_helper.sensor_enabled if name in self.sensors else False
@@ -2529,30 +2577,6 @@ class Mmu:
                 with self._wrap_action(self.ACTION_HEATING):
                     self._log_info("Waiting for extruder to reach target (%s) temperature (%.1f)" % (source, new_target_temp))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
-
-    def _set_filament_pos(self, state, silent=False):
-        self.filament_pos = state
-        if self.gate_selected != self.TOOL_GATE_BYPASS or state == self.FILAMENT_POS_UNLOADED or state == self.FILAMENT_POS_LOADED:
-            self._display_visual_state(silent=silent)
-
-        if state == self.FILAMENT_POS_UNLOADED or state == self.FILAMENT_POS_LOADED or self.counting_direction != self.filament_direction:
-            self.last_filament_distance = self.filament_distance
-            self.filament_distance = 0.           # Reset global distance tracking
-            self.counting_direction = self.filament_direction
-
-        # Minimal save_variable writes
-        if state in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, state))
-        elif self.variables.get(self.VARS_MMU_FILAMENT_POS, 0) != self.FILAMENT_POS_UNKNOWN:
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN))
-
-    def _set_filament_direction(self, direction):
-        self.filament_direction = direction
-
-        if self.counting_direction != self.filament_direction:
-            self.last_filament_distance = self.filament_distance
-            self.filament_distance = 0.           # Reset global distance tracking
-            self.counting_direction = self.filament_direction
 
     def _selected_tool_string(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS:
@@ -2797,25 +2821,17 @@ class Mmu:
 
     cmd_MMU_STEP_LOAD_BOWDEN_help = "User composable loading step: Smart loading of bowden"
     def cmd_MMU_STEP_LOAD_BOWDEN(self, gcmd):
-        length = gcmd.get_float('LENGTH')
-        if self.filament_distance >= length: return
-        if (length >= self.calibrated_bowden_length):
-            length = self.calibrated_bowden_length
-            full = True
-        else:
-            full = False
+        length = gcmd.get_float('LENGTH', self.calibrated_bowden_length)
         try:
-            self._load_bowden(length - self.filament_distance, full)
+            self._load_bowden(length)
         except MmuError as ee:
             raise gcmd.error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
 
     cmd_MMU_STEP_UNLOAD_BOWDEN_help = "User composable unloading step: Smart unloading of bowden"
     def cmd_MMU_STEP_UNLOAD_BOWDEN(self, gcmd):
-        full = gcmd.get_int('FULL', 1)
-        default_length = self.calibrated_bowden_length - self.gate_unload_buffer
-        length = gcmd.get_float('LENGTH', default_length)
+        length = gcmd.get_float('LENGTH', self.calibrated_bowden_length)
         try:
-            self._unload_bowden(default_length if full else length)
+            self._unload_bowden(length)
         except MmuError as ee:
             raise gcmd.error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
 
@@ -2848,7 +2864,7 @@ class Mmu:
     def cmd_MMU_STEP_HOMING_MOVE(self, gcmd):
         try:
             homed, actual, delta = self._homing_move_cmd(gcmd, "User defined step homing move")
-            self.filament_distance += actual
+# PAUL            self.filament_distance += actual
         except MmuError as ee:
             raise gcmd.error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
@@ -2856,7 +2872,7 @@ class Mmu:
     def cmd_MMU_STEP_MOVE(self, gcmd):
         try:
             actual, delta = self._move_cmd(gcmd, "User defined step move")
-            self.filament_distance += actual
+# PAUL            self.filament_distance += actual
         except MmuError as ee:
             raise gcmd.error("_MMU_STEP_MOVE: %s" % str(ee))
 
@@ -2865,7 +2881,7 @@ class Mmu:
         state = gcmd.get_int('STATE', )
         silent = gcmd.get_int('SILENT', 0)
         if state >= self.FILAMENT_POS_UNLOADED and state <= self.FILAMENT_POS_LOADED:
-            self._set_filament_pos(state, silent)
+            self._set_filament_pos_state(state, silent)
         else:
             raise gcmd.error("_MMU_STEP_SET_FILAMENT: Invalid state '%d'" % state)
 
@@ -2874,13 +2890,13 @@ class Mmu:
 # MODULAR FILAMENT LOAD AND UNLOAD FUNCTIONS #
 ##############################################
 
-    # Load filament into gate
-    # Return the filament distance moved past the 'start_of_bowden' position.  This is
-    # to allow for encoder based loading to overshoot by a variable amount.
-    # Returns the best assessment of distance moved and updates filament_distance
+    # Load filament into gate. This is considered the "zero" positon for filament loading. Note that this
+    # may overshoot for the "encoder" loading technique but subsequent bowden move will accommodate
+    # Return the filament distance moved past the 'start_of_bowden' position.
     def _load_gate(self, allow_retry=True, adjust_servo_on_error=True):
         self._validate_gate_config("load")
         self._set_filament_direction(self.DIRECTION_LOAD)
+        self._initialize_filament_position() # Reset because first step in normal sequence
         self._servo_down()
         initial_encoder_position = self._get_encoder_distance()
         retries = self.gate_load_retries if allow_retry else 1
@@ -2888,12 +2904,12 @@ class Mmu:
         for i in range(retries):
             if self.gate_homing_endstop == "encoder":
                 msg = "Initial load into encoder" if i == 0 else ("Retry load into encoder #%d" % i)
-                delta = self._trace_filament_move(msg, self.gate_homing_max)
+                delta = self._trace_filament_move(msg, self.gate_homing_max, encoder_dwell=False)
                 if (self.gate_homing_max - delta) > 6.0:
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
-                    self._set_filament_pos(self.FILAMENT_POS_START_BOWDEN)
-                    self.filament_distance = self._get_encoder_distance() - initial_encoder_position
-                    return self.filament_distance
+                    self._set_filament_position(self._get_encoder_distance() - initial_encoder_position)
+                    self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
+                    return self.mmu_toolhead.get_position()[1] # PAUL do we need to return?
                 else:
                     self._log_debug("Error loading filament - not enough detected at encoder. %s" % ("Retrying..." if i < retries - 1 else ""))
                     if i < retries - 1:
@@ -2907,9 +2923,9 @@ class Mmu:
                 if homed:
                     self._log_debug("Gate endstop reached after %.1fmm (measured %.1fmm)" % (actual, measured_movement))
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
-                    self._set_filament_pos(self.FILAMENT_POS_START_BOWDEN)
-                    self.filament_distance = actual
-                    return self.filament_distance
+                    self._initialize_filament_position()
+                    self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
+                    return self.mmu_toolhead.get_position()[1] # PAUL do we need to return?
                 else:
                     self._log_debug("Error loading filament - did not find home. %s" % ("Retrying..." if i < retries - 1 else ""))
                     if i < retries - 1:
@@ -2918,7 +2934,7 @@ class Mmu:
                         self._servo_down()
 
         self._set_gate_status(self.gate_selected, self.GATE_UNKNOWN)
-        self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
+        self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
         if adjust_servo_on_error:
             self._servo_auto()
         if self.gate_homing_endstop == "encoder":
@@ -2927,9 +2943,8 @@ class Mmu:
             raise MmuError("Error loading filament at gate - gate endstop didn't trigger")
 
     # Unload filament through gate to final MMU park position.
-    # Strategies include use of encoder or homing to endstop
+    # Strategies include use of encoder or homing to gate endstop and then parking
     # Allows the overriding of homing_max for slow unloads when we are unsure of filament position
-    # Returns the best assessment of distance moved and updates filament_distance
     def _unload_gate(self, homing_max=None):
         self._validate_gate_config("unload")
         self._set_filament_direction(self.DIRECTION_UNLOAD)
@@ -2943,7 +2958,7 @@ class Mmu:
             distance_moved = 0.
             for i in range(max_steps):
                 msg = "Unloading step #%d from encoder" % (i+1)
-                delta = self._trace_filament_move(msg, -self.encoder_move_step_size)
+                delta = self._trace_filament_move(msg, -self.encoder_move_step_size, encoder_dwell=False)
                 # Large enough delta here means we are out of the encoder
                 if delta >= self.encoder_move_step_size * 0.2: # 20 %
                     distance_moved += (self.encoder_move_step_size - delta)
@@ -2952,20 +2967,17 @@ class Mmu:
                     # We don't expect any movement of the encoder unless it is free-spinning
                     if park - delta > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
                         self._log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
-                    self.filament_distance += distance_moved # Assume actual except for last parking step
-                    self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
-                    return distance_moved
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                    return
                 else:
                     distance_moved += self.encoder_move_step_size
         else:
             homed, actual, delta = self._trace_filament_move("Initial homing to gate sensor", homing_max, motor="gear", homing_move=-1, endstop_name="mmu_gear_gate")
-            self.filament_distance += actual
             if homed:
                 # Final parking step
                 delta = self._trace_filament_move("Final parking", -self.gate_parking_distance)
-                self.filament_distance += self.gate_parking_distance
-                self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
-                return distance_moved
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                return
             else:
                 self._log_debug("Did not home to gate sensor")
 
@@ -2982,19 +2994,18 @@ class Mmu:
         else:
             raise MmuError("Unsupported gate endstop")
 
-    # Fast load of filament to (approximate) end of bowden
+    # Fast load of filament in bowden, optionally to the end
     # Handles setting of cailbration ratio if not set
-    # Returns the measured distance moved if encoder equipped else actual
-    # PAUL pass length - how far to load (could take starting position of self.filament_distance
-    # PAUL into account automatically to spare caller from calculating)
-    # PAUL length = None can indicate a full length move
-    # PAUL
-    def _load_bowden(self, length, full=False): # PAUL full is only used for setting position state to end of bowden
+    def _load_bowden(self, length):
         if length <= 0: return
+        length = min(length, self.calibrated_bowden_length)
+        full = length == self.calibrated_bowden_length
+        length -= self.mmu_toolhead.get_position()[1]
+
         self._log_debug("Loading bowden tube")
-        tolerance = self.bowden_load_tolerance
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._servo_down()
+        tolerance = self.bowden_load_tolerance
 
         # See if we need to automatically set calibration ratio for this gate
         current_ratio = self.variables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), None)
@@ -3011,8 +3022,8 @@ class Mmu:
         for i in range(moves):
             msg = "Course loading move #%d into bowden" % (i+1)
             delta += self._trace_filament_move(msg, length / moves, track=True, encoder_dwell=reference_load)
-            if (i+1) < moves:
-                self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
+            if (i+1) < moves or moves == 1:
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
         if reference_load:
             ratio = (length - delta) / length
@@ -3032,7 +3043,7 @@ class Mmu:
                         self._log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self._get_encoder_distance())
                     else:
                         break
-                self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
                 if delta >= tolerance:
                     self._log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder delta %.1fmm. See mmu.log for more details"% (length, delta))
             else:
@@ -3042,289 +3053,84 @@ class Mmu:
                 self._log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo\nLoad speed too fast for encoder to track")
 
         if full:
-            self._set_filament_pos(self.FILAMENT_POS_END_BOWDEN)
-        self.filament_distance += length
-        return length - delta
+            self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
 
-    # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (but still in encoder)
-    # Returns the measured distance moved if encoder equipped else actual
+    # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (gate_unload_buffer away)
     def _unload_bowden(self, length):
+        if length <= 0: return
+        length = min(length, self.calibrated_bowden_length)
+        full = length == self.calibrated_bowden_length
+        length -= self.gate_unload_buffer
+
         self._log_debug("Unloading bowden tube")
         self._set_filament_direction(self.DIRECTION_UNLOAD)
-        tolerance = self.bowden_unload_tolerance
         self._servo_down()
+        tolerance = self.bowden_unload_tolerance
+
+        # "Fast" unload
         moves = 1 if length < (self.calibrated_bowden_length / self.bowden_num_moves) else self.bowden_num_moves
         delta = 0
         for i in range(moves):
             msg = "Course unloading move #%d from bowden" % (i+1)
             delta += self._trace_filament_move(msg, -length / moves, track=True)
-            if (i+1) < moves:
-                self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
+            if (i+1) < moves or moves == 1:
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
         if delta >= length * 0.8 and not self.calibrating: # 80% slippage detects filament still stuck in extruder
             raise MmuError("Failure to unload bowden. Perhaps filament is stuck in extruder. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
         elif delta >= tolerance and not self.calibrating:
             # Only a warning because _unload_gate() will deal with it
             self._log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
-        self._set_filament_pos(self.FILAMENT_POS_START_BOWDEN)
-        self._random_failure()
-        self.filament_distance += length
-        return length - delta
+        self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
 
-# ----------------------------------------------------------------
-
-
-###########################
-# LOAD / UNLOAD SEQUENCES #
-###########################
-
-    def _load_sequence(self, length, skip_extruder=False, extruder_only=False):
-        self._log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
-        full = home = False
-        self._set_filament_direction(self.DIRECTION_LOAD)
-        self._movequeues_wait_moves()
-        self._set_encoder_distance(self.filament_distance)
-
-        if not extruder_only:
-            self._display_visual_state()
-            if (length >= self.calibrated_bowden_length):
-                if (length > self.calibrated_bowden_length):
-                    length = self.calibrated_bowden_length
-                    self._log_info("Restricting load length to extruder calibration reference of %.1fmm" % length)
-                full = True
-                self._track_load_start()
-                home = self._must_home_to_extruder()
-            else:
-                skip_extruder = True
-            current_action = self._set_action(self.ACTION_LOADING)
-
-        try:
-            # Note: Conditionals deliberately coded this way to match macro alternative
-            start_filament_pos = self.filament_pos
-            if self.gcode_load_sequence:
-                self._log_debug("Calling external user defined loading sequence macro")
-                self._wrap_gcode_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (start_filament_pos, length, int(full), int(home), int(skip_extruder), int(extruder_only)), exception=True)
-
-            elif extruder_only:
-                if start_filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
-                    self._load_extruder(extruder_stepper_only=True)
-                else:
-                    self._log_debug("Assertion failure: Unexpected state %d in _load_sequence(extruder_only=True)" % start_filament_pos)
-                    raise MmuError("Cannot load extruder because already in extruder. Unload first")
-
-            elif start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                self._log_debug("Assertion failure: Unexpected state %d in _load_sequence()" % start_filament_pos)
-                raise MmuError("Cannot load because already in extruder. Unload first")
-
-            else:
-                if start_filament_pos <= self.FILAMENT_POS_UNLOADED:
-                    self._load_gate()
-
-                if start_filament_pos < self.FILAMENT_POS_END_BOWDEN:
-                    self._load_bowden(length - self.filament_distance, full) # PAUL self._load_bowden(length)
-
-                if start_filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER and home:
-                    self._home_to_extruder(self.extruder_homing_max)
-
-                if not skip_extruder:
-                    self._load_extruder()
-
-            self._movequeues_wait_moves()
-            msg = "Loaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_LOADED else self.filament_distance)
-            if self._has_encoder():
-                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance()
-            self._log_info(msg)
-        except MmuError as ee:
-            if full:
-                self._track_gate_statistics('load_failures', self.gate_selected)
-            raise MmuError("Load sequence failed: %s" % (str(ee)))
-        finally:
-            if full:
-                self._track_load_end()
-            if not extruder_only:
-                self._set_action(current_action)
-
-    def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
-        self._set_filament_direction(self.DIRECTION_UNLOAD)
-        self._movequeues_wait_moves()
-        self._set_encoder_distance(self.filament_distance)
-
-        if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
-            # Let's determine where filament is and reset state before continuing
-            self._recover_filament_pos(message=True)
-
-        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-            self._log_debug("Filament already ejected")
-            self._servo_auto()
-            return
-
-        try:
-            self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
-            if not extruder_only:
-                current_action = self._set_action(self.ACTION_UNLOADING)
-                self._track_unload_start()
-                self._display_visual_state()
-
-            # Check for cases where we must form tip
-            if skip_tip:
-                park_pos = self.slicer_tip_park_pos
-            elif self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER:
-                detected, park_pos = self._form_tip_standalone()
-                if detected:
-                    # Definitely in extruder
-                    self._set_filament_pos(self.FILAMENT_POS_IN_EXTRUDER)
-                else:
-                    # No detection means we can assume we are somewhere in the bowden
-                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
-            else:
-                park_pos = 0.
-
-            # Note: Conditionals deliberately coded this way to match macro alternative
-            start_filament_pos = self.filament_pos
-            unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
-            if self.gcode_unload_sequence:
-                self._log_debug("Calling external user defined unloading sequence macro")
-                self._wrap_gcode_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (start_filament_pos, length, extruder_only, park_pos), exception=True)
-
-            elif extruder_only:
-                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                    self._unload_extruder(extruder_stepper_only=True, park_pos=park_pos)
-                else:
-                    self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence(extruder_only=True)" % start_filament_pos)
-                    raise MmuError("Cannot unload extruder because filament not in extruder!")
-
-            elif start_filament_pos == self.FILAMENT_POS_UNLOADED:
-                self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence()" % start_filament_pos)
-                raise MmuError("Cannot unload because already unloaded!")
-
-            else:
-                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                    # Exit extruder, fast unload of bowden, then slow unload encoder
-                    self._unload_extruder(park_pos=park_pos)
-
-                if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
-                    # Fast unload of bowden, then unload encoder
-                    self._unload_bowden(length - self.gate_unload_buffer)
-                    self._unload_gate()
-
-                elif start_filament_pos >= self.FILAMENT_POS_START_BOWDEN:
-                    # Have to do slow unload because we don't know exactly where we are
-                    self._unload_gate(homing_max=length) # Full slow unload
-
-            if unload_to_buffer and self.gate_status[self.gate_selected] != self.GATE_EMPTY:
-                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
-
-            self._movequeues_wait_moves()
-            movement = self._servo_up(measure=True)
-            if movement > self.encoder_min:
-                self._set_filament_pos(self.FILAMENT_POS_UNKNOWN)
-                raise MmuError("It may be time to get the pliers out! Filament appears to stuck somewhere")
-
-            msg = "Unloaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_UNLOADED else self.filament_distance)
-            if self._has_encoder():
-                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance()
-            self._log_info(msg)
-
-        except MmuError as ee:
-            if not extruder_only:
-                self._track_gate_statistics('unload_failures', self.gate_selected)
-            raise MmuError("Unload sequence failed: %s" % (str(ee)))
-
-        finally:
-            if not extruder_only:
-                self._track_unload_end()
-                self._set_action(current_action)
-
-    # This is a recovery routine to determine the most conservative location of the filament for unload purposes
-    def _recover_filament_pos(self, strict=False, message=False):
-        if message:
-            self._log_info("Attempting to recover filament position...")
-        ts = self._check_sensor("toolhead")
-        if ts is None: # Not installed
-            if self._check_filament_in_mmu():
-                if self._check_filament_still_in_extruder():
-                    self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                else:
-                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
-            else:
-                self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
-        elif ts: # Filament detected in toolhead
-            self._set_filament_pos(self.FILAMENT_POS_LOADED)
-        else: # Filament not detected in toolhead
-            if self._check_filament_in_mmu():
-                if self.strict_filament_recovery or strict:
-                    if self._check_filament_still_in_extruder():
-                        self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                    else:
-                        self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN)
-                else:
-                    self._set_filament_pos(self.FILAMENT_POS_IN_BOWDEN) # Slight risk of it still being gripped by extruder
-            else:
-                self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
-
-    # Retract the filament by the extruder stepper only and see if we do not have any encoder movement
-    # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
-    # Return if filament detected and distance filament moved during test
-    def _test_filament_in_extruder_by_retracting(self, length=None):
-        self._log_debug("Testing for filament in extruder by retracting on extruder stepper only")
-        if not length:
-            length = self.encoder_move_step_size
-        self._servo_up()
-        delta = self._trace_filament_move("Moving extruder to test for filament exit",
-                -length, speed=self.extruder_unload_speed, motor="extruder")
-        movement = length - delta
-        detected = movement > self.encoder_min
-        self._log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
-        return detected, movement
-
-# ----------------------------------------------------------------
-
-    # Step 3a of the load sequence
     # This optional step snugs the filament up to the extruder gears
-    # Returns the measured distance moved for collision else actual from klipper
     def _home_to_extruder(self, max_length):
-        self._servo_down()
         self._set_filament_direction(self.DIRECTION_LOAD)
+        self._servo_down()
         try:
-            self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead
-            self.mmu_extruder_stepper.do_enable(True) # Lock the extruder stepper 
+#            self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead # PAUL do I need this?
+            # Lock the extruder stepper
+            stepper_enable = self.printer.lookup_object('stepper_enable')
+            ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
+            ge.motor_enable(self.toolhead.get_last_move_time())
 
             if self.extruder_homing_endstop != self.EXTRUDER_COLLISION_ENDSTOP:
                 self._log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
                 homed, actual, delta = self._trace_filament_move("Homing filament to extruder",
                         max_length, motor="gear", homing_move=1, endstop_name=self.extruder_homing_endstop)
                 measured_movement = max_length - delta
-                distance_moved = actual
+# PAUL                distance_moved = actual
                 if homed:
                     self._log_debug("Extruder entrance reached after %.1fmm (measured %.1fmm)" % (actual, measured_movement))
             else:
-                homed, measured_movement = self._home_to_extruder_collision_detection(max_length)
-                distance_moved = measured_movement
+                homed = self._home_to_extruder_collision_detection(max_length)
+# PAUL                distance_moved = measured_movement
+# PAUL adjust filament pos here based on measured_movement?
 
             if not homed:
-                self._set_filament_pos(self.FILAMENT_POS_END_BOWDEN)
+                self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
                 raise MmuError("Failed to reach extruder gear after moving %.1fmm" % max_length)
 
             if measured_movement > (max_length * 0.8):
                 self._log_info("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase your initial load distance ('%s') or increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
 
             self._random_failure()
-            self._set_filament_pos(self.FILAMENT_POS_HOMED_EXTRUDER)
-            self.filament_distance += distance_moved
-            return distance_moved
+            self._set_filament_pos_state(self.FILAMENT_POS_HOMED_EXTRUDER)
+# PAUL            self.filament_distance += distance_moved
         finally:
-            self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Resync with toolhead extruder
+            pass # PAUL temp
+#            self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Resync with toolhead extruder
 
     def _home_to_extruder_collision_detection(self, max_length):
         step = self.extruder_collision_homing_step * math.ceil(self.encoder_resolution * 10) / 10
         self._log_debug("Homing to extruder gear, up to %.1fmm in %.1fmm steps" % (max_length, step))
 
         with self._wrap_gear_current(self.extruder_homing_current, "for collision detection"):
-            initial_encoder_position = self._get_encoder_distance()
+            initial_encoder_position = self._get_encoder_distance(False)
             homed = False
             for i in range(int(max_length / step)):
                 msg = "Homing step #%d" % (i+1)
                 delta = self._trace_filament_move(msg, step, speed=self.gear_homing_speed)
-                measured_movement = self._get_encoder_distance() - initial_encoder_position
+                measured_movement = self._get_encoder_distance(False) - initial_encoder_position
                 total_delta = step*(i+1) - measured_movement
                 if delta >= self.encoder_min or abs(total_delta) > step: # Not enough or strange measured movement means we've hit the extruder
                     homed = True
@@ -3334,7 +3140,7 @@ class Mmu:
 
         if total_delta > 5.0:
             self._log_info("Warning: A lot of slippage was detected whilst homing to extruder, you may want to reduce 'extruder_homing_current' and/or ensure a good grip on filament by gear drive")
-        return homed, measured_movement
+        return homed
 
     # Step 3b of the load sequence
     # This optional step aligns (homes) filament to the toolhead sensor which should be a very
@@ -3380,11 +3186,11 @@ class Mmu:
                 distance_moved += actual
 
         if homed:
-            self._set_filament_pos(self.FILAMENT_POS_HOMED_TS)
-            self.filament_distance += distance_moved
+            self._set_filament_pos_state(self.FILAMENT_POS_HOMED_TS)
+# PAUL            self.filament_distance += distance_moved
             return distance_moved
         else:
-            self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
+            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
             raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
     # Step 4 of the load sequence
@@ -3427,7 +3233,7 @@ class Mmu:
                         delta = self._trace_filament_move("Synced extruder entry move",
                                 dist, speed=self.extruder_sync_load_speed, motor="gear+extruder")
                         length -= dist
-                    self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                    self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
 
                 # Move the remaining distance to the nozzle meltzone under exclusive extruder stepper control
                 self._servo_up()
@@ -3444,20 +3250,16 @@ class Mmu:
                 if total_delta > tolerance:
                     msg = "Move to nozzle failed (encoder not sensing sufficient movement). Extruder may not have picked up filament or filament did not home correctly"
                     if not self.toolhead_ignore_load_error:
-                        self._set_filament_pos(self.FILAMENT_POS_IN_EXTRUDER)
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                         raise MmuError(msg)
                     else:
                         self._log_always("Ignoring: %s" % msg)
 
             self._random_failure()
-            self.filament_distance += distance_moved
-            self._set_filament_pos(self.FILAMENT_POS_LOADED)
+# PAUL            self.filament_distance += distance_moved
+            self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self._log_info('MMU load successful')
             return distance_moved
-
-#############################
-# FILAMENT UNLOAD FUNCTIONS #
-#############################
 
     # Step 1 of the unload sequence
     # Extract filament past extruder gear (to end of bowden)
@@ -3487,7 +3289,7 @@ class Mmu:
                         -length, motor=motor, homing_move=-1, endstop_name="mmu_toolhead")
                 distance_moved += -actual # Actual distance is -ve
                 if homed:
-                    self._set_filament_pos(self.FILAMENT_POS_HOMED_TS)
+                    self._set_filament_pos_state(self.FILAMENT_POS_HOMED_TS)
                     # Last move to ensure we are really free because of small space between sensor and extruder gears
                     length += actual # Actual is -ve
                     if self.toolhead_sensor_to_nozzle > 0. and self.toolhead_extruder_to_nozzle > 0.:
@@ -3505,7 +3307,7 @@ class Mmu:
                 length = self._get_home_position_to_nozzle() - park_pos + step + safety_margin
                 speed = self.extruder_unload_speed * 0.5 # First pull slower just in case we don't have tip
                 self._log_debug("Trying to exit the extruder, up to %.1fmm in %.1fmm steps" % (length, step))
-                self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                 for i in range(int(math.ceil(length / step))):
                     msg = "Step #%d:" % (i+1)
                     delta = self._trace_filament_move(msg, -step, speed=speed, motor="extruder")
@@ -3527,7 +3329,7 @@ class Mmu:
                 speed = self.extruder_unload_speed * 0.5 # First pull slower just in case we don't have tip
                 self._log_debug("Trying to exit the extruder, up to %.1fmm in %.1fmm steps" % (length, step))
                 stuck_in_extruder = False
-                self._set_filament_pos(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                 for i in range(int(math.ceil(length / step))):
                     msg = "Step #%d:" % (i+1)
                     delta = self._trace_filament_move(msg, -step, speed=speed, motor="gear+extruder")
@@ -3555,15 +3357,226 @@ class Mmu:
 
             self._random_failure()
             self._log_debug("Filament should be out of extruder")
-            self.filament_distance += distance_moved
-            self._set_filament_pos(self.FILAMENT_POS_END_BOWDEN)
+# PAUL            self.filament_distance += distance_moved
+            self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
             return distance_moved
 
 
+##############################################
+# LOAD / UNLOAD SEQUENCES AND FILAMENT TESTS #
+##############################################
+
+    def _load_sequence(self, length, skip_extruder=False, extruder_only=False):
+        self._log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
+        full = home = False
+        self._movequeues_wait_moves()
+        self._set_filament_direction(self.DIRECTION_LOAD)
+        self._initialize_filament_position()    # Encoder 0000 # PAUL NEW
+# PAUL        self._set_encoder_distance(self.filament_distance)
+# PAUL        self._set_encoder_distance(self.mmu_toolhead.get_position()[1])
+
+        if not extruder_only:
+            self._display_visual_state()
+            if (length >= self.calibrated_bowden_length):
+                if (length > self.calibrated_bowden_length):
+                    length = self.calibrated_bowden_length
+                    self._log_info("Restricting load length to extruder calibration reference of %.1fmm" % length)
+                full = True
+                self._track_load_start()
+                home = self._must_home_to_extruder()
+            else:
+                skip_extruder = True
+            current_action = self._set_action(self.ACTION_LOADING)
+
+        try:
+            # Note: Conditionals deliberately coded this way to match macro alternative
+            start_filament_pos = self.filament_pos
+            if self.gcode_load_sequence:
+                self._log_debug("Calling external user defined loading sequence macro")
+                self._wrap_gcode_command("_MMU_LOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (start_filament_pos, length, int(full), int(home), int(skip_extruder), int(extruder_only)), exception=True) # PAUL maybe delete FULL
+
+            elif extruder_only:
+                if start_filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
+                    self._load_extruder(extruder_stepper_only=True)
+                else:
+                    self._log_debug("Assertion failure: Unexpected state %d in _load_sequence(extruder_only=True)" % start_filament_pos)
+                    raise MmuError("Cannot load extruder because already in extruder. Unload first")
+
+            elif start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
+                self._log_debug("Assertion failure: Unexpected state %d in _load_sequence()" % start_filament_pos)
+                raise MmuError("Cannot load because already in extruder. Unload first")
+
+            else:
+                if start_filament_pos <= self.FILAMENT_POS_UNLOADED:
+                    self._load_gate()
+
+                if start_filament_pos < self.FILAMENT_POS_END_BOWDEN:
+                    self._load_bowden(length)
+
+                if start_filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER and home:
+                    self._home_to_extruder(self.extruder_homing_max)
+
+                if not skip_extruder:
+                    self._load_extruder()
+
+            self._movequeues_wait_moves()
+# PAUL            msg = "Loaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_LOADED else self.filament_distance)
+            msg = "Loaded %.1fmm of filament" % (self.mmu_toolhead.get_position()[1])
+            if self._has_encoder():
+                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance()
+            self._log_info(msg)
+        except MmuError as ee:
+            if full:
+                self._track_gate_statistics('load_failures', self.gate_selected)
+            raise MmuError("Load sequence failed: %s" % (str(ee)))
+        finally:
+            if full:
+                self._track_load_end()
+            if not extruder_only:
+                self._set_action(current_action)
+
+    def _unload_sequence(self, length, check_state=False, skip_tip=False, extruder_only=False):
+        self._movequeues_wait_moves()
+        self._set_filament_direction(self.DIRECTION_UNLOAD)
+        self._initialize_filament_position()    # Encoder 0000 # PAUL NEW
+# PAUL        self._set_encoder_distance(self.filament_distance)
+#        self._set_encoder_distance(self.mmu_toolhead.get_position()[1]) # PAUL why not 0 / reset?
+
+        if check_state or self.filament_pos == self.FILAMENT_POS_UNKNOWN:
+            # Let's determine where filament is and reset state before continuing
+            self._recover_filament_pos(message=True)
+
+        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
+            self._log_debug("Filament already ejected")
+            self._servo_auto()
+            return
+
+        try:
+            self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
+            if not extruder_only:
+                current_action = self._set_action(self.ACTION_UNLOADING)
+                self._track_unload_start()
+                self._display_visual_state()
+
+            # Check for cases where we must form tip
+            if skip_tip:
+                park_pos = self.slicer_tip_park_pos
+            elif self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER:
+                detected, park_pos = self._form_tip_standalone()
+                if detected:
+                    # Definitely in extruder
+                    self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
+                else:
+                    # No detection means we can assume we are somewhere in the bowden
+                    self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+            else:
+                park_pos = 0.
+# PAUL probably don't need park_pos if filament absolute position is correct...
+
+            # Note: Conditionals deliberately coded this way to match macro alternative
+            start_filament_pos = self.filament_pos
+            unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
+            if self.gcode_unload_sequence:
+                self._log_debug("Calling external user defined unloading sequence macro")
+                self._wrap_gcode_command("_MMU_UNLOAD_SEQUENCE FILAMENT_POS=%d LENGTH=%.1f EXTRUDER_ONLY=%d PARK_POS=%.1f" % (start_filament_pos, length, extruder_only, park_pos), exception=True)
+
+            elif extruder_only:
+                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
+                    self._unload_extruder(extruder_stepper_only=True, park_pos=park_pos)
+                else:
+                    self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence(extruder_only=True)" % start_filament_pos)
+                    raise MmuError("Cannot unload extruder because filament not in extruder!")
+
+            elif start_filament_pos == self.FILAMENT_POS_UNLOADED:
+                self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence()" % start_filament_pos)
+                raise MmuError("Cannot unload because already unloaded!")
+
+            else:
+                if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
+                    # Exit extruder, fast unload of bowden, then slow unload encoder
+                    self._unload_extruder(park_pos=park_pos)
+
+                if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
+                    # Fast unload of bowden, then unload encoder
+                    self._unload_bowden(length - self.gate_unload_buffer)
+                    self._unload_gate()
+
+                elif start_filament_pos >= self.FILAMENT_POS_START_BOWDEN:
+                    # Have to do slow unload because we don't know exactly where we are
+                    self._unload_gate(homing_max=length) # Full slow unload
+
+            if unload_to_buffer and self.gate_status[self.gate_selected] != self.GATE_EMPTY:
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
+
+            self._movequeues_wait_moves()
+            movement = self._servo_up(measure=True)
+            if movement > self.encoder_min:
+                self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
+                raise MmuError("It may be time to get the pliers out! Filament appears to stuck somewhere")
+
+# PAUL            msg = "Unloaded %.1fmm of filament" % (self.last_filament_distance if self.filament_pos == self.FILAMENT_POS_UNLOADED else self.filament_distance)
+            msg = "Unloaded %.1fmm of filament" % (self.mmu_toolhead.get_position()[1])
+            if self._has_encoder():
+                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance()
+            self._log_info(msg)
+
+        except MmuError as ee:
+            if not extruder_only:
+                self._track_gate_statistics('unload_failures', self.gate_selected)
+            raise MmuError("Unload sequence failed: %s" % (str(ee)))
+
+        finally:
+            if not extruder_only:
+                self._track_unload_end()
+                self._set_action(current_action)
+
+    # This is a recovery routine to determine the most conservative location of the filament for unload purposes
+    def _recover_filament_pos(self, strict=False, message=False):
+        if message:
+            self._log_info("Attempting to recover filament position...")
+        ts = self._check_sensor("toolhead")
+        if ts is None: # Not installed
+            if self._check_filament_in_mmu():
+                if self._check_filament_still_in_extruder():
+                    self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                else:
+                    self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
+            else:
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+        elif ts: # Filament detected in toolhead
+            self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
+        else: # Filament not detected in toolhead
+            if self._check_filament_in_mmu():
+                if self.strict_filament_recovery or strict:
+                    if self._check_filament_still_in_extruder():
+                        self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                    else:
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+                else:
+                    self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # Slight risk of it still being gripped by extruder
+            else:
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+
+    # Retract the filament by the extruder stepper only and see if we do not have any encoder movement
+    # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
+    # Return if filament detected and distance filament moved during test
+    def _test_filament_in_extruder_by_retracting(self, length=None):
+        self._log_debug("Testing for filament in extruder by retracting on extruder stepper only")
+        if not length:
+            length = self.encoder_move_step_size
+        self._servo_up()
+        delta = self._trace_filament_move("Moving extruder to test for filament exit",
+                -length, speed=self.extruder_unload_speed, motor="extruder")
+        movement = length - delta
+        detected = movement > self.encoder_min
+        self._log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
+        return detected, movement
 
     # Form tip and return True if filament was detected and the assumed filament (park) position
     def _form_tip_standalone(self, extruder_stepper_only=False):
         self._movequeues_wait_moves()
+        self._set_filament_direction(self.DIRECTION_UNLOAD) # PAUL new
+        self._initialize_filament_position() # PAUL new
 
         # Pre check to validate the presence of filament in the extruder and case where we don't need to form tip
         if self._check_sensor("extruder") or self._check_sensor("toolhead"):
@@ -3591,7 +3604,7 @@ class Mmu:
             # Perform the tip forming move and establish park_pos
             with self._wrap_extruder_current(self.extruder_form_tip_current, "for tip forming move"):
                 initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
-                initial_encoder_position = self._get_encoder_distance()
+                initial_encoder_position = self._get_encoder_distance(False)
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
                 self._wrap_gcode_command(self.form_tip_macro, exception=True)
@@ -3615,7 +3628,8 @@ class Mmu:
                     self.next_extruder_load_reduction = park_pos - measured_park_pos
                     filament_check = False
                 self._set_encoder_distance(initial_encoder_position + park_pos)
-                self.filament_distance += park_pos
+# PAUL ok just to remove this?  It would assume that toolhead is initially at zero before form_tip is called...
+# PAUL                self.filament_distance += park_pos
 
             # Logic to try to validate success and update presence of filament based on movement
             if filament_initially_present is True:
@@ -3633,7 +3647,8 @@ class Mmu:
                         # A further test is needed to see if the filament is actually in the extruder
                         detected, moved = self._test_filament_in_extruder_by_retracting()
                         park_pos += moved
-                        self.filament_distance += moved
+# PAUL ok just to remove this?  It would assume that toolhead is initially at zero before form_tip is called...
+# PAUL                        self.filament_distance += moved
                         return detected, park_pos
 
             # We have to assume filament was present because no way to be sure
@@ -3760,9 +3775,6 @@ class Mmu:
                 if (time_since_last) > 0:
                     self._log_trace("Waiting %.2f seconds before next touch move" % time_since_last)
                     self._movequeues_dwell(time_since_last, toolhead=False)
-# PAUL doesn't look like we need this based on testing
-#            elif abs(new_pos - self.mmu_toolhead.get_position()[0]) < 12: # Workaround for Timer Too Close error with short homing moves
-#                self.mmu_toolhead.dwell(1)
 
             hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
             try:
@@ -3838,14 +3850,15 @@ class Mmu:
     # 'encoder_dwell' delay some additional time to ensure we have accurate encoder reading (if encoder fitted and required for measuring)
     #
     def _trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default",
-			track=False, sync=False, wait=False, encoder_dwell=False):
+			track=False, sync=False, wait=False, encoder_dwell=None):
         self._sync_gear_to_extruder(False) # Safety - ensure we reset extruder syncing
         encoder_start = self._get_encoder_distance(encoder_dwell)
         pos = self.mmu_toolhead.get_position()
         ext_pos = self.toolhead.get_position()
         null_rtn = (False, pos[1], 0.)
         homed = False
-        actual = delta = 0. # PAUL halt_pos better?
+        actual = dist
+        delta = 0.
 
         if homing_move != 0:
             # Klipper generates TTC errors for tiny homing moves!
@@ -3870,7 +3883,7 @@ class Mmu:
                     accel = accel or self.gear_from_buffer_accel
             else:
                 speed = speed or self.gear_short_move_speed
-                accel = accel or self.gear_from_spool_accel
+                accel = accel or self.gear_short_move_accel
 
         elif motor in ["both", "gear+extruder", "synced"]:
             if homing_move != 0:
@@ -3926,6 +3939,7 @@ class Mmu:
 
         # Extruder is driving the filament
         elif motor in ["synced"]:
+            self._ensure_safe_extruder_temperature(wait=False)
             with self._wrap_sync_gear_to_extruder(True):
                 if homing_move != 0:
                     self._log_error("Not possible to perform homing move while synced")
@@ -3939,6 +3953,7 @@ class Mmu:
             if homing_move != 0:
                 self._log_error("Not possible to perform homing move on two independent steppers")
             else:
+                self._ensure_safe_extruder_temperature(wait=False)
                 self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
                 pos[1] += dist
                 with self._wrap_accel(accel):
@@ -3950,16 +3965,15 @@ class Mmu:
             self._movequeues_wait_moves(toolhead=motor in ["both", "extruder", "synced"], mmu_toolhead=motor in ["both", "gear", "gear+extruder", "synced"])
 
         encoder_end = self._get_encoder_distance(encoder_dwell)
-
+        measured = encoder_end - encoder_start
+        self._log_error("PAUL: encoder_start=%s, encoder_end=%s, measured=%s, actual=%s" % (encoder_start, encoder_end, measured, actual))
+        delta = abs(actual) - measured # +ve means measured less than moved, -ve means measured more than moved
         if trace_str:
-            measured = encoder_end - encoder_start
             if homing_move != 0:
-                delta = abs(actual) - measured # +ve means measured less than moved, -ve means measured more than moved
                 trace_str += ". Stepper: '%s' %s after moving %.1fmm (of max %.1fmm), encoder measured %.1fmm (delta %.1fmm)"
                 trace_str = trace_str % (motor, ("homed" if homed else "did not home"), actual, dist, measured, delta)
                 trace_str += ". Counter: @%.1fmm" % encoder_end
             else:
-                delta = abs(dist) - measured # +ve means measured less than moved, -ve means measured more than moved
                 trace_str += ". Stepper: '%s' moved %.1fmm, encoder measured %.1fmm (delta %.1fmm)"
                 trace_str = trace_str % (motor, dist, measured, delta)
                 trace_str += ". Counter: @%.1fmm" % encoder_end
@@ -4527,7 +4541,7 @@ class Mmu:
             except MmuError as ee:
                 self._mmu_pause(str(ee))
                 if self.tool_selected == self.TOOL_GATE_BYPASS:
-                    self._set_filament_pos(self.FILAMENT_POS_UNKNOWN)
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
 
     cmd_MMU_EJECT_help = "Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)"
     def cmd_MMU_EJECT(self, gcmd):
@@ -4541,10 +4555,10 @@ class Mmu:
                 if not extruder_only:
                     self._unload_tool()
                 elif extruder_only and self.filament_pos != self.FILAMENT_POS_UNLOADED:
-                    self._set_filament_pos(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
+                    self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
                     self._unload_sequence(0, extruder_only=True)
                     if in_bypass:
-                        self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
+                        self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                         self._log_always("Please pull the filament out clear of the MMU selector")
                 else:
                     self._log_always("Filament not loaded")
@@ -4603,7 +4617,7 @@ class Mmu:
             # Sanity check we are ready to go
             if self._is_printing() and self.filament_pos != self.FILAMENT_POS_LOADED:
                 if self._check_sensor("toolhead") is True:
-                    self._set_filament_pos(self.FILAMENT_POS_LOADED, silent=True)
+                    self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
                 else:
                     self._log_always("State does not indicate flament is LOADED. Run `MMU_RECOVER LOADED=1` to indicate filament is loaded")
@@ -4670,17 +4684,17 @@ class Mmu:
             # This is to be able to get out of "stuck in bypass" state
             self._log_info("Warning: Making assumption that bypass is unloaded")
             self.filament_direction = self.DIRECTION_UNKNOWN
-            self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
+            self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
             self._servo_auto()
             return
 
         if loaded == 1:
             self._set_filament_direction(self.DIRECTION_LOAD)
-            self._set_filament_pos(self.FILAMENT_POS_LOADED)
+            self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             return
         elif loaded == 0:
             self._set_filament_direction(self.DIRECTION_UNLOAD)
-            self._set_filament_pos(self.FILAMENT_POS_UNLOADED)
+            self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
             return
 
         # Filament position not specified so auto recover
@@ -4771,10 +4785,10 @@ class Mmu:
                 # Ready MMU for test if not already setup
                 self._unload_tool()
                 self._load_sequence(100 if direction == 1 else 200, skip_extruder=True)
-            self._initialize_filament_pos()    # Encoder 0000
+            self._initialize_filament_position()    # Encoder 0000
             for i in range(1, int(100 / step)):
                 delta = self._trace_filament_move("Test move", direction * step)
-                measured = self._get_encoder_distance()
+                measured = self._get_encoder_distance(False)
                 moved = i * step
                 drift = int(round((moved - measured) / sensitivity))
                 if drift > 0:
@@ -4819,17 +4833,19 @@ class Mmu:
     cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
     def cmd_MMU_TEST_CONFIG(self, gcmd):
         # Filament Speeds
-        self.gear_short_move_speed = gcmd.get_float('GEAR_SHORT_MOVES_SPEED', self.gear_short_move_speed, minval=1.)
         self.gear_from_buffer_speed = gcmd.get_float('GEAR_FROM_BUFFER_SPEED', self.gear_from_buffer_speed, minval=10.)
         self.gear_from_buffer_accel = gcmd.get_float('GEAR_FROM_BUFFER_ACCEL', self.gear_from_buffer_accel, minval=10.)
         self.gear_from_spool_speed = gcmd.get_float('GEAR_FROM_SPOOL_SPEED', self.gear_from_spool_speed, minval=10.)
         self.gear_from_spool_accel = gcmd.get_float('GEAR_FROM_SPOOL_ACCEL', self.gear_from_spool_accel, above=10.)
+        self.gear_short_move_speed = gcmd.get_float('GEAR_SHORT_MOVE_SPEED', self.gear_short_move_speed, minval=10.)
+        self.gear_short_move_accel = gcmd.get_float('GEAR_SHORT_MOVE_aCCEL', self.gear_short_move_accel, minval=10.)
         self.gear_homing_speed = gcmd.get_float('GEAR_HOMING_SPEED', self.gear_homing_speed, above=1.)
         self.extruder_homing_speed = gcmd.get_float('EXTRUDER_HOMING_SPEED', self.extruder_homing_speed, above=1.)
         self.extruder_load_speed = gcmd.get_float('EXTRUDER_LOAD_SPEED', self.extruder_load_speed, above=1.)
         self.extruder_unload_speed = gcmd.get_float('EXTRUDER_UNLOAD_SPEED', self.extruder_unload_speed, above=1.)
         self.extruder_sync_load_speed = gcmd.get_float('EXTRUDER_SYNC_LOAD_SPEED', self.extruder_sync_load_speed, above=1.)
         self.extruder_sync_unload_speed = gcmd.get_float('EXTRUDER_SYNC_UNLOAD_SPEED', self.extruder_sync_unload_speed, above=1.)
+        self.extruder_accel = gcmd.get_float('EXTRUDER_ACCEL', self.extruder_accel, above=10.)
         # Selector speeds
         self.selector_move_speed = gcmd.get_float('SELECTOR_MOVE_SPEED', self.selector_move_speed, minval=1.)
         self.selector_homing_speed = gcmd.get_float('SELECTOR_HOMING_SPEED', self.selector_homing_speed, minval=1.)
@@ -4899,17 +4915,19 @@ class Mmu:
         self.test_random_failures = gcmd.get_int('TEST_RANDOM_FAILURES', self.test_random_failures, minval=0, maxval=1)
 
         msg = "SPEEDS:"
-        msg += "\ngear_short_move_speed = %.1f" % self.gear_short_move_speed
         msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
         msg += "\ngear_from_buffer_accel = %.1f" % self.gear_from_buffer_accel
         msg += "\ngear_from_spool_speed = %.1f" % self.gear_from_spool_speed
         msg += "\ngear_from_spool_accel = %.1f" % self.gear_from_spool_accel
+        msg += "\ngear_short_move_speed = %.1f" % self.gear_short_move_speed
+        msg += "\ngear_short_move_accel = %.1f" % self.gear_short_move_accel
         msg += "\ngear_homing_speed = %.1f" % self.gear_homing_speed
         msg += "\nextruder_homing_speed = %.1f" % self.extruder_homing_speed
         msg += "\nextruder_load_speed = %.1f" % self.extruder_load_speed
         msg += "\nextruder_unload_speed = %.1f" % self.extruder_unload_speed
         msg += "\nextruder_sync_load_speed = %.1f" % self.extruder_sync_load_speed
         msg += "\nextruder_sync_unload_speed = %.1f" % self.extruder_sync_unload_speed
+        msg += "\nextruder_accel = %.1f" % self.extruder_accel
         msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
         msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
         msg += "\nselector_touch_speed = %.1f" % self.selector_touch_speed
@@ -5025,7 +5043,7 @@ class Mmu:
                 self._restore_toolhead_position("EndlessSpool")
 
                 self._sync_gear_to_extruder(self.sync_to_extruder and self._is_in_print(force_runout), servo=True, current=self._is_in_print())
-                self._initialize_filament_pos()    # Encoder 0000
+                self._initialize_filament_position()    # Encoder 0000
                 # Continue printing...
             else:
                 raise MmuError("EndlessSpool mode is off - manual intervention is required")
@@ -5388,7 +5406,7 @@ class Mmu:
                 for gate, tool in gates_tools:
                     try:
                         self._select_gate(gate)
-                        self._initialize_filament_pos()    # Encoder 0000
+                        self._initialize_filament_position()    # Encoder 0000
                         self.calibrating = True # To suppress visual filament position
                         self._log_info("Checking gate #%d..." % gate)
                         encoder_moved = self._load_gate(allow_retry=False, adjust_servo_on_error=False)
@@ -5401,7 +5419,7 @@ class Mmu:
                             if encoder_moved > self.encoder_min:
                                 self._unload_gate()
                             else:
-                                self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
+                                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
                         except MmuError as ee:
                             msg = "Failure during check gate #%d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
                             if self._is_in_print():
@@ -5411,7 +5429,7 @@ class Mmu:
                             return
                     except MmuError as ee:
                         self._set_gate_status(gate, self.GATE_EMPTY)
-                        self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
+                        self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
                         if tool >= 0:
                             msg = "Tool T%d - filament not detected. Gate #%d marked empty" % (tool, gate)
                         else:
@@ -5457,7 +5475,7 @@ class Mmu:
                     gate = self.gate_selected
                 else:
                     self._select_gate(gate)
-                self._initialize_filament_pos()    # Encoder 0000
+                self._initialize_filament_position()    # Encoder 0000
                 for i in range(5):
                     self._log_always("Loading...")
                     try:
