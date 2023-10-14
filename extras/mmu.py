@@ -2837,7 +2837,7 @@ class Mmu:
 
     cmd_MMU_STEP_HOME_EXTRUDER_help = "User composable loading step: Extruder collision detection"
     def cmd_MMU_STEP_HOME_EXTRUDER(self, gcmd):
-        if not self._must_home_to_extruder(): return
+# PAUL        if not self._must_home_to_extruder(): return # PAUL think about this some more... in light of possible gate sensor?
         try:
             self._home_to_extruder(self.extruder_homing_max)
         except MmuError as ee:
@@ -3072,7 +3072,7 @@ class Mmu:
         delta = 0
         for i in range(moves):
             msg = "Course unloading move #%d from bowden" % (i+1)
-            delta += self._trace_filament_move(msg, -length / moves, track=True)
+            delta += self._trace_filament_move(msg, -length / moves, track=True, encoder_dwell=False)
             if (i+1) < moves or moves == 1:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
         if delta >= length * 0.8 and not self.calibrating: # 80% slippage detects filament still stuck in extruder
@@ -3086,38 +3086,37 @@ class Mmu:
     def _home_to_extruder(self, max_length):
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._servo_down()
-        try:
+#        try:
 #            self.mmu_extruder_stepper.sync_to_extruder(None) # Unsync extruder stepper from toolhead # PAUL do I need this?
             # Lock the extruder stepper
-            stepper_enable = self.printer.lookup_object('stepper_enable')
-            ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
-            ge.motor_enable(self.toolhead.get_last_move_time())
+        stepper_enable = self.printer.lookup_object('stepper_enable')
+        ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
+        ge.motor_enable(self.toolhead.get_last_move_time())
 
-            if self.extruder_homing_endstop != self.EXTRUDER_COLLISION_ENDSTOP:
-                self._log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
-                homed, actual, delta = self._trace_filament_move("Homing filament to extruder",
-                        max_length, motor="gear", homing_move=1, endstop_name=self.extruder_homing_endstop)
-                measured_movement = max_length - delta
+        if self.extruder_homing_endstop != self.EXTRUDER_COLLISION_ENDSTOP:
+            self._log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
+            homed, actual, delta = self._trace_filament_move("Homing filament to extruder",
+                    max_length, motor="gear", homing_move=1, endstop_name=self.extruder_homing_endstop)
+            measured_movement = max_length - delta
 # PAUL                distance_moved = actual
-                if homed:
-                    self._log_debug("Extruder entrance reached after %.1fmm (measured %.1fmm)" % (actual, measured_movement))
-            else:
-                homed = self._home_to_extruder_collision_detection(max_length)
+            if homed:
+                self._log_debug("Extruder entrance reached after %.1fmm (measured %.1fmm)" % (actual, measured_movement))
+        else:
+            homed, measured_movement = self._home_to_extruder_collision_detection(max_length)
 # PAUL                distance_moved = measured_movement
 # PAUL adjust filament pos here based on measured_movement?
 
-            if not homed:
-                self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
-                raise MmuError("Failed to reach extruder gear after moving %.1fmm" % max_length)
+        if not homed:
+            self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
+            raise MmuError("Failed to reach extruder gear after moving %.1fmm" % max_length)
 
-            if measured_movement > (max_length * 0.8):
-                self._log_info("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase your initial load distance ('%s') or increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
+        if measured_movement > (max_length * 0.8):
+            self._log_info("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase your initial load distance ('%s') or increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
 
-            self._random_failure()
-            self._set_filament_pos_state(self.FILAMENT_POS_HOMED_EXTRUDER)
+        self._random_failure()
+        self._set_filament_pos_state(self.FILAMENT_POS_HOMED_EXTRUDER)
 # PAUL            self.filament_distance += distance_moved
-        finally:
-            pass # PAUL temp
+#        finally:
 #            self.mmu_extruder_stepper.sync_to_extruder(self.extruder_name) # Resync with toolhead extruder
 
     def _home_to_extruder_collision_detection(self, max_length):
@@ -3140,7 +3139,7 @@ class Mmu:
 
         if total_delta > 5.0:
             self._log_info("Warning: A lot of slippage was detected whilst homing to extruder, you may want to reduce 'extruder_homing_current' and/or ensure a good grip on filament by gear drive")
-        return homed
+        return homed, measured_movement
 
     # Step 3b of the load sequence
     # This optional step aligns (homes) filament to the toolhead sensor which should be a very
@@ -3966,7 +3965,6 @@ class Mmu:
 
         encoder_end = self._get_encoder_distance(encoder_dwell)
         measured = encoder_end - encoder_start
-        self._log_error("PAUL: encoder_start=%s, encoder_end=%s, measured=%s, actual=%s" % (encoder_start, encoder_end, measured, actual))
         delta = abs(actual) - measured # +ve means measured less than moved, -ve means measured more than moved
         if trace_str:
             if homing_move != 0:
@@ -4089,14 +4087,14 @@ class Mmu:
 
     def _adjust_gear_current(self, percent=100, reason=""):
          if self.gear_tmc and percent != self.gear_percentage_run_current and percent > 0 and percent < 200:
-             self._log_info("Modifying gear_stepper run current to %d%% %s" % (percent, reason))
-             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=gear_stepper CURRENT=%.2f" % ((self.gear_default_run_current * percent) / 100.))
+             self._log_info("Modifying MMU gear stepper run current to %d%% %s" % (percent, reason))
+             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_gear CURRENT=%.2f" % ((self.gear_default_run_current * percent) / 100.))
              self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
-            self._log_info("Restoring gear_stepper run current to %d%% configured" % self.gear_restore_percent_run_current)
-            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=gear_stepper CURRENT=%.2f" % self.gear_default_run_current)
+            self._log_info("Restoring MMU gear stepper run current to %d%% configured" % self.gear_restore_percent_run_current)
+            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_gear CURRENT=%.2f" % self.gear_default_run_current)
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
     @contextlib.contextmanager
