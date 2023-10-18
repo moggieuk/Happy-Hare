@@ -177,6 +177,49 @@ cleanup_old_ercf() {
     fi
 }
 
+# Upgrade to mmu-toolhead version from manual_stepper
+cleanup_manual_stepper_version() {
+    # Legacy klipper modules...
+    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
+        rm -f "${KLIPPER_HOME}/klippy/extras/manual_mh_stepper.py"
+        rm -f "${KLIPPER_HOME}/klippy/extras/manual_extruder_stepper.py"
+        rm -f "${KLIPPER_HOME}/klippy/extras/mmu_config_setup.py"
+    fi
+
+    # Upgrade mmu_hardware.cfg...
+    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    found_manual_stepper=$(egrep -c "\[mmu_config_setup\]|\[manual_extruder_stepper extruder\]" ${hardware_cfg} || true)
+    if [ "${found_manual_stepper}" -ne 0 ]; then
+        cat "${hardware_cfg}" | sed -e " \
+            /\[mmu_config_setup\]/ d; \
+            /^velocity: .*/ d; \
+            /^accel: .*/ d; \
+            s%\[\(.*\) manual_extruder_stepper extruder\]%# REMOVE/MOVE THIS SECTION vvv\n\[\1 manual_extruder_stepper extruder\]%; \
+            s%\[manual_extruder_stepper extruder\]%# REMOVE/MOVE THIS SECTION vvv\n\[manual_extruder_stepper extruder\]%; \
+            s%\[\(.*\) manual_extruder_stepper gear_stepper\]%\[\1 stepper_mmu_gear\]%; \
+            s%\[manual_extruder_stepper gear_stepper\]%\[stepper_mmu_gear\]%; \
+            s%\[\(.*\) manual_mh_stepper selector_stepper\]%\[\1 stepper_mmu_selector\]%; \
+            s%\[manual_mh_stepper selector_stepper\]%\[stepper_mmu_selector\]%; \
+            s%: \(.*\)_gear_stepper:virtual_endstop%: \1_stepper_mmu_gear:virtual_endstop%; \
+            s%: \(.*\)_selector_stepper:virtual_endstop%: \1_stepper_mmu_selector:virtual_endstop%; \
+                " > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
+
+        echo -e "${WARNING}"
+        echo "------------------------- IMPORTANT INFO ON NEW MMU TOOLHEAD DEFINITION - READ ME --------------------------"
+        echo "  This version of Happy Hare no longer requires the move of the [extruder] definition into mmu_hardware.cfg"
+        echo "  You need to restore the sections marked in your mmu_hardware.cfg back to your original extruder config"
+        echo "  and delete those sections from mmu_hardware.cfg.  Also note that the gear are selector stepper definitions"
+        echo "  have been modified to be compatible with the new MMU toolhead feature of this version"
+        echo
+        echo "  If you see an error similar to:"
+        echo -e "${ERROR}  Option 'microsteps' in section 'manual_extruder_stepper extruder' must be specified"
+        echo -e "${WARNING}"
+        echo "  Edit mmu_hardware.cfg and restart Klipper to complete the upgrade"
+        echo "------------------------------------------------------------------------------------------------------------"
+        echo
+    fi
+}
+
 link_mmu_plugins() {
     echo -e "${INFO}Linking mmu extensions to Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
@@ -371,9 +414,9 @@ copy_config_files() {
 
 	elif [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
             if [ "${SETUP_TOOLHEAD_SENSOR}" -eq 1 ]; then
-                magic_str1="## MMU Toolhead sensor"
+                toolhead_str="^#\[filament_switch_sensor toolhead_sensor\]"
             else
-                magic_str1="NO TOOLHEAD"
+                toolhead_str="_THIS_PATTERN_DOES_NOT_EXIST_"
             fi
             uart_comment="#"
             sel_uart="_THIS_PATTERN_DOES_NOT_EXIST_"
@@ -413,7 +456,7 @@ copy_config_files() {
                     s/{extruder_diag_pin}/${PIN[extruder_diag_pin]}/; \
                     s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
                     s%{serial}%${serial}%; \
-                    /^${magic_str1} START/,/${magic_str1} END/ s/^#//; \
+                    /${toolhead_str}/,+1 s/^#//; \
                         " > ${dest} && rm ${dest}.tmp
             else
                 cat ${dest}.tmp | sed -e "\
@@ -437,7 +480,7 @@ copy_config_files() {
                     s/{servo_pin}/${PIN[$brd_type,servo_pin]}/; \
                     s/{encoder_pin}/${PIN[$brd_type,encoder_pin]}/; \
                     s%{serial}%${serial}%; \
-                    /^${magic_str1} START/,/${magic_str1} END/ s/^#//; \
+                    /${toolhead_str}/,+1 s/^#//; \
                         " > ${dest} && rm ${dest}.tmp
             fi
 
@@ -691,7 +734,7 @@ questionaire() {
         1)
             mmu_vendor="ERCF"
             mmu_version="1.1"
-            encoder_parking_distance="23"
+            gate_parking_distance="23"
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 are supported. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
             echo
@@ -712,7 +755,7 @@ questionaire() {
             case $yn in
             y)
                 mmu_version+="t"
-                encoder_parking_distance="19"
+                gate_parking_distance="19"
                 ;;
             esac
             ;;
@@ -1096,6 +1139,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
         read_previous_config
     fi
     copy_config_files
+    cleanup_manual_stepper_version
     link_mmu_plugins
     install_update_manager
 else
