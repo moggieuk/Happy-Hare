@@ -33,54 +33,7 @@ The `mmu.cfg` file is part of the hardware configuration but defines aliases for
 <br>
 
 ### b) Hardware Configuration (mmu_hardware.cfg):
-This can be daunting but the interactive installer will make the process easier for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc) and perform most of the setup for you.
-
-Assuming you have first run the installer (and perhaps familiar with the early incarnation of Happy Hare) there is one NEW IMPORTANT step that must be performed by hand:  You must move some of your `[extruder]` definition into `mmu_hardware.cfg`. This is best illustrated with my actual configuration (pulled from the top of `mmu_hardware.cfg`):
-  
-```yml
-[mmu_config_setup]
-
-# HOMING CAPABLE EXTRUDER --------------------------------------------------------------------------------------------------
-# With Happy Hare, it is important that the extruder stepper definition is moved here to allow for sophisticated homing and syncing
-# options.  This definition replaces the stepper definition part of you existing [extruder] definition.
-
-# IMPORTANT: Move the complete stepper driver configuration associated with regular extruder here and comment out the
-# original driver config
-#
-[tmc2209 manual_extruder_stepper extruder]
-uart_pin: E_TMCUART
-interpolate: true
-run_current: 0.55			# LDO 36STH20-1004AHG.  Match to macro below
-hold_current: 0.4
-sense_resistor: 0.110
-stealthchop_threshold: 0		# Spreadcycle (better for extruder)
-#
-# Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing to nozzle
-#diag_pin: E_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
-#driver_SGTHRS: 100			# 255 is most sensitive value, 0 is least sensitive
-
-
-# NOTE: The [mmu_config_setup] line earlier in this file will now automatically pull the required [extruder] stepper config
-# options here so you now only need to add supplementary ones like endstops!
-#
-#  If you do decide to define your printer's extruder stepper here instead of in the [extruder] then valid config options are ONLY:
-#    step_pin, dir_pin, enable_pin, rotation_distance, gear_ratio, microsteps, full_steps_per_rotation
-#    pressure_advance, pressure_advance_smooth_time
-#  Leave all other options in your [extruder] config
-#
-[manual_extruder_stepper extruder]
-#
-# Uncomment the two lines below to enable the option for filament "touch" homing option to nozzle!
-#extra_endstop_pins: tmc2209_extruder:virtual_endstop
-#extra_endstop_names: mmu_ext_touch
-```
-
-The first TMC definition was previously `[tmc2209 extruder]` and is moved here as `[tmc2209 manual_extruder_stepper extruder]`. The original `[tmc2209 extruder]` in `printer.cfg` most be deleted or commented out. **Note that tmc2209 is most common but obviously adjust the driver to match your particular driver chip and added "manual_extruder_stepper" into the section name.**
-
-The second definion is the elements that define the extruder stepper. The standard list of `step_pin`, `dir_pin`, `enable_pin`, `rotation_distance`, `gear_ratio`, `microsteps`, `full_steps_per_rotation`, `pressure_advance` and `pressure_advance_smooth_time` will all be AUTOMATICALLY added during bootup and nullified on the original extruder.
-
-**Still not clear?**  Here is a diagram that shows the change to my config (note that I was already using aliases for pin names so you might also be moving your direct pin names into the aliases file `mmu.py`).  Don't worry about adding DIAG and endstops now because you can do that later only if you want to experiment with extruder homing:
-<img src="/doc/extruder_config_move.png" width="980" alt="extruder config move">
+This can be daunting but the interactive installer will make the process easier for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc) and perform most of the setup for you. A few tweaks remain and include the setting of endstop options, optional extruder "touch" homing as the usual pin invert checking, etc.
 
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
