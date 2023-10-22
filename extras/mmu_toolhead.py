@@ -27,7 +27,6 @@ SDS_CHECK_TIME = 0.001 # step+dir+step filter in stepcompress.c
 # (code pulled from toolhead.py)
 class MmuToolHead(toolhead.ToolHead, object):
     def __init__(self, config):
-        logging.info("PAUL: MmuToolHead.__init__()")
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
@@ -107,19 +106,12 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
         self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
 
-# PAUL
-#       # Register extruder stepper with pertinent rail endstops
-#        for (mcu_endstop, name) in self.kin.rails[1].extra_endstops:
-#            if name in ['mmu_ext_touch', 'mmu_gear_toolhead', 'mmu_gear_extruder']:
-#                mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
-
         # Nullify original extruder stepper definition so Klipper doesn't try to create it again
         options = [ 'step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'gear_ratio',
                     'microsteps', 'full_steps_per_rotation', 'pressure_advance', 'pressure_advance_smooth_time']
         for i in options:
             if config.fileconfig.has_option('extruder', i):
                 config.fileconfig.remove_option('extruder', i)
-        logging.info("PAUL: Nullified original stepper definition")
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 
         # Add useful debugging command
@@ -218,11 +210,9 @@ class MmuToolHead(toolhead.ToolHead, object):
             extruder_stepper = extruder.extruder_stepper.stepper
 
             # Switch extruder stepper to use MMU toolhead kinematics and trapq
-            logging.info("PAUL: !!! syning: Setting extruder stepper kinematics to sk_default")
             self.prev_sk = extruder_stepper.set_stepper_kinematics(self.sk_default)
             self.prev_trapq = extruder_stepper.set_trapq(self.get_trapq())
             g_pos = gear_rail.get_commanded_position()
-            logging.info("PAUL: !!! syncing: extruder_stepper.set_position([0, %s, 0])" % g_pos)
             extruder_stepper.set_position([0., g_pos, 0.])
 
             # Injecting the extruder stepper into the gear rail
@@ -233,23 +223,19 @@ class MmuToolHead(toolhead.ToolHead, object):
                 gear_rail.calc_position_from_coord = extruder_stepper.calc_position_from_coord
             else:
                 gear_rail.steppers.append(extruder_stepper)
-            logging.info("PAUL: !!! syning: gear_rail.steppers = %s" % gear_rail.steppers)
 
             # Shift extruder step generator to mmu toolhead
             handler = extruder_stepper.generate_steps
             printer_toolhead.step_generators.remove(handler)
             self.register_step_generator(handler)
-            logging.info("PAUL: !!! syning: moved extruder step generator to mmu toolhead")
 
             # Remove handlers for default gear steppers if necessary
             if extruder_only:
-                logging.info("PAUL: !!! syning: removing gear stepper step_generator mmu from toolhead")
                 for s in self.prev_rail_steppers:
                     handler = s.generate_steps
                     self.step_generators.remove(handler)
 
             self.extruder_synced_to_gear = extruder_name # We are synced!
-            logging.info("PAUL:\n%s" % self.dump_rails())
         else:
             # Unsyncing
             if not self.extruder_synced_to_gear: return
@@ -257,35 +243,27 @@ class MmuToolHead(toolhead.ToolHead, object):
             extruder_stepper = extruder.extruder_stepper.stepper
 
             # Restore handlers for normal gear steppers and reset position if necessary
-            if self.prev_rail_steppers:
-                logging.info("PAUL: !!! unsync: added gear step_generators back to mmu toolhead")
+            if self.prev_rail_steppers: # Rail contains only extruder
                 for s in self.prev_rail_steppers:
                     handler = s.generate_steps
                     self.register_step_generator(handler)
 
                 g_pos = gear_rail.get_commanded_position()
-                g_pos2 = extruder_stepper.get_commanded_position() # PAUL Temp
-                logging.info("PAUL: !!! unsync: g_pos to restore to: %s" % g_pos)
                 gear_rail.steppers = self.prev_rail_steppers
                 gear_rail.get_commanded_position = gear_rail.steppers[0].get_commanded_position
                 gear_rail.calc_position_from_coord = gear_rail.steppers[0].calc_position_from_coord
-                logging.info("PAUL: !!! setting gear_rail.set_position [0, %s, 0] alt %s" % (g_pos, g_pos2))
                 gear_rail.set_position([0., g_pos, 0.])
                 self.prev_rail_steppers = None
             else:
-                logging.info("PAUL: !!! unsync: poped extruder stepper from gear_rail")
                 gear_rail.steppers.pop() # Extruder stepper
 
             # Restore extruder kinematics and trap queue
-            logging.info("PAUL: !!! unsync: restoring extruder kinematics")
             extruder_stepper.set_trapq(self.prev_trapq)
             extruder_stepper.set_stepper_kinematics(self.prev_sk)
             e_pos = printer_toolhead.get_position()[3]
-            logging.info("PAUL: !!! unsync: restoring extruder positionn to [%s, 0, 0]" % e_pos)
             extruder_stepper.set_position([e_pos, 0., 0.])
 
             # Shift extruder step generator back to printer toolhead
-            logging.info("PAUL: !!! unsync: extruder step_generator moved back to printer toolhead")
             handler = extruder_stepper.generate_steps
             self.step_generators.remove(handler)
             printer_toolhead.register_step_generator(handler)
@@ -376,10 +354,9 @@ class MmuKinematics:
         return [s for rail in self.rails for s in rail.get_steppers()]
 
     def calc_position(self, stepper_positions):
-        logging.info("PAUL: *** calc_position()")
-        for r in self.rails:
-            logging.info("PAUL: * rail=%s, initial_stepper_name=%s" % (r.get_name, r.steppers[0].get_name()))
-        logging.info("PAUL: * stepper_positions=%s" % stepper_positions)
+        #for r in self.rails:
+        #    logging.info("PAUL: * rail=%s, initial_stepper_name=%s" % (r.get_name, r.steppers[0].get_name()))
+        #logging.info("PAUL: * stepper_positions=%s" % stepper_positions)
         return [stepper_positions[rail.steppers[0].get_name()] for rail in self.rails] # Note can't assume rail name == stepper name
 
     def set_position(self, newpos, homing_axes):
@@ -389,7 +366,6 @@ class MmuKinematics:
                 self.limits[i] = rail.get_range()
     
     def home(self, homing_state):
-        logging.info("PAUL: home()")
         for axis in homing_state.get_axes():
             if not axis == 0: # Saftey: Only selector (axis[0]) can be homed
                 continue
@@ -408,7 +384,6 @@ class MmuKinematics:
     def _check_endstops(self, move):
         end_pos = move.end_pos
         for i in range(len(self.rails)):
-            logging.info("PAUL: _check_endstops() axis=%d, move.axes.d[i]=%s" % (i, move.axes_d[i]))
             if (move.axes_d[i] and (end_pos[i] < self.limits[i][0] or end_pos[i] > self.limits[i][1])):
                 if self.limits[i][0] > self.limits[i][1]:
                     raise move.move_error("Must home axis first")
@@ -420,7 +395,6 @@ class MmuKinematics:
     def check_move(self, move):
         limits = self.limits
         xpos, ypos = move.end_pos[:2]
-        logging.info("PAUL: _check_move() xpos=%s, ypos=%s, limits=%s" % (xpos, ypos, limits))
         if xpos < limits[0][0] or xpos > limits[0][1]:
             self._check_endstops(move)
         
@@ -509,7 +483,6 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         super(MmuPrinterRail, self).__init__(config, **kwargs)
 
     def add_extra_stepper(self, config, **kwargs):
-        logging.info("PAUL: add_extra_stepper()")
         if not self.endstops and config.get('endstop_pin', None) is None:
             # No endstop defined, so configure a mock endstop. The rail is, of course, only homable
             # if it has a properly configured endstop at runtime
@@ -544,13 +517,12 @@ class MmuPrinterRail(stepper.PrinterRail, object):
                 raise self.config.error("`extra_endstop_pins` and `extra_endstop_names` are different lengths")
             for idx, pin in enumerate(extra_endstop_pins):
                 name = extra_endstop_names[idx]
-                if 'virtual_endstop' in pin:
-                    self.virtual_endstops.append(name)
                 self.add_extra_endstop(pin, name)
 
     def add_extra_endstop(self, pin, name, register=True, bind_rail_steppers=True):
+        if 'virtual_endstop' in pin:
+            self.virtual_endstops.append(name)
         ppins = self.printer.lookup_object('pins')
-        logging.info("PAUL: setup_endstop_pin: %s" % pin)
         mcu_endstop = ppins.setup_pin('endstop', pin)
         self.extra_endstops.append((mcu_endstop, name))
         if bind_rail_steppers:
@@ -588,7 +560,7 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
     return rail
 
 
-# Extend ExtruderStepper to allow for adding and managing endstops (useful only when not operating as an Extruder)
+# Extend ExtruderStepper to allow for adding and managing endstops (useful only when part of gear rail, not operating as an Extruder)
 class MmuExtruderStepper(ExtruderStepper, object):
     def __init__(self, config, gear_rail):
         super(MmuExtruderStepper, self).__init__(config)
@@ -598,10 +570,9 @@ class MmuExtruderStepper(ExtruderStepper, object):
             if tmc:
                 _ = self.printer.load_object(config, '%s extruder' % chip) # Prevent error if loading after real "[extruder]" section
                 break
-        logging.info("PAUL: Created MmuExtruderStepper")
 
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin:
-            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False)
+            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=True)
             mcu_endstop.add_stepper(self.stepper)
 
