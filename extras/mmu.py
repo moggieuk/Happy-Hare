@@ -1286,16 +1286,16 @@ class Mmu:
         msg += ", Encoder reads %.1fmm" % self._get_encoder_distance()
         msg += "\nPrint state is %s" % self.print_state.upper()
         msg += ". Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
-        msg += ". Tool %s is selected " % self._selected_tool_string()
+        msg += ". Tool %s selected " % self._selected_tool_string()
         msg += " on gate %s" % self._selected_gate_string()
         msg += ". Toolhead position saved" if self.saved_toolhead_position else ""
-        msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "synced" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
+        msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
 
         if config:
             msg += "\n\nConfiguration:\nFilament homes"
             if self._must_home_to_extruder():
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
-                    msg += " to extruder using COLLISION DETECTION (current %d%%)" % self.extruder_homing_current
+                    msg += " to extruder using COLLISION detection (at %d%% current)" % self.extruder_homing_current
                 else:
                     msg += " to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
                 if self._has_sensor("toolhead"):
@@ -1305,14 +1305,14 @@ class Mmu:
             if self.toolhead_sync_unload or self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
                 msg += "extruder unload, " if self.toolhead_sync_unload else ""
-                msg += "tip forming, " if self.sync_form_tip else ""
-                msg += ("print (at %d%% current)" % self.sync_gear_current) if self.sync_to_extruder else ""
+                msg += ("Print (at %d%% current)" % self.sync_gear_current) if self.sync_to_extruder else ""
+                msg += "Tip forming, " if self.sync_form_tip else ""
             msg += "\nTip forming extruder current is %d%%" % self.extruder_form_tip_current
-            msg += "\nSelector %s touch (stallguard) capability enabled - blocked gate detection and recovery %s possible" % (("has", "may be") if self.selector_touch else ("does not have", "is not"))
+            msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "not") if self.selector_touch else ("disabled", "is not"))
             msg += "\nClog detection is %s" % ("AUTOMATIC" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_AUTOMATIC else "ENABLED" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_STATIC else "DISABLED")
             msg += " (%.1fmm runout)" % self.encoder_sensor.get_clog_detection_length()
-            msg += " and EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
-            msg += " and SpoolMan is %s" % ("ENABLED" if self.enable_spoolman else "DISABLED")
+            msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
+            msg += ", SpoolMan is %s" % ("ENABLED" if self.enable_spoolman else "DISABLED")
             p = self.persistence_level
             msg += "\nPersistence: %s state is persisted across restarts" % ("All" if p == 4 else "Gate status, TTG map & EndlessSpool groups" if p == 3 else "TTG map & EndlessSpool groups" if p == 2 else "EndlessSpool groups" if p == 1 else "No")
             msg += "\nSensors: "
@@ -1320,7 +1320,7 @@ class Mmu:
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
                 msg += ", %s (%s)" % (name.upper(), "Disabled" if state is None else ("Detected" if state == True else "Empty"))
-            msg += "\nLogging levels: Console %d(%s)" % (self.log_level, self._log_level_to_human_string(self.log_level))
+            msg += "\nLogging: Console %d(%s)" % (self.log_level, self._log_level_to_human_string(self.log_level))
 
             msg += ", Logfile %d(%s)" % (self.log_file_level, self._log_level_to_human_string(self.log_file_level))
             msg += ", Visual %d(%s)" % (self.log_visual, self._visual_log_level_to_human_string(self.log_visual))
@@ -1328,7 +1328,8 @@ class Mmu:
 
         if not detail:
             msg += "\nFor details on TTG and endless spool groups use 'MMU_STATUS DETAIL=1'"
-            msg += "\nFor configuration summary use 'MMU_STATUS SHOWCONFIG=1'"
+            if not config:
+                msg += "\nFor configuration summary use 'MMU_STATUS SHOWCONFIG=1'"
 
         msg += "\n\n%s" % self._tool_to_gate_map_to_human_string(summary=True)
         msg += "\n\n%s" % self._state_to_human_string()
@@ -1989,7 +1990,7 @@ class Mmu:
         if not self.is_enabled: return
         self._log_trace("Processing idle_timeout '%s' event" % event_type)
 
-        if self.print_stats is not None and self.print_start_detection:
+        if self.print_stats and self.print_start_detection:
             new_ps = self.print_stats.get_status(eventtime)
             if self.last_print_stats is None:
                 self.last_print_stats = dict(new_ps)
@@ -2019,8 +2020,9 @@ class Mmu:
         else:
             # Otherwise we fallback to idle_timeout
             if event_type == "printing" and self._is_in_endstate():
-                # We have to assume we are printing and will stay in this state until _MMU_PRINT_END is called or idle timeout fires
-                self._set_print_state("printing")
+                # We have to assume we are starting to print. We expect user to call _MMU_PRINT_START to transition to 'printing'
+                # and then _MMU_PRINT_END.  Only other way out is resetting to standby when idle timeout fires
+                self._set_print_state("started")
 
         # Capture transition to standby
         if event_type == "idle":
@@ -2084,35 +2086,30 @@ class Mmu:
         self.resume_to_state = "printing" if self._is_in_print() else "standby"
 
         if self._is_printing(force_in_print) and not self._is_mmu_paused():
+            self._log_error("An issue with the MMU has been detected. Print paused\nReason: %s" % reason)
+            self._log_always("After fixing the issue, call \'RESUME\' to continue printing (MMU_UNLOCK can restore temperature)")
+
             self._track_pause_start()
             self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_human_string(self.disable_heater))
             self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
             self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
             self._disable_encoder_sensor() # Disable runout/clog detection in pause
             self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_error)
-            msg = "An issue with the MMU has been detected. Print paused"
-            reason = "Reason: %s" % reason
-            extra = "After fixing the issue, call \'RESUME\' to continue printing (MMU_UNLOCK can restore temperature)"
             run_pause_macro = True
             self._set_print_state("pause_locked")
             self.printer.send_event("mmu:mmu_paused", self) # Notify MMU paused event
 
         elif self._is_mmu_paused():
-            msg = "An issue with the MMU has been detected whilst printer is paused"
-            reason = "Reason: %s" % reason
-            extra = ""
+            self._log_error("An issue with the MMU has been detected whilst printer is paused\nReason: %s" % reason)
+
         else:
-            msg = "An issue with the MMU has been detected whilst out of a print"
-            reason = "Reason: %s" % reason
-            extra = ""
+            self._log_error("An issue with the MMU has been detected whilst out of a print\nReason: %s" % reason)
 
         if self._is_printing(force_in_print):
             self._recover_filament_pos(strict=False, message=True)
 
         self._sync_gear_to_extruder(False, servo=True)
-        self._log_error("%s\n%s" % (msg, reason))
-        if extra != "":
-            self._log_always(extra)
+
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
 
@@ -2280,7 +2277,6 @@ class Mmu:
         self._set_filament_position()
 
     def _set_filament_position(self, position = 0.):
-        self.mmu_toolhead.get_last_move_time() # Flush lookahead
         pos = self.mmu_toolhead.get_position()
         pos[1] = position
         self.mmu_toolhead.set_position(pos)
@@ -5146,11 +5142,13 @@ class Mmu:
                         self._set_gate_status(gate, self.GATE_EMPTY)
                         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
                         if tool >= 0:
-                            msg = "Tool T%d - filament not detected. Gate #%d marked empty" % (tool, gate)
+                            msg = "Tool T%d on gate #%d marked EMPTY" % (tool, gate)
                         else:
-                            msg = "Gate #%d - filament not detected. Marked empty" % gate
-                        if self._is_in_print():
+                            msg = "Gate #%d marked EMPTY" % gate
+                        if self._is_in_print() and tools != "!":
+                            # Use case of in-print verification of all tools used in print
                             self._mmu_pause(msg)
+                            return
                         else:
                             self._log_info(msg)
                     finally:

@@ -165,8 +165,8 @@ class MmuToolHead(toolhead.ToolHead, object):
 
             self.prev_g_sk = [s.set_stepper_kinematics(self.sk_extruder) for s in gear_rail.get_steppers()]
             gear_rail.set_trapq(extruder.get_trapq())
-            g_pos = extruder.last_position
-            gear_rail.set_position([g_pos, 0., 0.])
+            e_pos = extruder.last_position
+            gear_rail.set_position([e_pos, 0., 0.])
 
             # Shift gear rail step generator to printer toolhead. Each stepper is registered individually
             for s in gear_rail.get_steppers():
