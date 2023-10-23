@@ -2647,7 +2647,7 @@ class Mmu:
                     # Means the macro reported it (usually for filament cutting)
                     limit = self._get_home_position_to_nozzle()
                     if park_pos > limit:
-                        self._log_always("Warning: After tip formation, park_pos reported as: %.2f, which is larger than your '<home>_to_nozzle' distance of %.2f!" % (park_pos, limit))
+                        self._log_always("Warning: After tip formation, park_pos reported as: %.2f, which is larger than your '**_to_nozzle' distance of %.2f!" % (park_pos, limit))
                     else:
                         self._log_always("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, delta))
 
@@ -3359,7 +3359,7 @@ class Mmu:
                     # Means the macro reported it (usually for filament cutting)
                     limit = self._get_home_position_to_nozzle()
                     if park_pos > limit:
-                        self._log_always("Warning: After tip formation, park_pos reported as: %.2f, which is larger than your '<home>_to_nozzle' distance of %.2f! Ignored" % (park_pos, limit))
+                        self._log_always("Warning: After tip formation, park_pos reported as: %.2f, which is larger than your '**_to_nozzle' distance of %.2f! Ignored" % (park_pos, limit))
                         park_pos = measured_park_pos
                         self.next_extruder_load_reduction = 0.
                     else:
