@@ -5159,7 +5159,7 @@ class Mmu:
                             self._set_filament_pos(self.FILAMENT_POS_UNLOADED, silent=True)
                     except MmuError as ee:
                         msg = "Failure during check gate #%d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
-                        if self._is_in_print():
+                        if self._is_in_print() and tools != "!":
                             self._mmu_pause(msg)
                         else:
                             self._log_always(msg)
@@ -5171,8 +5171,9 @@ class Mmu:
                         msg = "Tool T%d - filament not detected. Gate #%d marked empty" % (tool, gate)
                     else:
                         msg = "Gate #%d - filament not detected. Marked empty" % gate
-                    if self._is_in_print():
+                    if self._is_in_print() and tools != "!":
                         self._mmu_pause(msg)
+                        return
                     else:
                         self._log_info(msg)
                 finally:
