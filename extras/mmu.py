@@ -2645,7 +2645,11 @@ class Mmu:
                     self._log_always("After tip formation, extruder moved (park_pos): %.2f, encoder measured %.2f" % (measured_park_pos, delta))
                 else:
                     # Means the macro reported it (usually for filament cutting)
-                    self._log_always("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, delta))
+                    limit = self._get_home_position_to_nozzle()
+                    if park_pos > limit:
+                        self._log_always("Warning: After tip formation, park_pos reported as: %.2f, which is larger than your '<home>_to_nozzle' distance of %.2f!" % (park_pos, limit))
+                    else:
+                        self._log_always("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, delta))
 
                 gcode_macro.variables['final_eject'] = 0
             self._sync_gear_to_extruder(False, servo=True)
@@ -3353,8 +3357,14 @@ class Mmu:
                     self.next_extruder_load_reduction = 0.
                 else:
                     # Means the macro reported it (usually for filament cutting)
-                    self._log_always("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, measured))
-                    self.next_extruder_load_reduction = park_pos - measured_park_pos
+                    limit = self._get_home_position_to_nozzle()
+                    if park_pos > limit:
+                        self._log_always("Warning: After tip formation, park_pos reported as: %.2f, which is larger than your '<home>_to_nozzle' distance of %.2f! Ignored" % (park_pos, limit))
+                        park_pos = measured_park_pos
+                        self.next_extruder_load_reduction = 0.
+                    else:
+                        self._log_trace("After tip formation, park_pos reported as: %.2f, extruder moved: %.2f (encoder measured %.2f)" % (park_pos, measured_park_pos, measured))
+                        self.next_extruder_load_reduction = park_pos - measured_park_pos
                     filament_check = False
                 self._set_filament_position(-park_pos)
                 self._set_encoder_distance(initial_encoder_position + park_pos)
