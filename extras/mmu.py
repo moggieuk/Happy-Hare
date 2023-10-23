@@ -1304,9 +1304,9 @@ class Mmu:
             msg += " after an initial %.1fmm fast bowden move" % self.calibrated_bowden_length
             if self.toolhead_sync_unload or self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
-                msg += "extruder unload, " if self.toolhead_sync_unload else ""
-                msg += ("Print (at %d%% current)" % self.sync_gear_current) if self.sync_to_extruder else ""
+                msg += ("Print (at %d%% current), " % self.sync_gear_current) if self.sync_to_extruder else ""
                 msg += "Tip forming, " if self.sync_form_tip else ""
+                msg += "Extruder Unload" if self.toolhead_sync_unload else ""
             msg += "\nTip forming extruder current is %d%%" % self.extruder_form_tip_current
             msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "not") if self.selector_touch else ("disabled", "is not"))
             msg += "\nClog detection is %s" % ("AUTOMATIC" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_AUTOMATIC else "ENABLED" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_STATIC else "DISABLED")
