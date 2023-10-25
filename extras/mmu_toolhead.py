@@ -125,10 +125,12 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
 
     # Ensure the correct number of axes for convenience - MMU only has two
+    # Also, handle case when gear rail is synced to extruder
     def set_position(self, newpos, homing_axes=()):
         for _ in range(4 - len(newpos)):
             newpos.append(0.)
         super(MmuToolHead, self).set_position(newpos, homing_axes)
+        self.resync_gear_position_to_extruder()
 
     def get_selector_limits(self):
         return self.selector_max_velocity, self.selector_max_accel
@@ -191,6 +193,12 @@ class MmuToolHead(toolhead.ToolHead, object):
                 self.register_step_generator(handler)
 
             self.gear_motion_queue = None
+
+    def resync_gear_position_to_extruder(self):
+        if self.gear_motion_queue:
+            extruder = self.printer.lookup_object(self.gear_motion_queue, None)
+            e_pos = extruder.last_position
+            gear_rail.set_position([e_pos, 0., 0.])
 
     def sync_extruder_to_gear(self, extruder_name, extruder_only=False):
         if self.gear_motion_queue:
@@ -362,6 +370,8 @@ class MmuKinematics:
     def set_position(self, newpos, homing_axes):
         for i, rail in enumerate(self.rails):
             rail.set_position(newpos)
+            if i == 1:
+                self.toolhead.resync_gear_position_to_extruder() # Better done on Rail itself but rail doesn't know it's the mmu gear
             if i in homing_axes:
                 self.limits[i] = rail.get_range()
     

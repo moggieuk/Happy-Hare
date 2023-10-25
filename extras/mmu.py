@@ -921,6 +921,7 @@ class Mmu:
                     self._log_debug("Error running %s: %s" % (macro, str(e)))
 
     def _movequeues_wait_moves(self, toolhead=True, mmu_toolhead=True):
+        self._log_always("PAUL: wait_moves(toolhead=%s, mmu_toolhead=%s" % (toolhead, mmu_toolhead))
         if toolhead:
             self.toolhead.wait_moves()
         if mmu_toolhead:
@@ -2017,12 +2018,13 @@ class Mmu:
                     else:
                         self.reactor.register_callback(self._print_complete_event_handler)
                 self.last_print_stats = dict(new_ps)
-        else:
-            # Otherwise we fallback to idle_timeout
-            if event_type == "printing" and self._is_in_endstate():
-                # We have to assume we are starting to print. We expect user to call _MMU_PRINT_START to transition to 'printing'
-                # and then _MMU_PRINT_END.  Only other way out is resetting to standby when idle timeout fires
-                self._set_print_state("started")
+# PAUL
+#        else:
+#            # Otherwise we fallback to idle_timeout
+#            if event_type == "printing" and self._is_in_endstate():
+#                # We have to assume we are starting to print. We expect user to call _MMU_PRINT_START to transition to 'printing'
+#                # and then _MMU_PRINT_END.  Only other way out is resetting to standby when idle timeout fires
+#                self._set_print_state("started")
 
         # Capture transition to standby
         if event_type == "idle":
@@ -2035,8 +2037,10 @@ class Mmu:
             logging.exception("Error running job state initializer/finalizer")
 
     def _print_start_event_handler(self, eventtime):
+        self._log_info("PAUL: _print_start_event_handler() called")
         self._log_trace("_print_start_event_handler()")
         self._exec_gcode("_MMU_PRINT_START")
+        self._log_info("PAUL: _print_start_event_handler() DONE")
 
     def _print_complete_event_handler(self, eventtime):
         self._log_trace("_print_complete_event_handler()")
@@ -2062,13 +2066,13 @@ class Mmu:
         if self.print_state not in ["printing"]:
             self._log_trace("_on_print_start()")
             self._set_print_state("started")
-            self._movequeues_wait_moves()
+            self._movequeues_wait_moves()  # PAUL CAUTION WAIT
             self._clear_saved_toolhead_position()
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._enable_encoder_sensor(True) # Enable runout/clog detection
-            self._initialize_filament_position() # Encoder 0000
+            self._initialize_filament_position() # Encoder 0000  # PAUL CAUTION
 
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
             msg = "MMU initialized ready for print"
@@ -2108,7 +2112,7 @@ class Mmu:
         if self._is_printing(force_in_print):
             self._recover_filament_pos(strict=False, message=True)
 
-        self._sync_gear_to_extruder(False, servo=True)
+        self._sync_gear_to_extruder(False, servo=True) # Should we just leave state where it ends up?
 
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
@@ -2124,9 +2128,9 @@ class Mmu:
         if self._is_mmu_paused():
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.paused_extruder_temp = None
+            self._restore_toolhead_position("resume")
             self._sync_gear_to_extruder(self.sync_to_extruder and self.resume_to_state == "printing", servo=True, current=self.resume_to_state == "printing")
             self._initialize_filament_position() # Encoder 0000
-            self._restore_toolhead_position("resume")
             self._track_pause_end()
             self._set_print_state(self.resume_to_state)
             self._enable_encoder_sensor() # Enable runout/clog detection if printing
@@ -2272,8 +2276,8 @@ class Mmu:
             self.encoder_sensor.set_distance(distance)
 
     def _initialize_filament_position(self, dwell=False):
-        if self._encoder_dwell(dwell):
-            self.encoder_sensor.reset_counts()
+        _ = self._encoder_dwell(dwell)
+        self.encoder_sensor.reset_counts()
         self._set_filament_position()
 
     def _set_filament_position(self, position = 0.):
