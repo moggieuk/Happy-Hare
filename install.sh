@@ -361,6 +361,12 @@ read_previous_config() {
         if [ ! "${encoder_load_retries}" == "" ]; then
             gate_load_retries=${encoder_load_retries}
         fi
+        if [ "${toolhead_ignore_load_error}" == "1" ]; then
+            toolhead_move_error_tolerance=100
+        fi
+        if [ ! "${bowden_load_tolerance}" == "" ]; then
+            bowden_allowable_load_delta=${bowden_load_tolerance}
+        fi
 # E.g.
 #        selector_offsets=${colorselector}
 #        if [ "${sync_load_length}" -gt 0 ]; then

@@ -131,20 +131,20 @@ For more information on the bowden correct move, read about the loading sequence
 #
 # In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to detect missed steps
 # caused by "jerking" on a heavy spool. If bowden correction is enabled the driver with "believe" the encoder reading and
-# make correction moves to bring the filament to within the 'load_bowden_tolerance' of the end of bowden position
+# make correction moves to bring the filament to within the 'bowden_allowable_load_delta' of the end of bowden position
 # (this does require a reliable encoder and is not recommended for very high speed loading >200mm/s)
 #
 bowden_num_moves: 1			# Number of separate fast moves when loading or unloading bowden (>1 only if you have TTC errors)
 bowden_apply_correction: 0		# 1 to enable, 0 disabled (default) [Requires Encoder]
-bowden_load_tolerance: 20.0		# How close in mm the correction moves will attempt to get to target [Requires Encoder]
+bowden_allowable_load_delta: 20.0	# How close in mm the correction moves will attempt to get to target [Requires Encoder]
 #
 # This test verifies the filament is free of extruder before the fast bowden movement to reduce possibility of grinding filament
 bowden_pre_unload_test: 1		# 1 to check for bowden movement before full pull (slower), 0 don't check (faster) [Requires Encoder]
 #
 # Advanced: If pre-unload test is enabled, this controls the detection of successful bowden pre-unload test and represents the
 # fraction of allowable mismatch between actual movement and that seen by encoder. Setting to 50% tolerance usually works well.
-# Increasing will make test more tolerent. Value of 100% essentially disabled detection
-bowden_pre_error_percent: 50
+# Increasing will make test more tolerent. Value of 100% essentially disables error detection
+bowden_pre_unload_error_tolerance: 50
 ```
 
 This section controls the optional extruder homing step. The `extruder_homing_endstop` is either a real endstop name or the string "collision" which causes Happy Hare to "feel" for the extruder entrance.  If other options dictate this homing step it will automatically be performed, however it is possible to force it even when not strickly needed by setting the `extruder_force_homing: 1`.
@@ -206,7 +206,7 @@ toolhead_unload_safety_margin: 10
 # have a short move distance that may not be picked up by encoder and cause false errors. This allows masking of those errors.
 # However the error often indicates that your extruder load speed is too high for the friction on the filament and in
 # that case masking the error is not a good idea. Try reducing friction and lowering speed first!
-toolhead_move_error_percent: 60
+toolhead_move_error_tolerance: 60
 #
 # Synchronized unloading: It is recommended not to enable synced motors during unloading because (i) it makes it harder to
 # detect stuck filament, (ii) it can lead to additional noise, (iii) it is possible to "over unload". Nevertheless, it can

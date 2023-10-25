@@ -321,49 +321,49 @@ Running without any parameters will display the current values:
 
 ```
     SPEEDS:
-    gear_short_move_speed = 60.0
     gear_from_buffer_speed = 160.0
     gear_from_buffer_accel = 400.0
     gear_from_spool_speed = 60.0
     gear_from_spool_accel = 100.0
+    gear_short_move_speed = 60.0
+    gear_short_move_accel = 400.0
+    gear_short_move_threshold = 60.0
     gear_homing_speed = 50.0
     extruder_homing_speed = 20.0
     extruder_load_speed = 15.0
     extruder_unload_speed = 20.0
     extruder_sync_load_speed = 20.0
     extruder_sync_unload_speed = 25.0
+    extruder_accel = 400.0
     selector_move_speed = 200.0
     selector_homing_speed = 60.0
     selector_touch_speed = 80.0
     selector_touch_enable = 0                    # Advanced
-
+    
     TMC & MOTOR SYNC CONTROL:
-    sync_to_extruder = 0
-    sync_form_tip = 0
+    sync_to_extruder = 1
+    sync_form_tip = 1
     sync_gear_current = 50
     extruder_homing_current = 30
     extruder_form_tip_current = 120
-
+    
     LOADING/UNLOADING:
-    bowden_apply_correction = 0
-    bowden_load_tolerance = 15
+    bowden_apply_correction = 0                  # Advanced
+    bowden_allowable_load_delta = 20             # Advanced
+    bowden_pre_unload_test = 1
     extruder_force_homing = 0
     extruder_homing_endstop = collision
     extruder_homing_max = 50.0
-    toolhead_sync_load = 1
-    toolhead_sync_unload = 0
-    toolhead_homing_max = 40.0
-    toolhead_transition_length = 10.0
-    toolhead_delay_servo_release = 2.0           # Advanced
+    toolhead_sync_unload = 0                     # Advanced
+    toolhead_homing_max = 50.0
     toolhead_extruder_to_nozzle = 72.0
     toolhead_sensor_to_nozzle = 62.0
-    toolhead_ignore_load_error = 0
     gcode_load_sequence = 0                      # Expert
     gcode_unload_sequence = 0                    # Expert
-
+    
     OTHER:
-    z_hop_height_error = 5.0
-    z_hop_height_toolchange = 0.0
+    z_hop_height_error = 1.0
+    z_hop_height_toolchange = 0.5
     z_hop_speed = 15.0
     enable_clog_detection = 2
     enable_endless_spool = 1                     # Advanced
@@ -379,8 +379,8 @@ Running without any parameters will display the current values:
     form_tip_macro = _MMU_FORM_TIP_STANDALONE    # Advanced
 
     CALIBRATION:
-    mmu_calibration_bowden_length = 697.9
-    mmu_calibration_clog_length = 19.3
+    mmu_calibration_bowden_length = 698.0
+    mmu_calibration_clog_length = 13.6
 ```
 
 Any of the displayed config settings can be modified. For example, to update the distance from extruder entrance (homing postion) to nozzle.
@@ -936,7 +936,7 @@ The "visual log" (set at level 2) above shows individual steps of a typical load
 **3\. Bowden Tube Loading:** The MMU will then load the filament through the bowden in a fast movement. The speed is controlled by `gear_from_spool_speed` and `gear_from_buffer_speed` depending on whether Happy Hare believes it is pulling filament from the spool or from the buffer. It is advantagous to pull more slowly from the spool to overcome the higher friction. Once a full unload has occured and deposited filament in the buffer the higher speed 'gear_speed_from_buffer' can be used to reduce loading times. The length of the bowden move is determined by the calibrated value `mmu_calibration_bowden_length` that is persisted in `mmu_vars.cfg`
 
   <ul>
-    <li>ERCF (with encoder): Sometimes when loading from spool a sudden jerk can occur causing the gear stepper to loose steps. There is an advanced option to allow for correction if this occurs (or other slippage) if an encoder is fitted. If `bowden_apply_correction` is enabled and the encoder measures a difference greater than `bowden_load_tolerance', additional moves will be made correct the error (see comments in `mmu_parameters.cfg` for more details)</li>
+    <li>ERCF (with encoder): Sometimes when loading from spool a sudden jerk can occur causing the gear stepper to loose steps. There is an advanced option to allow for correction if this occurs (or other slippage) if an encoder is fitted. If `bowden_apply_correction` is enabled and the encoder measures a difference greater than `bowden_allowable_load_delta', additional moves will be made correct the error (see comments in `mmu_parameters.cfg` for more details)</li>
   </ul>
 
 **4\. Toolhead Homing:** Before loading to the nozzle it is usually necessary to establish a known home position close or in the toolhead. For this point is then a known distance to the nozzle. There are three main methods of achieving this:

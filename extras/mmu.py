@@ -212,18 +212,27 @@ class Mmu:
         self.selector_stepper = self.gear_stepper = self.mmu_extruder_stepper = self.encoder_sensor = self.servo = None
         self.sensors = {}
 
-        # Specific vendor build parameters / tuning
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
         self.mmu_version_string = config.get('mmu_version', "1.1")
         self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
+
+        # Shared non CAD default parameters to ensure everthing is set
+        self.gate_parking_distance = 23.
+        self.cad_bypass_block_width = 6.
+        self.cad_gate_width = 21.
+        self.selector_cal_tolerance = 5.0 # Extra movement allowed by selector
         bmg_circ = 23.
 
+        # Specific vendor build parameters / tuning. Mostly CAD related but a few exceptions like gate_park_pos
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
             if self.mmu_version >= 2.0:
                 self.cad_gate0_pos = 4.0
                 self.cad_gate_width = 23.05 # Triple Decky
                 self.cad_bypass_offset = 5.7
                 self.cad_last_gate_offset = 19.2
+
+                # Non CAD default parameters
+                self.gate_parking_distance = 16.
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
             else: # V1.1
@@ -231,6 +240,9 @@ class Mmu:
                 self.cad_bypass_offset = 0.
                 self.cad_bypass_block_width = 6.
                 self.cad_bypass_block_delta = 9.
+
+                # Non CAD default parameters
+                self.gate_parking_distance = 23.
 
                 if "t" in self.mmu_version_string:
                     self.cad_gate_width = 23.05 # Triple Decky is wider filament block
@@ -248,15 +260,12 @@ class Mmu:
                     self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
                 else:
                     self.encoder_default_resolution = bmg_circ / (2 * 17) # Original 17 tooth BMG gear
-
-                # Still allow some 'cad' parameters to be customized, possibly temporary
-                self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
-            self.cal_tolerance = 5.0
         else:
             raise self.config.error("Support for non-ERCF systems is comming soon!")
 
+        # Allow some CAD parameters to be customized
+        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
         self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width)
-        self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -295,19 +304,20 @@ class Mmu:
         self.gate_homing_endstop = config.get('gate_homing_endstop', "encoder") # "encoder" or endstop name e.g. "mmu_gear_gate"
         self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
-        self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
+        self.gate_parking_distance = config.getfloat('gate_parking_distance', self.gate_parking_distance) # Can be +ve or -ve
         self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.) # Not exposed
         self.encoder_dwell = config.getfloat('encoder_dwell', 0.1, minval=0., maxval=2.) # Not exposed
+        self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
 
         # Configuration for (fast) bowden move
         self.bowden_num_moves = config.getint('bowden_num_moves', 1, minval=1)
         self.bowden_apply_correction = config.getint('bowden_apply_correction', 0, minval=0, maxval=1)
-        self.bowden_load_tolerance = config.getfloat('bowden_load_tolerance', 10., minval=1.)
-        self.bowden_unload_tolerance = config.getfloat('bowden_unload_tolerance', self.bowden_load_tolerance, minval=1.)
-        self.bowden_move_error_percent = config.getint('bowden_move_error_percent', 60, minval=0., maxval=1.) # Percentage of delta of move that results in error
+        self.bowden_allowable_load_delta = config.getfloat('bowden_allowable_load_delta', 10., minval=1.)
+        self.bowden_allowable_unload_delta = config.getfloat('bowden_allowable_unload_delta', self.bowden_allowable_load_delta, minval=1.)
+        self.bowden_move_error_tolerance = config.getint('bowden_move_tolerance_percent', 60, minval=0., maxval=1.) # Percentage of delta of move that results in error
         self.bowden_pre_unload_test = config.getint('bowden_pre_unload_test', 0, minval=0, maxval=1) # Check for bowden movement before full pull
-        self.bowden_pre_error_percent = config.getint('bowden_pre_error_percent', 100, minval=0, maxval=100) # Percentage of delta of move that results in error
+        self.bowden_pre_unload_error_tolerance = config.getint('bowden_pre_unload_error_tolerance', 100, minval=0, maxval=100) # Percentage of delta of move that results in error
 
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
@@ -319,12 +329,7 @@ class Mmu:
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=5.) # For toolhead sensor
         self.toolhead_sync_unload = config.getint('toolhead_sync_unload', 0, minval=0, maxval=1)
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
-        self.toolhead_move_error_percent = config.getint('toolhead_move_error_percent', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
-
-        # Legacy, but map to error_percent
-        self.toolhead_ignore_load_error = config.getint('toolhead_ignore_load_error', 0, minval=0, maxval=1)
-        if self.toolhead_ignore_load_error:
-            self.toolhead_move_error_percent = 100
+        self.toolhead_move_error_tolerance = config.getint('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
 
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
@@ -387,7 +392,7 @@ class Mmu:
         # Currently hidden and testing options
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
 
-        # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg
+        # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
 
         # Endless spool groups
         self.enable_endless_spool = self.default_enable_endless_spool
@@ -1682,7 +1687,7 @@ class Mmu:
         else:
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
 
-        max_movement += self.cal_tolerance
+        max_movement += self.selector_cal_tolerance
         return max_movement
 
     def _calibrate_selector(self, gate, save=True):
@@ -1734,7 +1739,7 @@ class Mmu:
             # Step 1 - position of gate #0
             self._log_always("Measuring the selector position for gate #0...")
             traveled, found_home = self._measure_to_home()
-            if not found_home or traveled > self.cad_gate0_pos + self.cal_tolerance:
+            if not found_home or traveled > self.cad_gate0_pos + self.selector_cal_tolerance:
                 self._log_always("Selector didn't find home position or measurement (%.1fmm) unexpected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
                 return
             gate0_pos = traveled
@@ -2851,7 +2856,7 @@ class Mmu:
         self._log_debug("Loading bowden tube")
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._servo_down()
-        tolerance = self.bowden_load_tolerance
+        tolerance = self.bowden_allowable_load_delta
 
         # See if we need to automatically set calibration ratio for this gate
         current_ratio = self.variables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), None)
@@ -2872,7 +2877,7 @@ class Mmu:
             delta += sdelta
             if (i+1) < moves or moves == 1:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
-            if sdelta >= slength * (self.bowden_move_error_percent/100) and not self.calibrating: # Excess slippage detects failure
+            if sdelta >= slength * (self.bowden_move_error_tolerance/100) and not self.calibrating: # Excess slippage detects failure
                 raise MmuError("Failure to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
 
         if reference_load:
@@ -2915,14 +2920,14 @@ class Mmu:
         self._log_debug("Unloading bowden tube")
         self._set_filament_direction(self.DIRECTION_UNLOAD)
         self._servo_down()
-        tolerance = self.bowden_unload_tolerance
+        tolerance = self.bowden_allowable_unload_delta
 
         # Optional safety step
         if full and self.bowden_pre_unload_test:
             with self._require_encoder():
                 self._log_debug("Performing pre-unload test")
                 _,_,_,delta = self._trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size)
-                if delta > self.encoder_move_step_size * (self.bowden_pre_error_percent/100):
+                if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100):
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                     raise MmuError("Bowden unload pre-test failed. Filament seems to be stuck in the extruder")
                 length -= self.encoder_move_step_size
@@ -2937,7 +2942,7 @@ class Mmu:
             delta += sdelta
             if (i+1) < moves or moves == 1:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
-            if sdelta >= slength * (self.bowden_move_error_percent/100) and not self.calibrating: # Excess slippage detects filament still stuck in extruder
+            if sdelta >= slength * (self.bowden_move_error_tolerance/100) and not self.calibrating: # Excess slippage detects filament still stuck in extruder
                 raise MmuError("Failure to unload bowden. Perhaps filament is stuck in extruder. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
         if delta >= tolerance and not self.calibrating:
             # Only a warning because _unload_gate() will deal with it
@@ -3040,7 +3045,7 @@ class Mmu:
             if not homed:
                 if measured < self.encoder_min:
                     raise MmuError("Move to nozzle failed (encoder didn't sense any movement). Extruder may not have picked up filament or filament did not home correctly")
-                elif delta > length * (self.toolhead_move_error_percent/100):
+                elif delta > length * (self.toolhead_move_error_tolerance/100):
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                     raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not home correctly")
 
@@ -3095,7 +3100,7 @@ class Mmu:
             if not homed:
                 if measured < self.encoder_min:
                     raise MmuError("Filament seems to be stuck in the extruder. Encoder not sensing any movement")
-                elif synced and delta > length * (self.toolhead_move_error_percent/100):
+                elif synced and delta > length * (self.toolhead_move_error_tolerance/100):
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                     raise MmuError("Filament seems to be stuck in the extruder. Encoder not sensing sufficient movement")
 
@@ -4595,7 +4600,7 @@ class Mmu:
 
         # Homing, loading and unloading controls
         self.bowden_apply_correction = gcmd.get_int('BOWDEN_APPLY_CORRECTION', self.bowden_apply_correction, minval=0, maxval=1)
-        self.bowden_unload_tolerance = self.bowden_load_tolerance = gcmd.get_float('BOWDEN_LOAD_TOLERANCE', self.bowden_load_tolerance, minval=1., maxval=50.)
+        self.bowden_allowable_unload_delta = self.bowden_allowable_load_delta = gcmd.get_float('BOWDEN_ALLOWABLE_LOAD_DELTA', self.bowden_allowable_load_delta, minval=1., maxval=50.)
         self.bowden_pre_unload_test = gcmd.get_int('BOWDEN_PRE_UNLOAD_TEST', self.bowden_pre_unload_test, minval=0, maxval=1)
 
         self.extruder_homing_endstop = gcmd.get('EXTRUDER_HOMING_ENDSTOP', self.extruder_homing_endstop)
@@ -4673,7 +4678,7 @@ class Mmu:
 
         msg += "\n\nLOADING/UNLOADING:"
         msg += "\nbowden_apply_correction = %d" % self.bowden_apply_correction
-        msg += "\nbowden_load_tolerance = %d" % self.bowden_load_tolerance
+        msg += "\nbowden_allowable_load_delta = %d" % self.bowden_allowable_load_delta
         msg += "\nbowden_pre_unload_test = %d" % self.bowden_pre_unload_test
         msg += "\nextruder_force_homing = %d" % self.extruder_force_homing
         msg += "\nextruder_homing_endstop = %s" % self.extruder_homing_endstop
