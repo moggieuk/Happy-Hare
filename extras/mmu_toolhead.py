@@ -12,7 +12,7 @@
 #
 # (\_/)
 # ( *,*)
-# (")_(") MMU Ready
+# (")_(") Happy Hare Ready
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
@@ -198,6 +198,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.gear_motion_queue:
             extruder = self.printer.lookup_object(self.gear_motion_queue, None)
             e_pos = extruder.last_position
+            gear_rail = self.get_kinematics().rails[1]
             gear_rail.set_position([e_pos, 0., 0.])
 
     def sync_extruder_to_gear(self, extruder_name, extruder_only=False):

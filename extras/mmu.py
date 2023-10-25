@@ -8,7 +8,7 @@
 #
 # (\_/)
 # ( *,*)
-# (")_(") MMU Ready
+# (")_(") Happy Hare Ready
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
@@ -897,7 +897,7 @@ class Mmu:
             if self._has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_encoder_sensor() # Initially disable clog/runout detection
-            self._log_always('(\_/)\n( *,*)\n(")_(") MMU Ready')
+            self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare Ready')
             if self.log_startup_status > 0:
                 self._log_always(self._tool_to_gate_map_to_human_string(self.log_startup_status == 1))
                 self._display_visual_state(silent=self.persistence_level < 4)
@@ -921,7 +921,7 @@ class Mmu:
                     self._log_debug("Error running %s: %s" % (macro, str(e)))
 
     def _movequeues_wait_moves(self, toolhead=True, mmu_toolhead=True):
-        self._log_always("PAUL: wait_moves(toolhead=%s, mmu_toolhead=%s" % (toolhead, mmu_toolhead))
+        self._log_trace("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if toolhead:
             self.toolhead.wait_moves()
         if mmu_toolhead:
@@ -2009,7 +2009,7 @@ class Mmu:
                         # This is a 'started' state
                         self._log_trace("Automaticaly detected JOB START, new_state=%s, current print_state=%s" % (new_state, self.print_state))
                         if self.print_state not in ["started", "printing"]:
-                            self._set_print_state("started")
+                            self._on_print_start(pre_start_only=True)
                             self.reactor.register_callback(self._print_start_event_handler)
                 elif new_state in ["complete", "error"] and event_type == "ready":
                     self._log_trace("Automatically detected JOB %s, new_state=%s, current print_state=%s" % (new_state.upper(), new_state, self.print_state))
@@ -2018,13 +2018,12 @@ class Mmu:
                     else:
                         self.reactor.register_callback(self._print_complete_event_handler)
                 self.last_print_stats = dict(new_ps)
-# PAUL
 #        else:
 #            # Otherwise we fallback to idle_timeout
 #            if event_type == "printing" and self._is_in_endstate():
 #                # We have to assume we are starting to print. We expect user to call _MMU_PRINT_START to transition to 'printing'
 #                # and then _MMU_PRINT_END.  Only other way out is resetting to standby when idle timeout fires
-#                self._set_print_state("started")
+#                self._on_print_start(pre_start_only=True)
 
         # Capture transition to standby
         if event_type == "idle":
@@ -2037,10 +2036,8 @@ class Mmu:
             logging.exception("Error running job state initializer/finalizer")
 
     def _print_start_event_handler(self, eventtime):
-        self._log_info("PAUL: _print_start_event_handler() called")
         self._log_trace("_print_start_event_handler()")
         self._exec_gcode("_MMU_PRINT_START")
-        self._log_info("PAUL: _print_start_event_handler() DONE")
 
     def _print_complete_event_handler(self, eventtime):
         self._log_trace("_print_complete_event_handler()")
@@ -2054,26 +2051,27 @@ class Mmu:
     def _set_print_state(self, print_state):
         if print_state != self.print_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
-            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s (z_hop @%.1fmm), pause_resume: %s, Idle timeout: %.2fs)"
+            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, z_hop @%.1fmm, pause_resume: %s, Idle timeout: %.2fs)"
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_paused(), idle_timeout))
             self.print_state = print_state
 
-    # If this is called automatically it will occur immediately the first gcode action
-    # that causes idle_timeout to transition into 'printing' state.
-    # Therefore don't do anything that requires operating kinematics (we might not be homed yet)
-    def _on_print_start(self):
-        if self.print_state not in ["printing"]:
-            self._log_trace("_on_print_start()")
-            self._set_print_state("started")
-            self._movequeues_wait_moves()  # PAUL CAUTION WAIT
+    # If this is called automatically when printing starts. The pre_start_only operations are performed on an idle_timeout
+    # event so cannot block.  The remainder of moves will be called from the queue but they will be called early so
+    # don't do anything that requires operating toolhead kinematics (we might not even be homed yet)
+    def _on_print_start(self, pre_start_only=False):
+        if self.print_state not in ["started", "printing"]:
+            self._log_trace("_on_print_start(->started)")
             self._clear_saved_toolhead_position()
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._enable_encoder_sensor(True) # Enable runout/clog detection
-            self._initialize_filament_position() # Encoder 0000  # PAUL CAUTION
+            self._initialize_filament_position(dwell=None) # Encoder 0000
+            self._set_print_state("started")
 
+        if not pre_start_only and self.print_state not in ["printing"]:
+            self._log_trace("_on_print_start(->printing)")
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
             msg = "MMU initialized ready for print"
             if self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -2132,8 +2130,8 @@ class Mmu:
             self._sync_gear_to_extruder(self.sync_to_extruder and self.resume_to_state == "printing", servo=True, current=self.resume_to_state == "printing")
             self._initialize_filament_position() # Encoder 0000
             self._track_pause_end()
+            self._enable_encoder_sensor(True) # Enable runout/clog detection if printing
             self._set_print_state(self.resume_to_state)
-            self._enable_encoder_sensor() # Enable runout/clog detection if printing
             self.resume_to_state = "standby"
             self.printer.send_event("mmu:mmu_resumed", self) # Notify MMU resumed event
 
@@ -3984,7 +3982,7 @@ class Mmu:
                 self._log_debug("Set extrusion multiplier for tool T%d as %d%%" % (tool, extrude_percent))
             self._restore_tool_override(tool)
 
-    # Primary method to selects and loads tool. Assumes we are unloaded.
+    # Primary method to select and loads tool. Assumes we are unloaded.
     def _select_and_load_tool(self, tool):
         self._log_debug('Loading tool T%d...' % tool)
         self._select_tool(tool, move_servo=False)
@@ -4027,6 +4025,9 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             skip_unload = True
             msg = "Tool change requested: T%d" % tool
+            m117_msg = ("> T%d" % tool)
+        elif self.tool_selected == tool:
+            msg = "Reloading: T%d" % tool
             m117_msg = ("> T%d" % tool)
         else:
             msg = "Tool change requested, from %s to T%d" % (initial_tool_string, tool)
