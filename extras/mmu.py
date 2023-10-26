@@ -526,7 +526,7 @@ class Mmu:
         self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help)
         self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
-        self.gcode.register_command('MMU_CHECK_GATES', self.cmd_MMU_CHECK_GATES, desc = self.cmd_MMU_CHECK_GATES_help)
+        self.gcode.register_command('MMU_CHECK_GATE', self.cmd_MMU_CHECK_GATE, desc = self.cmd_MMU_CHECK_GATE_help)
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
 
         # For use in user controlled load and unload macros
@@ -833,6 +833,10 @@ class Mmu:
                     self.tool_selected = self.TOOL_GATE_BYPASS # Sanity check
                     self._set_selector_pos(self.bypass_offset)
                     self.is_homed = True
+                else:
+                    self.tool_selected = self.TOOL_GATE_UNKNOWN
+                    self.gate_selected = self.TOOL_GATE_UNKNOWN
+                    self.is_homed = False
             else:
                 errors.append("Incorrect number of gates specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
             if gate_selected != self.TOOL_GATE_UNKNOWN and tool_selected != self.TOOL_GATE_UNKNOWN:
@@ -2520,7 +2524,8 @@ class Mmu:
             d = self.gcode.gcode_help.get(c, "n/a")
             if c.startswith("MMU") and not c.startswith("MMU__"):
                 if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c:
-                    msg += "%s : %s\n" % (c.upper(), d)
+                    if c not in ["MMU_UNLOAD", "MMU_CHANGE_TOOL_STANDALONE", "MMU_CHECK_GATES"]: # Remove aliases
+                        msg += "%s : %s\n" % (c.upper(), d)
                 else:
                     tmsg += "%s : %s\n" % (c.upper(), d)
             elif c.startswith("_MMU") and not c.startswith("_MMU_STEP"):
@@ -4216,7 +4221,7 @@ class Mmu:
         finally:
             self._servo_auto()
 
-    cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap"
+    cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap (called from Tx command)"
     def cmd_MMU_CHANGE_TOOL(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
@@ -4854,7 +4859,10 @@ class Mmu:
             msg += "|\n"
             msg += msg_selct
             msg += "|" if self.gate_selected == self.mmu_num_gates - 1 else "-"
-            msg += " Bypass" if self.gate_selected == self.TOOL_GATE_BYPASS else (" T%d" % self.tool_selected) if self.tool_selected >= 0 else ""
+            if self.is_homed:
+                msg += " Bypass" if self.gate_selected == self.TOOL_GATE_BYPASS else (" T%d" % self.tool_selected) if self.tool_selected >= 0 else ""
+            else:
+                msg += " NOT HOMED"
         return msg
 
     def _gate_map_to_human_string(self, detail=False):
@@ -5085,8 +5093,8 @@ class Mmu:
         msg += "|\n"
         self._log_always(msg)
 
-    cmd_MMU_CHECK_GATES_help = "Automatically inspects gate(s), parks filament and marks availability"
-    def cmd_MMU_CHECK_GATES(self, gcmd):
+    cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
+    def cmd_MMU_CHECK_GATE(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
@@ -5095,6 +5103,7 @@ class Mmu:
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         # These three parameters are mutually exclusive so we only process one
         tools = gcmd.get('TOOLS', "!")
+        gates = gcmd.get('GATES', "!")
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
 
@@ -5108,8 +5117,10 @@ class Mmu:
                     # Tools used in print (may be empty list)
                     try:
                         for tool in tools.split(','):
-                            gate = int(self.tool_to_gate_map[int(tool)])
-                            gates_tools.append([gate, int(tool)])
+                            tool = int(tool)
+                            if tool >= 0 and tool < self.mmu_num_gates:
+                                gate = self.tool_to_gate_map[tool]
+                                gates_tools.append([gate, tool])
                         if len(gates_tools) == 0:
                             self._log_debug("No tools to check, assuming default tool is already loaded")
                             return
@@ -5119,6 +5130,16 @@ class Mmu:
                             self._mmu_pause(msg)
                         else:
                             self._log_always(msg)
+                        return
+                elif gates != "!":
+                    # List of gates
+                    try:
+                        for gate in gates.split(','):
+                            gate = int(gate)
+                            if gate >= 0 and gate < self.mmu_num_gates:
+                                gates_tools.append([gate, -1])
+                    except ValueError as ve:
+                        self._log_always("Invalid GATES parameter: %s" % gates)
                         return
                 elif tool >= 0:
                     # Individual tool
@@ -5165,7 +5186,7 @@ class Mmu:
                             msg = "Tool T%d on gate #%d marked EMPTY" % (tool, gate)
                         else:
                             msg = "Gate #%d marked EMPTY" % gate
-                        if self._is_in_print() and tools != "!":
+                        if self._is_in_print():
                             # Use case of in-print verification of all tools used in print
                             self._mmu_pause(msg)
                             return

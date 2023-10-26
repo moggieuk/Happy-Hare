@@ -148,7 +148,7 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
     MMU : Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL : Perform a tool swap
-    MMU_CHECK_GATES : Automatically inspects gate(s), parks filament and marks availability
+    MMU_CHECK_GATE : Automatically inspects gate(s), parks filament and marks availability
     MMU_STATS : Dump (and optionally reset) the MMU statistics
     MMU_EJECT : Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
@@ -497,7 +497,7 @@ Needless to say, other operations can update specific state<br>
 Couple of miscellaneous notes:
 
 <ul>
-  <li>Closely relevant to the usefulness of this functionality is the `MMU_CHECK_GATES` command that will examine all or selection of gates for presence of filament</li>
+  <li>Closely relevant to the usefulness of this functionality is the `MMU_CHECK_GATE` command that will examine all or selection of gates for presence of filament</li>
   <li>In the graphic depictions of filament state the `*` indicates presence ('B' and 'S' represent whether the filament is buffered or pulling straight from the spool), '?' unknown and ' ' or '.' the lack of filament</li>
   <li>With tool-to-gate mapping it is entirely possible to have multiple tools mapped to the same gate (for example to force a multi-color print to be monotone) and therefore some gates can be made inaccessable until map is reset</li>
   <li>The default value for `gate_status`, `tool_to_gate_map` and `endless_spool_groups` can be set in `mmu_parameters.cfg`.  If not set the default will be, Tx maps to Gate#x, the status of each gate is unknown and each tool is in its own endless spool group (i.e. not part of a group)</li>
@@ -804,17 +804,17 @@ Finally, you can unload just the extruder using the usual eject:
 
 ### 11. Useful pre-print functionality
 
-There are a couple of commands (`MMU_PRELOAD` and `MMU_CHECK_GATES`) that are useful to ensure MMU readiness prior to printing.
+There are a couple of commands (`MMU_PRELOAD` and `MMU_CHECK_GATE`) that are useful to ensure MMU readiness prior to printing.
 
 <details>
 <summary><sub>🔹 Read more on pre-print readiness...</sub></summary><br>
  
 The `MMU_PRELOAD` is an aid to loading filament into the MMU.  The command works a bit like the Prusa's functionality and spins gear with servo depressed until filament is fed in.  It then parks the filament nicely. This is the recommended way to load filament into your MMU and ensures that filament is not under/over inserted potentially preventing pickup or blocking the gate.<br>
 
-Similarly the `MMU_CHECK_GATES` command will run through all the gates (or the one specified), checks that filament is loaded, correctly parks and updates the "gate status" map so the MMU knows which gates have filament available.<br>
+Similarly the `MMU_CHECK_GATE` command will run through all the gates (or the one specified), checks that filament is loaded, correctly parks and updates the "gate status" map so the MMU knows which gates have filament available.<br>
 
 > [!NOTE]  
-> The `MMU_CHECK_GATES` command has a special option that is designed to be called from your `PRINT_START` macro. When called as in this example: `MMU_CHECK_GATES TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print. This is a really useful pre-print check! See [Gcode Preprocessing](./doc/gcode_preprocessing.md) for more details.
+> The `MMU_CHECK_GATE` command has a special option that is designed to be called from your `PRINT_START` macro. When called as in this example: `MMU_CHECK_GATE TOOLS=0,3,5`. Happy Hare will validate that tools 0, 3 & 5 are ready to go else generate an error prior to starting the print. This is a really useful pre-print check! See [Gcode Preprocessing](./doc/gcode_preprocessing.md) for more details.
 
 </details>
 

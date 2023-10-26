@@ -364,8 +364,8 @@ class MmuKinematics:
 
     def calc_position(self, stepper_positions):
         #for r in self.rails:
-        #    logging.info("PAUL: * rail=%s, initial_stepper_name=%s" % (r.get_name, r.steppers[0].get_name()))
-        #logging.info("PAUL: * stepper_positions=%s" % stepper_positions)
+        #    logging.info("DEBUG: * rail=%s, initial_stepper_name=%s" % (r.get_name, r.steppers[0].get_name()))
+        #logging.info("DEBUG: * stepper_positions=%s" % stepper_positions)
         return [stepper_positions[rail.steppers[0].get_name()] for rail in self.rails] # Note can't assume rail name == stepper name
 
     def set_position(self, newpos, homing_axes):
@@ -392,22 +392,14 @@ class MmuKinematics:
                 forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
             homing_state.home_rails([rail], forcepos, homepos) # Perform homing
 
-    def _check_endstops(self, move):
-        end_pos = move.end_pos
-        for i in range(len(self.rails)):
-            if (move.axes_d[i] and (end_pos[i] < self.limits[i][0] or end_pos[i] > self.limits[i][1])):
-                if self.limits[i][0] > self.limits[i][1]:
-                    raise move.move_error("Must home axis first")
-                raise move.move_error()
-
     def set_accel_limit(self, accel):
         self.move_accel = accel
 
     def check_move(self, move):
         limits = self.limits
         xpos, ypos = move.end_pos[:2]
-        if xpos < limits[0][0] or xpos > limits[0][1]:
-            self._check_endstops(move)
+        if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
+            raise move.move_error()
         
         if move.axes_d[0]: # Selector
             move.limit_speed(self.selector_max_velocity, self.selector_max_accel)
