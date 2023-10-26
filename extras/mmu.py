@@ -203,6 +203,7 @@ class Mmu:
         self.calibration_status = 0b0
         self.calibrated_bowden_length = -1
         self.ref_gear_rotation_distance = 1.
+        self.encoder_force_validation = False
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
@@ -655,7 +656,7 @@ class Mmu:
         self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
         self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
-        # Sanity check required klipper options are enabled
+        # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
         if self.print_stats is None:
             self._log_debug("[virtual_sdcard] is not found in config, advanced state control is not possible")
@@ -663,7 +664,7 @@ class Mmu:
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-        if not self._has_sensor("toolhead"): # PAUL revist this because of possible gate sensor...
+        if not self._has_sensor("toolhead"):
             self.extruder_force_homing = 1
             self._log_debug("No toolhead sensor detected, setting 'extruder_force_homing: 1'")
 
@@ -2243,10 +2244,10 @@ class Mmu:
                 self._movequeues_dwell(self.encoder_dwell)
                 self._movequeues_wait_moves()
                 return True
-            elif dwell is False and self.encoder_move_validation:
+            elif dwell is False and (self.encoder_move_validation or self.encoder_force_validation):
                 self._movequeues_wait_moves()
                 return True
-            elif dwell is None and self.encoder_move_validation:
+            elif dwell is None and (self.encoder_move_validation or self.encoder_force_validation):
                 return True
         return False
 
@@ -2254,12 +2255,11 @@ class Mmu:
     def _require_encoder(self):
         if not self._has_encoder():
             self._log_error("Assertion failure: Encoder required but not present on MMU")
-        validation = self.encoder_move_validation
-        self.encoder_move_validation = True
+        self.encoder_force_validation = True
         try:
             yield self
         finally:
-            self.encoder_move_validation = validation
+            self.encoder_force_validation = False
 
     def _get_encoder_distance(self, dwell=False):
         if self._encoder_dwell(dwell):
@@ -2692,7 +2692,7 @@ class Mmu:
         except MmuError as ee:
             raise gcmd.error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
 
-    cmd_MMU_STEP_HOME_EXTRUDER_help = "User composable loading step: Extruder collision detection"
+    cmd_MMU_STEP_HOME_EXTRUDER_help = "User composable loading step: Home to extruder sensor or entrance through collision detection"
     def cmd_MMU_STEP_HOME_EXTRUDER(self, gcmd):
         try:
             self._home_to_extruder(self.extruder_homing_max)
