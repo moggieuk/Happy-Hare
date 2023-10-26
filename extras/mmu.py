@@ -573,7 +573,7 @@ class Mmu:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
-                # With MMU this must not pause nor call user defined macros
+                # With MMU this must not accidentally pause nor call user defined macros
                 self.sensors[name].runout_helper.runout_pause = False
                 self.sensors[name].runout_helper.runout_gcode = None
                 self.sensors[name].runout_helper.insert_gcode = None
