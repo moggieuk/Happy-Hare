@@ -4194,12 +4194,22 @@ class Mmu:
         if self._check_not_homed(): return
         if self._check_is_loaded(): return
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
+        bypass = gcmd.get_int('BYPASS', -1, minval=0, maxval=1)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
-        if tool == -1 and gate == -1:
-            raise gcmd.error("Error on 'MMU_SELECT': missing TOOL or GATE")
+        if tool == -1 and gate == -1 and bypass == -1:
+            raise gcmd.error("Error on 'MMU_SELECT': missing TOOL, GATE or BYPASS")
+        self._select(bypass, tool, gate)
+
+    cmd_MMU_SELECT_BYPASS_help = "Select the filament bypass"
+    def cmd_MMU_SELECT_BYPASS(self, gcmd):
+        self._select(1, -1, -1)
+
+    def _select(self, bypass, tool, gate):
         try:
-            if tool != -1:
+            if bypass != -1:
+                self._select_bypass()
+            elif tool != -1:
                 self._select_tool(tool)
             else:
                 self._select_gate(gate)
@@ -4306,17 +4316,6 @@ class Mmu:
                     self._log_always("Filament not loaded")
             except MmuError as ee:
                 self._mmu_pause(str(ee))
-
-    cmd_MMU_SELECT_BYPASS_help = "Select the filament bypass"
-    def cmd_MMU_SELECT_BYPASS(self, gcmd):
-        if self._check_is_disabled(): return
-        if self._check_not_homed(): return
-        if self._check_is_loaded(): return
-        if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
-        try:
-            self._select_bypass()
-        except MmuError as ee:
-            self._mmu_pause(str(ee))
 
     cmd_MMU_PRINT_START_help = "Initialize MMU state and ready for print"
     def cmd_MMU_PRINT_START(self, gcmd):
