@@ -439,7 +439,7 @@ class MmuHoming(Homing, object):
             selector_move_dist = homepos[0] - startpos[0]
             speed = math.sqrt(self.retract_gear_speed_while_moving_selector ** 2 + hi.speed ** 2)
             gear_move_dist = selector_move_dist / speed * self.retract_gear_speed_while_moving_selector
-            homepos[1] = homepos[1] + gear_move_dist
+            homepos[1] = homepos[1] - gear_move_dist
         else:
             speed = hi.speed
 
