@@ -382,6 +382,7 @@ class Mmu:
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
         self.tool_extrusion_multipliers = []
         self.tool_speed_multipliers = []
+        self.retract_gear_speed_while_moving_selector = config.getfloat('retract_gear_speed_while_moving_selector', 0, minval=0)
 
         # Logging
         self.log_level = config.getint('log_level', 1, minval=0, maxval=4)
@@ -1472,8 +1473,8 @@ class Mmu:
             self._log_info("Filament %s by gear motor buzz" % ("detected" if found else "not detected"))
         elif motor == "selector":
             pos = self.mmu_toolhead.get_position()[0]
-            self._trace_selector_move(None, pos + 5, wait=False)
-            self._trace_selector_move(None, pos - 5, wait=False)
+            self._trace_selector_move(None, pos + 5, wait=False, retract_gear=False)
+            self._trace_selector_move(None, pos - 5, wait=False, retract_gear=False)
         elif motor == "servo":
             self._movequeues_wait_moves()
             old_state = self.servo_state
@@ -3431,7 +3432,7 @@ class Mmu:
         self.gate_selected = self.TOOL_GATE_UNKNOWN
         self._servo_move()
         self._movequeues_wait_moves(toolhead=False)
-        homing_state = MmuHoming(self.printer, self.mmu_toolhead)
+        homing_state = MmuHoming(self.printer, self.mmu_toolhead, self.retract_gear_speed_while_moving_selector)
         homing_state.set_axes([0])
         try:
             self.mmu_kinematics.home(homing_state)
@@ -3494,13 +3495,21 @@ class Mmu:
 
     # Raw wrapper around all selector moves except homing
     # Returns position after move, if homed (homing moves), trigger position (homing moves)
-    def _trace_selector_move(self, trace_str, new_pos, speed=None, homing_move=0, endstop_name=None, wait=True):
+    def _trace_selector_move(self, trace_str, new_pos, speed=None, homing_move=0, endstop_name=None, retract_gear=None, wait=True):
         if trace_str:
             self._log_trace(trace_str)
-        speed = speed or self.selector_move_speed
+        selector_speed = speed or self.selector_move_speed
         accel = self.mmu_toolhead.get_selector_limits()[1]
         pos = self.mmu_toolhead.get_position()
         homed = False
+        retract_gear = (self.retract_gear_speed_while_moving_selector > 0) if retract_gear is None else retract_gear
+        if retract_gear:
+            selector_move_dist = (new_pos - pos[0])
+            speed = math.sqrt(self.retract_gear_speed_while_moving_selector ** 2 + selector_speed ** 2)
+            gear_move_dist = selector_move_dist / speed * self.retract_gear_speed_while_moving_selector
+            pos[1] = pos[1] + gear_move_dist
+        else:
+            speed = selector_speed
 
         if homing_move != 0:
             self._log_stepper("SELECTOR: position=%.1f, speed=%.1f, accel=%.1f homing_move=%d, endstop_name=%s" % (new_pos, speed, accel, homing_move, endstop_name))

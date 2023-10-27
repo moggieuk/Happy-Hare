@@ -376,14 +376,14 @@ class MmuKinematics:
             if i in homing_axes:
                 self.limits[i] = rail.get_range()
     
-    def home(self, homing_state):
+    def home(self, homing_state, homepos=None):
         for axis in homing_state.get_axes():
             if not axis == 0: # Saftey: Only selector (axis[0]) can be homed
                 continue
             rail = self.rails[axis]
             position_min, position_max = rail.get_range()
             hi = rail.get_homing_info()
-            homepos = [None, None, None, None]
+            homepos = homepos or [None, None, None, None]
             homepos[axis] = hi.position_endstop
             forcepos = list(homepos)
             if hi.positive_dir:
@@ -417,9 +417,10 @@ class MmuKinematics:
 # Extend Klipper homing module to leverage MMU "toolhead"
 # (code pulled from homing.py)
 class MmuHoming(Homing, object):
-    def __init__(self, printer, mmu_toolhead):
+    def __init__(self, printer, mmu_toolhead, retract_gear_speed_while_moving_selector=0):
         super(MmuHoming, self).__init__(printer)
         self.toolhead = mmu_toolhead # Override default toolhead
+        self.retract_gear_speed_while_moving_selector = retract_gear_speed_while_moving_selector
     
     def home_rails(self, rails, forcepos, movepos):
         # Notify of upcoming homing operation
@@ -433,7 +434,16 @@ class MmuHoming(Homing, object):
         endstops = [es for rail in rails for es in rail.get_endstops()]
         hi = rails[0].get_homing_info()
         hmove = HomingMove(self.printer, endstops, self.toolhead) # Override default toolhead
-        hmove.homing_move(homepos, hi.speed)
+
+        if self.retract_gear_speed_while_moving_selector > 0:
+            selector_move_dist = homepos[0] - startpos[0]
+            speed = math.sqrt(self.retract_gear_speed_while_moving_selector ** 2 + hi.speed ** 2)
+            gear_move_dist = selector_move_dist / speed * self.retract_gear_speed_while_moving_selector
+            homepos[1] = homepos[1] + gear_move_dist
+        else:
+            speed = hi.speed
+
+        hmove.homing_move(homepos, speed)
         # Perform second home
         if hi.retract_dist:
             # Retract
