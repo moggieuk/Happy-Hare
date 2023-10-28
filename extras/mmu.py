@@ -3504,10 +3504,10 @@ class Mmu:
         homed = False
         retract_gear = (self.retract_gear_speed_while_moving_selector > 0) if retract_gear is None else retract_gear
         if retract_gear:
-            selector_move_dist = (new_pos - pos[0])
+            selector_move_dist = abs(new_pos - pos[0])
             speed = math.sqrt(self.retract_gear_speed_while_moving_selector ** 2 + selector_speed ** 2)
             gear_move_dist = selector_move_dist / speed * self.retract_gear_speed_while_moving_selector
-            pos[1] = pos[1] - gear_move_dist
+            pos[1] = pos[1] - gear_move_dists
         else:
             speed = selector_speed
 
