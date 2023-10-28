@@ -3507,7 +3507,7 @@ class Mmu:
             selector_move_dist = abs(new_pos - pos[0])
             speed = math.sqrt(self.retract_gear_speed_while_moving_selector ** 2 + selector_speed ** 2)
             gear_move_dist = selector_move_dist / speed * self.retract_gear_speed_while_moving_selector
-            pos[1] = pos[1] - gear_move_dists
+            pos[1] = pos[1] - gear_move_dist
         else:
             speed = selector_speed
 
