@@ -302,7 +302,7 @@ class Mmu:
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
 
         # Configuration for gate loading and unloading
-        self.gate_homing_endstop = config.get('gate_homing_endstop', "encoder") # "encoder" or endstop name e.g. "mmu_gear_gate"
+        self.gate_homing_endstop = config.get('gate_homing_endstop', "encoder") # "encoder" or endstop name e.g. "mmu_gate"
         self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', self.gate_parking_distance) # Can be +ve or -ve
@@ -1151,7 +1151,8 @@ class Mmu:
         for gate in range(self.mmu_num_gates):
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=\"%s\"" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate, self.gate_statistics[gate]))
         # Good place to persist current clog length
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, self.encoder_sensor.get_clog_detection_length()))
+        if self._has_encoder():
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, self.encoder_sensor.get_clog_detection_length()))
 
     def _persist_swap_statistics(self):
         self.statistics['time_spent_loading'] = round(self.statistics['time_spent_loading'], 2)
@@ -1843,6 +1844,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_GEAR_help = "Calibration routine for gear stepper rotational distance"
     def cmd_MMU_CALIBRATE_GEAR(self, gcmd):
         if self._check_is_disabled(): return
+        if self._check_has_encoder(): return
         length = gcmd.get_float('LENGTH', 100., above=50.)
         measured = gcmd.get_float('MEASURED', above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
@@ -1862,6 +1864,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_ENCODER_help = "Calibration routine for the MMU encoder"
     def cmd_MMU_CALIBRATE_ENCODER(self, gcmd):
         if self._check_is_disabled(): return
+        if self._check_has_encoder(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR): return
 
@@ -1903,6 +1906,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for gate #0"
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         if self._check_is_disabled(): return
+        if self._check_has_encoder(): return
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR): return
@@ -2286,8 +2290,8 @@ class Mmu:
             self.encoder_sensor.set_distance(distance)
 
     def _initialize_filament_position(self, dwell=False):
-        _ = self._encoder_dwell(dwell)
-        self.encoder_sensor.reset_counts()
+        if self._encoder_dwell(dwell):
+            self.encoder_sensor.reset_counts()
         self._set_filament_position()
 
     def _set_filament_position(self, position = 0.):
@@ -2850,10 +2854,10 @@ class Mmu:
     def _validate_gate_config(self, direction):
         if self.gate_homing_endstop == "encoder":
             if not self._has_encoder():
-                raise MmuError("Attempting to %s encoder but encoder is not configured on MMU!", direction)
-        elif self.gate_homing_endstop == "mmu_gear_gate":
+                raise MmuError("Attempting to %s encoder but encoder is not configured on MMU!" % direction)
+        elif self.gate_homing_endstop == self.ENDSTOP_GATE:
             if not self._has_sensor("gate"):
-                raise MmuError("Attempting to %s gate but gate sensor is not configured on MMU!", direction)
+                raise MmuError("Attempting to %s gate but gate sensor '%s' is not configured on MMU!" % (direction, self.ENDSTOP_GATE))
         else:
             raise MmuError("Unsupported gate endstop")
 
@@ -3619,18 +3623,18 @@ class Mmu:
 #################################
 
     # Convenience wrapper around all gear and extruder motor movement that tracks measured movement and create trace log entry
-    # motor = "gear"          - gear motor(s) only on rail
-    #         "gear+extruder" - gear and extruder included on rail
-    #         "extruder"      - extruder only on gear rail
-    #         "both"          - gear and extruder together but independent (legacy, homing move not possible)
-    #         "synced"        - gear synced with extruder as in print (homing move not possible)
+    # motor = "gear"           - gear motor(s) only on rail
+    #         "gear+extruder"  - gear and extruder included on rail
+    #         "extruder"       - extruder only on gear rail
+    #         "both"           - gear and extruder together but independent (legacy, homing move not possible)
+    #         "synced"         - gear synced with extruder as in print (homing move not possible)
     #
     # If homing move then endstop name can be specified.
-    #         "mmu_gear_gate"     - at the gate on MMU (when motor includes "gear")
-    #         "mmu_gear_extruder" - just before extruder entrance (motor includes "gear" or "extruder")
-    #         "mmu_gear_toolhead" - after extruder entrance (motor includes "gear" or "extruder")
-    #         "mmu_gear_touch"    - stallguard on gear (when motor includes "gear", only useful for motor="gear")
-    #         "mmu_ext_touch"     - stallguard on nozzle (when motor includes "extruder", only useful for motor="extruder")
+    #         "mmu_gate"       - at the gate on MMU (when motor includes "gear")
+    #         "mmu_extruder"   - just before extruder entrance (motor includes "gear" or "extruder")
+    #         "mmu_toolhead"   - after extruder entrance (motor includes "gear" or "extruder")
+    #         "mmu_gear_touch" - stallguard on gear (when motor includes "gear", only useful for motor="gear")
+    #         "mmu_ext_touch"  - stallguard on nozzle (when motor includes "extruder", only useful for motor="extruder")
     #
     # All move distances are interpreted as relative
     # 'sync' will synchronize the MMU toolhead and Printer toolhead before move
@@ -4661,8 +4665,6 @@ class Mmu:
         self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
-        self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
-        self.encoder_sensor.set_mode(self.enable_clog_detection)
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=1)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
@@ -4670,13 +4672,12 @@ class Mmu:
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
         self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.slicer_tip_park_pos, minval=0.)
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
-        self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
+        self.encoder_move_validation = gcmd.get_int('ENCODER_MOVE_VALIDATION', self.encoder_move_validation, minval=0, maxval=1)
+        self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.retry_tool_change_on_error, minval=0, maxval=1)
         self.print_start_detection = gcmd.get_int('PRINT_START_DETECTION', self.print_start_detection, minval=0, maxval=1)
-        self.encoder_move_validation = gcmd.get_int('ENCODER_MOVE_VALIDATION', self.encoder_move_validation, minval=0, maxval=1)
         self.pause_macro = gcmd.get('PAUSE_MACRO', self.pause_macro)
-
         form_tip_macro = gcmd.get('FORM_TIP_MACRO', self.form_tip_macro)
         if form_tip_macro != self.form_tip_macro:
             self.form_tip_vars = None # If macro is changed invalidate defaults
@@ -4684,9 +4685,14 @@ class Mmu:
 
         # Calibration
         self.calibrated_bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.calibrated_bowden_length, minval=10.)
-        clog_length = gcmd.get_float('MMU_CALIBRATION_CLOG_LENGTH', self.encoder_sensor.get_clog_detection_length(), minval=1., maxval=100.)
-        if clog_length != self.encoder_sensor.get_clog_detection_length():
-            self.encoder_sensor.set_clog_detection_length(clog_length)
+
+        # Available only with encoder
+        if self._has_encoder():
+            self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
+            self.encoder_sensor.set_mode(self.enable_clog_detection)
+            clog_length = gcmd.get_float('MMU_CALIBRATION_CLOG_LENGTH', self.encoder_sensor.get_clog_detection_length(), minval=1., maxval=100.)
+            if clog_length != self.encoder_sensor.get_clog_detection_length():
+                self.encoder_sensor.set_clog_detection_length(clog_length)
 
         # Currently hidden and testing options
         self.test_random_failures = gcmd.get_int('TEST_RANDOM_FAILURES', self.test_random_failures, minval=0, maxval=1)
@@ -4719,9 +4725,10 @@ class Mmu:
         msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
 
         msg += "\n\nLOADING/UNLOADING:"
-        msg += "\nbowden_apply_correction = %d" % self.bowden_apply_correction
-        msg += "\nbowden_allowable_load_delta = %d" % self.bowden_allowable_load_delta
-        msg += "\nbowden_pre_unload_test = %d" % self.bowden_pre_unload_test
+        if self._has_encoder():
+            msg += "\nbowden_apply_correction = %d" % self.bowden_apply_correction
+            msg += "\nbowden_allowable_load_delta = %d" % self.bowden_allowable_load_delta
+            msg += "\nbowden_pre_unload_test = %d" % self.bowden_pre_unload_test
         msg += "\nextruder_force_homing = %d" % self.extruder_force_homing
         msg += "\nextruder_homing_endstop = %s" % self.extruder_homing_endstop
         msg += "\nextruder_homing_max = %.1f" % self.extruder_homing_max
@@ -4736,16 +4743,18 @@ class Mmu:
         msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
         msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
-        msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
-        msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
+        if self._has_encoder():
+            msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
+            msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
         msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
         msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
-        msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
-        msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
+        if self._has_encoder():
+            msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
+            msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
+            msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
         msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
         msg += "\nprint_start_detection = %d" % self.print_start_detection
-        msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
         msg += "\nlog_level = %d" % self.log_level
         msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
@@ -4754,7 +4763,8 @@ class Mmu:
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
-        msg += "\nmmu_calibration_clog_length = %.1f" % clog_length
+        if self._has_encoder():
+            msg += "\nmmu_calibration_clog_length = %.1f" % clog_length
         self._log_info(msg)
 
 

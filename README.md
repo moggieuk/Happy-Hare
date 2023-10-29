@@ -189,8 +189,6 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.next_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change)
     printer.mmu.last_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change after unload)
     printer.mmu.last_toolchange : {string} description of last change similar to M117 display
-    printer.mmu.clog_detection : {int} 0 (off) | 1 (manual) | 2 (auto)
-    printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled)
     printer.mmu.filament : {string} filament state in extruder (Loaded | Unloaded | Unknown)
     printer.mmu.filament_pos : {int} state machine - exact location of filament
     printer.mmu.filament_direction : {int} 1 (load) | -1 (unload)
@@ -207,6 +205,9 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
     printer.mmu.sync_drive : {bool} True if gear stepper is currently synced to extruder
     printer.mmu.print_job_state : {string} current job state seen by MMU (standby | started | printing | pause_locked | paused | complete | cancelled | error)
+    printer.mmu.clog_detection : {int} 0 (off) | 1 (manual) | 2 (auto)
+    printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled)
+    printer.mmu.print_start_detection : {int} 0 (disabled) | 1 (enabled)
 ```
 
 Optionally exposed on mmu_encoder (if fitted):
