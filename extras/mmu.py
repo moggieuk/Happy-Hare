@@ -931,7 +931,6 @@ class Mmu:
                     self._log_debug("Error running %s: %s" % (macro, str(e)))
 
     def _movequeues_wait_moves(self, toolhead=True, mmu_toolhead=True):
-#        self._log_error("PAUL: ********* _movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         self._log_trace("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if toolhead:
             self.toolhead.wait_moves()
@@ -988,11 +987,10 @@ class Mmu:
                 'next_tool': self._next_tool,
                 'last_tool': self._last_tool,
                 'last_toolchange': self._last_toolchange,
-                'clog_detection': self.enable_clog_detection,
-                'endless_spool': self.enable_endless_spool,
                 'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
                             "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
                             "Unknown",
+                'filament_position': self.mmu_toolhead.get_position()[1],
                 'filament_pos': self.filament_pos,
                 'filament_direction': self.filament_direction,
                 'servo': "Up" if self.servo_state == self.SERVO_UP_STATE else
@@ -1010,7 +1008,10 @@ class Mmu:
                 'action': self._get_action_string(),
                 'has_bypass': self.bypass_offset > 0.,
                 'sync_drive': self.mmu_toolhead.is_synced(),
-                'print_state': self.print_state
+                'print_state': self.print_state,
+                'clog_detection': self.enable_clog_detection,
+                'endless_spool': self.enable_endless_spool,
+                'print_start_detection': self.print_start_detection,
         }
 
     def _reset_statistics(self):
@@ -1212,7 +1213,7 @@ class Mmu:
     def _state_to_human_string(self, direction=None):
         tool_str = str(self.tool_selected) if self.tool_selected >=0 else "?"
         sensor_str = " [sensor] " if self._has_sensor("toolhead") else ""
-        counter_str = " @%.1fmm%s" % (self.mmu_toolhead.get_position()[1], " (e:%.1fmm)" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
+        counter_str = " %.1fmm%s" % (self.mmu_toolhead.get_position()[1], " (e:%.1fmm)" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
         if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos == self.FILAMENT_POS_LOADED:
             visual = "MMU BYPASS ----- [encoder] ----------->> [nozzle] LOADED"
         elif self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos == self.FILAMENT_POS_UNLOADED:
@@ -2034,12 +2035,6 @@ class Mmu:
                     else:
                         self.reactor.register_callback(self._print_complete_event_handler)
                 self.last_print_stats = dict(new_ps)
-#        else:
-#            # Otherwise we fallback to idle_timeout
-#            if event_type == "printing" and self._is_in_endstate():
-#                # We have to assume we are starting to print. We expect user to call _MMU_PRINT_START to transition to 'printing'
-#                # and then _MMU_PRINT_END.  Only other way out is resetting to standby when idle timeout fires
-#                self._on_print_start(pre_start_only=True)
 
         # Capture transition to standby
         if event_type == "idle":
@@ -2276,12 +2271,9 @@ class Mmu:
 
     def _get_encoder_distance(self, dwell=False):
         if self._encoder_dwell(dwell):
-#            self._log_error("PAUL: _get_encoder_distance (REAL): %s" % self.encoder_sensor.get_distance())
             return self.encoder_sensor.get_distance()
         else:
-            # If we don't care about encoder measurement this will ensure all move validation checks pass
-# PAUL            self._log_error("PAUL: _get_encoder_distance (FAKE): %s" % self.mmu_toolhead.get_position()[1])
-            return 0 # return self.mmu_toolhead.get_position()[1]
+            return 0
 
     def _get_encoder_counts(self, dwell=False):
         if self._encoder_dwell(dwell):
@@ -3927,25 +3919,21 @@ class Mmu:
     @contextlib.contextmanager
     def _wrap_sync_gear_to_extruder(self, enable):
         if enable:
-            # PAUL self._movequeues_wait_moves()
             self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name)
         try:
             yield self
         finally:
             if enable:
-                # PAUL self._movequeues_wait_moves()
                 self.mmu_toolhead.sync_gear_to_extruder(None)
 
     @contextlib.contextmanager
     def _wrap_sync_extruder_to_gear(self, enable, extruder_only=False):
         if enable:
-            # PAUL self._movequeues_wait_moves()
             self.mmu_toolhead.sync_extruder_to_gear(self.extruder_name, extruder_only=extruder_only)
         try:
             yield self
         finally:
             if enable:
-                # PAUL self._movequeues_wait_moves(toolhead=False)
                 self.mmu_toolhead.sync_extruder_to_gear(None)
 
     def _move_cmd(self, gcmd, trace_str):
