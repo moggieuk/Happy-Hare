@@ -271,7 +271,7 @@ class Mmu:
         # Homing, loading and unloading controls for built-in logic
         self.encoder_unload_buffer = config.getfloat('encoder_unload_buffer', 30., minval=15.)
         self.encoder_unload_max = config.getfloat('encoder_unload_max', 2 * self.encoder_unload_buffer, minval=self.encoder_unload_buffer)
-        self.encoder_parking_distance = config.getfloat('encoder_parking_distance', 23., minval=12., maxval=60.)
+        self.encoder_parking_distance = config.getfloat('encoder_parking_distance', 23.)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.)
         self.encoder_load_retries = config.getint('encoder_load_retries', 2, minval=1, maxval=5)
 
