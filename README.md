@@ -136,15 +136,15 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Video Tutorials
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Video Tutorials & Other Resources
 
 ### English: 
-follow soon
+<i>comming soon</i>
 ### German:
 <div align="left">
   <a href="https://www.youtube.com/watch?v=uaPLuWJBdQU">
     <img src="https://github.com/moggieuk/Happy-Hare/blob/main/doc/youtube1.png" width="30%"></a>
-If you are german speaking here is a great instructional video created by the Crydteam
+    Instructional video created by the Crydteam
 <!--
     <img src="https://i9.ytimg.com/vi_webp/uaPLuWJBdQU/maxresdefault.webp?v=6522d1a6&sqp=CKycn6kG&rs=AOn4CLBCiHQsjGJ0c8ywvkxy9uWEk_yUXw" 
          alt="Everything Is AWESOME" 
