@@ -217,11 +217,13 @@ class Mmu:
         self.mmu_version_string = config.get('mmu_version', "1.1")
         self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
 
-        # Shared non CAD default parameters to ensure everthing is set
+        # Shared non CAD default parameters (ERCF v1.1) to ensure everthing is set
         self.gate_parking_distance = 23.
         self.cad_bypass_block_width = 6.
+        self.cad_bypass_offset = 0.
         self.cad_gate_width = 21.
-        self.selector_cal_tolerance = 5.0 # Extra movement allowed by selector
+        self.cad_last_gate_offset = 2.0
+
         bmg_circ = 23.
         self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
@@ -262,16 +264,27 @@ class Mmu:
                     self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
                 else:
                     self.encoder_default_resolution = bmg_circ / (2 * 17) # Original 17 tooth BMG gear
-        else:
+
+        elif self.mmu_vendor.lower() == self.VENDOR_TRADRACK.lower():
             # Some initial assumed values for Tradrack
             self.cad_gate_width = 17.
             self.cad_gate0_pos = 0.5
             self.gate_parking_distance = 17.5
-#            raise self.config.error("Support for non-ERCF systems is comming soon!")
+        elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
+            raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other")
+        else:
+            # Some abbitary starting values for "Other" designs
+            self.cad_gate_width = 23.
+            self.cad_gate0_pos = 1.
+            self.gate_parking_distance = 20.
 
         # Allow some CAD parameters to be customized
-        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
-        self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width)
+        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.)
+        self.cad_gate0_pos = config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
+        self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
+        self.cad_bypass_offset = config.getfloat('cad_bypass_offset', self.cad_bypass_offset, minval=0.)
+        self.cad_last_gate_offset = config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
+        self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', 5., above=0.) # Extra movement allowed by selector
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -1706,11 +1719,9 @@ class Mmu:
             else:
                 max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
         else:
-            # Temp values to support Tradrack
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
-            max_movement += 20.
 
-        max_movement += self.selector_cal_tolerance
+        max_movement += self.cad_selector_tolerance
         return max_movement
 
     def _calibrate_selector(self, gate, save=True):
@@ -1762,7 +1773,7 @@ class Mmu:
             # Step 1 - position of gate #0
             self._log_always("Measuring the selector position for gate #0...")
             traveled, found_home = self._measure_to_home()
-            if not found_home or traveled > self.cad_gate0_pos + self.selector_cal_tolerance:
+            if not found_home or traveled > self.cad_gate0_pos + self.cad_selector_tolerance:
                 self._log_always("Selector didn't find home position or measurement (%.1fmm) unexpected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
                 return
             gate0_pos = traveled
@@ -3976,7 +3987,6 @@ class Mmu:
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None) # Ignored for extruder led moves
         motor = gcmd.get('MOTOR', "gear")
-        wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1))
         sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
         if motor not in ["gear", "extruder", "gear+extruder"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")
@@ -3994,7 +4004,7 @@ class Mmu:
             if self.gear_rail.is_endstop_virtual(endstop):
                 self._movequeues_dwell(1, toolhead=False) # TMC needs time to settle after gear buzz for servo
         self._log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
-        return self._trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop, sync=sync, wait=wait, encoder_dwell=None)
+        return self._trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop, sync=sync, encoder_dwell=None)
 
 
 ############################

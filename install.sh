@@ -733,8 +733,9 @@ questionaire() {
     echo -e "${PROMPT}What type of MMU are you running?${INPUT}"
     echo -e "1) ERCF v1.1 (all variations)"
     echo -e "2) ERCF v2.0"
-    echo -e "3) Other (Tradrack, Custom creation, ...)"
-    num=$(prompt_123 "MMU Type?" 3)
+    echo -e "3) Tradrack v1.0"
+    echo -e "4) Other (Custom creation, ...)"
+    num=$(prompt_123 "MMU Type?" 4)
     echo
     case $num in
         1)
@@ -771,9 +772,15 @@ questionaire() {
             gate_parking_distance="19"
             ;;
         3)
+            mmu_vendor="Tradrack"
+            mmu_version="1.0"
+            gate_parking_distance="17.5"
+            ;;
+        4)
             mmu_vendor="Other"
             mmu_version="1.0"
             gate_parking_distance="20"
+            ;;
     esac
 
     echo
