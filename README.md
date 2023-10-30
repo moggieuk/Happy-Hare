@@ -35,7 +35,8 @@ Thank you!
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Readme Table of Contents
 
 **[Major feature](#---major-features)**<br>
-**[Installation](#---installation)**<br>
+**[Installation Guide](#---Installation-Guide)**<br>
+**[Video Tutorials](#---Video-Tutorials)**<br>
 **[Basic Commands](#---basic-commands-and-printer-variables)**<br>
 **[Setup & Calibration](#---setup-and-calibration)**<br>
 **[Important Concepts and Features](#---important-concepts-and-features)**<br>
@@ -99,7 +100,8 @@ Companion customized [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare
 
 <br>
  
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Installation
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Installation Guide
+
 The module can be installed into an existing Klipper installation with the install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins:
 
 ```
@@ -134,10 +136,19 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 <br>
 
-### Other resources:
-<a href="https://www.youtube.com/watch?v=uaPLuWJBdQU"><img src="https://github.com/moggieuk/Happy-Hare/blob/main/doc/youtube1.png" width="30%"></a>
-If you are german speaking here is a great instructional [video created by the Crydteam](https://www.youtube.com/watch?v=uaPLuWJBdQU)
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Video Tutorials
 
+### English: 
+follow soon
+### German:
+<div align="left">
+      <a href="https://www.youtube.com/watch?v=uaPLuWJBdQU">
+     <img 
+      src="https://i9.ytimg.com/vi_webp/uaPLuWJBdQU/maxresdefault.webp?v=6522d1a6&sqp=CKycn6kG&rs=AOn4CLBCiHQsjGJ0c8ywvkxy9uWEk_yUXw" 
+      alt="Everything Is AWESOME" 
+      style="width:50%;">
+      </a>
+    </div>
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Basic Commands and Printer Variables
