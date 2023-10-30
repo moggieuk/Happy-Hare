@@ -729,12 +729,12 @@ prompt_123() {
 questionaire() {
     echo
     echo -e "${INFO}Let me see if I can help you with initial config (you will still have some manual config to perform)"
-    echo -e "(only ERCF is currently ready but support for Tradrack is comming soon)"
     echo
     echo -e "${PROMPT}What type of MMU are you running?${INPUT}"
     echo -e "1) ERCF v1.1 (all variations)"
     echo -e "2) ERCF v2.0"
-    num=$(prompt_123 "MMU Type?" 2)
+    echo -e "3) Other (Tradrack, Custom creation, ...)"
+    num=$(prompt_123 "MMU Type?" 3)
     echo
     case $num in
         1)
@@ -770,6 +770,10 @@ questionaire() {
             mmu_version="2.0"
             gate_parking_distance="19"
             ;;
+        3)
+            mmu_vendor="Other"
+            mmu_version="1.0"
+            gate_parking_distance="20"
     esac
 
     echo
@@ -838,7 +842,7 @@ questionaire() {
 
             echo
             echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
-            yn=$(prompt_yn "Enable selector touch operation (not recommend if you are new to ERCF")
+            yn=$(prompt_yn "Enable selector touch operation (not recommend if you are new to MMU / Happy Hare")
             echo
             case $yn in
                 y)

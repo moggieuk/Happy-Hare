@@ -223,6 +223,7 @@ class Mmu:
         self.cad_gate_width = 21.
         self.selector_cal_tolerance = 5.0 # Extra movement allowed by selector
         bmg_circ = 23.
+        self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
         # Specific vendor build parameters / tuning. Mostly CAD related but a few exceptions like gate_park_pos
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
@@ -262,7 +263,11 @@ class Mmu:
                 else:
                     self.encoder_default_resolution = bmg_circ / (2 * 17) # Original 17 tooth BMG gear
         else:
-            raise self.config.error("Support for non-ERCF systems is comming soon!")
+            # Some initial assumed values for Tradrack
+            self.cad_gate_width = 17.
+            self.cad_gate0_pos = 0.5
+            self.gate_parking_distance = 17.5
+#            raise self.config.error("Support for non-ERCF systems is comming soon!")
 
         # Allow some CAD parameters to be customized
         self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width)
@@ -1694,11 +1699,16 @@ class Mmu:
 
     def _get_max_selector_movement(self, gate=-1):
         n = gate if gate >= 0 else (self.mmu_num_gates - 1)
-        if self.mmu_version >= 2.0 or "t" in self.mmu_version_string:
-            max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
-            max_movement += (self.cad_last_gate_offset - self.cad_bypass_offset) if gate in [self.TOOL_GATE_BYPASS, self.TOOL_GATE_UNKNOWN] else 0.
+        if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
+            if self.mmu_version >= 2.0 or "t" in self.mmu_version_string:
+                max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
+                max_movement += (self.cad_last_gate_offset - self.cad_bypass_offset) if gate in [self.TOOL_GATE_BYPASS, self.TOOL_GATE_UNKNOWN] else 0.
+            else:
+                max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
         else:
-            max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
+            # Temp values to support Tradrack
+            max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
+            max_movement += 20.
 
         max_movement += self.selector_cal_tolerance
         return max_movement
