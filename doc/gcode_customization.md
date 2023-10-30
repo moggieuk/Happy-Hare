@@ -228,6 +228,10 @@ gcode:
 # Initialize Paramaters
     {% set FINAL_EJECT = params.FINAL_EJECT|default(printer['gcode_macro _MMU_CUT_TIP']['final_eject']) %}
 
+    G91
+    M83
+    G92 E0
+
     #
     # INSERT OR CALL YOUR CUSTOM CUTTING GCODE HERE...
     #
@@ -240,6 +244,7 @@ gcode:
 
     G92 E0
     G90
+    M82
 ```
 
 You can then simple edit `form_tip_gcode` to point to this macro instead of the default _MMU_FORM_TIP_STANDALONE
