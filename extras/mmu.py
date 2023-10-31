@@ -334,9 +334,9 @@ class Mmu:
         self.bowden_apply_correction = config.getint('bowden_apply_correction', 0, minval=0, maxval=1)
         self.bowden_allowable_load_delta = config.getfloat('bowden_allowable_load_delta', 10., minval=1.)
         self.bowden_allowable_unload_delta = config.getfloat('bowden_allowable_unload_delta', self.bowden_allowable_load_delta, minval=1.)
-        self.bowden_move_error_tolerance = config.getint('bowden_move_error_tolerance', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
+        self.bowden_move_error_tolerance = config.getfloat('bowden_move_error_tolerance', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
         self.bowden_pre_unload_test = config.getint('bowden_pre_unload_test', 0, minval=0, maxval=1) # Check for bowden movement before full pull
-        self.bowden_pre_unload_error_tolerance = config.getint('bowden_pre_unload_error_tolerance', 100, minval=0, maxval=100) # Percentage of delta of move that results in error
+        self.bowden_pre_unload_error_tolerance = config.getfloat('bowden_pre_unload_error_tolerance', 100, minval=0, maxval=100) # Percentage of delta of move that results in error
 
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
@@ -348,7 +348,7 @@ class Mmu:
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=5.) # For toolhead sensor
         self.toolhead_sync_unload = config.getint('toolhead_sync_unload', 0, minval=0, maxval=1)
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
-        self.toolhead_move_error_tolerance = config.getint('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
+        self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
 
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
@@ -1644,7 +1644,7 @@ class Mmu:
 
             if successes > 0:
                 average_reference = reference_sum / successes
-                detection_length = (average_reference * 2) / 100 + spring_max # 2% of bowden length plus spring seems to be good starting point
+                detection_length = (average_reference * 2.) / 100. + spring_max # 2% of bowden length plus spring seems to be good starting point
                 msg = "Recommended calibration reference is %.1fmm" % average_reference
                 if self.enable_clog_detection:
                     msg += ". Clog detection length: %.1fmm" % detection_length
@@ -2916,8 +2916,7 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
             # Encoder based validation test
-            self._log_debug("gneu: sdelta=%s, slength=%s, bowden_move_error_tol=%s" % (sdelta, slength, self.bowden_move_error_tolerance))
-            if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100) and not self.calibrating:
+            if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
                 raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
 
         if reference_load:
@@ -2974,7 +2973,7 @@ class Mmu:
             with self._require_encoder():
                 self._log_debug("Performing bowden pre-unload test")
                 _,_,_,delta = self._trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size)
-                if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100):
+                if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                     raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder")
                 length -= self.encoder_move_step_size
@@ -2992,7 +2991,7 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
             # Encoder based validation test
-            if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100) and not self.calibrating:
+            if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
                 raise MmuError("Failed to unload bowden. Perhaps filament is stuck in extruder. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
 
         if self._can_use_encoder() and delta >= tolerance and not self.calibrating:
@@ -3104,7 +3103,7 @@ class Mmu:
             if self._can_use_encoder() and not homed:
                 if measured < self.encoder_min:
                     raise MmuError("Move to nozzle failed (encoder didn't sense any movement). Extruder may not have picked up filament or filament did not home correctly")
-                elif delta > length * (self.toolhead_move_error_tolerance/100):
+                elif delta > length * (self.toolhead_move_error_tolerance/100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                     raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not home correctly")
 
@@ -3165,7 +3164,7 @@ class Mmu:
             if self._can_use_encoder() and not homed:
                 if measured < self.encoder_min:
                     raise MmuError("Filament seems to be stuck in the extruder. Encoder not sensing any movement")
-                elif synced and delta > length * (self.toolhead_move_error_tolerance/100):
+                elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                     raise MmuError("Filament seems to be stuck in the extruder. Encoder not sensing sufficient movement")
 
