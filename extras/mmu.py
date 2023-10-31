@@ -334,7 +334,7 @@ class Mmu:
         self.bowden_apply_correction = config.getint('bowden_apply_correction', 0, minval=0, maxval=1)
         self.bowden_allowable_load_delta = config.getfloat('bowden_allowable_load_delta', 10., minval=1.)
         self.bowden_allowable_unload_delta = config.getfloat('bowden_allowable_unload_delta', self.bowden_allowable_load_delta, minval=1.)
-        self.bowden_move_error_tolerance = config.getint('bowden_move_tolerance_percent', 60, minval=0., maxval=1.) # Percentage of delta of move that results in error
+        self.bowden_move_error_tolerance = config.getint('bowden_move_error_tolerance', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
         self.bowden_pre_unload_test = config.getint('bowden_pre_unload_test', 0, minval=0, maxval=1) # Check for bowden movement before full pull
         self.bowden_pre_unload_error_tolerance = config.getint('bowden_pre_unload_error_tolerance', 100, minval=0, maxval=100) # Percentage of delta of move that results in error
 
@@ -2916,8 +2916,8 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
             # Encoder based validation test
-            if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100) and not self.calibrating: # Excess slippage detects failure
-                raise MmuError("Failure to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
+            if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100) and not self.calibrating:
+                raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
 
         if reference_load:
             ratio = (length - delta) / length
@@ -2992,8 +2992,7 @@ class Mmu:
 
             # Encoder based validation test
             if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100) and not self.calibrating:
-                # Excess slippage detects filament still stuck in extruder
-                raise MmuError("Failure to unload bowden. Perhaps filament is stuck in extruder. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
+                raise MmuError("Failed to unload bowden. Perhaps filament is stuck in extruder. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
 
         if self._can_use_encoder() and delta >= tolerance and not self.calibrating:
             # Only a warning because _unload_gate() will deal with it
