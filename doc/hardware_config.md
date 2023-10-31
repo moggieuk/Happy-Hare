@@ -142,7 +142,7 @@ encoder_pin: ^mmu:MMU_ENCODER
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Endstops and MMU Movement
-Happy Hare implements the MMU control as a "second toolhead".  It offers some sophisticated stepper synching and homing options which add additional parameters to the regular klipper stepper definition.
+Happy Hare implements the MMU control as a "second toolhead" known as the MMU toolhead. The X-axis represents the selector movement and the Y-axis the filament movement until Klipper takes over the control of the extruder as normal. It offers some sophisticated stepper synching and homing options which add additional parameters to the regular klipper stepper definition.
 
 ### Multiple Endstops on MMU Steppers
 In a nutshell, all steppers (MMU selector, MMU gear) defined in Happy Hare can have muliple endstops defined. Firstly the default endstop can be defined in the normal way by setting `endstop_pin`.  This would then become the default endstop and can be referenced in gcode as "default".  However it is better to give the endstop a vanity name by adding a new `endstop_name` parameter. This is the name that will appear when listing endstops (e.g. in the Mainsail interface or with `QUERY_ENDSTOPS`). Happy Hare uses a naming convention of `mmu_` so anticipated names are: `mmu_gear_touch`, `mmu_ext_touch`, `mmu_sel_home`, `mmu_sel_touch`, `mmu_toolhead`, `mmu_gate`, `mmu_extruder`
@@ -175,9 +175,9 @@ Happy have provides two test moves commands `MMU_TEST_MOVE`, `MMU_TEST_HOMING_MO
 
 This will advance both the MMU gear and extruder steppers in sync but +100mm at 10mm/s. If only only `gear` was specified the move would only involve the gear stepper and  obviously not be synchronized. Several `MOTOR` combinations can be sepcified with this move and are summerised here:
 <ul>
-  <li>gear - the default to move just the gear stepper (technically this is the Y axis of the MMU toolhead)</li>
-  <li>gear+extruder - move the gear but synchronize the extruder to it (the extruder is added to the rail supporting the Y axis of the MMU toolhead)</li>
-  <li>extruder - move the extruder only but with the mmu toolhead kinematics meaning klipper will know nothing about this movement (the extruder is the sole stepper on the Y axis of the MMU toolhead)</li>
+  <li>gear - the default to move just the gear stepper (technically this is the Y-axis of the MMU toolhead)</li>
+  <li>gear+extruder - move the gear but synchronize the extruder to it (the extruder is added to the rail supporting the Y-axis of the MMU toolhead)</li>
+  <li>extruder - move the extruder only but with the mmu toolhead kinematics meaning klipper will know nothing about this movement (the extruder is the sole stepper on the Y-axis of the MMU toolhead)</li>
   <li>synced - move the extruder but synchonize the gear stepper to it (same as would occur in print if synchronized printing is enabled)</li>
   <li>both - (legacy) moves move the gear stepper and the extruder together but subject to their own kinematics and move queues</li>
 </ul>
