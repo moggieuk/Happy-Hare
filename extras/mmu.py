@@ -2916,6 +2916,7 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
             # Encoder based validation test
+            self._log_debug("gneu: sdelta=%s, slength=%s, bowden_move_error_tol=%s" % (sdelta, slength, self.bowden_move_error_tolerance))
             if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100) and not self.calibrating:
                 raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
 
