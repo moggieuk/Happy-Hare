@@ -52,17 +52,39 @@ If all other pin's and setup look correct *RESTART KLIPPER* and proceed to step 
 
 <br>
 
-## Step 2. Check motor movement and direction
+## Step 2. Check endstops & optional sensors
+Verify that the necessary endstops are working and the polarity is correct. The recommended procedure is:
+```yml
+MMU_MOTORS_OFF
+  # remove filament from ERCF and extruder, move selector to center of travel
+QUERY_ENDSTOPS
+  # or use the visual query in Mainsail or Fluuid
+```
+Validate that you can see:
+```yml
+mmu_sel_home:open (Essential)
+mmu_toolhead:open (Optional if you have a toolhead sensor)
+```
+Then manually press and hold the selector microswitch and rerun `QUERY_ENDSTOPS`
+Validate that you can see `mmu_sel_home:TRIGGERED` in the list
+If you have toolhead sensor, feed filament into the extruder past the switch and rerun `QUERY_ENDSTOPS`
+Validate that you can see `mmu_toolhead:TRIGGERED` in the list
+
+If either of these don't change state then the pin assigned to the endstop is incorrect.  If the state is inverted (i.e. enstop transitions to `open` when pressed) the add/remove the `!` on the respective endstop pin either in the `[stepper_mmu_selector]` block for selector endstop or in `[filament_switch_sensor toolhead_sensor]` block for toolhead sensor.
+
+Other endstops like "touch" operation are advanced and not cover by this inital setup.
+
+<br>
+
+## Step 3. Check motor movement and direction
 Once pins are correct it is important to verify direction.  It is not possible for the installer to ensure this because it depends on the actual stepper wiring.  The recommended procedure is:
 ```yml
 MMU_MOTORS_OFF
   # move selector to the center of travel
-MANUAL_STEPPER STEPPER=selector_stepper SET_POSITION=0 MOVE=-10
+MMU_HOME
   # verify that the selector moves to the left towards the home position
-MANUAL_STEPPER STEPPER=selector_stepper SET_POSITION=0 MOVE=10
-  # verify that the selector moves to the right away from the home position
 ```
-If the selector doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[manual_mh_stepper selector_stepper]`:
+If the selector doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[stepper_mmu_selector]`:
 If selector doesn't move it is likley that the pin configuration for `step_pin` and/or `enable_pin` are incorrect. Verify the pin names and prefix the pin with `!` to invert the signal. E.g.
 ```yml
 enable_pin: !mmu:MMU_SEL_ENABLE
@@ -80,12 +102,12 @@ Now repeat the exercise with the gear stepper:
 ```yml
 MMU_MOTORS_OFF
   # remove any filament from your MMU
-MANUAL_STEPPER STEPPER=gear_stepper SET_POSITION=0 MOVE=-10
+MMU_TEST_MOVE MOVE=100
   # verify that the gear stepper would pull filament away from the extruder
-MANUAL_STEPPER STEPPER=gear_stepper SET_POSITION=0 MOVE=10
+MMU_TEST_MOVE MOVE=-100
   # verify that the gear stepper is push filament towards the extruder
 ```
-If the gear stepper doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[manual_extruder_stepper gear_stepper]`:
+If the gear stepper doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[stepper_mmu_gear]`:
 If gear doesn't move it is likley that the pin configuration for `step_pin` and/or `enable_pin` are incorrect. Verify the pin names and prefix the pin with `!` to invert the signal. E.g.
 ```yml
 enable_pin: !mmu:MMU_GEAR_ENABLE
@@ -98,30 +120,6 @@ dir_pin: !mmu:MMU_GEAR_DIR
   # or
 dir_pin: mmu:MMU_GEAR_DIR
 ```
-
-<br>
-
-## Step 3. Check endstops & optional sensors
-Next verify that the necessary endstops are working and the polarity is correct. The recommended procedure is:
-```yml
-MMU_MOTORS_OFF
-  # remove filament from ERCF and extruder, move selector to center of travel
-QUERY_ENDSTOPS
-  # or use the visual query in Mainsail or Fluuid
-```
-Validate that you can see:
-```yml
-mmu_sel_home:open (Essential)
-mmu_toolhead:open (Optional if you have a toolhead sensor)
-```
-Then manually press and hold the selector microswitch and rerun `QUERY_ENDSTOPS`
-Validate that you can see `mmu_sel_home:TRIGGERED` in the list
-If you have toolhead sensor, feed filament into the extruder past the switch and rerun `QUERY_ENDSTOPS`
-Validate that you can see `mmu_toolhead:TRIGGERED` in the list
-
-If either of these don't change state then the pin assigned to the endstop is incorrect.  If the state is inverted (i.e. enstop transitions to `open` when pressed) the add/remove the `!` on the respective endstop pin either in the `[manual_mh_stepper selector_stepper]` block for selector endstop or in `[filament_switch_sensor toolhead_sensor]` block for toolhead sensor.
-
-Other endstops like "touch" operation are advanced and not cover by this inital setup.
 
 <br>
 
@@ -144,8 +142,8 @@ encoder_pin: ^mmu:MMU_ENCODER
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Endstops and MMU Movement
 Happy Hare offers some sophisticated stepper synching and homing options which add additional parameters to the klipper stepper definition.
 
-### Multiple Endstops
-In a nutshell, all steppers (MMU and extruder) defined in Happy Hare can have muliple endstops defined. Firstly the default endstop can be defined in the normal way by setting `endstop_pin`.  This would then become the default endstop and can be referenced in gcode as "default".  However it is better to give the endstop a vanity name by adding a new `endstop_name` parameter. This is the name that will appear when listing endstops (e.g. in the Mainsail interface or with `QUERY_ENDSTOPS`). Happy Hare uses a naming convention of `mmu_` so these are anticipated names: `mmu_gear_touch`, `mmu_ext_touch`, `mmu_sel_home`, `mmu_sel_touch`, `mmu_toolhead`.
+### Multiple Endstops on MMU Steppers
+In a nutshell, all steppers (MMU selector, MMU gear) defined in Happy Hare can have muliple endstops defined. Firstly the default endstop can be defined in the normal way by setting `endstop_pin`.  This would then become the default endstop and can be referenced in gcode as "default".  However it is better to give the endstop a vanity name by adding a new `endstop_name` parameter. This is the name that will appear when listing endstops (e.g. in the Mainsail interface or with `QUERY_ENDSTOPS`). Happy Hare uses a naming convention of `mmu_` so these are anticipated names: `mmu_gear_touch`, `mmu_ext_touch`, `mmu_sel_home`, `mmu_sel_touch`, `mmu_toolhead`.
 
 These would represent touch endstop on gear, touch on extruder, physical selector home, selector touch endstop and toolhead sensor. In Happy Hare, "touch" refers to stallguard based sensing feedback from the TMC driver (if avaialable).
 
@@ -161,16 +159,19 @@ Defines two (non-default) endstops, the first is a virtual "touch" one leveragin
 > [!IMPORTANT]  
 > If equipped with a toolhead sensor, endstops for gear stepper and extruder stepper will automatically be created with the name `mmu_toolhead`
 
+### Endstop on the Extruder!
+Happy Hare will automatically enhance Klipper to provide endstop(s) on the extruder stepper.  While this might not seem it has value, it can be used sense pressure on the filament (like hitting the nozzle when loading).  Unless you have a sophisticated load cell attached to your nozzle the most likely configuration would be to define a TMC stallguard endstop. You can do this bay adding `endstop_pin` to the extruder definition -- don't worry it won't confuse Klipper!
+
 Ok, so you can define lots of endstops. Why? and what next... Let's discuss syncing and homing moves first and then bring it all together with an example.
 
 ### Stepper syncing
-Any stepper defined with `[manual_extruder_stepper]` not only inherits multiple endstops but also can act as both an extruder stepper or a manual stepper. This dual personality allows its motion queue to be synced with other extruder steppers or, but manipulated manually in the same way as a Klipper manual\_stepper can be.
+The MMU gear stepper(s) defined by Happy Hare not only enables multiple endstops but also can act as a filament driver (gear) stepper an extruder stepper. This dual personality allows its motion queue to be synced with other extruder steppers or, but manipulated manually as a separately controlled stepper.
 
 Happy have provides two test moves commands `MMU_TEST_MOVE`, `MMU_TEST_HOMING_MOVE` (and two similar commands designed for embedded gcode use). For example:
 
 > MMU_TEST_MOVE MOVE=100 SPEED=10 MOTOR="gear+extruder"
 
-This will advance both the MMU gear and extruder steppers in sync but +100mm at 10mm/s. If only only `MOTOR` was specified the move would obviously not be synchronized. Note that the difference between "gear+extruder" and "extruder+gear" is which motors position is driving the movement and in the case of a homing move, which endstop.
+This will advance both the MMU gear and extruder steppers in sync but +100mm at 10mm/s. If only only `gear` was specified the move would obviously not be synchronized. Note that the difference between "gear+extruder" and "extruder+gear" is which motors position is driving the movement and in the case of a homing move, which endstop.
 
 ### Homing moves
 Similarly it is possible to specify a homing move:
