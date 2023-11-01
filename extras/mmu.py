@@ -330,7 +330,7 @@ class Mmu:
         self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
 
         # Configuration for (fast) bowden move
-        self.bowden_num_moves = config.getint('bowden_num_moves', 1, minval=1)
+        self.bowden_num_moves = config.getint('bowden_num_moves', 1, minval=1) # TODO: to be deprecated, not necessary anymore
         self.bowden_apply_correction = config.getint('bowden_apply_correction', 0, minval=0, maxval=1)
         self.bowden_allowable_load_delta = config.getfloat('bowden_allowable_load_delta', 10., minval=1.)
         self.bowden_allowable_unload_delta = config.getfloat('bowden_allowable_unload_delta', self.bowden_allowable_load_delta, minval=1.)

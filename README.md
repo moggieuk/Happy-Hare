@@ -1115,12 +1115,13 @@ This new v2 Happy Hare software is largely rewritten and so, despite best effort
 <details>
 <summary><sub>🔹 Read move about my learnings of ERCF v1.1...</sub></summary>
 <br>
-Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `MMU_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](/doc/ercf_encoder_v11.md) on fixing many possible problems with encoder.  <ul>
+Firstly the importance of a reliable and fairly accurate encoder should not be under estimated. If you cannot get very reliable results from `MMU_CALIBRATE_ENCODER` then don't proceed with setup - address the encoder problem first. Because the encoder is the HEART of ERCF I [created a how-to](/doc/ercf_encoder_v11.md) on fixing many possible problems with encoder. However, now there is Binky -- an alternative encoder design that is highly reliable and is the heart of ERCF v2.0 design. Upgrade... it will be the best QoL upgrade you do!
+<ul>
   <li>If using a toolhead sensor, that must be reliable too.  The hall effect based switch is very awkward to get right because of so many variables: strength of magnet, amount of iron in washer, even temperature, therefore I strongly recommend a simple microswitch based detection.  They work first time, every time.
   <li>The longer the bowden length the more important it is to calibrate correctly (do a couple of times to check for consistency).  Small errors multiply with longer moves!
   <li>Eliminate all points of friction in the filament path.  There is lots written about this already but I found some unusual places where filament was rubbing on plastic and drilling out the path improved things a good deal.
   <li>This version of the driver software both, compensates for, and exploits the spring that is inherently built when homing to the extruder (`extruder_homing_endstop: collision`).  The `MMU_CALIBRATE_BOWDEN` (which calibrates the `mmu_calibration_bowden_length` length) averages the measurement of multiple passes, measures the spring rebound and considers the configuration options when recommending and setting the bowden length.</li>
-  <li>The dreaded "Timer too close" can occur but I believe I have worked around most of these cases.  The problem is not always an overloaded mcu as often cited -- there are a couple of bugs in Klipper that will delay messages between mcu and host and thus provoke this problem.  To minimize you hitting these, I recommend you use a step size of 8 for the gear motor. You don't need high fidelity and this greatly reduces the chance of this error. Also, increasing 'bowden_num_moves' also is a workaround.  I'm not experiencing this and have a high speed (250 mm/s) single move load/unload move with steps set to 8.</li>
+  <li>The dreaded "Timer too close" has been completely eliminated in v2.2 by moving to an MMU toolhead design. That said, I recommend you use a step size of 8 or 16 for the gear motor. You don't need high fidelity and this greatly reduces the strain on Klipper with long moves.
   <li>I can recommend the `selector_touch_enable` option if you have a reliable mcu to handle the TMC driver -- it works well once tuned and provides for additional recovery abilities if filament gets stuck in encoder preventing selection of a different gate. However there are some important things to note:
   <ul>
     <li>The selector cart homing is always to the microswitch endstop. The "touch" operation is used only for movement and optionally sensing the rightmost limit in travel during calibration.</li>
@@ -1141,7 +1142,7 @@ STILL FORMING EXPERIENCE
 <details>
 <summary><sub>🔹 Read move about my learnings with Tradrack v1.0...</sub></summary>
 <br>
-STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS ALMOST READY!
+STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS READY! I few folks in the community are using with Binky encoder modification but it is now possible to run without encoder if you wish.
 
 </details>
 
@@ -1151,14 +1152,16 @@ Good luck! You can find me on discord as _moggieuk#6538_
  
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Revision History
 <ul>
-<li>v2.0.1 - Initial Release (forked from my ERCF-Software-V3 project)</li>
+<li>v2.0.1 - Initial Release (forked from my ERCF-Software-V3 project). Lots of new features and homing/sync options for filament movement.</li>
+<li>v2.1.0 - Moonraker module that adds `!referenced_tools!` placeholder for automatic tool checking, SpoolMan support, auto-restore of gate stats, filament cutter option, MMU_UNLOCK is optional, new MMU_FORM_TIP command, separate per-print and total print status, speed/extrusion (M220/M221) overrides, new print state machine and thus Octoprint support. Sister KlipperScreen Happy Hare Edition also updated with SpoolMan panel.
+<li>v2.2.0 - Replacement of manual steppers with new MMU toolhead - faster homing and movements in general, new optional `gate` and `extruder` sensors, optional encoder, intial support for Tradrack and other customized designs.
 </ul>
 
 <br>
 
     (\_/)
     ( *,*)
-    (")_(") MMU Ready
+    (")_(") Happy Hare Ready
 
 <br>
 

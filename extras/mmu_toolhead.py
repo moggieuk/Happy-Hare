@@ -238,7 +238,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             printer_toolhead.step_generators.remove(handler)
             self.register_step_generator(handler)
 
-            # Remove handlers for default gear steppers if necessary
+            # Remove step generator for default gear steppers if necessary
             if extruder_only:
                 for s in self.prev_rail_steppers:
                     handler = s.generate_steps
@@ -251,7 +251,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             extruder = self.printer.lookup_object(self.extruder_synced_to_gear)
             extruder_stepper = extruder.extruder_stepper.stepper
 
-            # Restore handlers for normal gear steppers and reset position if necessary
+            # Restore step generator for default gear steppers and reset position if necessary
             if self.prev_rail_steppers: # Rail contains only extruder
                 for s in self.prev_rail_steppers:
                     handler = s.generate_steps
