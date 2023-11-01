@@ -4,9 +4,9 @@
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ACTION_CHANGED
 
-Possible action strings are:
+Basic MMU types supported by Happy Hare
 
-<img src="/doc/conceptual/typeA_mmu.png" width="500" alt="Type A MMU">
+<img src="/doc/conceptual/typeA_mmu.png" width="600" alt="Type A MMU">
 
 Examples:
 <img src="/doc/conceptual/default_ercf.png" width="300" alt="Default ERCF Design">
