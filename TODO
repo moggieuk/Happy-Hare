@@ -50,12 +50,40 @@ It didn't. It just stop the print. Although T2 and T9 are mapped together for ES
 
 27. Make servo movement integration faster with option to pass printtime() to servo move so time is not currenttime to avoid toolhead.wait()
 
+Complete Type A MMU support
+===========================
+1. Update servo methods to leverage the current gate (or pass it in?). If None, then use default (single servo)
+2. Make gate and extruder sensor homing also automatically go backward to home 
+3. Make extruder homing optional ... could blindly load bowden then home to nozzle!
+4. Add home to nozzle option .. either a hard distance or endstop
 
-Type B MMU support
-==================
+IDEA: Parhaps all filament moves could be:
+a) blind movement (optionally encoder verified)
+b) home to sensor (some virtual sensors like collision)
+
+5. Ensure servo move is part of filament move step (I think it is)
+6. Put all selector movement into new Class called "mmm_selector.py"? or mmu_toolhead.py?
+7. Put all filament drive movement into new Class called "mmu_filament_driver.py" or mmu_toolhead.py?
+
+8. Add pre-gate sensor support .. essentially a runout sensor with insertion logic to auto load (during print only if Type B or C.
+9. Use pre-gate sensor to detect filament for MMU_GATE_MAP - insertion logic could at least do that.
+Type A:
+- pre-gate logic would update gate map, call action changed?
+- MMU_PRELOAD if possible
+
+10. Turn spool group into Class... that fetches filament from first gate in group, but tacks that it has move to new gate. On print end, reset the TTG map back to what is what at start of print.  start print should snapshot, endless_spool update in print, end print should restore.  What about manual changes to TTG during a print? these really shouldn't be restore/overwitten at end of print.
+
+11. Add additional sensors to visual string maybe need additional filament pos states to handle pre-gate?
+
+Type B & C  MMU support
+=======================
 1. Add multiple gear stepper support
 2. Add optional per gear servo with config movement
 3. Each gear stepper needs it's own rotation distance
-3a. Smart convert of gear ratios to rotation distance... update to work with rotation distance instead of ratio
-4. 
+3a. Smart convert of gear ratios to rotation distance... update to work with rotation distance instead of ratio?
+4. Need per gear stepper servos.
+4a. mmu_servo should "inherit" base servo settings so it could be as easy and just specifying `pin` or least only the differences.
+5. Could multiple gear steppers also inhert settings from the base...?
+
+
 
