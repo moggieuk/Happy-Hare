@@ -94,6 +94,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Create MMU kinematics
         try:
             self.kin = MmuKinematics(self, config)
+            self.all_gear_rail_steppers = self.kin.rails[1].get_steppers()
         except config.error as e:
             raise
         except self.printer.lookup_object('pins').error as e:
@@ -137,6 +138,34 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def get_gear_limits(self):
         return self.gear_max_velocity, self.gear_max_accel
+
+    def select_gear_steppers(self, selected_steppers): # PAUL untested
+        # Unsync first to simplify transition
+        gear_motion_queue = self.gear_motion_queue
+        extruder_synced_to_gear = self.extruder_synced_to_gear
+        self.sync_gear_to_extruder(None)
+        self.sync_extruder_to_gear(None)
+
+        # Activate only the desired gear(s)
+        printer_toolhead = self.printer.lookup_object('toolhead')
+        printer_toolhead.flush_step_generation()
+        self.flush_step_generation()
+        gear_rail = self.get_kinematics().rails[1]
+        g_pos = gear_rail.get_commanded_position()
+        gear_rail.steppers = []
+        # PAUL need to handle step generators? or can they safety always be assigned to toolhead?
+        for s in self.all_gear_rail_steppers:
+            if s.get_name() in selected_steppers:
+                gear_rail.steppers.append(s)
+        if not gear_rail.steppers:
+            raise self.printer.command_error("None of these `%s` gear steppers where found!" % selected_steppers)
+        gear_rail.set_position([g_pos, 0., 0.])
+
+        # Restore previous synchronization state if any with new gear steppers
+        if gear_motion_queue:
+            self.sync_gear_to_extruder(gear_motion_queue)
+        elif extruder_synced_to_gear:
+            self.sync_extruder_to_gear(extruder_synced_to_gear)
 
     # Is gear rail synced to extruder (for in print syncing)
     def is_gear_synced_to_extruder(self):
@@ -553,7 +582,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         def add_stepper(self, *args, **kwargs):
             pass
 
-# Wrapper for dual stepper motor support
+# Wrapper for multiple stepper motor support
 def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
     rail = MmuPrinterRail(config, need_position_minmax=need_position_minmax, default_position_endstop=default_position_endstop, units_in_radians=units_in_radians)
     for i in range(1, 99):

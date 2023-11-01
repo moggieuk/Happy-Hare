@@ -46,10 +46,16 @@ Can you explain this more? Do you mean the unload of the filament that has run o
 I forced T9 empty, hopping that T2 will load and start the print. 
 It didn't. It just stop the print. Although T2 and T9 are mapped together for ES.
 
-26. Gate calibration - throw away the first measure unless the gate is buffered for more accurate results
-
-26. selector calibration - need way to calibrate bypass "gate"
+26. Gate calibration - maybe throw away the first measure unless the gate is buffered for more accurate results
 
 27. Make servo movement integration faster with option to pass printtime() to servo move so time is not currenttime to avoid toolhead.wait()
 
-28. DOC:  added WAIT=0|1 to MMU_TEST_MOVE, MMU_TEST_HOMING_MOVE, and equiv STEP moves..
+
+Type B MMU support
+==================
+1. Add multiple gear stepper support
+2. Add optional per gear servo with config movement
+3. Each gear stepper needs it's own rotation distance
+3a. Smart convert of gear ratios to rotation distance... update to work with rotation distance instead of ratio
+4. 
+
