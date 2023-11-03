@@ -4032,7 +4032,7 @@ class Mmu:
         else:
             self._servo_down()
         self._log_debug("Moving '%s' motor %.1fmm..." % (motor, move))
-        return self._trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, sync=sync, wait=wait, encoder_dwell=None)
+        return self._trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, sync=sync, wait=wait)
 
     def _homing_move_cmd(self, gcmd, trace_str):
         if self._check_is_disabled(): return
@@ -4059,7 +4059,7 @@ class Mmu:
             if self.gear_rail.is_endstop_virtual(endstop):
                 self._movequeues_dwell(1, toolhead=False) # TMC needs time to settle after gear buzz for servo
         self._log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
-        return self._trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop, sync=sync, encoder_dwell=None)
+        return self._trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop, sync=sync)
 
 
 ############################
@@ -4681,12 +4681,12 @@ class Mmu:
     cmd_MMU_TEST_MOVE_help = "Test filament move to help debug setup / options"
     def cmd_MMU_TEST_MOVE(self, gcmd):
         actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
-        self._log_always("Moved %.1fmm, Encoder measured %.1fmm)" % (actual, measured))
+        self._log_always("Moved %.1fmm%s" % (actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"
     def cmd_MMU_TEST_HOMING_MOVE(self, gcmd):
         actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move")
-        self._log_always("%s after %.1fmm (measured %.1fmm)" % (("Homed" if homed else "Did not home"), actual, measured))
+        self._log_always("%s after %.1fmm%s" % (("Homed" if homed else "Did not home"), actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
     def cmd_MMU_TEST_CONFIG(self, gcmd):
