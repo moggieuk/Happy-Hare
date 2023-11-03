@@ -565,6 +565,62 @@ class Mmu:
         # the installer by default already guarantees this order
         self._setup_mmu_hardware(config)
 
+        self.gcode.register_command('PAUL', self.cmd_PAUL)
+        self.gcode.register_command('PAUL2', self.cmd_PAUL2)
+    def cmd_PAUL(self, gcmd):
+        unsync = bool(gcmd.get_int('UNSYNC', 0))
+        e2g = bool(gcmd.get_int('E2G', 0))
+        e2g_off = bool(gcmd.get_int('E2G_OFF', 0))
+        g2e = bool(gcmd.get_int('G2E', 0))
+        g2e_off = bool(gcmd.get_int('G2E_OFF', 0))
+        bowden = bool(gcmd.get_int('BOWDEN', 0))
+        extruder = bool(gcmd.get_int('EXTRUDER', 0))
+        loop = gcmd.get_int('LOOP', 1)
+        ran = bool(gcmd.get_int('RANDOM', 0))
+
+        for i in range(loop):
+            self._log_error("loop=%s" % i)
+            if ran:
+                unsync = e2g = e2g_off = g2e = g2e_off = bowden = extruder = False
+                r = randint(1, 20)
+                self._log_error("r=%s" % r)
+                if r == 1:
+                    unsync = True
+                elif r == 2:
+                    e2g = True
+                elif r == 3:
+                    e2g_off = True
+                elif r == 4:
+                    g2e = True
+                elif r == 5:
+                    g2e_off = True
+                elif 6 <= r <= 10:
+                    bowden = True
+                elif 11 <= r <= 20:
+                    extruder = True
+
+            if unsync:
+                self._sync_gear_to_extruder(False)
+            elif e2g_off:
+                self.mmu_toolhead.sync_extruder_to_gear(None)
+            elif g2e_off:
+                self.mmu_toolhead.sync_gear_to_extruder(None)
+            elif e2g:
+                self.mmu_toolhead.sync_extruder_to_gear(self.extruder_name)
+            elif g2e:
+                self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name)
+            elif bowden:
+                _,_,_,sdelta = self._trace_filament_move("Bowden test", 200, track=False, encoder_dwell=False)
+            elif extruder:
+                _,homed,_,_ = self._trace_filament_move("Homing to toolhead sensor", 100., speed=60, motor="gear+extruder", homing_move=1, endstop_name="mmu_gate")
+            else:
+                self._log_error("<span class='warning'--text>PAUL - bad command")
+    def cmd_PAUL2(self, gcmd):
+        spool_id = gcmd.get_int('SPOOL', None)
+        self._log_error("spool_id=%s" % spool_id)
+        self._spoolman_activate_spool(spool_id)
+
+
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
 
@@ -4064,9 +4120,7 @@ class Mmu:
         self._load_sequence()
 
         # Activate the spool in SpoolMan, if enabled
-        spool = self.gate_spool_id[gate]
-        if spool > -1:
-            self._spoolman_activate_spool(spool)
+        self._spoolman_activate_spool(self.gate_spool_id[gate])
 
         # Restore M220 and M221 overrides
         self._restore_tool_override(self.tool_selected)
@@ -4080,8 +4134,8 @@ class Mmu:
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
         # Remember M220 and M221 overrides, potentially deactivate in SpoolMan
         self._record_tool_override()
-        self._spoolman_activate_spool(-1)
         self._unload_sequence(skip_tip=skip_tip)
+        self._spoolman_activate_spool(0)
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, in_print, skip_tip=True):
@@ -4217,15 +4271,18 @@ class Mmu:
             self._log_always("Warning: %s%d value (%.6f) is invalid. Using reference value 1.0. Re-run MMU_CALIBRATE_GATES GATE=%d" % (self.VARS_MMU_CALIB_PREFIX, gate, ratio, gate))
             return 1.
 
-    def _spoolman_activate_spool(self, spool=-1):
+    def _spoolman_activate_spool(self, spool_id=-1):
         if not self.enable_spoolman: return
-        if spool > -1:
-            self._log_debug("Activating spool %s..." % spool)
-        else:
-            self._log_debug("Deactivating spool ...")
-        webhooks = self.printer.lookup_object('webhooks')
         try:
-            webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool)
+            webhooks = self.printer.lookup_object('webhooks')
+            if spool_id < 0:
+                self._log_debug("Spoolman spool_id not set for current gate")
+            else:
+                if spool_id == 0:
+                    self._log_debug("Deactivating spool ...")
+                else:
+                    self._log_debug("Activating spool %s..." % spool_id)
+                webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)
         except Exception as e:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
@@ -4956,7 +5013,7 @@ class Mmu:
                 msg += ("\nGate #%d: " % g)
             msg += ("Material: %s, Color: %s, Status: %s" % (material, color, available))
             if self.enable_spoolman:
-                spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] != -1 else "n/a"
+                spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
                 msg += (", SpoolID: %s" % (spool_id))
             if detail and g == self.gate_selected:
                 msg += " [SELECTED%s]" % ((" supporting tool T%d" % self.tool_selected) if self.tool_selected >= 0 else "")
