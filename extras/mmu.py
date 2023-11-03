@@ -4417,7 +4417,7 @@ class Mmu:
 
         if self._is_mmu_paused():
             # Sanity check we are ready to go
-            if self._is_printing() and self.filament_pos != self.FILAMENT_POS_LOADED:
+            if self._is_in_print() and self.filament_pos != self.FILAMENT_POS_LOADED:
                 if self._check_sensor("toolhead") is True:
                     self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
