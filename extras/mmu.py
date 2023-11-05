@@ -565,62 +565,6 @@ class Mmu:
         # the installer by default already guarantees this order
         self._setup_mmu_hardware(config)
 
-        self.gcode.register_command('PAUL', self.cmd_PAUL)
-        self.gcode.register_command('PAUL2', self.cmd_PAUL2)
-    def cmd_PAUL(self, gcmd):
-        unsync = bool(gcmd.get_int('UNSYNC', 0))
-        e2g = bool(gcmd.get_int('E2G', 0))
-        e2g_off = bool(gcmd.get_int('E2G_OFF', 0))
-        g2e = bool(gcmd.get_int('G2E', 0))
-        g2e_off = bool(gcmd.get_int('G2E_OFF', 0))
-        bowden = bool(gcmd.get_int('BOWDEN', 0))
-        extruder = bool(gcmd.get_int('EXTRUDER', 0))
-        loop = gcmd.get_int('LOOP', 1)
-        ran = bool(gcmd.get_int('RANDOM', 0))
-
-        for i in range(loop):
-            self._log_error("loop=%s" % i)
-            if ran:
-                unsync = e2g = e2g_off = g2e = g2e_off = bowden = extruder = False
-                r = randint(1, 20)
-                self._log_error("r=%s" % r)
-                if r == 1:
-                    unsync = True
-                elif r == 2:
-                    e2g = True
-                elif r == 3:
-                    e2g_off = True
-                elif r == 4:
-                    g2e = True
-                elif r == 5:
-                    g2e_off = True
-                elif 6 <= r <= 10:
-                    bowden = True
-                elif 11 <= r <= 20:
-                    extruder = True
-
-            if unsync:
-                self._sync_gear_to_extruder(False)
-            elif e2g_off:
-                self.mmu_toolhead.sync_extruder_to_gear(None)
-            elif g2e_off:
-                self.mmu_toolhead.sync_gear_to_extruder(None)
-            elif e2g:
-                self.mmu_toolhead.sync_extruder_to_gear(self.extruder_name)
-            elif g2e:
-                self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name)
-            elif bowden:
-                _,_,_,sdelta = self._trace_filament_move("Bowden test", 200, track=False, encoder_dwell=False)
-            elif extruder:
-                _,homed,_,_ = self._trace_filament_move("Homing to toolhead sensor", 100., speed=60, motor="gear+extruder", homing_move=1, endstop_name="mmu_gate")
-            else:
-                self._log_error("<span class='warning'--text>PAUL - bad command")
-    def cmd_PAUL2(self, gcmd):
-        spool_id = gcmd.get_int('SPOOL', None)
-        self._log_error("spool_id=%s" % spool_id)
-        self._spoolman_activate_spool(spool_id)
-
-
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
 
