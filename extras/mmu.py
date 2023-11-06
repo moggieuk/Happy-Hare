@@ -2860,7 +2860,7 @@ class Mmu:
                         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                         return
         else:
-            _,homed,_,_ = self._trace_filament_move("Initial homing to gate sensor", homing_max, motor="gear", homing_move=-1, endstop_name=self.ENDSTOP_GATE)
+            _,homed,_,_ = self._trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self.ENDSTOP_GATE)
             if homed:
                 # Final parking step
                 self._trace_filament_move("Final parking", -self.gate_parking_distance)
