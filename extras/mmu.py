@@ -1624,7 +1624,7 @@ class Mmu:
                 self._home_to_extruder(extruder_homing_max)
                 measured_movement = self._get_encoder_distance(dwell=True)
                 spring = self._servo_up(measure=True)
-                reference = measured_movement - (spring * 0.5)
+                reference = measured_movement - spring
                 if spring > 0:
                     msg = "Pass #%d: Filament homed to extruder, encoder measured %.1fmm, " % (i+1, measured_movement)
                     msg += "filament sprung back %.1fmm" % spring
