@@ -569,7 +569,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         super(MmuExtruderStepper, self).__init__(config)
         tmc_chips = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
         for chip in tmc_chips:
-            tmc = self.printer.lookup_object('%s stepper_mmu_selector' % chip, None)
+            tmc = self.printer.lookup_object('%s extruder' % chip, None)
             if tmc:
                 _ = self.printer.load_object(config, '%s extruder' % chip) # Prevent error if loading after real "[extruder]" section
                 break
