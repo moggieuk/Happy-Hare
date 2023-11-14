@@ -3353,7 +3353,7 @@ class Mmu:
         if ts is None: # Not installed
             if self._check_filament_in_mmu():
                 if self._check_filament_still_in_extruder():
-                    self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                    self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                 else:
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
             else:
