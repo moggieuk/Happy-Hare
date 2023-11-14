@@ -2886,7 +2886,8 @@ class Mmu:
     # Handles setting of cailbration ratio if not set
     def _load_bowden(self, length):
         if length <= 0: return
-        length = min(length, self.calibrated_bowden_length)
+        if self.calibrated_bowden_length > 0 and not self.calibrating:
+            length = min(length, self.calibrated_bowden_length)
         full = length == self.calibrated_bowden_length
         length -= self.mmu_toolhead.get_position()[1]
 
@@ -2957,7 +2958,8 @@ class Mmu:
     # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (gate_unload_buffer away)
     def _unload_bowden(self, length):
         if length <= 0: return
-        length = min(length, self.calibrated_bowden_length)
+        if self.calibrated_bowden_length > 0 and not self.calibrating:
+            length = min(length, self.calibrated_bowden_length)
         full = length == self.calibrated_bowden_length
         if full:
             length -= self.toolhead_unload_safety_margin # Extra precaution against sync unload and small unload buffer
@@ -4363,14 +4365,15 @@ class Mmu:
         if self._check_is_calibrated(): return
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
+        skip_tip = bool(gcmd.get_int('SKIP_TIP', 0, minval=0, maxval=1))
 
         with self._wrap_disable_encoder(): # Don't want runout accidently triggering during filament load
             try:
                 if not extruder_only:
-                    self._unload_tool()
+                    self._unload_tool(skip_tip=skip_tip)
                 elif extruder_only and self.filament_pos != self.FILAMENT_POS_UNLOADED:
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
-                    self._unload_sequence(length=0, extruder_only=True)
+                    self._unload_sequence(length=0, skip_tip=skip_tip, extruder_only=True)
                     if in_bypass:
                         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                         self._log_always("Please pull the filament out clear of the MMU selector")
