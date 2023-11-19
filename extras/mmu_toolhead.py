@@ -567,12 +567,15 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
 class MmuExtruderStepper(ExtruderStepper, object):
     def __init__(self, config, gear_rail):
         super(MmuExtruderStepper, self).__init__(config)
+
+        # Ensure sure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
         tmc_chips = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
         for chip in tmc_chips:
-            tmc = self.printer.lookup_object('%s extruder' % chip, None)
-            if tmc:
-                _ = self.printer.load_object(config, '%s extruder' % chip) # Prevent error if loading after real "[extruder]" section
+            try:
+                _ = self.printer.load_object(config, '%s extruder' % chip)
                 break
+            except:
+                pass
 
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin:
