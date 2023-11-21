@@ -217,17 +217,27 @@ class Mmu:
         self.mmu_version_string = config.get('mmu_version', "1.1")
         self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
 
-        # Shared non CAD default parameters (ERCF v1.1) to ensure everthing is set
-        self.gate_parking_distance = 23.
-        self.cad_bypass_block_width = 6.
-        self.cad_bypass_offset = 0.
+        # Set CAD default parameters to ensure everything is set
+        #  cad_gate0_pos          - distance from endstop to first gate
+        #  cad_gate_width         - width of each gate
+        #  cad_block_width        - width of bearing block (ERCF v1.1)
+        #  cad_bypass_block_width - width of bypass block (ERCF v1.1)
+        #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
+        #  cad_bypass_offset      - distance from end of travel to the bypass
+        #  cad_last_gate_offset   - distance from end of travel to last gate
+        self.cad_gate0_pos = 4.
         self.cad_gate_width = 21.
+        self.cad_block_width = 5.
+        self.cad_bypass_block_width = 6.
+        self.cad_bypass_block_delta = 9.
+        self.cad_bypass_offset = 0.
         self.cad_last_gate_offset = 2.0
 
+        self.gate_parking_distance = 23.
         bmg_circ = 23.
         self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
-        # Specific vendor build parameters / tuning. Mostly CAD related but a few exceptions like gate_park_pos
+        # Specific vendor build parameters / tuning. Mostly CAD related but a few exceptions like gate_park_distance
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
             if self.mmu_version >= 2.0:
                 self.cad_gate0_pos = 4.0
@@ -273,18 +283,21 @@ class Mmu:
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other")
         else:
-            # Some abbitary starting values for "Other" designs
+            # Some arbitary starting values for "Other" designs
             self.cad_gate_width = 23.
             self.cad_gate0_pos = 1.
             self.gate_parking_distance = 20.
 
-        # Allow some CAD parameters to be customized
-        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.)
+        # Allow CAD parameters to be customized
         self.cad_gate0_pos = config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
         self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
+        self.cad_block_width = config.getfloat('cad_block_width', self.cad_block_width, above=0.)
+        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.)
+        self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.)
         self.cad_bypass_offset = config.getfloat('cad_bypass_offset', self.cad_bypass_offset, minval=0.)
         self.cad_last_gate_offset = config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
-        self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', 5., above=0.) # Extra movement allowed by selector
+
+        self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', 10., above=0.) # Extra movement allowed by selector
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -922,6 +935,7 @@ class Mmu:
 
     def _bootup_tasks(self, eventtime):
         try:
+            self._set_print_state("initialized")
             if self._has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_encoder_sensor() # Initially disable clog/runout detection
@@ -949,7 +963,7 @@ class Mmu:
                     self._log_debug("Error running %s: %s" % (macro, str(e)))
 
     def _movequeues_wait_moves(self, toolhead=True, mmu_toolhead=True):
-        self._log_trace("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
+        #self._log_trace("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if toolhead:
             self.toolhead.wait_moves()
         if mmu_toolhead:
@@ -1712,15 +1726,19 @@ class Mmu:
 
     def _get_max_selector_movement(self, gate=-1):
         n = gate if gate >= 0 else (self.mmu_num_gates - 1)
+
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
+            # ERCF Designs
             if self.mmu_version >= 2.0 or "t" in self.mmu_version_string:
                 max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
-                max_movement += (self.cad_last_gate_offset - self.cad_bypass_offset) if gate in [self.TOOL_GATE_BYPASS, self.TOOL_GATE_UNKNOWN] else 0.
             else:
                 max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
+
         else:
+            # Everything else
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
 
+        max_movement += self.cad_last_gate_offset if gate in [self.TOOL_GATE_UNKNOWN] else 0.
         max_movement += self.cad_selector_tolerance
         return max_movement
 
@@ -2017,7 +2035,7 @@ class Mmu:
         return self.print_state in ["pause_locked"]
 
     def _is_in_endstate(self):
-        return self.print_state in ["complete", "cancelled", "error", "standby"]
+        return self.print_state in ["complete", "cancelled", "error", "standby", "initialized"]
 
     # Track print events simply to ease internal print state transitions. Specificly we want to detect
     # the start and end of a print and falling back to 'standby' state
@@ -2083,13 +2101,17 @@ class Mmu:
         self._log_trace("_print_error_event_handler()")
         self._exec_gcode("_MMU_PRINT_END STATE=error")
 
-    # MMU job state machine: standby|started|printing|complete|cancelled|error|pause_locked|paused
-    def _set_print_state(self, print_state):
+    # MMU job state machine: initialized|standby|started|printing|complete|cancelled|error|pause_locked|paused
+    def _set_print_state(self, print_state, call_macro=True):
         if print_state != self.print_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
             self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, z_hop @%.1fmm, pause_resume: %s, Idle timeout: %.2fs)"
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_paused(), idle_timeout))
+            if call_macro:
+                gcode = self.printer.lookup_object('gcode_macro _MMU_PRINT_STATE_CHANGED', None)
+                if gcode is not None:
+                    self._wrap_gcode_command("_MMU_PRINT_STATE_CHANGED STATE='%s' OLD_STATE='%s'" % (print_state, self.print_state))
             self.print_state = print_state
 
     # If this is called automatically when printing starts. The pre_start_only operations are performed on an idle_timeout
@@ -2104,7 +2126,7 @@ class Mmu:
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._enable_encoder_sensor(True) # Enable runout/clog detection
             self._initialize_filament_position(dwell=None) # Encoder 0000
-            self._set_print_state("started")
+            self._set_print_state("started", call_macro=False)
 
         if not pre_start_only and self.print_state not in ["printing"]:
             self._log_trace("_on_print_start(->printing)")
@@ -2174,7 +2196,7 @@ class Mmu:
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics
     def _on_print_end(self, state="complete"):
-        if not self.print_state in ["complete", "error", "cancelled", "standby"]:
+        if not self.print_state in ["complete", "error", "cancelled", "standby", "initialized"]:
             self._log_trace("_on_print_end(%s)" % state)
             self._movequeues_wait_moves()
             self._clear_saved_toolhead_position()
@@ -2356,7 +2378,7 @@ class Mmu:
         return result
 
     def _must_home_to_extruder(self):
-        return self.extruder_force_homing or not self._has_sensor("toolhead")
+        return self.extruder_force_homing # or not self._has_sensor("toolhead")
 
     def _check_is_disabled(self):
         if not self.is_enabled:
@@ -2515,6 +2537,7 @@ class Mmu:
         self._log_always("MMU enabled and reset")
         self._log_always(self._tool_to_gate_map_to_human_string(summary=True))
         self._display_visual_state()
+        self._set_print_state("initialized")
 
     def _disable_mmu(self):
         if not self.is_enabled: return
@@ -2609,6 +2632,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.filament_pos))
+        self._set_print_state("initialized")
         self._log_always("MMU state reset")
 
 

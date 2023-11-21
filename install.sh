@@ -269,6 +269,7 @@ parse_file() {
     do
         # Remove comments
         line="${line%%#*}"
+        line="${line%%;*}"
 
         # Check if line is not empty
         if [ ! -z "$line" ]; then
