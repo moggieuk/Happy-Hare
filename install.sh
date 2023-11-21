@@ -183,7 +183,7 @@ cleanup_manual_stepper_version() {
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
         rm -f "${KLIPPER_HOME}/klippy/extras/manual_mh_stepper.py"
         rm -f "${KLIPPER_HOME}/klippy/extras/manual_extruder_stepper.py"
-        rm -f "${KLIPPER_HOME}/klippy/extras/mmu_config_setup.py"
+        # Used as upgrade reminder rm -f "${KLIPPER_HOME}/klippy/extras/mmu_config_setup.py"
     fi
 
     # Upgrade mmu_hardware.cfg...
@@ -269,6 +269,7 @@ parse_file() {
     do
         # Remove comments
         line="${line%%#*}"
+        line="${line%%;*}"
 
         # Check if line is not empty
         if [ ! -z "$line" ]; then
@@ -357,6 +358,8 @@ read_previous_config() {
         fi
         if [ ! "${encoder_parking_distance}" == "" ]; then
             gate_parking_distance=${encoder_parking_distance}
+        else
+            gate_parking_distance=23
         fi
         if [ ! "${encoder_load_retries}" == "" ]; then
             gate_load_retries=${encoder_load_retries}
@@ -1032,7 +1035,7 @@ questionaire() {
                     ;;
             esac
 
-            echo -e "${PROMPT}    Would you like to include legacy ERCF_ command compatibility module${INPUT}"
+            echo -e "${PROMPT}    Would you like to include legacy ERCF_ command set compatibility module${INPUT}"
             yn=$(prompt_yn "    Include legacy ERCF command set")
             echo
             case $yn in
@@ -1193,7 +1196,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
     echo -e "${INFO}"
     echo '(\_/)'
     echo '( *,*)'
-    echo '(")_(") MMU Ready'
+    echo '(")_(") Happy Hare Ready'
     echo
 else
     echo -e "${EMPHASIZE}"
@@ -1201,6 +1204,6 @@ else
     echo -e "${INFO}"
     echo '(\_/)'
     echo '( v,v)'
-    echo '(")^(") MMU Unready'
+    echo '(")^(") Very Unappy Hare'
     echo
 fi
