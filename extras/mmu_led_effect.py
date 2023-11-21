@@ -18,7 +18,10 @@ class MmuLedEffect(ledEffect, object):
     def __init__(self, config):
         super(MmuLedEffect, self).__init__(config)
 
-        num_gates = 9 # PAUL
+        printer = config.get_printer()
+        leds = config.get("leds").replace(":", " ")
+        pixels = self.printer.lookup_object(leds)
+        num_gates = pixels.led_helper.get_led_count()
         for i in range(num_gates):
             new_section = self._add_config_section(config, config.get_name(), i)
             _ = ledEffect(new_section)
