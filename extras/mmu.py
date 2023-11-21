@@ -1792,7 +1792,7 @@ class Mmu:
             self._log_always("Measuring the selector position for gate #0...")
             traveled, found_home = self._measure_to_home()
             if not found_home or traveled > self.cad_gate0_pos + self.cad_selector_tolerance:
-                self._log_always("Selector didn't find home position or measurement (%.1fmm) unexpected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
+                self._log_always("Selector didn't find home position or measurement (%.1fmm) was larger than unexpected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
                 return
             gate0_pos = traveled
 
