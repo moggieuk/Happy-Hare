@@ -278,7 +278,8 @@ parse_file() {
 
             # Remove leading and trailing whitespace
             parameter=$(echo "$parameter" | xargs)
-            value=$(echo "$value" | xargs)
+            # Need to be more careful with value because it can be quoted
+            value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
 	    # If parameter is one of interest and it has a value remember it
             if echo "$parameter" | egrep -q "${prefix_filter}"; then
