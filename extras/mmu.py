@@ -3189,6 +3189,7 @@ class Mmu:
             # Encoder based validation test
             if self._can_use_encoder() and not homed:
                 if measured < self.encoder_min:
+                    # PAUL or the filament is out of the extruder..?
                     raise MmuError("Filament seems to be stuck in the extruder. Encoder not sensing any movement")
                 elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
