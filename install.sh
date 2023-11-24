@@ -334,9 +334,8 @@ update_copy_file() {
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
-    parameters_cfg="mmu_parameters.cfg"
-
-    parse_file "${SRCDIR}/config/base/${parameters_cfg}"
+    parse_file "${SRCDIR}/config/base/mmu_parameters.cfg"
+    parse_file "${SRCDIR}/config/base/mmu_filametrix.cfg" "variable_"
 }
 
 # Pull parameters from previous installation
@@ -386,6 +385,16 @@ read_previous_config() {
     else
         echo -e "${INFO}Reading ${software_cfg} configuration from previous installation..."
         parse_file "${dest_software_cfg}" "variable_"
+    fi
+
+    filametrix_cfg="mmu_filametrix.cfg"
+    dest_filametrix_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${filametrix_cfg}
+
+    if [ ! -f "${dest_filametrix_cfg}" ]; then
+        echo -e "${WARNING}No previous ${filametrix_cfg} found. Will install default"
+    else
+        echo -e "${INFO}Reading ${filametrix_cfg} configuration from previous installation..."
+        parse_file "${dest_filametrix_cfg}" "variable_"
     fi
 }
 
@@ -515,6 +524,14 @@ copy_config_files() {
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}.tmp
+                update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
+            fi
+
+        elif [ "${file}" == "mmu_filametrix.cfg" ]; then
+            if [ "${INSTALL}" -eq 1 ]; then
+                cat ${src} > ${dest}
+            else
+                cat ${src} > ${dest}.tmp
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
 
