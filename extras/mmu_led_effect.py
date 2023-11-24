@@ -23,7 +23,7 @@ class MmuLedEffect(ledEffect, object):
         pixels = self.printer.lookup_object(leds)
         num_gates = pixels.led_helper.get_led_count()
         for i in range(num_gates):
-            new_section = self._add_config_section(config, config.get_name(), i)
+            new_section = self._add_config_section(config, config.get_name(), i+1)
             _ = ledEffect(new_section)
 
     def _add_config_section(self, config, section_from, index):
@@ -32,7 +32,7 @@ class MmuLedEffect(ledEffect, object):
         new_section = config.fileconfig.add_section(section_to)
         for item in items:
             if item[0] == "leds":
-                new_leds = "%s (%d)" % (item[1], index + 1)
+                new_leds = "%s (%d)" % (item[1], index)
                 config.fileconfig.set(section_to, item[0], new_leds)
             else:
                 config.fileconfig.set(section_to, item[0], item[1])
