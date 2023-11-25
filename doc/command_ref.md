@@ -16,6 +16,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_FORM_TIP : Convenience macro to call the standalone tip forming functionality
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
+    MMU_LED : Manage mode of operation of optional MMU LED's
     MMU_LOAD : Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)
     MMU_MOTORS_OFF : Turn off both MMU motors
     MMU_PAUSE : Pause the current print and lock the MMU operations
@@ -46,6 +47,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_SELECT_BYPASS` | Select the bypass selector position if configured | None |
   | `MMU_CHANGE_TOOL` | Perform a tool swap (generally called from 'Tx' macros). Use `STANDALONE=1` option in your print_start macro to saftely load the initial tool | `TOOL=[0..n]` <br>`STANDALONE=[0\|1]` Optional to force standalone logic (tip forming)<br> `QUIET=[0\|1]` Optional to always suppress swap statistics |
   | `MMU_LOAD` | Loads filament in currently selected tool/gate to extruder. Optionally performs just the extruder load part of the sequence - designed for bypass loading or non MMU use | `EXTRUDER_ONLY=[0\|1]` To force just the extruder loading (automatic if bypass selected) |
+  | `MMU_LED` | Quick way to try/test modes of operation of optional MMU LEDs  | `ENABLE=[0\|1]` Whether LED's are operational or not <br> `EFFECT=[off|gate_status|filament_color` Selects the default effect for gate LEDs when no action is taking place |
   | `MMU_EJECT` | `MMU_UNLOAD` | Eject filament and park it in the MMU gate or does the extruder unloading part of the unload sequence if in bypass | `EXTRUDER_ONLY=[0\|1]` To force just the extruder unloading (automatic if bypass selected) <br>`SKIP_TIP=[0\|1]` if set the tip forming/cutting macro will be skipped |
   | `MMU_PRELOAD` | Helper for filament loading. Feed filament into gate, MMU will catch it and correctly position at the specified gate | `GATE=[0..n]` The specific gate to preload. If omitted the currently selected gate can be loaded |
   | `MMU_PAUSE` | Pause the current print and lock the MMU operations. (`MMU_UNLOCK + RESUME` or just `RESUME` to continue print) | `FORCE_IN_PRINT=[0\|1]` This option forces the handling of pause as if it occurred in print and is useful for testing. Calls `PAUSE` by default or your `pause_macro` if set |
@@ -144,11 +146,14 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | Macro | Description | Supplied Parameters |
   | ----- | ----------- | ------------------- |
   | `_MMU_PRE_UNLOAD` | Called prior to unloading on toolchange | |
+  | `_MMU_POST_FORM_TIP` | Called immediately after forming tip | |
+  | `_MMU_POST_UNLOAD` | Called after unload is complete and filament is parked at the gate | |
   | `_MMU_POST_LOAD` | Called subsequent to loading new filament on toolchange| |
   | `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` | Called prior to unloading the remains of the current filament | |
   | `_MMU_ENDLESS_SPOOL_POST_LOAD` | Called subsequent to loading filament in the new gate in the sequence | |
   | `_MMU_FORM_TIP_STANDALONE` | Called to create tip on filament when not in print (and under the control of the slicer). You tune this macro by modifying the defaults to the parameters | |
   | `_MMU_ACTION_CHANGED` | Callback that is called everytime the `printer.ercf.action` is updated. Great for contolling LED lights, etc | |
+  | `_MMU_PRINT_STATE_CHANGED` | Callback when the print job state changes and `printer.ercf.print_state` is updated. Great for contolling LED lights, etc | |
   | `_MMU_LOAD_SEQUENCE` | Called when MMU is asked to load filament | `FILAMENT_POS` `LENGTH` `FULL` `HOME_EXTRUDER` `SKIP_EXTRUDER` `EXTRUDER_ONLY` |
   | `_MMU_UNLOAD_SEQUENCE` | Called when MMU is asked to unload filament | `FILAMENT_POS` `LENGTH` `EXTRUDER_ONLY` `PARK_POS` |
 

@@ -215,6 +215,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.gate_status : {list} per gate: 0 empty | 1 available | 2 available from buffer |  -1 unknown
     printer.mmu.gate_material : {list} of material names, one per gate
     printer.mmu.gate_color : {list} of color names, one per gate
+    printer.mmu.gate_color_rgb : {list} of color rbg values from 0.0 - 1.0 in truples (red, green blue), one per gate
     printer.mmu.gate_spool_id : {list} of IDs for Spoolman, one per gate
     printer.mmu.endless_spool_groups : {list} membership group (int) for each tool
     printer.mmu.tool_extrusion_multipliers : {list} current M221 extrusion multipliers (float), one per tool
@@ -839,7 +840,7 @@ Similarly the `MMU_CHECK_GATE` command will run through all the gates (or the on
 
 ### 12. Gate map describing filament type, color and status
 
-Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material`, `printer.mmu.gate_color` and `printer.mmu.gate_spool_id` if spoolman is enabled) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
+Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material`, `printer.mmu.gate_color`, `printer.mmu.gate_color_rgb` and `printer.mmu.gate_spool_id` if spoolman is enabled) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
 
 <details>
 <summary><sub>🔹 Read more on editing the gate map...</sub></summary><br>
@@ -871,6 +872,14 @@ If you remove buffered filament from a gate and want to quickly tell Happy Hare 
 
 > [!IMPORTANT]  
 > There is no enforcement of material names but it is recommended use all capital short names like PLA, ABS+, TPU95, PETG. The color string can be one of the [w3c standard color names](https://www.w3schools.com/tags/ref_colornames.asp) or a RRGGBB red/green/blue hex value. Because of a Klipper limitation don't add `#` to the color specification.
+
+One potentially interesting built-in functionality is the exposing of filament color and RGB values suitable for directly driving LEDs.  The `gate_color_rgb` printer value will convert any color format (string name or hex spec) into truples like this: `(0.5, 0.0, 0.0)`.  You can use this to drive LED's with the Klipper led control in your macros similar to this because "bling" is important!
+
+```
+    {% set gate_color_rgb = printer['mmu']['gate_color_rgb'] %}
+    {% set rgb = gate_color_rgb[GATE] %}
+    SET_LED LED={leds_name} INDEX={index} RED={rgb[0]} GREEN={rgb[1]} BLUE={rgb[2]} TRANSMIT=1
+```
 
 > [!NOTE]  
 > KlipperScreen Happy Hare edition has a nice editor with color picker for easy updating.
