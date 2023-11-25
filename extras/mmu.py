@@ -2777,7 +2777,7 @@ class Mmu:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._wrap_gcode_command(self.form_tip_macro)
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
-                delta = self._get_encoder_distance() - initial_encoder_position
+                measured = self._get_encoder_distance() - initial_encoder_position
                 park_pos = gcode_macro.variables.get("output_park_pos", -1)
                 try:
                     park_pos = float(park_pos)
@@ -2785,7 +2785,7 @@ class Mmu:
                     park_pos = -1
                 measured_park_pos = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
                 if park_pos < 0:
-                    self._log_always("After tip formation, extruder moved (park_pos): %.1f, encoder measured %.1f" % (measured_park_pos, delta))
+                    self._log_always("After tip formation, extruder moved (park_pos): %.1f, encoder measured %.1f" % (measured_park_pos, measured))
                 else:
                     # Means the macro reported it (usually for filament cutting)
                     limit = self._get_home_position_to_nozzle()
@@ -2793,7 +2793,7 @@ class Mmu:
                         self._log_always("Warning: After tip formation, park_pos reported as: %.1f, which is larger than your '**_to_nozzle' distance of %.1f!" % (park_pos, limit))
                     else:
                         filament_remaining = park_pos - measured_park_pos
-                        self._log_always("After tip formation, park_pos reported as: %.1f with %.1f filament remaining in extruder (extruder moved: %.1f, encoder measured %.1f)" % (park_pos, filament_remaining, measured_park_pos, delta))
+                        self._log_always("After tip formation, park_pos reported as: %.1f with %.1f filament remaining in extruder (extruder moved: %.1f, encoder measured %.1f)" % (park_pos, filament_remaining, measured_park_pos, measured))
 
                 gcode_macro.variables['final_eject'] = 0
             self._sync_gear_to_extruder(False, servo=True)
@@ -3555,7 +3555,7 @@ class Mmu:
                         self.filament_remaining = 0.
                     else:
                         self.filament_remaining = park_pos - measured_park_pos
-                        self._log_trace("After tip formation, park_pos reported as: %.1f with %.1f filament remaining in extruder (extruder moved: %.1f, encoder measured %.1f)" % (park_pos, self.filament_remaining, measured_park_pos, delta))
+                        self._log_trace("After tip formation, park_pos reported as: %.1f with %.1f filament remaining in extruder (extruder moved: %.1f, encoder measured %.1f)" % (park_pos, self.filament_remaining, measured_park_pos, measured))
                     filament_check = False
                 self._set_filament_position(-park_pos)
                 self._set_encoder_distance(initial_encoder_position + park_pos)
