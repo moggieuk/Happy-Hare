@@ -176,21 +176,34 @@ class Mmu:
 
     EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'servo_retries': 0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
-    W3C_COLORS = ['aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black', 'blanchedalmond', 'blue', 'blueviolet',
-                  'brown', 'burlywood', 'cadetblue', 'chartreuse', 'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson', 'cyan', 'darkblue',
-                  'darkcyan', 'darkgoldenrod', 'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta', 'darkolivegreen', 'darkorange',
-                  'darkorchid', 'darkred', 'darksalmon', 'darkseagreen', 'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet',
-                  'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen', 'fuchsia', 'gainsboro',
-                  'ghostwhite', 'gold', 'goldenrod', 'gray', 'green', 'greenyellow', 'grey', 'honeydew', 'hotpink', 'indianred', 'indigo', 'ivory',
-                  'khaki', 'lavender', 'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan', 'lightgoldenrodyellow',
-                  'lightgray', 'lightgreen', 'lightgrey', 'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray', 'lightslategrey',
-                  'lightsteelblue', 'lightyellow', 'lime', 'limegreen', 'linen', 'magenta', 'maroon', 'mediumaquamarine', 'mediumblue', 'mediumorchid',
-                  'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen', 'mediumturquoise', 'mediumvioletred', 'midnightblue',
-                  'mintcream', 'mistyrose', 'moccasin', 'navajowhite', 'navy', 'oldlace', 'olive', 'olivedrab', 'orange', 'orangered', 'orchid',
-                  'palegoldenrod', 'palegreen', 'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'pink', 'plum', 'powderblue',
-                  'purple', 'rebeccapurple', 'red', 'rosybrown', 'royalblue', 'saddlebrown', 'salmon', 'sandybrown', 'seagreen', 'seashell', 'sienna',
-                  'silver', 'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow', 'springgreen', 'steelblue', 'tan', 'teal', 'thistle', 'tomato',
-                  'turquoise', 'violet', 'wheat', 'white', 'whitesmoke', 'yellow', 'yellowgreen']
+    W3C_COLORS = [('aliceblue','#F0F8FF'), ('antiquewhite','#FAEBD7'), ('aqua','#00FFFF'), ('aquamarine','#7FFFD4'), ('azure','#F0FFFF'), ('beige','#F5F5DC'),
+                  ('bisque','#FFE4C4'), ('black','#000000'), ('blanchedalmond','#FFEBCD'), ('blue','#0000FF'), ('blueviolet','#8A2BE2'), ('brown','#A52A2A'),
+                  ('burlywood','#DEB887'), ('cadetblue','#5F9EA0'), ('chartreuse','#7FFF00'), ('chocolate','#D2691E'), ('coral','#FF7F50'),
+                  ('cornflowerblue','#6495ED'), ('cornsilk','#FFF8DC'), ('crimson','#DC143C'), ('cyan','#00FFFF'), ('darkblue','#00008B'), ('darkcyan','#008B8B'),
+                  ('darkgoldenrod','#B8860B'), ('darkgray','#A9A9A9'), ('darkgreen','#006400'), ('darkgrey','#A9A9A9'), ('darkkhaki','#BDB76B'),
+                  ('darkmagenta','#8B008B'), ('darkolivegreen','#556B2F'), ('darkorange','#FF8C00'), ('darkorchid','#9932CC'), ('darkred','#8B0000'),
+                  ('darksalmon','#E9967A'), ('darkseagreen','#8FBC8F'), ('darkslateblue','#483D8B'), ('darkslategray','#2F4F4F'), ('darkslategrey','#2F4F4F'),
+                  ('darkturquoise','#00CED1'), ('darkviolet','#9400D3'), ('deeppink','#FF1493'), ('deepskyblue','#00BFFF'), ('dimgray','#696969'),
+                  ('dimgrey','#696969'), ('dodgerblue','#1E90FF'), ('firebrick','#B22222'), ('floralwhite','#FFFAF0'), ('forestgreen','#228B22'),
+                  ('fuchsia','#FF00FF'), ('gainsboro','#DCDCDC'), ('ghostwhite','#F8F8FF'), ('gold','#FFD700'), ('goldenrod','#DAA520'), ('gray','#808080'),
+                  ('green','#008000'), ('greenyellow','#ADFF2F'), ('grey','#808080'), ('honeydew','#F0FFF0'), ('hotpink','#FF69B4'), ('indianred','#CD5C5C'),
+                  ('indigo','#4B0082'), ('ivory','#FFFFF0'), ('khaki','#F0E68C'), ('lavender','#E6E6FA'), ('lavenderblush','#FFF0F5'), ('lawngreen','#7CFC00'),
+                  ('lemonchiffon','#FFFACD'), ('lightblue','#ADD8E6'), ('lightcoral','#F08080'), ('lightcyan','#E0FFFF'), ('lightgoldenrodyellow','#FAFAD2'),
+                  ('lightgray','#D3D3D3'), ('lightgreen','#90EE90'), ('lightgrey','#D3D3D3'), ('lightpink','#FFB6C1'), ('lightsalmon','#FFA07A'),
+                  ('lightseagreen','#20B2AA'), ('lightskyblue','#87CEFA'), ('lightslategray','#778899'), ('lightslategrey','#778899'),
+                  ('lightsteelblue','#B0C4DE'), ('lightyellow','#FFFFE0'), ('lime','#00FF00'), ('limegreen','#32CD32'), ('linen','#FAF0E6'),
+                  ('magenta','#FF00FF'), ('maroon','#800000'), ('mediumaquamarine','#66CDAA'), ('mediumblue','#0000CD'), ('mediumorchid','#BA55D3'),
+                  ('mediumpurple','#9370DB'), ('mediumseagreen','#3CB371'), ('mediumslateblue','#7B68EE'), ('mediumspringgreen','#00FA9A'),
+                  ('mediumturquoise','#48D1CC'), ('mediumvioletred','#C71585'), ('midnightblue','#191970'), ('mintcream','#F5FFFA'), ('mistyrose','#FFE4E1'),
+                  ('moccasin','#FFE4B5'), ('navajowhite','#FFDEAD'), ('navy','#000080'), ('oldlace','#FDF5E6'), ('olive','#808000'),
+                  ('olivedrab','#6B8E23'), ('orange','#FFA500'), ('orangered','#FF4500'), ('orchid','#DA70D6'), ('palegoldenrod','#EEE8AA'),
+                  ('palegreen','#98FB98'), ('paleturquoise','#AFEEEE'), ('palevioletred','#DB7093'), ('papayawhip','#FFEFD5'), ('peachpuff','#FFDAB9'),
+                  ('peru','#CD853F'), ('pink','#FFC0CB'), ('plum','#DDA0DD'), ('powderblue','#B0E0E6'), ('purple','#800080'), ('red','#FF0000'),
+                  ('rosybrown','#BC8F8F'), ('royalblue','#4169E1'), ('saddlebrown','#8B4513'), ('salmon','#FA8072'), ('sandybrown','#F4A460'),
+                  ('seagreen','#2E8B57'), ('seashell','#FFF5EE'), ('sienna','#A0522D'), ('silver','#C0C0C0'), ('skyblue','#87CEEB'), ('slateblue','#6A5ACD'),
+                  ('slategray','#708090'), ('slategrey','#708090'), ('snow','#FFFAFA'), ('springgreen','#00FF7F'), ('steelblue','#4682B4'),
+                  ('tan','#D2B48C'), ('teal','#008080'), ('thistle','#D8BFD8'), ('tomato','#FF6347'), ('turquoise','#40E0D0'), ('violet','#EE82EE'),
+                  ('wheat','#F5DEB3'), ('white','#FFFFFF'), ('whitesmoke','#F5F5F5'), ('yellow','#FFFF00'), ('yellowgreen','#9ACD32')]
 
     UPGRADE_REMINDER = "Did you upgrade? Run Happy Hare './install.sh' again to fix configuration files and read https://github.com/moggieuk/Happy-Hare/README.md"
 
@@ -204,6 +217,7 @@ class Mmu:
         self.calibrated_bowden_length = -1
         self.ref_gear_rotation_distance = 1.
         self.encoder_force_validation = False
+        self.w3c_colors = dict(self.W3C_COLORS)
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
@@ -465,7 +479,7 @@ class Mmu:
         else:
             for i in range(self.mmu_num_gates):
                 self.default_gate_color.append("")
-        self.gate_color = list(self.default_gate_color)
+        self._update_gate_color(list(self.default_gate_color)) # MOGGIE self.gate_color = list(self.default_gate_color)
        
         # SpoolID for each gate
         if len(self.default_gate_spool_id) > 0:
@@ -525,6 +539,7 @@ class Mmu:
         self.gcode.register_command('_MMU_PRINT_END', self.cmd_MMU_PRINT_END, desc = self.cmd_MMU_PRINT_END_help) # Automatically called if printing from virtual SD-card
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
+        self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
         self.gcode.register_command('MMU_SELECT', self.cmd_MMU_SELECT, desc = self.cmd_MMU_SELECT_help)
         self.gcode.register_command('MMU_PRELOAD', self.cmd_MMU_PRELOAD, desc = self.cmd_MMU_PRELOAD_help)
@@ -800,6 +815,7 @@ class Mmu:
         self.print_state = self.resume_to_state = "standby"
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
 
+    # Helper to infer type for setting gcode macro variables
     def _fix_type(self, s):
         try:
             return float(s)
@@ -808,6 +824,39 @@ class Mmu:
                 return int(s)
             except ValueError:
                 return s
+
+    # This retuns a convenient RGB spec for controlling LEDs in form (0.32, 0.56, 1.00)
+    def _color_to_rgb(self, color):
+        if not color.startswith('#'):
+            color = self.w3c_colors.get(color, self.w3c_colors.get('black'))
+        hex_rgb = color.lstrip('#')
+        length = len(hex_rgb)
+        return tuple(round(float(int(hex_rgb[i:i + length // 3], 16)) / 255, 2) for i in range(0, length, length // 3))
+
+    # Helper to return validated color string or None if invalid
+    def _validate_color(self, color):
+        color = color.lower()
+        if color == "":
+            return ""
+
+        # Try w3c named color
+        if color in self.w3c_colors:
+            return color
+
+        # Try RGB color
+        color = color.lstrip('#')
+        x = re.search("^([a-f\d]{6})$", color)
+        if x is not None and x.group() == color:
+            return color
+
+        return None # Not valid
+
+    # Help to keep parallel RGB color map updated
+    def _update_gate_color(self, new_color_map):
+        self.gate_color = new_color_map
+
+        # Recalculate RGB map for easy LED support
+        self.gate_color_rgb = [self._color_to_rgb(i) for i in self.gate_color]
 
     def _load_persisted_state(self):
         self._log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
@@ -848,7 +897,7 @@ class Mmu:
             # Load filament color at each gate
             gate_color = self.variables.get(self.VARS_MMU_GATE_COLOR, self.gate_color)
             if len(gate_status) == self.mmu_num_gates:
-                self.gate_color = gate_color
+                self._update_gate_color(gate_color) # MOGGIE self.gate_color = gate_color
             else:
                 errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_COLOR)
 
@@ -1047,6 +1096,7 @@ class Mmu:
                 'gate_status': list(self.gate_status),
                 'gate_material': list(self.gate_material),
                 'gate_color': list(self.gate_color),
+                'gate_color_rgb': self.gate_color_rgb,
                 'gate_spool_id': list(self.gate_spool_id),
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'tool_extrusion_multipliers': list(self.tool_extrusion_multipliers),
@@ -2624,6 +2674,21 @@ class Mmu:
             msg += "\nFlowrate: %d %%" % status['flow_rate']
         self._log_info(msg)
 
+    cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
+    def cmd_MMU_LED(self, gcmd):
+        if self._check_is_disabled(): return
+        gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
+        if gcode_macro is not None:
+            variables = gcode_macro.variables
+            led_enable = gcmd.get_int('ENABLE', int(variables['led_enable']), minval=0, maxval=1)
+            default_effect = gcmd.get('EFFECT', variables['default_effect'])
+            gcode_macro.variables.update({'led_enable':led_enable,'default_effect':default_effect})
+            self._wrap_gcode_command("_MMU_SET_LED EFFECT=default")
+            self._log_always("LEDs are %s, Default effect: '%s'" % ("enabled" if led_enable else "disabled", default_effect))
+            self._log_always("ENABLE=[0|1] EFFECT=[off|gate_status|filament_color]")
+        else:
+            self._log_error("LEDs not available")
+
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
     def cmd_MMU_RESET(self, gcmd):
         confirm = gcmd.get_int('CONFIRM', 0, minval=0, maxval=1)
@@ -2640,7 +2705,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
         self.gate_status = list(self.default_gate_status)
         self.gate_material = list(self.default_gate_material)
-        self.gate_color = list(self.default_gate_color)
+        self._update_gate_color(list(self.default_gate_color)) # MOGGIE self.gate_color = list(self.default_gate_color)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self._persist_gate_map()
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
@@ -5027,29 +5092,11 @@ class Mmu:
 
     def _reset_gate_map(self):
         self._log_debug("Resetting Gate/Filament map")
-        self.gate_status = self.default_gate_status
-        self.gate_material = self.default_gate_material
-        self.gate_color = self.default_gate_color
-        self.gate_spool_id = self.default_gate_spool_id
+        self.gate_status = list(self.default_gate_status)
+        self.gate_material = list(self.default_gate_material)
+        self._update_gate_color(list(self.default_gate_color)) # MOGGIE self.gate_color = self.default_gate_color
+        self.gate_spool_id = list(self.default_gate_spool_id)
         self._persist_gate_map()
-
-    def _validate_color(self, color):
-        color = color.lower()
-        if color == "":
-            return True
-
-        # Try w3c named color
-        for i in range(len(self.W3C_COLORS)):
-            if color == self.W3C_COLORS[i]:
-                return True
-
-        # Try RGB color
-        color = "#" + color
-        x = re.search("^#?([a-f\d]{6})$", color)
-        if x is not None and x.group() == color:
-            return True
-
-        return False
 
 
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
@@ -5125,10 +5172,12 @@ class Mmu:
             material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
             color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
             spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
-            if not self._validate_color(color):
+            color = self._validate_color(color)
+            if color is None:
                 raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
             self.gate_material[gate] = material
             self.gate_color[gate] = color
+            self._update_gate_color(self.gate_color) # MOGGIE
             self.gate_status[gate] = available
             self.gate_spool_id[gate] = spool_id
             self._persist_gate_map()
