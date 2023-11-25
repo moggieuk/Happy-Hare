@@ -174,6 +174,7 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     MMU_FORM_TIP : Convenience macro for calling the standalone tip forming functionality
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
+    MMU_LED : Manage mode of operation of optional MMU LED's
     MMU_LOAD : Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)
     MMU_MOTORS_OFF : Turn off both MMU motors
     MMU_PAUSE : Pause the current print and lock the MMU operations

@@ -468,6 +468,8 @@ copy_config_files() {
             # Now substitute pin tokens for correct brd_type
             if [ "${brd_type}" == "unknown" ]; then
                 cat ${dest}.tmp | sed -e "\
+                    s/{mmu_num_gates}/${mmu_num_gates}/; \
+                    s/{mmu_num_leds}/${mmu_num_leds}/; \
                     s/{extruder_uart_pin}/${PIN[extruder_uart_pin]}/; \
                     s/{extruder_step_pin}/${PIN[extruder_step_pin]}/; \
                     s/{extruder_dir_pin}/${PIN[extruder_dir_pin]}/; \
@@ -479,6 +481,8 @@ copy_config_files() {
                         " > ${dest} && rm ${dest}.tmp
             else
                 cat ${dest}.tmp | sed -e "\
+                    s/{mmu_num_gates}/${mmu_num_gates}/; \
+                    s/{mmu_num_leds}/${mmu_num_leds}/; \
                     s/{extruder_uart_pin}/${PIN[extruder_uart_pin]}/; \
                     s/{extruder_step_pin}/${PIN[extruder_step_pin]}/; \
                     s/{extruder_dir_pin}/${PIN[extruder_dir_pin]}/; \
@@ -940,6 +944,7 @@ questionaire() {
            break
        fi
     done
+    mmu_num_leds=$(expr $mmu_num_gates + 1)
 
     echo
     echo -e "${PROMPT}${SECTION}Do you have a toolhead sensor you would like to use?"

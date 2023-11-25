@@ -297,7 +297,10 @@ class Mmu:
             # Some initial assumed values for Tradrack
             self.cad_gate_width = 17.
             self.cad_gate0_pos = 0.5
-            self.gate_parking_distance = 17.5
+            if "e" in self.mmu_version_string:
+                self.gate_parking_distance = 39. # Using Encoder
+            else:
+                self.gate_parking_distance = 17.5 # Using Gate switch
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other")
         else:
@@ -2681,11 +2684,12 @@ class Mmu:
         if gcode_macro is not None:
             variables = gcode_macro.variables
             led_enable = gcmd.get_int('ENABLE', int(variables['led_enable']), minval=0, maxval=1)
-            default_effect = gcmd.get('EFFECT', variables['default_effect'])
-            gcode_macro.variables.update({'led_enable':led_enable,'default_effect':default_effect})
-            self._wrap_gcode_command("_MMU_SET_LED EFFECT=default")
-            self._log_always("LEDs are %s, Default effect: '%s'" % ("enabled" if led_enable else "disabled", default_effect))
-            self._log_always("ENABLE=[0|1] EFFECT=[off|gate_status|filament_color]")
+            default_gate_effect = gcmd.get('EFFECT', variables['default_gate_effect'])
+            default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
+            gcode_macro.variables.update({'led_enable':led_enable, 'default_gate_effect':default_gate_effect, 'default_exit_effect':default_exit_effect})
+            self._wrap_gcode_command("_MMU_SET_LED EFFECT=default EXIT_EFFECT=default")
+            self._log_always("LEDs are %s, Default gate effect: '%s', Default exit effect: `%s`" % ("enabled" if led_enable else "disabled", default_gate_effect, default_exit_effect))
+            self._log_always("ENABLE=[0|1] EFFECT=[off|gate_status|filament_color] EXIT_EFFECT=[off|filament_color]")
         else:
             self._log_error("LEDs not available")
 
