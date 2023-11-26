@@ -338,6 +338,7 @@ class Mmu:
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', self.gate_parking_distance) # Can be +ve or -ve
         self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
+        self.gate_endstop_to_encoder_distance = config.getint('gate_endstop_to_encoder_distance', 0., minval=0.)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.) # Not exposed
         self.encoder_dwell = config.getfloat('encoder_dwell', 0.1, minval=0., maxval=2.) # Not exposed
         self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
@@ -2728,8 +2729,9 @@ class Mmu:
     cmd_MMU_STEP_UNLOAD_GATE_help = "User composable unloading step: Move filament from start of bowden and park in the gate"
     def cmd_MMU_STEP_UNLOAD_GATE(self, gcmd):
         full = gcmd.get_int('FULL', 0)
+        homing_max = self.calibrated_bowden_length + self.gate_endstop_to_encoder_distance if full else None
         try:
-            self._unload_gate(homing_max=self.calibrated_bowden_length if full else None)
+            self._unload_gate(homing_max=homing_max)
         except MmuError as ee:
             raise gcmd.error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
 
@@ -2834,6 +2836,9 @@ class Mmu:
                 if homed:
                     self._log_debug("Gate endstop reached after %.1fmm (measured %.1fmm)" % (actual, measured))
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
+                    if self._has_encoder():
+                        self._trace_filament_move("Moving filament from gate endstop to encoder", self.gate_endstop_to_encoder_distance, motor="gear")
+
                     self._initialize_filament_position()
                     self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
                     return
@@ -2861,7 +2866,7 @@ class Mmu:
         self._set_filament_direction(self.DIRECTION_UNLOAD)
         self._servo_down()
         if homing_max is None:
-            homing_max = self.gate_homing_max
+            homing_max = self.gate_homing_max + self.gate_endstop_to_encoder_distance
 
         if self.gate_homing_endstop == "encoder":
             with self._require_encoder():
@@ -3275,7 +3280,7 @@ class Mmu:
     def _unload_sequence(self, length=None, check_state=False, skip_tip=False, extruder_only=False):
         self._movequeues_wait_moves()
         if not length:
-            length = self.calibrated_bowden_length
+            length = self.calibrated_bowden_length + self.gate_endstop_to_encoder_distance
         self._set_filament_direction(self.DIRECTION_UNLOAD)
         self._initialize_filament_position(dwell=None)    # Encoder 0000
 
