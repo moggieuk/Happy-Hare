@@ -9,6 +9,7 @@ MOONRAKER_HOME="${HOME}/moonraker"
 KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
 KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
+LED_SECTION="MMU OPTIONAL NEOPIXEL"
 
 
 declare -A PIN 2>/dev/null || {
@@ -220,6 +221,25 @@ cleanup_manual_stepper_version() {
     fi
 }
 
+# Upgrade led effects part of mmu_hardware.cfg
+upgrade_led_effects() {
+    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    found_old_led_effects=$(egrep -c "${LED_SECTION}" ${hardware_cfg} || true)
+
+    if [ "${found_old_led_effects}" -eq 0 ]; then
+        # Form new section ready for insertion at end of existing mmu_hardware.cfg
+        sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
+                    s/^/#/; \
+                    s/{mmu_num_gates}/${mmu_num_gates}/; \
+                    s/{mmu_num_leds}/${mmu_num_leds}/; \
+                " > "${hardware_cfg}.tmp"
+
+        # Add new led config section
+        echo -e "${INFO}Adding new LED control section (commented out) to mmu_hardware.cfg..."
+        cat "${hardware_cfg}.tmp" >> "${hardware_cfg}" && rm "${hardware_cfg}.tmp"
+    fi
+}
+
 link_mmu_plugins() {
     echo -e "${INFO}Linking mmu extensions to Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
@@ -370,6 +390,9 @@ read_previous_config() {
         if [ ! "${bowden_load_tolerance}" == "" ]; then
             bowden_allowable_load_delta=${bowden_load_tolerance}
         fi
+        if [ ! "${mmu_num_gates}" == "" ]; then
+            mmu_num_leds=$(expr $mmu_num_gates + 1)
+        fi
 # E.g.
 #        selector_offsets=${colorselector}
 #        if [ "${sync_load_length}" -gt 0 ]; then
@@ -507,6 +530,11 @@ copy_config_files() {
                         " > ${dest} && rm ${dest}.tmp
             fi
 
+            # Handle LED option - Comment out if disabled
+	    if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" -eq 0 ]; then
+                sed "/${LED_SECTION}/,\$s/^/#/" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            fi
+
         elif [ "${file}" == "mmu_software.cfg" ]; then
             tx_macros=""
             if [ "${mmu_num_gates}" == "{mmu_num_gates}" ]; then
@@ -522,11 +550,13 @@ copy_config_files() {
                 cat ${src} | sed -e "\
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
+                    s%{led_enable}%${SETUP_LED}%g; \
                         " > ${dest}
             else
                 cat ${src} | sed -e "\
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
+                    s%{led_enable}%${SETUP_LED}%g; \
                         " > ${dest}.tmp
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
@@ -968,6 +998,19 @@ questionaire() {
     esac
 
     echo
+    echo -e "${PROMPT}${SECTION}Would you have neopixel LEDs setup for your MMU?${INPUT}"
+    yn=$(prompt_yn "Enable LED support?")
+    echo
+    case $yn in
+        y)
+            SETUP_LED=1
+            ;;
+        n)
+            SETUP_LED=0
+            ;;
+    esac
+
+    echo
     echo -e "${PROMPT}${SECTION}Which servo are you using?"
     echo -e "1) MG-90S"
     echo -e "2) Savox SH0255MG${INPUT}"
@@ -1142,6 +1185,7 @@ clear
 SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/ && pwd )"
 SETUP_TOOLHEAD_SENSOR=0
 SETUP_SELECTOR_TOUCH=0
+SETUP_LED=0
 
 INSTALL=0
 UNINSTALL=0
@@ -1183,6 +1227,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
     fi
     copy_config_files
     cleanup_manual_stepper_version
+    upgrade_led_effects
     link_mmu_plugins
     install_update_manager
 else
@@ -1215,7 +1260,7 @@ fi
 
 if [ "$UNINSTALL" -eq 0 ]; then
     echo -e "${EMPHASIZE}"
-    echo "Done.  Enjoy ERCF (and thank you Ette for a wonderful design)..."
+    echo "Done."
     echo -e "${INFO}"
     echo '(\_/)'
     echo '( *,*)'

@@ -239,7 +239,7 @@ class Mmu:
         #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
         #  cad_bypass_offset      - distance from end of travel to the bypass
         #  cad_last_gate_offset   - distance from end of travel to last gate
-        self.cad_gate0_pos = 4.
+        self.cad_gate0_pos = 4.2
         self.cad_gate_width = 21.
         self.cad_block_width = 5.
         self.cad_bypass_block_width = 6.
@@ -247,14 +247,17 @@ class Mmu:
         self.cad_bypass_offset = 0.
         self.cad_last_gate_offset = 2.0
 
+        # Defaults for default ERCF v1.1 build
         self.gate_parking_distance = 23.
+
         bmg_circ = 23.
-        self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
+        self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
 
         # Specific vendor build parameters / tuning. Mostly CAD related but a few exceptions like gate_park_distance
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
-            if self.mmu_version >= 2.0:
+            if self.mmu_version >= 2.0: # V2 community edition
                 self.cad_gate0_pos = 4.0
+                self.cad_gate_width = 23.
                 self.cad_bypass_offset = 5.7
                 self.cad_last_gate_offset = 19.2
 
@@ -262,47 +265,44 @@ class Mmu:
                 self.gate_parking_distance = 16.
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
-                if "t" in self.mmu_version_string:
-                    self.cad_gate_width = 23.05 # Triple Decky is wider filament block
-                else:
-                    self.cad_gate_width = 21.05 # Default Thumper Blocks
-
-            else: # V1.1
+            else: # V1.1 original
                 self.cad_gate0_pos = 4.2
-                self.cad_bypass_offset = 0.
-                self.cad_bypass_block_width = 6.
-                self.cad_bypass_block_delta = 9.
-
-                # Non CAD default parameters
-                self.gate_parking_distance = 23.
-
                 if "t" in self.mmu_version_string:
-                    self.cad_gate_width = 23.05 # Triple Decky is wider filament block
+                    self.cad_gate_width = 23. # Triple Decky is wider filament block
                     self.cad_block_width = 0. # Bearing blocks are not used
                 else:
                     self.cad_gate_width = 21.
                     self.cad_block_width = 5.
+                self.cad_bypass_block_width = 6.
+                self.cad_bypass_block_delta = 9.
+                self.cad_bypass_offset = 0.
 
                 if "s" in self.mmu_version_string:
                     self.cad_last_gate_offset = 1.2 # Springy has additional bump stops
                 else:
                     self.cad_last_gate_offset = 2.0
 
+                # Non CAD default parameters
+                self.gate_parking_distance = 23.
+
                 if "b" in self.mmu_version_string:
                     self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
                 else:
-                    self.encoder_default_resolution = bmg_circ / (2 * 17) # Original 17 tooth BMG gear
+                    self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
 
         elif self.mmu_vendor.lower() == self.VENDOR_TRADRACK.lower():
-            # Some initial assumed values for Tradrack
             self.cad_gate_width = 17.
             self.cad_gate0_pos = 0.5
             if "e" in self.mmu_version_string:
                 self.gate_parking_distance = 39. # Using Encoder
             else:
                 self.gate_parking_distance = 17.5 # Using Gate switch
+
+            self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
+
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other")
+
         else:
             # Some arbitary starting values for "Other" designs
             self.cad_gate_width = 23.
@@ -317,7 +317,6 @@ class Mmu:
         self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.)
         self.cad_bypass_offset = config.getfloat('cad_bypass_offset', self.cad_bypass_offset, minval=0.)
         self.cad_last_gate_offset = config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
-
         self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', 10., above=0.) # Extra movement allowed by selector
 
         # Printer interaction config
@@ -717,7 +716,7 @@ class Mmu:
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-# PAUL don't need this logic
+# PAUL TODO don't need this logic
 #        if not self._has_sensor("toolhead"):
 #            self.extruder_force_homing = 1
 #            self._log_debug("No toolhead sensor detected, setting 'extruder_force_homing: 1'")
@@ -1001,14 +1000,14 @@ class Mmu:
 
     def _bootup_tasks(self, eventtime):
         try:
-            self._set_print_state("initialized")
-            if self._has_encoder():
-                self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
-                self._disable_encoder_sensor() # Initially disable clog/runout detection
             self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare Ready')
             if self.log_startup_status > 0:
                 self._log_always(self._tool_to_gate_map_to_human_string(self.log_startup_status == 1))
                 self._display_visual_state(silent=self.persistence_level < 4)
+            self._set_print_state("initialized")
+            if self._has_encoder():
+                self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
+                self._disable_encoder_sensor() # Initially disable clog/runout detection
             self._servo_move()
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
@@ -1792,7 +1791,7 @@ class Mmu:
             self._servo_auto()
 
     def _get_max_selector_movement(self, gate=-1):
-        n = gate if gate >= 0 else (self.mmu_num_gates - 1)
+        n = gate if gate >= 0 else self.mmu_num_gates
 
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
             # ERCF Designs
@@ -2688,8 +2687,8 @@ class Mmu:
             default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
             gcode_macro.variables.update({'led_enable':led_enable, 'default_gate_effect':default_gate_effect, 'default_exit_effect':default_exit_effect})
             self._wrap_gcode_command("_MMU_SET_LED EFFECT=default EXIT_EFFECT=default")
-            self._log_always("LEDs are %s, Default gate effect: '%s', Default exit effect: `%s`" % ("enabled" if led_enable else "disabled", default_gate_effect, default_exit_effect))
-            self._log_always("ENABLE=[0|1] EFFECT=[off|gate_status|filament_color] EXIT_EFFECT=[off|filament_color]")
+            self._log_always("LEDs are %s\nDefault gate effect: '%s'\nDefault exit effect: `%s`" % ("enabled" if led_enable else "disabled", default_gate_effect, default_exit_effect))
+            self._log_always("ENABLE=[0|1] EFFECT=[off|gate_status|filament_color] EXIT_EFFECT=[off|white|filament_color]")
         else:
             self._log_error("LEDs not available")
 
@@ -3271,14 +3270,13 @@ class Mmu:
             # Final sanity check
             self._log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
 
-# TODO Think about whether we want this test, it's causing user problems...
-#            # Encoder based validation test
-#            if self._can_use_encoder() and not homed:
-#                if measured < self.encoder_min:
-#                    raise MmuError("Filament seems to be stuck in the extruder. Encoder not sensing any movement")
-#                elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
-#                    self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
-#                    raise MmuError("Filament seems to be stuck in the extruder. Encoder not sensing sufficient movement")
+            # Encoder based validation test
+            if self._can_use_encoder() and self._is_in_print() and not homed:
+                if measured < self.encoder_min:
+                    raise MmuError("Filament either stuck in the extruder or slicer completely ejected. Encoder not sensing any movement")
+                elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
+                    self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                    raise MmuError("Filament seems to be stuck in the extruder or slicer retracted too far. Encoder not sensing sufficient movement")
 
             self._random_failure()
             self._movequeues_wait_moves()
