@@ -1791,7 +1791,7 @@ class Mmu:
             self._servo_auto()
 
     def _get_max_selector_movement(self, gate=-1):
-        n = gate if gate >= 0 else self.mmu_num_gates
+        n = gate if gate >= 0 else self.mmu_num_gates - 1
 
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
             # ERCF Designs
