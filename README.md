@@ -52,6 +52,7 @@ Thank you!
 \- [11. Pre-print functions](#11-useful-pre-print-functionality)<br>
 \- [12. Gate map, Filament type and color](#12-gate-map-describing-filament-type-color-and-status)<br>
 \- [13. Job state transitions](#13-job-state-transistions-and-print-startend-handling)<br>
+\- [14. LEDs](#14-leds)<br>
 **[Loading and Unloading Sequences](#---filament-loading-and-unloading-sequences)**<br>
 **[KlipperScreen Happy Hare Edition](#---klipperscreen-happy-hare-edition)**<br>
 **[My Testing / Setup](#---my-testing)**<br>
@@ -279,11 +280,18 @@ mmu_num_gates: 9                        # Number of selector gates
 ```
 
 > [!NOTE]  
-> Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods the follow parameters can be specified to override defaults. Use ONLY if necessary:<br>
+> Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods the follow parameters can be specified to override defaults. Note these mostly relate to CAD dimensions, and encoder resolution (if fitted). Use ONLY if necessary because they could change in the future:<br>
 
+`cad_gate0_pos:` Distance from endstop to first gate in mm<br>
 `cad_gate_width:` Width of individual filament block in mm - if using modified/custom block<br>
-`encoder_min_resolution:` Resolution of one 'pulse' on the encoder. Generally (23 / pulses per revolution for BMG based encoder) - if using customized encoder<br>
-`cad_bypass_block_width:` Width of bypass support block - if using a custom bypass block with ERCF v1.1 (like the one in my repo which is 7mm thick)
+`cad_bypass_offset:` Distance from end of selector travel back to the bypass<br>
+`cad_last_gate_offset:` Distance from end of travel to last gate<br>
+This only apply to ERCF v1.1:<br>
+`cad_block_width:` Width of bearing block (ERCF v1.1 only)<br>
+`cad_bypass_block_width:` Width of bypass support block - if using a custom bypass bearing block like the one in my repo which is 7mm thick (ERCF v1.1 only)<br>
+`cad_bypass_block_delta` - Distance from previous gate to bypass (ERCF v1.1 only)<br>
+This non-CAD setting is required to adjust for non Binky encoders:<br>
+`encoder_min_resolution:` Resolution of one 'pulse' on the encoder. Binky (default) is 23/24=0.96, TCRT5000 based is 23/34=0.68
 
 </details>
 
@@ -927,6 +935,12 @@ While printing, if an mmu error occurs (or the user explicitly calls `MMU_PAUSE`
 > - Outside of a print the toolhead is never moved by Happy Hare (only user's PAUSE/RESUME macros).
 
 </details>
+
+### 13. LEDs
+
+Yes, Happy Hare can natively drive indicator LEDS attached to your MMU. This is all done through user modifiable macros contained in `mmu_software.cfg`.  The setup for LED's is contained at the bottom of the `mmu_hardware.cfg` file and requires the installtion of [LED Effects for Klipper](https://github.com/julianschill/klipper-led_effect).
+
+More details about Happy Hare LED "bling" support can be found [here](doc/leds.md)
 
 <br>
 
