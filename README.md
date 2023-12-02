@@ -936,7 +936,7 @@ While printing, if an mmu error occurs (or the user explicitly calls `MMU_PAUSE`
 
 </details>
 
-### 13. LEDs
+### 14. LEDs
 
 Yes, Happy Hare can natively drive indicator LEDS attached to your MMU. This is all done through user modifiable macros contained in `mmu_software.cfg`.  The setup for LED's is contained at the bottom of the `mmu_hardware.cfg` file and requires the installtion of [LED Effects for Klipper](https://github.com/julianschill/klipper-led_effect).
 
