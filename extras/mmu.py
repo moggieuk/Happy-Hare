@@ -716,7 +716,7 @@ class Mmu:
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-# PAUL TODO don't need this logic
+# TODO don't need this logic
 #        if not self._has_sensor("toolhead"):
 #            self.extruder_force_homing = 1
 #            self._log_debug("No toolhead sensor detected, setting 'extruder_force_homing: 1'")
@@ -2579,6 +2579,7 @@ class Mmu:
             return self.toolhead_extruder_to_nozzle
 
     def _set_action(self, action):
+        if action == self.action: return
         old_action = self.action
         self.action = action
         gcode = self.printer.lookup_object('gcode_macro _MMU_ACTION_CHANGED', None)
