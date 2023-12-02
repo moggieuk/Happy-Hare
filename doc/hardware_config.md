@@ -166,6 +166,19 @@ Happy Hare will automatically enhance Klipper to provide endstop(s) on the extru
 
 Ok, so you can define lots of endstops. Why? and what next... Let's discuss syncing and homing moves first and then bring it all together with an example.
 
+### True stallguard based selector homing
+The extra endstop `mmu_selector_touch` described in the `mmu_hardware.cfg` file is designed for "touch" movement where the selector can feel for filament blocking a gate and autmatically take recovery action. However, you might be wondering if it is possible to perform true stallguard homing on the selector?  It certainly is but you need to adjust part of the config for the selector stepper: instead of making `mmu_sel_touch` an extra endstop, make it the default like so (not it is very important to add the `homing_retract_dist: 0`):
+
+```yml
+[stepper_mmu_selector]
+...
+endstop_pin: tmc2209_stepper_mmu_selector:virtual_endstop
+endstop_name: mmu_sel_touch
+homing_retract_dist: 0
+```
+
+This will not only define `mmu_sel_touch` as a named endstop for "touch" movement but will also make it the default endstop for homing operation.  With this configuration there is no need to have an microswitch or `mmu_sel_home` endstop defined. Personally I like the reliability of a mechanical homing enstop because it requires no tuning.
+
 ### Stepper syncing
 The MMU gear stepper(s) defined by Happy Hare not only enables multiple endstops but also can act as both a filament driver (gear) stepper an extruder stepper. This dual personality allows its motion queue to be synced with other extruder steppers or, but also manipulated manually as a separately controlled stepper.  The gear stepper can be synchronized to the extruder when in a print and when in this mode it follow all extruder kinematics including pressure advance.  It is also possible for the extruder to be synchronised with the gear stepper for loading and unloading operations. In this mode the extruder will follow the kinematics of the gear stepper and can participate in homing moves.
 
