@@ -167,7 +167,7 @@ Happy Hare will automatically enhance Klipper to provide endstop(s) on the extru
 Ok, so you can define lots of endstops. Why? and what next... Let's discuss syncing and homing moves first and then bring it all together with an example.
 
 ### True stallguard based selector homing
-The extra endstop `mmu_selector_touch` described in the `mmu_hardware.cfg` file is designed for "touch" movement where the selector can feel for filament blocking a gate and autmatically take recovery action. However, you might be wondering if it is possible to perform true stallguard homing on the selector?  It certainly is but you need to adjust part of the config for the selector stepper: instead of making `mmu_sel_touch` an extra endstop, make it the default like so (not it is very important to add the `homing_retract_dist: 0`):
+The extra endstop `mmu_selector_touch` described in the `mmu_hardware.cfg` file is designed for "touch" movement where the selector can feel for filament blocking a gate and autmatically take recovery action. However, you might be wondering if it is possible to perform true stallguard homing on the selector?  It certainly is but you need to adjust part of the config for the selector stepper: instead of making `mmu_sel_touch` an extra endstop, make it the default like so (note it is very important to add the `homing_retract_dist: 0`):
 
 ```yml
 [stepper_mmu_selector]
