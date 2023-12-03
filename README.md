@@ -860,15 +860,15 @@ The gate map can be viewed with the following command with no parameters:<br>
 
 ```
     MMU Gates / Filaments:
-    Gate #0: Material: PLA, Color: red, Status: Buffered
-    Gate #1: Material: ABS+, Color: orange, Status: Buffered
-    Gate #2: Material: ABS, Color: tomato, Status: Buffered
-    Gate #3: Material: ABS, Color: green, Status: Unknown
-    Gate #4: Material: PLA, Color: blue, Status: Unknown
-    Gate #5: Material: PLA, Color: indigo, Status: Unknown
-    Gate #6: Material: PETG, Color: violet, Status: Unknown
-    Gate #7: Material: ABS, Color: ffffff, Status: Unknown
-    Gate #8: Material: ABS, Color: black, Status: Buffered
+    Gate #0: Status: Buffered, Material: PLA, Color: red
+    Gate #1: Status: Buffered, Material: ABS+, Color: orange
+    Gate #2: Status: Buffered, Material: ABS, Color: tomato
+    Gate #3: Status: Unknown, Material: ABS, Color: green
+    Gate #4: Status: Unknown, Material: PLA, Color: blue
+    Gate #5: Status: Unknown, Material: PLA, Color: indigo
+    Gate #6: Status: Unknown, Material: PETG, Color: violet
+    Gate #7: Status: Unknown, Material: ABS, Color: ffffff
+    Gate #8: Status: Buffered, Material: ABS, Color: black
 ```
 
 To change for a particular gate use a command in this form:
@@ -878,6 +878,10 @@ To change for a particular gate use a command in this form:
 If you remove buffered filament from a gate and want to quickly tell Happy Hare that it is loading from spool again (for slower loads) the easiest way is simply this:
 
 > MMU_GATE_MAP GATE=8 AVAILABLE=1
+
+Multiple gates can be specified for bulk updates. A very useful command is this, which will reset the availability status of all gates back to the default of "unknown"
+
+> MMU_GATE_MAP GATES=0,1,2,3,4,5,6,7,8 AVAILABLE=-1
 
 > [!IMPORTANT]  
 > There is no enforcement of material names but it is recommended use all capital short names like PLA, ABS+, TPU95, PETG. The color string can be one of the [w3c standard color names](https://www.w3schools.com/tags/ref_colornames.asp) or a RRGGBB red/green/blue hex value. Because of a Klipper limitation don't add `#` to the color specification.
