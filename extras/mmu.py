@@ -258,8 +258,8 @@ class Mmu:
             if self.mmu_version >= 2.0: # V2 community edition
                 self.cad_gate0_pos = 4.0
                 self.cad_gate_width = 23.
-                self.cad_bypass_offset = 5.7
-                self.cad_last_gate_offset = 19.2
+                self.cad_bypass_offset = 0.72
+                self.cad_last_gate_offset = 14.4
 
                 # Non CAD default parameters
                 self.gate_parking_distance = 16.
@@ -824,11 +824,15 @@ class Mmu:
 
     # This retuns a convenient RGB spec for controlling LEDs in form (0.32, 0.56, 1.00)
     def _color_to_rgb(self, color):
-        if not color.startswith('#'):
-            color = self.w3c_colors.get(color, self.w3c_colors.get('black'))
+        if color in self.w3c_colors:
+            color = self.w3c_colors.get(color)
+        elif color == '':
+            color = "#000000"
         hex_rgb = color.lstrip('#')
         length = len(hex_rgb)
-        return tuple(round(float(int(hex_rgb[i:i + length // 3], 16)) / 255, 2) for i in range(0, length, length // 3))
+        if length % 3 == 0:
+            return tuple(round(float(int(hex_rgb[i:i + length // 3], 16)) / 255, 2) for i in range(0, length, length // 3))
+        return (0.,0.,0.)
 
     # Helper to return validated color string or None if invalid
     def _validate_color(self, color):
