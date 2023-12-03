@@ -575,6 +575,8 @@ class Mmu:
         # Runout, TTG and Endless spool
         self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help) # Internal
         self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help) # Internal
+        self.gcode.register_command('__MMU_PRE_GATE_RUNOUT', self.cmd_MMU_PRE_GATE_RUNOUT, desc = self.cmd_MMU_PRE_GATE_RUNOUT_help) # Internal
+        self.gcode.register_command('__MMU_PRE_GATE_INSERT', self.cmd_MMU_PRE_GATE_INSERT, desc = self.cmd_MMU_PRE_GATE_INSERT_help) # Internal
         self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help)
         self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
@@ -5133,11 +5135,31 @@ class Mmu:
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         self._log_debug("Filament insertion not implemented yet! Check back later")
-# TODO Future preload feature :-)
-#        try:
-#            self._handle_detection()
-#        except MmuError as ee:
-#            self._mmu_pause(str(ee))
+        # TODO Future preload feature :-)
+        #try:
+        #    self._handle_detection()
+        #except MmuError as ee:
+        #    self._mmu_pause(str(ee))
+
+    cmd_MMU_PRE_GATE_RUNOUT_help = "Internal pre-gate filament runout handler"
+    def cmd_MMU_PRE_GATE_RUNOUT(self, gcmd):
+        if self._check_is_disabled(): return
+        gate = gcmd.get_int('GATE')
+        self._log_debug("Filament runout detected by pre-gate sensor on gate #%d" % gate)
+        if not self._is_in_print():
+            pass # TODO could invoke _handle_runout ...
+        else:
+            self._set_gate_status(gate, self.GATE_EMPTY)
+
+    cmd_MMU_PRE_GATE_INSERT_help = "Internal pre-gate filament detection handler"
+    def cmd_MMU_PRE_GATE_INSERT(self, gcmd):
+        if self._check_is_disabled(): return
+        gate = gcmd.get_int('GATE')
+        self._log_debug("Filament insertion detected by pre-gate sensor on gate #%d" % gate)
+        if not self._is_in_print():
+            self.cmd_MMU_PRELOAD(gcmd)
+        else:
+            self._set_gate_status(gate, self.GATE_UNKNOWN)
 
     cmd_MMU_REMAP_TTG_help = "Display or remap a tool to a specific gate and set gate availability"
     def cmd_MMU_REMAP_TTG(self, gcmd):
