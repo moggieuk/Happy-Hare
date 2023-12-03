@@ -481,7 +481,7 @@ class Mmu:
         else:
             for i in range(self.mmu_num_gates):
                 self.default_gate_color.append("")
-        self._update_gate_color(list(self.default_gate_color)) # MOGGIE self.gate_color = list(self.default_gate_color)
+        self._update_gate_color(list(self.default_gate_color))
        
         # SpoolID for each gate
         if len(self.default_gate_spool_id) > 0:
@@ -716,11 +716,6 @@ class Mmu:
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-# TODO don't need this logic
-#        if not self._has_sensor("toolhead"):
-#            self.extruder_force_homing = 1
-#            self._log_debug("No toolhead sensor detected, setting 'extruder_force_homing: 1'")
-
         if self.enable_endless_spool == 1 and self.enable_clog_detection == 0:
             self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled")
 
@@ -814,7 +809,7 @@ class Mmu:
         self._clear_saved_toolhead_position()
         self._servo_reset_state()
         self._reset_job_statistics()
-        self.print_state = self.resume_to_state = "standby"
+        self.print_state = self.resume_to_state = "ready"
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
 
     # Helper to infer type for setting gcode macro variables
@@ -853,7 +848,7 @@ class Mmu:
 
         return None # Not valid
 
-    # Help to keep parallel RGB color map updated
+    # Helper to keep parallel RGB color map updated when color changes
     def _update_gate_color(self, new_color_map):
         self.gate_color = new_color_map
 
@@ -899,7 +894,7 @@ class Mmu:
             # Load filament color at each gate
             gate_color = self.variables.get(self.VARS_MMU_GATE_COLOR, self.gate_color)
             if len(gate_status) == self.mmu_num_gates:
-                self._update_gate_color(gate_color) # MOGGIE self.gate_color = gate_color
+                self._update_gate_color(gate_color)
             else:
                 errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_COLOR)
 
@@ -1263,6 +1258,9 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ("\'%s\'" %x), self.gate_material))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ("\'%s\'" %x), self.gate_color))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
+        gcode = self.printer.lookup_object('gcode_macro _MMU_GATE_MAP_CHANGED', None)
+        if gcode is not None:
+            self._wrap_gcode_command("_MMU_GATE_MAP_CHANGED GATE=-1")
 
     def _log_error(self, message):
         if self.mmu_logger:
@@ -2101,10 +2099,10 @@ class Mmu:
         return self.print_state in ["pause_locked"]
 
     def _is_in_endstate(self):
-        return self.print_state in ["complete", "cancelled", "error", "standby", "initialized"]
+        return self.print_state in ["complete", "cancelled", "error", "ready", "standby", "initialized"]
 
     # Track print events simply to ease internal print state transitions. Specificly we want to detect
-    # the start and end of a print and falling back to 'standby' state
+    # the start and end of a print and falling back into 'standby' state on idle
     #
     # Klipper reference sources for state:
     # print_stats: {'filename': '', 'total_duration': 0.0, 'print_duration': 0.0,
@@ -2167,7 +2165,7 @@ class Mmu:
         self._log_trace("_print_error_event_handler()")
         self._exec_gcode("_MMU_PRINT_END STATE=error")
 
-    # MMU job state machine: initialized|standby|started|printing|complete|cancelled|error|pause_locked|paused
+    # MMU job state machine: initialized|ready|started|printing|complete|cancelled|error|pause_locked|paused|standby
     def _set_print_state(self, print_state, call_macro=True):
         if print_state != self.print_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
@@ -2209,7 +2207,7 @@ class Mmu:
         run_pause_macro = False
         if not self.paused_extruder_temp: # Only save the initial pause temp
             self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
-        self.resume_to_state = "printing" if self._is_in_print() else "standby"
+        self.resume_to_state = "printing" if self._is_in_print() else "ready"
 
         if self._is_printing(force_in_print) and not self._is_mmu_paused():
             self._log_error("An issue with the MMU has been detected. Print paused\nReason: %s" % reason)
@@ -2256,17 +2254,17 @@ class Mmu:
             self._track_pause_end()
             self._enable_encoder_sensor(True) # Enable runout/clog detection if printing
             self._set_print_state(self.resume_to_state)
-            self.resume_to_state = "standby"
+            self.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed", self) # Notify MMU resumed event
 
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics
     def _on_print_end(self, state="complete"):
-        if not self.print_state in ["complete", "error", "cancelled", "standby", "initialized"]:
+        if not self._is_in_endstate():
             self._log_trace("_on_print_end(%s)" % state)
             self._movequeues_wait_moves()
             self._clear_saved_toolhead_position()
-            self.resume_to_state = "standby"
+            self.resume_to_state = "ready"
             self.paused_extruder_temp = None
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._disable_encoder_sensor() # Disable runout/clog detection after print
@@ -2274,7 +2272,7 @@ class Mmu:
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
             self._sync_gear_to_extruder(False, servo=True)
-            self._set_print_state(state)
+        self._set_print_state(state)
 
     def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None):
         homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
@@ -2686,10 +2684,17 @@ class Mmu:
             led_enable = gcmd.get_int('ENABLE', int(variables['led_enable']), minval=0, maxval=1)
             default_gate_effect = gcmd.get('EFFECT', variables['default_gate_effect'])
             default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
-            gcode_macro.variables.update({'led_enable':led_enable, 'default_gate_effect':default_gate_effect, 'default_exit_effect':default_exit_effect})
-            self._wrap_gcode_command("_MMU_SET_LED EFFECT=default EXIT_EFFECT=default")
+
+            if variables['led_enable'] and not led_enable:
+                # Enabled to disabled
+                self._wrap_gcode_command("_MMU_SET_LED EFFECT=off EXIT_EFFECT=off")
+                gcode_macro.variables.update({'led_enable':led_enable, 'default_gate_effect':default_gate_effect, 'default_exit_effect':default_exit_effect})
+            else:
+                gcode_macro.variables.update({'led_enable':led_enable, 'default_gate_effect':default_gate_effect, 'default_exit_effect':default_exit_effect})
+                self._wrap_gcode_command("_MMU_SET_LED EFFECT=default EXIT_EFFECT=default")
+
             self._log_always("LEDs are %s\nDefault gate effect: '%s'\nDefault exit effect: `%s`" % ("enabled" if led_enable else "disabled", default_gate_effect, default_exit_effect))
-            self._log_always("ENABLE=[0|1] EFFECT=[off|gate_status|filament_color] EXIT_EFFECT=[off|white|filament_color]")
+            self._log_always("ENABLE=[0|1] EFFECT=[off|gate_status|filament_color] EXIT_EFFECT=[off|on|filament_color]")
         else:
             self._log_error("LEDs not available")
 
@@ -2709,7 +2714,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
         self.gate_status = list(self.default_gate_status)
         self.gate_material = list(self.default_gate_material)
-        self._update_gate_color(list(self.default_gate_color)) # MOGGIE self.gate_color = list(self.default_gate_color)
+        self._update_gate_color(list(self.default_gate_color))
         self.gate_spool_id = list(self.default_gate_spool_id)
         self._persist_gate_map()
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
@@ -4505,7 +4510,10 @@ class Mmu:
     cmd_MMU_PRINT_END_help = "Restore MMU idle state after print"
     def cmd_MMU_PRINT_END(self, gcmd):
         end_state = gcmd.get('STATE', "complete")
-        self._on_print_end(end_state)
+        if end_state in ["complete", "error", "cancelled", "ready", "standby"]:
+            self._on_print_end(end_state)
+        else:
+            raise gcmd.error("Unknown endstate '%s'" % end_state)
 
     cmd_MMU_PAUSE_help = "Pause the current print and lock the MMU operations"
     def cmd_MMU_PAUSE(self, gcmd):
@@ -4979,8 +4987,12 @@ class Mmu:
 
     def _set_gate_status(self, gate, state):
         if gate >= 0:
-            self.gate_status[gate] = state
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
+            if state != self.gate_status[gate]:
+                self.gate_status[gate] = state
+                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
+                gcode = self.printer.lookup_object('gcode_macro _MMU_GATE_MAP_CHANGED', None)
+                if gcode is not None:
+                    self._wrap_gcode_command("_MMU_GATE_MAP_CHANGED GATE='%d'" % gate)
 
     def _get_filament_char(self, gate_status, no_space=False, show_source=False):
         if gate_status == self.GATE_AVAILABLE_FROM_BUFFER:
@@ -5074,7 +5086,7 @@ class Mmu:
                 msg += "?, " if prefix == "" else ", "
             else:
                 msg += ("\nGate #%d: " % g)
-            msg += ("Material: %s, Color: %s, Status: %s" % (material, color, available))
+            msg += ("Status: %s, Material: %s, Color: %s" % (available, material, color))
             if self.enable_spoolman:
                 spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
                 msg += (", SpoolID: %s" % (spool_id))
@@ -5094,10 +5106,10 @@ class Mmu:
         self._unselect_tool()
 
     def _reset_gate_map(self):
-        self._log_debug("Resetting Gate/Filament map")
+        self._log_debug("Resetting gate map")
         self.gate_status = list(self.default_gate_status)
         self.gate_material = list(self.default_gate_material)
-        self._update_gate_color(list(self.default_gate_color)) # MOGGIE self.gate_color = self.default_gate_color
+        self._update_gate_color(list(self.default_gate_color))
         self.gate_spool_id = list(self.default_gate_spool_id)
         self._persist_gate_map()
 
@@ -5164,25 +5176,40 @@ class Mmu:
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        gates = gcmd.get('GATES', "!")
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
 
-        if reset == 1:
+        if reset:
             self._reset_gate_map()
-        elif gate >= 0:
-            # Specifying one gate (filament)
-            gate = gcmd.get_int('GATE', minval=0, maxval=self.mmu_num_gates - 1)
-            available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
-            material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
-            color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
-            spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
-            color = self._validate_color(color)
-            if color is None:
-                raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
-            self.gate_material[gate] = material
-            self.gate_color[gate] = color
-            self._update_gate_color(self.gate_color) # MOGGIE
-            self.gate_status[gate] = available
-            self.gate_spool_id[gate] = spool_id
+        elif gates != "!" or gate >= 0:
+            gatelist = []
+            if gates != "!":
+                # List of gates
+                try:
+                    for gate in gates.split(','):
+                        gate = int(gate)
+                        if gate >= 0 and gate < self.mmu_num_gates:
+                            gatelist.append(gate)
+                except ValueError as ve:
+                    raise gcmd.error("Invalid GATES parameter: %s" % gates)
+            else:
+                # Specifying one gate (filament)
+                gatelist.append(gate)
+
+            for gate in gatelist:
+                available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
+                material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
+                color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
+                spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
+                color = self._validate_color(color)
+                if color is None:
+                    raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
+                self.gate_material[gate] = material
+                self.gate_color[gate] = color
+                self._update_gate_color(self.gate_color)
+                self.gate_status[gate] = available
+                self.gate_spool_id[gate] = spool_id
+
             self._persist_gate_map()
         else:
             quiet = False # Display current map

@@ -139,7 +139,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     def get_gear_limits(self):
         return self.gear_max_velocity, self.gear_max_accel
 
-    def select_gear_steppers(self, selected_steppers): # PAUL untested
+    def select_gear_steppers(self, selected_steppers): # PAUL untested WIP
         # Unsync first to simplify transition
         gear_motion_queue = self.gear_motion_queue
         extruder_synced_to_gear = self.extruder_synced_to_gear
