@@ -1,7 +1,15 @@
 # Happy Hare - LED ("bling") Support
-Happy Hare now can drive LEDs on your MMU to provide both functional feedback as well as to add a little bling to your machine.  Typically you would connect a string of neopixels (either descrete components or an LED strip, or combination of both if compatible contollers) to the neopixel output on the MCU that drives your MMU although this can be changed.  What is important is that the first N LEDs of the chain must relate to the N gates of you MMU.  Typically the first LED would be for gate 0 but the order can be reversed by setting `reverse_gate_order:1` in `mmu_software.cfg`.  The optional N+1 LED is designed to drive an "exit" light.  I.e. an indicator on or near the bowden output from your MMU. You can also add additional LED's after N+1 because they will be ignored by Happy Hare, but if you do, make sure you restrict your effects to that segment of the chain - don't try to control the first N+1 LEDs.
+Happy Hare now can drive LEDs on your MMU to provide both functional feedback as well as to add a little bling to your machine.  Typically you would connect a string of neopixels (either descrete components or an LED strip, or combination of both if compatible contollers) to the neopixel output on the MCU that drives your MMU although this can be changed.  What is important is that the first N LEDs of the chain must relate to the N gates of you MMU.
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware Setup
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware
+
+<p align=center><img src="Led_Connection.jpg" alt='LED Connection' width='80%'></p>
+
+Typically the first LED would be for gate 0 but the order can be reversed by setting `reverse_gate_order:1` in `mmu_software.cfg`.  The optional N+1 LED is designed to drive an "exit" light.  I.e. an indicator on or near the bowden output from your MMU. You can also add additional LED's after N+1 because they will be ignored by Happy Hare, but if you do, make sure you restrict your effects to that segment of the chain - don't try to control the first N+1 LEDs.
+
+<br>
+
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware Config
   If you have run the Happy Hare installer it should have added a section to the end of your `mmu_hardware.cfg` that starts like this:
 
 ```yaml
@@ -34,7 +42,7 @@ Happy Hare LED effects are 100% implemented in `mmu_software.cfg` as macros so y
 
 The default effects which are both functional as well as adding a little color are summerized here:
 
-  | State | LED at each Gate | Filament Exit<br>(E.g. Bowden tube) |
+  | State | LED at each Gate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Filament Exit (E.g. Bowden tube) |
   | ----- | ------------ | ----------------------------------- |
   | MMU Disabled | OFF | OFF |
   | MMU Print State "initialization" | Bling - shooting stars <br>(for 3 seconds) | OFF |
