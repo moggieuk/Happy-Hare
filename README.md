@@ -66,6 +66,7 @@ Thank you!
 **[Configuation Reference](/doc/configuration.md)**<br>
 **[Gcode Customization](/doc/gcode_customization.md)**<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)**<br>
+**[LED Support](/doc/leds.md)**<br>
 
 <br>
  
