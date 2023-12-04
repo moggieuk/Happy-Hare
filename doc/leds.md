@@ -73,3 +73,5 @@ Happy Hare also has an empirical command to control LEDs:
 ```
 
 You can change default effect or enable/disable. E.g. `MMU_LED ENABLE=0` will turn off and disable the LED operation.  Please note that similar to `MMU_TEST_CONFIG` changes made like this don't persist on a restart.  Update the macro variables in `mmu_software.cfg` to make changes persistent.
+
+I have found it convenient to add a "toggle" button my my Klipperscreent to switch between `gate_status` and `filament_color` for the default gate effect...
