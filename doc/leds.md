@@ -42,7 +42,7 @@ Happy Hare LED effects are 100% implemented in `mmu_software.cfg` as macros so y
 
 The default effects which are both functional as well as adding a little color are summerized here:
 
-  | State | LED at each Gate | Filament Exit<br>(E.g. Bowden tube) |
+  | State | LED at each Gate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Filament Exit (E.g. Bowden tube) |
   | ----- | ------------ | ----------------------------------- |
   | MMU Disabled | OFF | OFF |
   | MMU Print State "initialization" | Bling - shooting stars <br>(for 3 seconds) | OFF |
