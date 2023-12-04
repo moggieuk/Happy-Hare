@@ -3,7 +3,7 @@ Happy Hare now can drive LEDs on your MMU to provide both functional feedback as
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware
 
-<p><center><img src="Led_Connection.jpg" alt='LED Connection' width='80%'></center></p>
+<p align=center><img src="Led_Connection.jpg" alt='LED Connection' width='80%'></p>
 
 Typically the first LED would be for gate 0 but the order can be reversed by setting `reverse_gate_order:1` in `mmu_software.cfg`.  The optional N+1 LED is designed to drive an "exit" light.  I.e. an indicator on or near the bowden output from your MMU. You can also add additional LED's after N+1 because they will be ignored by Happy Hare, but if you do, make sure you restrict your effects to that segment of the chain - don't try to control the first N+1 LEDs.
 
