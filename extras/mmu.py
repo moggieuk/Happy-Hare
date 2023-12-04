@@ -262,7 +262,7 @@ class Mmu:
                 self.cad_last_gate_offset = 14.4
 
                 # Non CAD default parameters
-                self.gate_parking_distance = 14.
+                self.gate_parking_distance = 13.
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
             else: # V1.1 original
@@ -270,6 +270,7 @@ class Mmu:
                 if "t" in self.mmu_version_string:
                     self.cad_gate_width = 23. # Triple Decky is wider filament block
                     self.cad_block_width = 0. # Bearing blocks are not used
+                    self.gate_parking_distance = 13. # Filament trap in block
 
                 if "s" in self.mmu_version_string:
                     self.cad_last_gate_offset = 1.2 # Springy has additional bump stops

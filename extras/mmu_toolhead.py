@@ -139,7 +139,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     def get_gear_limits(self):
         return self.gear_max_velocity, self.gear_max_accel
 
-    def select_gear_steppers(self, selected_steppers): # PAUL untested WIP
+    def select_gear_steppers(self, selected_steppers): # TODO untested WIP
         # Unsync first to simplify transition
         gear_motion_queue = self.gear_motion_queue
         extruder_synced_to_gear = self.extruder_synced_to_gear
@@ -153,7 +153,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         gear_rail = self.get_kinematics().rails[1]
         g_pos = gear_rail.get_commanded_position()
         gear_rail.steppers = []
-        # PAUL need to handle step generators? or can they safety always be assigned to toolhead?
+        # TODO need to handle step generators? or can they safety always be assigned to toolhead?
         for s in self.all_gear_rail_steppers:
             if s.get_name() in selected_steppers:
                 gear_rail.steppers.append(s)
@@ -586,7 +586,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
 def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
     rail = MmuPrinterRail(config, need_position_minmax=need_position_minmax, default_position_endstop=default_position_endstop, units_in_radians=units_in_radians)
     for i in range(0, 23):
-        if not config.has_section(config.get_name() + str(i)):
+        if not config.has_section(config.get_name() + "_" + str(i)):
             break
         rail.add_extra_stepper(config.getsection(config.get_name() + str(i)))
     return rail
