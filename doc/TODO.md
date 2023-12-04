@@ -73,8 +73,11 @@ PIN[MELLOW_FLY_ERCF,encoder_pin]="ercf:gpio15";
 
 ```mermaid
 stateDiagram-v2
+    initialized --> started: <i>(print_start)</i>
+    note left of initialized: reset
     standby --> started: <i>(print_start)</i>
     note left of standby: idle_timeout
+    ready --> started: <i>(print_start)</i>
     started --> printing
     printing --> complete: (print_complete))
     printing --> error: (print_error)
@@ -85,7 +88,6 @@ stateDiagram-v2
         pause_locked --> paused: (MMU_UNLOCK)
     }
     PAUSE --> printing: RESUME
-    PAUSE --> standby: RESUME
 ```
 
 ```mermaid
