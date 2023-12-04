@@ -226,12 +226,14 @@ class Mmu:
         # MMU hardware (steppers, servo, encoder and optional sensors)
         self.selector_stepper = self.gear_stepper = self.mmu_extruder_stepper = self.encoder_sensor = self.servo = None
         self.sensors = {}
+        bmg_circ = 23.
 
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
         self.mmu_version_string = config.get('mmu_version', "1.1")
         self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
 
         # Set CAD default parameters to ensure everything is set
+        # These are default for ERCFv1.1 - the first MMU supported by Happy Hare
         #  cad_gate0_pos          - distance from endstop to first gate
         #  cad_gate_width         - width of each gate
         #  cad_block_width        - width of bearing block (ERCF v1.1)
@@ -241,16 +243,14 @@ class Mmu:
         #  cad_last_gate_offset   - distance from end of travel to last gate
         self.cad_gate0_pos = 4.2
         self.cad_gate_width = 21.
-        self.cad_block_width = 5.
-        self.cad_bypass_block_width = 6.
-        self.cad_bypass_block_delta = 9.
         self.cad_bypass_offset = 0.
         self.cad_last_gate_offset = 2.0
 
-        # Defaults for default ERCF v1.1 build
-        self.gate_parking_distance = 23.
+        self.cad_block_width = 5.
+        self.cad_bypass_block_width = 6.
+        self.cad_bypass_block_delta = 9.
 
-        bmg_circ = 23.
+        self.gate_parking_distance = 23.
         self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
 
         # Specific vendor build parameters / tuning. Mostly CAD related but a few exceptions like gate_park_distance
@@ -262,37 +262,27 @@ class Mmu:
                 self.cad_last_gate_offset = 14.4
 
                 # Non CAD default parameters
-                self.gate_parking_distance = 16.
+                self.gate_parking_distance = 14.
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
             else: # V1.1 original
-                self.cad_gate0_pos = 4.2
+                # Allow for variations using letter suffixes
                 if "t" in self.mmu_version_string:
                     self.cad_gate_width = 23. # Triple Decky is wider filament block
                     self.cad_block_width = 0. # Bearing blocks are not used
-                else:
-                    self.cad_gate_width = 21.
-                    self.cad_block_width = 5.
-                self.cad_bypass_block_width = 6.
-                self.cad_bypass_block_delta = 9.
-                self.cad_bypass_offset = 0.
 
                 if "s" in self.mmu_version_string:
                     self.cad_last_gate_offset = 1.2 # Springy has additional bump stops
-                else:
-                    self.cad_last_gate_offset = 2.0
-
-                # Non CAD default parameters
-                self.gate_parking_distance = 23.
 
                 if "b" in self.mmu_version_string:
                     self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
-                else:
-                    self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
 
         elif self.mmu_vendor.lower() == self.VENDOR_TRADRACK.lower():
-            self.cad_gate_width = 17.
             self.cad_gate0_pos = 0.5
+            self.cad_gate_width = 17.
+            self.cad_bypass_offset = 0 # Doesn't have bypass
+            self.cad_last_gate_offset = 1. # TODO this is a guess
+
             if "e" in self.mmu_version_string:
                 self.gate_parking_distance = 39. # Using Encoder
             else:
@@ -301,22 +291,26 @@ class Mmu:
             self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
 
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
-            raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other")
+            raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure `cad` dimensions (see doc)")
 
         else:
             # Some arbitary starting values for "Other" designs
-            self.cad_gate_width = 23.
             self.cad_gate0_pos = 1.
+            self.cad_gate_width = 20.
+            self.cad_bypass_offset = 1.
+            self.cad_last_gate_offset = 10.
             self.gate_parking_distance = 20.
 
         # Allow CAD parameters to be customized
         self.cad_gate0_pos = config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
         self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
-        self.cad_block_width = config.getfloat('cad_block_width', self.cad_block_width, above=0.)
-        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.)
-        self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.)
         self.cad_bypass_offset = config.getfloat('cad_bypass_offset', self.cad_bypass_offset, minval=0.)
         self.cad_last_gate_offset = config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
+
+        self.cad_block_width = config.getfloat('cad_block_width', self.cad_block_width, above=0.) # ERCF v1.1
+        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.) # ERCF v1.1
+        self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1
+
         self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', 10., above=0.) # Extra movement allowed by selector
 
         # Printer interaction config
@@ -4671,6 +4665,7 @@ class Mmu:
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
         if self._check_not_homed(): return
+        if self._check_is_loaded(): return
         if self._check_is_calibrated(): return
         loops = gcmd.get_int('LOOP', 10)
         random = gcmd.get_int('RANDOM', 0)
@@ -5340,10 +5335,11 @@ class Mmu:
                     # Tools used in print (may be empty list)
                     try:
                         for tool in tools.split(','):
-                            tool = int(tool)
-                            if tool >= 0 and tool < self.mmu_num_gates:
-                                gate = self.tool_to_gate_map[tool]
-                                gates_tools.append([gate, tool])
+                            if not tool == "":
+                                tool = int(tool)
+                                if tool >= 0 and tool < self.mmu_num_gates:
+                                    gate = self.tool_to_gate_map[tool]
+                                    gates_tools.append([gate, tool])
                         if len(gates_tools) == 0:
                             self._log_debug("No tools to check, assuming default tool is already loaded")
                             return
