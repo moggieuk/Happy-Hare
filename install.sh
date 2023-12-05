@@ -20,26 +20,69 @@ declare -A PIN 2>/dev/null || {
 # Pins for Fysetc Burrows ERB board, EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
 # Note: uart pin is shared on EASY-BRD (with different uart addresses)
 #
-PIN[ERB,gear_uart_pin]="gpio20";         PIN[EASY-BRD,gear_uart_pin]="PA8";          PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
-PIN[ERB,gear_step_pin]="gpio10";         PIN[EASY-BRD,gear_step_pin]="PA4";          PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
-PIN[ERB,gear_dir_pin]="gpio9";           PIN[EASY-BRD,gear_dir_pin]="PA10";          PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
-PIN[ERB,gear_enable_pin]="gpio8";        PIN[EASY-BRD,gear_enable_pin]="PA2";        PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
-PIN[ERB,gear_diag_pin]="gpio13";         PIN[EASY-BRD,gear_diag_pin]="";             PIN[EASY-BRD-RP2040,gear_diag_pin]=""
-PIN[ERB,selector_uart_pin]="gpio17";     PIN[EASY-BRD,selector_uart_pin]="PA8";      PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
-PIN[ERB,selector_step_pin]="gpio16";     PIN[EASY-BRD,selector_step_pin]="PA9";      PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
-PIN[ERB,selector_dir_pin]="gpio15";      PIN[EASY-BRD,selector_dir_pin]="PB8";       PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
-PIN[ERB,selector_enable_pin]="gpio14";   PIN[EASY-BRD,selector_enable_pin]="PA11";   PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
-PIN[ERB,selector_diag_pin]="gpio19";     PIN[EASY-BRD,selector_diag_pin]="PA7";      PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
-PIN[ERB,selector_endstop_pin]="gpio24";  PIN[EASY-BRD,selector_endstop_pin]="PB9";   PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
-PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";              PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
-PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";            PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
+PIN[ERB,gear_uart_pin]="gpio20";         PIN[EASY-BRD,gear_uart_pin]="PA8";         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
+PIN[ERB,gear_step_pin]="gpio10";         PIN[EASY-BRD,gear_step_pin]="PA4";         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
+PIN[ERB,gear_dir_pin]="gpio9";           PIN[EASY-BRD,gear_dir_pin]="PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
+PIN[ERB,gear_enable_pin]="gpio8";        PIN[EASY-BRD,gear_enable_pin]="PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
+PIN[ERB,gear_diag_pin]="gpio13";         PIN[EASY-BRD,gear_diag_pin]="";            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
+PIN[ERB,selector_uart_pin]="gpio17";     PIN[EASY-BRD,selector_uart_pin]="PA8";     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
+PIN[ERB,selector_step_pin]="gpio16";     PIN[EASY-BRD,selector_step_pin]="PA9";     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
+PIN[ERB,selector_dir_pin]="gpio15";      PIN[EASY-BRD,selector_dir_pin]="PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
+PIN[ERB,selector_enable_pin]="gpio14";   PIN[EASY-BRD,selector_enable_pin]="PA11";  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
+PIN[ERB,selector_diag_pin]="gpio19";     PIN[EASY-BRD,selector_diag_pin]="PA7";     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
+PIN[ERB,selector_endstop_pin]="gpio24";  PIN[EASY-BRD,selector_endstop_pin]="PB9";  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
+PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
+PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
+PIN[ERB,neopixel_pin]="";                PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
+PIN[ERB,gate_sensor_pin]="";             PIN[EASY-BRD,gate_sensor_pin]="";          PIN[EASY-BRD-RP2040,gate_sensor_pin]="";
+PIN[ERB,pre_gate_0_pin]="";              PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
+PIN[ERB,pre_gate_1_pin]="";              PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
+PIN[ERB,pre_gate_2_pin]="";              PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
+PIN[ERB,pre_gate_3_pin]="";              PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
+PIN[ERB,pre_gate_4_pin]="";              PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
+PIN[ERB,pre_gate_5_pin]="";              PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
+PIN[ERB,pre_gate_6_pin]="";              PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
+PIN[ERB,pre_gate_7_pin]="";              PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
+PIN[ERB,pre_gate_8_pin]="";              PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
+PIN[ERB,pre_gate_9_pin]="";              PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
+PIN[ERB,pre_gate_10_pin]="";             PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
+PIN[ERB,pre_gate_11_pin]="";             PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
-PIN[extruder_uart_pin]="<set_me>"
-PIN[extruder_diag_pin]="<set_me>"
-PIN[extruder_step_pin]="<set_me>"
-PIN[extruder_dir_pin]="<set_me>"
-PIN[extruder_enable_pin]="<set_me>"
-PIN[toolhead_sensor_pin]="<set_me>"
+# Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on last input)
+#
+PIN[MBB,gear_uart_pin]="PA10";
+PIN[MBB,gear_step_pin]="PB15";
+PIN[MBB,gear_dir_pin]="PB14";
+PIN[MBB,gear_enable_pin]="PA8";
+PIN[MBB,gear_diag_pin]="";
+PIN[MBB,selector_uart_pin]="PC7";
+PIN[MBB,selector_step_pin]="PD2";
+PIN[MBB,selector_dir_pin]="PB13";
+PIN[MBB,selector_enable_pin]="PD1";
+PIN[MBB,selector_diag_pin]="";
+PIN[MBB,selector_endstop_pin]="PB2";
+PIN[MBB,servo_pin]="PA0";
+PIN[MBB,encoder_pin]="PA1";
+PIN[MBB,neopixel_pin]="";
+PIN[MBB,gate_sensor_pin]="PB10";
+PIN[MBB,pre_gate_0_pin]="PA3";
+PIN[MBB,pre_gate_1_pin]="PA4";
+PIN[MBB,pre_gate_2_pin]="PB8";
+PIN[MBB,pre_gate_3_pin]="PB7";
+PIN[MBB,pre_gate_4_pin]="PC15";
+PIN[MBB,pre_gate_5_pin]="PC13";
+PIN[MBB,pre_gate_6_pin]="PC14";
+PIN[MBB,pre_gate_7_pin]="PB12";
+PIN[MBB,pre_gate_8_pin]="PB11";
+PIN[MBB,pre_gate_9_pin]="";
+PIN[MBB,pre_gate_10_pin]="";
+PIN[MBB,pre_gate_11_pin]="";
+
+# These pins will usually be on main mcu for wiring simplification
+#
+PIN[toolhead_sensor_pin]=""
+PIN[extruder_sensor_pin]=""
+PIN[gantry_servo_pin]=""
 
 # Screen Colors
 OFF='\033[0m'             # Text Reset
@@ -378,8 +421,6 @@ read_previous_config() {
         fi
         if [ ! "${encoder_parking_distance}" == "" ]; then
             gate_parking_distance=${encoder_parking_distance}
-        else
-            gate_parking_distance=23
         fi
         if [ ! "${encoder_load_retries}" == "" ]; then
             gate_load_retries=${encoder_load_retries}
@@ -393,11 +434,6 @@ read_previous_config() {
         if [ ! "${mmu_num_gates}" == "" ]; then
             mmu_num_leds=$(expr $mmu_num_gates + 1)
         fi
-# E.g.
-#        selector_offsets=${colorselector}
-#        if [ "${sync_load_length}" -gt 0 ]; then
-#            sync_load_extruder=1
-#        fi
     fi
 
     software_cfg="mmu_software.cfg"
@@ -455,11 +491,6 @@ copy_config_files() {
             update_copy_file "$src" "$dest"
 
 	elif [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
-            if [ "${SETUP_TOOLHEAD_SENSOR}" -eq 1 ]; then
-                toolhead_str="^#\[filament_switch_sensor toolhead_sensor\]"
-            else
-                toolhead_str="_THIS_PATTERN_DOES_NOT_EXIST_"
-            fi
             uart_comment="#"
             sel_uart="_THIS_PATTERN_DOES_NOT_EXIST_"
             if [ "${brd_type}" == "EASY-BRD" ]; then
@@ -493,25 +524,27 @@ copy_config_files() {
                 cat ${dest}.tmp | sed -e "\
                     s/{mmu_num_gates}/${mmu_num_gates}/; \
                     s/{mmu_num_leds}/${mmu_num_leds}/; \
-                    s/{extruder_uart_pin}/${PIN[extruder_uart_pin]}/; \
-                    s/{extruder_step_pin}/${PIN[extruder_step_pin]}/; \
-                    s/{extruder_dir_pin}/${PIN[extruder_dir_pin]}/; \
-                    s/{extruder_enable_pin}/${PIN[extruder_enable_pin]}/; \
-                    s/{extruder_diag_pin}/${PIN[extruder_diag_pin]}/; \
-                    s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
                     s%{serial}%${serial}%; \
-                    /${toolhead_str}/,+1 s/^#//; \
                         " > ${dest} && rm ${dest}.tmp
             else
                 cat ${dest}.tmp | sed -e "\
                     s/{mmu_num_gates}/${mmu_num_gates}/; \
                     s/{mmu_num_leds}/${mmu_num_leds}/; \
-                    s/{extruder_uart_pin}/${PIN[extruder_uart_pin]}/; \
-                    s/{extruder_step_pin}/${PIN[extruder_step_pin]}/; \
-                    s/{extruder_dir_pin}/${PIN[extruder_dir_pin]}/; \
-                    s/{extruder_enable_pin}/${PIN[extruder_enable_pin]}/; \
-                    s/{extruder_diag_pin}/${PIN[extruder_diag_pin]}/; \
                     s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
+                    s/{extruder_sensor_pin}/${PIN[extruder_sensor_pin]}/; \
+                    s/{gate_sensor_pin}/${PIN[$brd_type,gate_sensor_pin]}/; \
+                    s/{pre_gate_0_pin}/${PIN[$brd_type,pre_gate_0_pin]}/; \
+                    s/{pre_gate_1_pin}/${PIN[$brd_type,pre_gate_1_pin]}/; \
+                    s/{pre_gate_2_pin}/${PIN[$brd_type,pre_gate_2_pin]}/; \
+                    s/{pre_gate_3_pin}/${PIN[$brd_type,pre_gate_3_pin]}/; \
+                    s/{pre_gate_4_pin}/${PIN[$brd_type,pre_gate_4_pin]}/; \
+                    s/{pre_gate_5_pin}/${PIN[$brd_type,pre_gate_5_pin]}/; \
+                    s/{pre_gate_6_pin}/${PIN[$brd_type,pre_gate_6_pin]}/; \
+                    s/{pre_gate_7_pin}/${PIN[$brd_type,pre_gate_7_pin]}/; \
+                    s/{pre_gate_8_pin}/${PIN[$brd_type,pre_gate_8_pin]}/; \
+                    s/{pre_gate_9_pin}/${PIN[$brd_type,pre_gate_9_pin]}/; \
+                    s/{pre_gate_10_pin}/${PIN[$brd_type,pre_gate_10_pin]}/; \
+                    s/{pre_gate_11_pin}/${PIN[$brd_type,pre_gate_11_pin]}/; \
                     s/{gear_uart_pin}/${PIN[$brd_type,gear_uart_pin]}/; \
                     s/{gear_step_pin}/${PIN[$brd_type,gear_step_pin]}/; \
                     s/{gear_dir_pin}/${PIN[$brd_type,gear_dir_pin]}/; \
@@ -525,8 +558,8 @@ copy_config_files() {
                     s/{selector_endstop_pin}/${PIN[$brd_type,selector_endstop_pin]}/; \
                     s/{servo_pin}/${PIN[$brd_type,servo_pin]}/; \
                     s/{encoder_pin}/${PIN[$brd_type,encoder_pin]}/; \
+                    s/{neopixel_pin}/${PIN[$brd_type,neopixel_pin]}/; \
                     s%{serial}%${serial}%; \
-                    /${toolhead_str}/,+1 s/^#//; \
                         " > ${dest} && rm ${dest}.tmp
             fi
 
@@ -656,6 +689,7 @@ uninstall_printer_includes() {
             /\[include mmu\/mmu_software.cfg\]/ d; \
             /\[include mmu\/mmu_parameters.cfg\]/ d; \
             /\[include mmu\/mmu_hardware.cfg\]/ d; \
+            /\[include mmu\/mmu_filametrix.cfg\]/ d; \
             /\[include mmu\/mmu.cfg\]/ d; \
             /\[include mmu\/base\/\*.cfg\]/ d; \
 	        " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
@@ -783,20 +817,21 @@ prompt_123() {
 
 questionaire() {
     echo
-    echo -e "${INFO}Let me see if I can help you with initial config (you will still have some manual config to perform)"
+    echo -e "${INFO}${SECTION}Let me see if I can get you started with initial configuration"
+    echo -e "You will still have some manual editing to perform but I will explain that later"
+    echo -e "(Note that all this script does is set a lot of the time consuming parameters in the config"
     echo
     echo -e "${PROMPT}What type of MMU are you running?${INPUT}"
-    echo -e "1) ERCF v1.1 (all variations)"
-    echo -e "2) ERCF v2.0"
+    echo -e "1) ERCF v1.1 (inc TripleDecky, Springy, Binky mods)"
+    echo -e "2) ERCF v2.0 (inc ThumperBlocks mod)"
     echo -e "3) Tradrack v1.0"
-    echo -e "4) Other (Custom creation, ...)"
+    echo -e "4) Other (Custom creations or variations not mentioned above...)"
     num=$(prompt_123 "MMU Type?" 4)
     echo
     case $num in
         1)
             mmu_vendor="ERCF"
             mmu_version="1.1"
-            gate_parking_distance="23"
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 are supported. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
             echo
@@ -817,155 +852,227 @@ questionaire() {
             case $yn in
             y)
                 mmu_version+="t"
-                gate_parking_distance="19"
                 ;;
             esac
             ;;
         2)
             mmu_vendor="ERCF"
             mmu_version="2.0"
-            gate_parking_distance="19"
             ;;
         3)
             mmu_vendor="Tradrack"
             mmu_version="1.0"
-            gate_parking_distance="17.5"
             ;;
         4)
             mmu_vendor="Other"
             mmu_version="1.0"
-            gate_parking_distance="20"
             ;;
     esac
 
     echo
-    echo -e "${INFO}${SECTION}Let me see if I can help you with initial config (you will still have some manual config to perform)...${INPUT}"
+
     brd_type="unknown"
-    yn=$(prompt_yn "Are you using the EASY-BRD or Fysetc Burrows ERB controller?")
+    echo -e "${PROMPT}Select mcu board type used to control MMU${INPUT}"
+    echo -e " 1) BTT MMB"
+    echo -e " 2) Fysetc Burrows ERB"
+    echo -e " 3) Standard EASY-BRD (with SAMD21)"
+    echo -e " 4) EASY-BRD with RP2040"
+    echo -e " 5) Not in list / Unknown"
+    num=$(prompt_123 "MCU type?" 5)
+    echo
+    case $num in
+        1)
+            brd_type="MMB"
+            pattern="Klipper_stm32"
+            ;;
+        2)
+            brd_type="ERB"
+            pattern="Klipper_rp2040"
+            ;;
+        3)
+            brd_type="EASY-BRD"
+            pattern="Klipper_samd21"
+            ;;
+        4)
+            brd_type="EASY-BRD-RP2040"
+            pattern="Klipper_rp2040"
+            ;;
+        5)
+            brd_type="unknown"
+            pattern="Klipper_"
+            ;;
+    esac
+
+    serial=""
+    echo
+    for line in `ls /dev/serial/by-id 2>/dev/null | egrep "Klipper_samd21|Klipper_rp2040"`; do
+        if echo ${line} | grep --quiet "${pattern}"; then
+            echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
+            yn=$(prompt_yn "/dev/serial/by-id/${line}")
+            echo
+            case $yn in
+                y)
+                    serial="/dev/serial/by-id/${line}"
+                    break
+                    ;;
+                n)
+                    ;;
+            esac
+        fi
+    done
+    if [ "${serial}" == "" ]; then
+        echo -e "${PROMPT}${SECTION}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
+        serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+    fi
+
+    echo
+    echo -e "${WARNING}Board Type: ${brd_type}"
+
+    echo
+    echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
+    yn=$(prompt_yn "Enable selector touch operation (not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers")
     echo
     case $yn in
         y)
-            echo -e "${INFO}Great, I can setup almost everything for you. Let's get started"
-            serial=""
-            echo
-            for line in `ls /dev/serial/by-id 2>/dev/null | egrep "Klipper_samd21|Klipper_rp2040"`; do
-                if echo ${line} | grep --quiet "Klipper_samd21"; then
-                    brd_type="EASY-BRD"
-                else
-                    echo -e "${PROMPT}${SECTION}You seem to have a ${EMPHASIZE}RP2040-based${PROMPT} controller serial port.${INPUT}"
-                    yn=$(prompt_yn "Are you using the Fysetc Burrows ERB controller?")
-                    echo
-                    case $yn in
-                    y)
-                        brd_type="ERB"
-                        ;;
-                    n)
-                        brd_type="EASY-BRD-RP2040"
-                        ;;
-                    esac
-                fi
-                echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
-                yn=$(prompt_yn "/dev/serial/by-id/${line}")
+            if [ "${brd_type}" == "EASY-BRD" ]; then
                 echo
-                case $yn in
-                    y)
-                        serial="/dev/serial/by-id/${line}"
-                        break
-                        ;;
-                    n)
-                        brd_type="unknown"
-                        ;;
-                esac
-            done
-            if [ "${serial}" == "" ]; then
-                echo -e "${PROMPT}${SECTION}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
-                echo -e "Setup for which mcu?"
-                echo -e "1) ERB"
-                echo -e "2) Standard EASY-BRD (with SAMD21)"
-                echo -e "3) EASY-BRD with RP2040${INPUT}"
-                num=$(prompt_123 "MCU type?" 3)
-                echo
-                case $num in
-                    1)
-                        brd_type="ERB"
-                        ;;
-                    2)
-                        brd_type="EASY-BRD"
-                        ;;
-                    3)
-                        brd_type="EASY-BRD-RP2040"
-                        ;;
-                esac
-                serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+                echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
             fi
-
-            echo
-            echo -e "${WARNING}Board Type: ${brd_type}"
-
-            echo
-            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
-            yn=$(prompt_yn "Enable selector touch operation (not recommend if you are new to MMU / Happy Hare")
-            echo
-            case $yn in
-                y)
-                    if [ "${brd_type}" == "EASY-BRD" ]; then
-                        echo
-                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
-                    fi
-                    SETUP_SELECTOR_TOUCH=1
-                    ;;
-                n)
-                    if [ "${brd_type}" == "EASY-BRD" ]; then
-                        echo
-                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
-                    fi
-                    SETUP_SELECTOR_TOUCH=0
-                    ;;
-            esac
+            SETUP_SELECTOR_TOUCH=1
             ;;
-
-
         n)
-            easy_brd=0
-            echo -e "${INFO}Ok, I can only partially setup non EASY-BRD/ERB installations, but lets see what I can help with"
-            serial=""
-            echo
-            for line in `ls /dev/serial/by-id`; do
-                echo -e "${PROMPT}${SECTION}Is this the serial port to your MMU mcu?${INPUT}"
-                yn=$(prompt_yn "/dev/serial/by-id/${line}")
+            if [ "${brd_type}" == "EASY-BRD" ]; then
                 echo
-                case $yn in
-                    y)
-                        serial="/dev/serial/by-id/${line}"
-                        break
-                        ;;
-                    n)
-                        ;;
-                esac
-            done
-            if [ "${serial}" = "" ]; then
-                echo -e "${INFO}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later as per the docs"
-                serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+                echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
             fi
-
-            echo
-            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
-            yn=$(prompt_yn "Enable selector touch operation (recommend no for now")
-            echo
-            case $yn in
-                y)
-                    SETUP_SELECTOR_TOUCH=1
-                    ;;
-                n)
-                    SETUP_SELECTOR_TOUCH=0
-                    ;;
-            esac
+            SETUP_SELECTOR_TOUCH=0
             ;;
     esac
 
-    mmu_num_gates=9
+#    echo
+#    case $yn in
+#        y)
+#            echo -e "${INFO}Great, I can setup almost everything for you. Let's get started"
+#            serial=""
+#            echo
+#            for line in `ls /dev/serial/by-id 2>/dev/null | egrep "Klipper_samd21|Klipper_rp2040"`; do
+#                if echo ${line} | grep --quiet "Klipper_samd21"; then
+#                    brd_type="EASY-BRD"
+#                else
+#                    echo -e "${PROMPT}${SECTION}You seem to have a ${EMPHASIZE}RP2040-based${PROMPT} controller serial port.${INPUT}"
+#                    yn=$(prompt_yn "Are you using the Fysetc Burrows ERB controller?")
+#                    echo
+#                    case $yn in
+#                    y)
+#                        brd_type="ERB"
+#                        ;;
+#                    n)
+#                        brd_type="EASY-BRD-RP2040"
+#                        ;;
+#                    esac
+#                fi
+#                echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
+#                yn=$(prompt_yn "/dev/serial/by-id/${line}")
+#                echo
+#                case $yn in
+#                    y)
+#                        serial="/dev/serial/by-id/${line}"
+#                        break
+#                        ;;
+#                    n)
+#                        brd_type="unknown"
+#                        ;;
+#                esac
+#            done
+#            if [ "${serial}" == "" ]; then
+#                echo -e "${PROMPT}${SECTION}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
+#                echo -e "Setup for which mcu?"
+#                echo -e "1) ERB"
+#                echo -e "2) Standard EASY-BRD (with SAMD21)"
+#                echo -e "3) EASY-BRD with RP2040${INPUT}"
+#                num=$(prompt_123 "MCU type?" 3)
+#                echo
+#                case $num in
+#                    1)
+#                        brd_type="ERB"
+#                        ;;
+#                    2)
+#                        brd_type="EASY-BRD"
+#                        ;;
+#                    3)
+#                        brd_type="EASY-BRD-RP2040"
+#                        ;;
+#                esac
+#                serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+#            fi
+#
+#            echo
+#            echo -e "${WARNING}Board Type: ${brd_type}"
+#
+#            echo
+#            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
+#            yn=$(prompt_yn "Enable selector touch operation (not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers")
+#            echo
+#            case $yn in
+#                y)
+#                    if [ "${brd_type}" == "EASY-BRD" ]; then
+#                        echo
+#                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
+#                    fi
+#                    SETUP_SELECTOR_TOUCH=1
+#                    ;;
+#                n)
+#                    if [ "${brd_type}" == "EASY-BRD" ]; then
+#                        echo
+#                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
+#                    fi
+#                    SETUP_SELECTOR_TOUCH=0
+#                    ;;
+#            esac
+#            ;;
+#
+#
+#        n)
+#            easy_brd=0
+#            echo -e "${INFO}Ok, I can only partially setup non EASY-BRD/ERB installations, but lets see what I can help with"
+#            serial=""
+#            echo
+#            for line in `ls /dev/serial/by-id`; do
+#                echo -e "${PROMPT}${SECTION}Is this the serial port to your MMU mcu?${INPUT}"
+#                yn=$(prompt_yn "/dev/serial/by-id/${line}")
+#                echo
+#                case $yn in
+#                    y)
+#                        serial="/dev/serial/by-id/${line}"
+#                        break
+#                        ;;
+#                    n)
+#                        ;;
+#                esac
+#            done
+#            if [ "${serial}" = "" ]; then
+#                echo -e "${INFO}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later as per the docs"
+#                serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+#            fi
+#
+#            echo
+#            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
+#            yn=$(prompt_yn "Enable selector touch operation (recommend no for now")
+#            echo
+#            case $yn in
+#                y)
+#                    SETUP_SELECTOR_TOUCH=1
+#                    ;;
+#                n)
+#                    SETUP_SELECTOR_TOUCH=0
+#                    ;;
+#            esac
+#            ;;
+#    esac
+
+    mmu_num_gates=8
     echo
-    echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have (eg 3, 6, 9, 12)?${INPUT}"
+    echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
     while true; do
         read -p "Number of gates? " mmu_num_gates
         if ! [ "${mmu_num_gates}" -ge 1 ] 2> /dev/null ;then
@@ -975,27 +1082,6 @@ questionaire() {
        fi
     done
     mmu_num_leds=$(expr $mmu_num_gates + 1)
-
-    echo
-    echo -e "${PROMPT}${SECTION}Do you have a toolhead sensor you would like to use?"
-    echo -e "(if reliable this provides the smoothest and most reliable loading and unloading operation)${INPUT}"
-    yn=$(prompt_yn "Enable toolhead sensor")
-    echo
-    case $yn in
-        y)
-            SETUP_TOOLHEAD_SENSOR=1
-            echo -e "${PROMPT}    What is the mcu pin name that your toolhead sensor is connected too?"
-            echo -e "${PROMPT}    If you don't know just hit return, I can enter a default and you can change later${INPUT}"
-            read -p "    Toolhead sensor pin name? " toolhead_sensor_pin
-            if [ "${toolhead_sensor_pin}" = "" ]; then
-                PIN[toolhead_sensor_pin]="<set_me>"
-            fi
-            ;;
-        n)
-            SETUP_TOOLHEAD_SENSOR=0
-            PIN[toolhead_sensor_pin]="<set_me>"
-            ;;
-    esac
 
     echo
     echo -e "${PROMPT}${SECTION}Would you have neopixel LEDs setup for your MMU?${INPUT}"
@@ -1012,9 +1098,10 @@ questionaire() {
 
     echo
     echo -e "${PROMPT}${SECTION}Which servo are you using?"
-    echo -e "1) MG-90S"
-    echo -e "2) Savox SH0255MG${INPUT}"
-    num=$(prompt_123 "Servo?" 2)
+    echo -e "1) MG-90S (ERCF)"
+    echo -e "2) Savox SH0255MG (ERCF)"
+    echo -e "3) Other${INPUT}"
+    num=$(prompt_123 "Servo?" 3)
     echo
     if [ "${mmu_vendor}" == "ERCF" ]; then
         case $num in
@@ -1101,7 +1188,7 @@ questionaire() {
                     ;;
             esac
 
-            echo -e "${PROMPT}    Would you like to include legacy ERCF_ command set compatibility module${INPUT}"
+            echo -e "${PROMPT}    Would you like to include subset of the legacy ERCF_ command set compatibility module${INPUT}"
             yn=$(prompt_yn "    Include legacy ERCF command set")
             echo
             case $yn in
@@ -1139,7 +1226,6 @@ questionaire() {
     echo -e "servo_down_angle: ${servo_down_angle}"
     echo -e "enable_clog_detection: ${enable_clog_detection}"
     echo -e "enable_endless_spool: ${enable_endless_spool}"
-    echo -e "gate_parking_distance: ${gate_parking_distance}"
 
     echo
     echo -e "${INFO}"
