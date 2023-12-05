@@ -3430,6 +3430,10 @@ class Mmu:
                 #self._recover_filament_pos(self, strict=False, message=True)
                 return False, 0.
 
+        gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, None)
+        if gcode_macro is None:
+            raise MmuError("Filament tip forming macro '%s' not found" % self.form_tip_macro)
+
         self._log_debug("Preparing to form tip...")
         with self._wrap_action(self.ACTION_FORMING_TIP):
             synced = self.sync_form_tip and not extruder_only
@@ -3446,7 +3450,7 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
                 self._movequeues_wait_moves()
                 measured = self._get_encoder_distance(dwell=None) - initial_encoder_position
-                park_pos = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro).variables.get("output_park_pos", -1)
+                park_pos = gcode_macro.variables.get("output_park_pos", -1)
                 try:
                     park_pos = float(park_pos)
                 except ValueError:
