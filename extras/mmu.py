@@ -402,7 +402,7 @@ class Mmu:
         self.gear_from_spool_accel = config.getfloat('gear_from_spool_accel', 100, minval=10.)
         self.gear_short_move_speed = config.getfloat('gear_short_move_speed', 60., minval=1.)
         self.gear_short_move_accel = config.getfloat('gear_short_move_accel', 400, minval=10.)
-        self.gear_short_move_threshold = config.getfloat('gear_short_move_threshold', 60., minval=1.)
+        self.gear_short_move_threshold = config.getfloat('gear_short_move_threshold', self.gate_homing_max, minval=1.)
         self.gear_homing_speed = config.getfloat('gear_homing_speed', 150, minval=1.)
 
         self.extruder_load_speed = config.getfloat('extruder_load_speed', 15, minval=1.)
@@ -567,11 +567,16 @@ class Mmu:
         self.gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
         self.gcode.register_command('MMU_SOAKTEST_LOAD_SEQUENCE', self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE, desc = self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help)
 
-        # Runout, TTG and Endless spool
-        self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help) # Internal
-        self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help) # Internal
-        self.gcode.register_command('__MMU_PRE_GATE_RUNOUT', self.cmd_MMU_PRE_GATE_RUNOUT, desc = self.cmd_MMU_PRE_GATE_RUNOUT_help) # Internal
-        self.gcode.register_command('__MMU_PRE_GATE_INSERT', self.cmd_MMU_PRE_GATE_INSERT, desc = self.cmd_MMU_PRE_GATE_INSERT_help) # Internal
+        # Internal handlers for Runout & Insertion for all sensor options
+        self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
+        self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
+        self.gcode.register_command('__MMU_GATE_RUNOUT', self.cmd_MMU_GATE_RUNOUT, desc = self.cmd_MMU_GATE_RUNOUT_help)
+        self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
+        self.gcode.register_command('__MMU_PRE_GATE_RUNOUT', self.cmd_MMU_PRE_GATE_RUNOUT, desc = self.cmd_MMU_PRE_GATE_RUNOUT_help)
+        self.gcode.register_command('__MMU_PRE_GATE_INSERT', self.cmd_MMU_PRE_GATE_INSERT, desc = self.cmd_MMU_PRE_GATE_INSERT_help)
+        self.gcode.register_command('__MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
+
+        # TTG and Endless spool
         self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help)
         self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
@@ -624,6 +629,7 @@ class Mmu:
             if sensor is not None:
                 self.sensors[name] = sensor
                 # With MMU this must not accidentally pause nor call user defined macros
+                # (this is done in [mmu_sensors] but legacy setups may have discrete [filament_switch_sensors])
                 self.sensors[name].runout_helper.runout_pause = False
                 self.sensors[name].runout_helper.runout_gcode = None
                 self.sensors[name].runout_helper.insert_gcode = None
@@ -2084,6 +2090,11 @@ class Mmu:
     def _handle_idle_timeout_idle(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "idle")
 
+    def _is_printer_printing(self):
+        eventtime = self.reactor.monotonic()
+        idle_timeout = self.printer.lookup_object("idle_timeout")
+        return idle_timeout.get_status(eventtime)["state"] == "Printing"
+
     def _is_printing(self, force_in_print=False): # Actively printing and not paused
         return self.print_state in ["started", "printing"] or force_in_print
 
@@ -2611,6 +2622,7 @@ class Mmu:
         self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.is_enabled = False
+        self._set_print_state("standby")
         self._log_always("MMU disabled")
 
     def _random_failure(self):
@@ -5131,31 +5143,58 @@ class Mmu:
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         self._log_debug("Filament insertion not implemented yet! Check back later")
-        # TODO Future preload feature :-)
+        # TODO Future preload feature especially bypass :-)
         #try:
         #    self._handle_detection()
         #except MmuError as ee:
         #    self._mmu_pause(str(ee))
 
+    cmd_MMU_GATE_RUNOUT_help = "Internal gate filament runout handler"
+    def cmd_MMU_GATE_RUNOUT(self, gcmd):
+        if self._check_is_disabled(): return
+        try:
+            self._handle_runout(force_runout=True)
+        except MmuError as ee:
+            self._mmu_pause(str(ee))
+
+    cmd_MMU_GATE_INSERT_help = "Internal gate filament detection handler"
+    def cmd_MMU_GATE_INSERT(self, gcmd):
+        if self._check_is_disabled(): return
+        self._log_debug("Filament insertion not implemented yet! Check back later")
+        # TODO Future preload feature especially bypass :-)
+
+    # This callback is not protected by klipper is_printing check so be careful
     cmd_MMU_PRE_GATE_RUNOUT_help = "Internal pre-gate filament runout handler"
     def cmd_MMU_PRE_GATE_RUNOUT(self, gcmd):
+        active = self._is_printer_printing()
         if self._check_is_disabled(): return
-        gate = gcmd.get_int('GATE')
-        self._log_debug("Filament runout detected by pre-gate sensor on gate #%d" % gate)
-        if not self._is_in_print():
-            pass # TODO could invoke _handle_runout ...
-        else:
+        try:
+            gate = gcmd.get_int('GATE')
+            self._log_debug("Filament runout detected by pre-gate sensor on gate #%d" % gate)
             self._set_gate_status(gate, self.GATE_EMPTY)
-
+            # TODO enable when tested
+            #if self._is_in_print() and active and gate == self.gate_selected:
+            #    self._handle_runout(force_runout=True)
+        except MmuError as ee:
+            self._mmu_pause(str(ee))
+        
+    # This callback is not protected by klipper is_printing check so be careful
     cmd_MMU_PRE_GATE_INSERT_help = "Internal pre-gate filament detection handler"
     def cmd_MMU_PRE_GATE_INSERT(self, gcmd):
+        active = self._is_printer_printing()
         if self._check_is_disabled(): return
-        gate = gcmd.get_int('GATE')
-        self._log_debug("Filament insertion detected by pre-gate sensor on gate #%d" % gate)
-        if not self._is_in_print():
-            self.cmd_MMU_PRELOAD(gcmd)
-        else:
+        try:
+            gate = gcmd.get_int('GATE')
+            self._log_debug("Filament insertion detected by pre-gate sensor on gate #%d" % gate)
             self._set_gate_status(gate, self.GATE_UNKNOWN)
+            if not self._is_in_print() and not active:
+                self.cmd_MMU_PRELOAD(gcmd)
+        except MmuError as ee:
+            self._mmu_pause(str(ee))
+
+    cmd_MMU_M400_help = "Wait on both move queues"
+    def cmd_MMU_M400(self, gcmd):
+        self._movequeues_wait_moves(toolhead=True, mmu_toolhead=True)
 
     cmd_MMU_REMAP_TTG_help = "Display or remap a tool to a specific gate and set gate availability"
     def cmd_MMU_REMAP_TTG(self, gcmd):
@@ -5441,6 +5480,7 @@ class Mmu:
         if self._check_is_loaded(): return
         if self._check_is_calibrated(): return
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
+        self._log_always("Preloading filament in %s" % (("gate #%d" % gate) if gate >= 0 else "current gate"))
         with self._wrap_action(self.ACTION_CHECKING):
             try:
                 self.calibrating = True # To suppress visual filament position display
