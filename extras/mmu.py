@@ -83,7 +83,7 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
-    BOOT_DELAY = 1.5            # Delay before running bootup tasks
+    BOOT_DELAY = 2.5            # Delay before running bootup tasks
 
     LONG_MOVE_THRESHOLD = 70.   # This is also the initial move to load past encoder
 
@@ -1011,6 +1011,7 @@ class Mmu:
                 self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_encoder_sensor() # Initially disable clog/runout detection
             self._servo_move()
+            self.gate_status = self._validate_gate_status(self.gate_status) # Delay to allow for correct initial state
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
 
@@ -2725,7 +2726,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
         self.tool_to_gate_map = list(self.default_tool_to_gate_map)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
-        self.gate_status = list(self.default_gate_status)
+        self.gate_status = self._validate_gate_status(list(self.default_gate_status))
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
         self.gate_spool_id = list(self.default_gate_spool_id)
@@ -5008,6 +5009,22 @@ class Mmu:
                 if gcode is not None:
                     self._wrap_gcode_command("_MMU_GATE_MAP_CHANGED GATE='%d'" % gate)
 
+    # Use pre-gate sensors (if fitted) to "correct" gate status
+    # Return True if update made
+    def _validate_gate_status(self, gate_status):
+        updated = False
+        for gate, status in enumerate(gate_status):
+            sensor = self.printer.lookup_object("filament_switch_sensor mmu_pre_gate_%d" % gate, None)
+            if sensor is not None and sensor.runout_helper.sensor_enabled:
+                detected = sensor.runout_helper.filament_present
+                if detected and status == self.GATE_EMPTY:
+                    gate_status[gate] = self.GATE_UNKNOWN
+                    updated = True
+                elif not detected and status != self.GATE_EMPTY:
+                    gate_status[gate] = self.GATE_EMPTY
+                    updated = True
+        return gate_status
+
     def _get_filament_char(self, gate_status, no_space=False, show_source=False):
         if gate_status == self.GATE_AVAILABLE_FROM_BUFFER:
             return "B" if show_source else "*"
@@ -5121,7 +5138,7 @@ class Mmu:
 
     def _reset_gate_map(self):
         self._log_debug("Resetting gate map")
-        self.gate_status = list(self.default_gate_status)
+        self.gate_status = self._validate_gate_status(list(self.default_gate_status))
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
         self.gate_spool_id = list(self.default_gate_spool_id)
@@ -5161,7 +5178,7 @@ class Mmu:
     def cmd_MMU_GATE_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         self._log_debug("Filament insertion not implemented yet! Check back later")
-        # TODO Future preload feature especially bypass :-)
+        # TODO Future preload feature see MMU_ENCODER_INSERT
 
     # This callback is not protected by klipper is_printing check so be careful
     cmd_MMU_PRE_GATE_RUNOUT_help = "Internal pre-gate filament runout handler"

@@ -89,7 +89,8 @@ class PreGateRunoutHelper:
     def get_status(self, eventtime):
         return {
             "filament_detected": bool(self.filament_present),
-            "enabled": bool(self.sensor_enabled)}
+            "enabled": bool(self.sensor_enabled),
+        }
 
     cmd_QUERY_FILAMENT_SENSOR_help = "Query the status of the Filament Sensor"
     def cmd_QUERY_FILAMENT_SENSOR(self, gcmd):
