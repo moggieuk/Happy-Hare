@@ -2157,8 +2157,11 @@ class Mmu:
                 self.last_print_stats = dict(new_ps)
 
         # Capture transition to standby
-        if event_type == "idle":
+        if event_type == "idle" and self.print_state != "standby":
+            # This could wake the printer up again so only do it once
             self._exec_gcode("_MMU_PRINT_END STATE=standby")
+        elif self.print_state == "standby":
+            self._set_print_state("ready", call_macro=False)
 
     def _exec_gcode(self, command):
         try:
