@@ -64,7 +64,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.special_queuing_state = "Flushed"
         self.need_check_stall = -1.
         self.flush_timer = self.reactor.register_timer(self._flush_handler)
-        self.priming_timer = None
+        self.priming_timer = self.reactor.register_timer(self._priming_handler)
         self.move_queue.set_flush_time(self.buffer_time_high)
         self.idle_flush_print_time = 0.
         self.print_stall = 0
