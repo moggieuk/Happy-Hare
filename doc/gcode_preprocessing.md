@@ -66,4 +66,4 @@ gcode:
 > [!NOTE]  
 > * `MMU_CHECK_GATE TOOLS=` with empty string will be ignored by Happy Hare.<br>
 > * Any tool that was loaded prior to calling `MMU_CHECK_GATES` will be automatically restored at the end of the checking procedure.<br>
-> * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `TOOLS_USED` (which counts `Tx` commands) will be empty.
+> * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `TOOLS_USED` (which counts `Tx` commands) will be empty. This code will ensure that `TOOL_USED` will always contain the initial tool.
