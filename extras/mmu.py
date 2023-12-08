@@ -135,7 +135,8 @@ class Mmu:
     ACTION_SELECTING = 9
 
     # Standard endstop or pseudo endstop names
-    ENDSTOP_EXTRUDER_COLLISION = "collision"
+    ENDSTOP_EXTRUDER_COLLISION = "collision" # Fake endstop
+    ENDSTOP_ENCODER            = "encoder"   # Fake endstop
     ENDSTOP_EXTRUDER_TOUCH     = "mmu_ext_touch"
     ENDSTOP_GEAR_TOUCH         = "mmu_gear_touch"
     ENDSTOP_GATE               = "mmu_gate"
@@ -143,6 +144,9 @@ class Mmu:
     ENDSTOP_TOOLHEAD           = "mmu_toolhead"
     ENDSTOP_SELECTOR_TOUCH     = "mmu_sel_touch"
     ENDSTOP_SELECTOR_HOME      = "mmu_sel_home"
+
+    EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER]
+    GATE_ENDSTOPS     = [ENDSTOP_GATE, ENDSTOP_ENCODER]
 
     # Stepper config sections
     SELECTOR_STEPPER_CONFIG    = "stepper_mmu_selector"
@@ -348,7 +352,9 @@ class Mmu:
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
 
         # Configuration for gate loading and unloading
-        self.gate_homing_endstop = config.get('gate_homing_endstop', "encoder") # "encoder" or endstop name e.g. "mmu_gate"
+        self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or endstop name e.g. "mmu_gate"
+        if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
+            raise self.config.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENSTOPS)
         self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', self.gate_parking_distance) # Can be +ve or -ve
@@ -369,6 +375,8 @@ class Mmu:
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
         self.extruder_homing_endstop = config.get('extruder_homing_endstop', self.ENDSTOP_EXTRUDER_COLLISION)
+        if self.extruder_homing_endstop not in self.EXTRUDER_ENDSTOPS:
+            raise self.config.error("extruder_homing_endstop is invalid. Options are: %s" % self.EXTRUDER_ENSTOPS)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.)
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.)
@@ -1412,24 +1420,41 @@ class Mmu:
         msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
 
         if config:
-            msg += "\n\nConfiguration:\nFilament homes"
+            msg += "\n\nConfiguration:"
+
+            msg += "\nLoad Sequence"
+            msg += "\n- Filament loads into gate by homing a maximum of %.1fmm to %s" % (self.gate_homing_max, "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "GATE SENSOR")
+            msg += "\n- Bowden is loaded with a fast %.1fmm move" % self.calibrated_bowden_length
             if self._must_home_to_extruder():
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
-                    msg += " to extruder using COLLISION detection (at %d%% current)" % self.extruder_homing_current
+                    msg += " and then homes to extruder using COLLISION detection (at %d%% current)" % self.extruder_homing_current
                 else:
-                    msg += " to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
-                if self._has_sensor("toolhead"):
-                    msg += " and then"
-            msg += " to TOOLHEAD SENSOR" if self._has_sensor("toolhead") else ""
-            msg += " after an initial %.1fmm fast bowden move" % self.calibrated_bowden_length
+                    msg += " and then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
+            if self._has_sensor("toolhead"):
+                msg += "\n- Extruder loads by homing a maximum of %.1fmm to TOOLHEAD SENSOR before moving the last %.1fmm the nozzle" % (self.toolhead_homing_max, self._get_home_position_to_nozzle())
+            else:
+                msg += "\n- Loads extruder by moving %.1fmm to the nozzle" % self._get_home_position_to_nozzle()
+
+            msg += "\nUnload Sequence"
+            msg += "\n- Tip is formed by %s" % ("SLICER" if not self.force_form_tip_standalone else ("'%s' macro" % self.form_tip_macro))
+            if self._has_sensor("toolhead"):
+                msg += "\n- Extruder unloads by homing a maximum %.1fmm (%.1f home_to_nozzle + %.1f safety) less reported park position to TOOLHEAD SENSOR, then the remainder to exist extruder" % (self._get_home_position_to_nozzle() + self.toolhead_unload_safety_margin, self._get_home_position_to_nozzle(), self.toolhead_unload_safety_margin)
+            else:
+                msg += "\n- Extruder unloads by moving %.1fmm (%1f home_to_nozzle + %.1f saftey) less reported park position to exit extruder" % (self._get_home_position_to_nozzle() + self.toolhead_unload_safety_margin, self._get_home_position_to_nozzle(), self.toolhead_unload_safety_margin)
+            if self._has_encoder() and self.bowden_pre_unload_test:
+                msg += "\n- Bowden is unloaded with a short %.1fmm validation move before %.1fmm (%.1f calibration - %.1f buffer - %.1f validation) fast move" % (self.encoder_move_step_size, self.calibrated_bowden_length - self.gate_unload_buffer - self.encoder_move_step_size, self.calibrated_bowden_length, self.gate_unload_buffer, self.encoder_move_step_size)
+            else:
+                msg += "\n- Bowden is unloaded with a fast %.1fmm (%.1f calibration - %.1f buffer) move" % (self.calibrated_bowden_length - self.gate_unload_buffer, self.calibrated_bowden_length, self.gate_unload_buffer)
+            msg += "\n- Filament is stored by homing a maximum of %.1fmm to %s and parking %.1fmm in the gate" % (self.gate_homing_max, "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "GATE SENSOR", self.gate_parking_distance)
+
             if self.toolhead_sync_unload or self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
                 msg += ("Print (at %d%% current), " % self.sync_gear_current) if self.sync_to_extruder else ""
                 msg += "Tip forming, " if self.sync_form_tip else ""
                 msg += "Extruder Unload " if self.toolhead_sync_unload else ""
             msg += "\nTip forming extruder current is %d%%" % self.extruder_form_tip_current
-            msg += ". SpoolMan is %s" % ("ENABLED" if self.enable_spoolman else "DISABLED")
-            msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector_touch else ("DISABLED", "is not"))
+
+            msg += "\n\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector_touch else ("DISABLED", "is not"))
             p = self.persistence_level
             msg += "\nPersistence: %s state is persisted across restarts" % ("All" if p == 4 else "Gate status, TTG map & EndlessSpool groups" if p == 3 else "TTG map & EndlessSpool groups" if p == 2 else "EndlessSpool groups" if p == 1 else "No")
             if self._has_encoder():
@@ -1439,7 +1464,8 @@ class Mmu:
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
                 msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
-            msg += "\nSensors: "
+            msg += "\nSpoolMan is %s. " % ("ENABLED" if self.enable_spoolman else "DISABLED")
+            msg += "Sensors: "
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
                 msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state == True else "Empty"))
@@ -2915,7 +2941,7 @@ class Mmu:
         self._servo_down()
         retries = self.gate_load_retries if allow_retry else 1
 
-        if self.gate_homing_endstop == "encoder":
+        if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             with self._require_encoder():
                 measured = 0.
                 for i in range(retries):
@@ -2954,7 +2980,7 @@ class Mmu:
         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
         if adjust_servo_on_error:
             self._servo_auto()
-        if self.gate_homing_endstop == "encoder":
+        if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             raise MmuError("Error loading filament at gate - not enough movement detected at encoder")
         else:
             raise MmuError("Error loading filament at gate - gate endstop didn't trigger")
@@ -2969,7 +2995,7 @@ class Mmu:
         if homing_max is None:
             homing_max = self.gate_homing_max
 
-        if self.gate_homing_endstop == "encoder":
+        if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             with self._require_encoder():
                 self._log_debug("Slow unload of the encoder")
                 max_steps = int(homing_max / self.encoder_move_step_size) + 5
@@ -3003,7 +3029,7 @@ class Mmu:
 
     # Shared gate functions to deduplicate logic
     def _validate_gate_config(self, direction):
-        if self.gate_homing_endstop == "encoder":
+        if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             if not self._has_encoder():
                 raise MmuError("Attempting to %s encoder but encoder is not configured on MMU!" % direction)
         elif self.gate_homing_endstop == self.ENDSTOP_GATE:
@@ -4562,7 +4588,7 @@ class Mmu:
 
         if self._is_mmu_paused():
             # Sanity check we are ready to go
-            if self._is_printing() and self.filament_pos != self.FILAMENT_POS_LOADED:
+            if self._is_in_print() and self.filament_pos != self.FILAMENT_POS_LOADED:
                 if self._check_sensor("toolhead") is True:
                     self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
@@ -4810,11 +4836,17 @@ class Mmu:
         self.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.extruder_form_tip_current, minval=100, maxval=150)
 
         # Homing, loading and unloading controls
+        self.gate_homing_endstop = gcmd.get('GATE_HOMING_ENDSTOP', self.gate_homing_endstop)
+        if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
+            raise gmd.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENSTOPS)
+        self.gate_parking_distance = gcmd.get('GATE_PARKING_DISTANCE', self.gate_parking_distance)
         self.bowden_apply_correction = gcmd.get_int('BOWDEN_APPLY_CORRECTION', self.bowden_apply_correction, minval=0, maxval=1)
         self.bowden_allowable_unload_delta = self.bowden_allowable_load_delta = gcmd.get_float('BOWDEN_ALLOWABLE_LOAD_DELTA', self.bowden_allowable_load_delta, minval=1., maxval=50.)
         self.bowden_pre_unload_test = gcmd.get_int('BOWDEN_PRE_UNLOAD_TEST', self.bowden_pre_unload_test, minval=0, maxval=1)
 
         self.extruder_homing_endstop = gcmd.get('EXTRUDER_HOMING_ENDSTOP', self.extruder_homing_endstop)
+        if self.extruder_homing_endstop not in self.EXTRUDER_ENDSTOPS:
+            raise gmd.error("extruder_homing_endstop is invalid. Options are: %s" % self.EXTRUDER_ENSTOPS)
         self.extruder_homing_max = gcmd.get_float('EXTRUDER_HOMING_MAX', self.extruder_homing_max, above=10.)
         self.extruder_force_homing = gcmd.get_int('EXTRUDER_FORCE_HOMING', self.extruder_force_homing, minval=0, maxval=1)
 
@@ -4890,6 +4922,8 @@ class Mmu:
         msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
 
         msg += "\n\nLOADING/UNLOADING:"
+        msg += "\ngate_homing_endstop = %s" % self.gate_homing_endstop
+        msg += "\ngate_parking_distance = %s" % self.gate_parking_distance
         if self._has_encoder():
             msg += "\nbowden_apply_correction = %d" % self.bowden_apply_correction
             msg += "\nbowden_allowable_load_delta = %d" % self.bowden_allowable_load_delta
