@@ -71,7 +71,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Kinematic step generation scan window time tracking
         self.kin_flush_delay = SDS_CHECK_TIME
         self.kin_flush_times = []
-        self.force_flush_time = self.last_kin_move_time = 0.
+        self.last_flush_time = self.need_flush_time = 0.
         # Setup iterative solver
         ffi_main, ffi_lib = chelper.get_ffi()
         self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
