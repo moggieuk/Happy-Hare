@@ -36,18 +36,34 @@ When combined with the `MMU_CHECK_GATES TOOLS=` functionality and placed in your
 To implement incorporate into your start g-code on your Slicer:
 
 ```yml
-START_PRINT TOOLS_USED=!referenced_tools! ...
+START_PRINT TOOLS_USED=!referenced_tools! INITIAL_TOOL=(initial_tool} ...
 ```
 
-Then, in you print start macro have logic similar to:
+Then in you print start macro add logic similar to:
 
 ```yml
 [gcode_macro START_PRINT]
 description: Called when starting print
 gcode:
     {% set TOOLS_USED = params.TOOLS_USED|default("")|string %}
+    {% set INITIAL_TOOL = params.INITIAL_TOOL|default(0)|int %}
+
+    {% if TOOLS_USED == "!referenced_tools!" %}
+        RESPOND MSG="Happy Hare gcode pre-processor is diabled"
+        {% set TOOLS_USED = INITIAL_TOOL %}
+    {% elif TOOLS_USED == "" %}
+        RESPOND MSG="Happy Hare single color print"
+        {% set TOOLS_USED = INITIAL_TOOL %}
+    {% endif %}
+
     :
-    MMU_CHECK_GATES TOOLS={TOOLS_USED}
+
+    MMU_CHECK_GATE TOOLS={TOOLS_USED}
+
     :
 ```
-`MMU_CHECK_GATES TOOLS=` with empty string will be ignored by Happy Hare. Also, any tool that was loaded prior to calling `MMU_CHECK_GATES` will be automatically restored.
+
+> [!NOTE]  
+> * `MMU_CHECK_GATE TOOLS=` with empty string will be ignored by Happy Hare.<br>
+> * Any tool that was loaded prior to calling `MMU_CHECK_GATES` will be automatically restored at the end of the checking procedure.<br>
+> * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `TOOLS_USED` (which counts `Tx` commands) will be empty.
