@@ -111,11 +111,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
         self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
 
-        # Nullify original extruder stepper definition so Klipper doesn't try to create it again
+        # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
+        self.old_ext_options = {}
+        self.config = config
         options = [ 'step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'gear_ratio',
                     'microsteps', 'full_steps_per_rotation', 'pressure_advance', 'pressure_advance_smooth_time']
         for i in options:
             if config.fileconfig.has_option('extruder', i):
+                self.old_ext_options[i] = config.fileconfig.get('extruder', i)
                 config.fileconfig.remove_option('extruder', i)
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 
@@ -123,6 +126,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
 
     def handle_connect(self):
+        # Restore original extruder options in case user macros reference them
+        for key in self.old_ext_options:
+            value = self.old_ext_options[key]
+            self.config.fileconfig.set('extruder', key, value)
+
         # Now we can switch in MmuExtruderStepper
         toolhead = self.printer.lookup_object('toolhead')
         printer_extruder = toolhead.get_extruder()
@@ -465,7 +473,7 @@ class MmuHoming(Homing, object):
         # Perform first home
         endstops = [es for rail in rails for es in rail.get_endstops()]
         hi = rails[0].get_homing_info()
-        hmove = HomingMove(self.printer, endstops, self.toolhead) # Override default toolhead
+        hmove = HomingMove(self.printer, endstops, self.toolhead) # Happy Hare: Override default toolhead
         hmove.homing_move(homepos, hi.speed)
         # Perform second home
         if hi.retract_dist:
@@ -482,7 +490,7 @@ class MmuHoming(Homing, object):
             startpos = [rp - ad * retract_r
                         for rp, ad in zip(retractpos, axes_d)]
             self.toolhead.set_position(startpos)
-            hmove = HomingMove(self.printer, endstops, self.toolhead) # Override default toolhead
+            hmove = HomingMove(self.printer, endstops, self.toolhead) # Happy Hare: Override default toolhead
             hmove.homing_move(homepos, hi.second_homing_speed)
             if hmove.check_no_movement() is not None:
                 raise self.printer.command_error(
@@ -589,7 +597,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
 # Wrapper for multiple stepper motor support
 def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
     rail = MmuPrinterRail(config, need_position_minmax=need_position_minmax, default_position_endstop=default_position_endstop, units_in_radians=units_in_radians)
-    for i in range(0, 23):
+    for i in range(0, 23): # Support for up to 24 gates
         if not config.has_section(config.get_name() + "_" + str(i)):
             break
         rail.add_extra_stepper(config.getsection(config.get_name() + str(i)))
