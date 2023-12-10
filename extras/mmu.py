@@ -359,6 +359,7 @@ class Mmu:
         self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or endstop name e.g. "mmu_gate"
         if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
             raise self.config.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENSTOPS)
+        self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', 0., minval=0.)
         self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', self.gate_parking_distance) # Can be +ve or -ve
@@ -368,7 +369,6 @@ class Mmu:
         self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
 
         # Configuration for (fast) bowden move
-        self.bowden_num_moves = config.getint('bowden_num_moves', 1, minval=1) # TODO: to be deprecated, not necessary anymore
         self.bowden_apply_correction = config.getint('bowden_apply_correction', 0, minval=0, maxval=1)
         self.bowden_allowable_load_delta = config.getfloat('bowden_allowable_load_delta', 10., minval=1.)
         self.bowden_allowable_unload_delta = config.getfloat('bowden_allowable_unload_delta', self.bowden_allowable_load_delta, minval=1.)
@@ -1721,7 +1721,7 @@ class Mmu:
                 self._log_always("Encoder calibration has been saved")
                 self.calibration_status |= self.CALIBRATED_ENCODER
 
-        except nmuError as ee:
+        except MmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration of encoder failed. Aborting, because:\n%s" % str(ee))
         finally:
@@ -1744,6 +1744,7 @@ class Mmu:
                 self._log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
                 measured_movement = self._get_encoder_distance(dwell=True)
+                measured_movement += self.gate_endstop_to_encoder # Adjust encoder reading for "dead" space
                 spring = self._servo_up(measure=True)
                 reference = measured_movement - spring
                 if spring > 0:
@@ -1771,8 +1772,8 @@ class Mmu:
                     msg += ". Clog detection length: %.1fmm" % detection_length
                 self._log_always(msg)
 
-                self._set_calibrated_bowden_length(average_reference)
                 if save:
+                    self._set_calibrated_bowden_length(average_reference)
                     self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_BOWDEN_LENGTH, average_reference))
                     self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=1.0" % (self.VARS_MMU_CALIB_PREFIX, 0))
                     self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, detection_length))
@@ -1931,20 +1932,20 @@ class Mmu:
             # Step 4 - the calcs
             length = last_gate_pos - gate0_pos
             self._log_debug("Results: gate0_pos=%.1f, last_gate_pos=%.1f, length=%.1f" % (gate0_pos, last_gate_pos, length))
-            self.selector_offsets = []
+            selector_offsets = []
             if self.mmu_version >= 2.0:
                 num_gates = int(round(length / self.cad_gate_width)) + 1
                 adj_gate_width = length / (num_gates - 1)
                 self._log_debug("Adjusted gate width: %.1f" % adj_gate_width)
                 self.selector_offsets = []
                 for i in range(num_gates):
-                    self.selector_offsets.append(round(gate0_pos + (i * adj_gate_width), 1))
-                self.bypass_offset = bypass_pos
+                    selector_offsets.append(round(gate0_pos + (i * adj_gate_width), 1))
+                bypass_offset = bypass_pos
 
             else:
                 num_gates = int(round(length / (self.cad_gate_width + self.cad_block_width / 3))) + 1
                 num_blocks = (num_gates - 1) // 3
-                self.bypass_offset = 0.
+                bypass_offset = 0.
                 if v1_bypass_block >= 0:
                     adj_gate_width = (length - (num_blocks - 1) * self.cad_block_width - self.cad_bypass_block_width) / (num_gates - 1)
                 else:
@@ -1952,16 +1953,18 @@ class Mmu:
                 self._log_debug("Adjusted gate width: %.1f" % adj_gate_width)
                 for i in range(num_gates):
                     bypass_adj = (self.cad_bypass_block_width - self.cad_block_width) if (i // 3) >= v1_bypass_block else 0.
-                    self.selector_offsets.append(round(gate0_pos + (i * adj_gate_width) + (i // 3) * self.cad_block_width + bypass_adj, 1))
+                    selector_offsets.append(round(gate0_pos + (i * adj_gate_width) + (i // 3) * self.cad_block_width + bypass_adj, 1))
                     if ((i + 1) / 3) == v1_bypass_block:
-                        self.bypass_offset = self.selector_offsets[i] + self.cad_bypass_block_delta
+                        bypass_offset = selector_offsets[i] + self.cad_bypass_block_delta
 
             if num_gates != self.mmu_num_gates:
                 self._log_error("You configued your MMU for %d gates but I counted %d! Please update `mmu_num_gates`" % (self.mmu_num_gates, num_gates))
                 return
 
-            self._log_always("Offsets %s and bypass %.1f" % (self.selector_offsets, self.bypass_offset))
+            self._log_always("Offsets %s and bypass %.1f" % (selector_offsets, bypass_offset))
             if save:
+                self.selector_offsets = selector_offsets
+                self.bypass_offset = bypass_offset
                 self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets))
                 self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset))
                 self._log_always("Selector calibration has been saved")
@@ -2943,7 +2946,9 @@ class Mmu:
 ##############################################
 
     # Load filament into gate. This is considered the "zero" positon for filament loading. Note that this
-    # may overshoot for the "encoder" loading technique but subsequent bowden move will accommodate
+    # may overshoot for the "encoder" loading technique but subsequent bowden move will accommodate. Also
+    # for systems with gate sensor and encoder with gate sensor first, there will be a gap in encoder readings
+    # on next bowden move
     def _load_gate(self, allow_retry=True, adjust_servo_on_error=True):
         self._validate_gate_config("load")
         self._set_filament_direction(self.DIRECTION_LOAD)
@@ -3071,19 +3076,12 @@ class Mmu:
             self._log_info("Warning: Gate %d not calibrated! Using default 1.0 gear ratio!" % self.gate_selected)
 
         # "Fast" load
-        moves = 1 if length < (self.calibrated_bowden_length / self.bowden_num_moves) else self.bowden_num_moves
-        delta = 0.
-        for i in range(moves):
-            slength = length / moves
-            msg = "Course loading move #%d into bowden" % (i+1)
-            _,_,_,sdelta = self._trace_filament_move(msg, slength, track=True, encoder_dwell=reference_load)
-            delta += sdelta
-            if (i+1) < moves:
-                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+        _,_,_,delta = self._trace_filament_move("Course loading move into bowden", length, track=True, encoder_dwell=reference_load)
+        delta -= self.gate_endstop_to_encoder # Adjust encoder reading for "dead" space
 
-            # Encoder based validation test
-            if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
-                raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
+        # Encoder based validation test
+        if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
+            raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
 
         if reference_load:
             ratio = (length - delta) / length
@@ -3147,20 +3145,10 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
         # "Fast" unload
-        moves = 1 if length < (self.calibrated_bowden_length / self.bowden_num_moves) else self.bowden_num_moves
-        delta = 0.
-        for i in range(moves):
-            slength = length / moves
-            msg = "Course unloading move #%d from bowden" % (i+1)
-            _,_,_,sdelta = self._trace_filament_move(msg, -slength, track=True)
-            delta += sdelta
-            if (i+1) < moves:
-                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+        _,_,_,delta = self._trace_filament_move("Course unloading move from bowden", -length, track=True)
+        delta -= self.gate_endstop_to_encoder # Adjust encoder reading for "dead" space
 
-            # Encoder based validation test
-            if self._can_use_encoder() and sdelta >= slength * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
-                raise MmuError("Failed to unload bowden. Perhaps filament is stuck in extruder. Gear moved %.1fmm, Encoder delta %.1fmm" % (slength, sdelta))
-
+        # Encoder based validation test
         if self._can_use_encoder() and delta >= tolerance and not self.calibrating:
             # Only a warning because _unload_gate() will deal with it
             self._log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
@@ -4848,6 +4836,7 @@ class Mmu:
         self.gate_homing_endstop = gcmd.get('GATE_HOMING_ENDSTOP', self.gate_homing_endstop)
         if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
             raise gmd.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENSTOPS)
+        self.gate_endstop_to_encoder = gcmd.get_float('GATE_ENDSTOP_TO_ENCODER', self.gate_endstop_to_encoder)
         self.gate_parking_distance = gcmd.get('GATE_PARKING_DISTANCE', self.gate_parking_distance)
         self.bowden_apply_correction = gcmd.get_int('BOWDEN_APPLY_CORRECTION', self.bowden_apply_correction, minval=0, maxval=1)
         self.bowden_allowable_unload_delta = self.bowden_allowable_load_delta = gcmd.get_float('BOWDEN_ALLOWABLE_LOAD_DELTA', self.bowden_allowable_load_delta, minval=1., maxval=50.)
@@ -4932,6 +4921,8 @@ class Mmu:
 
         msg += "\n\nLOADING/UNLOADING:"
         msg += "\ngate_homing_endstop = %s" % self.gate_homing_endstop
+        if self.gate_homing_endstop == self.ENDSTOP_GATE:
+            msg += "\ngate_endstop_to_encoder = %s" % self.gate_endstop_to_encoder
         msg += "\ngate_parking_distance = %s" % self.gate_parking_distance
         if self._has_encoder():
             msg += "\nbowden_apply_correction = %d" % self.bowden_apply_correction
