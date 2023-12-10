@@ -83,7 +83,7 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
-    VERSION = 2.2		# When this is revved, Happy Hare will instruct users to re-run ./install.sh
+    VERSION = 2.2		# When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
     BOOT_DELAY = 2.5            # Delay before running bootup tasks
 
     # Calibration steps
@@ -157,7 +157,6 @@ class Mmu:
     VENDOR_PRUSA    = "Prusa" # In progress
 
     # mmu_vars.cfg variables
-    VARS_HAPPY_HARE_VERSION         = "happy_hare_version"
     VARS_MMU_CALIB_CLOG_LENGTH      = "mmu_calibration_clog_length"
     VARS_MMU_ENABLE_ENDLESS_SPOOL   = "mmu_state_enable_endless_spool"
     VARS_MMU_ENDLESS_SPOOL_GROUPS   = "mmu_state_endless_spool_groups"
@@ -209,7 +208,7 @@ class Mmu:
                   ('tan','#D2B48C'), ('teal','#008080'), ('thistle','#D8BFD8'), ('tomato','#FF6347'), ('turquoise','#40E0D0'), ('violet','#EE82EE'),
                   ('wheat','#F5DEB3'), ('white','#FFFFFF'), ('whitesmoke','#F5F5F5'), ('yellow','#FFFF00'), ('yellowgreen','#9ACD32')]
 
-    UPGRADE_REMINDER = "Did you upgrade? Happy Hare minor version has changed which requires you to re-run\n'./install.sh' to update configuration files and klipper modules.\nDon't ignore this message - it won't be displayed again\nMore details: https://github.com/moggieuk/Happy-Hare/README.md"
+    UPGRADE_REMINDER = "Happy Hare minor version has changed which requires you to re-run\n'./install.sh' to update configuration files and klipper modules.\nMore details: https://github.com/moggieuk/Happy-Hare/doc/upgrade.md"
 
     def __init__(self, config):
         self.config = config
@@ -226,6 +225,11 @@ class Mmu:
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
+
+        # Instruct users to re-run ./install.sh if version number changes
+        self.config_version = config.getfloat('happy_hare_version', 2.2) # v2.2 was the last release before versioning
+        if self.config_version is not None and self.config_version < self.VERSION:
+            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.config_version, self.VERSION, self.UPGRADE_REMINDER))
 
         # MMU hardware (steppers, servo, encoder and optional sensors)
         self.selector_stepper = self.gear_stepper = self.mmu_extruder_stepper = self.encoder_sensor = self.servo = None
@@ -734,13 +738,6 @@ class Mmu:
         self.variables = self.printer.lookup_object('save_variables').allVariables
         if self.variables == {}:
             raise self.config.error("Calibration settings not found: mmu_vars.cfg probably not found. Check [save_variables] section in mmu_software.cfg")
-
-# PAUL
-#        # Instruct users to re-run ./install.sh if version number changes
-#        config_version = self.variables.get(self.VARS_HAPPY_HARE_VERSION, None)
-#        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN))
-#        if config_version is not None and config_version < self.VERSION:
-#            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (config_version, self.VERSION, self.UPGRADE_REMINDER))
 
         # Remember user setting of idle_timeout so it can be restored (if not overridden)
         if self.default_idle_timeout < 0:
@@ -1417,10 +1414,10 @@ class Mmu:
         config = gcmd.get_int('SHOWCONFIG', 0, minval=0, maxval=1)
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
 
-        msg = "%s v%s" % (self.mmu_vendor, self.mmu_version_string)
+        msg = "Happy Hare v%.1f running %s v%s" % (self.config_version, self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
-        msg += " is %s" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_mmu_paused() else "OPERATIONAL")
-        msg += " Servo %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
+        msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_mmu_paused() else "OPERATIONAL")
+        msg += "\nServo in %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
         if self._has_encoder():
             msg += ", Encoder reads %.1fmm" % self._get_encoder_distance()

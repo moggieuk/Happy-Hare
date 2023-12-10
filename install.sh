@@ -4,11 +4,14 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
+VERSION=2.2 # Important: Keep synced with mmy.py
+
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"
 KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
 KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
+SENSORS_SECTION="FILAMENT SENSORS"
 LED_SECTION="MMU OPTIONAL NEOPIXEL"
 
 
@@ -264,12 +267,29 @@ cleanup_manual_stepper_version() {
     fi
 }
 
-# Upgrade led effects part of mmu_hardware.cfg
+# Upgrade mmu sensors part of mmu_hardware.cfg
+upgrade_mmu_sensors() {
+    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    found_mmu_sensors=$(egrep -c "${SENSORS_SECTION}" ${hardware_cfg} || true)
+
+    if [ "${found_mmu_sensors}" -eq 0 ]; then
+        # Form new section ready for insertion at end of existing mmu_hardware.cfg
+        sed -n "/${SENSORS_SECTION}/,+26p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
+                    s/^/#/; \
+                " > "${hardware_cfg}.tmp"
+
+        # Add new mmu sensors config section
+        echo -e "${INFO}Adding new mmu sensors section (commented out) to mmu_hardware.cfg..."
+        cat "${hardware_cfg}.tmp" >> "${hardware_cfg}" && rm "${hardware_cfg}.tmp"
+    fi
+}
+
+# Upgrade led effects part of mmu_hardware.cfg (assumed last part of file)
 upgrade_led_effects() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_old_led_effects=$(egrep -c "${LED_SECTION}" ${hardware_cfg} || true)
+    found_led_effects=$(egrep -c "${LED_SECTION}" ${hardware_cfg} || true)
 
-    if [ "${found_old_led_effects}" -eq 0 ]; then
+    if [ "${found_led_effects}" -eq 0 ]; then
         # Form new section ready for insertion at end of existing mmu_hardware.cfg
         sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
                     s/^/#/; \
@@ -399,6 +419,7 @@ read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg"
     parse_file "${SRCDIR}/config/base/mmu_filametrix.cfg" "variable_"
+    happy_hare_version=${VERSION}
 }
 
 # Pull parameters from previous installation
@@ -1313,6 +1334,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
     fi
     copy_config_files
     cleanup_manual_stepper_version
+    upgrade_mmu_sensors
     upgrade_led_effects
     link_mmu_plugins
     install_update_manager

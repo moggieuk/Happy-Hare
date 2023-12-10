@@ -1,5 +1,5 @@
 # Happy Hare - Upgrade Notice
-If you have found this page you are probably experiencing this startup message similar to:
+If you have found this page you are probably experiencing a startup message similar to:
 
 ```
 Looks like you upgraded (v2.2 -> v2.3)?
