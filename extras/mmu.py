@@ -83,9 +83,8 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
+    VERSION = 2.2		# When this is revved, Happy Hare will instruct users to re-run ./install.sh
     BOOT_DELAY = 2.5            # Delay before running bootup tasks
-
-    LONG_MOVE_THRESHOLD = 70.   # This is also the initial move to load past encoder
 
     # Calibration steps
     CALIBRATED_GEAR     = 0b00001
@@ -154,10 +153,11 @@ class Mmu:
 
     # Vendor MMU's supported
     VENDOR_ERCF     = "ERCF"
-    VENDOR_TRADRACK = "Tradrack" # In progress
+    VENDOR_TRADRACK = "Tradrack"
     VENDOR_PRUSA    = "Prusa" # In progress
 
     # mmu_vars.cfg variables
+    VARS_HAPPY_HARE_VERSION         = "happy_hare_version"
     VARS_MMU_CALIB_CLOG_LENGTH      = "mmu_calibration_clog_length"
     VARS_MMU_ENABLE_ENDLESS_SPOOL   = "mmu_state_enable_endless_spool"
     VARS_MMU_ENDLESS_SPOOL_GROUPS   = "mmu_state_endless_spool_groups"
@@ -209,7 +209,7 @@ class Mmu:
                   ('tan','#D2B48C'), ('teal','#008080'), ('thistle','#D8BFD8'), ('tomato','#FF6347'), ('turquoise','#40E0D0'), ('violet','#EE82EE'),
                   ('wheat','#F5DEB3'), ('white','#FFFFFF'), ('whitesmoke','#F5F5F5'), ('yellow','#FFFF00'), ('yellowgreen','#9ACD32')]
 
-    UPGRADE_REMINDER = "Did you upgrade? Run Happy Hare './install.sh' again to fix configuration files and read https://github.com/moggieuk/Happy-Hare/README.md"
+    UPGRADE_REMINDER = "Did you upgrade? Happy Hare minor version has changed which requires you to re-run\n'./install.sh' to update configuration files and klipper modules.\nDon't ignore this message - it won't be displayed again\nMore details: https://github.com/moggieuk/Happy-Hare/README.md"
 
     def __init__(self, config):
         self.config = config
@@ -291,7 +291,7 @@ class Mmu:
             if "e" in self.mmu_version_string:
                 self.gate_parking_distance = 39. # Using Encoder
             else:
-                self.gate_parking_distance = 17.5 # Using Gate switch
+                self.gate_parking_distance = 17. # Using Gate switch (had user reports from 15 - 17.5)
 
             self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
 
@@ -312,9 +312,9 @@ class Mmu:
         self.cad_bypass_offset = config.getfloat('cad_bypass_offset', self.cad_bypass_offset, minval=0.)
         self.cad_last_gate_offset = config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
 
-        self.cad_block_width = config.getfloat('cad_block_width', self.cad_block_width, above=0.) # ERCF v1.1
-        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.) # ERCF v1.1
-        self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1
+        self.cad_block_width = config.getfloat('cad_block_width', self.cad_block_width, above=0.) # ERCF v1.1 only
+        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.) # ERCF v1.1 only
+        self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1 only
 
         self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', 10., above=0.) # Extra movement allowed by selector
 
@@ -657,7 +657,7 @@ class Mmu:
         # Get servo and (optional) encoder setup -----
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
         if not self.servo:
-            raise self.config.error("Missing [mmu_servo] definition in mmu_hardware.cfg\n%s" % self.UPGRADE_REMINDER)
+            raise self.config.error("No [mmu_servo] definition found in mmu_hardware.cfg")
         self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
         if not self.encoder_sensor:
             # MMU logging not set up so use main klippy logger
@@ -734,6 +734,13 @@ class Mmu:
         self.variables = self.printer.lookup_object('save_variables').allVariables
         if self.variables == {}:
             raise self.config.error("Calibration settings not found: mmu_vars.cfg probably not found. Check [save_variables] section in mmu_software.cfg")
+
+# PAUL
+#        # Instruct users to re-run ./install.sh if version number changes
+#        config_version = self.variables.get(self.VARS_HAPPY_HARE_VERSION, None)
+#        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN))
+#        if config_version is not None and config_version < self.VERSION:
+#            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (config_version, self.VERSION, self.UPGRADE_REMINDER))
 
         # Remember user setting of idle_timeout so it can be restored (if not overridden)
         if self.default_idle_timeout < 0:
@@ -930,14 +937,13 @@ class Mmu:
 
                 if self.gate_selected >= 0:
                     self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
-                    offset = self.selector_offsets[self.gate_selected]
                     if self.tool_selected == self.TOOL_GATE_BYPASS: # Sanity check
                         self.tool_selected = self.TOOL_GATE_UNKNOWN
-                    self._set_selector_pos(offset)
+                    #PAUL self._set_selector_pos(self.selector_offsets[self.gate_selected])
                     self.is_homed = True
                 elif self.gate_selected == self.TOOL_GATE_BYPASS:
                     self.tool_selected = self.TOOL_GATE_BYPASS # Sanity check
-                    self._set_selector_pos(self.bypass_offset)
+                    #PAUL self._set_selector_pos(self.bypass_offset)
                     self.is_homed = True
                 else:
                     self.tool_selected = self.TOOL_GATE_UNKNOWN
@@ -1014,6 +1020,12 @@ class Mmu:
             if self.log_startup_status > 0:
                 self._log_always(self._tool_to_gate_map_to_human_string(self.log_startup_status == 1))
                 self._display_visual_state(silent=self.persistence_level < 4)
+            # Set selector position if necessary PAUL .. experiment
+            if self.persistence_level >= 4:
+                if self.gate_selected >= 0:
+                    self._set_selector_pos(self.selector_offsets[self.gate_selected])
+                elif self.gate_selected == self.TOOL_GATE_BYPASS:
+                    self._set_selector_pos(self.bypass_offset)
             self._set_print_state("initialized")
             if self._has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
@@ -1436,7 +1448,7 @@ class Mmu:
                 msg += "\n- Loads extruder by moving %.1fmm to the nozzle" % self._get_home_position_to_nozzle()
 
             msg += "\nUnload Sequence"
-            msg += "\n- Tip is formed by %s" % ("SLICER" if not self.force_form_tip_standalone else ("'%s' macro" % self.form_tip_macro))
+            msg += "\n- Tip is %s formed by %s" % (("sometimes", "SLICER") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro)))
             if self._has_sensor("toolhead"):
                 msg += "\n- Extruder unloads by homing a maximum %.1fmm (%.1f home_to_nozzle + %.1f safety) less reported park position to TOOLHEAD SENSOR, then the remainder to exist extruder" % (self._get_home_position_to_nozzle() + self.toolhead_unload_safety_margin, self._get_home_position_to_nozzle(), self.toolhead_unload_safety_margin)
             else:
@@ -3660,7 +3672,7 @@ class Mmu:
         self.is_homed = False
         self.gate_selected = self.TOOL_GATE_UNKNOWN
         self._servo_move()
-        self._movequeues_wait_moves(toolhead=False)
+        self._movequeues_wait_moves()
         homing_state = MmuHoming(self.printer, self.mmu_toolhead)
         homing_state.set_axes([0])
         try:
@@ -4975,6 +4987,9 @@ class Mmu:
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
+        if self.filament_pos != self.FILAMENT_POS_LOADED and not force_runout:
+            raise MmuError("Filament runout or clog when filament is not fully loaded - manual intervention is required")
+
         self._log_info("Issue on tool T%d" % self.tool_selected)
         self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
 
@@ -5206,8 +5221,9 @@ class Mmu:
     cmd_MMU_GATE_RUNOUT_help = "Internal gate filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
+        force_runout = bool(gcmd.get_int('FORCE_RUNOUT', 0, minval=0, maxval=1))
         try:
-            self._handle_runout(force_runout=True)
+            self._handle_runout(force_runout)
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
@@ -5228,7 +5244,7 @@ class Mmu:
             self._set_gate_status(gate, self.GATE_EMPTY)
             # TODO enable when tested
             #if self._is_in_print() and active and gate == self.gate_selected:
-            #    self._handle_runout(force_runout=True)
+            #    self._handle_runout()
         except MmuError as ee:
             self._mmu_pause(str(ee))
         

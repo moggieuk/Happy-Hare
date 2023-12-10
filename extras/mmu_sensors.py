@@ -135,7 +135,7 @@ class MmuSensors:
             section = "filament_switch_sensor %s_sensor" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
-            config.fileconfig.set(section, "pause_on_runout", "True")
+            config.fileconfig.set(section, "pause_on_runout", "False")
             config.fileconfig.set(section, "insert_gcode", "__MMU_GATE_INSERT")
             config.fileconfig.set(section, "runout_gcode", "__MMU_GATE_RUNOUT")
             fs = printer.load_object(config, section)
