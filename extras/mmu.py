@@ -802,11 +802,6 @@ class Mmu:
             self.calibration_status |= self.CALIBRATED_BOWDEN
         else:
             self._log_always("Warning: Reference bowden length not found in mmu_vars.cfg. Probably not calibrated")
-# PAUL
-#
-#        # Restore state if fully calibrated
-#        if not self._check_is_calibrated(silent=True):
-#            self._load_persisted_state()
 
     def _initialize_state(self):
         self.is_enabled = True
@@ -1023,12 +1018,6 @@ class Mmu:
             if self.log_startup_status > 0:
                 self._log_always(self._tool_to_gate_map_to_human_string(self.log_startup_status == 1))
                 self._display_visual_state(silent=self.persistence_level < 4)
-#            # Set selector position if necessary PAUL .. experiment
-#            if self.persistence_level >= 4:
-#                if self.gate_selected >= 0:
-#                    self._set_selector_pos(self.selector_offsets[self.gate_selected])
-#                elif self.gate_selected == self.TOOL_GATE_BYPASS:
-#                    self._set_selector_pos(self.bypass_offset)
             self._set_print_state("initialized")
             if self._has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
