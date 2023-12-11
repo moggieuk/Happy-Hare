@@ -2147,6 +2147,13 @@ class Mmu:
     def _is_in_endstate(self):
         return self.print_state in ["complete", "cancelled", "error", "ready", "standby", "initialized"]
 
+    def _is_in_standby(self):
+        return self.print_state in ["standby"]
+
+    def _wakeup(self):
+        if self._is_in_standby():
+            self._set_print_state("idle")
+
     # Track print events simply to ease internal print state transitions. Specificly we want to detect
     # the start and end of a print and falling back into 'standby' state on idle
     #
@@ -2169,7 +2176,6 @@ class Mmu:
             prev_ps = self.last_print_stats
             old_state = prev_ps['state']
             new_state = new_ps['state']
-            #self._log_trace("Current Job State: %s, print_stats: %s" % (self.print_state.upper(), new_ps))
             if new_state is not old_state:
                 if new_state == "printing" and event_type == "printing":
                     # Figure out the difference between initial job start and resume
@@ -2191,8 +2197,8 @@ class Mmu:
                 self.last_print_stats = dict(new_ps)
 
         # Capture transition to standby
-        if self.print_state == "standby":
-            self._set_print_state("ready", call_macro=False)
+        if event_type == "idle" and self.print_state != "standby":
+            self._exec_gcode("_MMU_PRINT_END STATE=standby")
 
     def _exec_gcode(self, command):
         try:
@@ -2319,7 +2325,9 @@ class Mmu:
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
             self._sync_gear_to_extruder(False, servo=True)
-        self._set_print_state(state)
+            self._set_print_state(state)
+        if state == "standby" and not self._is_in_standby():
+            self._set_print_state(state)
 
     def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None):
         homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
@@ -2495,6 +2503,7 @@ class Mmu:
         if not self.is_enabled:
             self._log_error("MMU is disabled. Please use MMU ENABLE=1 to use")
             return True
+        self._wakeup()
         return False
 
     def _check_in_bypass(self):
@@ -2748,6 +2757,7 @@ class Mmu:
 
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
     def cmd_MMU_RESET(self, gcmd):
+        if self._check_is_disabled(): return
         confirm = gcmd.get_int('CONFIRM', 0, minval=0, maxval=1)
         if confirm != 1:
             self._log_always("You must re-run and add 'CONFIRM=1' to reset all state back to default")
@@ -2778,6 +2788,7 @@ class Mmu:
 
     cmd_MMU_FORM_TIP_help = "Convenience macro for calling the standalone tip forming functionality (or cutter logic)"
     def cmd_MMU_FORM_TIP(self, gcmd):
+        if self._check_is_disabled(): return
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         show = bool(gcmd.get_int('SHOW', 0, minval=0, maxval=1))
         run = bool(gcmd.get_int('RUN', 1, minval=0, maxval=1))
@@ -4782,11 +4793,13 @@ class Mmu:
 
     cmd_MMU_TEST_MOVE_help = "Test filament move to help debug setup / options"
     def cmd_MMU_TEST_MOVE(self, gcmd):
+        if self._check_is_disabled(): return
         actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
         self._log_always("Moved %.1fmm%s" % (actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"
     def cmd_MMU_TEST_HOMING_MOVE(self, gcmd):
+        if self._check_is_disabled(): return
         actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move")
         self._log_always("%s after %.1fmm%s" % (("Homed" if homed else "Did not home"), actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
