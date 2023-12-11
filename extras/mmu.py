@@ -2165,6 +2165,7 @@ class Mmu:
             new_ps = self.print_stats.get_status(eventtime)
             if self.last_print_stats is None:
                 self.last_print_stats = dict(new_ps)
+                self.last_print_stats['state'] = 'initialized'
             prev_ps = self.last_print_stats
             old_state = prev_ps['state']
             new_state = new_ps['state']
@@ -2174,15 +2175,15 @@ class Mmu:
                     # Figure out the difference between initial job start and resume
                     if prev_ps['state'] == "paused" and prev_ps['filename'] == new_ps['filename'] and prev_ps['total_duration'] < new_ps['total_duration']:
                         # This is a 'resumed' state so ignore
-                        self._log_trace("Automaticaly detected RESUME (ignored), new_state=%s, current print_state=%s" % (new_state, self.print_state))
+                        self._log_trace("Automaticaly detected RESUME (ignored), print_stats=%s, current mmu print_state=%s" % (new_state, self.print_state))
                     else:
                         # This is a 'started' state
-                        self._log_trace("Automaticaly detected JOB START, new_state=%s, current print_state=%s" % (new_state, self.print_state))
+                        self._log_trace("Automaticaly detected JOB START, print_status:print_stats=%s, current mmu print_state=%s" % (new_state, self.print_state))
                         if self.print_state not in ["started", "printing"]:
                             self._on_print_start(pre_start_only=True)
                             self.reactor.register_callback(self._print_start_event_handler)
                 elif new_state in ["complete", "error"] and event_type == "ready":
-                    self._log_trace("Automatically detected JOB %s, new_state=%s, current print_state=%s" % (new_state.upper(), new_state, self.print_state))
+                    self._log_trace("Automatically detected JOB %s, print_stats=%s, current mmu print_state=%s" % (new_state.upper(), new_state, self.print_state))
                     if new_state == "error":
                         self.reactor.register_callback(self._print_error_event_handler)
                     else:
@@ -2190,10 +2191,7 @@ class Mmu:
                 self.last_print_stats = dict(new_ps)
 
         # Capture transition to standby
-        if event_type == "idle" and self.print_state != "standby":
-            # This could wake the printer up again so only do it once
-            self._exec_gcode("_MMU_PRINT_END STATE=standby")
-        elif self.print_state == "standby":
+        if self.print_state == "standby":
             self._set_print_state("ready", call_macro=False)
 
     def _exec_gcode(self, command):
@@ -4584,9 +4582,6 @@ class Mmu:
                 if self._check_sensor("toolhead") is True:
                     self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
-                else:
-                    self._log_always("State does not indicate flament is LOADED. Run `MMU_RECOVER LOADED=1` to indicate filament is loaded")
-                    return
 
         self._wrap_gcode_command("__RESUME", None)
         self._mmu_resume()
@@ -5466,9 +5461,13 @@ class Mmu:
                         gates_tools.append([gate, -1])
     
                 # Force initial eject
-                if not filament_pos == self.FILAMENT_POS_UNLOADED:
-                    self._log_info("Unloading current tool prior to checking gates")
-                    self._unload_tool()
+                try:
+                    if not filament_pos == self.FILAMENT_POS_UNLOADED:
+                        self._log_info("Unloading current tool prior to checking gates")
+                        self._unload_tool()
+                except MmuError as ee:
+                    self._mmu_pause(str(ee))
+                    return
     
                 for gate, tool in gates_tools:
                     try:
