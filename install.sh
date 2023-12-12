@@ -51,32 +51,32 @@ PIN[ERB,pre_gate_9_pin]="";              PIN[EASY-BRD,pre_gate_9_pin]="";       
 PIN[ERB,pre_gate_10_pin]="";             PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
 PIN[ERB,pre_gate_11_pin]="";             PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
-# Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on last input)
+# Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP10)
 #
-PIN[MBB,gear_uart_pin]="PA10";
+PIN[MBB,gear_uart_pin]="PA10";       # M1
 PIN[MBB,gear_step_pin]="PB15";
 PIN[MBB,gear_dir_pin]="PB14";
 PIN[MBB,gear_enable_pin]="PA8";
-PIN[MBB,gear_diag_pin]="";
-PIN[MBB,selector_uart_pin]="PC7";
+PIN[MBB,gear_diag_pin]="PA3";
+PIN[MBB,selector_uart_pin]="PC7";    # M2
 PIN[MBB,selector_step_pin]="PD2";
 PIN[MBB,selector_dir_pin]="PB13";
 PIN[MBB,selector_enable_pin]="PD1";
-PIN[MBB,selector_diag_pin]="";
-PIN[MBB,selector_endstop_pin]="PB2";
+PIN[MBB,selector_diag_pin]="PA4";
+PIN[MBB,selector_endstop_pin]="PB2"; # STP11
 PIN[MBB,servo_pin]="PA0";
 PIN[MBB,encoder_pin]="PA1";
-PIN[MBB,neopixel_pin]="";
-PIN[MBB,gate_sensor_pin]="PB10";
-PIN[MBB,pre_gate_0_pin]="PA3";
-PIN[MBB,pre_gate_1_pin]="PA4";
-PIN[MBB,pre_gate_2_pin]="PB8";
-PIN[MBB,pre_gate_3_pin]="PB7";
-PIN[MBB,pre_gate_4_pin]="PC15";
-PIN[MBB,pre_gate_5_pin]="PC13";
-PIN[MBB,pre_gate_6_pin]="PC14";
-PIN[MBB,pre_gate_7_pin]="PB12";
-PIN[MBB,pre_gate_8_pin]="PB11";
+PIN[MBB,neopixel_pin]="PA2";
+PIN[MBB,gate_sensor_pin]="PB10";     # STP10
+PIN[MBB,pre_gate_0_pin]="PA3";       # STP1
+PIN[MBB,pre_gate_1_pin]="PA4";       # STP2
+PIN[MBB,pre_gate_2_pin]="PB9";       # STP3
+PIN[MBB,pre_gate_3_pin]="PB8";       # STP4
+PIN[MBB,pre_gate_4_pin]="PC15";      # STP5
+PIN[MBB,pre_gate_5_pin]="PC13";      # STP6
+PIN[MBB,pre_gate_6_pin]="PC14";      # STP7
+PIN[MBB,pre_gate_7_pin]="PB12";      # STP8
+PIN[MBB,pre_gate_8_pin]="PB11";      # STP9
 PIN[MBB,pre_gate_9_pin]="";
 PIN[MBB,pre_gate_10_pin]="";
 PIN[MBB,pre_gate_11_pin]="";
