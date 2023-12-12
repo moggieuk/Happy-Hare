@@ -5233,9 +5233,8 @@ class Mmu:
             gate = gcmd.get_int('GATE')
             self._log_debug("Filament runout detected by pre-gate sensor on gate #%d" % gate)
             self._set_gate_status(gate, self.GATE_EMPTY)
-            # TODO enable when tested
-            #if self._is_in_print() and active and gate == self.gate_selected:
-            #    self._handle_runout()
+            if self._is_in_print() and active and gate == self.gate_selected and self.enable_endless_spool == 2:
+                self._handle_runout()
         except MmuError as ee:
             self._mmu_pause(str(ee))
         

@@ -202,7 +202,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
 
 ```yml
     printer.mmu.enabled : {bool} True if MMU is enabled
-    printer.mmu.is_locked : {bool} True if MMU is paused after an error
+    printer.mmu.is_locked : {bool} True if MMU is paused after an error DEPRECATED: use print_job_state
     printer.mmu.is_homed : {bool} True if MMU has been homed
     printer.mmu.tool : {int} 0..n | -1 for unknown | -2 for bypass
     printer.mmu.gate : {int} 0..n | -1 for unknown
@@ -226,9 +226,9 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
     printer.mmu.sync_drive : {bool} True if gear stepper is currently synced to extruder
-    printer.mmu.print_job_state : {string} current job state seen by MMU (standby | started | printing | pause_locked | paused | complete | cancelled | error)
+    printer.mmu.print_job_state : {string} current job state seen by MMU (initialized | standby | started | printing | pause_locked | paused | complete | cancelled | error)
     printer.mmu.clog_detection : {int} 0 (off) | 1 (manual) | 2 (auto)
-    printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled)
+    printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled) | 2 (additionally enabled for pre-gate sensor)
     printer.mmu.print_start_detection : {int} 0 (disabled) | 1 (enabled)
 ```
 
