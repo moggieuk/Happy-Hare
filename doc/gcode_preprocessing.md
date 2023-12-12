@@ -36,7 +36,7 @@ When combined with the `MMU_CHECK_GATES TOOLS=` functionality and placed in your
 To implement incorporate into your start g-code on your Slicer:
 
 ```yml
-START_PRINT TOOLS_USED=!referenced_tools! INITIAL_TOOL=(initial_tool} ...
+START_PRINT TOOLS_USED=!referenced_tools! INITIAL_TOOL={initial_tool} ...
 ```
 
 Then in you print start macro add logic similar to:
