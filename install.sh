@@ -853,7 +853,7 @@ questionaire() {
         1)
             mmu_vendor="ERCF"
             mmu_version="1.1"
-            echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 are supported. Let me ask you about them...${INPUT}"
+            echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
             echo
             case $yn in
@@ -879,21 +879,39 @@ questionaire() {
         2)
             mmu_vendor="ERCF"
             mmu_version="2.0"
+            echo -e "${PROMPT}Some popular upgrade options for ERCF v2.0 can automatically be setup. Let me ask you about them...${INPUT}"
+            yn=$(prompt_yn "Are you using 'ThumperBlocks' filament block option")
+            echo
+            case $yn in
+            y)
+                mmu_version+="h"
+                ;;
+            esac
             ;;
         3)
             mmu_vendor="Tradrack"
             mmu_version="1.0"
+            echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
+            yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
+            echo
+            case $yn in
+            y)
+                mmu_version+="e"
+                ;;
+            esac
             ;;
         4)
             mmu_vendor="Other"
             mmu_version="1.0"
+            echo
+            echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU you will need to setup some CAD dimensions and other key parameters... See doc"
             ;;
     esac
 
     echo
 
     brd_type="unknown"
-    echo -e "${PROMPT}Select mcu board type used to control MMU${INPUT}"
+    echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
     echo -e " 1) BTT MMB"
     echo -e " 2) Fysetc Burrows ERB"
     echo -e " 3) Standard EASY-BRD (with SAMD21)"
@@ -969,127 +987,6 @@ questionaire() {
             SETUP_SELECTOR_TOUCH=0
             ;;
     esac
-
-#    echo
-#    case $yn in
-#        y)
-#            echo -e "${INFO}Great, I can setup almost everything for you. Let's get started"
-#            serial=""
-#            echo
-#            for line in `ls /dev/serial/by-id 2>/dev/null | egrep "Klipper_samd21|Klipper_rp2040"`; do
-#                if echo ${line} | grep --quiet "Klipper_samd21"; then
-#                    brd_type="EASY-BRD"
-#                else
-#                    echo -e "${PROMPT}${SECTION}You seem to have a ${EMPHASIZE}RP2040-based${PROMPT} controller serial port.${INPUT}"
-#                    yn=$(prompt_yn "Are you using the Fysetc Burrows ERB controller?")
-#                    echo
-#                    case $yn in
-#                    y)
-#                        brd_type="ERB"
-#                        ;;
-#                    n)
-#                        brd_type="EASY-BRD-RP2040"
-#                        ;;
-#                    esac
-#                fi
-#                echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
-#                yn=$(prompt_yn "/dev/serial/by-id/${line}")
-#                echo
-#                case $yn in
-#                    y)
-#                        serial="/dev/serial/by-id/${line}"
-#                        break
-#                        ;;
-#                    n)
-#                        brd_type="unknown"
-#                        ;;
-#                esac
-#            done
-#            if [ "${serial}" == "" ]; then
-#                echo -e "${PROMPT}${SECTION}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
-#                echo -e "Setup for which mcu?"
-#                echo -e "1) ERB"
-#                echo -e "2) Standard EASY-BRD (with SAMD21)"
-#                echo -e "3) EASY-BRD with RP2040${INPUT}"
-#                num=$(prompt_123 "MCU type?" 3)
-#                echo
-#                case $num in
-#                    1)
-#                        brd_type="ERB"
-#                        ;;
-#                    2)
-#                        brd_type="EASY-BRD"
-#                        ;;
-#                    3)
-#                        brd_type="EASY-BRD-RP2040"
-#                        ;;
-#                esac
-#                serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
-#            fi
-#
-#            echo
-#            echo -e "${WARNING}Board Type: ${brd_type}"
-#
-#            echo
-#            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
-#            yn=$(prompt_yn "Enable selector touch operation (not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers")
-#            echo
-#            case $yn in
-#                y)
-#                    if [ "${brd_type}" == "EASY-BRD" ]; then
-#                        echo
-#                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
-#                    fi
-#                    SETUP_SELECTOR_TOUCH=1
-#                    ;;
-#                n)
-#                    if [ "${brd_type}" == "EASY-BRD" ]; then
-#                        echo
-#                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
-#                    fi
-#                    SETUP_SELECTOR_TOUCH=0
-#                    ;;
-#            esac
-#            ;;
-#
-#
-#        n)
-#            easy_brd=0
-#            echo -e "${INFO}Ok, I can only partially setup non EASY-BRD/ERB installations, but lets see what I can help with"
-#            serial=""
-#            echo
-#            for line in `ls /dev/serial/by-id`; do
-#                echo -e "${PROMPT}${SECTION}Is this the serial port to your MMU mcu?${INPUT}"
-#                yn=$(prompt_yn "/dev/serial/by-id/${line}")
-#                echo
-#                case $yn in
-#                    y)
-#                        serial="/dev/serial/by-id/${line}"
-#                        break
-#                        ;;
-#                    n)
-#                        ;;
-#                esac
-#            done
-#            if [ "${serial}" = "" ]; then
-#                echo -e "${INFO}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later as per the docs"
-#                serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
-#            fi
-#
-#            echo
-#            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
-#            yn=$(prompt_yn "Enable selector touch operation (recommend no for now")
-#            echo
-#            case $yn in
-#                y)
-#                    SETUP_SELECTOR_TOUCH=1
-#                    ;;
-#                n)
-#                    SETUP_SELECTOR_TOUCH=0
-#                    ;;
-#            esac
-#            ;;
-#    esac
 
     mmu_num_gates=8
     echo
@@ -1210,7 +1107,7 @@ questionaire() {
             esac
 
             echo -e "${PROMPT}    Would you like to include subset of the legacy ERCF_ command set compatibility module${INPUT}"
-            yn=$(prompt_yn "    Include legacy ERCF command set")
+            yn=$(prompt_yn "    Include legacy ERCF command set (not recommended)")
             echo
             case $yn in
                 y)

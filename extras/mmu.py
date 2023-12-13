@@ -259,6 +259,7 @@ class Mmu:
         self.cad_bypass_block_delta = 9.
 
         self.gate_parking_distance = 23.
+        self.gate_endstop_to_encoder = 0.
         self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
 
         # Specific vendor build parameters / tuning. Mostly CAD related but a few exceptions like gate_park_distance
@@ -273,8 +274,17 @@ class Mmu:
                 self.gate_parking_distance = 13.
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
+                # Modifications:
+                #  h = ThumperBlocks filament blocks
+                if "h" in self.mmu_version_string:
+                    self.cad_gate_width = 21.
+                    self.gate_parking_distance = 11.
+
             else: # V1.1 original
-                # Allow for variations using letter suffixes
+                # Modifications:
+                #  t = TripleDecky filament blocks
+                #  s = Springy sprung servo selector
+                #  b = Binky encoder upgrade
                 if "t" in self.mmu_version_string:
                     self.cad_gate_width = 23. # Triple Decky is wider filament block
                     self.cad_block_width = 0. # Bearing blocks are not used
@@ -292,12 +302,16 @@ class Mmu:
             self.cad_bypass_offset = 0 # Doesn't have bypass
             self.cad_last_gate_offset = 1. # TODO this is a guess
 
-            if "e" in self.mmu_version_string:
-                self.gate_parking_distance = 39. # Using Encoder
-            else:
-                self.gate_parking_distance = 17. # Using Gate switch (had user reports from 15 - 17.5)
-
+            self.gate_parking_distance = 17. # Using Gate switch (had user reports from 15 - 17.5)
             self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
+
+            # Modifications:
+            #  e = has encoder modification
+            #      Note: if have encoder but want to use gate sensor to part, then `gate_endstop_to_encoder`
+            #            would need to be set and `gate_parking_distance` set back to original
+            if "e" in self.mmu_version_string:
+                self.gate_parking_distance = 39. # Assume using encoder if we have it
+                self.gate_endstop_to_encoder = 15. # TODO this is a guess
 
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure `cad` dimensions (see doc)")
@@ -359,7 +373,7 @@ class Mmu:
         self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or endstop name e.g. "mmu_gate"
         if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
             raise self.config.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENSTOPS)
-        self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', 0., minval=0.)
+        self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', self.gate_endstop_to_encoder, minval=0.)
         self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', self.gate_parking_distance) # Can be +ve or -ve
@@ -579,15 +593,6 @@ class Mmu:
         self.gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
         self.gcode.register_command('MMU_SOAKTEST_LOAD_SEQUENCE', self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE, desc = self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help)
 
-        # Internal handlers for Runout & Insertion for all sensor options
-        self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
-        self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
-        self.gcode.register_command('__MMU_GATE_RUNOUT', self.cmd_MMU_GATE_RUNOUT, desc = self.cmd_MMU_GATE_RUNOUT_help)
-        self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
-        self.gcode.register_command('__MMU_PRE_GATE_RUNOUT', self.cmd_MMU_PRE_GATE_RUNOUT, desc = self.cmd_MMU_PRE_GATE_RUNOUT_help)
-        self.gcode.register_command('__MMU_PRE_GATE_INSERT', self.cmd_MMU_PRE_GATE_INSERT, desc = self.cmd_MMU_PRE_GATE_INSERT_help)
-        self.gcode.register_command('__MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
-
         # TTG and Endless spool
         self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help)
         self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
@@ -606,6 +611,15 @@ class Mmu:
         self.gcode.register_command('_MMU_STEP_HOMING_MOVE', self.cmd_MMU_STEP_HOMING_MOVE, desc = self.cmd_MMU_STEP_HOMING_MOVE_help)
         self.gcode.register_command('_MMU_STEP_MOVE', self.cmd_MMU_STEP_MOVE, desc = self.cmd_MMU_STEP_MOVE_help)
         self.gcode.register_command('_MMU_STEP_SET_FILAMENT', self.cmd_MMU_STEP_SET_FILAMENT, desc = self.cmd_MMU_STEP_SET_FILAMENT_help)
+
+        # Internal handlers for Runout & Insertion for all sensor options
+        self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
+        self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
+        self.gcode.register_command('__MMU_GATE_RUNOUT', self.cmd_MMU_GATE_RUNOUT, desc = self.cmd_MMU_GATE_RUNOUT_help)
+        self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
+        self.gcode.register_command('__MMU_PRE_GATE_RUNOUT', self.cmd_MMU_PRE_GATE_RUNOUT, desc = self.cmd_MMU_PRE_GATE_RUNOUT_help)
+        self.gcode.register_command('__MMU_PRE_GATE_INSERT', self.cmd_MMU_PRE_GATE_INSERT, desc = self.cmd_MMU_PRE_GATE_INSERT_help)
+        self.gcode.register_command('__MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
 
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
@@ -731,8 +745,8 @@ class Mmu:
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-        if self.enable_endless_spool == 1 and self.enable_clog_detection == 0:
-            self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled")
+        if self._has_encoder() and not self._has_sensor("gate") and self.enable_endless_spool == 1 and self.enable_clog_detection == 0:
+            self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled unless you have pre-gate sensors")
 
         # Sanity check to see that mmu_vars.cfg is included. This will verify path because default has single entry
         self.variables = self.printer.lookup_object('save_variables').allVariables
@@ -1738,8 +1752,7 @@ class Mmu:
                 self._load_bowden(start_pos)
                 self._log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
-                measured_movement = self._get_encoder_distance(dwell=True)
-                measured_movement += self.gate_endstop_to_encoder # Adjust encoder reading for "dead" space
+                measured_movement = self._get_encoder_distance(dwell=True) + self._get_encoder_dead_space()
                 spring = self._servo_up(measure=True)
                 reference = measured_movement - spring
                 if spring > 0:
@@ -1895,7 +1908,7 @@ class Mmu:
             self._log_always("Measuring the selector position for gate #0...")
             traveled, found_home = self._measure_to_home()
             if not found_home or traveled > self.cad_gate0_pos + self.cad_selector_tolerance:
-                self._log_always("Selector didn't find home position or measurement (%.1fmm) was larger than unexpected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
+                self._log_always("Selector didn't find home position or distance moved (%.1fmm) was larger than expected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
                 return
             gate0_pos = traveled
 
@@ -2439,7 +2452,7 @@ class Mmu:
         if self._encoder_dwell(dwell):
             return self.encoder_sensor.get_distance()
         else:
-            return 0
+            return 0.
 
     def _get_encoder_counts(self, dwell=False):
         if self._encoder_dwell(dwell):
@@ -2450,6 +2463,12 @@ class Mmu:
     def _set_encoder_distance(self, distance, dwell=False):
         if self._encoder_dwell(dwell):
             self.encoder_sensor.set_distance(distance)
+
+    def _get_encoder_dead_space(self):
+        if self._has_sensor('gate') and self.gate_homing_endstop == self.ENDSTOP_GATE:
+            return self.gate_endstop_to_encoder
+        else:
+            return 0.
 
     def _initialize_filament_position(self, dwell=False):
         if self._encoder_dwell(dwell):
@@ -2686,11 +2705,13 @@ class Mmu:
 
     cmd_MMU_HELP_help = "Display the complete set of MMU commands and function"
     def cmd_MMU_HELP(self, gcmd):
-        testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
         macros = gcmd.get_int('MACROS', 0, minval=0, maxval=1)
-        msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)\n"
+        testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
+        steps = gcmd.get_int('STEPS', 0, minval=0, maxval=1)
+        msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full command set)\n"
         tmsg = "\nCalibration and testing commands:\n"
-        mmsg = "\nMacros and callbacks (defined in mmu_software.cfg):\n"
+        mmsg = "\nMacros and callbacks (defined in mmu_software.cfg, mmu_filametrix.cfg, mmu_sequence.cfg):\n"
+        smsg = "\nIndividual load/unload sequence steps:\n"
         cmds = list(self.gcode.ready_gcode_handlers.keys())
         cmds.sort()
         for c in cmds:
@@ -2701,12 +2722,17 @@ class Mmu:
                         msg += "%s : %s\n" % (c.upper(), d)
                 else:
                     tmsg += "%s : %s\n" % (c.upper(), d)
-            elif c.startswith("_MMU") and not c.startswith("_MMU_STEP"):
-                mmsg += "%s : %s\n" % (c.upper(), d)
+            elif c.startswith("_MMU"):
+                if not c.startswith("_MMU_STEP"):
+                    mmsg += "%s : %s\n" % (c.upper(), d)
+                else:
+                    smsg += "%s : %s\n" % (c.upper(), d)
         if testing:
             msg += tmsg
         if macros:
             msg += mmsg
+        if steps:
+            msg += smsg
         self._log_always(msg)
 
     cmd_MMU_ENCODER_help = "Display encoder position and stats or temporarily enable/disable detection logic in encoder"
@@ -3081,7 +3107,7 @@ class Mmu:
 
         # "Fast" load
         _,_,_,delta = self._trace_filament_move("Course loading move into bowden", length, track=True, encoder_dwell=reference_load)
-        delta -= self.gate_endstop_to_encoder # Adjust encoder reading for "dead" space
+        delta -= self._get_encoder_dead_space()
 
         # Encoder based validation test
         if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
@@ -3150,7 +3176,7 @@ class Mmu:
 
         # "Fast" unload
         _,_,_,delta = self._trace_filament_move("Course unloading move from bowden", -length, track=True)
-        delta -= self.gate_endstop_to_encoder # Adjust encoder reading for "dead" space
+        delta -= self._get_encoder_dead_space()
 
         # Encoder based validation test
         if self._can_use_encoder() and delta >= tolerance and not self.calibrating:
@@ -4551,7 +4577,7 @@ class Mmu:
     def cmd_MMU_PRINT_START(self, gcmd):
         self._on_print_start()
 
-    cmd_MMU_PRINT_END_help = "Restore MMU idle state after print"
+    cmd_MMU_PRINT_END_help = "Cleans up state after after print end"
     def cmd_MMU_PRINT_END(self, gcmd):
         end_state = gcmd.get('STATE', "complete")
         if end_state in ["complete", "error", "cancelled", "ready", "standby"]:

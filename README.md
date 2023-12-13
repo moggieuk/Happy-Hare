@@ -119,7 +119,7 @@ Note that the installer will look for Klipper install and config in standard loc
 <br>
 
 > [!IMPORTANT]  
-> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the easiest way to achieve this is simply with `[include mmu/base/*.cfg]`) . `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
+> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` (and other base config files) must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the easiest way to achieve this is simply with `[include mmu/base/*.cfg]`) . `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
 <br>
 
 **Pro tip:** if you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp. You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
@@ -262,26 +262,32 @@ Happy Hare functionality will vary with MMU vendor. After running the installer 
 <br>
  
 ```yml
-# The vendor and version config is important to define the capabiliies of the MMU
+#
+# The vendor and version config is important to define the capabilities of the MMU and basic CAD dimensions. These can
+# all be overridden with the `cad` parameters detailed in the documentation but the vendor setting saves time.
 #
 # ERCF
-# 1.1 original design, add "s" suffix for Springy, "b" for Binky, "t" for Triple-Decky
+# 1.1 original design, add "s" suffix for Sprigy, "b" for Binky, "t" for Triple-Decky
 #     e.g. "1.1sb" for v1.1 with Springy mod and Binky encoder
-# 2.0 new community edition ERCF
+#
+# 2.0 new community ERCFv2, add "h" suffix for ThumperBlocks
 #
 # Tradrack
-#  - Comming soon
+# 1.0 add "e" if using encoder is fitted
 #
 # Prusa
-#  - Comming soon
+#  - Comming soon (use Other for now)
 #
-mmu_vendor: ERCF                        # MMU family ERCF/Tradrack/Prusa/Custom
-mmu_version: 1.1                        # MMU hardware version number (add mod suffix documented above)
-mmu_num_gates: 9                        # Number of selector gates
+# Other
+#  - Generic setup that will require further customization of `cad` parameters. See doc
+#
+mmu_vendor: ERCF			# MMU family
+mmu_version: 1.1sb			# MMU hardware version number (add mod suffix documented above)
+mmu_num_gates: 9 			# Number of selector gates
 ```
 
 > [!NOTE]  
-> Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods the follow parameters can be specified to override defaults. Note these mostly relate to CAD dimensions, and encoder resolution (if fitted). Use ONLY if necessary because they could change in the future:<br>
+> Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods (as well as supporting completely custom designs) the follow parameters can be specified to override defaults. Note these mostly relate to CAD dimensions, and encoder resolution (if fitted) and gate parking distance. Use ONLY if necessary because they could change in the future:<br>
 
 `cad_gate0_pos:` Distance from endstop to first gate in mm<br>
 `cad_gate_width:` Width of individual filament block in mm - if using modified/custom block<br>
@@ -290,9 +296,11 @@ mmu_num_gates: 9                        # Number of selector gates
 This only apply to ERCF v1.1:<br>
 `cad_block_width:` Width of bearing block (ERCF v1.1 only)<br>
 `cad_bypass_block_width:` Width of bypass support block - if using a custom bypass bearing block like the one in my repo which is 7mm thick (ERCF v1.1 only)<br>
-`cad_bypass_block_delta` - Distance from previous gate to bypass (ERCF v1.1 only)<br>
-This non-CAD setting is required to adjust for non Binky encoders:<br>
+`cad_bypass_block_delta:` - Distance from previous gate to bypass (ERCF v1.1 only)<br>
+
+These non-CAD setting are also commonly required to adjust for non Binky encoders or adjust gate parking:<br>
 `encoder_min_resolution:` Resolution of one 'pulse' on the encoder. Binky (default) is 23/24=0.96, TCRT5000 based is 23/34=0.68
+`encoder_parking_distance:` How fast away from the gate exit the filament should be parked when unloaded.
 
 </details>
 
