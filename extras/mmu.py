@@ -3349,10 +3349,10 @@ class Mmu:
             # Encoder based validation test
             if self._can_use_encoder() and self._is_in_print() and not homed:
                 if measured < self.encoder_min:
-                    raise MmuError("Filament either stuck in the extruder or slicer completely ejected. Encoder not sensing any movement")
+                    raise MmuError("Encoder not sensing any movement: Concluding filament either stuck in the extruder or tip forming erroneously ejected filament")
                 elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                    raise MmuError("Filament seems to be stuck in the extruder or slicer retracted too far. Encoder not sensing sufficient movement")
+                    raise MmuError("Encoder not sensing sufficent movement: Concluding filament either stuck in the extruder or tip forming erroneously ejected filament")
 
             self._random_failure()
             self._movequeues_wait_moves()
@@ -3644,7 +3644,7 @@ class Mmu:
                 if filament_initially_present is True:
                     # With encoder we might be able to check for clog now
                     if not measured > self.encoder_min:
-                        raise MmuError("Filament stuck in extruder - no encoder movement")
+                        raise MmuError("No encoder movement: Concluding filament is stuck in extruder")
                 else:
                     # Couldn't determine if we initially had filament at start (lack of sensors)
                     if not measured > self.encoder_min:
