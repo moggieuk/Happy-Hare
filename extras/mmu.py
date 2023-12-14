@@ -650,7 +650,7 @@ class Mmu:
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
 
         # Setup filament homing sensors ------
-        for name in ["toolhead", "gate", "extruder"]:
+        for name in ["toolhead", "mmu_gate", "extruder"]:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
@@ -666,7 +666,7 @@ class Mmu:
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
                 share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
                 ppins.allow_multi_use_pin(share_name)
-                mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, "mmu_%s" % name)
+                mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, ("mmu_%s" % name) if not name.startswith('mmu_') else name)
  
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 if name in ["toolhead", "gate", "extruder"]:
