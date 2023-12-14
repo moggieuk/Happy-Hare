@@ -68,6 +68,7 @@ Thank you!
 **[Gcode Customization](/doc/gcode_customization.md)**<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)**<br>
 **[LED Support](/doc/leds.md)**<br>
+**[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
 
 <br>
  
