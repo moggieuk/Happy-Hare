@@ -1,6 +1,6 @@
 #!/bin/bash
 # Happy Hare MMU Software
-# Installer
+# Installer / Updater script
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
