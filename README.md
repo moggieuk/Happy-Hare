@@ -970,7 +970,7 @@ There is a lot that can go wrong with an MMU and initial setup can be frustratin
 <li>Check slicer settings. Happy Hare has only limited visibility into what the slicer is doing - if it, for example, ejects filament from the extruder when Happy Hare expects the filament to still be in the extruder, it will result in an error. Understand this interaction.
 </ul>
 
-Good luck.  I'm starting to compile an [FAQ](doc/faq.md).
+Good luck.  I'm starting to compile an [FAQ](doc/FAQ.md).
 
 <br>
 
