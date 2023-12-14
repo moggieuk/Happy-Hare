@@ -420,7 +420,6 @@ read_default_config() {
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg"
     parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_filametrix.cfg" "variable_"
-    happy_hare_version=${VERSION}
 }
 
 # Pull parameters from previous installation
@@ -477,6 +476,9 @@ read_previous_config() {
         echo -e "${INFO}Reading ${filametrix_cfg} configuration from previous installation..."
         parse_file "${dest_filametrix_cfg}" "variable_"
     fi
+
+    # Important to overwrite this
+    happy_hare_version=${VERSION}
 }
 
 copy_config_files() {
