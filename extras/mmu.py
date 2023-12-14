@@ -1105,7 +1105,7 @@ class Mmu:
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
-                'is_locked': self._is_mmu_paused(), # TODO could deprecate now we have print_state
+                'is_locked': self._is_mmu_paused(), # TODO should deprecate now we have print_state
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
@@ -3059,6 +3059,7 @@ class Mmu:
                             self._log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
                         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                         return
+                self._log_debug("Filament did not clear encoder even after moving %.1fmm" (self.encoder_move_step_size * max_steps))
         else:
             _,homed,_,_ = self._trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self.ENDSTOP_GATE)
             if homed:
