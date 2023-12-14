@@ -81,19 +81,21 @@ Thank you!
   <li>Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any tool</li>
   <li>EndlessSpool allowing a spool to automatically be mapped and take over from a spool that runs out</li>
   <li>Sophisticated logging options (console and mmu.log file)</li>
-  <li>Can define material type and color in each gate  for visualization and customized settings (like Pressure Advance)</li>
+  <li>Can define material type and color in each gate for visualization and customized settings (like Pressure Advance)</li>
+  <li>Spoolman integration</li>
   <li>Automated calibration for easy setup</li>
   <li>Supports MMU "bypass" gate functionality</li>
   <li>Ability to manipulate gear and extruder current (TMC) during various operations for reliable operation</li>
   <li>Moonraker update-manager support</li>
   <li>Complete persistence of state and statistics across restarts. That's right you don't even need to home!</li>
-  <li>Cool visualizations of selector and filament position</li>
   <li>Highly configurable speed control that intelligently takes into account the realities of friction and tugs on the spool</li>
   <li>Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!</li>
   <li>Vast customization options most of which can be changed and tested at runtime</li>
   <li>Integrated help, testing and soak-testing procedures</li>
-  <li>Spoolman integration</li>
   <li>Gcode pre-processor check that all the required tools are avaialble!</li>
+  <li>Drives LEDs for functional feed and some bling!</li>
+  <li>Built in tip forming and filament cutter support</li>
+  <li>Lots more...</li>
 </ul>
 
 Companion customized [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) for easy touchscreen MMU control!
@@ -1166,7 +1168,7 @@ Be sure to follow the install directions carefully and read the [panel-by-panel]
 <br> 
  
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) My Testing:
-This new v2 Happy Hare software is largely rewritten and so, despite best efforts, has probably introduced some bugs that may not exist in the previous version.  It also lacks extensive testing on different configurations that will stress the corner cases.  I have been using it successfully on Voron 2.4 / ERCF v1.1 and ERCF v2.0 with EASY-BRD and ERB board.  I use a self-modified CW2 extruder with foolproof microswitch toolhead sensor (hall effect switches are extremely problematic in my experience). My day-to-day configuration is to load the filament to the extruder in a single movement at 250mm/s, then home to toolhead sensor with synchronous gear/extruder movement although I have just moved to automatic "touch" homing to the nozzle whcih works without ANY knowledge of my extruder dimensions!! Yeah, really, load filament in gate, fast 670mm move, home to nozzle!
+This new v2 Happy Hare software is largely rewritten and so, despite best efforts, has probably introduced some bugs that may not exist in the previous version.  It also lacks extensive testing on different configurations that will stress the corner cases.  I have been using it successfully on Voron 2.4 / ERCF v1.1 and ERCF v2.0 with EASY-BRD and ERB board.  I use a self-modified CW2 extruder with foolproof microswitch toolhead sensor (hall effect switches are extremely problematic in my experience). My day-to-day configuration is to load the filament to the extruder in a single movement at 250mm/s, then home to toolhead sensor with synchronous gear/extruder movement although I have just moved to an experimental automatic "touch" homing to the nozzle whcih works without ANY knowledge of my extruder dimensions!! Yeah, really, load filament in gate, fast 670mm move, home to nozzle!
 
 ### My Setup:
 
@@ -1214,9 +1216,10 @@ Good luck! You can find me on discord as _moggieuk#6538_
  
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Revision History
 <ul>
-<li>v2.0.1 - Initial Release (forked from my ERCF-Software-V3 project). Lots of new features and homing/sync options for filament movement.</li>
+<li>v2.0.1 - Initial Release (forked from my ERCF-Software-V3 project which is now deprecated). Lots of new features and homing/sync options for filament movement.</li>
 <li>v2.1.0 - Moonraker module that adds `!referenced_tools!` placeholder for automatic tool checking, SpoolMan support, auto-restore of gate stats, filament cutter option, MMU_UNLOCK is optional, new MMU_FORM_TIP command, separate per-print and total print status, speed/extrusion (M220/M221) overrides, new print state machine and thus Octoprint support. Sister KlipperScreen Happy Hare Edition also updated with SpoolMan panel.
 <li>v2.2.0 - Replacement of manual steppers with new MMU toolhead - faster homing and movements in general, new optional `gate` and `extruder` sensors, optional encoder, intial support for Tradrack and other customized designs.
+<li>v2.3.0 - LED support for bling, gate_status, filament color and action status, pre-gate sensor support for automated loading and gate_status setting, BTT MMB board support, integrated filametrix cutter support, new [mmu_sensors] config section of easy sensor setup. Doc improvements. **NOTE: Requires Klipper 0.12.0 or greater**
 </ul>
 
 <br>
