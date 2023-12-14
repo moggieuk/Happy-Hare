@@ -959,18 +959,18 @@ Yes, Happy Hare can natively drive indicator LEDS attached to your MMU. This is 
 
 More details about Happy Hare LED "bling" support can be found [here](doc/leds.md)
 
-<br>
-
 ### 15. Debugging
 
 There is a lot that can go wrong with an MMU and initial setup can be frustrating.  It is really important to tackle one problem at a time. Never move on and think the problem will go away - that is very unlikley.  You have all the tools you need to diagnose issues:
+
 <ul>
-<li>This doc. Read it all, especially the section describing the load sequence. Unstandand conceptually what Happy Hare is trying to do
-<li>`mmu.log`.  This, by default, will log at the `TRACE` level (3) which will provide quite detailed description of what the firmware is doing
-<li>`MMU_TEST_CONFIG log_level=2`.  Running this on startup will turn the console verbosity level to `DEBUG`. This will provide a richer running commentary of problems
+<li>This doc. Read it all, especially the section describing the load sequence. Unstandand conceptually what Happy Hare is trying to do.
+<li>'mmu.log'.  This, by default, will log at the TRACE (3) level which will provide quite detailed description of what the firmware is doing. Review it when strange things happen.
+<li> 'MMU_TEST_CONFIG log_level=2'.  This can be a useful tool. Running this on startup will temporaryily turn the console verbosity level to `DEBUG`. This will provide a richer running commentary of issues you might encounter.
 <li>Check slicer settings. Happy Hare has only limited visibility into what the slicer is doing - if it, for example, ejects filament from the extruder when Happy Hare expects the filament to still be in the extruder, it will result in an error. Understand this interaction.
 </ul>
-Good luck!
+
+Good luck.  I'm starting to compile an [FAQ](doc/faq.md).
 
 <br>
 
