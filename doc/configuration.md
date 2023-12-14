@@ -39,10 +39,10 @@ This important sections is where you define the hardware limitations of your bui
 #
 # Define the physical limits of your MMU. These setings will be respected regardless of individual speed settings.
 #
-gear_max_velocity: 300			# Never to be exceeeded gear velocity regardless of specific parameters
-gear_max_accel: 1500			# Never to be exceeeded gear accelaration regardless of specific parameters
-selector_max_velocity: 250		# Never to be exceeeded selector velocity regardless of specific parameters
-selector_max_accel: 1200		# Never to be exceeeded selector accelaration regardless of specific parameters
+gear_max_velocity: 300			# Never to be exceeded gear velocity regardless of specific parameters
+gear_max_accel: 1500			# Never to be exceeded gear accelaration regardless of specific parameters
+selector_max_velocity: 250		# Never to be exceeded selector velocity regardless of specific parameters
+selector_max_accel: 1200		# Never to be exceeded selector accelaration regardless of specific parameters
 ```
 
 The servo configuration allos for up to three positions but some designs (e.g. ERCF v1.1) only require `up`/`down`.  If `move` is not used then comment it out or set it to the same value as `up`.  The servo duraction is the lemght of PWM burst.  Most digital servos only require a short 0.1 second or so but slower analog servos may require longer (0.4 - 0.5s).  Be very careful if you use the `servo_active_down` option because it will can strain your electronics.

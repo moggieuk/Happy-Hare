@@ -13,8 +13,10 @@ The Klipper configuration files for Happy Hare are modular and can be found in t
 mmu/
   base/
     mmu.cfg
+    mmu_filametrix.cfg
     mmu_hardware.cfg
     mmu_software.cfg
+    mmu_sequence.cfg
     mmu_parameters.cfg
 
   optional/
@@ -25,7 +27,7 @@ mmu/
   mmu_vars.cfg
 ```
 
-This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]`
+This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]`.  That will also ensure the correct load order!
 
 <br>
 
@@ -38,6 +40,30 @@ The `mmu.cfg` file is part of the hardware configuration but defines aliases for
 This can be daunting but the interactive installer will make the process easier for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc) and perform most of the setup for you. A few tweaks remain and include the setting of endstop options, optional extruder "touch" homing as the usual pin invert checking, etc.
 
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
+
+Note that all sensors can be setup with a simple section in `mmu_hardware.cfg`.  This ensures things are setup correctly and only requires you to supply the pins:
+```yml
+# FILAMENT SENSORS ---------------------------------------------------------------------------------------------------------
+# Define the pins for optional sensors in the filament path. All but the pre-gate sensors will be automatically setup as
+# both endstops (for homing) and sensors for visibility purposes.
+#
+# pre_gate_switch_pin_X: pre-gate sensor detects filament at entry to MMU. X=gate number (0..N)
+# toolhead_switch_pin: 'toolhead' sensor detects filament after extruder entry
+# extruder_switch_pin: 'extruder' sensor detects filament just before the extruder entry
+# gate_switch_pin: shared 'gate' sensor detects filament at the gate of the MMU (alternative to encoder)
+#
+# Uncomment sensors that are fitted
+#
+[mmu_sensors]
+pre_gate_switch_pin_0: mmu:MMU_SEL_ENDSTOP
+pre_gate_switch_pin_1: mmu:MMU_SEL_ENDSTOP
+pre_gate_switch_pin_2: mmu:MMU_SEL_ENDSTOP
+pre_gate_switch_pin_3: mmu:MMU_SEL_ENDSTOP
+
+gate_switch_pin: mmu:MMU_SEL_ENDSTOP
+extruder_switch_pin: mmu:MMU_SEL_ENDSTOP
+toolhead_switch_pin: PG13
+```
 
 <br>
 
