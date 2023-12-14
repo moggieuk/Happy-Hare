@@ -63,6 +63,8 @@ Complete set of default Happy Hare endstops and filament sensors:<br>
 
 The type has been popularized by Bambu Labs and their AMS system. Each gate has a dedicated stepper for loading and unloading and it leverages a filament "combiner" rather than a selector in the Type-A design.  The advantage is in effeciency. The disadvantage is that it is generally limited to a small number of gates. _[Technically these units can be cascaded to provide a greater number of gates but the control logic both firmware and electronics quickly become too complex and costly]_
 
+_Current State: Currently support is coded but multiple filament driver steppers have not been tested_
+
 <!--<img src="/doc/conceptual/default_kms.png" width="300" alt="Default KMS Design">-->
 
 <br>
