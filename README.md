@@ -44,7 +44,7 @@ Thank you!
 \- [3. Tool to Gate Mapping](#3-tool-to-gate-ttg-mapping)<br>
 \- [4. Synchronized Gear/Extruder](#4-synchronized-gearextruder-motors)<br>
 \- [5. Clog, Runout, EndlessSpool, Flowrate](#5-clogrunout-detection-endlessspool-and-flowrate-monitoring)<br>
-\- [6. Logging me](#6-logging)<br>
+\- [6. Logging](#6-logging)<br>
 \- [7. Pause/Resume/Cancel](#7-pause--resume--cancel_print-macros)<br>
 \- [8. Recovering MMU state](#8-recovering-mmu-state)<br>
 \- [9. Gate statistics](#9-gate-statistics)<br>
@@ -53,6 +53,7 @@ Thank you!
 \- [12. Gate map, Filament type and color](#12-gate-map-describing-filament-type-color-and-status)<br>
 \- [13. Job state transitions](#13-job-state-transistions-and-print-startend-handling)<br>
 \- [14. LEDs](#14-leds)<br>
+\- [15. Debugging](#15-debugging)<br>
 **[Loading and Unloading Sequences](#---filament-loading-and-unloading-sequences)**<br>
 **[KlipperScreen Happy Hare Edition](#---klipperscreen-happy-hare-edition)**<br>
 **[My Testing / Setup](#---my-testing)**<br>
@@ -957,6 +958,19 @@ While printing, if an mmu error occurs (or the user explicitly calls `MMU_PAUSE`
 Yes, Happy Hare can natively drive indicator LEDS attached to your MMU. This is all done through user modifiable macros contained in `mmu_software.cfg`.  The setup for LED's is contained at the bottom of the `mmu_hardware.cfg` file and requires the installtion of [LED Effects for Klipper](https://github.com/julianschill/klipper-led_effect).
 
 More details about Happy Hare LED "bling" support can be found [here](doc/leds.md)
+
+<br>
+
+### 15. Debugging
+
+There is a lot that can go wrong with an MMU and initial setup can be frustrating.  It is really important to tackle one problem at a time. Never move on and think the problem will go away - that is very unlikley.  You have all the tools you need to diagnose issues:
+<ul>
+<li>This doc. Read it all, especially the section describing the load sequence. Unstandand conceptually what Happy Hare is trying to do
+<li>`mmu.log`.  This, by default, will log at the `TRACE` level (3) which will provide quite detailed description of what the firmware is doing
+<li>`MMU_TEST_CONFIG log_level=2`.  Running this on startup will turn the console verbosity level to `DEBUG`. This will provide a richer running commentary of problems
+<li>Check slicer settings. Happy Hare has only limited visibility into what the slicer is doing - if it, for example, ejects filament from the extruder when Happy Hare expects the filament to still be in the extruder, it will result in an error. Understand this interaction.
+</ul>
+Good luck!
 
 <br>
 
