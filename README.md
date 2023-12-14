@@ -86,7 +86,6 @@ Thank you!
   <li>Ability to manipulate gear and extruder current (TMC) during various operations for reliable operation</li>
   <li>Moonraker update-manager support</li>
   <li>Complete persitance of state and statistics across restarts. That's right you don't even need to home!</li>
-  <li>Reliable servo operation - no more "kickback" problems</li>
   <li>Cool visualizations of selector and filament position</li>
   <li>Highly configurable speed control that intelligently takes into account the realities of friction and tugs on the spool</li>
   <li>Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!</li>
@@ -133,7 +132,8 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 ```
 
 > [!WARNING]  
-> ERCF v1.1 users: the original encoder can be problematic. A new backward compatible alternative is available in the ERCF v2.0 project and is strongly recommended. If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](/doc/ercf_encoder_v11.md) - the better the encoder the better this software will work with ERCF design.
+> TCRT 5000 encoders can be problematic. A new backward compatible alternative "Binky" is available is strongly recommended (standard in ERCFv2). If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](/doc/ercf_encoder_v11.md) - the better the encoder the better this software will work for MMU's with encoders.
+> Hall effect toolhead sensors can be problematic in a heated chamber because their characteristics change with temperature. Microswitch versions are preferred.
 
 <br>
 
@@ -141,6 +141,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 ### English: 
 <i>comming soon</i>
+
 ### German:
 <div align="left">
   <a href="https://www.youtube.com/watch?v=uaPLuWJBdQU">
@@ -153,6 +154,12 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 -->
   </a>
 </div>
+<br>
+
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Overview
+
+Happy Hare has been built to support most types of MMU's connected to the Klipper ecosystem. That includes ERCF, Tradrack, AMS-style and other custom designs. It has extensive configuation to allow for customization allow using the installer and selecting type through `vendor` and `version` minimizes the need for customiztion.  The three conceptual types of MMUs and the function and operation of their various sensors can be [found here](doc/conceptual_mmu.md) and should be consulted for any customized setup.
+
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Basic Commands and Printer Variables
