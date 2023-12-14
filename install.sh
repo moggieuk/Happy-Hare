@@ -418,6 +418,7 @@ update_copy_file() {
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg"
+    parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_filametrix.cfg" "variable_"
     happy_hare_version=${VERSION}
 }
