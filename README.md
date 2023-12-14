@@ -86,7 +86,7 @@ Thank you!
   <li>Supports MMU "bypass" gate functionality</li>
   <li>Ability to manipulate gear and extruder current (TMC) during various operations for reliable operation</li>
   <li>Moonraker update-manager support</li>
-  <li>Complete persitance of state and statistics across restarts. That's right you don't even need to home!</li>
+  <li>Complete persistence of state and statistics across restarts. That's right you don't even need to home!</li>
   <li>Cool visualizations of selector and filament position</li>
   <li>Highly configurable speed control that intelligently takes into account the realities of friction and tugs on the spool</li>
   <li>Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!</li>
