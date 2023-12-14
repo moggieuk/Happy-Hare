@@ -52,6 +52,11 @@ For completeness, endstops are created on the selector. Typically there are two 
 
 <br>
 
+Complete set of default Happy Hare endstops and filament sensors:<br>
+<img src="/doc/filament_sensors.jpg" width="300" alt="Filament Sensors"> <img src="/doc/endstops.jpg" width="300" alt="Endstops">
+
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Type-B
 
 <img src="/doc/conceptual/typeB_mmu.png" width="700" alt="Type B MMU">
