@@ -6,23 +6,30 @@ The first section specifies the type of MMU and is used by Happy Hare to adjust 
 
 ```yml
 [mmu]
+happy_hare_version: 2.2                 # Don't mess, used for upgrade detection
+
 #
-# The vendor and version config is important to define the capabiliies of the MMU
+# The vendor and version config is important to define the capabilities of the MMU and basic CAD dimensions. These can
+# all be overridden with the `cad` parameters detailed in the documentation but the vendor setting saves time.
 #
 # ERCF
 # 1.1 original design, add "s" suffix for Sprigy, "b" for Binky, "t" for Triple-Decky
-#     e.g. "1.1sb" for v1.1 with Spriny mod and Binky encoder
-# 2.0 new community edition ERCF
+#     e.g. "1.1sb" for v1.1 with Springy mod and Binky encoder
+#
+# 2.0 new community ERCFv2, add "h" suffix for ThumperBlocks
 #
 # Tradrack
-#  - Comming soon
+# 1.0 add "e" if using encoder is fitted
 #
 # Prusa
-#  - Comming soon
+#  - Comming soon (use Other for now)
+#
+# Other
+#  - Generic setup that will require further customization of `cad` parameters. See doc
 #
 mmu_vendor: ERCF			# MMU family
-mmu_version: 1.1			# MMU hardware version number (add mod suffix documented above)
-mmu_num_gates: 9			# Number of selector gates
+mmu_version: 1.1sb			# MMU hardware version number (add mod suffix documented above)
+mmu_num_gates: 9 			# Number of selector gates
 ```
 
 This important sections is where you define the hardware limitations of your build. These can be consisted the never to be exceeded settings but one important one if you are using `selector touch` operation is `selector_max_accel`. Since stallguard doesn't behave well at slow speed it is important that the accelation isn't set too low - below 600 causes problems, over 1000 ensures reliable operation.
@@ -32,10 +39,10 @@ This important sections is where you define the hardware limitations of your bui
 #
 # Define the physical limits of your MMU. These setings will be respected regardless of individual speed settings.
 #
-gear_max_velocity: 300			# Never to be exceeeded gear velocity regardless of specific parameters
-gear_max_accel: 1500			# Never to be exceeeded gear accelaration regardless of specific parameters
-selector_max_velocity: 250		# Never to be exceeeded selector velocity regardless of specific parameters
-selector_max_accel: 1200		# Never to be exceeeded selector accelaration regardless of specific parameters
+gear_max_velocity: 300			# Never to be exceeded gear velocity regardless of specific parameters
+gear_max_accel: 1500			# Never to be exceeded gear accelaration regardless of specific parameters
+selector_max_velocity: 250		# Never to be exceeded selector velocity regardless of specific parameters
+selector_max_accel: 1200		# Never to be exceeded selector accelaration regardless of specific parameters
 ```
 
 The servo configuration allos for up to three positions but some designs (e.g. ERCF v1.1) only require `up`/`down`.  If `move` is not used then comment it out or set it to the same value as `up`.  The servo duraction is the lemght of PWM burst.  Most digital servos only require a short 0.1 second or so but slower analog servos may require longer (0.4 - 0.5s).  Be very careful if you use the `servo_active_down` option because it will can strain your electronics.
@@ -110,7 +117,7 @@ selector_touch_speed: 80		# mm/s speed of all touch selector moves (if stallguar
 selector_touch_enable: 0		# If selector touch operation is possible this can be used to disable it 1=enabled, 0=disabled
 ```
 
-This section controls the module that controls filament loading and unload at the gate when an encoder is present. The `encoder_unload_buffer` represents how close to the gate the filament ends up after fast bowden move. You want it close (for speed) but not too close that it can overshoot.  `encoder_parking_distance` is how fast away from the gate exit the filament should be parked when unloaded.  It rarely needs to be changed from the default.
+This section controls the module that controls filament loading and unload at the gate when an encoder is present. The `gate_unload_buffer` represents how close to the gate the filament ends up after fast bowden move. You want it close (for speed) but not too close that it can overshoot.  `gate_parking_distance` is how fast away from the gate exit the filament should be parked when unloaded.  It rarely needs to be changed from the default.
 
 ```yml
 # Gate loading/unloading ------------------------------------------------------------------------------------------------

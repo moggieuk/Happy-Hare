@@ -36,7 +36,7 @@ When combined with the `MMU_CHECK_GATES TOOLS=` functionality and placed in your
 To implement incorporate into your start g-code on your Slicer:
 
 ```yml
-START_PRINT TOOLS_USED=!referenced_tools! INITIAL_TOOL=(initial_tool} ...
+START_PRINT TOOLS_USED=!referenced_tools! INITIAL_TOOL={initial_tool} ...the other parameters...
 ```
 
 Then in you print start macro add logic similar to:
@@ -66,5 +66,5 @@ gcode:
 > [!NOTE]  
 > * `MMU_CHECK_GATE TOOLS=` with empty string will be ignored by Happy Hare.<br>
 > * Any tool that was loaded prior to calling `MMU_CHECK_GATES` will be automatically restored at the end of the checking procedure.<br>
-> * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `TOOLS_USED` (which counts `Tx` commands) will be empty.
+> * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `TOOLS_USED` (which counts `Tx` commands) will be empty. This code will ensure that `TOOL_USED` will always contain the initial tool.
 

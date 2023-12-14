@@ -58,7 +58,7 @@ gcode:
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_PRE_UNLOAD & _MMU_POST_LOAD
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_PRE_UNLOAD, _MMU_POST_FORM_TIP & _MMU_POST_LOAD
 When in a print, these two macros which are empty by default allow for a convenient place to add logic just before the unload of old filament and after the load of new filament on a toolchange. This allows for logic to move the toolhead to purge area to avoid ooze as well as to perform a tip cleaning procedure prior to continuing the print. Note that it is excepected that `_MMU_POST_LOAD` will return the toolhead to the position saved in `_MMU_PRE_UNLOAD`, however, Happy Hare has optional built in control of the z-hop height (set with `z_hop_height_toolchange` parameter) and also will ensure than the toolhead returns to the correct postion in all situations (like user corrected errors during the toolchange).
 
 ```yml
@@ -73,6 +73,19 @@ When in a print, these two macros which are empty by default allow for a conveni
 [gcode_macro _MMU_PRE_UNLOAD]
 description: Optional pre unload routine for filament change
 gcode:
+
+
+###########################################################################
+# Callback macros for modifying Happy Hare behavior
+# This occurs immediately after the tip forming or cutting procedure
+#
+# This is a good place to move to a position where oozing is not a problem
+# in the case of Tip Cutting where moving in the _MMU_PRE_UNLOAD is too early
+#
+[gcode_macro _MMU_POST_FORM_TIP]
+description: Optional post tip forming/cutting routing
+gcode:
+
 
 ###########################################################################
 # Callback macros for modifying Happy Hare behavior
@@ -256,9 +269,9 @@ You can then simple edit `form_tip_gcode` to point to this macro instead of the 
 > [!WARNING]  
 > This is new EXPERIMENTAL functionality and as such is subject to change (with only a mild apology :-)
 
-By default these macros are not called, however, if `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_software.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
+By default these macros are not called, however, if `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_sequence.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
 
-`mmu_software.cfg` contains futher examples for alternative MMU setups, but before experimenting it is essential to understand the state machine for filament position.  These states are as follows and the loading/unloading sequence must be capable of completing the load/unload sequence for any starting state.<br>
+`mmu_sequence.cfg` contains futher examples for alternative MMU setups, but before experimenting it is essential to understand the state machine for filament position.  These states are as follows and the loading/unloading sequence must be capable of completing the load/unload sequence for any starting state.<br>
 
 ```mermaid
 graph TD;
@@ -392,7 +405,7 @@ gcode:
 ```
 
 > [!NOTE]  
-> Additional examples can be found at the end of `mmu_software.cfg`
+> Additional examples can be found at the end of `mmu_sequence.cfg`
 
 <br>
 

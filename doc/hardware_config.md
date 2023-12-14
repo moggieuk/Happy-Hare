@@ -13,8 +13,10 @@ The Klipper configuration files for Happy Hare are modular and can be found in t
 mmu/
   base/
     mmu.cfg
+    mmu_filametrix.cfg
     mmu_hardware.cfg
     mmu_software.cfg
+    mmu_sequence.cfg
     mmu_parameters.cfg
 
   optional/
@@ -25,7 +27,7 @@ mmu/
   mmu_vars.cfg
 ```
 
-This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]`
+This makes the minimal include into your printer.cfg easy: `[include mmu/base/*.cfg]`.  That will also ensure the correct load order!
 
 <br>
 
@@ -38,6 +40,30 @@ The `mmu.cfg` file is part of the hardware configuration but defines aliases for
 This can be daunting but the interactive installer will make the process easier for common mcu's designed for a MMU (e.g. ERCF EASY-BRD, Burrows ERB, etc) and perform most of the setup for you. A few tweaks remain and include the setting of endstop options, optional extruder "touch" homing as the usual pin invert checking, etc.
 
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
+
+Note that all sensors can be setup with a simple section in `mmu_hardware.cfg`.  This ensures things are setup correctly and only requires you to supply the pins:
+```yml
+# FILAMENT SENSORS ---------------------------------------------------------------------------------------------------------
+# Define the pins for optional sensors in the filament path. All but the pre-gate sensors will be automatically setup as
+# both endstops (for homing) and sensors for visibility purposes.
+#
+# pre_gate_switch_pin_X: pre-gate sensor detects filament at entry to MMU. X=gate number (0..N)
+# toolhead_switch_pin: 'toolhead' sensor detects filament after extruder entry
+# extruder_switch_pin: 'extruder' sensor detects filament just before the extruder entry
+# gate_switch_pin: shared 'gate' sensor detects filament at the gate of the MMU (alternative to encoder)
+#
+# Uncomment sensors that are fitted
+#
+[mmu_sensors]
+pre_gate_switch_pin_0: mmu:MMU_SEL_ENDSTOP
+pre_gate_switch_pin_1: mmu:MMU_SEL_ENDSTOP
+pre_gate_switch_pin_2: mmu:MMU_SEL_ENDSTOP
+pre_gate_switch_pin_3: mmu:MMU_SEL_ENDSTOP
+
+gate_switch_pin: mmu:MMU_SEL_ENDSTOP
+extruder_switch_pin: mmu:MMU_SEL_ENDSTOP
+toolhead_switch_pin: PG13
+```
 
 <br>
 
@@ -165,6 +191,19 @@ Defines two (non-default) endstops, the first is a virtual "touch" one leveragin
 Happy Hare will automatically enhance Klipper to provide endstop(s) on the extruder stepper.  While this might not seem it has value, it can be used to sense pressure on the filament (like hitting the nozzle when loading).  Unless you have a sophisticated load cell attached to your nozzle the most likely configuration would be to define a TMC stallguard endstop. You can do this by adding `endstop_pin` to the extruder definition -- don't worry it won't confuse Klipper!
 
 Ok, so you can define lots of endstops. Why? and what next... Let's discuss syncing and homing moves first and then bring it all together with an example.
+
+### True stallguard based selector homing
+The extra endstop `mmu_selector_touch` described in the `mmu_hardware.cfg` file is designed for "touch" movement where the selector can feel for filament blocking a gate and autmatically take recovery action. However, you might be wondering if it is possible to perform true stallguard homing on the selector?  It certainly is but you need to adjust part of the config for the selector stepper: instead of making `mmu_sel_touch` an extra endstop, make it the default like so (note it is very important to add the `homing_retract_dist: 0`):
+
+```yml
+[stepper_mmu_selector]
+...
+endstop_pin: tmc2209_stepper_mmu_selector:virtual_endstop
+endstop_name: mmu_sel_touch
+homing_retract_dist: 0
+```
+
+This will not only define `mmu_sel_touch` as a named endstop for "touch" movement but will also make it the default endstop for homing operation.  With this configuration there is no need to have an microswitch or `mmu_sel_home` endstop defined. Personally I like the reliability of a mechanical homing enstop because it requires no tuning.
 
 ### Stepper syncing
 The MMU gear stepper(s) defined by Happy Hare not only enables multiple endstops but also can act as both a filament driver (gear) stepper an extruder stepper. This dual personality allows its motion queue to be synced with other extruder steppers or, but also manipulated manually as a separately controlled stepper.  The gear stepper can be synchronized to the extruder when in a print and when in this mode it follow all extruder kinematics including pressure advance.  It is also possible for the extruder to be synchronised with the gear stepper for loading and unloading operations. In this mode the extruder will follow the kinematics of the gear stepper and can participate in homing moves.

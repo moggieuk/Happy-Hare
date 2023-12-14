@@ -44,7 +44,7 @@ Thank you!
 \- [3. Tool to Gate Mapping](#3-tool-to-gate-ttg-mapping)<br>
 \- [4. Synchronized Gear/Extruder](#4-synchronized-gearextruder-motors)<br>
 \- [5. Clog, Runout, EndlessSpool, Flowrate](#5-clogrunout-detection-endlessspool-and-flowrate-monitoring)<br>
-\- [6. Logging me](#6-logging)<br>
+\- [6. Logging](#6-logging)<br>
 \- [7. Pause/Resume/Cancel](#7-pause--resume--cancel_print-macros)<br>
 \- [8. Recovering MMU state](#8-recovering-mmu-state)<br>
 \- [9. Gate statistics](#9-gate-statistics)<br>
@@ -52,6 +52,8 @@ Thank you!
 \- [11. Pre-print functions](#11-useful-pre-print-functionality)<br>
 \- [12. Gate map, Filament type and color](#12-gate-map-describing-filament-type-color-and-status)<br>
 \- [13. Job state transitions](#13-job-state-transistions-and-print-startend-handling)<br>
+\- [14. LEDs](#14-leds)<br>
+\- [15. Debugging](#15-debugging)<br>
 **[Loading and Unloading Sequences](#---filament-loading-and-unloading-sequences)**<br>
 **[KlipperScreen Happy Hare Edition](#---klipperscreen-happy-hare-edition)**<br>
 **[My Testing / Setup](#---my-testing)**<br>
@@ -65,6 +67,8 @@ Thank you!
 **[Configuation Reference](/doc/configuration.md)**<br>
 **[Gcode Customization](/doc/gcode_customization.md)**<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)**<br>
+**[LED Support](/doc/leds.md)**<br>
+**[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
 
 <br>
  
@@ -83,7 +87,6 @@ Thank you!
   <li>Ability to manipulate gear and extruder current (TMC) during various operations for reliable operation</li>
   <li>Moonraker update-manager support</li>
   <li>Complete persitance of state and statistics across restarts. That's right you don't even need to home!</li>
-  <li>Reliable servo operation - no more "kickback" problems</li>
   <li>Cool visualizations of selector and filament position</li>
   <li>Highly configurable speed control that intelligently takes into account the realities of friction and tugs on the spool</li>
   <li>Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!</li>
@@ -117,7 +120,7 @@ Note that the installer will look for Klipper install and config in standard loc
 <br>
 
 > [!IMPORTANT]  
-> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the easiest way to achieve this is simply with `[include mmu/base/*.cfg]`) . `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
+> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` (and other base config files) must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the easiest way to achieve this is simply with `[include mmu/base/*.cfg]`) . `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
 <br>
 
 **Pro tip:** if you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp. You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
@@ -130,7 +133,8 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 ```
 
 > [!WARNING]  
-> ERCF v1.1 users: the original encoder can be problematic. A new backward compatible alternative is available in the ERCF v2.0 project and is strongly recommended. If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](/doc/ercf_encoder_v11.md) - the better the encoder the better this software will work with ERCF design.
+> TCRT 5000 encoders can be problematic. A new backward compatible alternative "Binky" is available is strongly recommended (standard in ERCFv2). If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](/doc/ercf_encoder_v11.md) - the better the encoder the better this software will work for MMU's with encoders.
+> Hall effect toolhead sensors can be problematic in a heated chamber because their characteristics change with temperature. Microswitch versions are preferred.
 
 <br>
 
@@ -138,6 +142,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 
 ### English: 
 <i>comming soon</i>
+
 ### German:
 <div align="left">
   <a href="https://www.youtube.com/watch?v=uaPLuWJBdQU">
@@ -150,6 +155,12 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
 -->
   </a>
 </div>
+<br>
+
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Overview
+
+Happy Hare has been built to support most types of MMU's connected to the Klipper ecosystem. That includes ERCF, Tradrack, AMS-style and other custom designs. It has extensive configuation to allow for customization allow using the installer and selecting type through `vendor` and `version` minimizes the need for customiztion.  The three conceptual types of MMUs and the function and operation of their various sensors can be [found here](doc/conceptual_mmu.md) and should be consulted for any customized setup.
+
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Basic Commands and Printer Variables
@@ -174,6 +185,7 @@ Happy Hare has a built in help system to aid remembering the command set. It can
     MMU_FORM_TIP : Convenience macro for calling the standalone tip forming functionality
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
+    MMU_LED : Manage mode of operation of optional MMU LED's
     MMU_LOAD : Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)
     MMU_MOTORS_OFF : Turn off both MMU motors
     MMU_PAUSE : Pause the current print and lock the MMU operations
@@ -199,7 +211,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
 
 ```yml
     printer.mmu.enabled : {bool} True if MMU is enabled
-    printer.mmu.is_locked : {bool} True if MMU is paused after an error
+    printer.mmu.is_locked : {bool} True if MMU is paused after an error DEPRECATED: use print_job_state
     printer.mmu.is_homed : {bool} True if MMU has been homed
     printer.mmu.tool : {int} 0..n | -1 for unknown | -2 for bypass
     printer.mmu.gate : {int} 0..n | -1 for unknown
@@ -215,6 +227,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.gate_status : {list} per gate: 0 empty | 1 available | 2 available from buffer |  -1 unknown
     printer.mmu.gate_material : {list} of material names, one per gate
     printer.mmu.gate_color : {list} of color names, one per gate
+    printer.mmu.gate_color_rgb : {list} of color rbg values from 0.0 - 1.0 in truples (red, green blue), one per gate
     printer.mmu.gate_spool_id : {list} of IDs for Spoolman, one per gate
     printer.mmu.endless_spool_groups : {list} membership group (int) for each tool
     printer.mmu.tool_extrusion_multipliers : {list} current M221 extrusion multipliers (float), one per tool
@@ -222,9 +235,9 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
     printer.mmu.sync_drive : {bool} True if gear stepper is currently synced to extruder
-    printer.mmu.print_job_state : {string} current job state seen by MMU (standby | started | printing | pause_locked | paused | complete | cancelled | error)
+    printer.mmu.print_job_state : {string} current job state seen by MMU (initialized | standby | started | printing | pause_locked | paused | complete | cancelled | error)
     printer.mmu.clog_detection : {int} 0 (off) | 1 (manual) | 2 (auto)
-    printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled)
+    printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled) | 2 (additionally enabled for pre-gate sensor)
     printer.mmu.print_start_detection : {int} 0 (disabled) | 1 (enabled)
 ```
 
@@ -258,30 +271,45 @@ Happy Hare functionality will vary with MMU vendor. After running the installer 
 <br>
  
 ```yml
-# The vendor and version config is important to define the capabiliies of the MMU
+#
+# The vendor and version config is important to define the capabilities of the MMU and basic CAD dimensions. These can
+# all be overridden with the `cad` parameters detailed in the documentation but the vendor setting saves time.
 #
 # ERCF
-# 1.1 original design, add "s" suffix for Springy, "b" for Binky, "t" for Triple-Decky
+# 1.1 original design, add "s" suffix for Sprigy, "b" for Binky, "t" for Triple-Decky
 #     e.g. "1.1sb" for v1.1 with Springy mod and Binky encoder
-# 2.0 new community edition ERCF
+#
+# 2.0 new community ERCFv2, add "h" suffix for ThumperBlocks
 #
 # Tradrack
-#  - Comming soon
+# 1.0 add "e" if using encoder is fitted
 #
 # Prusa
-#  - Comming soon
+#  - Comming soon (use Other for now)
 #
-mmu_vendor: ERCF                        # MMU family ERCF/Tradrack/Prusa/Custom
-mmu_version: 1.1                        # MMU hardware version number (add mod suffix documented above)
-mmu_num_gates: 9                        # Number of selector gates
+# Other
+#  - Generic setup that will require further customization of `cad` parameters. See doc
+#
+mmu_vendor: ERCF			# MMU family
+mmu_version: 1.1sb			# MMU hardware version number (add mod suffix documented above)
+mmu_num_gates: 9 			# Number of selector gates
 ```
 
 > [!NOTE]  
-> Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods the follow parameters can be specified to override defaults. Use ONLY if necessary:<br>
+> Despite the vendor and version string taking care of most of the variations of MMU there are still a few parameters that can vary. In an attempt to support such mods (as well as supporting completely custom designs) the follow parameters can be specified to override defaults. Note these mostly relate to CAD dimensions, and encoder resolution (if fitted) and gate parking distance. Use ONLY if necessary because they could change in the future:<br>
 
+`cad_gate0_pos:` Distance from endstop to first gate in mm<br>
 `cad_gate_width:` Width of individual filament block in mm - if using modified/custom block<br>
-`encoder_min_resolution:` Resolution of one 'pulse' on the encoder. Generally (23 / pulses per revolution for BMG based encoder) - if using customized encoder<br>
-`cad_bypass_block_width:` Width of bypass support block - if using a custom bypass block with ERCF v1.1 (like the one in my repo which is 7mm thick)
+`cad_bypass_offset:` Distance from end of selector travel back to the bypass<br>
+`cad_last_gate_offset:` Distance from end of travel to last gate<br>
+This only apply to ERCF v1.1:<br>
+`cad_block_width:` Width of bearing block (ERCF v1.1 only)<br>
+`cad_bypass_block_width:` Width of bypass support block - if using a custom bypass bearing block like the one in my repo which is 7mm thick (ERCF v1.1 only)<br>
+`cad_bypass_block_delta:` - Distance from previous gate to bypass (ERCF v1.1 only)<br>
+
+These non-CAD setting are also commonly required to adjust for non Binky encoders or adjust gate parking:<br>
+`encoder_min_resolution:` Resolution of one 'pulse' on the encoder. Binky (default) is 23/24=0.96, TCRT5000 based is 23/34=0.68
+`encoder_parking_distance:` How fast away from the gate exit the filament should be parked when unloaded.
 
 </details>
 
@@ -839,7 +867,7 @@ Similarly the `MMU_CHECK_GATE` command will run through all the gates (or the on
 
 ### 12. Gate map describing filament type, color and status
 
-Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material`, `printer.mmu.gate_color` and `printer.mmu.gate_spool_id` if spoolman is enabled) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
+Happy Hare can keep track of the type and color for each filament you have loaded. This is leveraged in KlipperScreen visualization but also has more practical purposes because this information is made available through printer variables (`printer.mmu.gate_status`, `printer.mmu.gate_material`, `printer.mmu.gate_color`, `printer.mmu.gate_color_rgb` and `printer.mmu.gate_spool_id` if spoolman is enabled) so you can leverage in your own macros to, for example, customize pressure advance, temperature and more. The map is persisted in `mmu_vars.cfg`.
 
 <details>
 <summary><sub>🔹 Read more on editing the gate map...</sub></summary><br>
@@ -850,15 +878,15 @@ The gate map can be viewed with the following command with no parameters:<br>
 
 ```
     MMU Gates / Filaments:
-    Gate #0: Material: PLA, Color: red, Status: Buffered
-    Gate #1: Material: ABS+, Color: orange, Status: Buffered
-    Gate #2: Material: ABS, Color: tomato, Status: Buffered
-    Gate #3: Material: ABS, Color: green, Status: Unknown
-    Gate #4: Material: PLA, Color: blue, Status: Unknown
-    Gate #5: Material: PLA, Color: indigo, Status: Unknown
-    Gate #6: Material: PETG, Color: violet, Status: Unknown
-    Gate #7: Material: ABS, Color: ffffff, Status: Unknown
-    Gate #8: Material: ABS, Color: black, Status: Buffered
+    Gate #0: Status: Buffered, Material: PLA, Color: red
+    Gate #1: Status: Buffered, Material: ABS+, Color: orange
+    Gate #2: Status: Buffered, Material: ABS, Color: tomato
+    Gate #3: Status: Unknown, Material: ABS, Color: green
+    Gate #4: Status: Unknown, Material: PLA, Color: blue
+    Gate #5: Status: Unknown, Material: PLA, Color: indigo
+    Gate #6: Status: Unknown, Material: PETG, Color: violet
+    Gate #7: Status: Unknown, Material: ABS, Color: ffffff
+    Gate #8: Status: Buffered, Material: ABS, Color: black
 ```
 
 To change for a particular gate use a command in this form:
@@ -869,8 +897,20 @@ If you remove buffered filament from a gate and want to quickly tell Happy Hare 
 
 > MMU_GATE_MAP GATE=8 AVAILABLE=1
 
+Multiple gates can be specified for bulk updates. A very useful command is this, which will reset the availability status of all gates back to the default of "unknown"
+
+> MMU_GATE_MAP GATES=0,1,2,3,4,5,6,7,8 AVAILABLE=-1
+
 > [!IMPORTANT]  
 > There is no enforcement of material names but it is recommended use all capital short names like PLA, ABS+, TPU95, PETG. The color string can be one of the [w3c standard color names](https://www.w3schools.com/tags/ref_colornames.asp) or a RRGGBB red/green/blue hex value. Because of a Klipper limitation don't add `#` to the color specification.
+
+One potentially interesting built-in functionality is the exposing of filament color and RGB values suitable for directly driving LEDs.  The `gate_color_rgb` printer value will convert any color format (string name or hex spec) into truples like this: `(0.5, 0.0, 0.0)`.  You can use this to drive LED's with the Klipper led control in your macros similar to this because "bling" is important!
+
+```
+    {% set gate_color_rgb = printer['mmu']['gate_color_rgb'] %}
+    {% set rgb = gate_color_rgb[GATE] %}
+    SET_LED LED={leds_name} INDEX={index} RED={rgb[0]} GREEN={rgb[1]} BLUE={rgb[2]} TRANSMIT=1
+```
 
 > [!NOTE]  
 > KlipperScreen Happy Hare edition has a nice editor with color picker for easy updating.
@@ -886,8 +926,11 @@ Happy Hare keeps track of the current print state in a similar way to the klippe
 
 ```mermaid
 stateDiagram-v2
+    initialized --> started: <i>(print_start)</i>
+    note left of initialized: reset
     standby --> started: <i>(print_start)</i>
     note left of standby: idle_timeout
+    ready --> started: <i>(print_start)</i>
     started --> printing
     printing --> complete: (print_complete))
     printing --> error: (print_error)
@@ -898,14 +941,13 @@ stateDiagram-v2
         pause_locked --> paused: (MMU_UNLOCK)
     }
     PAUSE --> printing: RESUME
-    PAUSE --> standby: RESUME
 ```
 
 <details>
 <summary><sub>🔹 Review state machine transitions in detail...</sub></summary><br>
 
 **Explanation:**
-MMU starts in `standby` state. On printing it will briefly enter `started` (until _MMU_PRINT_START is complete) then transition to `printing`. On job completion (at end of _MMU_PRINT_END) or job error the state will transition to `complete` or `error` respectively.  If the print is explicitly cancelled the `CANCEL_PRINT` interception transitions to `cancelled`. If `idle_timeout` is experience the state will transition back to `standby`.
+MMU starts in `initialized` state. On printing it will briefly enter `started` (until _MMU_PRINT_START is complete) then transition to `printing`. On job completion (at end of _MMU_PRINT_END) or job error the state will transition to `complete` or `error` respectively.  If the print is explicitly cancelled the `CANCEL_PRINT` interception transitions to `cancelled`. If `idle_timeout` is experience the state will transition back to `standby`. `ready` is a resting state similar to `standby` an just means that the printer is not yet idle.
 
 While printing, if an mmu error occurs (or the user explicitly calls `MMU_PAUSE`) the state will transition to `pause_locked`.  If the user is quick to respond (before extruder temp drops) the print can be resumed with `RESUME` command.  The `MMU_UNLOCK` is optional and will restore temperatures allowing for direct MMU interaction and thus can be considered a half-step towards resuming (must still run `RESUME` to continue printing).
 
@@ -915,8 +957,28 @@ While printing, if an mmu error occurs (or the user explicitly calls `MMU_PAUSE`
 > - When entering `pause_locked` Happy Hare will always remember the toolhead position and, if configured, perform a z-hop, but will also run the user PAUSE macro
 > - When `RESUME` is called the user RESUME macro will be called, finally followed by Happy Hare restoring the original toolhead position.
 > - Outside of a print the toolhead is never moved by Happy Hare (only user's PAUSE/RESUME macros).
+> - `MMU_PRINT_END STATE=xxx` if called directly can accept states `complete|error|cancelled|standby|ready` although typically would only be called with `complete|error`
 
 </details>
+
+### 14. LEDs
+
+Yes, Happy Hare can natively drive indicator LEDS attached to your MMU. This is all done through user modifiable macros contained in `mmu_software.cfg`.  The setup for LED's is contained at the bottom of the `mmu_hardware.cfg` file and requires the installtion of [LED Effects for Klipper](https://github.com/julianschill/klipper-led_effect).
+
+More details about Happy Hare LED "bling" support can be found [here](doc/leds.md)
+
+### 15. Debugging
+
+There is a lot that can go wrong with an MMU and initial setup can be frustrating.  It is really important to tackle one problem at a time. Never move on and think the problem will go away - that is very unlikley.  You have all the tools you need to diagnose issues:
+
+<ul>
+<li>This doc. Read it all, especially the section describing the load sequence. Unstandand conceptually what Happy Hare is trying to do.
+<li>'mmu.log'.  This, by default, will log at the TRACE (3) level which will provide quite detailed description of what the firmware is doing. Review it when strange things happen.
+<li> 'MMU_TEST_CONFIG log_level=2'.  This can be a useful tool. Running this on startup will temporaryily turn the console verbosity level to `DEBUG`. This will provide a richer running commentary of issues you might encounter.
+<li>Check slicer settings. Happy Hare has only limited visibility into what the slicer is doing - if it, for example, ejects filament from the extruder when Happy Hare expects the filament to still be in the extruder, it will result in an error. Understand this interaction.
+</ul>
+
+Good luck.  I'm starting to compile an [FAQ](doc/FAQ.md).
 
 <br>
 

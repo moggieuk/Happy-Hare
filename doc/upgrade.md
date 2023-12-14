@@ -1,0 +1,30 @@
+# Happy Hare - Upgrade Notice
+If you have found this page you are probably experiencing a startup message similar to:
+
+```
+Looks like you upgraded (v2.2 -> v2.3)?
+Happy Hare minor version has changed which requires you to re-run
+'./install.sh' to update configuration files and klipper modules.
+More details: https://github.com/moggieuk/Happy-Hare/doc/upgrade.md
+```
+
+Happy Hare version as seen in Mainsail & Fluidd UI's is in the form: `Major.Minor.Point-Patch`. The meaning of each number is as follows:
+<ul>
+<li>`Major` - Major change of functionality that requires to re-install
+<li>`Minor` - A change has been made that requires update to config file or install a new Klipper module
+<li>`Point` - Enhancement that doesn't require any special treatment other than Klipper restart
+<li>`Patch` - Routine update to address a bug that doesn require any special treatment other than Klipper restart
+</ul>
+
+The most common is `Minor` change and to fix that you simply need to log into your rpi and run the following:
+
+```
+cd ~/Happy-Hare
+./install.sh
+```
+
+Once run klipper should startup without the upgrade warning.
+
+> [!NOTE]  
+> Note that there are no options passed to install.sh unless you need to specify `-c` or `-k` to point to a none standard Klipper install location. Once run klipper should startup without the upgrade warning.
+
