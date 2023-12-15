@@ -209,7 +209,7 @@ class Mmu:
                   ('tan','#D2B48C'), ('teal','#008080'), ('thistle','#D8BFD8'), ('tomato','#FF6347'), ('turquoise','#40E0D0'), ('violet','#EE82EE'),
                   ('wheat','#F5DEB3'), ('white','#FFFFFF'), ('whitesmoke','#F5F5F5'), ('yellow','#FFFF00'), ('yellowgreen','#9ACD32')]
 
-    UPGRADE_REMINDER = "Happy Hare minor version has changed which requires you to re-run\n'./install.sh' to update configuration files and klipper modules.\nMore details: https://github.com/moggieuk/Happy-Hare/doc/upgrade.md"
+    UPGRADE_REMINDER = "Happy Hare minor version has changed which requires you to re-run\n'./install.sh' to update configuration files and klipper modules.\nMore details: https://github.com/moggieuk/Happy-Hare/blob/main/doc/upgrade.md"
 
     def __init__(self, config):
         self.config = config
@@ -373,7 +373,7 @@ class Mmu:
         # Configuration for gate loading and unloading
         self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or endstop name e.g. "mmu_gate"
         if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
-            raise self.config.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENSTOPS)
+            raise self.config.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENDSTOPS)
         self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', self.gate_endstop_to_encoder, minval=0.)
         self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
