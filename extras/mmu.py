@@ -4875,7 +4875,7 @@ class Mmu:
 
         self.extruder_homing_endstop = gcmd.get('EXTRUDER_HOMING_ENDSTOP', self.extruder_homing_endstop)
         if self.extruder_homing_endstop not in self.EXTRUDER_ENDSTOPS:
-            raise gmd.error("extruder_homing_endstop is invalid. Options are: %s" % self.EXTRUDER_ENSTOPS)
+            raise gmd.error("extruder_homing_endstop is invalid. Options are: %s" % self.EXTRUDER_ENDSTOPS)
         self.extruder_homing_max = gcmd.get_float('EXTRUDER_HOMING_MAX', self.extruder_homing_max, above=10.)
         self.extruder_force_homing = gcmd.get_int('EXTRUDER_FORCE_HOMING', self.extruder_force_homing, minval=0, maxval=1)
 
