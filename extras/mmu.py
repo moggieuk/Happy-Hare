@@ -395,7 +395,7 @@ class Mmu:
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
         self.extruder_homing_endstop = config.get('extruder_homing_endstop', self.ENDSTOP_EXTRUDER_COLLISION)
         if self.extruder_homing_endstop not in self.EXTRUDER_ENDSTOPS:
-            raise self.config.error("extruder_homing_endstop is invalid. Options are: %s" % self.EXTRUDER_ENSTOPS)
+            raise self.config.error("extruder_homing_endstop is invalid. Options are: %s" % self.EXTRUDER_ENDSTOPS)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.)
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.)
