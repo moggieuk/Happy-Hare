@@ -37,8 +37,7 @@ class QueueHandler(logging.Handler):
 # Poll log queue on background thread and log each message to logfile
 class QueueListener(logging.handlers.TimedRotatingFileHandler):
     def __init__(self, filename):
-        logging.handlers.TimedRotatingFileHandler.__init__(
-            self, filename, when='midnight', backupCount=5)
+        logging.handlers.TimedRotatingFileHandler.__init__(self, filename, when='midnight', backupCount=5)
         self.bg_queue = queue.Queue()
         self.bg_thread = threading.Thread(target=self._bg_thread)
         self.bg_thread.start()
@@ -4430,50 +4429,18 @@ class Mmu:
         except Exception as e:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
-# PAUL
+# PAUL vvv
     def _update_filaments_from_spoolman(self):
         if not self.enable_spoolman: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
-#            json = { "request_method": "GET", "path": "/v1/proxy" , "body": "filament_id=1" }
-#            a = webhooks.call_remote_method("/server/spoolman/proxy", **json)
-#            self._log_error("PAUL: a=%s" % a)
+            json = {"request_method": "POST", "path": "/v1/spool", "body": "filament_id=2"}
+            a = webhooks.call_remote_endpoint("/server/spoolman/proxy", **json)
+#            a = webhooks.call_remote_method("paul", spool_id=2)
+            self._log_error("PAUL: a=%s" % a)
         except Exception as e:
             self._log_error("Error while retrieving spoolman info: %s" % str(e))
-
-#def _action_call_remote_method(self, method, **kwargs):
-#        webhooks = self.printer.lookup_object('webhooks')
-#        try:
-#            webhooks.call_remote_method(method, **kwargs)
-#        except self.printer.command_error:
-#            logging.exception("Remote Call Error")
-#        return ""
-#http://192.168.0.109:7912/api/v1/filament?filament_id=1,2
-#            json = { request_method: "GET", path: "/v1/spool" }
-#            action = "server/spoolman/getSpools"
-
-##for gate in range(self.mmu_num_gates):
-##self.gate_spool_id
-#            webhooks.call_remote_method("spoolman_find_spool", filament_id=spool_id)
-#        except Exception as e:
-#            self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
-#    def load_spools(self):
-#        hide_archived=False
-#        spools = self.apiClient.post_request("server/spoolman/proxy", json={
-#            "request_method": "GET",
-#            "path": f"/v1/spool?allow_archived={not hide_archived}",
-#        })
-#        if not spools or "result" not in spools:
-#            logging.error("Exception when trying to fetch spools")
-#            return
-#        self.spools.clear()
-#
-#        materials=[]
-#        for spool in spools["result"]:
-#            spoolObject = SpoolmanSpool(**spool)
-#            self.spools[str(spoolObject.id)]=spoolObject
-#            if spoolObject.filament.material not in materials:
-#                materials.append(spoolObject.filament.material)
+# http://192.168.0.103/server/spoolman/proxy?request_method=GET&path=/v1/spool?filament_id=2
 
 
 ### CORE GCODE COMMANDS ##########################################################

@@ -7,4 +7,4 @@ install_script: install.sh
 managed_services: klipper
 
 [mmu_server]
-enable_file_preprocessor: False
+enable_file_preprocessor: True
