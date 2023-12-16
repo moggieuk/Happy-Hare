@@ -1038,6 +1038,7 @@ class Mmu:
                 self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_encoder_sensor() # Initially disable clog/runout detection
             self._servo_move()
+            self._update_filaments_from_spoolman() # PAUL new
             self.gate_status = self._validate_gate_status(self.gate_status) # Delay to allow for correct initial state
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
@@ -4424,6 +4425,51 @@ class Mmu:
                 webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)
         except Exception as e:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
+
+# PAUL
+    def _update_filaments_from_spoolman(self):
+        if not self.enable_spoolman: return
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+#            json = { "request_method": "GET", "path": "/v1/proxy" , "body": "filament_id=1" }
+#            a = webhooks.call_remote_method("/server/spoolman/proxy", **json)
+#            self._log_error("PAUL: a=%s" % a)
+        except Exception as e:
+            self._log_error("Error while retrieving spoolman info: %s" % str(e))
+
+#def _action_call_remote_method(self, method, **kwargs):
+#        webhooks = self.printer.lookup_object('webhooks')
+#        try:
+#            webhooks.call_remote_method(method, **kwargs)
+#        except self.printer.command_error:
+#            logging.exception("Remote Call Error")
+#        return ""
+#http://192.168.0.109:7912/api/v1/filament?filament_id=1,2
+#            json = { request_method: "GET", path: "/v1/spool" }
+#            action = "server/spoolman/getSpools"
+
+##for gate in range(self.mmu_num_gates):
+##self.gate_spool_id
+#            webhooks.call_remote_method("spoolman_find_spool", filament_id=spool_id)
+#        except Exception as e:
+#            self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
+#    def load_spools(self):
+#        hide_archived=False
+#        spools = self.apiClient.post_request("server/spoolman/proxy", json={
+#            "request_method": "GET",
+#            "path": f"/v1/spool?allow_archived={not hide_archived}",
+#        })
+#        if not spools or "result" not in spools:
+#            logging.error("Exception when trying to fetch spools")
+#            return
+#        self.spools.clear()
+#
+#        materials=[]
+#        for spool in spools["result"]:
+#            spoolObject = SpoolmanSpool(**spool)
+#            self.spools[str(spoolObject.id)]=spoolObject
+#            if spoolObject.filament.material not in materials:
+#                materials.append(spoolObject.filament.material)
 
 
 ### CORE GCODE COMMANDS ##########################################################
