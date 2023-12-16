@@ -3936,7 +3936,11 @@ class Mmu:
                             if abs(trig_pos[1] - dist) < 1.0:
                                     homed = False
                     except self.printer.command_error as e:
-                        self._log_stepper("Did not home: %s" % str(e))
+                        # CANbus mcu's often seen to exhibit "Communication timeout" errors so surface errors to user
+                        if abs(trig_pos[1] - dist) > 0. and not "after full movement" in str(e):
+                            self._log_error("Did not complete homing move: %s" % str(e))
+                        else:
+                            self._log_stepper("Did not home: %s" % str(e))
                         homed = False
                     finally:
                         halt_pos = self.mmu_toolhead.get_position()
