@@ -8,13 +8,11 @@ Happy Hare minor version has changed which requires you to re-run
 More details: https://github.com/moggieuk/Happy-Hare/doc/upgrade.md
 ```
 
-Happy Hare version as seen in Mainsail & Fluidd UI's is in the form: `Major.Minor.Point-Patch`. The meaning of each number is as follows:
-<ul>
-<li>`Major` - Major change of functionality that requires to re-install
-<li>`Minor` - A change has been made that requires update to config file or install a new Klipper module
-<li>`Point` - Enhancement that doesn't require any special treatment other than Klipper restart
-<li>`Patch` - Routine update to address a bug that doesn require any special treatment other than Klipper restart
-</ul>
+Happy Hare version as seen in Mainsail & Fluidd UI's is in the form: `Major`.`Minor`.`Point`-`Patch`. The meaning of each number is as follows:
+- `Major` - Major change of functionality that requires a complete re-install
+- `Minor` - A change has been made that requires update to config file or install a new Klipper module
+- `Point` - Enhancement that doesn't require any special treatment other than Klipper restart
+- `Patch` - Routine update to address a bug that doesn require any special treatment other than Klipper restart
 
 The most common is `Minor` change and to fix that you simply need to log into your rpi and run the following:
 
@@ -26,6 +24,6 @@ cd ~/Happy-Hare
 Once run klipper should startup without the upgrade warning.
 
 > [!NOTE]  
-> Note that there are no options passed to install.sh unless you need to specify `-c` or `-k` to point to a none standard Klipper install location. Once run klipper should startup without the upgrade warning.
+> Note that there are no options passed to install.sh unless you need to specify `-c` or `-k` to point to a none standard Klipper install location. Once run klipper should startup without the upgrade warning.<br>
 > HH v2.3 requires Klipper 0.12.0 or greater -- Klipper made a breaking change and v2.3 addresses that but is not backward compatable with older versions of klipper
 
