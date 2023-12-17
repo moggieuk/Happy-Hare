@@ -667,11 +667,10 @@ class Mmu:
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
                 share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
                 ppins.allow_multi_use_pin(share_name)
-                mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, ("mmu_%s" % name) if not name.startswith('mmu_') else name)
+                mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
  
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-                if name in ["toolhead", "gate", "extruder"]:
-                    mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
+                mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
 
         # Get servo and (optional) encoder setup -----
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
