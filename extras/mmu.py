@@ -371,7 +371,7 @@ class Mmu:
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
 
         # Configuration for gate loading and unloading
-        self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or endstop name e.g. "mmu_gate"
+        self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or "mmu_gate"
         if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
             raise self.config.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENDSTOPS)
         self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', self.gate_endstop_to_encoder, minval=0.)
