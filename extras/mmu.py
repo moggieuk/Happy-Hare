@@ -140,8 +140,8 @@ class Mmu:
     ENDSTOP_EXTRUDER_TOUCH     = "mmu_ext_touch"
     ENDSTOP_GEAR_TOUCH         = "mmu_gear_touch"
     ENDSTOP_GATE               = "mmu_gate"
-    ENDSTOP_EXTRUDER           = "mmu_extruder"
-    ENDSTOP_TOOLHEAD           = "mmu_toolhead"
+    ENDSTOP_EXTRUDER           = "extruder"
+    ENDSTOP_TOOLHEAD           = "toolhead"
     ENDSTOP_SELECTOR_TOUCH     = "mmu_sel_touch"
     ENDSTOP_SELECTOR_HOME      = "mmu_sel_home"
 
