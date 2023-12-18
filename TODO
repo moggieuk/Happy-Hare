@@ -86,4 +86,5 @@ Type B & C  MMU support
 5. Could multiple gear steppers also inhert settings from the base...?
 
 
+12. Inattention watchdog that autmatically executes recovery if user doesn't react -- better than disabling heaters and killing print.
 

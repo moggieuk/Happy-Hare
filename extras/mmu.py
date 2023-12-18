@@ -16,7 +16,7 @@ import logging, logging.handlers, threading, queue, time, contextlib, math, os.p
 from random import randint
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
-import chelper
+import chelper, ast
 
 # Forward all messages through a queue (polled by background thread)
 class QueueHandler(logging.Handler):
@@ -84,7 +84,7 @@ class MmuError(Exception):
 class Mmu:
     VERSION = 2.3		# When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
-    BOOT_DELAY = 2.5            # Delay before running bootup tasks
+    BOOT_DELAY = 3.0            # Delay before running bootup tasks
 
     # Calibration steps
     CALIBRATED_GEAR     = 0b00001
@@ -1037,8 +1037,8 @@ class Mmu:
                 self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_encoder_sensor() # Initially disable clog/runout detection
             self._servo_move()
-            self._update_filaments_from_spoolman() # PAUL new
             self.gate_status = self._validate_gate_status(self.gate_status) # Delay to allow for correct initial state
+            self._update_filaments_from_spoolman()
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
 
@@ -4089,6 +4089,7 @@ class Mmu:
         if prev_sync_state != sync:
             self._log_debug("%s gear stepper and extruder" % ("Syncing" if sync else "Unsyncing"))
             self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name if sync else None)
+            self.printer.send_event("mmu:extruder_synced" if sync else "mmu:extruder_unsynced")
 
         # Option to reduce current during print
         if current and sync:
@@ -4429,18 +4430,23 @@ class Mmu:
         except Exception as e:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
-# PAUL vvv
-    def _update_filaments_from_spoolman(self):
+    # Tell moonraker component we are interested in filament data
+    def _update_filaments_from_spoolman(self, gate=None):
         if not self.enable_spoolman: return
-        try:
-            webhooks = self.printer.lookup_object('webhooks')
-            json = {"request_method": "POST", "path": "/v1/spool", "body": "filament_id=2"}
-            a = webhooks.call_remote_endpoint("/server/spoolman/proxy", **json)
-#            a = webhooks.call_remote_method("paul", spool_id=2)
-            self._log_error("PAUL: a=%s" % a)
-        except Exception as e:
-            self._log_error("Error while retrieving spoolman info: %s" % str(e))
-# http://192.168.0.103/server/spoolman/proxy?request_method=GET&path=/v1/spool?filament_id=2
+        gate_ids = []
+        if gate is None: # All gates
+            for i in range(self.mmu_num_gates):
+                if self.gate_spool_id[i] >= 0:
+                    gate_ids.append((i, self.gate_spool_id[i]))
+        elif self.gate_spool_id[gate] >= 0:
+            gate_ids.append((gate, self.gate_spool_id[gate]))
+        self._log_error("gate_ids=%s" % gate_ids)
+        if len(gate_ids) > 0:
+            try:
+                webhooks = self.printer.lookup_object('webhooks')
+                webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids)
+            except Exception as e:
+                self._log_error("Error while retrieving spoolman info: %s" % str(e))
 
 
 ### CORE GCODE COMMANDS ##########################################################
@@ -5343,10 +5349,28 @@ class Mmu:
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
+        gmapstr = gcmd.get('MAP', "{}") # Hidden option for bulk update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
+
+        try:
+            gate_map = ast.literal_eval(gmapstr)
+        except (SyntaxError, ValueError) as e:
+            self._log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
 
         if reset:
             self._reset_gate_map()
+
+        elif not gate_map == {}:
+            for gate, fil in gate_map.items():
+                if self.gate_spool_id[gate] == fil['spool_id']:
+                    self.gate_material[gate] = fil['material']
+                    self.gate_color[gate] = fil['color']
+                else:
+                    self._log_debug("Assertion failure: Spool_id changed for gate #%d in MMU_GATE_MAP. Dict=%s" % (gate, fil))
+
+            self._update_gate_color(self.gate_color)
+            self._persist_gate_map() # This will also update LED status
+
         elif gates != "!" or gate >= 0:
             gatelist = []
             if gates != "!":
@@ -5372,13 +5396,14 @@ class Mmu:
                     raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
                 self.gate_material[gate] = material
                 self.gate_color[gate] = color
-                self._update_gate_color(self.gate_color)
                 self.gate_status[gate] = available
                 self.gate_spool_id[gate] = spool_id
 
-            self._persist_gate_map()
+            self._update_gate_color(self.gate_color)
+            self._persist_gate_map() # This will also update LED status
         else:
             quiet = False # Display current map
+
         if not quiet:
             self._log_info(self._gate_map_to_human_string())
 
