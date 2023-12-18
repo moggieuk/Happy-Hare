@@ -3062,7 +3062,7 @@ class Mmu:
                             self._log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
                         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                         return
-                self._log_debug("Filament did not clear encoder even after moving %.1fmm" (self.encoder_move_step_size * max_steps))
+                self._log_debug("Filament did not clear encoder even after moving %.1fmm" % (self.encoder_move_step_size * max_steps))
         else:
             _,homed,_,_ = self._trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self.ENDSTOP_GATE)
             if homed:
