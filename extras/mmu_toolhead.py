@@ -151,6 +151,13 @@ class MmuToolHead(toolhead.ToolHead, object):
     def get_gear_limits(self):
         return self.gear_max_velocity, self.gear_max_accel
 
+    def select_gear_stepper(self, gate): # TODO untested WIP
+        if gate < 0:
+            self.select_gear_steppers(None)
+        else:
+            self.select_gear_steppers(["mmu_gear_%d" % gate])
+        return
+
     def select_gear_steppers(self, selected_steppers): # TODO untested WIP
         # Unsync first to simplify transition
         gear_motion_queue = self.gear_motion_queue
@@ -166,12 +173,15 @@ class MmuToolHead(toolhead.ToolHead, object):
         g_pos = gear_rail.get_commanded_position()
         gear_rail.steppers = []
         # TODO need to handle step generators? or can they safety always be assigned to toolhead?
-        for s in self.all_gear_rail_steppers:
-            if s.get_name() in selected_steppers:
-                gear_rail.steppers.append(s)
-        if not gear_rail.steppers:
-            raise self.printer.command_error("None of these `%s` gear steppers where found!" % selected_steppers)
-        gear_rail.set_position([g_pos, 0., 0.])
+        if selected_steppers:
+            for s in self.all_gear_rail_steppers:
+                if s.get_name() in selected_steppers:
+                    gear_rail.steppers.append(s)
+            if not gear_rail.steppers:
+                raise self.printer.command_error("None of these `%s` gear steppers where found!" % selected_steppers)
+            gear_rail.set_position([g_pos, 0., 0.])
+        else:
+            pass # TODO bypass removes all steppers - is this safe or do we always need stepper[0]?
 
         # Restore previous synchronization state if any with new gear steppers
         if gear_motion_queue:

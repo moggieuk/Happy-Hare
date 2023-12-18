@@ -4,7 +4,7 @@
 # Copyright (C) 2022  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
 #
-# Inspired by original ERCF software
+# Goal: Firmware to control any Klipper based MMU
 #
 # (\_/)
 # ( *,*)
@@ -84,7 +84,7 @@ class MmuError(Exception):
 class Mmu:
     VERSION = 2.3		# When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
-    BOOT_DELAY = 3.0            # Delay before running bootup tasks
+    BOOT_DELAY = 2.0            # Delay before running bootup tasks
 
     # Calibration steps
     CALIBRATED_GEAR     = 0b00001
@@ -155,6 +155,7 @@ class Mmu:
     VENDOR_ERCF     = "ERCF"
     VENDOR_TRADRACK = "Tradrack"
     VENDOR_PRUSA    = "Prusa" # In progress
+    VENDOR_OTHER    = "Other"
 
     # mmu_vars.cfg variables
     VARS_MMU_CALIB_CLOG_LENGTH      = "mmu_calibration_clog_length"
@@ -239,6 +240,7 @@ class Mmu:
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
         self.mmu_version_string = config.get('mmu_version', "1.1")
         self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
+        self.virtual_selector = False # TODO untested WIP
 
         # Set CAD default parameters to ensure everything is set
         # These are default for ERCFv1.1 - the first MMU supported by Happy Hare
@@ -388,7 +390,7 @@ class Mmu:
         self.bowden_allowable_unload_delta = config.getfloat('bowden_allowable_unload_delta', self.bowden_allowable_load_delta, minval=1.)
         self.bowden_move_error_tolerance = config.getfloat('bowden_move_error_tolerance', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
         self.bowden_pre_unload_test = config.getint('bowden_pre_unload_test', 0, minval=0, maxval=1) # Check for bowden movement before full pull
-        self.bowden_pre_unload_error_tolerance = config.getfloat('bowden_pre_unload_error_tolerance', 100, minval=0, maxval=100) # Percentage of delta of move that results in error
+        self.bowden_pre_unload_error_tolerance = config.getfloat('bowden_pre_unload_error_tolerance', 100, minval=0, maxval=100) # Allowable delta movement % before error
 
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
@@ -402,7 +404,7 @@ class Mmu:
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=5.) # For toolhead sensor
         self.toolhead_sync_unload = config.getint('toolhead_sync_unload', 0, minval=0, maxval=1)
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
-        self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Percentage of delta of move that results in error
+        self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
 
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
@@ -558,8 +560,11 @@ class Mmu:
 
         # Core MMU functionality
         self.gcode.register_command('MMU', self.cmd_MMU, desc = self.cmd_MMU_help)
-        self.gcode.register_command('_MMU_PRINT_START', self.cmd_MMU_PRINT_START, desc = self.cmd_MMU_PRINT_START_help) # Automatically called if printing from virtual SD-card
-        self.gcode.register_command('_MMU_PRINT_END', self.cmd_MMU_PRINT_END, desc = self.cmd_MMU_PRINT_END_help) # Automatically called if printing from virtual SD-card
+
+        # Endstops for print start / stop. Automatically called if printing from virtual SD-card
+        self.gcode.register_command('_MMU_PRINT_START', self.cmd_MMU_PRINT_START, desc = self.cmd_MMU_PRINT_START_help)
+        self.gcode.register_command('_MMU_PRINT_END', self.cmd_MMU_PRINT_END, desc = self.cmd_MMU_PRINT_END_help)
+
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
         self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
@@ -621,6 +626,7 @@ class Mmu:
         self.gcode.register_command('__MMU_PRE_GATE_INSERT', self.cmd_MMU_PRE_GATE_INSERT, desc = self.cmd_MMU_PRE_GATE_INSERT_help)
         self.gcode.register_command('__MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
 
+        # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP_TASKS', self.cmd_MMU_BOOTUP_TASKS, desc = self.cmd_MMU_BOOTUP_TASKS_help) # Bootup tasks
 
         # We setup MMU hardware during configuration since some hardware like endstop requires
@@ -3675,6 +3681,7 @@ class Mmu:
 #################################
 
     def _home(self, tool = -1, force_unload = -1):
+        if self.virtual_selector: return
         if self._check_in_bypass(): return
         with self._wrap_action(self.ACTION_HOMING):
             self._log_info("Homing MMU...")
@@ -4388,6 +4395,12 @@ class Mmu:
 
     def _select_gate(self, gate):
         if gate == self.gate_selected: return
+
+        if self.virtual_selector:
+            self.mmu_toolhead.select_gear_stepper(gate)
+            self._set_gate_selected(gate)
+            return
+
         with self._wrap_action(self.ACTION_SELECTING):
             self._servo_move()
             if gate == self.TOOL_GATE_BYPASS:
@@ -4463,6 +4476,7 @@ class Mmu:
     cmd_MMU_HOME_help = "Home the MMU selector"
     def cmd_MMU_HOME(self, gcmd):
         if self._check_is_disabled(): return
+        if self.virtual_selector: return
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR):
             self._log_always("Will home to endstop only!")
             tool = -1
