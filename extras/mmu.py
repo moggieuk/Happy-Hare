@@ -140,8 +140,8 @@ class Mmu:
     ENDSTOP_EXTRUDER_TOUCH     = "mmu_ext_touch"
     ENDSTOP_GEAR_TOUCH         = "mmu_gear_touch"
     ENDSTOP_GATE               = "mmu_gate"
-    ENDSTOP_EXTRUDER           = "mmu_extruder"
-    ENDSTOP_TOOLHEAD           = "mmu_toolhead"
+    ENDSTOP_EXTRUDER           = "extruder"
+    ENDSTOP_TOOLHEAD           = "toolhead"
     ENDSTOP_SELECTOR_TOUCH     = "mmu_sel_touch"
     ENDSTOP_SELECTOR_HOME      = "mmu_sel_home"
 
@@ -371,7 +371,7 @@ class Mmu:
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
 
         # Configuration for gate loading and unloading
-        self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or endstop name e.g. "mmu_gate"
+        self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or "mmu_gate"
         if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
             raise self.config.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENDSTOPS)
         self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', self.gate_endstop_to_encoder, minval=0.)
@@ -651,7 +651,7 @@ class Mmu:
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
 
         # Setup filament homing sensors ------
-        for name in ["toolhead", "mmu_gate", "extruder"]:
+        for name in [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER]:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
@@ -667,11 +667,10 @@ class Mmu:
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
                 share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
                 ppins.allow_multi_use_pin(share_name)
-                mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, ("mmu_%s" % name) if not name.startswith('mmu_') else name)
+                mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
  
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-                if name in ["toolhead", "gate", "extruder"]:
-                    mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
+                mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
 
         # Get servo and (optional) encoder setup -----
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
@@ -746,7 +745,7 @@ class Mmu:
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-        if self._has_encoder() and not self._has_sensor("gate") and self.enable_endless_spool == 1 and self.enable_clog_detection == 0:
+        if self._has_encoder() and not self._has_sensor(self.ENDSTOP_GATE) and self.enable_endless_spool == 1 and self.enable_clog_detection == 0:
             self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled unless you have pre-gate sensors")
 
         # Sanity check to see that mmu_vars.cfg is included. This will verify path because default has single entry
@@ -1344,7 +1343,7 @@ class Mmu:
 
     def _state_to_human_string(self, direction=None):
         tool_str = str(self.tool_selected) if self.tool_selected >=0 else "?"
-        sensor_str = " [sensor] " if self._has_sensor("toolhead") else ""
+        sensor_str = " [sensor] " if self._has_sensor(self.ENDSTOP_TOOLHEAD) else ""
         counter_str = " %.1fmm%s" % (self.mmu_toolhead.get_position()[1], " (e:%.1fmm)" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
         if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos == self.FILAMENT_POS_LOADED:
             visual = "MMU BYPASS ----- [encoder] ----------->> [nozzle] LOADED"
@@ -1449,14 +1448,14 @@ class Mmu:
                     msg += " and then homes to extruder using COLLISION detection (at %d%% current)" % self.extruder_homing_current
                 else:
                     msg += " and then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
-            if self._has_sensor("toolhead"):
+            if self._has_sensor(self.ENDSTOP_TOOLHEAD):
                 msg += "\n- Extruder loads by homing a maximum of %.1fmm to TOOLHEAD SENSOR before moving the last %.1fmm the nozzle" % (self.toolhead_homing_max, self._get_home_position_to_nozzle())
             else:
                 msg += "\n- Loads extruder by moving %.1fmm to the nozzle" % self._get_home_position_to_nozzle()
 
             msg += "\nUnload Sequence"
             msg += "\n- Tip is %s formed by %s" % (("sometimes", "SLICER") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro)))
-            if self._has_sensor("toolhead"):
+            if self._has_sensor(self.ENDSTOP_TOOLHEAD):
                 msg += "\n- Extruder unloads by homing a maximum %.1fmm (%.1f home_to_nozzle + %.1f safety) less reported park position to TOOLHEAD SENSOR, then the remainder to exist extruder" % (self._get_home_position_to_nozzle() + self.toolhead_unload_safety_margin, self._get_home_position_to_nozzle(), self.toolhead_unload_safety_margin)
             else:
                 msg += "\n- Extruder unloads by moving %.1fmm (%1f home_to_nozzle + %.1f saftey) less reported park position to exit extruder" % (self._get_home_position_to_nozzle() + self.toolhead_unload_safety_margin, self._get_home_position_to_nozzle(), self.toolhead_unload_safety_margin)
@@ -1758,7 +1757,7 @@ class Mmu:
                 reference = measured_movement - spring
 
                 # When homing using collision, we expect the filament to spring back.
-                if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION and spring > 0.:
+                if not (self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION and spring == 0.):
                     msg = "Pass #%d: Filament homed to extruder, encoder measured %.1fmm, " % (i+1, measured_movement)
                     msg += "filament sprung back %.1fmm" % spring
                     msg += "\n- Bowden calibration based on this pass is %.1f" % reference
@@ -2519,7 +2518,7 @@ class Mmu:
         return result
 
     def _must_home_to_extruder(self):
-        return self.extruder_force_homing or not self._has_sensor("toolhead")
+        return self.extruder_force_homing or not self._has_sensor(self.ENDSTOP_TOOLHEAD)
 
     def _check_is_disabled(self):
         if not self.is_enabled:
@@ -2649,7 +2648,7 @@ class Mmu:
         return False
 
     def _get_home_position_to_nozzle(self):
-        if self._has_sensor("toolhead"):
+        if self._has_sensor(self.ENDSTOP_TOOLHEAD):
             return self.toolhead_sensor_to_nozzle
         else:
             return self.toolhead_extruder_to_nozzle
@@ -3081,7 +3080,7 @@ class Mmu:
             if not self._has_encoder():
                 raise MmuError("Attempting to %s encoder but encoder is not configured on MMU!" % direction)
         elif self.gate_homing_endstop == self.ENDSTOP_GATE:
-            if not self._has_sensor("gate"):
+            if not self._has_sensor(self.ENDSTOP_GATE):
                 raise MmuError("Attempting to %s gate but gate sensor '%s' is not configured on MMU!" % (direction, self.ENDSTOP_GATE))
         else:
             raise MmuError("Unsupported gate endstop")
@@ -3267,9 +3266,9 @@ class Mmu:
                 motor = "extruder"
 
             homed = False
-            if self._has_sensor("toolhead"):
+            if self._has_sensor(self.ENDSTOP_TOOLHEAD):
                 # With toolhead sensor we first home to toolhead sensor past the extruder entrance
-                if self.sensors["toolhead"].runout_helper.filament_present:
+                if self.sensors[self.ENDSTOP_TOOLHEAD].runout_helper.filament_present:
                     raise MmuError("Possible toolhead sensor malfunction - filament detected before it entered extruder")
                 self._log_debug("Homing up to %.1fmm to toolhead sensor%s" % (self.toolhead_homing_max, (" (synced)" if synced else "")))
                 _,homed,_,_ = self._trace_filament_move("Homing to toolhead sensor", self.toolhead_homing_max, motor=motor, homing_move=1, endstop_name=self.ENDSTOP_TOOLHEAD)
@@ -3310,7 +3309,7 @@ class Mmu:
             self._ensure_safe_extruder_temperature(wait=False)
 
             # Don't allow sync without toolhead sensor because of risk of over unloading
-            synced = self.toolhead_sync_unload and self._has_sensor("toolhead") and not extruder_only
+            synced = self.toolhead_sync_unload and self._has_sensor(self.ENDSTOP_TOOLHEAD) and not extruder_only
             if synced:
                 self._servo_down()
                 speed = self.extruder_sync_unload_speed
@@ -3323,9 +3322,9 @@ class Mmu:
             length = self._get_home_position_to_nozzle() - park_pos + self.toolhead_unload_safety_margin
             homed = False
             ts_actual = 0.
-            if self._has_sensor("toolhead"):
+            if self._has_sensor(self.ENDSTOP_TOOLHEAD):
                 # With toolhead sensor we first home to toolhead sensor past the extruder entrance
-                if not self.sensors["toolhead"].runout_helper.filament_present:
+                if not self.sensors[self.ENDSTOP_TOOLHEAD].runout_helper.filament_present:
                     self._log_info("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload")
                     homed = True
                 else:
@@ -3541,7 +3540,7 @@ class Mmu:
     def _recover_filament_pos(self, strict=False, message=False):
         if message:
             self._log_info("Attempting to recover filament position...")
-        ts = self._check_sensor("toolhead")
+        ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
         if ts is None: # Not installed
             if self._check_filament_in_mmu():
                 if self._check_filament_still_in_extruder():
@@ -3582,13 +3581,13 @@ class Mmu:
     def _form_tip_standalone(self, extruder_only=False):
         self._movequeues_wait_moves()
         # Pre check to validate the presence of filament in the extruder and case where we don't need to form tip
-        if self._check_sensor("extruder") or self._check_sensor("toolhead"):
+        if self._check_sensor(self.ENDSTOP_EXTRUDER) or self._check_sensor(self.ENDSTOP_TOOLHEAD):
             filament_initially_present = True
         else:
             # Only the "extruder" sensor can definitely answer but believe toolhead if that is all we have
-            filament_initially_present = self._check_sensor("extruder")
+            filament_initially_present = self._check_sensor(self.ENDSTOP_EXTRUDER)
             if filament_initially_present is None:
-                filament_initially_present = self._check_sensor("toolhead")
+                filament_initially_present = self._check_sensor(self.ENDSTOP_TOOLHEAD)
         if filament_initially_present is False:
             self._log_debug("Tip forming skipped because no filament was detected")
             if self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -3848,8 +3847,8 @@ class Mmu:
     #
     # If homing move then endstop name can be specified.
     #         "mmu_gate"       - at the gate on MMU (when motor includes "gear")
-    #         "mmu_extruder"   - just before extruder entrance (motor includes "gear" or "extruder")
-    #         "mmu_toolhead"   - after extruder entrance (motor includes "gear" or "extruder")
+    #         "extruder"       - just before extruder entrance (motor includes "gear" or "extruder")
+    #         "toolhead"       - after extruder entrance (motor includes "gear" or "extruder")
     #         "mmu_gear_touch" - stallguard on gear (when motor includes "gear", only useful for motor="gear")
     #         "mmu_ext_touch"  - stallguard on nozzle (when motor includes "extruder", only useful for motor="extruder")
     #
@@ -4031,7 +4030,7 @@ class Mmu:
         if any(self._check_all_sensors().values()):
             self._log_debug("Filament detected by sensors: %s" % ', '.join([key for key, value in self._check_all_sensors().items() if value]))
             return True
-        elif not self._has_sensor("gate") and self._has_encoder():
+        elif not self._has_sensor(self.ENDSTOP_GATE) and self._has_encoder():
             self._servo_down()
             found = self._buzz_gear_motor()
             self._log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
@@ -4042,8 +4041,8 @@ class Mmu:
     # Check for filament at selected gate
     def _check_filament_at_gate(self):
         self._log_debug("Checking for filament at gate...")
-        if self._has_sensor("gate"):
-            detected = self._check_sensor("gate")
+        if self._has_sensor(self.ENDSTOP_GATE):
+            detected = self._check_sensor(self.ENDSTOP_GATE)
             self._log_debug("Filament %s by gate sensor" % "detected" if detected else "not detected")
             return detected
         elif self._has_encoder():
@@ -4624,7 +4623,7 @@ class Mmu:
         if self._is_mmu_paused():
             # Sanity check we are ready to go
             if self._is_in_print() and self.filament_pos != self.FILAMENT_POS_LOADED:
-                if self._check_sensor("toolhead") is True:
+                if self._check_sensor(self.ENDSTOP_TOOLHEAD) is True:
                     self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
 

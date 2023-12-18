@@ -172,7 +172,7 @@ This section controls the optional extruder homing step. The `extruder_homing_en
 # filament just shy of the homing point. If using a toolhead sensor this initial extruder homing is unecessary (but can be forced)
 # because the homing will occur inside the extruder for the optimum in accuracy.
 #
-# In addition to an entry sensor "mmu_extruder" it is possbile to Happy Hare to "feel" for the extruder gear entry by colliding
+# In addition to an entry sensor "extruder" it is possbile to Happy Hare to "feel" for the extruder gear entry by colliding
 # with it. Because this method is not completely deterministic you might find have to find the sweetspot for your setup by adjusting
 # the TMC current reduction. Also, touch (stallguard) sensing is possible to configure but unfortunately doesn't work well with
 # some external EASY-BRD or ERB mcu's. Note that reduced current during collision detection can also prevent unecessary filament griding.
@@ -180,7 +180,7 @@ This section controls the optional extruder homing step. The `extruder_homing_en
 # Possible homing_endtop names:
 #   collision      - Detect the collision with the extruder gear by monitoring encoder movement
 #   mmu_gear_touch - Use touch (stallguard) detection when the gear stepper hits the extruder
-#   mmu_extruder   - If you have a "filament entry" endstop configured
+#   extruder       - If you have a "filament entry" endstop configured
 # Note the homing_endstop will be ignored if a toolhead sensor is available unless `extruder_force_homing: 1`
 #
 extruder_homing_max: 50			# Maximum distance to advance in order to attempt to home the extruder

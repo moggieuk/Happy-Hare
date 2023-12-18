@@ -16,7 +16,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, importlib, math, os, time
+import itertools, logging, importlib, math, os, time
 import stepper, chelper, toolhead
 from extras.homing import Homing, HomingMove
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
@@ -597,7 +597,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
 # Wrapper for multiple stepper motor support
 def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
     rail = MmuPrinterRail(config, need_position_minmax=need_position_minmax, default_position_endstop=default_position_endstop, units_in_radians=units_in_radians)
-    for i in range(0, 23): # Support for up to 24 gates
+    for i in itertools.count(0):
         if not config.has_section(config.get_name() + "_" + str(i)):
             break
         rail.add_extra_stepper(config.getsection(config.get_name() + str(i)))
