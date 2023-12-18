@@ -27,9 +27,10 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, time
+import itertools, logging, time
 
 class PreGateRunoutHelper:
+
     def __init__(self, printer, name, gate):
         self.printer, self.name, self.gate = printer, name, gate
         self.reactor = self.printer.get_reactor()
@@ -105,34 +106,42 @@ class PreGateRunoutHelper:
         self.sensor_enabled = gcmd.get_int("ENABLE", 1)
 
 class MmuSensors:
+
+    ENDSTOP_PRE_GATE  = "mmu_pre_gate"
+    ENDSTOP_GATE      = "mmu_gate"
+    ENDSTOP_EXTRUDER  = "extruder"
+    ENDSTOP_TOOLHEAD  = "toolhead"
+
     def __init__(self, config):
         printer = config.get_printer()
 
         # Setup and pre-gate sensors that are defined...
-        for gate in range(0, 23):
+        for gate in itertools.count(0):
             switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
-            if switch_pin:
-                # Automatically create necessary filament_switch_sensors
-                name = "mmu_pre_gate_%d" % gate
-                section = "filament_switch_sensor %s" % name
-                config.fileconfig.add_section(section)
-                config.fileconfig.set(section, "switch_pin", switch_pin)
-                config.fileconfig.set(section, "pause_on_runout", "False")
-                config.fileconfig.set(section, "insert_gcode", "__MMU_PRE_GATE_INSERT GATE=%d" % gate)
-                config.fileconfig.set(section, "runout_gcode", "__MMU_PRE_GATE_RUNOUT GATE=%d" % gate)
-                fs = printer.load_object(config, section)
 
-                # Replace with custom runout_helper because limited operation is possible during print
-                pre_gate_helper = PreGateRunoutHelper(printer, name, gate)
-                fs.runout_helper = pre_gate_helper
-                fs.get_status = pre_gate_helper.get_status
+            if switch_pin is None:
+                break
+
+            # Automatically create necessary filament_switch_sensors
+            name = "%s_%d" % (self.ENDSTOP_PRE_GATE, gate)
+            section = "filament_switch_sensor %s" % name
+            config.fileconfig.add_section(section)
+            config.fileconfig.set(section, "switch_pin", switch_pin)
+            config.fileconfig.set(section, "pause_on_runout", "False")
+            config.fileconfig.set(section, "insert_gcode", "__MMU_PRE_GATE_INSERT GATE=%d" % gate)
+            config.fileconfig.set(section, "runout_gcode", "__MMU_PRE_GATE_RUNOUT GATE=%d" % gate)
+            fs = printer.load_object(config, section)
+
+            # Replace with custom runout_helper because limited operation is possible during print
+            pre_gate_helper = PreGateRunoutHelper(printer, name, gate)
+            fs.runout_helper = pre_gate_helper
+            fs.get_status = pre_gate_helper.get_status
 
         # Setup gate sensor...
         switch_pin = config.get('gate_switch_pin', None)
         if switch_pin:
             # Automatically create necessary filament_switch_sensors
-            name = "mmu_gate"
-            section = "filament_switch_sensor %s_sensor" % name
+            section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_GATE
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
@@ -144,8 +153,7 @@ class MmuSensors:
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin:
             # Automatically create necessary filament_switch_sensors
-            name = "extruder"
-            section = "filament_switch_sensor %s_sensor" % name
+            section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_EXTRUDER
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
@@ -155,8 +163,7 @@ class MmuSensors:
         switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin:
             # Automatically create necessary filament_switch_sensors
-            name = "toolhead"
-            section = "filament_switch_sensor %s_sensor" % name
+            section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_TOOLHEAD
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
