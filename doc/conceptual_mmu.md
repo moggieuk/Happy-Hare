@@ -26,10 +26,10 @@ The encoder measures filament movement and provides feedback to Happy Hare prima
 The ERCF design exclusively uses an encoder for both homing and validation.  For the Tradrack design it is optional because a Gate Sensor provides the reference homing point and if added the encoder can provide more reliability and error recovery.
 
 **Extruder (Entry) Sensor**
-This optional filament sensor sits right before the extruder entrance and can be used in several ways: (i) it can provide a homing point at the end of the long bowden move prior to loading the extruder, (ii) if provides extra feedback that the filament is right at the extruder entrance. Named `mmu_extruder`
+This optional filament sensor sits right before the extruder entrance and can be used in several ways: (i) it can provide a homing point at the end of the long bowden move prior to loading the extruder, (ii) if provides extra feedback that the filament is right at the extruder entrance. Named `extruder`
 
 **Toolhead Sensor**
-This sensor sits after the extruder entrance but before the start of the hotend.  It is probably the most useful of all sensors because it provides an accurate reference homing point after the problematic extruder entrace a short way from the nozzle. It also provides extremely useful feedback on the presence of a filament inside the extruder and thus detections of error conditions like stuck filament. This is a highly recommended sensor. Named `mmu_toolhead`
+This sensor sits after the extruder entrance but before the start of the hotend.  It is probably the most useful of all sensors because it provides an accurate reference homing point after the problematic extruder entrace a short way from the nozzle. It also provides extremely useful feedback on the presence of a filament inside the extruder and thus detections of error conditions like stuck filament. This is a highly recommended sensor. Named `toolhead`
 
 **"Virtual Sensors"**
 Note shown in the diagram there are several "virtual sensors" that are implemented by Happy Hare:

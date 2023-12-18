@@ -91,12 +91,12 @@ QUERY_ENDSTOPS
 Validate that you can see:
 ```yml
 mmu_sel_home:open (Essential)
-mmu_toolhead:open (Optional if you have a toolhead sensor)
+toolhead:open (Optional if you have a toolhead sensor)
 ```
 Then manually press and hold the selector microswitch and rerun `QUERY_ENDSTOPS`.<br>
 Validate that you can see `mmu_sel_home:TRIGGERED` in the list.<br>
 If you have toolhead sensor, feed filament into the extruder past the switch and rerun `QUERY_ENDSTOPS`.<br>
-Validate that you can see `mmu_toolhead:TRIGGERED` in the list.
+Validate that you can see `toolhead:TRIGGERED` in the list.
 
 If either of these don't change state then the pin assigned to the endstop is incorrect.  If the state is inverted (i.e. enstop transitions to `open` when pressed) the add/remove the `!` on the respective endstop pin either in the `[stepper_mmu_selector]` block for selector endstop or in `[filament_switch_sensor toolhead_sensor]` block for toolhead sensor.
 
@@ -171,7 +171,7 @@ encoder_pin: ^mmu:MMU_ENCODER
 Happy Hare implements the MMU control as a "second toolhead" known as the MMU toolhead. The X-axis represents the selector movement and the Y-axis the filament movement until Klipper takes over the control of the extruder as normal. It offers some sophisticated stepper synching and homing options which add additional parameters to the regular klipper stepper definition.
 
 ### Multiple Endstops on MMU Steppers
-In a nutshell, all steppers (MMU selector, MMU gear) defined in Happy Hare can have muliple endstops defined. Firstly the default endstop can be defined in the normal way by setting `endstop_pin`.  This would then become the default endstop and can be referenced in gcode as "default".  However it is better to give the endstop a vanity name by adding a new `endstop_name` parameter. This is the name that will appear when listing endstops (e.g. in the Mainsail interface or with `QUERY_ENDSTOPS`). Happy Hare uses a naming convention of `mmu_` so anticipated names are: `mmu_gear_touch`, `mmu_ext_touch`, `mmu_sel_home`, `mmu_sel_touch`, `mmu_toolhead`, `mmu_gate`, `mmu_extruder`
+In a nutshell, all steppers (MMU selector, MMU gear) defined in Happy Hare can have muliple endstops defined. Firstly the default endstop can be defined in the normal way by setting `endstop_pin`.  This would then become the default endstop and can be referenced in gcode as "default".  However it is better to give the endstop a vanity name by adding a new `endstop_name` parameter. This is the name that will appear when listing endstops (e.g. in the Mainsail interface or with `QUERY_ENDSTOPS`). Happy Hare uses a naming convention of `mmu_` so anticipated names are: `mmu_gear_touch`, `mmu_ext_touch`, `mmu_sel_home`, `mmu_sel_touch`, `toolhead`, `mmu_gate`, `extruder`
 
 These would represent touch endstop on gear, touch on extruder, physical selector home, selector touch endstop, toolhead sensor, sensor at the gate and sensor just prior to extruder entrance. In Happy Hare, "touch" refers to stallguard based sensing feedback from the TMC driver (if avaialable).
 
@@ -185,7 +185,7 @@ extra_endstop_names: mmu_ext_touch, my_test_endstop
 Defines two (non-default) endstops, the first is a virtual "touch" one leveraging stallguard and the second an example of a test switch.
 
 > [!IMPORTANT]  
-> If equipped with a toolhead sensor, gate sensor or extruder sensor, endstops will automatically be created with the name `mmu_toolhead`, `mmu_gate`,  `mmu_extruder` respectively.
+> If equipped with a toolhead sensor, gate sensor or extruder sensor, endstops will automatically be created with the name `toolhead`, `mmu_gate`,  `extruder` respectively.
 
 ### Endstop on the Extruder!
 Happy Hare will automatically enhance Klipper to provide endstop(s) on the extruder stepper.  While this might not seem it has value, it can be used to sense pressure on the filament (like hitting the nozzle when loading).  Unless you have a sophisticated load cell attached to your nozzle the most likely configuration would be to define a TMC stallguard endstop. You can do this by adding `endstop_pin` to the extruder definition -- don't worry it won't confuse Klipper!
