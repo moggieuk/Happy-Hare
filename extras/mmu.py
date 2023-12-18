@@ -1758,8 +1758,7 @@ class Mmu:
                 reference = measured_movement - spring
 
                 # When homing using collision, we expect the filament to spring back.
-                # When homing to a "real" endstop, we don't expect any spring back to happen.
-                if not (self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION and spring == 0):
+                if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION and spring > 0.:
                     msg = "Pass #%d: Filament homed to extruder, encoder measured %.1fmm, " % (i+1, measured_movement)
                     msg += "filament sprung back %.1fmm" % spring
                     msg += "\n- Bowden calibration based on this pass is %.1f" % reference
