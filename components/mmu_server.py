@@ -3,6 +3,9 @@
 #
 # Copyright (C) 2023  Kieran Eglin <@kierantheman (discord)>, <kieran.eglin@gmail.com>
 #
+# Spoolman integration:
+# Copyright (C) 2023  moggieuk#6538 (discord) moggieuk@hotmail.com
+#
 # (\_/)
 # ( *,*)
 # (")_(") MMU Ready

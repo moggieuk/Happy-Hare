@@ -621,6 +621,8 @@ class Mmu:
         self.gcode.register_command('__MMU_PRE_GATE_INSERT', self.cmd_MMU_PRE_GATE_INSERT, desc = self.cmd_MMU_PRE_GATE_INSERT_help)
         self.gcode.register_command('__MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
 
+        self.gcode.register_command('__MMU_BOOTUP_TASKS', self.cmd_MMU_BOOTUP_TASKS, desc = self.cmd_MMU_BOOTUP_TASKS_help) # Bootup tasks
+
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
         # This assumes that the hardware configuartion appears before the `[mmu]` section
@@ -1023,10 +1025,18 @@ class Mmu:
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
-        waketime = self.reactor.monotonic() + self.BOOT_DELAY
-        self.reactor.register_callback(self._bootup_tasks, waketime)
+        self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
-    def _bootup_tasks(self, eventtime):
+    def _schedule_mmu_bootup_tasks(self, delay=0.):
+        waketime = self.reactor.monotonic() + delay
+        self.reactor.register_callback(self._mmu_bootup_tasks, waketime)
+
+    def _mmu_bootup_tasks(self, eventtime):
+        self._log_trace("_bootup_tasks()")
+        self._exec_gcode("__MMU_BOOTUP_TASKS")
+
+    cmd_MMU_BOOTUP_TASKS_help = "Internal commands to complete bootup of MMU"
+    def cmd_MMU_BOOTUP_TASKS(self, gcmd):
         try:
             self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare Ready')
             if self.log_startup_status > 0:
@@ -2218,7 +2228,7 @@ class Mmu:
         try:
             self.gcode.run_script(command)
         except Exception:
-            logging.exception("Error running job state initializer/finalizer")
+            logging.exception("Error running job state initializer/finalizer or bootup tasks")
 
     def _print_start_event_handler(self, eventtime):
         self._log_trace("_print_start_event_handler()")
@@ -2676,9 +2686,7 @@ class Mmu:
             self._load_persisted_state()
         self.is_enabled = True
         self._log_always("MMU enabled and reset")
-        self._log_always(self._tool_to_gate_map_to_human_string(summary=True))
-        self._display_visual_state()
-        self._set_print_state("initialized")
+        self._schedule_mmu_bootup_tasks()
 
     def _disable_mmu(self):
         if not self.is_enabled: return
@@ -2805,8 +2813,8 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.filament_pos))
-        self._set_print_state("initialized")
         self._log_always("MMU state reset")
+        self._schedule_mmu_bootup_tasks()
 
 
 #########################################################
@@ -4431,6 +4439,7 @@ class Mmu:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
     # Tell moonraker component we are interested in filament data
+    # gate=None means all gates with spool_id, else specific gate
     def _update_filaments_from_spoolman(self, gate=None):
         if not self.enable_spoolman: return
         gate_ids = []
@@ -4440,8 +4449,8 @@ class Mmu:
                     gate_ids.append((i, self.gate_spool_id[i]))
         elif self.gate_spool_id[gate] >= 0:
             gate_ids.append((gate, self.gate_spool_id[gate]))
-        self._log_error("gate_ids=%s" % gate_ids)
         if len(gate_ids) > 0:
+            self._log_debug("Updating following gate/spool_id pairs from spoolman: %s" % gate_ids)
             try:
                 webhooks = self.printer.lookup_object('webhooks')
                 webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids)
