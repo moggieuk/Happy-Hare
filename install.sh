@@ -53,33 +53,33 @@ PIN[ERB,pre_gate_11_pin]="";             PIN[EASY-BRD,pre_gate_11_pin]="";      
 
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP10)
 #
-PIN[MBB,gear_uart_pin]="PA10";       # M1
-PIN[MBB,gear_step_pin]="PB15";
-PIN[MBB,gear_dir_pin]="PB14";
-PIN[MBB,gear_enable_pin]="PA8";
-PIN[MBB,gear_diag_pin]="PA3";
-PIN[MBB,selector_uart_pin]="PC7";    # M2
-PIN[MBB,selector_step_pin]="PD2";
-PIN[MBB,selector_dir_pin]="PB13";
-PIN[MBB,selector_enable_pin]="PD1";
-PIN[MBB,selector_diag_pin]="PA4";
-PIN[MBB,selector_endstop_pin]="PB2"; # STP11
-PIN[MBB,servo_pin]="PA0";
-PIN[MBB,encoder_pin]="PA1";
-PIN[MBB,neopixel_pin]="PA2";
-PIN[MBB,gate_sensor_pin]="PB10";     # STP10
-PIN[MBB,pre_gate_0_pin]="PA3";       # STP1
-PIN[MBB,pre_gate_1_pin]="PA4";       # STP2
-PIN[MBB,pre_gate_2_pin]="PB9";       # STP3
-PIN[MBB,pre_gate_3_pin]="PB8";       # STP4
-PIN[MBB,pre_gate_4_pin]="PC15";      # STP5
-PIN[MBB,pre_gate_5_pin]="PC13";      # STP6
-PIN[MBB,pre_gate_6_pin]="PC14";      # STP7
-PIN[MBB,pre_gate_7_pin]="PB12";      # STP8
-PIN[MBB,pre_gate_8_pin]="PB11";      # STP9
-PIN[MBB,pre_gate_9_pin]="";
-PIN[MBB,pre_gate_10_pin]="";
-PIN[MBB,pre_gate_11_pin]="";
+PIN[MMB,gear_uart_pin]="PA10";       # M1
+PIN[MMB,gear_step_pin]="PB15";
+PIN[MMB,gear_dir_pin]="PB14";
+PIN[MMB,gear_enable_pin]="PA8";
+PIN[MMB,gear_diag_pin]="PA3";
+PIN[MMB,selector_uart_pin]="PC7";    # M2
+PIN[MMB,selector_step_pin]="PD2";
+PIN[MMB,selector_dir_pin]="PB13";
+PIN[MMB,selector_enable_pin]="PD1";
+PIN[MMB,selector_diag_pin]="PA4";
+PIN[MMB,selector_endstop_pin]="PB2"; # STP11
+PIN[MMB,servo_pin]="PA0";
+PIN[MMB,encoder_pin]="PA1";
+PIN[MMB,neopixel_pin]="PA2";
+PIN[MMB,gate_sensor_pin]="PB10";     # STP10
+PIN[MMB,pre_gate_0_pin]="PA3";       # STP1
+PIN[MMB,pre_gate_1_pin]="PA4";       # STP2
+PIN[MMB,pre_gate_2_pin]="PB9";       # STP3
+PIN[MMB,pre_gate_3_pin]="PB8";       # STP4
+PIN[MMB,pre_gate_4_pin]="PC15";      # STP5
+PIN[MMB,pre_gate_5_pin]="PC13";      # STP6
+PIN[MMB,pre_gate_6_pin]="PC14";      # STP7
+PIN[MMB,pre_gate_7_pin]="PB12";      # STP8
+PIN[MMB,pre_gate_8_pin]="PB11";      # STP9
+PIN[MMB,pre_gate_9_pin]="";
+PIN[MMB,pre_gate_10_pin]="";
+PIN[MMB,pre_gate_11_pin]="";
 
 # These pins will usually be on main mcu for wiring simplification
 #
@@ -476,9 +476,6 @@ read_previous_config() {
         echo -e "${INFO}Reading ${filametrix_cfg} configuration from previous installation..."
         parse_file "${dest_filametrix_cfg}" "variable_"
     fi
-
-    # Important to overwrite this
-    happy_hare_version=${VERSION}
 }
 
 copy_config_files() {
@@ -1232,6 +1229,10 @@ if [ "$UNINSTALL" -eq 0 ]; then
         # Update in memory parameters from previous install
         read_previous_config
     fi
+
+    # Important to overwrite this
+    happy_hare_version=${VERSION}
+
     copy_config_files
     cleanup_manual_stepper_version
     upgrade_mmu_sensors
