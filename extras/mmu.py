@@ -2273,8 +2273,7 @@ class Mmu:
 
     def _mmu_pause(self, reason, force_in_print=False):
         run_pause_macro = False
-        if not self.paused_extruder_temp: # Only save the initial pause temp
-            self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
+        self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
         self.resume_to_state = "printing" if self._is_in_print() else "ready"
 
         if self._is_printing(force_in_print) and not self._is_mmu_paused():
