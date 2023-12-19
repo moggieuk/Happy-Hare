@@ -15,11 +15,24 @@ import logging
 from extras.led_effect import ledEffect
 
 class MmuLedEffect(ledEffect, object):
+
+    first_led_index = None # Starting LED index (must be the same and also used for configuring the LED macro)
+    last_led_index = None
+
     def __init__(self, config):
         self.printer = config.get_printer()
         leds = config.get('leds').split(' ', 1)[0]
         strip = leds.replace(':', ' ')
         first, last = map(int, config.get('leds').split(' ', 1)[1].strip('()').split('-'))
+        if not MmuLedEffect.first_led_index:
+            MmuLedEffect.first_led_index = first
+        elif first != MmuLedEffect.first_led_index:
+            raise config.error("First led index '%d' differs from others in the config (%d)" % (first, MmuLedEffect.first_led_index))
+        if not MmuLedEffect.last_led_index:
+            MmuLedEffect.last_led_index = last
+        elif last != MmuLedEffect.last_led_index:
+            logging.warning("mmu_led_effect: last led index '%d' differs from others in the config (%d)" % (last, MmuLedEffect.last_led_index))
+
         pixels = self.printer.lookup_object(strip)
 
         # Reduce led range by one to separate control of gate effects from exit effect
@@ -36,7 +49,6 @@ class MmuLedEffect(ledEffect, object):
 
     def _add_config_section(self, config, section_from, index):
         section_to = section_from + "_%d" % index
-        logging.info("PAUL: section_to=%s" % section_to)
         items = config.fileconfig.items(section_from)
         new_section = config.fileconfig.add_section(section_to)
         for item in items:

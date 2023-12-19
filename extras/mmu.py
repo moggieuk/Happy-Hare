@@ -16,6 +16,7 @@ import logging, logging.handlers, threading, queue, time, contextlib, math, os.p
 from random import randint
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
+from extras.mmu_led_effect import MmuLedEffect
 import chelper, ast
 
 # Forward all messages through a queue (polled by background thread)
@@ -1027,6 +1028,9 @@ class Mmu:
                 self._log_error('No existing CANCEL_PRINT macro found!')
         except Exception as e:
             self._log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
+
+        # PAUL
+        self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_SET_LED VARIABLE=first_led_index VALUE=%d" % MmuLedEffect.first_led_index)
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
