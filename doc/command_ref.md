@@ -118,7 +118,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_SOAKTEST_SELECTOR - Soak test of selector movement
     MMU_TEST_BUZZ_MOTOR - Simple buzz the selected motor (default gear) for setup testing
     MMU_TEST_CONFIG - Runtime adjustment of MMU configuration for testing or in-print tweaking purposes
-    MMU_TEST_ENCODER_RUNOUT - Convenience macro to spoof a filament runout condition
+    MMU_TEST_RUNOUT - Convenience macro to spoof a filament runout condition
     MMU_TEST_GRIP - Test the MMU grip for a Tool
     MMU_TEST_HOMING_MOVE - Test filament homing move to help debug setup / options
     MMU_TEST_LOAD - For quick testing filament loading from gate to the extruder
@@ -137,7 +137,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_TEST_MOVE` | Simple test move the MMU gear stepper | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` (defaults to min accel defined on steppers employed in move) Motor acceleration <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement |
   | `MMU_TEST_HOMING_MOVE` | Testing homing move of filament using multiple stepper combinations specifying endstop and driection of homing move | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` Motor accelaration (defaults to min accel defined on steppers employed in homing move) <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement. This is important for homing because the endstop must be on the commanded stepper <br>`ENDSTOP=..` Symbolic name of endstop to home to as defined in mmu_hardware.cfg. Must be defined on the primary stepper <br>`STOP_ON_ENDSTOP=[1\|-1]` (default 1) The direction of homing move. 1 is in the normal direction with endstop firing, -1 is in the reverse direction waiting for endstop to release. Note that virtual (touch) endstops can only be homed in a forward direction |
   | `MMU_TEST_CONFIG` | Dump / Change essential load/unload config options at runtime | Many. Best to run MMU_TEST_CONFIG without options to report all parameters than can be specified |
-  | `MMU_TEST_ENCODER_RUNOUT` | Filament runout handler that will also implement EndlessSpool if enabled | `FORCE_RUNOUT=1` is useful for testing to validate your _MMU_ENDLESS_SPOOL\*\* macros |
+  | `MMU_TEST_RUNOUT` | Invoke filament runout handler that will also implement EndlessSpool if enabled | `FORCE_RUNOUT=1` is useful for testing to validate your _MMU_ENDLESS_SPOOL\*\* macros |
 
 <br>
 

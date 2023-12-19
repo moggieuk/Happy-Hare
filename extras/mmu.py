@@ -134,7 +134,7 @@ class Mmu:
     ACTION_HOMING = 8
     ACTION_SELECTING = 9
 
-    # Standard endstop or pseudo endstop names
+    # Standard sensor and endstop or pseudo endstop names
     ENDSTOP_EXTRUDER_COLLISION = "collision" # Fake endstop
     ENDSTOP_ENCODER            = "encoder"   # Fake endstop
     ENDSTOP_EXTRUDER_TOUCH     = "mmu_ext_touch"
@@ -592,7 +592,7 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_HOMING_MOVE', self.cmd_MMU_TEST_HOMING_MOVE, desc = self.cmd_MMU_TEST_HOMING_MOVE_help)
         self.gcode.register_command('MMU_TEST_TRACKING', self.cmd_MMU_TEST_TRACKING, desc=self.cmd_MMU_TEST_TRACKING_help)
         self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
-        self.gcode.register_command('MMU_TEST_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
+        self.gcode.register_command('MMU_TEST_RUNOUT', self.cmd_MMU_TEST_RUNOUT, desc = self.cmd_MMU_TEST_RUNOUT_help)
         self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_FORM_TIP, desc = self.cmd_MMU_FORM_TIP_help)
 
         # Soak Testing
@@ -752,9 +752,6 @@ class Mmu:
         self.pause_resume = self.printer.lookup_object('pause_resume', None)
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
-
-        if self._has_encoder() and not self._has_sensor(self.ENDSTOP_GATE) and self.enable_endless_spool == 1 and self.enable_clog_detection == 0:
-            self._log_info("Warning: EndlessSpool mode requires clog detection to be enabled unless you have pre-gate sensors")
 
         # Sanity check to see that mmu_vars.cfg is included. This will verify path because default has single entry
         self.variables = self.printer.lookup_object('save_variables').allVariables
@@ -1029,7 +1026,7 @@ class Mmu:
         except Exception as e:
             self._log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
-        # PAUL
+        # Ensure that the control macro knows the index of the first LED in the strip
         self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_SET_LED VARIABLE=first_led_index VALUE=%d" % MmuLedEffect.first_led_index)
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
@@ -1049,7 +1046,7 @@ class Mmu:
         try:
             self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare Ready')
             if self.log_startup_status > 0:
-                self._log_always(self._tool_to_gate_map_to_human_string(self.log_startup_status == 1))
+                self._log_always(self._tool_to_gate_map_to_human_string(summary=self.log_startup_status == 1))
                 self._display_visual_state(silent=self.persistence_level < 4)
             self._set_print_state("initialized")
             if self._has_encoder():
@@ -5063,10 +5060,9 @@ class Mmu:
         self._log_info("Issue on tool T%d" % self.tool_selected)
         self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
 
-        # Check for clog by looking for filament in the encoder
+        # Check for clog by looking for filament at the gate (or in the encoder)
         self._log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)
-        found = self._check_filament_at_gate()
-        if found and not force_runout:
+        if not force_runout and self._check_filament_at_gate():
             if self._has_encoder():
                 self.encoder_sensor.update_clog_detection_length()
             raise MmuError("A clog has been detected and requires manual intervention")
@@ -5076,7 +5072,7 @@ class Mmu:
             self._log_always("A runout has been detected")
             if self.enable_endless_spool:
                 group = self.endless_spool_groups[self.gate_selected]
-                self._log_info("EndlessSpool checking for additional spools in group %d..." % group)
+                self._log_info("EndlessSpool checking for additional spools in Group_%d..." % group)
                 self._set_gate_status(self.gate_selected, self.GATE_EMPTY) # Indicate current gate is empty
                 next_gate = -1
                 checked_gates = []
@@ -5088,9 +5084,8 @@ class Mmu:
                             next_gate = check
                             break
                 if next_gate == -1:
-                    self._log_info("No more available spools found in ES_Group_%d - manual intervention is required" % self.endless_spool_groups[self.tool_selected])
-                    self._log_info(self._tool_to_gate_map_to_human_string())
-                    raise MmuError("No more EndlessSpool spools available after checking gates %s" % checked_gates)
+                    self._log_info(self._tool_to_gate_map_to_human_string(tool=self.tool_selected))
+                    raise MmuError("No EndlessSpool filaments available after reviewing gates: %s" % checked_gates)
                 self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
                 # Save the extruder temperature for the resume after swapping filaments.
                 if not self.paused_extruder_temp: # Only save the initial pause temp
@@ -5157,14 +5152,15 @@ class Mmu:
         else:
             return "?"
 
-    def _tool_to_gate_map_to_human_string(self, summary=False):
+    def _tool_to_gate_map_to_human_string(self, summary=False, tool=None):
         msg = ""
         if not summary:
             num_tools = self.mmu_num_gates
-            for i in range(num_tools): # Tools
-                msg += "\n" if i else ""
+            tools = range(num_tools) if tool is None else [tool]
+            for i in tools:
+                msg += "\n" if i and tool is None else ""
                 gate = self.tool_to_gate_map[i]
-                msg += "%s-> Gate #%d%s" % (("T%d " % i)[:3], gate, "(" + self._get_filament_char(self.gate_status[gate], show_source=True) + ")")
+                msg += "%s-> Gate #%d%s" % (("T%d " % i)[:3], gate, "(" + self._get_filament_char(self.gate_status[gate], show_source=False) + ")")
                 if self.enable_endless_spool:
                     group = self.endless_spool_groups[gate]
                     es = " ES_Group_%s: " % group
@@ -5173,13 +5169,14 @@ class Mmu:
                     for j in range(num_tools): # Gates
                         gate = (j + starting_gate) % num_tools
                         if self.endless_spool_groups[gate] == group:
-                            es += "%s%d%s" % (prefix, gate,self._get_filament_char(self.gate_status[gate]))
-                            prefix = "> "
+                            es += "%s%d(%s)" % (prefix, gate, self._get_filament_char(self.gate_status[gate], show_source=False))
+                            prefix = " > "
                     msg += es
                 if i == self.tool_selected:
-                    msg += " [SELECTED on gate #%d]" % self.gate_selected
-            msg += "\n\n"
-            msg += self._gate_map_to_human_string(True)
+                    msg += " [SELECTED]"
+            if tool is None:
+                msg += "\n\n"
+                msg += self._gate_map_to_human_string(True)
         else:
             multi_tool = False
             msg_gates = "Gates: "
@@ -5228,7 +5225,7 @@ class Mmu:
                 self.GATE_UNKNOWN: "Unknown"
             }[self.gate_status[g]]
             if detail:
-                msg += "\nGate #%d%s" % (g, "(" + self._get_filament_char(self.gate_status[g], show_source=True) + ")")
+                msg += "\nGate #%d%s" % (g, "(" + self._get_filament_char(self.gate_status[g], show_source=False) + ")")
                 tool_str = " -> "
                 prefix = ""
                 for t in range(self.mmu_num_gates):
@@ -5244,7 +5241,7 @@ class Mmu:
                 spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
                 msg += (", SpoolID: %s" % (spool_id))
             if detail and g == self.gate_selected:
-                msg += " [SELECTED%s]" % ((" supporting tool T%d" % self.tool_selected) if self.tool_selected >= 0 else "")
+                msg += " [SELECTED]"
         return msg
 
     def _remap_tool(self, tool, gate, available=None):
@@ -5269,16 +5266,24 @@ class Mmu:
 
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
 
-    cmd_MMU_ENCODER_RUNOUT_help = "Internal encoder filament runout handler"
-    def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
+    cmd_MMU_TEST_RUNOUT_help = "Manually invoke the clog/runout detection logic for testing"
+    def cmd_MMU_TEST_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
-        force_runout = bool(gcmd.get_int('FORCE_RUNOUT', 0, minval=0, maxval=1))
+        force_runout = bool(gcmd.get_int('FORCE_RUNOUT', 1, minval=0, maxval=1))
         try:
             self._handle_runout(force_runout)
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
-    cmd_MMU_ENCODER_INSERT_help = "Internal encoder filament detection handler"
+    cmd_MMU_ENCODER_RUNOUT_help = "Internal encoder filament runout handler"
+    def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
+        if self._check_is_disabled(): return
+        try:
+            self._handle_runout()
+        except MmuError as ee:
+            self._mmu_pause(str(ee))
+
+    cmd_MMU_ENCODER_INSERT_help = "Internal encoder filament insert detection handler"
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         self._log_debug("Filament insertion not implemented yet! Check back later")
@@ -5291,13 +5296,12 @@ class Mmu:
     cmd_MMU_GATE_RUNOUT_help = "Internal gate filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
-        force_runout = bool(gcmd.get_int('FORCE_RUNOUT', 0, minval=0, maxval=1))
         try:
-            self._handle_runout(force_runout)
+            self._handle_runout(True)
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
-    cmd_MMU_GATE_INSERT_help = "Internal gate filament detection handler"
+    cmd_MMU_GATE_INSERT_help = "Internal gate filament insert detection handler"
     def cmd_MMU_GATE_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         self._log_debug("Filament insertion not implemented yet! Check back later")
@@ -5312,8 +5316,8 @@ class Mmu:
             gate = gcmd.get_int('GATE')
             self._log_debug("Filament runout detected by pre-gate sensor on gate #%d" % gate)
             self._set_gate_status(gate, self.GATE_EMPTY)
-            if self._is_in_print() and active and gate == self.gate_selected and self.enable_endless_spool == 2:
-                self._handle_runout()
+            if self._is_in_print() and active and gate == self.gate_selected:
+                self._handle_runout(True)
         except MmuError as ee:
             self._mmu_pause(str(ee))
         
