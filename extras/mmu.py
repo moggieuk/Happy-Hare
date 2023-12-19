@@ -454,6 +454,8 @@ class Mmu:
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=1)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
+        self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
+        self.endless_spool_on_load = config.getint('endless_spool_on_load', 0, minval=0, maxval=1)
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
         self.tool_extrusion_multipliers = []
         self.tool_speed_multipliers = []
@@ -3121,7 +3123,7 @@ class Mmu:
         else:
             reference_load = False
         if current_ratio is None and not self.calibrating:
-            self._log_info("Warning: Gate %d not calibrated! Using default 1.0 gear ratio!" % self.gate_selected)
+            self._log_info("Warning: Gate #%d not calibrated! Using default 1.0 gear ratio!" % self.gate_selected)
 
         # "Fast" load
         _,_,_,delta = self._trace_filament_move("Course loading move into bowden", length, track=True, encoder_dwell=reference_load)
@@ -3450,7 +3452,7 @@ class Mmu:
             if not extruder_only:
                 self._set_action(current_action)
 
-    def _unload_sequence(self, length=None, check_state=False, skip_tip=False, extruder_only=False):
+    def _unload_sequence(self, length=None, check_state=False, skip_tip=False, extruder_only=False, runout=False):
         self._movequeues_wait_moves()
         if not length:
             length = self.calibrated_bowden_length
@@ -3526,6 +3528,11 @@ class Mmu:
 
             if unload_to_buffer and self.gate_status[self.gate_selected] != self.GATE_EMPTY:
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
+
+            # If runout then over unload to prevent accidental reload
+            if runout and self.endless_spool_final_eject > 0.:
+                self._log_info("Ejecting filament from MMU...")
+                _,_,measured,_ = self._trace_filament_move("EndlessSpool final eject", -self.endless_spool_final_eject)
 
             # Encoder based validation test
             if self._can_use_encoder():
@@ -4272,12 +4279,19 @@ class Mmu:
     # Primary method to select and loads tool. Assumes we are unloaded.
     def _select_and_load_tool(self, tool):
         self._log_debug('Loading tool T%d...' % tool)
-        self._select_tool(tool, move_servo=False)
         gate = self.tool_to_gate_map[tool]
-
         if self.gate_status[gate] == self.GATE_EMPTY:
-            raise MmuError("Gate %d is empty!" % gate)
+            if self.enable_endless_spool and self.endless_spool_on_load:
+                self._log_info("Gate #%d is empty!" % gate)
+                next_gate, checked_gates = self._get_next_endless_spool_gate(gate)
+                if next_gate == -1:
+                    raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
+                self._log_info("Remapping T%d to gate #%d" % (tool, next_gate))
+                gate = self._remap_tool(tool, next_gate)
+            else:
+                raise MmuError("Gate #%d is empty!" % gate)
 
+        self._select_tool(tool, move_servo=False)
         self._load_sequence()
 
         # Activate the spool in SpoolMan, if enabled
@@ -4287,7 +4301,7 @@ class Mmu:
         self._restore_tool_override(self.tool_selected)
 
     # Primary method to unload current tool but retains selection
-    def _unload_tool(self, skip_tip=False):
+    def _unload_tool(self, skip_tip=False, runout=False):
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self._log_debug("Tool already unloaded")
             return
@@ -4295,7 +4309,7 @@ class Mmu:
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
         # Remember M220 and M221 overrides, potentially deactivate in SpoolMan
         self._record_tool_override()
-        self._unload_sequence(skip_tip=skip_tip)
+        self._unload_sequence(skip_tip=skip_tip, runout=runout)
         self._spoolman_activate_spool(0)
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
@@ -4940,6 +4954,7 @@ class Mmu:
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
+        self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=1)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
@@ -5023,7 +5038,8 @@ class Mmu:
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         if self._has_encoder():
             msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
-            msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
+        msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
+        msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
         msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
         msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
@@ -5070,23 +5086,15 @@ class Mmu:
         # We have a filament runout
         with self._wrap_disable_encoder(): # Don't want runout accidently triggering during swap
             self._log_always("A runout has been detected")
+
             if self.enable_endless_spool:
-                group = self.endless_spool_groups[self.gate_selected]
-                self._log_info("EndlessSpool checking for additional spools in Group_%d..." % group)
                 self._set_gate_status(self.gate_selected, self.GATE_EMPTY) # Indicate current gate is empty
-                next_gate = -1
-                checked_gates = []
-                for i in range(self.mmu_num_gates - 1):
-                    check = (self.gate_selected + i + 1) % self.mmu_num_gates
-                    if self.endless_spool_groups[check] == group:
-                        checked_gates.append(check)
-                        if self.gate_status[check] != self.GATE_EMPTY:
-                            next_gate = check
-                            break
+                next_gate, checked_gates = self._get_next_endless_spool_gate(self.gate_selected)
+
                 if next_gate == -1:
-                    self._log_info(self._tool_to_gate_map_to_human_string(tool=self.tool_selected))
-                    raise MmuError("No EndlessSpool filaments available after reviewing gates: %s" % checked_gates)
+                    raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
                 self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
+
                 # Save the extruder temperature for the resume after swapping filaments.
                 if not self.paused_extruder_temp: # Only save the initial pause temp
                     self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
@@ -5098,7 +5106,7 @@ class Mmu:
                 detected, park_pos = self._form_tip_standalone(extruder_only=True)
                 if not detected:
                     self._log_info("Filament didn't reach encoder after tip forming move")
-                self._unload_tool(skip_tip=True)
+                self._unload_tool(skip_tip=True, runout=True)
                 self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
 
@@ -5112,6 +5120,20 @@ class Mmu:
                 # Continue printing...
             else:
                 raise MmuError("EndlessSpool mode is off - manual intervention is required")
+
+    def _get_next_endless_spool_gate(self, gate):
+        group = self.endless_spool_groups[gate]
+        self._log_info("EndlessSpool checking for additional gates in Group_%d..." % group)
+        next_gate = -1
+        checked_gates = []
+        for i in range(self.mmu_num_gates - 1):
+            check = (gate + i + 1) % self.mmu_num_gates
+            if self.endless_spool_groups[check] == group:
+                checked_gates.append(check)
+                if self.gate_status[check] != self.GATE_EMPTY:
+                    next_gate = check
+                    break
+        return next_gate, checked_gates
 
     def _set_tool_to_gate(self, tool, gate):
         self.tool_to_gate_map[tool] = gate
@@ -5248,6 +5270,7 @@ class Mmu:
         self._set_tool_to_gate(tool, gate)
         if available is not None:
             self._set_gate_status(gate, available)
+        return gate
 
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
@@ -5347,7 +5370,7 @@ class Mmu:
         ttg_map = gcmd.get('MAP', "!")
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
-        available = gcmd.get_int('AVAILABLE', -1, minval=0, maxval=1)
+        available = gcmd.get_int('AVAILABLE', self.GATE_UNKNOWN, minval=self.GATE_EMPTY, maxval=self.GATE_AVAILABLE)
 
         if reset == 1:
             self._reset_ttg_mapping()
@@ -5364,12 +5387,13 @@ class Mmu:
                     self.tool_to_gate_map.append(0)
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
         elif gate != -1:
-            if available == -1:
-                available = self.gate_status[gate]
+            status = self.gate_status[gate]
+            if not available == self.GATE_UNKNOWN or (available == self.GATE_UNKNOWN and status == self.GATE_EMPTY):
+                status = available
             if tool == -1:
-                self._set_gate_status(gate, available)
+                self._set_gate_status(gate, status)
             else:
-                self._remap_tool(tool, gate, available)
+                self._remap_tool(tool, gate, status)
         else:
             quiet = False # Display current TTG map
         if not quiet:
