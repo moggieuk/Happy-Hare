@@ -836,7 +836,6 @@ class Mmu:
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
         if not self.homing_extruder:
             self._log_debug("Warning: Using original klipper extruder stepper")
-        self._log_error("PAUL: mmu_extruder_stepper=%s" % self.mmu_extruder_stepper)
 
         # Restore state if fully calibrated
         if not self._check_is_calibrated(silent=True):
@@ -3976,6 +3975,7 @@ class Mmu:
                         homed = False
                     finally:
                         halt_pos = self.mmu_toolhead.get_position()
+                        self._log_error("PAUL: halt_pos=%s, trig_pos=%s" % (halt_pos, trig_pos))
                         actual = halt_pos[1] - init_pos
                 else:
                     self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
