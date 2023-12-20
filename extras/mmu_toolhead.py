@@ -130,6 +130,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
 
     def handle_connect(self):
+        toolhead = self.printer.lookup_object('toolhead')
+        printer_extruder = toolhead.get_extruder()
+
         if self.homing_extruder:
             # Restore original extruder options in case user macros reference them
             for key in self.old_ext_options:
@@ -137,10 +140,10 @@ class MmuToolHead(toolhead.ToolHead, object):
                 self.config.fileconfig.set('extruder', key, value)
 
             # Now we can switch in homing MmuExtruderStepper
-            toolhead = self.printer.lookup_object('toolhead')
-            printer_extruder = toolhead.get_extruder()
             printer_extruder.extruder_stepper = self.mmu_extruder_stepper
             self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
+        else:
+            self.mmu_extruder_stepper = printer_extruder.extruder_stepper
 
     # Ensure the correct number of axes for convenience - MMU only has two
     # Also, handle case when gear rail is synced to extruder

@@ -63,8 +63,8 @@ class PreGateRunoutHelper:
 
     def _exec_gcode(self, command):
         try:
-            self.gcode.run_script(command)
-            #self.gcode.run_script("__MMU_M400\n" + command)
+            #self.gcode.run_script(command)
+            self.gcode.run_script(command + "\n__MMU_M400")
         except Exception:
             logging.exception("Error running pre-gate handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay

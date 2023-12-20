@@ -656,7 +656,7 @@ class Mmu:
         self.selector_stepper = self.selector_rail.steppers[0]
         self.gear_rail = rails[1]
         self.gear_stepper = self.gear_rail.steppers[0]
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Available if `self.homing_extruder` is True
+        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Available now if `self.homing_extruder` is True
 
         # Detect if selector touch is possible
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
@@ -836,6 +836,7 @@ class Mmu:
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
         if not self.homing_extruder:
             self._log_debug("Warning: Using original klipper extruder stepper")
+        self._log_error("PAUL: mmu_extruder_stepper=%s" % self.mmu_extruder_stepper)
 
         # Restore state if fully calibrated
         if not self._check_is_calibrated(silent=True):
@@ -5351,7 +5352,7 @@ class Mmu:
         except MmuError as ee:
             self._mmu_pause(str(ee))
         
-    # This callback is not protected by klipper is_printing check so be careful
+    # This callback is not protected by klipper "is printing" check so be careful
     cmd_MMU_PRE_GATE_INSERT_help = "Internal pre-gate filament detection handler"
     def cmd_MMU_PRE_GATE_INSERT(self, gcmd):
         active = self._is_printer_printing()
