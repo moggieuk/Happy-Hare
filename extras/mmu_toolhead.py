@@ -24,7 +24,7 @@ from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
 # (code pulled from toolhead.py)
 class MmuToolHead(toolhead.ToolHead, object):
-    def __init__(self, config):
+    def __init__(self, config, homing_extruder):
 
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -108,34 +108,39 @@ class MmuToolHead(toolhead.ToolHead, object):
             logging.exception(msg)
             raise config.error(msg)
 
-        # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
-        self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
+        self.mmu_extruder_stepper = None
+        self.homing_extruder = homing_extruder
+        if self.homing_extruder:
+            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
+            self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
 
-        # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
-        self.old_ext_options = {}
-        self.config = config
-        options = [ 'step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'gear_ratio',
-                    'microsteps', 'full_steps_per_rotation', 'pressure_advance', 'pressure_advance_smooth_time']
-        for i in options:
-            if config.fileconfig.has_option('extruder', i):
-                self.old_ext_options[i] = config.fileconfig.get('extruder', i)
-                config.fileconfig.remove_option('extruder', i)
+            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
+            self.old_ext_options = {}
+            self.config = config
+            options = [ 'step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'gear_ratio',
+                        'microsteps', 'full_steps_per_rotation', 'pressure_advance', 'pressure_advance_smooth_time']
+            for i in options:
+                if config.fileconfig.has_option('extruder', i):
+                    self.old_ext_options[i] = config.fileconfig.get('extruder', i)
+                    config.fileconfig.remove_option('extruder', i)
+
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 
         # Add useful debugging command
         gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
 
     def handle_connect(self):
-        # Restore original extruder options in case user macros reference them
-        for key in self.old_ext_options:
-            value = self.old_ext_options[key]
-            self.config.fileconfig.set('extruder', key, value)
+        if self.homing_extruder:
+            # Restore original extruder options in case user macros reference them
+            for key in self.old_ext_options:
+                value = self.old_ext_options[key]
+                self.config.fileconfig.set('extruder', key, value)
 
-        # Now we can switch in MmuExtruderStepper
-        toolhead = self.printer.lookup_object('toolhead')
-        printer_extruder = toolhead.get_extruder()
-        printer_extruder.extruder_stepper = self.mmu_extruder_stepper
-        self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
+            # Now we can switch in homing MmuExtruderStepper
+            toolhead = self.printer.lookup_object('toolhead')
+            printer_extruder = toolhead.get_extruder()
+            printer_extruder.extruder_stepper = self.mmu_extruder_stepper
+            self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
 
     # Ensure the correct number of axes for convenience - MMU only has two
     # Also, handle case when gear rail is synced to extruder

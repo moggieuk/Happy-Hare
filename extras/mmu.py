@@ -468,6 +468,7 @@ class Mmu:
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
 
         # Currently hidden and testing options
+        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
 
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
@@ -648,14 +649,14 @@ class Mmu:
             config.fileconfig.set(section, 'position_min', -1.)
             config.fileconfig.set(section, 'position_max', self._get_max_selector_movement())
             config.fileconfig.set(section, 'homing_speed', self.selector_homing_speed)
-        self.mmu_toolhead = MmuToolHead(config)
+        self.mmu_toolhead = MmuToolHead(config, self.homing_extruder)
         self.mmu_kinematics = self.mmu_toolhead.get_kinematics()
         rails = self.mmu_toolhead.get_kinematics().rails
         self.selector_rail = rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
         self.gear_rail = rails[1]
         self.gear_stepper = self.gear_rail.steppers[0]
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
+        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Available if `self.homing_extruder` is True
 
         # Detect if selector touch is possible
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
@@ -680,7 +681,8 @@ class Mmu:
                 mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
  
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-                mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
+                if self.homing_extruder:
+                    mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
 
         # Get servo and (optional) encoder setup -----
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
@@ -733,7 +735,7 @@ class Mmu:
             if self.extruder_tmc is None:
                 self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, self.extruder_name), None)
                 if self.extruder_tmc is not None:
-                    self._log_debug("Found %s on extruder. Current control enabled. Stallguard 'touch' homing possible." % chip)
+                    self._log_debug("Found %s on extruder. Current control enabled. %s" % (chip, "Stallguard 'touch' homing possible." if self.homing_extruder else ""))
 
         if self.selector_tmc is None:
             self._log_debug("TMC driver not found for selector_stepper, cannot use sensorless homing and recovery")
@@ -823,6 +825,67 @@ class Mmu:
             self.calibration_status |= self.CALIBRATED_BOWDEN
         else:
             self._log_always("Warning: Reference bowden length not found in mmu_vars.cfg. Probably not calibrated")
+
+    def handle_disconnect(self):
+        self._log_debug('Klipper disconnected! MMU Shutdown')
+        if self.queue_listener is not None:
+            self.queue_listener.stop()
+
+    def handle_ready(self):
+        # Reference correct extruder stepper which will definitely be available now
+        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
+        if not self.homing_extruder:
+            self._log_debug("Warning: Using original klipper extruder stepper")
+
+        # Restore state if fully calibrated
+        if not self._check_is_calibrated(silent=True):
+            self._load_persisted_state()
+
+        # Setup events for managing internal print state machine
+        self.printer.register_event_handler("idle_timeout:printing", self._handle_idle_timeout_printing)
+        self.printer.register_event_handler("idle_timeout:ready", self._handle_idle_timeout_ready)
+        self.printer.register_event_handler("idle_timeout:idle", self._handle_idle_timeout_idle)
+        self._setup_heater_off_reactor()
+        self._clear_saved_toolhead_position()
+
+        # This is a bit naughty to register commands here but I need to make sure we are the outermost wrapper
+        try:
+            prev_pause = self.gcode.register_command('PAUSE', None)
+            if prev_pause is not None:
+                self.gcode.register_command('__PAUSE', prev_pause)
+                self.gcode.register_command('PAUSE', self.cmd_PAUSE, desc = self.cmd_PAUSE_help)
+            else:
+                self._log_error('No existing PAUSE macro found!')
+
+            prev_resume = self.gcode.register_command('RESUME', None)
+            if prev_resume is not None:
+                self.gcode.register_command('__RESUME', prev_resume)
+                self.gcode.register_command('RESUME', self.cmd_MMU_RESUME, desc = self.cmd_MMU_RESUME_help)
+            else:
+                self._log_error('No existing RESUME macro found!')
+
+            prev_clear_pause = self.gcode.register_command('CLEAR_PAUSE', None)
+            if prev_clear_pause is not None:
+                self.gcode.register_command('__CLEAR_PAUSE', prev_clear_pause)
+                self.gcode.register_command('CLEAR_PAUSE', self.cmd_CLEAR_PAUSE, desc = self.cmd_CLEAR_PAUSE_help)
+            else:
+                self._log_error('No existing CLEAR_PAUSE macro found!')
+
+            prev_cancel = self.gcode.register_command('CANCEL_PRINT', None)
+            if prev_cancel is not None:
+                self.gcode.register_command('__CANCEL_PRINT', prev_cancel)
+                self.gcode.register_command('CANCEL_PRINT', self.cmd_MMU_CANCEL_PRINT, desc = self.cmd_MMU_CANCEL_PRINT_help)
+            else:
+                self._log_error('No existing CANCEL_PRINT macro found!')
+        except Exception as e:
+            self._log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
+
+        # Ensure that the control macro knows the index of the first LED in the strip
+        self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_SET_LED VARIABLE=first_led_index VALUE=%d" % MmuLedEffect.first_led_index)
+
+        self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
+        self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
+        self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
     def _initialize_state(self):
         self.is_enabled = True
@@ -978,62 +1041,6 @@ class Mmu:
             gstats = self.variables.get("%s%d" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate), None)
             if gstats:
                 self.gate_statistics[gate].update(gstats)
-
-    def handle_disconnect(self):
-        self._log_debug('Klipper disconnected! MMU Shutdown')
-        if self.queue_listener is not None:
-            self.queue_listener.stop()
-
-    def handle_ready(self):
-        # Restore state if fully calibrated
-        if not self._check_is_calibrated(silent=True):
-            self._load_persisted_state()
-
-        # Setup events for managing internal print state machine
-        self.printer.register_event_handler("idle_timeout:printing", self._handle_idle_timeout_printing)
-        self.printer.register_event_handler("idle_timeout:ready", self._handle_idle_timeout_ready)
-        self.printer.register_event_handler("idle_timeout:idle", self._handle_idle_timeout_idle)
-        self._setup_heater_off_reactor()
-        self._clear_saved_toolhead_position()
-
-        # This is a bit naughty to register commands here but I need to make sure we are the outermost wrapper
-        try:
-            prev_pause = self.gcode.register_command('PAUSE', None)
-            if prev_pause is not None:
-                self.gcode.register_command('__PAUSE', prev_pause)
-                self.gcode.register_command('PAUSE', self.cmd_PAUSE, desc = self.cmd_PAUSE_help)
-            else:
-                self._log_error('No existing PAUSE macro found!')
-
-            prev_resume = self.gcode.register_command('RESUME', None)
-            if prev_resume is not None:
-                self.gcode.register_command('__RESUME', prev_resume)
-                self.gcode.register_command('RESUME', self.cmd_MMU_RESUME, desc = self.cmd_MMU_RESUME_help)
-            else:
-                self._log_error('No existing RESUME macro found!')
-
-            prev_clear_pause = self.gcode.register_command('CLEAR_PAUSE', None)
-            if prev_clear_pause is not None:
-                self.gcode.register_command('__CLEAR_PAUSE', prev_clear_pause)
-                self.gcode.register_command('CLEAR_PAUSE', self.cmd_CLEAR_PAUSE, desc = self.cmd_CLEAR_PAUSE_help)
-            else:
-                self._log_error('No existing CLEAR_PAUSE macro found!')
-
-            prev_cancel = self.gcode.register_command('CANCEL_PRINT', None)
-            if prev_cancel is not None:
-                self.gcode.register_command('__CANCEL_PRINT', prev_cancel)
-                self.gcode.register_command('CANCEL_PRINT', self.cmd_MMU_CANCEL_PRINT, desc = self.cmd_MMU_CANCEL_PRINT_help)
-            else:
-                self._log_error('No existing CANCEL_PRINT macro found!')
-        except Exception as e:
-            self._log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
-
-        # Ensure that the control macro knows the index of the first LED in the strip
-        self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_SET_LED VARIABLE=first_led_index VALUE=%d" % MmuLedEffect.first_led_index)
-
-        self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
-        self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
-        self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
     def _schedule_mmu_bootup_tasks(self, delay=0.):
         waketime = self.reactor.monotonic() + delay
@@ -5185,7 +5192,7 @@ class Mmu:
                 msg += "%s-> Gate #%d%s" % (("T%d " % i)[:3], gate, "(" + self._get_filament_char(self.gate_status[gate], show_source=False) + ")")
                 if self.enable_endless_spool:
                     group = self.endless_spool_groups[gate]
-                    es = " ES_Group_%s: " % group
+                    es = " Group_%s: " % group
                     prefix = ""
                     starting_gate = self.tool_to_gate_map[i]
                     for j in range(num_tools): # Gates
