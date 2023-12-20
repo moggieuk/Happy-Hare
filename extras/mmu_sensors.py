@@ -27,7 +27,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import itertools, logging, time
+import logging, time
 
 class PreGateRunoutHelper:
 
@@ -116,11 +116,11 @@ class MmuSensors:
         printer = config.get_printer()
 
         # Setup and pre-gate sensors that are defined...
-        for gate in itertools.count(0):
+        for gate in range(23):
             switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
 
             if switch_pin is None:
-                break
+                continue
 
             # Automatically create necessary filament_switch_sensors
             name = "%s_%d" % (self.ENDSTOP_PRE_GATE, gate)
