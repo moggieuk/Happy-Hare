@@ -723,7 +723,7 @@ Here, three groups are defined. ES_Group_1 consisting of gates 0, 3 and 6; ES_Gr
 
 Since EndlessSpool is not something that triggers very often you can use the following to simulate the action and familiarize yourslef with its action and validate it is correctly setup prior to needing it:
 
-> MMU_TEST_RUNOUT FORCE_RUNOUT=1
+> MMU_TEST_RUNOUT
 
 This will emulate a filament runout and force the MMU to interpret it as a true runout and not a possible clog. THe MMU will then run the following sequence:
 

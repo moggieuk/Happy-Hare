@@ -30,23 +30,6 @@ PIN[MELLOW_FLY_ERCF,encoder_pin]="ercf:gpio15";
 
 8. Turn spool group into Class... that fetches filament from first gate in group, but tacks that it has move to new gate. On print end, reset the TTG map back to what is what at start of print.  start print should snapshot, endless_spool update in print, end print should restore.  What about manual changes to TTG during a print? these really shouldn't be restore/overwitten at end of print.
 
-24. gneu feedback on EndlessSpool: (2 ideas and 1 possible bug)
-I came across a mistake of mine, that makes me think about a few mods that could improve ES.
-Yesterday I was printing something and in the middle of the print I saw that ES was required.
-I stated the print with T9. When I noticed that I didn't had enough material to finish the print, I started to set up ES while printing.
-I installed a new spool on Gate2 and modified TTG map so that Gate2 will be the next ES spool for T9. However I forgot to make T2 available.
-I could not check the gate because T9 was printing. When the ES was detected, of course he told me that Gate2 was empty and went to pause.
-I didn't all that was needed to make Gate2 working, and finish the print.
-
-The first mod could be that when you add a tool in the ES mapping, that tool (Gate2 in my case) is automatically made available.
-
-On the next print, T9 and Gate2 were still mapped together for ES, so I thought that since it had detected ES on T9 it would start on T2.
-But he didn't. So I had to pause and load T2 manually.
-> The next mod could be that when ES is detected on a gate, that gate is declared empty automatically.
-> When the spool detected as empty, the unload could go a bit further than park the filament in the block. It could unload 20mm further to make sure that the gate is empty.
-What do you think ? 
-
-
 Complete Type A MMU support
 ===========================
 1. Update servo methods to leverage the current gate (or pass it in?). If None, then use default (single servo)
