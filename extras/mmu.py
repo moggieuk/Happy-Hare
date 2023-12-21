@@ -881,10 +881,11 @@ class Mmu:
             self._log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
         # Ensure that the control macro knows the index of the first LED in the strip
-        first = MmuLedEffect.first_led_index
-        if not first:
-            first = 1
-        self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_SET_LED VARIABLE=first_led_index VALUE=%d" % first)
+        first = MmuLedEffect.first_led_index or 1
+        try:
+            self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_SET_LED VARIABLE=first_led_index VALUE=%d" % first)
+        except Exception as e:
+            pass # Probably just means the macro is missing
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
