@@ -3975,7 +3975,7 @@ class Mmu:
                         homed = False
                     finally:
                         halt_pos = self.mmu_toolhead.get_position()
-                        self._log_error("PAUL: halt_pos=%s, trig_pos=%s" % (halt_pos, trig_pos))
+                        #self._log_error("PAUL: halt_pos=%s, trig_pos=%s" % (halt_pos, trig_pos))
                         actual = halt_pos[1] - init_pos
                 else:
                     self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
