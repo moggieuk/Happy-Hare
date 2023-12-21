@@ -29,7 +29,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS : Select the filament bypass
     MMU_SERVO : Move MMU servo to position specified position or angle
-    MMU_GATE_MAP - Display or define the type and color of filaments on each gate and optionally spoolman ID
+    MMU_GATE_MAP : Display or define the type and color of filaments on each gate and optionally spoolman ID
     MMU_STATUS : Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder motor
     MMU_TOOL_OVERRIDES : Displays, sets or clears tool speed and extrusion factors (M220 & M221)
