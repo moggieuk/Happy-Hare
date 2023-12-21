@@ -4873,7 +4873,7 @@ class Mmu:
         if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
             raise gmd.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENSTOPS)
         self.gate_endstop_to_encoder = gcmd.get_float('GATE_ENDSTOP_TO_ENCODER', self.gate_endstop_to_encoder)
-        self.gate_parking_distance = gcmd.get('GATE_PARKING_DISTANCE', self.gate_parking_distance)
+        self.gate_parking_distance = gcmd.get_float('GATE_PARKING_DISTANCE', self.gate_parking_distance)
         self.bowden_apply_correction = gcmd.get_int('BOWDEN_APPLY_CORRECTION', self.bowden_apply_correction, minval=0, maxval=1)
         self.bowden_allowable_unload_delta = self.bowden_allowable_load_delta = gcmd.get_float('BOWDEN_ALLOWABLE_LOAD_DELTA', self.bowden_allowable_load_delta, minval=1., maxval=50.)
         self.bowden_pre_unload_test = gcmd.get_int('BOWDEN_PRE_UNLOAD_TEST', self.bowden_pre_unload_test, minval=0, maxval=1)
