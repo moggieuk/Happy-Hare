@@ -1220,6 +1220,7 @@ Good luck! You can find me on discord as _moggieuk#6538_
 <li>v2.1.0 - Moonraker module that adds `!referenced_tools!` placeholder for automatic tool checking, SpoolMan support, auto-restore of gate stats, filament cutter option, MMU_UNLOCK is optional, new MMU_FORM_TIP command, separate per-print and total print status, speed/extrusion (M220/M221) overrides, new print state machine and thus Octoprint support. Sister KlipperScreen Happy Hare Edition also updated with SpoolMan panel.
 <li>v2.2.0 - Replacement of manual steppers with new MMU toolhead - faster homing and movements in general, new optional `gate` and `extruder` sensors, optional encoder, intial support for Tradrack and other customized designs.
 <li>v2.3.0 - LED support for bling, gate_status, filament color and action status, pre-gate sensor support for automated loading and gate_status setting, BTT MMB board support, integrated filametrix cutter support, new [mmu_sensors] config section of easy sensor setup. Doc improvements. **NOTE: Requires Klipper 0.12.0 or greater**
+<li>v2.3.1 - Automatic pulling of filament material and color from Spoolman; EndlessSpool improvements; LED configuration flexibility
 </ul>
 
 <br>

@@ -354,8 +354,8 @@ parse_file() {
         line="${line%%#*}"
         line="${line%%;*}"
 
-        # Check if line is not empty
-        if [ ! -z "$line" ]; then
+        # Check if line is not empty and contains variable or parameter
+        if [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
             # Split the line into parameter and value
             IFS=":=" read -r parameter value <<< "$line"
 
@@ -382,10 +382,11 @@ update_copy_file() {
     # Read the file line by line
     while IFS="" read -r line || [ -n "$line" ]
     do
-        # Check if line is a simple comment
         if echo "$line" | egrep -q '^#'; then
+            # Just copy simple comments
             echo "$line"
-        else
+        elif [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
+            # Line of interest
             # Split the line into the part before # and the part after #
             parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | cut -d'#' -f1)
             comment=$(echo "$line" | cut -s -d'#' -f2-)
@@ -398,7 +399,13 @@ update_copy_file() {
                 elif [ -n "$parameterAndValueAndSpace" ]; then
                     parameter=$(echo "$parameterAndValueAndSpace" | cut -d':' -f1)
                     value=$(echo "$parameterAndValueAndSpace" | cut -d':' -f2)
-                    new_value=`eval echo \\${${parameter}}`
+                    if [ -n "${parameter}" ]; then
+                        # If 'parameter' is set and not empty, evaluate its value
+                        new_value=$(eval echo "\$$parameter")
+                    else
+                        # If 'parameter' is unset or empty leave as token
+                        new_value="{$parameter}"
+                    fi
                     if [ -n "$comment" ]; then
                         echo "${parameter}: ${new_value}${space}#${comment}"
                     else
@@ -410,9 +417,24 @@ update_copy_file() {
             else
                 echo "$line"
             fi
+        else
+            # Just copy simple comments
+            echo "$line"
         fi
     done < "$src" >"$dest"
 }
+
+# Set default token values to the tokens themselves to avoid being parsed out
+set_default_tokens() {
+    brd_type="unknown"
+    for var in mmu_num_gates mmu_num_leds serial ; do
+        eval "${var}='{$var}'"
+    done
+    for var in toolhead_sensor_pin extruder_sensor_pin gate_sensor_pin pre_gate_0_pin pre_gate_1_pin pre_gate_2_pin pre_gate_3_pin pre_gate_4_pin pre_gate_5_pin pre_gate_6_pin pre_gate_7_pin pre_gate_8_pin pre_gate_9_pin pre_gate_10_pin pre_gate_11_pin gear_uart_pin gear_step_pin gear_dir_pin gear_enable_pin gear_diag_pin selector_uart_pin selector_step_pin selector_dir_pin selector_enable_pin selector_diag_pin selector_endstop_pin servo_pin encoder_pin neopixel_pin ; do
+        eval "PIN[unknown,${var}]='{$var}'"
+    done
+}
+
 
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
@@ -452,7 +474,7 @@ read_previous_config() {
         if [ ! "${bowden_load_tolerance}" == "" ]; then
             bowden_allowable_load_delta=${bowden_load_tolerance}
         fi
-        if [ ! "${mmu_num_gates}" == "" ]; then
+        if [ ! "${mmu_num_gate}" == "{mmu_num_gate}" -a ! "${mmu_num_gate}" == "" ] 2>/dev/null; then
             mmu_num_leds=$(expr $mmu_num_gates + 1)
         fi
     fi
@@ -1218,6 +1240,7 @@ check_klipper
 cleanup_old_ercf
 if [ "$UNINSTALL" -eq 0 ]; then
     # Set in memory parameters from default file
+    set_default_tokens
     read_default_config
     if [ "${INSTALL}" -eq 1 ]; then
         # Update in memory parameters from questionaire
