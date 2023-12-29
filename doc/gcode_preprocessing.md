@@ -36,7 +36,7 @@ When combined with the `MMU_CHECK_GATES TOOLS=` functionality and placed in your
 To implement incorporate into your start g-code on your Slicer:
 
 ```yml
-START_PRINT TOOLS_USED=!referenced_tools! INITIAL_TOOL={initial_tool} ...the other parameters...
+START_PRINT REFERENCED_TOOLS=!referenced_tools! INITIAL_TOOL={initial_tool} ...the other parameters...
 ```
 
 Then in you print start macro add logic similar to:
@@ -45,20 +45,22 @@ Then in you print start macro add logic similar to:
 [gcode_macro START_PRINT]
 description: Called when starting print
 gcode:
-    {% set TOOLS_USED = params.TOOLS_USED|default("")|string %}
+    {% set REFERENCED_TOOLS = params.REFERENCED_TOOLS|default("")|string %}
     {% set INITIAL_TOOL = params.INITIAL_TOOL|default(0)|int %}
 
-    {% if TOOLS_USED == "!referenced_tools!" %}
+    {% if REFERENCED_TOOLS == "!referenced_tools!" %}
         RESPOND MSG="Happy Hare gcode pre-processor is diabled"
-        {% set TOOLS_USED = INITIAL_TOOL %}
-    {% elif TOOLS_USED == "" %}
+        {% set REFERENCED_TOOLS = INITIAL_TOOL %}
+    {% elif REFERENCED_TOOLS == "" %}
         RESPOND MSG="Happy Hare single color print"
-        {% set TOOLS_USED = INITIAL_TOOL %}
+        {% set REFERENCED_TOOLS = INITIAL_TOOL %}
     {% endif %}
 
     :
 
-    MMU_CHECK_GATE TOOLS={TOOLS_USED}
+    MMU_CHECK_GATE TOOLS={REFERENCED_TOOLS}
+
+    MMU_CHANGE_TOOL STANDALONE=1 TOOL={INITIAL_TOOL} # Optional: load initial tool
 
     :
 ```
@@ -66,5 +68,5 @@ gcode:
 > [!NOTE]  
 > * `MMU_CHECK_GATE TOOLS=` with empty string will be ignored by Happy Hare.<br>
 > * Any tool that was loaded prior to calling `MMU_CHECK_GATES` will be automatically restored at the end of the checking procedure.<br>
-> * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `TOOLS_USED` (which counts `Tx` commands) will be empty. This code will ensure that `TOOL_USED` will always contain the initial tool.
+> * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `REFERENCED_TOOLS` (which counts `Tx` commands) will be empty. This code will ensure that `REFERENCED_TOOLS` will always contain the initial tool.
 
