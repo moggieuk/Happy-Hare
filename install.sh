@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.3 # Important: Keep synced with mmy.py
+VERSION=2.4 # Important: Keep synced with mmy.py
 
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"
@@ -102,7 +102,9 @@ B_RED='\033[1;31m'        # Bold Red
 B_GREEN='\033[1;32m'      # Bold Green
 B_YELLOW='\033[1;33m'     # Bold Yellow
 B_CYAN='\033[1;36m'       # Bold Cyan
+B_WHITE='\033[1;37m'      # Bold White
 
+TITLE="${B_WHITE}"
 DETAIL="${BLUE}"
 INFO="${CYAN}"
 EMPHASIZE="${B_CYAN}"
@@ -224,7 +226,7 @@ cleanup_old_ercf() {
     fi
 }
 
-# Upgrade to mmu-toolhead version from manual_stepper
+# TEMPORARY: Upgrade to mmu-toolhead version from manual_stepper
 cleanup_manual_stepper_version() {
     # Legacy klipper modules...
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
@@ -267,7 +269,7 @@ cleanup_manual_stepper_version() {
     fi
 }
 
-# Upgrade mmu sensors part of mmu_hardware.cfg
+# TEMPORARY: Upgrade mmu sensors part of mmu_hardware.cfg
 upgrade_mmu_sensors() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
     found_mmu_sensors=$(egrep -c "${SENSORS_SECTION}" ${hardware_cfg} || true)
@@ -284,7 +286,7 @@ upgrade_mmu_sensors() {
     fi
 }
 
-# Upgrade led effects part of mmu_hardware.cfg (assumed last part of file)
+# TEMPORARY: Upgrade led effects part of mmu_hardware.cfg (assumed last part of file)
 upgrade_led_effects() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
     found_led_effects=$(egrep -c "${LED_SECTION}" ${hardware_cfg} || true)
@@ -430,7 +432,7 @@ set_default_tokens() {
     for var in mmu_num_gates mmu_num_leds serial ; do
         eval "${var}='{$var}'"
     done
-    for var in toolhead_sensor_pin extruder_sensor_pin gate_sensor_pin pre_gate_0_pin pre_gate_1_pin pre_gate_2_pin pre_gate_3_pin pre_gate_4_pin pre_gate_5_pin pre_gate_6_pin pre_gate_7_pin pre_gate_8_pin pre_gate_9_pin pre_gate_10_pin pre_gate_11_pin gear_uart_pin gear_step_pin gear_dir_pin gear_enable_pin gear_diag_pin selector_uart_pin selector_step_pin selector_dir_pin selector_enable_pin selector_diag_pin selector_endstop_pin servo_pin encoder_pin neopixel_pin ; do
+    for var in toolhead_sensor_pin extruder_sensor_pin gate_sensor_pin pre_gate_0_pin pre_gate_1_pin pre_gate_2_pin pre_gate_3_pin pre_gate_4_pin pre_gate_5_pin pre_gate_6_pin pre_gate_7_pin pre_gate_8_pin pre_gate_9_pin pre_gate_10_pin pre_gate_11_pin gear_uart_pin gear_step_pin gear_dir_pin gear_enable_pin gear_diag_pin selector_uart_pin selector_step_pin selector_dir_pin selector_enable_pin selector_diag_pin selector_endstop_pin servo_pin encoder_pin neopixel_pin; do
         eval "PIN[unknown,${var}]='{$var}'"
     done
 }
@@ -442,18 +444,19 @@ read_default_config() {
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg"
     parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_filametrix.cfg" "variable_"
+    parse_file "${SRCDIR}/config/base/mmu_sequence.cfg" "variable_"
 }
 
 # Pull parameters from previous installation
 read_previous_config() {
-    parameters_cfg="mmu_parameters.cfg"
-    dest_parameters_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${parameters_cfg}
+    cfg="mmu_parameters.cfg"
+    dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
-    if [ ! -f "${dest_parameters_cfg}" ]; then
-        echo -e "${WARNING}No previous ${parameters_cfg} found. Will install default"
+    if [ ! -f "${dest_cfg}" ]; then
+        echo -e "${WARNING}No previous ${cfg} found. Will install default"
     else
-        echo -e "${INFO}Reading ${parameters_cfg} configuration from previous installation..."
-        parse_file "${dest_parameters_cfg}"
+        echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
+        parse_file "${dest_cfg}"
 
         # Upgrade / map / force old parameters
         if [ ! "${encoder_unload_buffer}" == "" ]; then
@@ -479,25 +482,37 @@ read_previous_config() {
         fi
     fi
 
-    software_cfg="mmu_software.cfg"
-    dest_software_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${software_cfg}
+    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_filametrix.cfg; do
+        dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
-    if [ ! -f "${dest_software_cfg}" ]; then
-        echo -e "${WARNING}No previous ${software_cfg} found. Will install default"
-    else
-        echo -e "${INFO}Reading ${software_cfg} configuration from previous installation..."
-        parse_file "${dest_software_cfg}" "variable_"
-    fi
+        if [ ! -f "${dest_cfg}" ]; then
+            echo -e "${WARNING}No previous ${cfg} found. Will install default"
+        else
+            echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
+            parse_file "${dest_cfg}" "variable_"
 
-    filametrix_cfg="mmu_filametrix.cfg"
-    dest_filametrix_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${filametrix_cfg}
-
-    if [ ! -f "${dest_filametrix_cfg}" ]; then
-        echo -e "${WARNING}No previous ${filametrix_cfg} found. Will install default"
-    else
-        echo -e "${INFO}Reading ${filametrix_cfg} configuration from previous installation..."
-        parse_file "${dest_filametrix_cfg}" "variable_"
-    fi
+            # Convert from mm/min to mm/sec and 'spd' to 'speed' for consistency in other macros
+            #
+            if [ ! "${variable_rip_speed}" == "" ]; then
+                variable_rip_speed=$(echo "$variable_rip_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+            fi
+            if [ ! "${variable_evacuate_speed}" == "" ]; then
+                variable_evacuate_speed=$(echo "$variable_evacuate_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+            fi
+            if [ ! "${variable_extruder_move_speed}" == "" ]; then
+                variable_extruder_move_speed=$(echo "$variable_extruder_move_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+            fi
+            if [ ! "${variable_travel_spd}" == "" ]; then
+                variable_travel_speed=$(echo "$variable_travel_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+            fi
+            if [ ! "${variable_cut_fast_move_spd}" == "" ]; then
+                variable_cut_fast_move_speed=$(echo "$variable_cut_fast_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+            fi
+            if [ ! "${variable_cut_slow_move_spd}" == "" ]; then
+                variable_cut_slow_move_speed=$(echo "$variable_cut_slow_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+            fi
+        fi
+    done
 }
 
 copy_config_files() {
@@ -530,10 +545,8 @@ copy_config_files() {
             fi
         fi
 
-        if [ "${file}" == "mmu_parameters.cfg" ]; then
-            update_copy_file "$src" "$dest"
-
-	elif [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
+        # Hardware files: Special token substitution -----------------------------------------
+	if [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
             uart_comment="#"
             sel_uart="_THIS_PATTERN_DOES_NOT_EXIST_"
             if [ "${brd_type}" == "EASY-BRD" ]; then
@@ -611,6 +624,11 @@ copy_config_files() {
                 sed "/${LED_SECTION}/,\$s/^/#/" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
+        # Conifguration parameters -----------------------------------------------------------
+        elif [ "${file}" == "mmu_parameters.cfg" ]; then
+            update_copy_file "$src" "$dest"
+
+        # Software macros --------------------------------------------------------------------
         elif [ "${file}" == "mmu_software.cfg" ]; then
             tx_macros=""
             if [ "${mmu_num_gates}" == "{mmu_num_gates}" ]; then
@@ -1040,9 +1058,13 @@ questionaire() {
     echo -e "${PROMPT}${SECTION}Which servo are you using?"
     echo -e "1) MG-90S (ERCF)"
     echo -e "2) Savox SH0255MG (ERCF)"
-    echo -e "3) Other${INPUT}"
-    num=$(prompt_123 "Servo?" 3)
+    echo -e "3) (Tradrack)"
+    echo -e "4) Other${INPUT}"
+    num=$(prompt_123 "Servo?" 4)
     echo
+    servo_up_angle={servo_up_angle}
+    servo_move_angle={servo_move_angle}
+    servo_down_angle={servo_down_angle}
     if [ "${mmu_vendor}" == "ERCF" ]; then
         case $num in
             1)
@@ -1064,10 +1086,14 @@ questionaire() {
                 servo_down_angle=30
                 ;;
         esac
-    else
-        servo_up_angle=0
-        servo_move_angle=0
-        servo_down_angle=0
+    elif [ "${mmu_vendor}" == "Tradrack" ]; then
+        case $num in
+            3)
+                servo_up_angle=1
+                servo_move_angle=${servo_up_angle}
+                servo_down_angle=145
+                ;;
+        esac
     fi
 
     echo
@@ -1234,17 +1260,24 @@ if [ "${INSTALL}" -eq 1 -a "${UNINSTALL}" -eq 1 ]; then
     usage
 fi
 
+if [ "${INSTALL}" -eq 0 -a "${UNINSTALL}" -eq 0 ]; then
+    echo -e "${TITLE}Upgrading previous version of Happy Hare..."
+fi
+
 verify_not_root
 verify_home_dirs
 check_klipper
 cleanup_old_ercf
 if [ "$UNINSTALL" -eq 0 ]; then
+
     # Set in memory parameters from default file
     set_default_tokens
     read_default_config
+
     if [ "${INSTALL}" -eq 1 ]; then
         # Update in memory parameters from questionaire
         questionaire
+
         if [ "${INSTALL_PRINTER_INCLUDES}" -eq 1 ]; then
             install_printer_includes
         fi
@@ -1257,9 +1290,12 @@ if [ "$UNINSTALL" -eq 0 ]; then
     happy_hare_version=${VERSION}
 
     copy_config_files
+
+    # Temp upgrades
     cleanup_manual_stepper_version
     upgrade_mmu_sensors
     upgrade_led_effects
+
     link_mmu_plugins
     install_update_manager
 else
@@ -1291,8 +1327,7 @@ else
 fi
 
 if [ "$UNINSTALL" -eq 0 ]; then
-    echo -e "${EMPHASIZE}"
-    echo "Done."
+    echo -e "${TITLE}Done."
     echo -e "${INFO}"
     echo '(\_/)'
     echo '( *,*)'
