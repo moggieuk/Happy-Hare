@@ -320,14 +320,14 @@ gcode_load_sequence: 0		# Advanced: Gcode loading sequence 1=enabled, 0=internal
 gcode_unload_sequence: 0	# Advanced: Gcode unloading sequence, 1=enabled, 0=internal logic (default)
 auto_calibrate_gates: 0		# Automated gate (not gate#0) calibration. 1=calibrated automatically on first load, 0=disabled
 strict_filament_recovery: 0	# If enabled with MMU with toolhead sensor, this will cause filament position recovery to
-				# perform extra moves to look for filament trapped in the space after extruder but before sensor
+                                # perform extra moves to look for filament trapped in the space after extruder but before sensor
 retry_tool_change_on_error: 0	# Whether to automatically retry a failed tool change. If enabled Happy Hare will perform
-				# the equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary
-				# to recover. Note that enabling this can mask problems with your MMU
+                                # the equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary
+                                # to recover. Note that enabling this can mask problems with your MMU
 print_start_detection: 1	# Enabled for Happy Hare to automatically detect start and end of print and call
-				# _MMU_START_PRINT and _MMU_END_PRINT. Disable if you want to include in your own macros
+                                # _MMU_START_PRINT and _MMU_END_PRINT. Disable if you want to include in your own macros
 encoder_move_validation: 1	# 1 = Normally Encoder validates move distances are within given tolerence (slower but more safe)
-				# 0 = Validation is disabled for many moves (eliminates slight pause between moves but less safe)
+                                # 0 = Validation is disabled for many moves (eliminates slight pause between moves but less safe)
 ```
 
 This section contains a list of overrides for macros that Happy Hare calls internally. Currently, there's the option to override the `PAUSE` macro and the `_MMU_FORM_TIP_STANDALONE` macro but other macros or arguments may be added in the future.

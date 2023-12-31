@@ -71,7 +71,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.flush_timer = self.reactor.register_timer(self._flush_handler)
         self.do_kick_flush_timer = True
         self.last_flush_time = self.last_sg_flush_time = 0.
-        self.need_flush_time = self.step_gen_time = 0.
+        self.need_flush_time = self.step_gen_time = self.clear_history_time = 0.
         # Kinematic step generation scan window time tracking
         self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
         self.kin_flush_times = []
