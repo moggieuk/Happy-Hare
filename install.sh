@@ -1128,9 +1128,9 @@ questionaire() {
     elif [ "${mmu_vendor}" == "Tradrack" ]; then
         case $num in
             3)
-                servo_up_angle=1
+                servo_up_angle=145
                 servo_move_angle=${servo_up_angle}
-                servo_down_angle=145
+                servo_down_angle=1
                 ;;
         esac
     fi

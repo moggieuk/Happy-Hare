@@ -135,6 +135,7 @@ class Mmu:
     ACTION_SELECTING = 9
 
     # Standard sensor and endstop or pseudo endstop names
+    ENDSTOP_EXTRUDER_NONE      = "none"      # Fake endstop aka don't attempt home
     ENDSTOP_EXTRUDER_COLLISION = "collision" # Fake endstop
     ENDSTOP_ENCODER            = "encoder"   # Fake endstop
     ENDSTOP_EXTRUDER_TOUCH     = "mmu_ext_touch"
@@ -146,7 +147,7 @@ class Mmu:
     ENDSTOP_SELECTOR_HOME      = "mmu_sel_home"
     PRE_GATE_SENSOR_PREFIX     = "mmu_pre_gate"
 
-    EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER]
+    EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER, ENDSTOP_EXTRUDER_NONE]
     GATE_ENDSTOPS     = [ENDSTOP_GATE, ENDSTOP_ENCODER]
 
     # Stepper config sections
@@ -469,6 +470,7 @@ class Mmu:
         # Currently hidden and testing options
         self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
+        self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
 
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
 
@@ -1744,9 +1746,7 @@ class Mmu:
             mean = (float(mean_pos) + float(mean_neg)) / 2
 
             if mean == 0:
-                self._log_always("No counts measured. Ensure a tool was selected with servo down " +
-                                  "before running calibration and that your encoder " +
-                                  "is working properly")
+                self._log_always("No counts measured. Ensure a tool was selected with servo down before running calibration and that your encoder is working properly")
                 return
 
             resolution = length / mean
@@ -1779,7 +1779,7 @@ class Mmu:
 
     def _calibrate_bowden_length(self, start_pos, extruder_homing_max, repeats, save=True):
         try:
-            self._log_always("Calibrating bowden length from reference Gate #0")
+            self._log_always("Calibrating bowden length on reference Gate #0")
             self._select_tool(0)
             self._set_gate_ratio(1.)
             reference_sum = spring_max = 0.
@@ -1815,7 +1815,7 @@ class Mmu:
             if successes > 0:
                 average_reference = reference_sum / successes
                 detection_length = (average_reference * 2.) / 100. + spring_max # 2% of bowden length plus spring seems to be good starting point
-                msg = "Recommended calibration reference is %.1fmm" % average_reference
+                msg = "Recommended calibration bowden length is %.1fmm" % average_reference
                 if self.enable_clog_detection:
                     msg += ". Clog detection length: %.1fmm" % detection_length
                 self._log_always(msg)
@@ -1832,6 +1832,29 @@ class Mmu:
         except MmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration of bowden length (on Gate #0) failed. Aborting, because:\n%s" % str(ee))
+        finally:
+            self._servo_auto()
+
+    def _calibrate_bowden_length_manual(self, approx_bowden_length, save=True):
+        if self.gate_selected != 0 and not self.virtual_selector:
+            raise MmuError("Calibration of bowden length must be performed on gate #0")
+        try:
+            self._log_always("Calibrating bowden length (manual method)")
+            self._set_filament_direction(self.DIRECTION_UNLOAD)
+            self._servo_down()
+            self._set_gate_ratio(1.)
+            self._log_always("Finding gate position...")
+            actual,homed,measured,_ = self._trace_filament_move("Reverse homing to gate sensor", -approx_bowden_length, motor="gear", homing_move=-1, endstop_name=self.ENDSTOP_GATE)
+            if homed:
+                actual = abs(actual)
+                self._log_always("Recommended calibration bowden length is %.1fmm" % actual)
+                if save:
+                    self._set_calibrated_bowden_length(actual)
+                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_BOWDEN_LENGTH, actual))
+                    self._log_always("Bowden calibration length has been saved")
+                self._unload_gate() # Use real method to park filament
+            else:
+                raise MmuError("Calibration of bowden length failed. Did not home to gate sensor after moving %.1fmm" % approx_bowden_length)
         finally:
             self._servo_auto()
 
@@ -2108,21 +2131,30 @@ class Mmu:
     cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for gate #0"
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         if self._check_is_disabled(): return
-        if self._check_has_encoder(): return # PAUL this could be done with extruder entry sensor... or incremental manual process
+#        if self._check_has_encoder(): return # PAUL this could be done with extruder entry sensor... or incremental manual process
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR): return
 
         approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
-        extruder_homing_max = gcmd.get_float('HOMING_MAX', 100, above=0.)
+        extruder_homing_max = gcmd.get_float('HOMING_MAX', 150, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        manual = bool(gcmd.get_int('MANUAL', 0, minval=0, maxval=1))
+        if not self._has_encoder() and not manual:
+            self._log_always("No encoder available. Use manual calibration method:\nWith gate #0 selected, manually load filament all the way to the extruder gear\nThen run `MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx`\nWhere BOWDEN_LENGTH is greater than your real length")
+            return
+
         try:
-            self._reset_ttg_mapping() # To force tool = gate
-            self._unload_tool()
             self.calibrating = True
-            with self._require_encoder():
-                self._calibrate_bowden_length(approx_bowden_length, extruder_homing_max, repeats, save)
+            if manual:
+                self._calibrate_bowden_length_manual(approx_bowden_length, save)
+            else:
+                # Automatic method with encoder
+                self._reset_ttg_mapping() # To force tool = gate
+                self._unload_tool()
+                with self._require_encoder():
+                    self._calibrate_bowden_length(approx_bowden_length, extruder_homing_max, repeats, save)
         except MmuError as ee:
             self._mmu_pause(str(ee))
         finally:
@@ -2449,7 +2481,7 @@ class Mmu:
             self._enable_encoder_sensor(old_enable)
 
     def _has_encoder(self):
-        return self.encoder_sensor is not None
+        return self.encoder_sensor is not None and not self.test_disable_encoder
 
     def _can_use_encoder(self):
         return self.encoder_sensor is not None and (self.encoder_move_validation or self.encoder_force_validation)
@@ -3236,7 +3268,16 @@ class Mmu:
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._servo_down()
 
-        if self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER_COLLISION:
+        if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
+            if self._has_encoder():
+                actual,homed,measured,_ = self._home_to_extruder_collision_detection(max_length)
+            else:
+                raise MmuError("Attempting to home to extruder using 'collision' endstop but encoder is not configured on MMU!")
+
+        elif self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_NONE:
+            homed = True
+
+        else:
             self._log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
             actual,homed,measured,_ = self._trace_filament_move("Homing filament to extruder endstop", max_length, motor="gear", homing_move=1, endstop_name=self.extruder_homing_endstop)
             if homed:
@@ -3246,8 +3287,6 @@ class Mmu:
                 # We do this here to allow _load_extruder() to work with "extruder_only" option
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
                     _,_,measured,_ = self._trace_filament_move("Aligning filament to extruder gear", self.toolhead_entry_to_extruder, motor="gear")
-        else:
-            actual,homed,measured,_ = self._home_to_extruder_collision_detection(max_length)
 
         if not homed:
             self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
@@ -3991,16 +4030,20 @@ class Mmu:
 
         # Set sensible speeds and accelaration if not supplied
         if motor in ["gear"]:
-            if abs(dist) > self.gear_short_move_threshold:
-                if self.gate_selected >= 0 and self.gate_status[self.gate_selected] != self.GATE_AVAILABLE_FROM_BUFFER and dist > 0:
-                    speed = speed or self.gear_from_spool_speed
-                    accel = accel or self.gear_from_spool_accel
-                else:
-                    speed = speed or self.gear_from_buffer_speed
-                    accel = accel or self.gear_from_buffer_accel
+            if homing_move != 0:
+                speed = speed or self.gear_homing_speed
+                accel = accel or min(self.gear_from_buffer_accel, self.gear_from_spool_accel)
             else:
-                speed = speed or self.gear_short_move_speed
-                accel = accel or self.gear_short_move_accel
+                if abs(dist) > self.gear_short_move_threshold:
+                    if self.gate_selected >= 0 and self.gate_status[self.gate_selected] != self.GATE_AVAILABLE_FROM_BUFFER and dist > 0:
+                        speed = speed or self.gear_from_spool_speed
+                        accel = accel or self.gear_from_spool_accel
+                    else:
+                        speed = speed or self.gear_from_buffer_speed
+                        accel = accel or self.gear_from_buffer_accel
+                else:
+                    speed = speed or self.gear_short_move_speed
+                    accel = accel or self.gear_short_move_accel
 
         elif motor in ["both", "gear+extruder", "synced"]:
             if homing_move != 0:
@@ -5070,6 +5113,7 @@ class Mmu:
 
         # Currently hidden and testing options
         self.test_random_failures = gcmd.get_int('TEST_RANDOM_FAILURES', self.test_random_failures, minval=0, maxval=1)
+        self.test_disable_encoder = gcmd.get_int('TEST_DISABLE_ENCODER', self.test_disable_encoder, minval=0, maxval=1)
 
         msg = "SPEEDS:"
         msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
