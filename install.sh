@@ -348,6 +348,7 @@ unlink_mmu_plugins() {
 parse_file() {
     filename="$1"
     prefix_filter="$2"
+    namespace="$3"
 
     # Read old config files
     while IFS= read -r line
@@ -369,7 +370,7 @@ parse_file() {
 	    # If parameter is one of interest and it has a value remember it
             if echo "$parameter" | egrep -q "${prefix_filter}"; then
                 if [ "${value}" != "" ]; then
-                    eval "${parameter}='${value}'"
+                    eval "${namespace}${parameter}='${value}'"
                 fi
             fi
         fi
@@ -380,6 +381,7 @@ update_copy_file() {
     src="$1"
     dest="$2"
     prefix_filter="$3"
+    namespace="$4"
 
     # Read the file line by line
     while IFS="" read -r line || [ -n "$line" ]
@@ -401,9 +403,16 @@ update_copy_file() {
                 elif [ -n "$parameterAndValueAndSpace" ]; then
                     parameter=$(echo "$parameterAndValueAndSpace" | cut -d':' -f1)
                     value=$(echo "$parameterAndValueAndSpace" | cut -d':' -f2)
-                    if [ -n "${parameter}" ]; then
+                    if [ -n "${namespace}${parameter}" ]; then
                         # If 'parameter' is set and not empty, evaluate its value
-                        new_value=$(eval echo "\$$parameter")
+                        new_value=$(eval echo "\$${namespace}${parameter}")
+                        if [ -n "${namespace}" ]; then
+                            # Namespaced, use once
+                            eval unset ${namespace}${parameter}
+                        fi
+                    elif [ -n "${parameter}" ]; then
+                        # Try non-namespaced name, multi-use
+                        new_value=$(eval echo "\$${parameter}")
                     else
                         # If 'parameter' is unset or empty leave as token
                         new_value="{$parameter}"
@@ -441,7 +450,7 @@ set_default_tokens() {
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
-    parse_file "${SRCDIR}/config/base/mmu_parameters.cfg"
+    parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" "" "_param_"
     parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_filametrix.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_sequence.cfg" "variable_"
@@ -456,7 +465,7 @@ read_previous_config() {
         echo -e "${WARNING}No previous ${cfg} found. Will install default"
     else
         echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
-        parse_file "${dest_cfg}"
+        parse_file "${dest_cfg}" "" "_param_"
 
         # Upgrade / map / force old parameters
         if [ ! "${encoder_unload_buffer}" == "" ]; then
@@ -482,7 +491,38 @@ read_previous_config() {
         fi
     fi
 
-    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_filametrix.cfg; do
+    cfg="mmu_filametrix.cfg"
+    dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
+
+    if [ ! -f "${dest_cfg}" ]; then
+        echo -e "${WARNING}No previous ${cfg} found. Will install default"
+    else
+        echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
+        parse_file "${dest_cfg}" "variable_"
+
+        # Convert from mm/min to mm/sec and 'spd' to 'speed' for consistency in other macros
+        #
+        if [ ! "${variable_rip_speed}" == "" ]; then
+            variable_rip_speed=$(echo "$variable_rip_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+        fi
+        if [ ! "${variable_evacuate_speed}" == "" ]; then
+            variable_evacuate_speed=$(echo "$variable_evacuate_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+        fi
+        if [ ! "${variable_extruder_move_speed}" == "" ]; then
+            variable_extruder_move_speed=$(echo "$variable_extruder_move_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+        fi
+        if [ ! "${variable_travel_spd}" == "" ]; then
+            variable_travel_speed=$(echo "$variable_travel_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+        fi
+        if [ ! "${variable_cut_fast_move_spd}" == "" ]; then
+            variable_cut_fast_move_speed=$(echo "$variable_cut_fast_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+        fi
+        if [ ! "${variable_cut_slow_move_spd}" == "" ]; then
+            variable_cut_slow_move_speed=$(echo "$variable_cut_slow_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+        fi
+    fi
+
+    for cfg in mmu_software.cfg mmu_sequence.cfg ; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
         if [ ! -f "${dest_cfg}" ]; then
@@ -490,27 +530,6 @@ read_previous_config() {
         else
             echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
             parse_file "${dest_cfg}" "variable_"
-
-            # Convert from mm/min to mm/sec and 'spd' to 'speed' for consistency in other macros
-            #
-            if [ ! "${variable_rip_speed}" == "" ]; then
-                variable_rip_speed=$(echo "$variable_rip_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-            fi
-            if [ ! "${variable_evacuate_speed}" == "" ]; then
-                variable_evacuate_speed=$(echo "$variable_evacuate_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-            fi
-            if [ ! "${variable_extruder_move_speed}" == "" ]; then
-                variable_extruder_move_speed=$(echo "$variable_extruder_move_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-            fi
-            if [ ! "${variable_travel_spd}" == "" ]; then
-                variable_travel_speed=$(echo "$variable_travel_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-            fi
-            if [ ! "${variable_cut_fast_move_spd}" == "" ]; then
-                variable_cut_fast_move_speed=$(echo "$variable_cut_fast_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-            fi
-            if [ ! "${variable_cut_slow_move_spd}" == "" ]; then
-                variable_cut_slow_move_speed=$(echo "$variable_cut_slow_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-            fi
         fi
     done
 }
@@ -626,7 +645,22 @@ copy_config_files() {
 
         # Conifguration parameters -----------------------------------------------------------
         elif [ "${file}" == "mmu_parameters.cfg" ]; then
-            update_copy_file "$src" "$dest"
+            update_copy_file "$src" "$dest" "" "_param_"
+
+            # Ensure that supplemental user added params are retained. These are those that are
+            # by default set internally in Happy Hare based on vendor and version settings but
+            # can be overridden.  This set also includes a couple of hidden test parameters.
+            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta gate_parking_distance encoder_default_resolution"
+            hidden_params="virtual_selector homing_extruder test_random_failures"
+            for var in $(set | grep '^_param_' | cut -d'=' -f1); do
+                param=${var#_param_}
+                for item in ${supplemental_params} ${hidden_params}; do
+                    if [ "$item" = "$param" ]; then
+                        value=$(eval echo "\$${var}")
+                        echo "${param}: ${value} # User added and retained after upgrade"
+                    fi
+                done
+            done >> $dest
 
         # Software macros --------------------------------------------------------------------
         elif [ "${file}" == "mmu_software.cfg" ]; then

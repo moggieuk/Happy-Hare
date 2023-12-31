@@ -242,31 +242,39 @@ class Mmu:
         self.mmu_vendor = config.get('mmu_vendor', self.VENDOR_ERCF)
         self.mmu_version_string = config.get('mmu_version', "1.1")
         self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
-        self.virtual_selector = False # TODO untested WIP
+
+        # To simplfy config some parameters, mostly CAD related but a few exceptions
+        # like gate_park_distance are set based on vendor and version setting
 
         # Set CAD default parameters to ensure everything is set
         # These are default for ERCFv1.1 - the first MMU supported by Happy Hare
         #  cad_gate0_pos          - distance from endstop to first gate
         #  cad_gate_width         - width of each gate
+        #  cad_bypass_offset      - distance from end of travel to the bypass
+        #  cad_last_gate_offset   - distance from end of travel to last gate
         #  cad_block_width        - width of bearing block (ERCF v1.1)
         #  cad_bypass_block_width - width of bypass block (ERCF v1.1)
         #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
-        #  cad_bypass_offset      - distance from end of travel to the bypass
-        #  cad_last_gate_offset   - distance from end of travel to last gate
+        #
+        #  gate_parking_distance      - how far back in the gate the filament is parked
+        #  encoder_default_resolution - resolution of a single encoder "count"
+        #  virtual_selector           - real selector or virtual (type A vs type B)
         self.cad_gate0_pos = 4.2
         self.cad_gate_width = 21.
-        self.cad_bypass_offset = 0.
-        self.cad_last_gate_offset = 2.0
-
+        self.cad_bypass_offset = 0
+        self.cad_last_gate_offset = 2.
         self.cad_block_width = 5.
         self.cad_bypass_block_width = 6.
         self.cad_bypass_block_delta = 9.
+        self.cad_selector_tolerance = 10.
+
+        self.virtual_selector = False # TODO untested WIP
 
         self.gate_parking_distance = 23.
         self.gate_endstop_to_encoder = 0.
         self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
 
-        # Specific vendor build parameters / tuning. Mostly CAD related but a few exceptions like gate_park_distance
+        # Specific vendor build parameters / tuning.
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
             if self.mmu_version >= 2.0: # V2 community edition
                 self.cad_gate0_pos = 4.0
@@ -320,25 +328,15 @@ class Mmu:
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure `cad` dimensions (see doc)")
 
-        else:
-            # Some arbitary starting values for "Other" designs
-            self.cad_gate0_pos = 1.
-            self.cad_gate_width = 20.
-            self.cad_bypass_offset = 1.
-            self.cad_last_gate_offset = 10.
-            self.gate_parking_distance = 20.
-
-        # Allow CAD parameters to be customized
+        # Allow all CAD parameters to be customized
         self.cad_gate0_pos = config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
         self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
         self.cad_bypass_offset = config.getfloat('cad_bypass_offset', self.cad_bypass_offset, minval=0.)
         self.cad_last_gate_offset = config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
-
         self.cad_block_width = config.getfloat('cad_block_width', self.cad_block_width, above=0.) # ERCF v1.1 only
         self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.) # ERCF v1.1 only
         self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1 only
-
-        self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', 10., above=0.) # Extra movement allowed by selector
+        self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -1976,23 +1974,19 @@ class Mmu:
                 self._log_always("Selector didn't find home position after full length move")
                 return
             self._log_always("Maximum selector movement is %.1fmm" % traveled)
-            bypass_pos = traveled - self.cad_bypass_offset
+            if self.cad_bypass_offset > 0:
+                bypass_pos = traveled - self.cad_bypass_offset
+            else:
+                bypass_pos = 0.
             last_gate_pos = traveled - self.cad_last_gate_offset
 
             # Step 4 - the calcs
             length = last_gate_pos - gate0_pos
             self._log_debug("Results: gate0_pos=%.1f, last_gate_pos=%.1f, length=%.1f" % (gate0_pos, last_gate_pos, length))
             selector_offsets = []
-            if self.mmu_version >= 2.0:
-                num_gates = int(round(length / self.cad_gate_width)) + 1
-                adj_gate_width = length / (num_gates - 1)
-                self._log_debug("Adjusted gate width: %.1f" % adj_gate_width)
-                self.selector_offsets = []
-                for i in range(num_gates):
-                    selector_offsets.append(round(gate0_pos + (i * adj_gate_width), 1))
-                bypass_offset = bypass_pos
 
-            else:
+            if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower() and self.mmu_version == 1.1:
+                # ERCF v1.1 special case
                 num_gates = int(round(length / (self.cad_gate_width + self.cad_block_width / 3))) + 1
                 num_blocks = (num_gates - 1) // 3
                 bypass_offset = 0.
@@ -2007,11 +2001,21 @@ class Mmu:
                     if ((i + 1) / 3) == v1_bypass_block:
                         bypass_offset = selector_offsets[i] + self.cad_bypass_block_delta
 
+            else:
+                # Generic Type-A MMU case
+                num_gates = int(round(length / self.cad_gate_width)) + 1
+                adj_gate_width = length / (num_gates - 1)
+                self._log_debug("Adjusted gate width: %.1f" % adj_gate_width)
+                self.selector_offsets = []
+                for i in range(num_gates):
+                    selector_offsets.append(round(gate0_pos + (i * adj_gate_width), 1))
+                bypass_offset = bypass_pos
+
             if num_gates != self.mmu_num_gates:
                 self._log_error("You configued your MMU for %d gates but I counted %d! Please update `mmu_num_gates`" % (self.mmu_num_gates, num_gates))
                 return
 
-            self._log_always("Offsets %s and bypass %.1f" % (selector_offsets, bypass_offset))
+            self._log_always("Offsets: %s%s" % (selector_offsets, (" (bypass: %.1f)" % bypass_offset) if bypass_offset > 0 else " (no bypass fitted)"))
             if save:
                 self.selector_offsets = selector_offsets
                 self.bypass_offset = bypass_offset
