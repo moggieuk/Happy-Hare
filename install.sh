@@ -370,7 +370,12 @@ parse_file() {
 	    # If parameter is one of interest and it has a value remember it
             if echo "$parameter" | egrep -q "${prefix_filter}"; then
                 if [ "${value}" != "" ]; then
-                    eval "${namespace}${parameter}='${value}'"
+                    if echo "$value" | grep -q '^{.*}$'; then
+#                            new_value=$(echo "$new_value" | sed 's/^{\(.*\)}$/\1/')
+                        eval "${namespace}${parameter}=\$${value}"
+                    else
+                        eval "${namespace}${parameter}='${value}'"
+                    fi
                 fi
             fi
         fi
@@ -930,6 +935,8 @@ questionaire() {
             mmu_vendor="ERCF"
             mmu_version="1.1"
             gear_ratio="80:20"
+            extruder_homing_endstop="collision"
+            gate_homing_endstop="encoder"
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
             echo
@@ -957,6 +964,8 @@ questionaire() {
             mmu_vendor="ERCF"
             mmu_version="2.0"
             gear_ratio="80:20"
+            extruder_homing_endstop="collision"
+            gate_homing_endstop="encoder"
             echo -e "${PROMPT}Some popular upgrade options for ERCF v2.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using 'ThumperBlocks' filament block option")
             echo
@@ -970,18 +979,26 @@ questionaire() {
             mmu_vendor="Tradrack"
             mmu_version="1.0"
             gear_ratio="50:17"
+            extruder_homing_endstop="none"
+            gate_homing_endstop="mmu_gate"
             echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
             echo
             case $yn in
             y)
                 mmu_version+="e"
+                extruder_homing_endstop="collision"
+                gate_homing_endstop="encoder"
+                HAS_ENCODER=yes
                 ;;
             esac
             ;;
         4)
             mmu_vendor="Other"
             mmu_version="1.0"
+            gear_ratio="80:20"
+            extruder_homing_endstop="collision"
+            gate_homing_endstop="encoder"
             echo
             echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU you will need to setup some CAD dimensions and other key parameters... See doc"
             ;;
@@ -1042,9 +1059,6 @@ questionaire() {
         echo -e "${PROMPT}${SECTION}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
         serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
     fi
-
-    echo
-    echo -e "${WARNING}Board Type: ${brd_type}"
 
     echo
     echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
@@ -1135,24 +1149,26 @@ questionaire() {
         esac
     fi
 
-    echo
-    echo -e "${PROMPT}${SECTION}Clog detection? This uses the MMU encoder movement to detect clogs and can call your filament runout logic${INPUT}"
-    yn=$(prompt_yn "Enable clog detection")
-    echo
-    case $yn in
-        y)
-            enable_clog_detection=1
-            echo -e "${PROMPT}    Would you like MMU to automatically adjust clog detection length (recommended)?${INPUT}"
-            yn=$(prompt_yn "    Automatic")
-            echo
-            if [ "${yn}" == "y" ]; then
-                enable_clog_detection=2
-            fi
-            ;;
-        n)
-            enable_clog_detection=0
-            ;;
-    esac
+    if [ "${mmu_vendor}" == "ERCF" -o "${HAS_ENCODER}" == "yes" ]; then
+        echo
+        echo -e "${PROMPT}${SECTION}Clog detection? This uses the MMU encoder movement to detect clogs and can call your filament runout logic${INPUT}"
+        yn=$(prompt_yn "Enable clog detection")
+        echo
+        case $yn in
+            y)
+                enable_clog_detection=1
+                echo -e "${PROMPT}    Would you like MMU to automatically adjust clog detection length (recommended)?${INPUT}"
+                yn=$(prompt_yn "    Automatic")
+                echo
+                if [ "${yn}" == "y" ]; then
+                    enable_clog_detection=2
+                fi
+                ;;
+            n)
+                enable_clog_detection=0
+                ;;
+        esac
+    fi
 
     echo
     echo -e "${PROMPT}${SECTION}EndlessSpool? This uses filament runout detection to automate switching to new spool without interruption${INPUT}"
@@ -1161,15 +1177,10 @@ questionaire() {
     case $yn in
         y)
             enable_endless_spool=1
-            if [ "${enable_clog_detection}" -eq 0 ]; then
-                echo
-                echo -e "${WARNING}    NOTE: I've re-enabled clog detection which is necessary for EndlessSpool to function"
-                enable_clog_detection=2
-            fi
             ;;
         n)
-           enable_endless_spool=0
-           ;;
+            enable_endless_spool=0
+            ;;
     esac
 
     echo
@@ -1312,22 +1323,23 @@ if [ "$UNINSTALL" -eq 0 ]; then
 
     # Set in memory parameters from default file
     set_default_tokens
-    read_default_config
+    happy_hare_version=${VERSION}
 
     if [ "${INSTALL}" -eq 1 ]; then
         # Update in memory parameters from questionaire
         questionaire
+        read_default_config
 
         if [ "${INSTALL_PRINTER_INCLUDES}" -eq 1 ]; then
             install_printer_includes
         fi
     else
-        # Update in memory parameters from previous install
-        read_previous_config
+        read_default_config
+        read_previous_config # Update in memory parameters from previous install
     fi
 
     # Important to overwrite this
-    happy_hare_version=${VERSION}
+    _param_happy_hare_version=${VERSION}
 
     copy_config_files
 

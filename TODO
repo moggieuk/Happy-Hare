@@ -1,3 +1,5 @@
+Random scribbles to get things out of my head (not big enough)..
+
 1. Inattention watchdog that autmatically executes recovery if user doesn't react -- better than disabling heaters and killing print. Use this to replace current retry X times option.
 
 2. From User: Here are the parameters that would go in install.sh (using "MELLOW_FLY_ERCF" (supports canbus):
