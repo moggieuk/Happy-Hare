@@ -1469,9 +1469,7 @@ class Mmu:
         msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
 
         if config:
-            msg += "\n\nConfiguration:"
-
-            msg += "\nLoad Sequence"
+            msg += "\n\nLoad Sequence"
             msg += "\n- Filament loads into gate by homing a maximum of %.1fmm ('gate_homing_max') to %s" % (self.gate_homing_max, "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "ENDSTOP 'mmu_gate'")
             msg += "\n- Bowden is loaded with a fast%s %.1fmm ('calibration_bowden_length') move" % (" CORRECTED" if self.bowden_apply_correction else "", self.calibrated_bowden_length)
             if self._must_home_to_extruder():
@@ -1489,8 +1487,9 @@ class Mmu:
             else:
                 msg += "\n- Extruder loads (synced) by moving %.1fmm ('toolhead_extruder_to_nozzle') to the nozzle" % self.toolhead_extruder_to_nozzle
 
-            msg += "\nUnload Sequence"
+            msg += "\n\nUnload Sequence"
             msg += "\n- Tip is %s formed by %s" % (("sometimes", "SLICER") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro)))
+            msg += " and tip forming extruder current is %d%%" % self.extruder_form_tip_current
 
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
                 msg += "\n- Extruder unloads (synced) by reverse homing a maximum %.1fmm ('toolhead_sensor_to_nozzle' + 'toolhead_unload_safety_margin') less reported park position to TOOLHEAD SENSOR" % (self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin)
@@ -1511,9 +1510,8 @@ class Mmu:
 
             if self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
-                msg += ("Print (at %d%% current), " % self.sync_gear_current) if self.sync_to_extruder else ""
-                msg += "Tip forming, " if self.sync_form_tip else ""
-            msg += "\nTip forming extruder current is %d%%" % self.extruder_form_tip_current
+                msg += ("Print (at %d%% current)" % self.sync_gear_current) if self.sync_to_extruder else ""
+                msg += " and tip forming" if self.sync_form_tip else ""
 
             msg += "\n\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector_touch else ("DISABLED", "is not"))
             p = self.persistence_level
