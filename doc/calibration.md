@@ -86,14 +86,14 @@ You will see an output similar to:
 > (i) Use fresh filament - grooves from previous passes through extruder gears can lead to slight count differences.<br>
 > (ii) Make sure the selector is aligned with the gate. If it is off to one side you will almost certainly get disimilar counts in forward and reverse directions.<br>
 > (iii) You want the counts on each attempt to be the same or very similar but don't sweat +/-2 counts.  With ERCF v2.0, sprung servo and new Binky encoder design you should approach perfection though ;-)<br>
-> (iv) You can run this (like all calibration commands) without saving the result byt adding a `SAVE=0` flag.
+> (iv) You can run this (like all calibration commands) without saving the result by adding a `SAVE=0` flag.
 
 <br>
 
 ### Step 4. Calibrate bowden length:
-Optionally the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system:
+Optionally the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system. In you have an encoder you can run the automatic method:
 
-  > MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=640
+  > MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=650
 
 ```
     Homing MMU...
@@ -119,6 +119,12 @@ Optionally the last calibration before use! Here you can calibrate the length of
     Recommended calibration reference is 680.2mm. Clog detection length: 16.8mm
     Bowden calibration and clog detection length have been saved
 ```
+
+If you don't have an encoder or have problems with collision detection at the extruder you can run manually.  To do this, select gate 0, push filament through manually all the way to the extruder gears. This run with the `MANUAL=1` option:
+
+  > MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=650 MANUAL=1
+
+This will reverse homes to the gate and use Klipper's measurement of stepper movement. This is the method for MMU designs like Tradrack that don't have encoder but do have `mmu_gate` sensor.
 
 > [!NOTE]  
 > (i) This calibration assumes that the selector has been calibrated first.<br>

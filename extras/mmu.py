@@ -2131,7 +2131,6 @@ class Mmu:
     cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for gate #0"
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         if self._check_is_disabled(): return
-#        if self._check_has_encoder(): return # PAUL this could be done with extruder entry sensor... or incremental manual process
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR): return
