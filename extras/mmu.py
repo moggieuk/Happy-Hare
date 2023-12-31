@@ -248,7 +248,7 @@ class Mmu:
 
         # Set CAD default parameters to ensure everything is set
         # These are default for ERCFv1.1 - the first MMU supported by Happy Hare
-        #  cad_gate0_pos          - distance from endstop to first gate
+        #  cad_gate0_pos          - approximate distance from endstop to first gate
         #  cad_gate_width         - width of each gate
         #  cad_bypass_offset      - distance from end of travel to the bypass
         #  cad_last_gate_offset   - distance from end of travel to last gate

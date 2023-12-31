@@ -36,8 +36,8 @@ PIN[ERB,selector_diag_pin]="gpio19";     PIN[EASY-BRD,selector_diag_pin]="PA7"; 
 PIN[ERB,selector_endstop_pin]="gpio24";  PIN[EASY-BRD,selector_endstop_pin]="PB9";  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
 PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
 PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
-PIN[ERB,neopixel_pin]="";                PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
-PIN[ERB,gate_sensor_pin]="";             PIN[EASY-BRD,gate_sensor_pin]="";          PIN[EASY-BRD-RP2040,gate_sensor_pin]="";
+PIN[ERB,neopixel_pin]="gpio21";          PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
+PIN[ERB,gate_sensor_pin]="gpio22";       PIN[EASY-BRD,gate_sensor_pin]="PA6";       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
 PIN[ERB,pre_gate_0_pin]="";              PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
 PIN[ERB,pre_gate_1_pin]="";              PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
 PIN[ERB,pre_gate_2_pin]="";              PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
@@ -599,6 +599,7 @@ copy_config_files() {
                 cat ${dest}.tmp | sed -e "\
                     s/{mmu_num_gates}/${mmu_num_gates}/; \
                     s/{mmu_num_leds}/${mmu_num_leds}/; \
+                    s/{gear_ratio}/${gear_ratio}/; \
                     s%{serial}%${serial}%; \
                         " > ${dest} && rm ${dest}.tmp
             else
@@ -620,6 +621,7 @@ copy_config_files() {
                     s/{pre_gate_9_pin}/${PIN[$brd_type,pre_gate_9_pin]}/; \
                     s/{pre_gate_10_pin}/${PIN[$brd_type,pre_gate_10_pin]}/; \
                     s/{pre_gate_11_pin}/${PIN[$brd_type,pre_gate_11_pin]}/; \
+                    s/{gear_ratio}/${gear_ratio}/; \
                     s/{gear_uart_pin}/${PIN[$brd_type,gear_uart_pin]}/; \
                     s/{gear_step_pin}/${PIN[$brd_type,gear_step_pin]}/; \
                     s/{gear_dir_pin}/${PIN[$brd_type,gear_dir_pin]}/; \
@@ -927,6 +929,7 @@ questionaire() {
         1)
             mmu_vendor="ERCF"
             mmu_version="1.1"
+            gear_ratio="80:20"
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
             echo
@@ -953,6 +956,7 @@ questionaire() {
         2)
             mmu_vendor="ERCF"
             mmu_version="2.0"
+            gear_ratio="80:20"
             echo -e "${PROMPT}Some popular upgrade options for ERCF v2.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using 'ThumperBlocks' filament block option")
             echo
@@ -965,6 +969,7 @@ questionaire() {
         3)
             mmu_vendor="Tradrack"
             mmu_version="1.0"
+            gear_ratio="50:17"
             echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
             echo
@@ -1092,7 +1097,7 @@ questionaire() {
     echo -e "${PROMPT}${SECTION}Which servo are you using?"
     echo -e "1) MG-90S (ERCF)"
     echo -e "2) Savox SH0255MG (ERCF)"
-    echo -e "3) (Tradrack)"
+    echo -e "3) PS-1171MG or FT1117M (Tradrack)"
     echo -e "4) Other${INPUT}"
     num=$(prompt_123 "Servo?" 4)
     echo
@@ -1224,6 +1229,7 @@ questionaire() {
     echo -e "servo_up_angle: ${servo_up_angle}"
     echo -e "servo_move_angle: ${servo_move_angle}"
     echo -e "servo_down_angle: ${servo_down_angle}"
+    echo -e "gear_ratio: ${gear_ratio}"
     echo -e "enable_clog_detection: ${enable_clog_detection}"
     echo -e "enable_endless_spool: ${enable_endless_spool}"
 
