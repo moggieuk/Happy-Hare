@@ -1472,13 +1472,16 @@ class Mmu:
             msg += "\n\nConfiguration:"
 
             msg += "\nLoad Sequence"
-            msg += "\n- Filament loads into gate by homing a maximum of %.1fmm ('gate_homing_max') to %s" % (self.gate_homing_max, "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "GATE SENSOR")
+            msg += "\n- Filament loads into gate by homing a maximum of %.1fmm ('gate_homing_max') to %s" % (self.gate_homing_max, "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "ENDSTOP 'mmu_gate'")
             msg += "\n- Bowden is loaded with a fast%s %.1fmm ('calibration_bowden_length') move" % (" CORRECTED" if self.bowden_apply_correction else "", self.calibrated_bowden_length)
             if self._must_home_to_extruder():
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
                     msg += ", then homes to extruder using COLLISION detection (at %d%% current)" % self.extruder_homing_current
                 else:
-                    msg += ", then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
+                    if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_NONE:
+                        msg += ", no extruder homing is performed!"
+                    else:
+                        msg += ", then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
                         msg += " and then moves %.1fmm ('toolhead_entry_to_entruder') to extruder extrance" % self.toolhead_entry_to_extruder
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
@@ -1504,7 +1507,7 @@ class Mmu:
                 msg += "\n- Bowden is unloaded with a short %.1fmm ('encoder_move_step_size') validation move before %.1fmm ('calibration_bowden_length' - 'gate_unload_buffer' - 'encoder_move_step_size') fast move" % (self.encoder_move_step_size, self.calibrated_bowden_length - self.gate_unload_buffer - self.encoder_move_step_size)
             else:
                 msg += "\n- Bowden is unloaded with a fast %.1fmm ('calibration_bowden_length' - 'gate_unload_buffer') move" % (self.calibrated_bowden_length - self.gate_unload_buffer)
-            msg += "\n- Filament is stored by homing a maximum of %.1fmm ('gate_homing_max') to %s and parking %.1fmm ('gate_parking_distance') in the gate" % (self.gate_homing_max, "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "GATE SENSOR", self.gate_parking_distance)
+            msg += "\n- Filament is stored by homing a maximum of %.1fmm ('gate_homing_max') to %s and parking %.1fmm ('gate_parking_distance') in the gate" % (self.gate_homing_max, "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "ENDSTOP 'mmu_gate'", self.gate_parking_distance)
 
             if self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
