@@ -1370,7 +1370,6 @@ if [ "$UNINSTALL" -eq 0 ]; then
 
     # Set in memory parameters from default file
     set_default_tokens
-    happy_hare_version=${VERSION}
 
     if [ "${INSTALL}" -eq 1 ]; then
         # Update in memory parameters from questionaire
@@ -1397,6 +1396,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
 
     link_mmu_plugins
     install_update_manager
+
 else
     echo
     echo -e "${WARNING}You have asked me to remove Happy Hare and cleanup"

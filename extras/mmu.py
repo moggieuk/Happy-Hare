@@ -245,7 +245,7 @@ class Mmu:
         self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
 
         # To simplfy config some parameters, mostly CAD related but a few exceptions
-        # like gate_park_distance are set based on vendor and version setting
+        # like default encoder resolution are set based on vendor and version setting
 
         # Set CAD default parameters to ensure everything is set
         # These are default for ERCFv1.1 - the first MMU supported by Happy Hare
@@ -268,11 +268,9 @@ class Mmu:
         self.cad_bypass_block_delta = 9.
         self.cad_selector_tolerance = 10.
 
-        self.virtual_selector = False # TODO untested WIP
-
-# PAUL        self.gate_parking_distance = 23.
-# PAUL        self.gate_endstop_to_encoder = 0.
+        # Non CAD default parameters
         self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
+        self.virtual_selector = False # TODO untested WIP
 
         # Specific vendor build parameters / tuning.
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
@@ -282,15 +280,12 @@ class Mmu:
                 self.cad_bypass_offset = 0.72
                 self.cad_last_gate_offset = 14.4
 
-                # Non CAD default parameters
-# PAUL                self.gate_parking_distance = 13.
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
                 # Modifications:
                 #  h = ThumperBlocks filament blocks
                 if "h" in self.mmu_version_string:
                     self.cad_gate_width = 21.
-# PAUL                    self.gate_parking_distance = 11.
 
             else: # V1.1 original
                 # Modifications:
@@ -309,20 +304,17 @@ class Mmu:
                     self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
         elif self.mmu_vendor.lower() == self.VENDOR_TRADRACK.lower():
-            self.cad_gate0_pos = 0.5
+            self.cad_gate0_pos = 2.5
             self.cad_gate_width = 17.
             self.cad_bypass_offset = 0 # Doesn't have bypass
-            self.cad_last_gate_offset = 1. # TODO this is a guess
+            self.cad_last_gate_offset = 0. # Doesn't have reliable hard stop at limit of travel
 
-# PAUL            self.gate_parking_distance = 17. # Using Gate switch (had user reports from 15 - 17.5)
             self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
 
             # Modifications:
             #  e = has encoder modification
             if "e" in self.mmu_version_string:
                 pass
-# PAUL                self.gate_parking_distance = 39. # Assume using encoder if we have it
-# PAUL                self.gate_endstop_to_encoder = 15. # TODO this is a guess
 
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure `cad` dimensions (see doc)")
@@ -1989,18 +1981,25 @@ class Mmu:
                 self._log_always("Didn't detect the end of the selector")
                 return
 
-            # Step 3 - bypass (v2) and last gate position
+            # Step 3a - selector length
             self._log_always("Measuring the full selector length...")
             traveled, found_home = self._measure_to_home()
             if not found_home:
                 self._log_always("Selector didn't find home position after full length move")
                 return
             self._log_always("Maximum selector movement is %.1fmm" % traveled)
+
+            # Step 3b - bypass and last gate position (measured back from limit of travel)
             if self.cad_bypass_offset > 0:
                 bypass_pos = traveled - self.cad_bypass_offset
             else:
                 bypass_pos = 0.
-            last_gate_pos = traveled - self.cad_last_gate_offset
+            if self.cad_last_gate_offset > 0:
+                # This allows the error to be averaged
+                last_gate_pos = traveled - self.cad_last_gate_offset
+            else:
+                # This simply assumes theoretical distance
+                last_gate_pos = gate0_pos + (self.mmu_num_gates - 1) * self.cad_gate_width
 
             # Step 4 - the calcs
             length = last_gate_pos - gate0_pos
@@ -2028,7 +2027,6 @@ class Mmu:
                 num_gates = int(round(length / self.cad_gate_width)) + 1
                 adj_gate_width = length / (num_gates - 1)
                 self._log_debug("Adjusted gate width: %.1f" % adj_gate_width)
-                self.selector_offsets = []
                 for i in range(num_gates):
                     selector_offsets.append(round(gate0_pos + (i * adj_gate_width), 1))
                 bypass_offset = bypass_pos
