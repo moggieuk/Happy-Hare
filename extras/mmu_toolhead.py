@@ -16,7 +16,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, importlib, math, os, time
+import logging, importlib, math, os, time, functools, operator
 import stepper, chelper, toolhead
 from extras.homing import Homing, HomingMove
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
@@ -479,6 +479,7 @@ class MmuKinematics:
 class MmuHoming(Homing, object):
     def __init__(self, printer, mmu_toolhead):
         super(MmuHoming, self).__init__(printer)
+        self.gcode = self.printer.lookup_object("gcode")
         self.toolhead = mmu_toolhead # Override default toolhead
     
     def home_rails(self, rails, forcepos, movepos):
@@ -491,9 +492,24 @@ class MmuHoming(Homing, object):
         self.toolhead.set_position(startpos, homing_axes=homing_axes)
         # Perform first home
         endstops = [es for rail in rails for es in rail.get_endstops()]
+        virtual_endstops = [(es, name) for rail in rails for es, name in rail.extra_endstops if rail.is_endstop_virtual(name)]
         hi = rails[0].get_homing_info()
-        hmove = HomingMove(self.printer, endstops, self.toolhead) # Happy Hare: Override default toolhead
-        hmove.homing_move(homepos, hi.speed)
+        def endstops_all_triggered():
+            print_time = self.printer.lookup_object('toolhead').get_last_move_time()
+            return functools.reduce(
+                    operator.iand,
+                    [endstop.query_endstop(print_time) for endstop, name in endstops])
+        home_to_virtual_endstops = virtual_endstops and not endstops_all_triggered()
+        if home_to_virtual_endstops:
+            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_selector CURRENT=%.2f" % (0.5 * 0.7))
+        hmove = HomingMove(self.printer, virtual_endstops if home_to_virtual_endstops else endstops, self.toolhead) # Happy Hare: Override default toolhead
+        try:
+            hmove.homing_move(homepos, hi.speed)
+        finally:
+            if home_to_virtual_endstops:
+                self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_selector CURRENT=%.2f" % 0.5)
+        if not endstops_all_triggered():
+            raise self.printer.command_error("Selector stallguard triggered but endstop did not. Potential blockage")
         # Perform second home
         if hi.retract_dist:
             # Retract
@@ -504,7 +520,7 @@ class MmuHoming(Homing, object):
             retract_r = min(1., hi.retract_dist / move_d)
             retractpos = [hp - ad * retract_r
                           for hp, ad in zip(homepos, axes_d)]
-            self.toolhead.move(retractpos, hi.retract_speed)
+            self.toolhead.move(retractpos, hi.retract_speed) # TODO: use stallguard to detect blockage here
             # Home again
             startpos = [rp - ad * retract_r
                         for rp, ad in zip(retractpos, axes_d)]
