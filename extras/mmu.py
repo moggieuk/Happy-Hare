@@ -257,7 +257,6 @@ class Mmu:
         #  cad_bypass_block_width - width of bypass block (ERCF v1.1)
         #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
         #
-        #  gate_parking_distance      - how far back in the gate the filament is parked
         #  encoder_default_resolution - resolution of a single encoder "count"
         #  virtual_selector           - real selector or virtual (type A vs type B)
         self.cad_gate0_pos = 4.2
@@ -271,8 +270,8 @@ class Mmu:
 
         self.virtual_selector = False # TODO untested WIP
 
-        self.gate_parking_distance = 23.
-        self.gate_endstop_to_encoder = 0.
+# PAUL        self.gate_parking_distance = 23.
+# PAUL        self.gate_endstop_to_encoder = 0.
         self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
 
         # Specific vendor build parameters / tuning.
@@ -284,14 +283,14 @@ class Mmu:
                 self.cad_last_gate_offset = 14.4
 
                 # Non CAD default parameters
-                self.gate_parking_distance = 13.
+# PAUL                self.gate_parking_distance = 13.
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
                 # Modifications:
                 #  h = ThumperBlocks filament blocks
                 if "h" in self.mmu_version_string:
                     self.cad_gate_width = 21.
-                    self.gate_parking_distance = 11.
+# PAUL                    self.gate_parking_distance = 11.
 
             else: # V1.1 original
                 # Modifications:
@@ -315,16 +314,15 @@ class Mmu:
             self.cad_bypass_offset = 0 # Doesn't have bypass
             self.cad_last_gate_offset = 1. # TODO this is a guess
 
-            self.gate_parking_distance = 17. # Using Gate switch (had user reports from 15 - 17.5)
+# PAUL            self.gate_parking_distance = 17. # Using Gate switch (had user reports from 15 - 17.5)
             self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
 
             # Modifications:
             #  e = has encoder modification
-            #      Note: if have encoder but want to use gate sensor to part, then `gate_endstop_to_encoder`
-            #            would need to be set and `gate_parking_distance` set back to original
             if "e" in self.mmu_version_string:
-                self.gate_parking_distance = 39. # Assume using encoder if we have it
-                self.gate_endstop_to_encoder = 15. # TODO this is a guess
+                pass
+# PAUL                self.gate_parking_distance = 39. # Assume using encoder if we have it
+# PAUL                self.gate_endstop_to_encoder = 15. # TODO this is a guess
 
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure `cad` dimensions (see doc)")
@@ -376,10 +374,10 @@ class Mmu:
         self.gate_homing_endstop = config.get('gate_homing_endstop', self.ENDSTOP_ENCODER) # "encoder" or "mmu_gate"
         if self.gate_homing_endstop not in self.GATE_ENDSTOPS:
             raise self.config.error("gate_homing_endstop is invalid. Options are: %s" % self.GATE_ENDSTOPS)
-        self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', self.gate_endstop_to_encoder, minval=0.)
+        self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', 0., minval=0.)
         self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
-        self.gate_parking_distance = config.getfloat('gate_parking_distance', self.gate_parking_distance) # Can be +ve or -ve
+        self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
         self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.) # Not exposed
         self.encoder_dwell = config.getfloat('encoder_dwell', 0.1, minval=0., maxval=2.) # Not exposed
@@ -418,6 +416,7 @@ class Mmu:
         self.servo_duration = config.getfloat('servo_duration', 0.2, minval=0.1)
         self.servo_active_down = config.getint('servo_active_down', 0, minval=0, maxval=1)
         self.servo_dwell = config.getfloat('servo_dwell', 0.5, minval=0.1)
+        self.servo_buzz_gear_on_down = config.getint('servo_buzz_gear_on_down', 3, minval=0, maxval=10)
 
         # TMC current control
         self.extruder_homing_current = config.getint('extruder_homing_current', 50, minval=10, maxval=100)
@@ -1568,10 +1567,9 @@ class Mmu:
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_down_angle)
         self._movequeues_wait_moves()
         self.servo.set_value(angle=self.servo_down_angle, duration=None if self.servo_active_down else self.servo_duration)
-        if self.servo_angle != self.servo_down_angle and buzz_gear:
-            oscillations = 3
+        if self.servo_angle != self.servo_down_angle and buzz_gear and self.servo_buzz_gear_on_down > 0:
             self.gear_buzz_accel = 1000
-            for i in range(oscillations):
+            for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
                 self._trace_filament_move(None, -0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
             self._movequeues_dwell(max(self.servo_dwell - self.servo_duration, 0))
@@ -2134,16 +2132,20 @@ class Mmu:
         if self._check_is_disabled(): return
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
-        if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR): return
+
+        manual = bool(gcmd.get_int('MANUAL', 0, minval=0, maxval=1))
+        if not self._has_encoder() and not manual:
+            self._log_always("No encoder available. Use manual calibration method:\nWith gate #0 selected, manually load filament all the way to the extruder gear\nThen run `MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx`\nWhere BOWDEN_LENGTH is greater than your real length")
+            return
+        if manual:
+            if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_SELECTOR): return
+        else:
+            if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR): return
 
         approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
         extruder_homing_max = gcmd.get_float('HOMING_MAX', 150, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
-        manual = bool(gcmd.get_int('MANUAL', 0, minval=0, maxval=1))
-        if not self._has_encoder() and not manual:
-            self._log_always("No encoder available. Use manual calibration method:\nWith gate #0 selected, manually load filament all the way to the extruder gear\nThen run `MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx`\nWhere BOWDEN_LENGTH is greater than your real length")
-            return
 
         try:
             self.calibrating = True

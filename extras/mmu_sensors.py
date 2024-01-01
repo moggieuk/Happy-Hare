@@ -113,13 +113,13 @@ class MmuSensors:
     ENDSTOP_TOOLHEAD  = "toolhead"
 
     def __init__(self, config):
-        printer = config.get_printer()
+        self.printer = config.get_printer()
 
         # Setup and pre-gate sensors that are defined...
         for gate in range(23):
             switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
 
-            if switch_pin is None:
+            if switch_pin is None or self._is_empty_pin(switch_pin):
                 continue
 
             # Automatically create necessary filament_switch_sensors
@@ -130,16 +130,16 @@ class MmuSensors:
             config.fileconfig.set(section, "pause_on_runout", "False")
             config.fileconfig.set(section, "insert_gcode", "__MMU_PRE_GATE_INSERT GATE=%d" % gate)
             config.fileconfig.set(section, "runout_gcode", "__MMU_PRE_GATE_RUNOUT GATE=%d" % gate)
-            fs = printer.load_object(config, section)
+            fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper because limited operation is possible during print
-            pre_gate_helper = PreGateRunoutHelper(printer, name, gate)
+            pre_gate_helper = PreGateRunoutHelper(self.printer, name, gate)
             fs.runout_helper = pre_gate_helper
             fs.get_status = pre_gate_helper.get_status
 
         # Setup gate sensor...
         switch_pin = config.get('gate_switch_pin', None)
-        if switch_pin:
+        if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
             section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_GATE
             config.fileconfig.add_section(section)
@@ -147,27 +147,36 @@ class MmuSensors:
             config.fileconfig.set(section, "pause_on_runout", "False")
             config.fileconfig.set(section, "insert_gcode", "__MMU_GATE_INSERT")
             config.fileconfig.set(section, "runout_gcode", "__MMU_GATE_RUNOUT")
-            fs = printer.load_object(config, section)
+            fs = self.printer.load_object(config, section)
 
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
-        if switch_pin:
+        if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
             section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_EXTRUDER
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
-            fs = printer.load_object(config, section)
+            fs = self.printer.load_object(config, section)
 
         # Setup toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
-        if switch_pin:
+        if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
             section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_TOOLHEAD
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
-            fs = printer.load_object(config, section)
+            fs = self.printer.load_object(config, section)
+
+    def _is_empty_pin(self, switch_pin):
+        if switch_pin == '': return True
+        ppins = self.printer.lookup_object('pins')
+        pin_params = ppins.parse_pin(switch_pin, can_invert=True, can_pullup=True)
+        pin_resolver = ppins.get_pin_resolver(pin_params['chip_name'])
+        real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
+        return real_pin == ''
+       
 
 def load_config(config):
     return MmuSensors(config)

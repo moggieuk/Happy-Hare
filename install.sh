@@ -371,7 +371,6 @@ parse_file() {
             if echo "$parameter" | egrep -q "${prefix_filter}"; then
                 if [ "${value}" != "" ]; then
                     if echo "$value" | grep -q '^{.*}$'; then
-#                            new_value=$(echo "$new_value" | sed 's/^{\(.*\)}$/\1/')
                         eval "${namespace}${parameter}=\$${value}"
                     else
                         eval "${namespace}${parameter}='${value}'"
@@ -443,10 +442,10 @@ update_copy_file() {
 # Set default token values to the tokens themselves to avoid being parsed out
 set_default_tokens() {
     brd_type="unknown"
-    for var in mmu_num_gates mmu_num_leds serial ; do
+    for var in mmu_num_gates mmu_num_leds serial servo_up_angle servo_move_angle servo_down_angle; do
         eval "${var}='{$var}'"
     done
-    for var in toolhead_sensor_pin extruder_sensor_pin gate_sensor_pin pre_gate_0_pin pre_gate_1_pin pre_gate_2_pin pre_gate_3_pin pre_gate_4_pin pre_gate_5_pin pre_gate_6_pin pre_gate_7_pin pre_gate_8_pin pre_gate_9_pin pre_gate_10_pin pre_gate_11_pin gear_uart_pin gear_step_pin gear_dir_pin gear_enable_pin gear_diag_pin selector_uart_pin selector_step_pin selector_dir_pin selector_enable_pin selector_diag_pin selector_endstop_pin servo_pin encoder_pin neopixel_pin; do
+    for var in gear_uart_pin gear_step_pin gear_dir_pin gear_enable_pin gear_diag_pin selector_uart_pin selector_step_pin selector_dir_pin selector_enable_pin selector_diag_pin selector_endstop_pin servo_pin encoder_pin; do
         eval "PIN[unknown,${var}]='{$var}'"
     done
 }
@@ -473,26 +472,34 @@ read_previous_config() {
         parse_file "${dest_cfg}" "" "_param_"
 
         # Upgrade / map / force old parameters
-        if [ ! "${encoder_unload_buffer}" == "" ]; then
-            gate_unload_buffer=${encoder_unload_buffer}
+        if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
+            _param_gate_unload_buffer=${_param_encoder_unload_buffer}
         fi
-        if [ ! "${encoder_unload_max}" == "" ]; then
-            gate_homing_max=${encoder_unload_max}
+        if [ ! "${_param_encoder_unload_max}" == "" ]; then
+            _param_gate_homing_max=${_param_encoder_unload_max}
         fi
-        if [ ! "${encoder_parking_distance}" == "" ]; then
-            gate_parking_distance=${encoder_parking_distance}
+        if [ ! "${_param_encoder_load_retries}" == "" ]; then
+            _param_gate_load_retries=${_param_encoder_load_retries}
         fi
-        if [ ! "${encoder_load_retries}" == "" ]; then
-            gate_load_retries=${encoder_load_retries}
+        if [ "${_param_toolhead_ignore_load_error}" == "1" ]; then
+            _param_toolhead_move_error_tolerance=100
         fi
-        if [ "${toolhead_ignore_load_error}" == "1" ]; then
-            toolhead_move_error_tolerance=100
+        if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
+            _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
         fi
-        if [ ! "${bowden_load_tolerance}" == "" ]; then
-            bowden_allowable_load_delta=${bowden_load_tolerance}
+
+        if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
+            _param_servo_buzz_gear_on_down=3
         fi
-        if [ ! "${mmu_num_gate}" == "{mmu_num_gate}" -a ! "${mmu_num_gate}" == "" ] 2>/dev/null; then
-            mmu_num_leds=$(expr $mmu_num_gates + 1)
+        if [ "${_param_gate_parking_distance}" == "" ]; then
+            if [ ! "${_param_mmu_version}" == "1.1" ]; then
+                _param_gate_parking_distance=23
+            else
+                _param_gate_parking_distance=13
+            fi
+        fi
+        if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
+            _param_gate_endstop_to_encoder=0
         fi
     fi
 
@@ -537,6 +544,10 @@ read_previous_config() {
             parse_file "${dest_cfg}" "variable_"
         fi
     done
+
+    if [ ! "${mmu_num_gate}" == "{mmu_num_gate}" -a ! "${mmu_num_gate}" == "" ] 2>/dev/null; then
+        mmu_num_leds=$(expr $mmu_num_gates + 1)
+    fi
 }
 
 copy_config_files() {
@@ -564,86 +575,83 @@ copy_config_files() {
                 echo -e "${WARNING}Skipping copy of hardware config file ${file} because already exists"
                 continue
             else
-                echo -e "${INFO}Installing configuration file ${file}"
+                echo -e "${INFO}Installing/Upgrading configuration file ${file}"
                 mv ${dest} ${next_dest}
             fi
         fi
 
         # Hardware files: Special token substitution -----------------------------------------
 	if [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
-            uart_comment="#"
-            sel_uart="_THIS_PATTERN_DOES_NOT_EXIST_"
+            cp ${src} ${dest}
+
+            # Correct shared uart_address for EASY-BRD
             if [ "${brd_type}" == "EASY-BRD" ]; then
-                uart_comment=""
-                sel_uart="MMU_SEL_UART"
+                # Share uart_pin to avoid duplicate alias problem
+                cat ${dest} | sed -e "\
+                    /^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
+                        " > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            else:
+                # Remove uart_address lines
+                cat ${dest} | sed -e "\
+                    /^uart_address:/ d; \
+                        " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
             if [ "${SETUP_SELECTOR_TOUCH}" -eq 1 ]; then
-                cat ${src} | sed -e "\
-                    s/^#diag_pin: \^mmu:MMU_SEL_DIAG/diag_pin: \^mmu:MMU_SEL_DIAG/; \
-                    s/^#driver_SGTHRS: 75/driver_SGTHRS: 75/; \
-		    s/^#extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop/extra_endstop_pins: tmc2209_selector_stepper:virtual_endstop/; \
-		    s/^#extra_endstop_names: mmu_sel_touch/extra_endstop_names: mmu_sel_touch/; \
+                cat ${dest} | sed -e "\
+                    s/^#\(diag_pin: \^mmu:MMU_SEL_DIAG\)/\1/; \
+                    s/^#\(driver_SGTHRS: 75\)/\1/; \
+		    s/^#\(extra_endstop_pins: tmc2209_stepper_mmu_selector:virtual_endstop\)/\1/; \
+		    s/^#\(extra_endstop_names: mmu_sel_touch\)/\1/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
-                    /${sel_uart}=/ d; \
-                    s/${sel_uart}/MMU_GEAR_UART/; \
-                    s/{brd_type}/${brd_type}/; \
-                        " > ${dest}.tmp
-            else
-                # This is the default template config without selector touch enabled
-                cat ${src} | sed -e "\
-                    s/^uart_address:/${uart_comment}uart_address:/; \
-                    /${sel_uart}=/ d; \
-                    s/${sel_uart}/MMU_GEAR_UART/; \
-                    s/{brd_type}/${brd_type}/; \
-                        " > ${dest}.tmp
+                        " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-            # Now substitute pin tokens for correct brd_type
-            if [ "${brd_type}" == "unknown" ]; then
-                cat ${dest}.tmp | sed -e "\
-                    s/{mmu_num_gates}/${mmu_num_gates}/; \
-                    s/{mmu_num_leds}/${mmu_num_leds}/; \
-                    s/{gear_ratio}/${gear_ratio}/; \
-                    s%{serial}%${serial}%; \
-                        " > ${dest} && rm ${dest}.tmp
-            else
-                cat ${dest}.tmp | sed -e "\
-                    s/{mmu_num_gates}/${mmu_num_gates}/; \
-                    s/{mmu_num_leds}/${mmu_num_leds}/; \
-                    s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
-                    s/{extruder_sensor_pin}/${PIN[extruder_sensor_pin]}/; \
-                    s/{gate_sensor_pin}/${PIN[$brd_type,gate_sensor_pin]}/; \
-                    s/{pre_gate_0_pin}/${PIN[$brd_type,pre_gate_0_pin]}/; \
-                    s/{pre_gate_1_pin}/${PIN[$brd_type,pre_gate_1_pin]}/; \
-                    s/{pre_gate_2_pin}/${PIN[$brd_type,pre_gate_2_pin]}/; \
-                    s/{pre_gate_3_pin}/${PIN[$brd_type,pre_gate_3_pin]}/; \
-                    s/{pre_gate_4_pin}/${PIN[$brd_type,pre_gate_4_pin]}/; \
-                    s/{pre_gate_5_pin}/${PIN[$brd_type,pre_gate_5_pin]}/; \
-                    s/{pre_gate_6_pin}/${PIN[$brd_type,pre_gate_6_pin]}/; \
-                    s/{pre_gate_7_pin}/${PIN[$brd_type,pre_gate_7_pin]}/; \
-                    s/{pre_gate_8_pin}/${PIN[$brd_type,pre_gate_8_pin]}/; \
-                    s/{pre_gate_9_pin}/${PIN[$brd_type,pre_gate_9_pin]}/; \
-                    s/{pre_gate_10_pin}/${PIN[$brd_type,pre_gate_10_pin]}/; \
-                    s/{pre_gate_11_pin}/${PIN[$brd_type,pre_gate_11_pin]}/; \
-                    s/{gear_ratio}/${gear_ratio}/; \
-                    s/{gear_uart_pin}/${PIN[$brd_type,gear_uart_pin]}/; \
-                    s/{gear_step_pin}/${PIN[$brd_type,gear_step_pin]}/; \
-                    s/{gear_dir_pin}/${PIN[$brd_type,gear_dir_pin]}/; \
-                    s/{gear_enable_pin}/${PIN[$brd_type,gear_enable_pin]}/; \
-                    s/{gear_diag_pin}/${PIN[$brd_type,gear_diag_pin]}/; \
-                    s/{selector_uart_pin}/${PIN[$brd_type,selector_uart_pin]}/; \
-                    s/{selector_step_pin}/${PIN[$brd_type,selector_step_pin]}/; \
-                    s/{selector_dir_pin}/${PIN[$brd_type,selector_dir_pin]}/; \
-                    s/{selector_enable_pin}/${PIN[$brd_type,selector_enable_pin]}/; \
-                    s/{selector_diag_pin}/${PIN[$brd_type,selector_diag_pin]}/; \
-                    s/{selector_endstop_pin}/${PIN[$brd_type,selector_endstop_pin]}/; \
-                    s/{servo_pin}/${PIN[$brd_type,servo_pin]}/; \
-                    s/{encoder_pin}/${PIN[$brd_type,encoder_pin]}/; \
-                    s/{neopixel_pin}/${PIN[$brd_type,neopixel_pin]}/; \
-                    s%{serial}%${serial}%; \
-                        " > ${dest} && rm ${dest}.tmp
-            fi
+            # Now substitute tokens given brd_type
+            cat ${dest} | sed -e "\
+                s/{brd_type}/${brd_type}/; \
+                s%{serial}%${serial}%; \
+                s/{mmu_num_gates}/${mmu_num_gates}/; \
+                s/{mmu_num_leds}/${mmu_num_leds}/; \
+                s/{gear_gear_ratio}/${gear_gear_ratio}/; \
+                s/{gear_run_current}/${gear_run_current}/; \
+                s/{gear_hold_current}/${gear_hold_current}/; \
+                s/{sel_run_current}/${sel_run_current}/; \
+                s/{sel_hold_current}/${sel_hold_current}/; \
+                s/{maximum_servo_angle}/${maximum_servo_angle}/; \
+                s/{minimum_pulse_width}/${minimum_pulse_width}/; \
+                s/{maximum_pulse_width}/${maximum_pulse_width}/; \
+                s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
+                s/{extruder_sensor_pin}/${PIN[extruder_sensor_pin]}/; \
+                s/{gate_sensor_pin}/${PIN[$brd_type,gate_sensor_pin]}/; \
+                s/{pre_gate_0_pin}/${PIN[$brd_type,pre_gate_0_pin]}/; \
+                s/{pre_gate_1_pin}/${PIN[$brd_type,pre_gate_1_pin]}/; \
+                s/{pre_gate_2_pin}/${PIN[$brd_type,pre_gate_2_pin]}/; \
+                s/{pre_gate_3_pin}/${PIN[$brd_type,pre_gate_3_pin]}/; \
+                s/{pre_gate_4_pin}/${PIN[$brd_type,pre_gate_4_pin]}/; \
+                s/{pre_gate_5_pin}/${PIN[$brd_type,pre_gate_5_pin]}/; \
+                s/{pre_gate_6_pin}/${PIN[$brd_type,pre_gate_6_pin]}/; \
+                s/{pre_gate_7_pin}/${PIN[$brd_type,pre_gate_7_pin]}/; \
+                s/{pre_gate_8_pin}/${PIN[$brd_type,pre_gate_8_pin]}/; \
+                s/{pre_gate_9_pin}/${PIN[$brd_type,pre_gate_9_pin]}/; \
+                s/{pre_gate_10_pin}/${PIN[$brd_type,pre_gate_10_pin]}/; \
+                s/{pre_gate_11_pin}/${PIN[$brd_type,pre_gate_11_pin]}/; \
+                s/{gear_gear_ratio}/${gear_gear_ratio}/; \
+                s/{gear_uart_pin}/${PIN[$brd_type,gear_uart_pin]}/; \
+                s/{gear_step_pin}/${PIN[$brd_type,gear_step_pin]}/; \
+                s/{gear_dir_pin}/${PIN[$brd_type,gear_dir_pin]}/; \
+                s/{gear_enable_pin}/${PIN[$brd_type,gear_enable_pin]}/; \
+                s/{gear_diag_pin}/${PIN[$brd_type,gear_diag_pin]}/; \
+                s/{selector_uart_pin}/${PIN[$brd_type,selector_uart_pin]}/; \
+                s/{selector_step_pin}/${PIN[$brd_type,selector_step_pin]}/; \
+                s/{selector_dir_pin}/${PIN[$brd_type,selector_dir_pin]}/; \
+                s/{selector_enable_pin}/${PIN[$brd_type,selector_enable_pin]}/; \
+                s/{selector_diag_pin}/${PIN[$brd_type,selector_diag_pin]}/; \
+                s/{selector_endstop_pin}/${PIN[$brd_type,selector_endstop_pin]}/; \
+                s/{servo_pin}/${PIN[$brd_type,servo_pin]}/; \
+                s/{encoder_pin}/${PIN[$brd_type,encoder_pin]}/; \
+                s/{neopixel_pin}/${PIN[$brd_type,neopixel_pin]}/; \
+                    " > ${dest}.tmp && mv ${dest}.tmp ${dest}
 
             # Handle LED option - Comment out if disabled
 	    if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" -eq 0 ]; then
@@ -918,25 +926,48 @@ prompt_123() {
 }
 
 questionaire() {
+    # Set default substitution tokens
+    mmu_vendor="Other"
+    mmu_version="1.0"
+    extruder_homing_endstop="collision"
+    gate_homing_endstop="encoder"
+    gate_parking_distance=23.0
+    gate_endstop_to_encoder=0
+    servo_buzz_gear_on_down=0
+
+    # mmu_hardware.cfg only...
+    gear_gear_ratio="80:20"
+    gear_run_current=0.5
+    gear_hold_current=0.1
+    sel_run_current=0.4
+    sel_hold_current=0.2
+    maximum_servo_angle=180
+    minimum_pulse_width=0.00075
+    maximum_pulse_width=0.00225
+
     echo
-    echo -e "${INFO}${SECTION}Let me see if I can get you started with initial configuration"
+    echo -e "${INFO}Let me see if I can get you started with initial configuration"
     echo -e "You will still have some manual editing to perform but I will explain that later"
     echo -e "(Note that all this script does is set a lot of the time consuming parameters in the config"
     echo
-    echo -e "${PROMPT}What type of MMU are you running?${INPUT}"
+    echo -e "${PROMPT}${SECTION}What type of MMU are you running?${INPUT}"
     echo -e "1) ERCF v1.1 (inc TripleDecky, Springy, Binky mods)"
     echo -e "2) ERCF v2.0 (inc ThumperBlocks mod)"
     echo -e "3) Tradrack v1.0"
-    echo -e "4) Other (Custom creations or variations not mentioned above...)"
+    echo -e "4) Other (or just want starter config files)"
     num=$(prompt_123 "MMU Type?" 4)
     echo
     case $num in
         1)
+            HAS_ENCODER=yes
             mmu_vendor="ERCF"
             mmu_version="1.1"
-            gear_ratio="80:20"
-            extruder_homing_endstop="collision"
-            gate_homing_endstop="encoder"
+            servo_buzz_gear_on_down=3
+
+            maximum_servo_angle=180
+            minimum_pulse_width=0.00085
+            maximum_pulse_width=0.00215
+            echo
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
             echo
@@ -961,52 +992,79 @@ questionaire() {
             esac
             ;;
         2)
+            HAS_ENCODER=yes
             mmu_vendor="ERCF"
             mmu_version="2.0"
-            gear_ratio="80:20"
-            extruder_homing_endstop="collision"
-            gate_homing_endstop="encoder"
+            gate_parking_distance=13.0
+            servo_buzz_gear_on_down=3
+
+            maximum_servo_angle=180
+            minimum_pulse_width=0.00085
+            maximum_pulse_width=0.00215
+            echo
             echo -e "${PROMPT}Some popular upgrade options for ERCF v2.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using 'ThumperBlocks' filament block option")
             echo
             case $yn in
             y)
                 mmu_version+="h"
+                gate_parking_distance=11.0
                 ;;
             esac
             ;;
         3)
+            HAS_ENCODER=no
             mmu_vendor="Tradrack"
             mmu_version="1.0"
-            gear_ratio="50:17"
             extruder_homing_endstop="none"
             gate_homing_endstop="mmu_gate"
+            gate_parking_distance=17.0
+            servo_buzz_gear_on_down=0
+
+            gear_gear_ratio="50:17"
+            gear_run_current=1.27
+            gear_hold_current=0.2
+            sel_run_current=0.63
+            sel_hold_current=0.2
+            maximum_servo_angle=131
+            minimum_pulse_width=0.00070
+            maximum_pulse_width=0.00220
             echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
             echo
             case $yn in
             y)
+                HAS_ENCODER=yes
                 mmu_version+="e"
                 extruder_homing_endstop="collision"
                 gate_homing_endstop="encoder"
-                HAS_ENCODER=yes
+                gate_parking_distance=39.0
+                gate_endstop_to_encoder=15.0
                 ;;
             esac
             ;;
         4)
-            mmu_vendor="Other"
-            mmu_version="1.0"
-            gear_ratio="80:20"
-            extruder_homing_endstop="collision"
-            gate_homing_endstop="encoder"
+            HAS_ENCODER=yes
             echo
             echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU you will need to setup some CAD dimensions and other key parameters... See doc"
             ;;
     esac
 
+    mmu_num_gates=8
     echo
+    echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
+    while true; do
+        read -p "Number of gates? " mmu_num_gates
+        if ! [ "${mmu_num_gates}" -ge 1 ] 2> /dev/null ;then
+            echo -e "${INFO}Positive integer value only"
+      else
+           break
+       fi
+    done
+    mmu_num_leds=$(expr $mmu_num_gates + 1)
 
     brd_type="unknown"
+    echo
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
     echo -e " 1) BTT MMB"
     echo -e " 2) Fysetc Burrows ERB"
@@ -1056,13 +1114,15 @@ questionaire() {
         fi
     done
     if [ "${serial}" == "" ]; then
-        echo -e "${PROMPT}${SECTION}Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
+        echo
+        echo -e "${WARNING}    Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
         serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
     fi
 
     echo
-    echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune${INPUT}"
-    yn=$(prompt_yn "Enable selector touch operation (not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers")
+    echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
+    echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers. Can configure later${INPUT}"
+    yn=$(prompt_yn "Enable selector touch operation")
     echo
     case $yn in
         y)
@@ -1081,21 +1141,8 @@ questionaire() {
             ;;
     esac
 
-    mmu_num_gates=8
     echo
-    echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
-    while true; do
-        read -p "Number of gates? " mmu_num_gates
-        if ! [ "${mmu_num_gates}" -ge 1 ] 2> /dev/null ;then
-            echo -e "${INFO}Positive integer value only"
-      else
-           break
-       fi
-    done
-    mmu_num_leds=$(expr $mmu_num_gates + 1)
-
-    echo
-    echo -e "${PROMPT}${SECTION}Would you have neopixel LEDs setup for your MMU?${INPUT}"
+    echo -e "${PROMPT}${SECTION}Would you like to have neopixel LEDs setup now for your MMU?${INPUT}"
     yn=$(prompt_yn "Enable LED support?")
     echo
     case $yn in
@@ -1107,18 +1154,14 @@ questionaire() {
             ;;
     esac
 
-    echo
-    echo -e "${PROMPT}${SECTION}Which servo are you using?"
-    echo -e "1) MG-90S (ERCF)"
-    echo -e "2) Savox SH0255MG (ERCF)"
-    echo -e "3) PS-1171MG or FT1117M (Tradrack)"
-    echo -e "4) Other${INPUT}"
-    num=$(prompt_123 "Servo?" 4)
-    echo
-    servo_up_angle={servo_up_angle}
-    servo_move_angle={servo_move_angle}
-    servo_down_angle={servo_down_angle}
     if [ "${mmu_vendor}" == "ERCF" ]; then
+        echo
+        echo -e "${PROMPT}${SECTION}Which servo are you using?"
+        echo -e "1) MG-90S (ERCF)"
+        echo -e "2) Savox SH0255MG (ERCF)"
+        echo -e "3) Not listed / Other${INPUT}"
+        num=$(prompt_123 "Servo?" 3)
+        echo
         case $num in
             1)
                 servo_up_angle=30
@@ -1140,8 +1183,14 @@ questionaire() {
                 ;;
         esac
     elif [ "${mmu_vendor}" == "Tradrack" ]; then
+        echo
+        echo -e "${PROMPT}${SECTION}Which servo are you using?"
+        echo -e "1) PS-1171MG or FT1117M (Tradrack)"
+        echo -e "2) Not listed / Other${INPUT}"
+        num=$(prompt_123 "Servo?" 2)
+        echo
         case $num in
-            3)
+            1)
                 servo_up_angle=145
                 servo_move_angle=${servo_up_angle}
                 servo_down_angle=1
@@ -1240,7 +1289,6 @@ questionaire() {
     echo -e "servo_up_angle: ${servo_up_angle}"
     echo -e "servo_move_angle: ${servo_move_angle}"
     echo -e "servo_down_angle: ${servo_down_angle}"
-    echo -e "gear_ratio: ${gear_ratio}"
     echo -e "enable_clog_detection: ${enable_clog_detection}"
     echo -e "enable_endless_spool: ${enable_endless_spool}"
 
@@ -1251,16 +1299,15 @@ questionaire() {
     echo "    NOTES:"
     echo "     What still needs to be done:"
     if [ "${brd_type}" == "unknown" ]; then
-        echo "     * Edit *.cfg files and substitute all \{xxx\} tokens to match or setup"
-        echo "     * Review all pin configuration and change to match your mcu"
+        echo "         * Edit *.cfg files and substitute all missing pins"
     else
-        echo "     * Tweak motor speeds and current, especially if using non BOM motors"
-        echo "     * Adjust motor direction with '!' on pin if necessary. No way to know here"
+        echo "         * Review all pin configuration and change to match your mcu"
     fi
-    echo "     * Move you extruder stepper configuration into mmu/base/mmu_hardware.cfg"
-    echo "     * Adjust your config for loading and unloading preferences"
+    echo "         * Verify motor current, especially if using non BOM motors"
+    echo "         * Adjust motor direction with '!' on pin if necessary. No way to know here"
+    echo "         * Adjust your config for loading and unloading preferences"
     echo 
-    echo "    Advanced:"
+    echo "    Later:"
     echo "         * Tweak configurations like speed and distance in mmu/base/mmu_parameter.cfg"
     echo 
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."

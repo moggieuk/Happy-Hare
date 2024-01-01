@@ -1,8 +1,29 @@
-## Happy Hare MMU hardware config file with config for {brd_type} MCU board
+## Happy Hare MMU hardware config file with config for {brd_type}
 ##
-## Notes about setup of common external mcus can be found here:
-##  https://github.com/moggieuk/Happy-Hare/blob/main/doc/mcu_notes.md
-## 
+## Common external mcus:
+## 1) EASY-BRD
+##  J6 Jumper setting
+##   Option 1: Pins 2-3 and 4-5, i.e.  .[..][..] (recommended)
+##   This allows for option of "touch" selector setup. Note that this enables the option disables the "extra"
+##   switch so the toolhead sensor (if used) would have to be connected to the main mcu
+##
+##   Option 2: Pins 1-2 and 4-5, i.e.  [..].[..]
+##   It you don't care about selector touch operation. The "extra" switch is enabled for other uses
+##
+##  Note that the EASY-BRD does not expose the DIAG pin for the gear stepper
+##
+## 2) Fysetc Burrows ERB
+##  No jumper configuration is required for Fysetc Burrows ERB board. Both Selector and Gear DIAG pins are exposed
+##
+##  ERB firmware flashing notes:
+##   Must have 12v/24v supply connected
+##    > make menuconfig (rpi2040, No bootloader)
+##    > make
+##  Put card in boot loader mode: Press & Hold 'BOOTSEL' ; click 'RST; ; Release 'BOOTSEL'
+##    > make flash FLASH_DEVICE=2e8a:0003
+##
+## ------
+##
 ## Note about "touch" endstops: Happy Hare provides extremely flexible homing options using both single steppers or synced steppers.
 ## The "touch" option leverages stallguard and thus requires the appropriate 'diag_pin' and stallguard parameters set on the TMC driver
 ## section.  If you have the diag_pin exposed, it is harmless to define this because they will only be used when explicitly needed
@@ -29,47 +50,41 @@
 ## regular endstops and there are workaround options for certain homing points (like extruder entry) in the absence of any endstop.
 ## I'm really interested in creative setups that you come up with. Ping me on Discord (moggieuk#6538)
 ##
+##
 ## See mmu.cfg for serial definition and pins aliaes
 ##
-## HOMING CAPABLE EXTRUDER (VERY ADVANCED) ----------------------------------------------------------------------------------
-## With Happy Hare installed even the extruder can be homed.  You will find the usual 'endstop' parameters can be added to your
-## '[extruder]' section.  Useless you have some clever load cell attached to your nozzle it only really makes sense to configure 
-## stallguard style "touch" homing. To do this add lines similar to this to your existing '[extruder]' definition whether
-## you have it defined in printer.cfg.
-##
-##    [extruder]
-##    endstop_pin: tmc2209_extruder:virtual_endstop
-##
-## Also be sure to add the appropriate stallguard config to the TMC section, e.g.
-##
-##    [tmc2209 extruder]
-##    diag_pin: E_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
-##    driver_SGTHRS: 100		# 255 is most sensitive value, 0 is least sensitive
-##
-## Happy Hare will take care of the rest and add a 'mmu_ext_touch' endstop automatically
-##
 
 
-# NECESSARY KLIPPER OVERRIDES ----------------------------------------------------------------------------------------------
-# These supplemental settings essentially disable klipper's built in extrusion limits and is necessary when using an MMU
+# HOMING CAPABLE EXTRUDER (VERY ADVANCED) ----------------------------------------------------------------------------------
+# With Happy Hare installed the extruder can be homed.  You will find the usual 'endstop' parameters can be added to your
+# '[extruder]' section.  Useless you have some clever load cell attached to your nozzle it only really makes sense to configure 
+# stallguard style "touch" homing. To do this add lines similar to this to your existing '[extruder]' definition whether
+# you have it defined in printer.cfg.
 #
-[extruder]
-max_extrude_only_distance: 200
-max_extrude_cross_section: 50
+#    [extruder]
+#    endstop_pin: tmc2209_extruder:virtual_endstop
+#
+# Also be sure to add the appropriate stallguard config to the TMC section, e.g.
+#
+#    [tmc2209 extruder]
+#    diag_pin: E_DIAG			# Set to MCU pin connected to TMC DIAG pin for extruder
+#    driver_SGTHRS: 100			# 255 is most sensitive value, 0 is least sensitive
+#
+# Happy Hare will take care of the rest and add a 'mmu_ext_touch' endstop automatically
 
 
 # FILAMENT DRIVE GEAR STEPPER  ---------------------------------------------------------------------------------------------
-# Note that 'toolhead' & 'mmu_gear' endstops will automatically be added if a toolhead sensor or gate sensor is defined
+# Note that 'toolhead' & `mmu_gear` endstops will automatically be added if a toolhead sensor or gate sensor is defined
 #
 # The default values are tested with the ERCF BOM NEMA14 motor. Please adapt these values to the motor you are using
 # Example : for NEMA17 motors, you'll usually use higher current
 #
 [tmc2209 stepper_mmu_gear]
 uart_pin: mmu:MMU_GEAR_UART
-uart_address: 0 			# Only for EASY-BRD
+uart_address: 0 			# Comment out for ERB board
+interpolate: True
 run_current: {gear_run_current}			# ERCF BOM NEMA14 motor
 hold_current: {gear_hold_current}			# Recommend to be small if not using "touch" or move (TMC stallguard)
-interpolate: True
 sense_resistor: 0.110			# Usually 0.11, 0.15 for BTT TMC2226
 stealthchop_threshold: 0		# Spreadcycle has more torque and better at speed
 #
@@ -96,7 +111,7 @@ full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
 #
 [tmc2209 stepper_mmu_selector]
 uart_pin: mmu:MMU_SEL_UART
-uart_address: 1 			# Only for EASY-BRD
+uart_address: 1 			# Comment out for ERB board
 run_current: {sel_run_current}			# ERCF BOM NEMA17 motor
 hold_current: {sel_hold_current}			# Can be small if not using "touch" movement (TMC stallguard)
 interpolate: True
@@ -117,7 +132,7 @@ full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
 endstop_pin: ^mmu:MMU_SEL_ENDSTOP	# Selector microswitch
 endstop_name: mmu_sel_home
 #
-# Uncomment two lines below to give option of selector "touch" movement
+# Uncomment two lines below to give option of  selector "touch" movement
 #extra_endstop_pins: tmc2209_stepper_mmu_selector:virtual_endstop
 #extra_endstop_names: mmu_sel_touch
 
@@ -138,7 +153,7 @@ maximum_pulse_width: {maximum_pulse_width}
 # Uncomment only if you have gantry servo
 #
 #[mmu_servo mmu_gantry_servo]
-#pin: {gantry_servo_pin}
+#pin: GANTRY_SERVO
 #maximum_servo_angle:180
 #minimum_pulse_width: 0.00075
 #maximum_pulse_width: 0.00225
@@ -165,27 +180,27 @@ flowrate_samples: 20			# How many "movements" on the encoder to measure over for
 # 'pre_gate_switch_pin_X' .. 'mmu_pre_gate_X` sensor detects filament at entry to MMU. X=gate number (0..N)
 # 'toolhead_switch_pin'   .. 'toolhead' sensor detects filament after extruder entry
 # 'extruder_switch_pin'   .. 'extruder' sensor detects filament just before the extruder entry
-# 'gate_switch_pin'       .. 'mmu_gate' sensor detects filament at the gate of the MMU
+# 'gate_switch_pin'       .. shared 'mmu_gate' sensor detects filament at the gate of the MMU
 #
-# Simply define pins for any sensor you want to enable, if pin is not set it will be ignored (can also comment out)
+# Uncomment sensors that are fitted. Note: older method of defining toolhead sensor still works but this way is recommended
 #
 [mmu_sensors]
-pre_gate_switch_pin_0: mmu:MMU_PRE_GATE_0
-pre_gate_switch_pin_1: mmu:MMU_PRE_GATE_1
-pre_gate_switch_pin_2: mmu:MMU_PRE_GATE_2
-pre_gate_switch_pin_3: mmu:MMU_PRE_GATE_3
-pre_gate_switch_pin_4: mmu:MMU_PRE_GATE_4
-pre_gate_switch_pin_5: mmu:MMU_PRE_GATE_5
-pre_gate_switch_pin_6: mmu:MMU_PRE_GATE_6
-pre_gate_switch_pin_7: mmu:MMU_PRE_GATE_7
-pre_gate_switch_pin_8: mmu:MMU_PRE_GATE_8
-pre_gate_switch_pin_9: mmu:MMU_PRE_GATE_9
-pre_gate_switch_pin_10: mmu:MMU_PRE_GATE_10
-pre_gate_switch_pin_11: mmu:MMU_PRE_GATE_11
+#pre_gate_switch_pin_0: mmu:{pre_gate_0_pin}
+#pre_gate_switch_pin_1: mmu:{pre_gate_1_pin}
+#pre_gate_switch_pin_2: mmu:{pre_gate_2_pin}
+#pre_gate_switch_pin_3: mmu:{pre_gate_3_pin}
+#pre_gate_switch_pin_4: mmu:{pre_gate_4_pin}
+#pre_gate_switch_pin_5: mmu:{pre_gate_5_pin}
+#pre_gate_switch_pin_6: mmu:{pre_gate_6_pin}
+#pre_gate_switch_pin_7: mmu:{pre_gate_7_pin}
+#pre_gate_switch_pin_8: mmu:{pre_gate_8_pin}
+#pre_gate_switch_pin_9: mmu:{pre_gate_9_pin}
+#pre_gate_switch_pin_10: mmu:{pre_gate_10_pin}
+#pre_gate_switch_pin_11: mmu:{pre_gate_11_pin}
 
-gate_switch_pin: mmu:MMU_GATE_SENSOR
-extruder_switch_pin: {extruder_sensor_pin}
-toolhead_switch_pin: {toolhead_sensor_pin}
+#gate_switch_pin: mmu:MMU_GATE_SENSOR
+#extruder_switch_pin: EXTRUDER_SENSOR
+#toolhead_switch_pin: TOOLHEAD_SENSOR
 
 
 # MMU OPTIONAL NEOPIXEL LED SUPPORT ----------------------------------------------------------------------------------------
