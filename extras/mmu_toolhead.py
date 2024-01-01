@@ -499,9 +499,9 @@ class MmuHoming(Homing, object):
             return functools.reduce(
                     operator.iand,
                     [endstop.query_endstop(print_time) for endstop, name in endstops])
-        home_to_virtual_endstops = virtual_endstops and not endstops_all_triggered()
+        home_to_virtual_endstops = virtual_endstops and not endstops_all_triggered() # Only use stallguard homing if the endstop is not initially triggered. Otherwise, the selector stepper can make unpleasant noise because if it can't make ANY movement during stallguard homing.
         if home_to_virtual_endstops:
-            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_selector CURRENT=%.2f" % (0.5 * 0.7))
+            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_selector CURRENT=%.2f" % (0.5 * 0.7)) # need to plumb this into mmu.py
         hmove = HomingMove(self.printer, virtual_endstops if home_to_virtual_endstops else endstops, self.toolhead) # Happy Hare: Override default toolhead
         try:
             hmove.homing_move(homepos, hi.speed)
