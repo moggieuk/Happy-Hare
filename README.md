@@ -61,6 +61,7 @@ Thank you!
 
 #### Other Docs:
 
+**[Understanding Operation with MMU_STATUS](/doc/operation.md)**<br>
 **[Command Reference](/doc/command_ref.md)**<br>
 **[Hardware Configuration, Movement and Homing](/doc/hardware_config.md)**<br>
 **[Calibration Guide](/doc/calibration.md)**<br>
@@ -167,7 +168,9 @@ Happy Hare has been built to support most types of MMU's connected to the Klippe
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Basic Commands and Printer Variables
 
-Happy Hare has a built in help system to aid remembering the command set. It can accessed with the `MMU_HELP` command and can also be used to view testing commands and user extensible macros which are called by Happy Hare on certain conditions. The full list of commands and options can be [found here](/doc/command_ref.md). Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
+Happy Hare has a built in help system to aid remembering the command set. It can accessed with the `MMU_HELP` command and can also be used to view testing commands and user extensible macros which are called by Happy Hare on certain conditions. The full list of commands and options can be [found here](/doc/command_ref.md). A very useful command for understanding MMU operate (`MMU_STATUS`) is explained [in detail here](/doc/operation.md).
+
+Also Happy Hare exposes a large array of 'printer' variables that are useful in your own macros.
 
 <details>
 <summary><sub>🔹 Click to read more....</sub></summary>
@@ -266,7 +269,7 @@ Configuration and calibration will vary slightly depending on your particular br
 
 ### 1\. Important MMU Vendor / Version Specification
 
-Happy Hare functionality will vary with MMU vendor. After running the installer it is important to verify `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg` because they define the basic capabilities and options in Happy Hare. The only complication is that in order to support the many variations of ERCF v1.1 the correct suffix must be specified depending on modifications/upgrades.
+Happy Hare functionality will vary with MMU vendor. After running the installer it is important to verify `mmu_vendor` and `mmu_version` correctly in `mmu_parameters.cfg` because they define the basic capabilities and options in Happy Hare. The only complication is that in order to support the many popular modifications to some MMU's the correct suffix must be specified depending on modifications/upgrades.
 
 <details>
 <summary><sub>🔹 Read more about vendor/version specification...</sub></summary>
@@ -302,22 +305,24 @@ mmu_num_gates: 9 			# Number of selector gates
 
 `cad_gate0_pos:` Distance from endstop to first gate in mm<br>
 `cad_gate_width:` Width of individual filament block in mm - if using modified/custom block<br>
-`cad_bypass_offset:` Distance from end of selector travel back to the bypass<br>
 `cad_last_gate_offset:` Distance from end of travel to last gate<br>
-This only apply to ERCF v1.1:<br>
-`cad_block_width:` Width of bearing block (ERCF v1.1 only)<br>
-`cad_bypass_block_width:` Width of bypass support block - if using a custom bypass bearing block like the one in my repo which is 7mm thick (ERCF v1.1 only)<br>
-`cad_bypass_block_delta:` - Distance from previous gate to bypass (ERCF v1.1 only)<br>
+`cad_bypass_offset:` Distance from end of selector travel back to the bypass<br>
 
-These non-CAD setting are also commonly required to adjust for non Binky encoders or adjust gate parking:<br>
-`encoder_min_resolution:` Resolution of one 'pulse' on the encoder. Binky (default) is 23/24=0.96, TCRT5000 based is 23/34=0.68
-`encoder_parking_distance:` How fast away from the gate exit the filament should be parked when unloaded.
+This only apply to ERCF v1.1:<br>
+`cad_block_width:` Width of bearing block (ERCF v1.1)<br>
+`cad_bypass_block_width:` Width of bypass support block - if using a custom bypass bearing block like the one in my repo which is 7mm thick (ERCF v1.1)<br>
+`cad_bypass_block_delta:` - Distance from previous gate to bypass (ERCF v1.1)<br>
+
+This non-CAD setting are also commonly required to adjust for non Binky encoders:<br>
+`encoder_min_resolution:` Resolution of one 'pulse' on the encoder. Binky (default) is 23/(2x12)=0.96, TCRT5000 based is 23/(2x17)=0.68
+
+All other configuration parameters are made available and documented in `mmu_parameters.cfg`
 
 </details>
 
 ### 2\. Validate your mmu_hardware.cfg configuration and basic operation
 
-Generally the MMU will consist of selector motor to position at the desired gate, a gear motor to propel the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [hardware configuration doc](/doc/hardware_config.md) for detailed instructions.
+Generally the typical "Type-A" MMU will consist of selector motor to position at the desired gate, a gear motor to drive the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [hardware configuration doc](/doc/hardware_config.md) for detailed instructions and consult [MMU comceptual model](/doc/conceptual.md) for details of less common MMU types.
 
 <details>
 <summary><sub>🔹 Details on optional hardware...</sub></summary>
