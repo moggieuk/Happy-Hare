@@ -1819,7 +1819,7 @@ class Mmu:
                     self.encoder_sensor.set_clog_detection_length(detection_length)
                     self._log_always("Bowden calibration and clog detection length have been saved")
             else:
-                self._log_always("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
+                self._log_error("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
         except MmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration of bowden length (on Gate #0) failed. Aborting, because:\n%s" % str(ee))
@@ -1924,7 +1924,7 @@ class Mmu:
 
             # Test we actually homed
             if not found_home:
-                self._log_always("Selector didn't find home position")
+                self._log_error("Selector didn't find home position")
                 return
 
             # Warn and don't save if the measurement is unexpected
@@ -1962,7 +1962,7 @@ class Mmu:
             self._log_always("Measuring the selector position for gate #0...")
             traveled, found_home = self._measure_to_home()
             if not found_home or traveled > self.cad_gate0_pos + self.cad_selector_tolerance:
-                self._log_always("Selector didn't find home position or distance moved (%.1fmm) was larger than expected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
+                self._log_error("Selector didn't find home position or distance moved (%.1fmm) was larger than expected.\nAre you sure you aligned selector with gate #0 and removed filament?" % traveled)
                 return
             gate0_pos = traveled
 
@@ -1978,14 +1978,14 @@ class Mmu:
                 self._trace_selector_move("Forceably detecting end of selector movement", max_movement, speed=self.selector_homing_speed)
                 found_home = True
             if not found_home:
-                self._log_always("Didn't detect the end of the selector")
+                self._log_error("Didn't detect the end of the selector")
                 return
 
             # Step 3a - selector length
             self._log_always("Measuring the full selector length...")
             traveled, found_home = self._measure_to_home()
             if not found_home:
-                self._log_always("Selector didn't find home position after full length move")
+                self._log_error("Selector didn't find home position after full length move")
                 return
             self._log_always("Maximum selector movement is %.1fmm" % traveled)
 
@@ -5022,6 +5022,11 @@ class Mmu:
 
     cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
     def cmd_MMU_TEST_CONFIG(self, gcmd):
+        # Try to catch illegal parameters
+        illegal_params = [p for p in gcmd.get_command_parameters() if vars(self).get(p.lower()) is None]
+        if illegal_params:
+            raise gcmd.error("Unknown parameter: %s" % illegal_params)
+
         # Filament Speeds
         self.gear_from_buffer_speed = gcmd.get_float('GEAR_FROM_BUFFER_SPEED', self.gear_from_buffer_speed, minval=10.)
         self.gear_from_buffer_accel = gcmd.get_float('GEAR_FROM_BUFFER_ACCEL', self.gear_from_buffer_accel, minval=10.)

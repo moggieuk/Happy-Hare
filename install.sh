@@ -489,7 +489,11 @@ read_previous_config() {
         fi
 
         if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
-            _param_servo_buzz_gear_on_down=3
+            if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
+                _param_servo_buzz_gear_on_down=0
+            else
+                _param_servo_buzz_gear_on_down=3
+            fi
         fi
         if [ "${_param_gate_parking_distance}" == "" ]; then
             if [ ! "${_param_mmu_version}" == "1.1" ]; then
