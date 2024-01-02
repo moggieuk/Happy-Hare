@@ -1948,7 +1948,7 @@ class Mmu:
             self.calibrating = False
             self._motors_off()
 
-    def _calibrate_selector_auto(self, v1_bypass_block=-1, save=True):
+    def _calibrate_selector_auto(self, save=True, v1_bypass_block=-1):
         # Strategy is to find the two end gates, infer and set number of gates and distribute selector positions
         # Assumption: the user has manually positioned the selector aligned with gate #0 before calling
         try:
@@ -1977,8 +1977,12 @@ class Mmu:
                 self._trace_selector_move("Forceably detecting end of selector movement", max_movement, speed=self.selector_homing_speed)
                 found_home = True
             if not found_home:
-                self._log_error("Didn't detect the end of the selector")
-                return
+                msg = "Didn't detect the end of the selector"
+                if self.cad_last_gate_offset > 0:
+                    self._log_error(msg)
+                    return
+                else:
+                    self._log_always(msg)
 
             # Step 3a - selector length
             self._log_always("Measuring the full selector length...")
@@ -2112,15 +2116,13 @@ class Mmu:
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
-        if gate == -1:
-            if gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
-                gate = self.TOOL_GATE_BYPASS
+        if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
+            gate = self.TOOL_GATE_BYPASS
 
         if gate != -1:
             self._calibrate_selector(gate, save=save)
         else:
-            v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
-            self._calibrate_selector_auto(v1_bypass_block, save=save)
+            self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
 
     # Start: Will home selector, select gate #0
     # End: Filament will unload
@@ -3421,6 +3423,7 @@ class Mmu:
                 if not self.sensors[self.ENDSTOP_EXTRUDER].runout_helper.filament_present:
                     self._log_info("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload")
                     fhomed = True # Assumption
+                    validate = False
                 else:
                     hlength = self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin
                     self._log_debug("Reverse homing up to %.1fmm to extruder sensor (synced)" % hlength)
@@ -4074,27 +4077,36 @@ class Mmu:
                     self._log_stepper("%s HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, sync=%s, wait=%s"% (motor.upper(), dist, speed, accel, endstop_name, sync, wait))
                     trig_pos = [0., 0., 0., 0.]
                     hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
-                    try:
-                        init_pos = pos[1]
-                        pos[1] += dist
-                        with self._wrap_accel(accel):
-                            trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
-                        homed = True
-                        if self.gear_rail.is_endstop_virtual(endstop_name):
-                            # Stallguard doesn't do well at slow speed. Try to infer move completion
-                            if abs(trig_pos[1] - dist) < 1.0:
-                                    homed = False
-                    except self.printer.command_error as e:
-                        # CANbus mcu's often seen to exhibit "Communication timeout" errors so surface errors to user
-                        if abs(trig_pos[1] - dist) > 0. and not "after full movement" in str(e):
-                            self._log_error("Did not complete homing move: %s" % str(e))
-                        else:
-                            self._log_stepper("Did not home: %s" % str(e))
-                        homed = False
-                    finally:
-                        halt_pos = self.mmu_toolhead.get_position()
-                        #self._log_error("PAUL DEBUG: halt_pos=%s, trig_pos=%s" % (halt_pos, trig_pos))
-                        actual = halt_pos[1] - init_pos
+                    init_pos = pos[1]
+                    pos[1] += dist
+                    got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
+                    for attempt in range(2):  # HACK: We can repeat because homing move
+                        try:
+                            #init_pos = pos[1]
+                            #pos[1] += dist
+                            with self._wrap_accel(accel):
+                                trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
+                            homed = True
+                            if self.gear_rail.is_endstop_virtual(endstop_name):
+                                # Stallguard doesn't do well at slow speed. Try to infer move completion
+                                if abs(trig_pos[1] - dist) < 1.0:
+                                        homed = False
+                        except self.printer.command_error as e:
+                            # CANbus mcu's often seen to exhibit "Communication timeout" errors so surface errors to user
+                            if abs(trig_pos[1] - dist) > 0. and not "after full movement" in str(e):
+                                if 'communication timeout' in str(e).lower():
+                                    got_comms_timeout = True
+                                self._log_error("Did not complete homing move: %s" % str(e))
+                            else:
+                                self._log_stepper("Did not home: %s" % str(e))
+                            homed = False
+                        finally:
+                            halt_pos = self.mmu_toolhead.get_position()
+                            #self._log_error("PAUL DEBUG: halt_pos=%s, trig_pos=%s" % (halt_pos, trig_pos))
+                            actual = halt_pos[1] - init_pos
+                            if got_comms_timeout:
+                                continue
+                            break
                 else:
                     self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
                     pos[1] += dist

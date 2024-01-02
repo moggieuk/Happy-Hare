@@ -20,8 +20,8 @@ declare -A PIN 2>/dev/null || {
     exit 1
 }
 
-# Pins for Fysetc Burrows ERB board, EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
-# Note: uart pin is shared on EASY-BRD (with different uart addresses)
+# Pins for Fysetc Burrows ERB board, Original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
+# Note: uart pin is shared on original EASY-BRD (with different uart addresses)
 #
 PIN[ERB,gear_uart_pin]="gpio20";         PIN[EASY-BRD,gear_uart_pin]="PA8";         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
 PIN[ERB,gear_step_pin]="gpio10";         PIN[EASY-BRD,gear_step_pin]="PA4";         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
@@ -51,32 +51,62 @@ PIN[ERB,pre_gate_9_pin]="";              PIN[EASY-BRD,pre_gate_9_pin]="";       
 PIN[ERB,pre_gate_10_pin]="";             PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
 PIN[ERB,pre_gate_11_pin]="";             PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
+# Pins for Mellow EASY-BRD with CANbus
+#
+PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="ercf:gpio9";
+PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="ercf:gpio7";
+PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="!ercf:gpio8";
+PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="!ercf:gpio6";
+PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="ercf:gpio23";
+PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="ercf:gpio0";
+PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="ercf:gpio2";
+PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="!ercf:gpio1";
+PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="!ercf:gpio3";
+PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="^ercf:gpio22";
+PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="ercf:gpio20";
+PIN[MELLOW-EASY-BRD-CAN,servo_pin]="ercf:gpio21";
+PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="ercf:gpio15";
+PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";
+
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP10)
 #
 PIN[MMB,gear_uart_pin]="PA10";       # M1
 PIN[MMB,gear_step_pin]="PB15";
 PIN[MMB,gear_dir_pin]="PB14";
 PIN[MMB,gear_enable_pin]="PA8";
-PIN[MMB,gear_diag_pin]="PA3";
+PIN[MMB,gear_diag_pin]="PA3";	     # Aka STP1
 PIN[MMB,selector_uart_pin]="PC7";    # M2
 PIN[MMB,selector_step_pin]="PD2";
 PIN[MMB,selector_dir_pin]="PB13";
 PIN[MMB,selector_enable_pin]="PD1";
-PIN[MMB,selector_diag_pin]="PA4";
+PIN[MMB,selector_diag_pin]="PA4";    # Aka STP2
 PIN[MMB,selector_endstop_pin]="PB2"; # STP11
 PIN[MMB,servo_pin]="PA0";
 PIN[MMB,encoder_pin]="PA1";
 PIN[MMB,neopixel_pin]="PA2";
-PIN[MMB,gate_sensor_pin]="PB10";     # STP10
-PIN[MMB,pre_gate_0_pin]="PA3";       # STP1 (GEAR DIAG!)
-PIN[MMB,pre_gate_1_pin]="PA4";       # STP2 (SEL DIAG!)
-PIN[MMB,pre_gate_2_pin]="PB9";       # STP3
-PIN[MMB,pre_gate_3_pin]="PB8";       # STP4
-PIN[MMB,pre_gate_4_pin]="PC15";      # STP5
-PIN[MMB,pre_gate_5_pin]="PC13";      # STP6
-PIN[MMB,pre_gate_6_pin]="PC14";      # STP7
-PIN[MMB,pre_gate_7_pin]="PB12";      # STP8
-PIN[MMB,pre_gate_8_pin]="PB11";      # STP9
+PIN[MMB,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
+PIN[MMB,pre_gate_0_pin]="PB9";       # STP3
+PIN[MMB,pre_gate_1_pin]="PB8";       # STP4
+PIN[MMB,pre_gate_2_pin]="PC15";      # STP5
+PIN[MMB,pre_gate_3_pin]="PC13";      # STP6
+PIN[MMB,pre_gate_4_pin]="PC14";      # STP7
+PIN[MMB,pre_gate_5_pin]="PB12";      # STP8
+PIN[MMB,pre_gate_6_pin]="PB11";      # STP9
+PIN[MMB,pre_gate_7_pin]="PB10";      # STP10
+PIN[MMB,pre_gate_8_pin]="";
 PIN[MMB,pre_gate_9_pin]="";
 PIN[MMB,pre_gate_10_pin]="";
 PIN[MMB,pre_gate_11_pin]="";
@@ -627,6 +657,7 @@ copy_config_files() {
                 s/{maximum_pulse_width}/${maximum_pulse_width}/; \
                 s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
                 s/{extruder_sensor_pin}/${PIN[extruder_sensor_pin]}/; \
+                s/{gantry_servo_pin}/${PIN[gantry_servo_pin]}/; \
                 s/{gate_sensor_pin}/${PIN[$brd_type,gate_sensor_pin]}/; \
                 s/{pre_gate_0_pin}/${PIN[$brd_type,pre_gate_0_pin]}/; \
                 s/{pre_gate_1_pin}/${PIN[$brd_type,pre_gate_1_pin]}/; \
@@ -1073,9 +1104,10 @@ questionaire() {
     echo -e " 1) BTT MMB"
     echo -e " 2) Fysetc Burrows ERB"
     echo -e " 3) Standard EASY-BRD (with SAMD21)"
-    echo -e " 4) EASY-BRD with RP2040 (e.g. Mellow CAN)"
-    echo -e " 5) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 5)
+    echo -e " 4) EASY-BRD with RP2040"
+    echo -e " 5) Mellow EASY-BRD with CANbus"
+    echo -e " 6) Not in list / Unknown"
+    num=$(prompt_123 "MCU type?" 6)
     echo
     case $num in
         1)
@@ -1095,6 +1127,10 @@ questionaire() {
             pattern="Klipper_rp2040"
             ;;
         5)
+            brd_type="MELLOW-EASY-BRD-CAN"
+            pattern="Klipper_rp2040"
+            ;;
+        6)
             brd_type="unknown"
             pattern="Klipper_"
             ;;
@@ -1102,7 +1138,7 @@ questionaire() {
 
     serial=""
     echo
-    for line in `ls /dev/serial/by-id 2>/dev/null | egrep "Klipper_samd21|Klipper_rp2040"`; do
+    for line in `ls /dev/serial/by-id 2>/dev/null | egrep "Klipper_"`; do
         if echo ${line} | grep --quiet "${pattern}"; then
             echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
             yn=$(prompt_yn "/dev/serial/by-id/${line}")
