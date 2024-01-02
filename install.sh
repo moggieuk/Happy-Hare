@@ -622,7 +622,7 @@ copy_config_files() {
             if [ "${brd_type}" == "EASY-BRD" ]; then
                 # Share uart_pin to avoid duplicate alias problem
                 cat ${dest} | sed -e "\
-                    /^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
+                    s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             else
                 # Remove uart_address lines
