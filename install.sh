@@ -624,7 +624,7 @@ copy_config_files() {
                 cat ${dest} | sed -e "\
                     /^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
-            else:
+            else
                 # Remove uart_address lines
                 cat ${dest} | sed -e "\
                     /^uart_address:/ d; \
