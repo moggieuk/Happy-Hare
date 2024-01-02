@@ -81,7 +81,7 @@ PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";
 
-# Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP10)
+# Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
 #
 PIN[MMB,gear_uart_pin]="PA10";       # M1
 PIN[MMB,gear_step_pin]="PB15";

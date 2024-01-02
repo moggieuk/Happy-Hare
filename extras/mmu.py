@@ -5208,7 +5208,7 @@ class Mmu:
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
         if self._has_encoder():
-            msg += "\nmmu_calibration_clog_length = %.1f" % clog_length
+            msg += "\nmmu_calibration_clog_length = %.1f" % self.encoder_sensor.get_clog_detection_length()
         self._log_info(msg)
 
 
@@ -5783,9 +5783,11 @@ class Mmu:
                         if self._is_in_print():
                             # Use case of in-print verification of all tools used in print
                             self._mmu_pause(msg)
+                            self._log_debug("Reason: %s" % str(ee))
                             return
                         else:
                             self._log_info(msg)
+                            self._log_debug("Reason: %s" % str(ee))
                     finally:
                         self.calibrating = False
     
@@ -5836,7 +5838,7 @@ class Mmu:
                         return
                     except MmuError as ee:
                         # Exception just means filament is not loaded yet, so continue
-                        self._log_trace("Exception on encoder load move: %s" % str(ee))
+                        self._log_trace("Exception on preload: %s" % str(ee))
                 self._set_gate_status(gate, self.GATE_EMPTY)
                 self._log_always("Filament not detected in gate #%d" % gate)
             except MmuError as ee:
