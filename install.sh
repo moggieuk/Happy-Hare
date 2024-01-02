@@ -1042,8 +1042,8 @@ questionaire() {
                 mmu_version+="e"
                 extruder_homing_endstop="collision"
                 gate_homing_endstop="encoder"
-                gate_parking_distance=39.0
-                gate_endstop_to_encoder=15.0
+                gate_parking_distance=48.0
+                gate_endstop_to_encoder=31.0
                 ;;
             esac
             ;;
@@ -1073,7 +1073,7 @@ questionaire() {
     echo -e " 1) BTT MMB"
     echo -e " 2) Fysetc Burrows ERB"
     echo -e " 3) Standard EASY-BRD (with SAMD21)"
-    echo -e " 4) EASY-BRD with RP2040"
+    echo -e " 4) EASY-BRD with RP2040 (e.g. Mellow CAN)"
     echo -e " 5) Not in list / Unknown"
     num=$(prompt_123 "MCU type?" 5)
     echo
