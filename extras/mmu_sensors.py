@@ -14,6 +14,9 @@
 # extruder & toolhead sensor:
 #   Wrapper around `filament_switch_sensor` disabling all functionality - just for visability
 #   Named `extruder` & `toolhead`
+#
+# sync feedback sensor:
+#   Creates simple button and publishes events based on state change
 # 
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
@@ -105,6 +108,7 @@ class PreGateRunoutHelper:
     def cmd_SET_FILAMENT_SENSOR(self, gcmd):
         self.sensor_enabled = gcmd.get_int("ENABLE", 1)
 
+
 class MmuSensors:
 
     ENDSTOP_PRE_GATE  = "mmu_pre_gate"
@@ -169,6 +173,12 @@ class MmuSensors:
             config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
+        # Setup motor syncing feedback button...
+        switch_pin = config.get('sync_feedback_switch_pin', None)
+        if switch_pin is not None and not self._is_empty_pin(switch_pin):
+            buttons = self.printer.load_object(config, "buttons")
+            buttons.register_buttons([switch_pin], self._sync_switch_callback)
+
     def _is_empty_pin(self, switch_pin):
         if switch_pin == '': return True
         ppins = self.printer.lookup_object('pins')
@@ -176,7 +186,10 @@ class MmuSensors:
         pin_resolver = ppins.get_pin_resolver(pin_params['chip_name'])
         real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
         return real_pin == ''
-       
+
+    def _sync_switch_callback(self, eventtime, state):
+        # Feedback state should be between -1 (expanded) and 1 (compressed)
+        self.printer.send_event("mmu:sync_feedback", eventtime, state * 2 - 1)
 
 def load_config(config):
     return MmuSensors(config)

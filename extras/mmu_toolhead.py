@@ -254,6 +254,8 @@ class MmuToolHead(toolhead.ToolHead, object):
 
             self.gear_motion_queue = None
 
+        self.printer.send_event("mmu:gear_synced" if self.gear_motion_queue else "mmu:gear_unsynced")
+
     def resync_gear_position_to_extruder(self):
         if self.gear_motion_queue:
             extruder = self.printer.lookup_object(self.gear_motion_queue, None)

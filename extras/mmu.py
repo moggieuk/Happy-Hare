@@ -154,6 +154,10 @@ class Mmu:
     SELECTOR_STEPPER_CONFIG    = "stepper_mmu_selector"
     GEAR_STEPPER_CONFIG        = "stepper_mmu_gear"
 
+    # Gear/Extruder syncing
+    SYNC_DIRECTION_UPDATE_INTERVAL = 0.1
+    SYNC_POSITION_TIME_DIFF        = 0.3
+
     # Vendor MMU's supported
     VENDOR_ERCF     = "ERCF"
     VENDOR_TRADRACK = "Tradrack"
@@ -226,6 +230,10 @@ class Mmu:
         self.calibrated_bowden_length = -1
         self.ref_gear_rotation_distance = 1.
         self.encoder_force_validation = False
+        self.sync_feedback_last_state = 0.
+        self.sync_feedback_last_direction = self.DIRECTION_LOAD
+        self.sync_feedback_enabled = False
+        self.sync_feedback_multiplier = 1.
         self.w3c_colors = dict(self.W3C_COLORS)
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -397,6 +405,8 @@ class Mmu:
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
         self.sync_form_tip = config.getint('sync_form_tip', 0, minval=0, maxval=1)
+        self.sync_multiplier_high = config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
+        self.sync_multiplier_low = config.getfloat('sync_multipler_low', 0.95, minval=0.5, maxval=1.)
 
         # Servo control
         self.servo_down_angle = config.getfloat('servo_down_angle')
@@ -834,6 +844,13 @@ class Mmu:
         self.printer.register_event_handler("idle_timeout:printing", self._handle_idle_timeout_printing)
         self.printer.register_event_handler("idle_timeout:ready", self._handle_idle_timeout_ready)
         self.printer.register_event_handler("idle_timeout:idle", self._handle_idle_timeout_idle)
+
+        # Setup events for managing motor synchronization
+        self.printer.register_event_handler("mmu:gear_synced", self._handle_enable_sync_feedback)
+        self.printer.register_event_handler("mmu:gear_unsynced", self._handle_disable_sync_feedback)
+        self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
+        self._setup_sync_feedback()
+
         self._setup_heater_off_reactor()
         self._clear_saved_toolhead_position()
 
@@ -1121,6 +1138,11 @@ class Mmu:
                 "Selecting" if action == self.ACTION_SELECTING else
                 "Unknown") # Error case - should not happen
 
+    def _get_sync_feedback_string(self):
+        if self.sync_feedback_enabled:
+            return 'compressed' if self.sync_feedback_last_state > 0 else 'expanded'
+        return "disabled"
+
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
@@ -1154,6 +1176,7 @@ class Mmu:
                 'action': self._get_action_string(),
                 'has_bypass': self.bypass_offset > 0.,
                 'sync_drive': self.mmu_toolhead.is_synced(),
+                'sync_feedback_state': self._get_sync_feedback_string(),
                 'print_state': self.print_state,
                 'clog_detection': self.enable_clog_detection,
                 'endless_spool': self.enable_endless_spool,
@@ -2212,6 +2235,56 @@ class Mmu:
 
     def _handle_idle_timeout_idle(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "idle")
+
+# PAUL vvv
+    def _setup_sync_feedback(self):
+        self.extruder_direction_timer = self.reactor.register_timer(self._update_sync_direction)
+
+    # Gear/Extruder sync feedback state should be -1 (expanded) and 1 (compressed)
+    # or can be a proportional float value between -1.0 and 1.0
+    def _handle_sync_feedback(self, eventtime, state):
+        self._log_error("PAUL: _handle_sync_feedback: eventtime=%s, state=%s" % (eventtime, state))
+        self.sync_feedback_last_state = state
+        if self.sync_feedback_enabled:
+            self._update_sync_multiplier()
+
+    def _handle_enable_sync_feedback(self):
+        if self.sync_feedback_enabled: return
+        self.sync_feedback_enabled = True
+        self.sync_feedback_multiplier = 1.
+        self.reactor.update_timer(self.extruder_direction_timer, self.reactor.NOW)
+        self._update_sync_multiplier()
+        
+    def _handle_disable_sync_feedback(self):
+        if not self.sync_feedback_enabled: return
+        self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) if self.gate_selected >= 0 else 1.)
+        self.reactor.update_timer(self.extruder_direction_timer, self.reactor.NEVER)
+        self.sync_feedback_enabled = False
+
+    def _update_sync_direction(self, eventtime):
+        estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time(eventtime)
+        extruder = self.toolhead.get_extruder()
+        pos = extruder.find_past_position(estimated_print_time)
+        past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIME_DIFF))
+        prev_direction = self.sync_feedback_last_direction
+        self.sync_feedback_last_direction = self.DIRECTION_LOAD if (pos >= past_pos) else self.DIRECTION_UNLOAD
+        if self.sync_feedback_last_direction != prev_direction:
+            self._log_debug("New sync direction: %s" % 'extrude' if self.sync_feedback_last_direction == self.DIRECTION_LOAD else 'retract')
+            self._update_sync_multiplier()
+        return eventtime + self.SYNC_DIRECTION_UPDATE_INTERVAL
+
+    def _update_sync_multiplier(self):
+        go_slower = lambda s, d: abs(s - d) < abs(s + d)
+        if go_slower(self.sync_feedback_last_state, self.sync_feedback_last_direction):
+            # Compressed when extruding or expanded when retracting so increase the rotation distance of gear stepper to slow down
+            multiplier = self.sync_multiplier_high * abs(self.sync_feedback_last_state)
+        else:
+            # Compressed when retracting or expanded when extruding so decrease the rotation distance of gear stepper to speed up
+            multiplier = self.sync_multiplier_low * abs(self.sync_feedback_last_state)
+        self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) / multiplier)
+        self._log_debug("Updated sync multiplier: %.4f" % multiplier)
+        self._log_error("PAUL: Updated sync multiplier: %.4f" % multiplier)
+# PAUL ^^
 
     def _is_printer_printing(self):
         eventtime = self.reactor.monotonic()
@@ -4249,7 +4322,7 @@ class Mmu:
         if prev_sync_state != sync:
             self._log_debug("%s gear stepper and extruder" % ("Syncing" if sync else "Unsyncing"))
             self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name if sync else None)
-            self.printer.send_event("mmu:extruder_synced" if sync else "mmu:extruder_unsynced")
+# PAUL            self.printer.send_event("mmu:extruder_synced" if sync else "mmu:extruder_unsynced")
 
         # Option to reduce current during print
         if current and sync:
@@ -4565,18 +4638,15 @@ class Mmu:
     def _set_gate_selected(self, gate):
         self.gate_selected = gate
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
-        if gate == self.TOOL_GATE_UNKNOWN or gate == self.TOOL_GATE_BYPASS:
-            self._set_gate_ratio(1.)
-        else:
-            self._set_gate_ratio(self._get_gate_ratio(gate))
+        self._set_gate_ratio(self._get_gate_ratio(gate) if gate >= 0 else 1.)
 
     def _set_tool_selected(self, tool):
         self.tool_selected = tool
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
 
     def _set_gate_ratio(self, ratio=1.):
-        self._log_trace("Setting MMU gear motor rotation distance ratio to %.6f" % ratio)
         new_rotation_distance = ratio * self.ref_gear_rotation_distance
+        self._log_trace("Setting gear motor rotation distance: %.6f (ratio: %.6f)" % (new_rotation_distance, ratio))
         self.gear_stepper.set_rotation_distance(new_rotation_distance)
 
     def _get_gate_ratio(self, gate):
@@ -5060,6 +5130,8 @@ class Mmu:
         # Synchronous motor control
         self.sync_form_tip = gcmd.get_int('SYNC_FORM_TIP', self.sync_form_tip, minval=0, maxval=1)
         self.sync_to_extruder = gcmd.get_int('SYNC_TO_EXTRUDER', self.sync_to_extruder, minval=0, maxval=1)
+        self.sync_multiplier_high = gcmd.getfloat('SYNC_MULTIPLER_HIGH', self.sync_multiplier_high, minval=1., maxval=1.5) # PAUL
+        self.sync_multiplier_low = gcmd.getfloat('SYNC_MULTIPLER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.) # PAUL
 
         # TMC current control
         self.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.sync_gear_current, minval=10, maxval=100)
@@ -5152,6 +5224,8 @@ class Mmu:
         msg += "\n\nTMC & MOTOR SYNC CONTROL:"
         msg += "\nsync_to_extruder = %d" % self.sync_to_extruder
         msg += "\nsync_form_tip = %d" % self.sync_form_tip
+        msg += "\nsync_multiplier_high = %d" % self.sync_multiplier_high # PAUL
+        msg += "\nsync_multiplier_low = %d" % self.sync_multiplier_low # PAUL
         msg += "\nsync_gear_current = %d" % self.sync_gear_current
         msg += "\nextruder_homing_current = %d" % self.extruder_homing_current
         msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
