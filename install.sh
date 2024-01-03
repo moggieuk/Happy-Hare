@@ -53,19 +53,19 @@ PIN[ERB,pre_gate_11_pin]="";             PIN[EASY-BRD,pre_gate_11_pin]="";      
 
 # Pins for Mellow EASY-BRD with CANbus
 #
-PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="ercf:gpio9";
-PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="ercf:gpio7";
-PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="ercf:gpio8";
-PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="ercf:gpio6";
-PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="ercf:gpio23";
-PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="ercf:gpio0";
-PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="ercf:gpio2";
-PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="ercf:gpio1";
-PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="ercf:gpio3";
-PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="ercf:gpio22";
-PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="ercf:gpio20";
-PIN[MELLOW-EASY-BRD-CAN,servo_pin]="ercf:gpio21";
-PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="ercf:gpio15";
+PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="gpio9";
+PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="gpio7";
+PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="gpio8";
+PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="gpio6";
+PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="gpio23";
+PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="gpio0";
+PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";
+PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";
+PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";
+PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";
+PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";
+PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";
+PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";
 PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="";
