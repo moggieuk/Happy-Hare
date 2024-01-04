@@ -37,7 +37,7 @@ Although it should not be necessary, there are options to update a single positi
 <br>
 
 ### Step 2. Calibrate your servo
-Happy Hare sets up theoretically good servo postions during installation, however they really should be calibrated. Most MMU's require precise servo movement. To do that you need to run through this process similar to this to update and record the angle for the three symbolic positions:
+Happy Hare sets up theoretically good servo postions during installation, however they really should be calibrated. Most MMU's require precise servo movement. To do that you need to run through this process similar to this to update and record the angle for the three symbolic positions. Be sure to consult you MMU documentation.
 
 ```yml
 MMU_SERVO POS=up
@@ -59,7 +59,7 @@ Repeat for the three positions:
 > [!NOTE]  
 > Refer to you specific MMU doc for information to determine exactly what servo positions are required
 > If you are unsure that your MMU requires a "move" position, set it the same as "up"
-> If you are unable to attain the servo angle required you might need to edit the servo configuration in `mmu_hardware.cfg`
+> If you are unable to attain the servo angle required you might need to "change spline" or edit the servo configuration in `mmu_hardware.cfg`
 
 <br>
 
