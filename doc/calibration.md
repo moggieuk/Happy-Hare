@@ -36,7 +36,32 @@ Although it should not be necessary, there are options to update a single positi
 
 <br>
 
-### Step 2. Calibrate your gear stepper
+### Step 2. Calibrate your servo
+Happy Hare sets up theoretically good servo postions during installation, however they really should be calibrated. Most MMU's require precise servo movement. To do that you need to run through this process similar to this to update and record the angle for the three symbolic positions:
+
+```yml
+MMU_SERVO POS=up
+  # Assume the position isn't quite right
+MMU_SERVO
+Current servo angle: 125, Positions: {'down': 110, 'up': 125, 'move': 110}
+  # Without arguments you can view the current angles
+MMU_SERVO ANGLE=128
+  # Tweak until you are happy with position
+MMU_SERVO POS=up SAVE=1
+  # Save the current angle (128) for the "up" position
+```
+
+Repeat for the three positions:
+* up   = tool is selected and filament is allowed to freely move through gate
+* down = to grip filament
+* move = ready the servo for selector move (optional - defaults to up)
+
+> [!NOTE]  
+> If you are unsure that your MMU requires a "move" position, set it the same as "up"
+
+<br>
+
+### Step 3. Calibrate your gear stepper
 In this step you are simply ensuring that when the gear stepper is told to move 100mm of filament it really does move 100mm.  It is akin to what you did when you set up your extruder rotational distance although in this case no Klipper restart is necessary!  Position selector in front of gate #0 (you can use `MMU_SELECT GATE=0` if you have finished the selector calibration above) and put some filament through the gate so that it pokes out just past the selector exit.  Run the following to ensure the filament is gripped:
 
   > MMU_SERVO POS=down
@@ -61,7 +86,7 @@ Get out your ruler and very carefully measure the length of the emited filament.
 
 <br>
 
-### Step 3. Calibrate your encoder (if your MMU has one like the ERCF design)
+### Step 4. Calibrate your encoder (if your MMU has one like the ERCF design)
 Next step is to calibrate the encoder so it measures distance accurately. Re-fit the bowden to the selector/encoder (you can insert the short length of filament to tube as you fit to save time). Alternatively, just make sure you have some filament through gate #0 before starting.  Now run:
 
   > MMU_CALIBRATE_ENCODER
@@ -91,7 +116,7 @@ You will see an output similar to:
 
 <br>
 
-### Step 4. Calibrate bowden length:
+### Step 5. Calibrate bowden length:
 Optionally the last calibration before use! Here you can calibrate the length of your bowden from MMU gate to extruder entrance. This is important because it allows the MMU to move the filament at a fast pace over this distance because getting to the more complicated part of the load sequence. To speed up this process you need to give the calibration routine a hint of how far way the extruder is (but not exceeding the distance).  A good rule of thumb is to manually measure the distance from exit from the selector to the entrance to your extruder. Subtract 40-50mm from that distance. Approximate distance is 650mm on my system. In you have an encoder you can run the automatic method:
 
   > MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=650
@@ -133,7 +158,7 @@ This will reverse homes to the gate and use Klipper's measurement of stepper mov
 
 <br>
 
-### Optional Step 5. Calibrating gates:
+### Optional Step 6. Calibrating gates:
 This step allows for calibrating slight differences between gates.  It isn't required (or useful) for designs that cannot have variation like the Tradrack MMU but is useful for designs like ERCF that can have variation of feed between gates.  Even with ERCF this is optional because if not run, the gates will tune themselves as they are used automatically!  That said it be beneficial to get this out of the way with a test piece of filament but doing it also: (i) removes the need to set the `auto_calibrate_gates` in `mmu_parameters.cfg`, (ii) is necessary if there is substantial variation between gates -- e.g. if BMG gears for different gates are sourced from different vendors.
 
 Simply make sure filament is available at the gate you want to calibrate -- you can hold a (500mm) loose piece of filament and run:
@@ -172,6 +197,7 @@ You will see an output similar to:
 
   | Command | Description | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Parameters&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; |
   | ------- | ----------- | ---------- |
+  | `MMU_SERVO` | Set the servo to specified postion or a sepcific angle for testing. Will also report position when run without parameters | `POS=[up\|down\|move]` Move servo to predetermined position <br>`ANGLE=..` Move servo to specified angle <br>`SAVE=1` Specifed with the POS= parameter will cause Happy Hare to store the current servo angle for the specified position. This is written to `mmu_vars.cfg` |
   | `MMU_CALIBRATE_SELECTOR` | Calibration of the selector gate positions. By default will automatically calibrate every gate.  ERCF v1.1 users must specify the bypass block position if fitted.  If GATE to BYPASS option is sepcifed this will update the calibrate for a single gate | `GATE=[0..n]` The individual gate position to calibrate <br> `BYPASS=[0\|1]` Calibrate the bypass position <br>`BYPASS_BLOCK=..` Optional (v1.1 only). Which bearing block contains the bypass where the first one is numbered 0 <br>`SAVE=[0\|1]` (default 1)  Whether to save the result |
   | `MMU_CALIBRATE_GEAR` | Calibration rourine for the the gear stepper rotational distance | `LENGTH=..` length to test over (default 100mm) <br>`MEASURED=..` User measured distance <br>`SAVE=[0\|1]` (default 1) Whether to save the result |
   | `MMU_CALIBRATE_ENCODER` | Calibration routine for MMU encoder | LENGTH=.. Distance (mm) to measure over. Longer is better, defaults to 500mm <br>`REPEATS=..` Number of times to average over <br>`SPEED=..` Speed of gear motor move. Defaults to long move speed <br>`ACCEL=..` Accel of gear motor move. Defaults to motor setting in ercf_hardware.cfg <br>`MINSPEED=..` & `MAXSPEED=..` If specified the speed is increased over each iteration between these speeds (only for experimentation) <br>`SAVE=[0\|1]` (default 1)  Whether to save the result |
