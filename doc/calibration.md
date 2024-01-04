@@ -7,7 +7,8 @@ This discussion assumes that you have setup and debugged your hardware configura
 
 ```mermaid
 graph TD;
-    Hardware_Working --> MMU_CALIBRATE_SELECTOR
+    Hardware_Working --> MMU_SERVO
+    MMU_SERVO --> MMU_CALIBRATE_SELECTOR
     MMU_CALIBRATE_SELECTOR --> MMU_CALIBRATE_BOWDEN
     Hardware_Working --> MMU_CALIBRATE_GEAR
     MMU_CALIBRATE_GEAR --> MMU_CALIBRATE_ENCODER

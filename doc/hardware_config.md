@@ -47,22 +47,26 @@ Note that all sensors can be setup with a simple section in `mmu_hardware.cfg`. 
 # Define the pins for optional sensors in the filament path. All but the pre-gate sensors will be automatically setup as
 # both endstops (for homing) and sensors for visibility purposes.
 #
-# pre_gate_switch_pin_X: pre-gate sensor detects filament at entry to MMU. X=gate number (0..N)
-# toolhead_switch_pin: 'toolhead' sensor detects filament after extruder entry
-# extruder_switch_pin: 'extruder' sensor detects filament just before the extruder entry
-# gate_switch_pin: shared 'gate' sensor detects filament at the gate of the MMU (alternative to encoder)
+# 'pre_gate_switch_pin_X'    .. 'mmu_pre_gate_X` sensor detects filament at entry to MMU. X=gate number (0..N)
+# 'gate_switch_pin'          .. 'mmu_gate' sensor detects filament at the gate of the MMU
+# 'toolhead_switch_pin'      .. 'toolhead' sensor detects filament after extruder entry
+# 'extruder_switch_pin'      .. 'extruder' sensor detects filament just before the extruder entry
 #
-# Uncomment sensors that are fitted
+# 'sync_feedback_switch_pin' .. pin for switch activated when filament is under compression
+#
+# Simply define pins for any sensor you want to enable, if pin is not set (or the alias is empty) it will be ignored (can also comment out)
 #
 [mmu_sensors]
-pre_gate_switch_pin_0: mmu:MMU_SEL_ENDSTOP
-pre_gate_switch_pin_1: mmu:MMU_SEL_ENDSTOP
-pre_gate_switch_pin_2: mmu:MMU_SEL_ENDSTOP
-pre_gate_switch_pin_3: mmu:MMU_SEL_ENDSTOP
+pre_gate_switch_pin_0: ^mmu:MMU_PRE_GATE_0
+pre_gate_switch_pin_1: ^mmu:MMU_PRE_GATE_1
+pre_gate_switch_pin_2: ^mmu:MMU_PRE_GATE_2
+pre_gate_switch_pin_3: ^mmu:MMU_PRE_GATE_3
 
-gate_switch_pin: mmu:MMU_SEL_ENDSTOP
-extruder_switch_pin: mmu:MMU_SEL_ENDSTOP
+gate_switch_pin: ^mmu:MMU_GATE_SENSOR
+extruder_switch_pin:
 toolhead_switch_pin: PG13
+
+sync_feedback_switch_pin:
 ```
 
 <br>
@@ -152,7 +156,7 @@ dir_pin: mmu:MMU_GEAR_DIR
 <br>
 
 ## Step 4. Check Encoder (if fitted)
-Ok, last sanity check.  If you have an encoder based design like the ERCF, need to check that it is wired correctly. Run the command `MMU_ENCODER` and note the position displayed.
+If you have an encoder based design like the ERCF, need to check that it is wired correctly. Run the command `MMU_ENCODER` and note the position displayed.
 ```yml
 MMU_ENCODER
 Encoder position: 23.4
@@ -163,6 +167,16 @@ If the encoder postion does not change, validate the `encoder_pin` is correct. I
 ```yml
 [mmu_encoder mmu_encoder]
 encoder_pin: ^mmu:MMU_ENCODER	
+```
+
+<br>
+
+## Step 5. Check Servo
+Ok, last sanity check.  Check that the servo you have fitted is operational. Run these two commands to make sure the servo moves.  It should move in the expected direction based on the installation defaults but is not yet calibrated.
+
+```yml
+MMU_SERVO POS=down
+MMU_SERVO POS=up
 ```
 
 <br>
