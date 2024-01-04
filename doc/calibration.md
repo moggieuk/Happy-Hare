@@ -57,7 +57,9 @@ Repeat for the three positions:
 * move = ready the servo for selector move (optional - defaults to up)
 
 > [!NOTE]  
+> Refer to you specific MMU doc for information to determine exactly what servo positions are required
 > If you are unsure that your MMU requires a "move" position, set it the same as "up"
+> If you are unable to attain the servo angle required you might need to edit the servo configuration in `mmu_hardware.cfg`
 
 <br>
 
