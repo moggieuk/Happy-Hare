@@ -171,9 +171,31 @@ encoder_pin: ^mmu:MMU_ENCODER
 
 <br>
 
-## Step 5. Check Servo
-Ok, last sanity check.  Check that the servo you have fitted is operational. Run these two commands to make sure the servo moves.  It should move in the expected direction based on the installation defaults but is not yet calibrated.
+## Step 5. Check other sensors (if fitted)
+Other sensors are generally filament sensors and act on a switch. The easiest way to check these is to run something similar to the following for each sensor/switch.
+```yml
+QUERY_FILAMENT_SENSOR SENSOR=mmu_gate_sensor
+Filament Sensor mmu_gate_sensor: filament not detected
+```
 
+Activate the sensor with a piece of filament and run again:
+```yml
+QUERY_FILAMENT_SENSOR SENSOR=mmu_gate_sensor
+Filament Sensor mmu_gate_sensor: filament detected
+```
+
+Note thatFrequently enstops / filament sensors that are wired normally open (NO) require `^` (pull up resister) to correctly function.
+
+<br>
+
+## Step 6. Check Servo
+Ok, last sanity check.  Check that the servo you have fitted is operational. Run this simple commmand.  The servo should waggle somewhere short of the configured 'up' and 'down' positions.  Don't worry yet about calibration. That comes next.
+
+```yml
+MMU_TEST_BUZZ_MOTOR MOTOR=servo
+```
+
+You can also try:
 ```yml
 MMU_SERVO POS=down
 MMU_SERVO POS=up
