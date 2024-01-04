@@ -341,6 +341,8 @@ class MmuToolHead(toolhead.ToolHead, object):
 
             self.extruder_synced_to_gear = None
 
+        self.printer.send_event("mmu:extruder_synced" if self.extruder_synced_to_gear else "mmu:extruder_unsynced")
+
     def get_status(self, eventtime):
         res = super(MmuToolHead, self).get_status(eventtime)
         res.update(dict(self.get_kinematics().get_status(eventtime)))
