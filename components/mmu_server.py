@@ -90,29 +90,29 @@ class MmuServer:
     # Leverage configuration from Spoolman component
     async def get_filaments(self, gate_ids):
         spoolman = self.server.lookup_component("spoolman")
-        spool_str = ",".join(map(str, [id for (gate, id) in gate_ids]))
-
-        full_url = f"{spoolman.spoolman_url}/v1/spool?filament.id={spool_str}"
-        response = await spoolman.http_client.request(method="GET", url=full_url, body=None)
-        response.raise_for_status()
-
         kapis = self.server.lookup_component("klippy_apis")
-        find_gate = lambda tuples, sid: next((gate for gate, i in tuples if i == sid), None)
+
         gate_dict = {}
-        for record in response.json():
+        for gate_id, spool_id in gate_ids:
+            full_url = f"{spoolman.spoolman_url}/v1/spool/{spool_id}"
+
+            response = await spoolman.http_client.request(method="GET", url=full_url, body=None)
+            response.raise_for_status()
+
+            record = response.json()
             filament = record["filament"]
-            spoolid = filament.get('id')
-            gate = find_gate(gate_ids, spoolid)
+
             material = filament.get('material', '')[:6] # Keep material spec short for Klipperscreen
             color_hex = filament.get('color_hex', '')[:6] # Strip alpha channel if it exists
-            gate_dict[gate] = {'spool_id': spoolid, 'material': material, 'color': color_hex}
+
+            gate_dict[gate_id] = {'spool_id': spool_id, 'material': material, 'color': color_hex}
 
         try:
             await kapis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" QUIET=1")
         except self.server.error as e:
             logging.info(f"mmu_server: Exception running MMU gcode: %s" % str(e))
 
-        return response.json()
+        return gate_dict
    
 def load_component(config):
     return MmuServer(config)
