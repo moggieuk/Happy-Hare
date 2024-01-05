@@ -156,12 +156,12 @@ class Mmu:
 
     # Gear/Extruder syncing
     SYNC_FEEDBACK_INTERVAL  = 0.25
-    SYNC_POSITION_TIMERANGE = 0.5
+    SYNC_POSITION_TIMERANGE = 0.3
 
     # Vendor MMU's supported
     VENDOR_ERCF     = "ERCF"
     VENDOR_TRADRACK = "Tradrack"
-    VENDOR_PRUSA    = "Prusa" # TODO In progress
+    VENDOR_PRUSA    = "Prusa"
     VENDOR_OTHER    = "Other"
 
     VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_OTHER]
@@ -268,7 +268,6 @@ class Mmu:
         #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
         #
         #  encoder_default_resolution - resolution of a single encoder "count"
-        #  virtual_selector           - real selector or virtual (type A vs type B)
         self.cad_gate0_pos = 4.2
         self.cad_gate_width = 21.
         self.cad_bypass_offset = 0
@@ -280,7 +279,6 @@ class Mmu:
 
         # Non CAD default parameters
         self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
-        self.virtual_selector = False # TODO untested WIP
 
         # Specific vendor build parameters / tuning.
         if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
@@ -469,6 +467,7 @@ class Mmu:
 
         # Currently hidden and testing options
         self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
+        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
 
