@@ -67,7 +67,7 @@ PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";
 PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";
 PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";
 PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="";
@@ -477,9 +477,6 @@ set_default_tokens() {
     for var in mmu_num_gates mmu_num_leds serial servo_up_angle servo_move_angle servo_down_angle; do
         eval "${var}='{$var}'"
     done
-    for var in gear_uart_pin gear_step_pin gear_dir_pin gear_enable_pin gear_diag_pin selector_uart_pin selector_step_pin selector_dir_pin selector_enable_pin selector_diag_pin selector_endstop_pin servo_pin encoder_pin; do
-        eval "PIN[unknown,${var}]='{$var}'"
-    done
 }
 
 
@@ -660,6 +657,8 @@ copy_config_files() {
                 s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
                 s/{extruder_sensor_pin}/${PIN[extruder_sensor_pin]}/; \
                 s/{gantry_servo_pin}/${PIN[gantry_servo_pin]}/; \
+                s/{sync_feedback_tension_pin}/${PIN[sync_feedback_tension_pin]}/; \
+                s/{sync_feedback_compression_pin}/${PIN[sync_feedback_compression_pin]}/; \
                 s/{gate_sensor_pin}/${PIN[$brd_type,gate_sensor_pin]}/; \
                 s/{pre_gate_0_pin}/${PIN[$brd_type,pre_gate_0_pin]}/; \
                 s/{pre_gate_1_pin}/${PIN[$brd_type,pre_gate_1_pin]}/; \
@@ -1055,7 +1054,7 @@ questionaire() {
             mmu_version="1.0"
             extruder_homing_endstop="none"
             gate_homing_endstop="mmu_gate"
-            gate_parking_distance=17.0
+            gate_parking_distance=17.5
             servo_buzz_gear_on_down=0
 
             gear_gear_ratio="50:17"
@@ -1238,6 +1237,10 @@ questionaire() {
                 servo_down_angle=1
                 ;;
         esac
+    else
+        servo_up_angle=0
+        servo_move_angle=0
+        servo_down_angle=0
     fi
 
     if [ "${mmu_vendor}" == "ERCF" -o "${HAS_ENCODER}" == "yes" ]; then
