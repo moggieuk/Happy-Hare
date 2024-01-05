@@ -240,7 +240,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.action : {string} Idle | Loading | Unloading | Forming Tip | Heating | Loading Ext | Exiting Ext | Checking | Homing | Selecting
     printer.mmu.has_bypass : {int} 0 (not available) | 1 (available)
     printer.mmu.sync_drive : {bool} True if gear stepper is currently synced to extruder
-    printer.mmu.sync_feedback_state : {string} State of sync feedback sensor (compressed | expanded | disabled)
+    printer.mmu.sync_feedback_state : {string} State of sync feedback sensor (compressed | expanded | neutral | disabled)
     printer.mmu.print_job_state : {string} current job state seen by MMU (initialized | standby | started | printing | pause_locked | paused | complete | cancelled | error)
     printer.mmu.clog_detection : {int} 0 (off) | 1 (manual) | 2 (auto)
     printer.mmu.endless_spool : {int} 0 (disabled) | 1 (enabled) | 2 (additionally enabled for pre-gate sensor)
@@ -648,27 +648,54 @@ Synchronizion during printing is controlled by `sync_to_extruder` in `mmu_parame
 
 If the `sync_to_extruder` feature is activated, the gear stepper will automatically coordinate with the extruder stepper following a successful tool change. Any MMU operation that necessitates exclusive gear stepper movement (like buzzing the gear stepper to verify filament engagement), will automatically disengage the sync. Generally, you don't need to manually manage the coordination/discoordination of the gear stepper — Happy Hare handles these actions. If the printer enters MMU_PAUSE state (due to a filament jam or runout, for example), synchronization is automatically disengaged and the servo lifted. Upon resuming a print synchronization will automatically be resumed however if you wist to enable it whilst operating the MMU during a pause use the `MMU_SYNC_GEAR_MOTOR` command.
 
-    The `MMU_SYNC_GEAR_MOTOR sync={0|1} servo={0|1} in_print={0|1}` command functions as follows:
+    The `MMU_SYNC_GEAR_MOTOR SYNC={0|1} SERVO={0|1} FORCE_IN_PRINT={0|1}` command functions as follows:
     - Defaults to `sync=1`, `servo=1`, and `in_print` is determined automatically
     - If `sync=1` and `servo=1`, it triggers the servo and executes the synchronization
     - If `sync=1` and `servo=0`, it performs only the synchronization
-    - In either of the above cases, `in_print=1` performs the synchronization and sets gear stepper current to `sync_gear_current`
+    - In either of the above cases, `force_in_print=1` performs the synchronization and sets gear stepper current to `sync_gear_current`
     - If `sync=0` and `servo=1`, it disengages and lifts the servo
     - If `sync=0` and `servo=0`, it only disengages the synchronization
 
-Note you can still control the gear stepper motor with the `MMU_TEST_MOVE` commmand or the more Klipper direct `MANUAL_STEPPER` command, however, this will only be effective if the stepper is not currently syncing with the extruder.
+Note you can still control the gear stepper motor with the `MMU_TEST_MOVE` or `MMU_TEST_HOMING_MOVE` commmand.
 
 #### Other synchonization options
 
-In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process. If they are all disabled, Happy Hare will operate with non synchronized movements except for the optional extruder transisiton phase. If these options are enabled they override and force full synchronized operation. E.g. If `sync_extruder_load` is enabled it will keep the gear synchronized with the extruder for the entire loading of the extruder.<br>
+In addition to synchronizing the gear motor to the extruder during print the same mechanism can be used to synchronize during other parts of the loading and unload process as it makes sense to ensure reliability. In addition it is possible to specify whether you want to synchronize the gear and extruder during the tool tip creating process with the `sync_form_tip` setting.
 
 > [!WARNING]  
 > If you run the gear stepper synchronized for long prints you might find that it can become very hot. You might want to consider using `sync_gear_current` to reduce the current while it is synced during print to keep the temperature down. Afterall you probably don't need full power while printing.  The current will be restored for loading and unloading operations.
 
-`sync_extruder_load` Turns on/off synchronization of extruder loading<br>
-`sync_extruder_unload` Turns on/off synchronization of extruder unloading<br>
 `sync_form_tip` Turns on/off synchronization of the stand alone tip forming movement<br>
 `sync_gear_current` The percentage reduction of gear stepper while it is synchronized with extruder<br>
+
+When performing long periods of synchronized printing without a tool change to reset things, the effective synchronization of the two steppers will tend to drift. Even with perfect calibration the friction caused by the long filament path through the buffer system, the tugging of the filament on a heavy spool can cause slippage in the grip of either the extruder or more likely the gear / filament drive stepper. This mismatch can ultimately lead to artifacts in the print caused by the extruder missing steps or acheiving a sub optimium extrusion ratio (btw did you know that with an encoder fitted you can monitor and see the under extrusion!). Although this is rarely an issue on a well tuned setup if can be accomodated for in Happy Hare by way of a sensor and feedback system that works against the accumulation of tension or compression in the filament path.
+
+There are four types of sensor feedback that can be accommodated:
+* switch sensor that triggers under filament tension
+* switch sensor that triggers under filament compression
+* Dual switch sensor that separately trigger under tension and compression (thus definining a neutral range)
+* Proportional feedback sensor that can give a signal from 1.0 (max compression) to -1.0 (max tension) with 0 being neutral
+
+The Belay project by Annex is a good example of the first type (note that the klipper s/w for this project is not required).  It sits somewhere in the bowden path from MMU to extruder and provides a spring loaded "gap" in the PTFE tube.
+
+Essentially all of these provide a feedback signal (the first two lacking a neutral space and so are always working) that dynamically changes the `rotation_distance` of the gear (filament driver) stepper. When extruding and the sync feedback sensor reports tension, the `sync_multiplier_low` is used (or a proportion of it) to decrease the `rotaion_distance` and thus increase the speed. This will have the effect of decreasing tension.  When the sync feedback sensor reports compression, the `sync_multiplier_high` is used (or a proportion of it) to increase the `rotation_distance` and thus decrease the speed.  This will have the effect relaxing the compression. When retracting the operation is reversed by switching multipliers.
+
+The advantage of the dual switch and proportional feedback sensor is that they have a "neutral" zone that in theory can reduce thrashing between compression and tension. In practice with te correct tuning of `sync_multiplier_low/high` this is note an issue.
+
+**mmu_hardware.cfg config:**
+```yaml
+[mmu_sensors]
+sync_feedback_tension_pin:
+sync_feedback_compression_pin:
+```
+
+**mmu_parameters.cfg parameters:**
+```yaml
+sync_feedback_enable: 1         # 0 = Turn off (even with fitted sensor), 1 = Turn on when printing
+sync_multiplier_high: 1.5       # Maximum factor to apply to gear stepper `rotation_distance`
+sync_multipler_low: 0.95        # Minimum factor to apply
+```
+This feature can be disabled even if hardware is configure by setting the `sync_feedback_enable` parameter (during print you can use `MMU_TEST_CONFIG sync_feedback_enable=[0|1]``
 
 </details>
 

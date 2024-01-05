@@ -41,18 +41,20 @@ This can be daunting but the interactive installer will make the process easier 
 
 Endstop setup and options can be [found here](#---endstops-and-mmu-movement)
 
-Note that all sensors can be setup with a simple section in `mmu_hardware.cfg`.  This ensures things are setup correctly and only requires you to supply the pins:
+Note that all sensors can be setup with a simple section in `mmu_hardware.cfg`. This ensures things are setup correctly and only requires you to supply the pins. There is no need to comment out if not used, you can leave the pin empty or reference an empty alias. In those cases the sensor will be ignored
 ```yml
 # FILAMENT SENSORS ---------------------------------------------------------------------------------------------------------
 # Define the pins for optional sensors in the filament path. All but the pre-gate sensors will be automatically setup as
 # both endstops (for homing) and sensors for visibility purposes.
 #
-# 'pre_gate_switch_pin_X'    .. 'mmu_pre_gate_X` sensor detects filament at entry to MMU. X=gate number (0..N)
-# 'gate_switch_pin'          .. 'mmu_gate' sensor detects filament at the gate of the MMU
-# 'toolhead_switch_pin'      .. 'toolhead' sensor detects filament after extruder entry
-# 'extruder_switch_pin'      .. 'extruder' sensor detects filament just before the extruder entry
+# 'pre_gate_switch_pin_X' .. 'mmu_pre_gate_X` sensor detects filament at entry to MMU. X=gate number (0..N)
+# 'gate_switch_pin'       .. 'mmu_gate' sensor detects filament at the gate of the MMU
+# 'toolhead_switch_pin'   .. 'toolhead' sensor detects filament after extruder entry
+# 'extruder_switch_pin'   .. 'extruder' sensor detects filament just before the extruder entry
 #
-# 'sync_feedback_switch_pin' .. pin for switch activated when filament is under compression
+# Sync motor feedback will typically have a tension switch (more important) or both tension and compression
+# 'sync_feedback_tension_pin'     .. pin for switch activated when filament is under tension
+# 'sync_feedback_compression_pin' .. pin for switch activated when filament is under compression
 #
 # Simply define pins for any sensor you want to enable, if pin is not set (or the alias is empty) it will be ignored (can also comment out)
 #
@@ -64,9 +66,10 @@ pre_gate_switch_pin_3: ^mmu:MMU_PRE_GATE_3
 
 gate_switch_pin: ^mmu:MMU_GATE_SENSOR
 extruder_switch_pin:
-toolhead_switch_pin: PG13
+toolhead_switch_pin:
 
-sync_feedback_switch_pin:
+sync_feedback_tension_pin:
+sync_feedback_compression_pin:
 ```
 
 <br>
