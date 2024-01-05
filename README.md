@@ -116,23 +116,24 @@ cd Happy-Hare
 ./install.sh -i
 ```
 
-The `-i` option will bring up an interactive installer to aid setting some confusing parameters. For EASY-BRD and Fysetc ERB installations it will also configure all the pins for you. If not run with the `-i` flag the new template `mmu*.cfg` files will not be installed. Note that if existing `mmu*.cfg` files are found the old versions will be moved to numbered backups like `<file>.<date>` extension instead so as not to overwrite an existing configuration. If you still choose not to install the new `mmu*.cfg` files automatically be sure to examine them closely and compare to the supplied templates (this is completely different software from the original)
+The `-i` option will bring up an interactive installer to aid setting some confusing parameters. For popular external mcu boards it will also configure all the pins for you. If not run with the `-i` flag it defaults to update current installation which is sometimes necessary on significant version updates (see [here](doc/update.md)). Note that if existing install it found it will never be overwritten, it will be moved to numbered backups with a `<file>.<date>` extension and read for current configuration defaults. If you still choose not to install the new `mmu*.cfg` files automatically you can copy the templates an fill in all the tokens and blanks by hand. Frankly it is easier to run through an initial install and use the generated config files as a starting point.
 <br>
 
 Note that the installer will look for Klipper install and config in standard locations. If you have customized locations or multiple Klipper instances on the same rpi, or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively.
 <br>
 
 > [!IMPORTANT]  
-> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` (and other base config files) must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the easiest way to achieve this is simply with `[include mmu/base/*.cfg]`) . `client_macros.cfg` should also be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these config files for you.
+> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` (and other base config files) must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the recommended way to achieve this is simply with `[include mmu/base/*.cfg]`). `client_macros.cfg` should also explicitly be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these optional config files for you.
 <br>
 
-**Pro tip:** if you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp. You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
+> [!TIP]  
+> If you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp. You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
 
 ```
-Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-i] [-u]
-     -i for interactive install
+Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-i] [-u]
+     -i for interactive or install install
      -u for uninstall
-(no flags for safe re-install / upgrade)
+(no flags for safe refresh / upgrade)
 ```
 
 > [!WARNING]  
