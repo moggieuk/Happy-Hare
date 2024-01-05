@@ -2660,7 +2660,7 @@ class Mmu:
             self.encoder_sensor.set_distance(distance)
 
     def _get_encoder_dead_space(self):
-        if self._has_sensor('gate') and self.gate_homing_endstop == self.ENDSTOP_GATE:
+        if self._has_sensor(self.ENDSTOP_GATE) and self.gate_homing_endstop == self.ENDSTOP_GATE:
             return self.gate_endstop_to_encoder
         else:
             return 0.
