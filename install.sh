@@ -534,6 +534,16 @@ read_previous_config() {
         if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
             _param_gate_endstop_to_encoder=0
         fi
+
+        if [ ! "${_param_servo_up_angle}" == "" ]; then
+            _param_servo_up_angle=$(echo "$_param_servo_up_angle" | awk '{print int($1)}')
+        fi
+        if [ ! "${_param_servo_down_angle}" == "" ]; then
+            _param_servo_down_angle=$(echo "$_param_servo_down_angle" | awk '{print int($1)}')
+        fi
+        if [ ! "${_param_servo_move_angle}" == "" ]; then
+            _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
+        fi
     fi
 
     cfg="mmu_filametrix.cfg"
