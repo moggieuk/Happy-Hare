@@ -155,8 +155,8 @@ class Mmu:
     GEAR_STEPPER_CONFIG        = "stepper_mmu_gear"
 
     # Gear/Extruder syncing
-    SYNC_DIRECTION_UPDATE_INTERVAL = 0.1
-    SYNC_POSITION_TIME_DIFF        = 0.3
+    SYNC_FEEDBACK_INTERVAL  = 0.25
+    SYNC_POSITION_TIMERANGE = 0.5
 
     # Vendor MMU's supported
     VENDOR_ERCF     = "ERCF"
@@ -232,9 +232,8 @@ class Mmu:
         self.ref_gear_rotation_distance = 1.
         self.encoder_force_validation = False
         self.sync_feedback_last_state = 0.
-        self.sync_feedback_last_direction = self.DIRECTION_LOAD
+        self.sync_feedback_last_direction = 0 # Extruder not moving
         self.sync_feedback_operational = False
-        self.sync_feedback_multiplier = 1.
         self.w3c_colors = dict(self.W3C_COLORS)
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -599,6 +598,7 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
         self.gcode.register_command('MMU_TEST_RUNOUT', self.cmd_MMU_TEST_RUNOUT, desc = self.cmd_MMU_TEST_RUNOUT_help)
         self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_FORM_TIP, desc = self.cmd_MMU_FORM_TIP_help)
+        self.gcode.register_command('_MMU_TEST', self.cmd_MMU_TEST, desc = self.cmd_MMU_TEST_help) # Internal for testing
 
         # Soak Testing
         self.gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
@@ -856,7 +856,7 @@ class Mmu:
         self.printer.register_event_handler("idle_timeout:idle", self._handle_idle_timeout_idle)
 
         # Setup events for managing motor synchronization. We use 'mmu:print_synced' instead of
-        # 'mmu:gear_synced' events so feedback only used while actually printing
+        # 'mmu:print_synced' events so feedback only used while actually printing
         self.printer.register_event_handler("mmu:print_synced", self._enable_sync_feedback)
         self.printer.register_event_handler("mmu:print_unsynced", self._disable_sync_feedback)
         self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
@@ -1034,18 +1034,24 @@ class Mmu:
                 self.gate_selected = gate_selected
 
                 if self.gate_selected >= 0:
+                    if self.tool_selected < 0 or self.tool_to_gate_map[self.tool_selected] != self.gate_selected:
+                        # Find a tool that maps to gate
+                        for tool in range(self.mmu_num_gates):
+                            if self.tool_to_gate_map[tool] == self.gate_selected:
+                                self._set_tool_selected(tool)
+                                break
+                        else:
+                            errors.append("Reset persisted tool - does not map to gate")
+                            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                     self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
-                    if self.tool_selected == self.TOOL_GATE_BYPASS: # Sanity check
-                        self.tool_selected = self.TOOL_GATE_UNKNOWN
                     self._set_selector_pos(self.selector_offsets[self.gate_selected])
                     self.is_homed = True
                 elif self.gate_selected == self.TOOL_GATE_BYPASS:
-                    self.tool_selected = self.TOOL_GATE_BYPASS # Sanity check
+                    self._set_tool_selected(self.TOOL_GATE_BYPASS)
                     self._set_selector_pos(self.bypass_offset)
                     self.is_homed = True
-                else:
-                    self.tool_selected = self.TOOL_GATE_UNKNOWN
-                    self.gate_selected = self.TOOL_GATE_UNKNOWN
+                else: # TOOL_GATE_UNKNOWN
+                    self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                     self.is_homed = False
             else:
                 errors.append("Incorrect number of gates specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
@@ -1087,6 +1093,12 @@ class Mmu:
             self._update_filaments_from_spoolman()
         except Exception as e:
             self._log_always('Warning: Error booting up MMU: %s' % str(e))
+
+    cmd_MMU_TEST_help = "Internal Happy Hare testing"
+    def cmd_MMU_TEST(self, gcmd):
+        if self._check_is_disabled(): return
+        feedback = gcmd.get_float('SYNC_EVENT', minval=-1., maxval=1.)
+        self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
@@ -1151,7 +1163,7 @@ class Mmu:
 
     def _get_sync_feedback_string(self):
         if self.sync_feedback_enable and self.sync_feedback_operational:
-            return 'compressed' if self.sync_feedback_last_state > 0 else 'expanded'
+            return 'compressed' if self.sync_feedback_last_state > 0 else 'expanded' if self.sync_feedback_last_state < 0 else 'neutral'
         return "disabled"
 
     def get_status(self, eventtime):
@@ -2269,7 +2281,7 @@ class Mmu:
         self._handle_idle_timeout_event(eventtime, "idle")
 
     def _setup_sync_feedback(self):
-        self.extruder_direction_timer = self.reactor.register_timer(self._update_sync_direction)
+        self.sync_feedback_timer = self.reactor.register_timer(self._update_sync_feedback)
 
     # Gear/Extruder sync feedback state should be -1 (expanded) and 1 (compressed)
     # or can be a proportional float value between -1.0 and 1.0
@@ -2282,39 +2294,44 @@ class Mmu:
     def _enable_sync_feedback(self):
         if self.sync_feedback_operational: return
         self.sync_feedback_operational = True
-        self.sync_feedback_multiplier = 1.
-        self.reactor.update_timer(self.extruder_direction_timer, self.reactor.NOW)
+        self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
         self._update_sync_multiplier()
         
     def _disable_sync_feedback(self):
         if not self.sync_feedback_operational: return
-        self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) if self.gate_selected >= 0 else 1.)
-        self.reactor.update_timer(self.extruder_direction_timer, self.reactor.NEVER)
+        self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
         self.sync_feedback_operational = False
+        self.sync_feedback_last_direction = 0
+        self._log_debug("Reset sync multiplier")
+        self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
 
-    def _update_sync_direction(self, eventtime):
+    def _update_sync_feedback(self, eventtime):
         estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time(eventtime)
         extruder = self.toolhead.get_extruder()
         pos = extruder.find_past_position(estimated_print_time)
-        past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIME_DIFF))
+        past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIMERANGE))
         prev_direction = self.sync_feedback_last_direction
-        self.sync_feedback_last_direction = self.DIRECTION_LOAD if (pos >= past_pos) else self.DIRECTION_UNLOAD
+        self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
         if self.sync_feedback_last_direction != prev_direction:
-            self._log_debug("New sync direction: %s" % 'extrude' if self.sync_feedback_last_direction == self.DIRECTION_LOAD else 'retract')
+            d = self.sync_feedback_last_direction
+            self._log_debug("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
             self._update_sync_multiplier()
-        return eventtime + self.SYNC_DIRECTION_UPDATE_INTERVAL
+        return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
     def _update_sync_multiplier(self):
         if not self.sync_feedback_enable: return
-        go_slower = lambda s, d: abs(s - d) < abs(s + d)
-        if go_slower(self.sync_feedback_last_state, self.sync_feedback_last_direction):
-            # Compressed when extruding or expanded when retracting so increase the rotation distance of gear stepper to slow down
-            multiplier = self.sync_multiplier_high * abs(self.sync_feedback_last_state)
+        if self.sync_feedback_last_direction == 0:
+            multiplier = 1.
         else:
-            # Compressed when retracting or expanded when extruding so decrease the rotation distance of gear stepper to speed up
-            multiplier = self.sync_multiplier_low * abs(self.sync_feedback_last_state)
-        self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) / multiplier)
+            go_slower = lambda s, d: abs(s - d) < abs(s + d)
+            if go_slower(self.sync_feedback_last_state, self.sync_feedback_last_direction):
+                # Expanded when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
+                multiplier = 1. - (abs(1. - self.sync_multiplier_low) * abs(self.sync_feedback_last_state))
+            else:
+                # Compressed when extruding or expanded when retracting, so increase the rotation distance of gear stepper to slow it down
+                multiplier = 1. + (abs(1. - self.sync_multiplier_high) * abs(self.sync_feedback_last_state))
         self._log_debug("Updated sync multiplier: %.4f" % multiplier)
+        self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) / multiplier)
 
     def _is_printer_printing(self):
         eventtime = self.reactor.monotonic()
@@ -4774,13 +4791,11 @@ class Mmu:
                 if self.tool_selected >= 0 and self.tool_to_gate_map[self.tool_selected] == gate:
                     pass
                 else:
-                    tool_found = False
                     for tool in range(len(self.tool_to_gate_map)):
                         if self.tool_to_gate_map[tool] == gate:
                             self._select_tool(tool)
-                            tool_found = True
                             break
-                    if not tool_found:
+                    else:
                         self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
         except MmuError as ee:
             self._mmu_pause(str(ee))

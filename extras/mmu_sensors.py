@@ -173,11 +173,19 @@ class MmuSensors:
             config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
-        # Setup motor syncing feedback button...
-        switch_pin = config.get('sync_feedback_switch_pin', None)
+        # Setup motor syncing feedback buttons...
+        self.has_tension_switch = self.has_compression_switch = False
+        switch_pin = config.get('sync_feedback_tension_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             buttons = self.printer.load_object(config, "buttons")
-            buttons.register_buttons([switch_pin], self._sync_switch_callback)
+            buttons.register_buttons([switch_pin], self._sync_tension_callback)
+            self.has_tension_switch = True
+
+        switch_pin = config.get('sync_feedback_compression_pin', None)
+        if switch_pin is not None and not self._is_empty_pin(switch_pin):
+            buttons = self.printer.load_object(config, "buttons")
+            buttons.register_buttons([switch_pin], self._sync_compression_callback)
+            self.has_compression_switch = True
 
     def _is_empty_pin(self, switch_pin):
         if switch_pin == '': return True
@@ -187,9 +195,18 @@ class MmuSensors:
         real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
         return real_pin == ''
 
-    def _sync_switch_callback(self, eventtime, state):
-        # Feedback state should be between -1 (expanded) and 1 (compressed)
-        self.printer.send_event("mmu:sync_feedback", eventtime, state * 2 - 1)
+    # Feedback state should be between -1 (expanded) and 1 (compressed)
+    def _sync_tension_callback(self, eventtime, state):
+        if not self.has_compression_switch:
+            self.printer.send_event("mmu:sync_feedback", eventtime, -(state * 2 - 1))
+        elif state:
+            self.printer.send_event("mmu:sync_feedback", eventtime, -1)
+
+    def _sync_compression_callback(self, eventtime, state):
+        if not self.has_tension_switch:
+            self.printer.send_event("mmu:sync_feedback", eventtime, state * 2 - 1)
+        elif state:
+            self.printer.send_event("mmu:sync_feedback", eventtime, 1)
 
 def load_config(config):
     return MmuSensors(config)

@@ -116,7 +116,8 @@ PIN[MMB,pre_gate_11_pin]="";
 PIN[toolhead_sensor_pin]=""
 PIN[extruder_sensor_pin]=""
 PIN[gantry_servo_pin]=""
-PIN[sync_feedback_switch_pin]=""
+PIN[sync_feedback_tension_pin]=""
+PIN[sync_feedback_compression_pin]=""
 
 # Screen Colors
 OFF='\033[0m'             # Text Reset
