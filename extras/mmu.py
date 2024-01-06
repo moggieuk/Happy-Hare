@@ -3526,6 +3526,7 @@ class Mmu:
                 if not self.sensors[self.ENDSTOP_TOOLHEAD].runout_helper.filament_present:
                     self._log_info("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload")
                     fhomed = True # Assumption
+                    validate = False
                 else:
                     hlength = max(0, self.toolhead_sensor_to_nozzle - park_pos) + self.toolhead_unload_safety_margin
                     self._log_debug("Reverse homing up to %.1fmm to toolhead sensor%s" % (hlength, (" (synced)" if synced else "")))
@@ -3567,13 +3568,16 @@ class Mmu:
 
                 # Encoder based validation test if it has high chance of being useful
                 # Not performed for slicer tip forming because everybody ejects the filament!
+                # TODO This is triping many folks up because they have poor tip forming logic so just log error and continue
                 if validate and self._can_use_encoder() and length > self.encoder_move_step_size:
                     self._log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
                     if measured < self.encoder_min:
-                        raise MmuError("Encoder not sensing any movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
+                        self._log_error("Encoder not sensing any movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
+                        #raise MmuError("Encoder not sensing any movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
                     elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
                         self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                        raise MmuError("Encoder not sensing sufficent movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
+                        self._log_error("Encoder not sensing sufficent movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
+                        #raise MmuError("Encoder not sensing sufficent movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
 
             self._random_failure()
             self._movequeues_wait_moves()
@@ -4539,7 +4543,7 @@ class Mmu:
         if self.gate_status[gate] == self.GATE_EMPTY:
             if self.enable_endless_spool and self.endless_spool_on_load:
                 self._log_info("Gate #%d is empty!" % gate)
-                next_gate, checked_gates = self._get_next_endless_spool_gate(gate)
+                next_gate, checked_gates = self._get_next_endless_spool_gate(tool, gate)
                 if next_gate == -1:
                     raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
                 self._log_info("Remapping T%d to gate #%d" % (tool, next_gate))
@@ -5360,7 +5364,7 @@ class Mmu:
 
             if self.enable_endless_spool:
                 self._set_gate_status(self.gate_selected, self.GATE_EMPTY) # Indicate current gate is empty
-                next_gate, checked_gates = self._get_next_endless_spool_gate(self.gate_selected)
+                next_gate, checked_gates = self._get_next_endless_spool_gate(self.tool_selected, self.gate_selected)
 
                 if next_gate == -1:
                     raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
@@ -5389,9 +5393,9 @@ class Mmu:
             else:
                 raise MmuError("EndlessSpool mode is off - manual intervention is required")
 
-    def _get_next_endless_spool_gate(self, gate):
+    def _get_next_endless_spool_gate(self, tool, gate):
         group = self.endless_spool_groups[gate]
-        self._log_info("EndlessSpool checking for additional gates in Group_%d..." % group)
+        self._log_info("EndlessSpool checking for additional gates in Group_%d for T%d..." % (group, tool))
         next_gate = -1
         checked_gates = []
         for i in range(self.mmu_num_gates - 1):
@@ -5451,7 +5455,7 @@ class Mmu:
                 msg += "%s-> Gate #%d%s" % (("T%d " % i)[:3], gate, "(" + self._get_filament_char(self.gate_status[gate], show_source=False) + ")")
                 if self.enable_endless_spool:
                     group = self.endless_spool_groups[gate]
-                    es = " Group_%s: " % group
+                    es = " in Group_%s: " % group
                     prefix = ""
                     starting_gate = self.tool_to_gate_map[i]
                     for j in range(num_tools): # Gates
@@ -5514,7 +5518,7 @@ class Mmu:
             }[self.gate_status[g]]
             if detail:
                 msg += "\nGate #%d%s" % (g, "(" + self._get_filament_char(self.gate_status[g], show_source=False) + ")")
-                tool_str = " -> "
+                tool_str = " supporting "
                 prefix = ""
                 for t in range(self.mmu_num_gates):
                     if self.tool_to_gate_map[t] == g:
