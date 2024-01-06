@@ -137,9 +137,9 @@ Now repeat the exercise with the gear stepper:
 ```yml
 MMU_MOTORS_OFF
   # remove any filament from your MMU
-MMU_TEST_MOVE MOVE=100
+MMU_TEST_MOVE MOVE=100 SPEED=50
   # verify that the gear stepper would pull filament towards the extruder
-MMU_TEST_MOVE MOVE=-100
+MMU_TEST_MOVE MOVE=-100 SPEED=50
   # verify that the gear stepper is push filament away from the extruder
 ```
 If the gear stepper doesn't move or moves the wrong way open up `mmu_hardware.cfg`, find the section `[stepper_mmu_gear]`:<br>
