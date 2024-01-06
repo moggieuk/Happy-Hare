@@ -549,6 +549,7 @@ class Mmu:
         self.gcode.register_command('MMU_RESET', self.cmd_MMU_RESET, desc = self.cmd_MMU_RESET_help)
         self.gcode.register_command('MMU_STATS', self.cmd_MMU_STATS, desc = self.cmd_MMU_STATS_help)
         self.gcode.register_command('MMU_STATUS', self.cmd_MMU_STATUS, desc = self.cmd_MMU_STATUS_help)
+        self.gcode.register_command('MMU_SENSORS', self.cmd_MMU_SENSORS, desc = self.cmd_MMU_SENSORS_help)
 
         # Calibration
         self.gcode.register_command('MMU_CALIBRATE_GEAR', self.cmd_MMU_CALIBRATE_GEAR, desc=self.cmd_MMU_CALIBRATE_GEAR_help)
@@ -714,6 +715,7 @@ class Mmu:
     def handle_connect(self):
         self._setup_logging()
         self.toolhead = self.printer.lookup_object('toolhead')
+        self.mmu_sensors = self.printer.lookup_object('mmu_sensors', None)
 
         # Sanity check extruder name
         extruder = self.printer.lookup_object(self.extruder_name, None)
@@ -1162,7 +1164,7 @@ class Mmu:
 
     def _get_sync_feedback_string(self):
         if self.sync_feedback_enable and self.sync_feedback_operational:
-            return 'compressed' if self.sync_feedback_last_state > 0 else 'expanded' if self.sync_feedback_last_state < 0 else 'neutral'
+            return 'compressed' if self.sync_feedback_last_state > 0.1 else 'expanded' if self.sync_feedback_last_state < -0.1 else 'neutral'
         return "disabled"
 
     def get_status(self, eventtime):
@@ -1500,6 +1502,8 @@ class Mmu:
         msg += " on gate %s" % self._selected_gate_string()
         msg += ". Toolhead position saved" if self.saved_toolhead_position else ""
         msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
+        if self.mmu_toolhead.is_gear_synced_to_extruder():
+            msg += "\nSync feedback indicates filament in bowden is: %s" % self._get_sync_feedback_string().upper()
 
         if config:
             msg += "\n\nLoad Sequence"
@@ -1568,9 +1572,9 @@ class Mmu:
             msg += ", Statistics %d(%s)" % (self.log_statistics, "ON" if self.log_statistics else "OFF")
 
         if not detail:
-            msg += "\nFor details on TTG and endless spool groups use 'MMU_STATUS DETAIL=1'"
+            msg += "\n\nFor details on TTG and endless spool groups add 'DETAIL=1'"
             if not config:
-                msg += "\nFor configuration summary use 'MMU_STATUS SHOWCONFIG=1'"
+                msg += ", for configuration add 'SHOWCONFIG=1'"
 
         msg += "\n\n%s" % self._tool_to_gate_map_to_human_string(summary=True)
         msg += "\n\n%s" % self._state_to_human_string()
@@ -1580,6 +1584,19 @@ class Mmu:
             msg += "\n%s" % self._tool_to_gate_map_to_human_string()
 
         self._log_always(msg)
+
+    cmd_MMU_SENSORS_help = "Query state of sensors fitted to mmu"
+    def cmd_MMU_SENSORS(self, gcmd):
+        if self._check_is_disabled(): return
+        eventtime = self.reactor.monotonic()
+        if self.mmu_sensors:
+            trg_string = lambda s : 'TRIGGERED' if s == 1 else 'open' if s == 0 else 'not available'
+            for sensor in ['sync_feedback_tension_switch', 'sync_feedback_compression_switch']:
+                state = self.mmu_sensors.get_status(eventtime)[sensor]
+                if state != -1:
+                    self._log_always("%s: %s" % (sensor, trg_string(state)))
+        else:
+            self._log_always("No MMU sensors configured")
 
 
 #############################
@@ -2286,9 +2303,10 @@ class Mmu:
     # or can be a proportional float value between -1.0 and 1.0
     def _handle_sync_feedback(self, eventtime, state):
         self._log_trace("Got sync force feedback update: eventtime=%s, state=%s" % (eventtime, state))
-        self.sync_feedback_last_state = state
-        if self.sync_feedback_enable and self.sync_feedback_operational:
-            self._update_sync_multiplier()
+        if abs(state) <= 1:
+            self.sync_feedback_last_state = float(state)
+            if self.sync_feedback_enable and self.sync_feedback_operational:
+                self._update_sync_multiplier()
 
     def _enable_sync_feedback(self):
         if self.sync_feedback_operational: return
@@ -2829,7 +2847,7 @@ class Mmu:
         if wait:
             if abs(new_target_temp - current_temp) > 1:
                 with self._wrap_action(self.ACTION_HEATING):
-                    self._log_info("Waiting for extruder to reach target (%s) temperature (%.1f)" % (source, new_target_temp))
+                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f°C" % (source, new_target_temp))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _selected_tool_string(self):
@@ -3567,17 +3585,20 @@ class Mmu:
                 self._set_filament_position(-self.toolhead_extruder_to_nozzle)
 
                 # Encoder based validation test if it has high chance of being useful
-                # Not performed for slicer tip forming because everybody ejects the filament!
-                # TODO This is triping many folks up because they have poor tip forming logic so just log error and continue
+                # NOTE: This check which use to raise MmuError() is triping many folks up because they have poor tip forming logic
+                #       so just log error and continue. This disguises the root cause problem but will make folks happier
+                #       Not performed for slicer tip forming (validate=True) because everybody is ejecting the filament!
                 if validate and self._can_use_encoder() and length > self.encoder_move_step_size:
                     self._log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
+                    msg = None
                     if measured < self.encoder_min:
-                        self._log_error("Encoder not sensing any movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
-                        #raise MmuError("Encoder not sensing any movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
+                        msg = "any"
                     elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
                         self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                        self._log_error("Encoder not sensing sufficent movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
-                        #raise MmuError("Encoder not sensing sufficent movement: Concluding filament either stuck in the extruder or tip forming erroneously completely ejected filament")
+                        msg = "suffient"
+                    if msg:
+                        self._log_error("Encoder not sensing %s movement:\nConcluding filament either stuck in the extruder or tip forming erroneously completely ejected filament" % msg)
+                        self._log_info("Will attempt to continue...")
 
             self._random_failure()
             self._movequeues_wait_moves()

@@ -175,17 +175,21 @@ class MmuSensors:
 
         # Setup motor syncing feedback buttons...
         self.has_tension_switch = self.has_compression_switch = False
+        self.tension_switch_state = self.compression_switch_state = -1
+
         switch_pin = config.get('sync_feedback_tension_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             buttons = self.printer.load_object(config, "buttons")
             buttons.register_buttons([switch_pin], self._sync_tension_callback)
             self.has_tension_switch = True
+            self.tension_switch_state = 0
 
         switch_pin = config.get('sync_feedback_compression_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             buttons = self.printer.load_object(config, "buttons")
             buttons.register_buttons([switch_pin], self._sync_compression_callback)
             self.has_compression_switch = True
+            self.compression_switch_state = 0
 
     def _is_empty_pin(self, switch_pin):
         if switch_pin == '': return True
@@ -197,16 +201,24 @@ class MmuSensors:
 
     # Feedback state should be between -1 (expanded) and 1 (compressed)
     def _sync_tension_callback(self, eventtime, state):
+        self.tension_switch_state = state
         if not self.has_compression_switch:
             self.printer.send_event("mmu:sync_feedback", eventtime, -(state * 2 - 1))
         elif state:
             self.printer.send_event("mmu:sync_feedback", eventtime, -1)
 
     def _sync_compression_callback(self, eventtime, state):
+        self.compression_switch_state = state
         if not self.has_tension_switch:
             self.printer.send_event("mmu:sync_feedback", eventtime, state * 2 - 1)
         elif state:
             self.printer.send_event("mmu:sync_feedback", eventtime, 1)
+
+    def get_status(self, eventtime):
+        return {
+                'sync_feedback_tension_switch': self.tension_switch_state,
+                'sync_feedback_compression_switch': self.compression_switch_state,
+        }
 
 def load_config(config):
     return MmuSensors(config)
