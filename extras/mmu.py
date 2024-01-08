@@ -303,7 +303,7 @@ class Mmu:
             self.cad_gate0_pos = 0.5
             self.cad_gate_width = 17.
             self.cad_bypass_offset = 0 # Doesn't have bypass
-            self.cad_last_gate_offset = 1. # TODO this is a guess
+            self.cad_last_gate_offset = 0. # This can vary a lot depending on the length of the rail
 
             self.gate_parking_distance = 17. # Using Gate switch (had user reports from 15 - 17.5)
             self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
@@ -314,7 +314,7 @@ class Mmu:
             #            would need to be set and `gate_parking_distance` set back to original
             if "e" in self.mmu_version_string:
                 self.gate_parking_distance = 39. # Assume using encoder if we have it
-                self.gate_endstop_to_encoder = 15. # TODO this is a guess
+                self.gate_endstop_to_encoder = 25.
 
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure `cad` dimensions (see doc)")
