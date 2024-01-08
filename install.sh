@@ -328,23 +328,23 @@ upgrade_led_effects() {
                 s/^/#/; \
                 s/{mmu_num_gates}/${mmu_num_gates}/; \
                 s/{mmu_num_leds}/${mmu_num_leds}/; \
-            " > "${hardware_cfg}.tmp"
+            " > "${hardware_cfg}.add"
 
     if [ "${found_led_effects}" -ne 0 ]; then
-        # PAUL TODO
-        #if [ "$PREVIOUS_VERSION" -lt 2.4 ]; then
-            #cat "${hardware_cfg}" | sed -e "\
-            #        /${LED_SECTION}/,$d \
-            #            " > ${hardware_cfg}.tmp && mv ${hardware_cfg}.tmp ${hardware_cfg}
-            ## Upgrade led config section
-            #echo -e "${INFO}Updating LED control section in mmu_hardware.cfg..."
-            #cat "${hardware_cfg}.tmp" >> "${hardware_cfg}" && rm "${hardware_cfg}.tmp"
-        #else:
-        #    rm "${hardware_cfg}.tmp"
+        if echo "$FROM_VERSION 2.4" | awk '{exit !(($1 < $2))}'; then
+            cat "${hardware_cfg}" | sed -e "\
+                    /${LED_SECTION}/,\$ d \
+                        " > ${hardware_cfg}.tmp && mv ${hardware_cfg}.tmp ${hardware_cfg}
+            # Upgrade led config section
+            echo -e "${INFO}Updating LED control section in mmu_hardware.cfg..."
+            cat "${hardware_cfg}.add" >> "${hardware_cfg}" && rm "${hardware_cfg}.add"
+        else
+            rm "${hardware_cfg}.add"
+        fi
     else
         # Add new led config section
         echo -e "${INFO}Adding new LED control section (commented out) to mmu_hardware.cfg..."
-        cat "${hardware_cfg}.tmp" >> "${hardware_cfg}" && rm "${hardware_cfg}.tmp"
+        cat "${hardware_cfg}.add" >> "${hardware_cfg}" && rm "${hardware_cfg}.add"
     fi
 }
 
@@ -619,6 +619,10 @@ copy_config_files() {
         (cd "${mmu_dir}"; cp -r * "${next_mmu_dir}")
     fi
 
+    if [ ! "${_param_mmu_num_gates}" == "" ]; then
+        mmu_num_gates=${_param_mmu_num_gates}
+    fi 
+
     for file in `cd ${SRCDIR}/config/base ; ls *.cfg`; do
         src=${SRCDIR}/config/base/${file}
         dest=${mmu_dir}/base/${file}
@@ -737,11 +741,7 @@ copy_config_files() {
         # Software macros --------------------------------------------------------------------
         elif [ "${file}" == "mmu_software.cfg" ]; then
             tx_macros=""
-# PAUL check
-#            if [ "${mmu_num_gates}" == "{mmu_num_gates}" ]; then
-#                mmu_num_gates=12
-#	    fi 
-            for (( i=0; i<=$(expr $_param_mmu_num_gates - 1); i++ ))
+            for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
             do
                 tx_macros+="[gcode_macro T${i}]\n"
                 tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
@@ -1460,6 +1460,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
 
     FROM_VERSION=${_param_happy_hare_version}
     # Important to overwrite this
+    echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
     _param_happy_hare_version=${VERSION}
 
     copy_config_files
