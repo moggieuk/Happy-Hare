@@ -203,16 +203,16 @@ class MmuSensors:
     def _sync_tension_callback(self, eventtime, state):
         self.tension_switch_state = state
         if not self.has_compression_switch:
-            self.printer.send_event("mmu:sync_feedback", eventtime, -(state * 2 - 1))
-        elif state:
-            self.printer.send_event("mmu:sync_feedback", eventtime, -1)
+            self.printer.send_event("mmu:sync_feedback", eventtime, -(state * 2 - 1)) # -1 or 1
+        else:
+            self.printer.send_event("mmu:sync_feedback", eventtime, -state) # -1 or 0 (neutral)
 
     def _sync_compression_callback(self, eventtime, state):
         self.compression_switch_state = state
         if not self.has_tension_switch:
-            self.printer.send_event("mmu:sync_feedback", eventtime, state * 2 - 1)
-        elif state:
-            self.printer.send_event("mmu:sync_feedback", eventtime, 1)
+            self.printer.send_event("mmu:sync_feedback", eventtime, state * 2 - 1) # 1 or -1
+        else:
+            self.printer.send_event("mmu:sync_feedback", eventtime, state) # 1 or 0 (neutral)
 
     def get_status(self, eventtime):
         return {

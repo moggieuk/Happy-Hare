@@ -698,7 +698,14 @@ sync_feedback_enable: 1         # 0 = Turn off (even with fitted sensor), 1 = Tu
 sync_multiplier_high: 1.5       # Maximum factor to apply to gear stepper `rotation_distance`
 sync_multipler_low: 0.95        # Minimum factor to apply
 ```
-This feature can be disabled even if hardware is configure by setting the `sync_feedback_enable` parameter (during print you can use `MMU_TEST_CONFIG sync_feedback_enable=[0|1]``
+This feature can be disabled even if hardware is configure by setting the `sync_feedback_enable` parameter (during print you can use `MMU_TEST_CONFIG sync_feedback_enable=[0|1]`
+
+The current state of the feedback will be show in `MMU_STATUS` if active, but you can also get the raw state of the sensor switches with `MMU_SENSORS`
+```
+MMU_SENSORS
+sync_feedback_tension_switch: open
+sync_feedback_compression_switch: TRIGGERED
+```
 
 </details>
 

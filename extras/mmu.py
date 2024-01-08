@@ -16,7 +16,7 @@ import logging, logging.handlers, threading, queue, time, contextlib, math, os.p
 from random import randint
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
-from extras.mmu_led_effect import MmuLedEffect
+from extras.mmu_leds import MmuLeds
 import chelper, ast
 
 # Forward all messages through a queue (polled by background thread)
@@ -231,7 +231,7 @@ class Mmu:
         self.calibrated_bowden_length = -1
         self.ref_gear_rotation_distance = 1.
         self.encoder_force_validation = False
-        self.sync_feedback_last_state = 0.
+        self.sync_feedback_last_state = 0. # Neutral
         self.sync_feedback_last_direction = 0 # Extruder not moving
         self.sync_feedback_operational = False
         self.w3c_colors = dict(self.W3C_COLORS)
@@ -643,6 +643,7 @@ class Mmu:
 
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
+        self.has_leds = False
 
         # Selector and Gear h/w setup ------
         section = self.SELECTOR_STEPPER_CONFIG
@@ -898,12 +899,33 @@ class Mmu:
         except Exception as e:
             self._log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
-        # Ensure that the control macro knows the index of the first LED in the strip
-        first = MmuLedEffect.first_led_index or 1
-        try:
-            self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_SET_LED VARIABLE=first_led_index VALUE=%d" % first)
-        except Exception as e:
-            pass # Probably just means the macro is missing
+        # Ensure that the LED control macro knows the indices of the segments of the LED chain and other essential data
+        led_chains = MmuLeds.chains
+        gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
+        if gcode_macro:
+            try:
+                led_vars = {}
+                if led_chains:
+                    led_vars['led_enable'] = 1
+                    exit = led_chains['exit']
+                    led_vars['exit_first_led_index'] = exit[0] if exit else -1
+                    led_vars['exit_reverse_order'] = int(exit[0] > exit[-1]) if exit else 0
+                    entry = led_chains['entry']
+                    led_vars['entry_first_led_index'] = entry[0] if entry else -1
+                    led_vars['entry_reverse_order'] = int(entry[0] > entry[-1]) if entry else 0
+                    led_vars['status_led_index'] = led_chains['status'][0] if led_chains['status'] else -1
+                    led_vars['led_strip'] = MmuLeds.led_strip
+                    self.has_leds = True
+                    self._log_debug("LEDs support enabled")
+                else:
+                    led_vars['led_enable'] = 0
+                    self._log_debug("LEDs support is not configured")
+                gcode_macro.variables.update(led_vars)
+            except Exception as e:
+                # Probably/hopefully just means the macro is missing
+                self._log_error('Error setting up the _MMU_SET_LED macro: %s' % str(e))
+        else:
+            self._log_error("LEDs macro _MMU_SET_LED not available")
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
@@ -2796,6 +2818,12 @@ class Mmu:
             return True
         return False
 
+    def _check_has_leds(self):
+        if not self.has_leds:
+            self._log_error("No LEDs configured on MMU")
+            return True
+        return False
+
     def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
         extruder = self.printer.lookup_object(self.extruder_name)
         current_temp = extruder.get_status(0)['temperature']
@@ -2985,24 +3013,41 @@ class Mmu:
 
     cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
     def cmd_MMU_LED(self, gcmd):
+        if self._check_has_leds(): return
         if self._check_is_disabled(): return
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-        if gcode_macro is not None:
-            variables = gcode_macro.variables
-            led_enable = gcmd.get_int('ENABLE', int(variables['led_enable']), minval=0, maxval=1)
-            default_gate_effect = gcmd.get('EFFECT', variables['default_gate_effect'])
-            default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
+        if gcode_macro:
+            try:
+                variables = gcode_macro.variables
+                current_led_enable = int(variables['led_enable'])
+                led_enable = gcmd.get_int('ENABLE', current_led_enable, minval=0, maxval=1)
+                default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
+                default_entry_effect = gcmd.get('ENTRY_EFFECT', variables['default_entry_effect'])
+                default_status_effect = gcmd.get('STATUS_EFFECT', variables['default_status_effect'])
 
-            if variables['led_enable'] and not led_enable:
-                # Enabled to disabled
-                self._wrap_gcode_command("_MMU_SET_LED EFFECT=off EXIT_EFFECT=off")
-                gcode_macro.variables.update({'led_enable':led_enable, 'default_gate_effect':default_gate_effect, 'default_exit_effect':default_exit_effect})
-            else:
-                gcode_macro.variables.update({'led_enable':led_enable, 'default_gate_effect':default_gate_effect, 'default_exit_effect':default_exit_effect})
-                self._wrap_gcode_command("_MMU_SET_LED EFFECT=default EXIT_EFFECT=default")
+                led_vars = {}
+                led_vars['led_enable'] = led_enable
+                led_vars['default_exit_effect'] = default_exit_effect
+                led_vars['default_entry_effect'] = default_entry_effect
+                led_vars['default_status_effect'] = default_status_effect
+                if current_led_enable and not led_enable:
+                    # Enabled to disabled
+                    self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off")
+                    gcode_macro.variables.update(led_vars)
+                else:
+                    gcode_macro.variables.update(led_vars)
+                    self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default")
 
-            self._log_always("LEDs are %s\nDefault gate effect: '%s'\nDefault exit effect: `%s`" % ("enabled" if led_enable else "disabled", default_gate_effect, default_exit_effect))
-            self._log_always("ENABLE=[0|1] EFFECT=[off|gate_status|filament_color] EXIT_EFFECT=[off|on|filament_color]")
+                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled != -1 else "Unavailable"
+                msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
+                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, variables['exit_first_led_index'])
+                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, variables['entry_first_led_index'])
+                msg += "Default status effect: %s\n" % effect_string(default_status_effect, variables['status_led_index'])
+                msg += "\nOptions:\nENABLE=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color]\nENTRY_EFFECT=[off|gate_status|filament_color]\nSTATUS_EFFECT=[off|on|filament_color]"
+                self._log_always(msg)
+            except Exception as e:
+                # Probably/hopefully just means the macro is missing or been messed with
+                self._log_error('Error communicating with the _MMU_SET_LED macro: %s' % str(e))
         else:
             self._log_error("LEDs not available")
 
@@ -4222,7 +4267,7 @@ class Mmu:
                     init_pos = pos[1]
                     pos[1] += dist
                     got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
-                    for attempt in range(2):  # HACK: We can repeat because homing move
+                    for attempt in range(3):  # HACK: We can repeat because homing move
                         try:
                             #init_pos = pos[1]
                             #pos[1] += dist

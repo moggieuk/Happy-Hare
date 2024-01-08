@@ -323,14 +323,25 @@ upgrade_led_effects() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
     found_led_effects=$(egrep -c "${LED_SECTION}" ${hardware_cfg} || true)
 
-    if [ "${found_led_effects}" -eq 0 ]; then
-        # Form new section ready for insertion at end of existing mmu_hardware.cfg
-        sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
-                    s/^/#/; \
-                    s/{mmu_num_gates}/${mmu_num_gates}/; \
-                    s/{mmu_num_leds}/${mmu_num_leds}/; \
-                " > "${hardware_cfg}.tmp"
+    # Form new section ready for insertion at end of existing mmu_hardware.cfg
+    sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
+                s/^/#/; \
+                s/{mmu_num_gates}/${mmu_num_gates}/; \
+                s/{mmu_num_leds}/${mmu_num_leds}/; \
+            " > "${hardware_cfg}.tmp"
 
+    if [ "${found_led_effects}" -ne 0 ]; then
+        # PAUL TODO
+        #if [ "$PREVIOUS_VERSION" -lt 2.4 ]; then
+            #cat "${hardware_cfg}" | sed -e "\
+            #        /${LED_SECTION}/,$d \
+            #            " > ${hardware_cfg}.tmp && mv ${hardware_cfg}.tmp ${hardware_cfg}
+            ## Upgrade led config section
+            #echo -e "${INFO}Updating LED control section in mmu_hardware.cfg..."
+            #cat "${hardware_cfg}.tmp" >> "${hardware_cfg}" && rm "${hardware_cfg}.tmp"
+        #else:
+        #    rm "${hardware_cfg}.tmp"
+    else
         # Add new led config section
         echo -e "${INFO}Adding new LED control section (commented out) to mmu_hardware.cfg..."
         cat "${hardware_cfg}.tmp" >> "${hardware_cfg}" && rm "${hardware_cfg}.tmp"
@@ -726,10 +737,11 @@ copy_config_files() {
         # Software macros --------------------------------------------------------------------
         elif [ "${file}" == "mmu_software.cfg" ]; then
             tx_macros=""
-            if [ "${mmu_num_gates}" == "{mmu_num_gates}" ]; then
-                mmu_num_gates=12
-	    fi 
-            for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
+# PAUL check
+#            if [ "${mmu_num_gates}" == "{mmu_num_gates}" ]; then
+#                mmu_num_gates=12
+#	    fi 
+            for (( i=0; i<=$(expr $_param_mmu_num_gates - 1); i++ ))
             do
                 tx_macros+="[gcode_macro T${i}]\n"
                 tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
@@ -1096,7 +1108,7 @@ questionaire() {
             ;;
     esac
 
-    mmu_num_gates=8
+    mmu_num_gates=12
     echo
     echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
     while true; do
@@ -1168,6 +1180,13 @@ questionaire() {
         echo
         echo -e "${WARNING}    Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
         serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+    fi
+
+    # Avoid pin duplication
+    if [ "${HAS_ENCODER}" == "yes" ]; then
+        eval PIN[${brd_type},gate_sensor_pin]=""
+    else
+        eval PIN[${brd_type},encoder_pin]=""
     fi
 
     echo
@@ -1439,6 +1458,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
         read_previous_config # Update in memory parameters from previous install
     fi
 
+    FROM_VERSION=${_param_happy_hare_version}
     # Important to overwrite this
     _param_happy_hare_version=${VERSION}
 
