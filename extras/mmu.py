@@ -3120,6 +3120,7 @@ class Mmu:
         if self.calibrated_bowden_length > 0 and not self.calibrating:
             length = min(length, self.calibrated_bowden_length)
         full = length == self.calibrated_bowden_length
+        length += self._get_encoder_dead_space()
         length -= self.mmu_toolhead.get_position()[1]
 
         self._log_debug("Loading bowden tube")
@@ -3186,6 +3187,7 @@ class Mmu:
             length = min(length, self.calibrated_bowden_length)
         full = length == self.calibrated_bowden_length
         if full:
+            length += self._get_encoder_dead_space()
             length -= self.toolhead_unload_safety_margin # Extra precaution against sync unload and small unload buffer
         length -= self.gate_unload_buffer
 
