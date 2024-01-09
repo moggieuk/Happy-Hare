@@ -4802,7 +4802,7 @@ class Mmu:
         elif self.gate_spool_id[gate] >= 0:
             gate_ids.append((gate, self.gate_spool_id[gate]))
         if len(gate_ids) > 0:
-            self._log_debug("Updating following gate/spool_id pairs from spoolman: %s" % gate_ids)
+            self._log_debug("Requesting the following gate/spool_id pairs from Spoolman: %s" % gate_ids)
             try:
                 webhooks = self.printer.lookup_object('webhooks')
                 webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids)
@@ -5737,6 +5737,7 @@ class Mmu:
 
     cmd_MMU_GATE_MAP_help = "Display or define the type and color of filaments on each gate"
     def cmd_MMU_GATE_MAP(self, gcmd):
+        self._log_error("PAUL: GOT MMU_GATE_MAP")
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
@@ -5753,7 +5754,7 @@ class Mmu:
             self._reset_gate_map()
 
         elif not gate_map == {}:
-            self._log_debug("Recieved gate map update from Spoolman: %s" % gmapstr)
+            self._log_debug("Received gate map update from Spoolman: %s" % gmapstr)
             for gate, fil in gate_map.items():
                 if self.gate_spool_id[gate] == fil['spool_id']:
                     self.gate_material[gate] = fil['material']
