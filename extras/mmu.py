@@ -642,6 +642,8 @@ class Mmu:
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
 
+	self.printer.load_object(self.config, "mmu_sensors", None) ## Ensure mmu_sensors is loaded
+	    
         # Selector and Gear h/w setup ------
         section = self.SELECTOR_STEPPER_CONFIG
         if config.has_section(section):
