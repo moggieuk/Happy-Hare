@@ -2875,7 +2875,7 @@ class Mmu:
         if wait:
             if abs(new_target_temp - current_temp) > 1:
                 with self._wrap_action(self.ACTION_HEATING):
-                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f°C" % (source, new_target_temp))
+                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f" % (source, new_target_temp))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _selected_tool_string(self):
