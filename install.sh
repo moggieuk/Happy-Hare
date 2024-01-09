@@ -322,13 +322,23 @@ upgrade_mmu_sensors() {
 upgrade_led_effects() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
     found_led_effects=$(egrep -c "${LED_SECTION}" ${hardware_cfg} || true)
+    led_effects_enabled=$(egrep -c "^\[mmu_led_effect" ${hardware_cfg} || true)
 
     # Form new section ready for insertion at end of existing mmu_hardware.cfg
-    sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
-                s/^/#/; \
-                s/{mmu_num_gates}/${mmu_num_gates}/; \
-                s/{mmu_num_leds}/${mmu_num_leds}/; \
-            " > "${hardware_cfg}.add"
+    if [ "${led_effects_enabled}" -ne 0 ]; then
+        # Was enabled
+        sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
+                    s/{mmu_num_gates}/${mmu_num_gates}/; \
+                    s/{mmu_num_leds}/${mmu_num_leds}/g; \
+                " > "${hardware_cfg}.add"
+    else
+        # Was disabled
+        sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
+                    s/^/#/; \
+                    s/{mmu_num_gates}/${mmu_num_gates}/; \
+                    s/{mmu_num_leds}/${mmu_num_leds}/g; \
+                " > "${hardware_cfg}.add"
+    fi
 
     if [ "${found_led_effects}" -ne 0 ]; then
         if echo "$FROM_VERSION 2.4" | awk '{exit !(($1 < $2))}'; then
@@ -599,7 +609,8 @@ read_previous_config() {
         fi
     done
 
-    if [ ! "${mmu_num_gate}" == "{mmu_num_gate}" -a ! "${mmu_num_gate}" == "" ] 2>/dev/null; then
+    if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
+        mmu_num_gates=$_param_mmu_num_gates
         mmu_num_leds=$(expr $mmu_num_gates + 1)
     fi
 }
@@ -1291,6 +1302,8 @@ questionaire() {
                 enable_clog_detection=0
                 ;;
         esac
+    else
+        enable_clog_detection=0
     fi
 
     echo
@@ -1458,9 +1471,11 @@ if [ "$UNINSTALL" -eq 0 ]; then
         read_previous_config # Update in memory parameters from previous install
     fi
 
+    # Important to update version
     FROM_VERSION=${_param_happy_hare_version}
-    # Important to overwrite this
-    echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
+    if [ ! "${FROM_VERSION}" == "" ]; then
+        echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
+    fi
     _param_happy_hare_version=${VERSION}
 
     copy_config_files

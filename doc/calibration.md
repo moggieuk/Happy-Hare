@@ -152,7 +152,7 @@ If you don't have an encoder or have problems with collision detection at the ex
 
   > MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=650 MANUAL=1
 
-This will reverse homes to the gate and use Klipper's measurement of stepper movement. This is the method for MMU designs like Tradrack that don't have encoder but do have `mmu_gate` sensor.
+This will reverse homes to the gate and use Klipper's measurement of stepper movement. **This is the method for MMU designs like Tradrack that don't have encoder but do have `mmu_gate` sensor.**
 
 > [!NOTE]  
 > (i) This calibration assumes that the selector has been calibrated first.<br>
