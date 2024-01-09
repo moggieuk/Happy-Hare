@@ -470,6 +470,7 @@ class Mmu:
         self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
+        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10) # Workaround CANbus communication timeout error
 
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
 
@@ -4267,7 +4268,7 @@ class Mmu:
                     init_pos = pos[1]
                     pos[1] += dist
                     got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
-                    for attempt in range(3):  # HACK: We can repeat because homing move
+                    for attempt in range(self.canbus_comms_retries):  # HACK: We can repeat because homing move
                         try:
                             #init_pos = pos[1]
                             #pos[1] += dist
@@ -5737,7 +5738,6 @@ class Mmu:
 
     cmd_MMU_GATE_MAP_help = "Display or define the type and color of filaments on each gate"
     def cmd_MMU_GATE_MAP(self, gcmd):
-        self._log_error("PAUL: GOT MMU_GATE_MAP")
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
