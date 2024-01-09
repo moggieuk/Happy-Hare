@@ -97,15 +97,17 @@ class MmuServer:
             full_url = f"{spoolman.spoolman_url}/v1/spool/{spool_id}"
 
             response = await spoolman.http_client.request(method="GET", url=full_url, body=None)
-            response.raise_for_status()
+            if not response.has_error():
 
-            record = response.json()
-            filament = record["filament"]
+                record = response.json()
+                filament = record["filament"]
 
-            material = filament.get('material', '')[:6] # Keep material spec short for Klipperscreen
-            color_hex = filament.get('color_hex', '')[:6] # Strip alpha channel if it exists
+                material = filament.get('material', '')[:6] # Keep material spec short for Klipperscreen
+                color_hex = filament.get('color_hex', '')[:6] # Strip alpha channel if it exists
 
-            gate_dict[gate_id] = {'spool_id': spool_id, 'material': material, 'color': color_hex}
+                gate_dict[gate_id] = {'spool_id': spool_id, 'material': material, 'color': color_hex}
+            elif resonse.status_code() != 404:
+                response.raise_for_status()
         try:
             await kapis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" QUIET=1")
         except self.server.error as e:
