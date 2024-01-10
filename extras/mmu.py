@@ -470,7 +470,7 @@ class Mmu:
         self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
-        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10) # Workaround CANbus communication timeout error
+        self.canbus_comms_retries = config.getint('canbus_comms_retries', 2, minval=1, maxval=10) # Workaround CANbus communication timeout error
 
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
 
@@ -2872,7 +2872,7 @@ class Mmu:
 
         self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % new_target_temp)
 
-        # Optionally wait until temperature is stable or at minimum saftey temp so extruder can move
+        # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
         if wait:
             if abs(new_target_temp - current_temp) > 1:
                 with self._wrap_action(self.ACTION_HEATING):
@@ -3573,7 +3573,7 @@ class Mmu:
             self._set_filament_direction(self.DIRECTION_UNLOAD)
             self._ensure_safe_extruder_temperature(wait=False)
 
-            synced = (self._has_sensor(self.ENDSTOP_TOOLHEAD) or self._has_sensor(self.ENDSTOP_EXTRUDER)) and not extruder_only
+            synced = self.servo_state == self.SERVO_DOWN_STATE and not extruder_only
             if synced:
                 self._servo_down()
                 speed = self.extruder_sync_unload_speed
@@ -3601,34 +3601,37 @@ class Mmu:
                     raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % hlength)
 
             if self._has_sensor(self.ENDSTOP_EXTRUDER) and not extruder_only:
-                # We can continue synced reverse homing to this endstop to guarantee of clearance of the extruder
+                # Extruder exit movement leveraging extruder entry sensor
+                synced = True
+                self._servo_down()
+                speed = self.extruder_sync_unload_speed
+                motor = "gear+extruder"
+
                 if not self.sensors[self.ENDSTOP_EXTRUDER].runout_helper.filament_present:
                     self._log_info("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload")
                     fhomed = True # Assumption
-                    validate = False
                 else:
                     hlength = self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin
-                    self._log_debug("Reverse homing up to %.1fmm to extruder sensor (synced)" % hlength)
+                    self._log_debug("Reverse homing up to %.1fmm to extruder sensor (synced) to exit extruder" % hlength)
                     ts_actual,fhomed,_,_ = self._trace_filament_move("Reverse homing to extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.ENDSTOP_EXTRUDER)
 
                 if not fhomed:
-                    raise MmuError("Failed to reach extruder (entry) sensor after moving %.1fmm" % hlength)
+                    raise MmuError("Failed to reach extruder entry sensor after moving %.1fmm" % hlength)
                 else:
                     # We know exactly where end of filament is so true up
                     self._set_filament_position(-(self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder))
 
             else:
-                synced = False
-                self._servo_up()
-                speed = self.extruder_unload_speed
-                motor = "extruder"
-
+                # Regular extruder exit movement
                 length = max(0, self.toolhead_extruder_to_nozzle + self._get_filament_position()) + self.toolhead_unload_safety_margin
-                self._log_debug("Unloading last %.1fmm to exit the extruder..." % length)
+                self._log_debug("Unloading last %.1fmm to exit the extruder%s" % (length, " (synced)" if synced else ""))
                 _,_,measured,delta = self._trace_filament_move("Unloading extruder", -length, speed=speed, motor=motor, wait=True)
 
-                # Best guess of filament position is right at extruder entrance
-                self._set_filament_position(-self.toolhead_extruder_to_nozzle)
+                # Best guess of filament position is right at extruder entrance or just beyond if synced
+                if synced:
+                    self._set_filament_position(-(self.toolhead_extruder_to_nozzle + self.toolhead_unload_safety_margin))
+                else:
+                    self._set_filament_position(-self.toolhead_extruder_to_nozzle)
 
                 # Encoder based validation test if it has high chance of being useful
                 # NOTE: This check which use to raise MmuError() is triping many folks up because they have poor tip forming logic
@@ -5357,9 +5360,8 @@ class Mmu:
             msg += "\nbowden_allowable_load_delta = %d" % self.bowden_allowable_load_delta
             msg += "\nbowden_pre_unload_test = %d" % self.bowden_pre_unload_test
         msg += "\nextruder_force_homing = %d" % self.extruder_force_homing
-        if self._must_home_to_extruder():
-            msg += "\nextruder_homing_endstop = %s" % self.extruder_homing_endstop
-            msg += "\nextruder_homing_max = %.1f" % self.extruder_homing_max
+        msg += "\nextruder_homing_endstop = %s" % self.extruder_homing_endstop
+        msg += "\nextruder_homing_max = %.1f" % self.extruder_homing_max
         msg += "\ntoolhead_extruder_to_nozzle = %.1f" % self.toolhead_extruder_to_nozzle
         if self._has_sensor(self.ENDSTOP_TOOLHEAD):
             msg += "\ntoolhead_sensor_to_nozzle = %.1f" % self.toolhead_sensor_to_nozzle
