@@ -137,7 +137,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_TEST_MOVE` | Simple test move the MMU gear stepper | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` (defaults to min accel defined on steppers employed in move) Motor acceleration <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement |
   | `MMU_TEST_HOMING_MOVE` | Testing homing move of filament using multiple stepper combinations specifying endstop and driection of homing move | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` Motor accelaration (defaults to min accel defined on steppers employed in homing move) <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement. This is important for homing because the endstop must be on the commanded stepper <br>`ENDSTOP=..` Symbolic name of endstop to home to as defined in mmu_hardware.cfg. Must be defined on the primary stepper <br>`STOP_ON_ENDSTOP=[1\|-1]` (default 1) The direction of homing move. 1 is in the normal direction with endstop firing, -1 is in the reverse direction waiting for endstop to release. Note that virtual (touch) endstops can only be homed in a forward direction |
   | `MMU_TEST_CONFIG` | Dump / Change essential load/unload config options at runtime | Many. Best to run MMU_TEST_CONFIG without options to report all parameters than can be specified |
-  | `MMU_TEST_RUNOUT` | Invoke filament runout handler that will also trigger EndlessSpool if enabled and thus useful to validate your _MMU_ENDLESS_SPOOL\*\* macros | `FORCE_RUNOUT=0` optional parameter (defaults to `1`) that if set to `0` will cause HH to try to determine if a clog vs runout by also running a filament movement test |
+  | `MMU_TEST_RUNOUT` | Invoke filament runout handler that will also trigger EndlessSpool if enabled and thus useful to validate your load/unload sequence macros (define in `mmu_sequence.cfg`) | `FORCE_RUNOUT=0` optional parameter (defaults to `1`) that if set to `0` will cause HH to try to determine if a clog vs runout by also running a filament movement test |
 
 <br>
 
@@ -148,14 +148,14 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `_MMU_PRE_UNLOAD` | Called prior to unloading on toolchange | |
   | `_MMU_POST_FORM_TIP` | Called immediately after forming tip | |
   | `_MMU_POST_UNLOAD` | Called after unload is complete and filament is parked at the gate | |
-  | `_MMU_POST_LOAD` | Called subsequent to loading new filament on toolchange| |
-  | `_MMU_ENDLESS_SPOOL_PRE_UNLOAD` | Called prior to unloading the remains of the current filament | |
-  | `_MMU_ENDLESS_SPOOL_POST_LOAD` | Called subsequent to loading filament in the new gate in the sequence | |
-  | `_MMU_FORM_TIP_STANDALONE` | Called to create tip on filament when not in print (and under the control of the slicer). You tune this macro by modifying the defaults to the parameters | |
+  | `_MMU_PRE_LOAD` | Called prior to the loading of a new filament | |
+  | `_MMU_POST_LOAD` | Called subsequent to loading new filament | |
+  | `_MMU_FORM_TIP` | Called to create tip on filament (when not under the control of the slicer). You tune this macro by modifying the defaults to the parameters | |
+  | `_MMU_CUT_TIP` | Called to create tip by cutting the filament. You tune this macro by modifying the defaults to the parameters | |
   | `_MMU_ACTION_CHANGED` | Callback that is called everytime the `printer.ercf.action` is updated. Great for contolling LED lights, etc | |
   | `_MMU_PRINT_STATE_CHANGED` | Callback when the print job state changes and `printer.ercf.print_state` is updated. Great for contolling LED lights, etc | |
-  | `_MMU_LOAD_SEQUENCE` | Called when MMU is asked to load filament | `FILAMENT_POS` `LENGTH` `FULL` `HOME_EXTRUDER` `SKIP_EXTRUDER` `EXTRUDER_ONLY` |
-  | `_MMU_UNLOAD_SEQUENCE` | Called when MMU is asked to unload filament | `FILAMENT_POS` `LENGTH` `EXTRUDER_ONLY` `PARK_POS` |
+  | `_MMU_LOAD_SEQUENCE` | Advanced: Called when MMU is asked to load filament | `FILAMENT_POS` `LENGTH` `FULL` `HOME_EXTRUDER` `SKIP_EXTRUDER` `EXTRUDER_ONLY` |
+  | `_MMU_UNLOAD_SEQUENCE` | Advanced: Called when MMU is asked to unload filament | `FILAMENT_POS` `LENGTH` `EXTRUDER_ONLY` `PARK_POS` |
 
 <br>
 

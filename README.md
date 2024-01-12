@@ -772,13 +772,13 @@ This will emulate a filament runout and force the MMU to interpret it as a true 
 
 <ul>
   <li>Move the toolhead up a little (defined by 'z_hop_height_toolchange & z_hop_speed') to avoid blobs
-  <li>Call '_MMU_ENDLESS_SPOOL_PRE_UNLOAD' macro (defined in `mmu_software.cfg`).  Typically this where you would quickly move the toolhead to your parking area
+  <li>Call the unloading sequence macros (defined in `mmu_sequence.cfg`). Typically this where you would quickly move the toolhead to your parking area
   <li>Perform the toolchange and map the new gate in the sequence
-  <li>Call '_MMU_ENDLESS_SPOOL_POST_LOAD' macro.  Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where you picked it up in the PRE_UNLOAD macro
+  <li>Call the loading sequence macros (defined in `mmu_sequence.cfg`). Typically this is where you would clean the nozzle and quickly move your toolhead back to the position where it was before the toolchange
   <li>Move the toolhead back down the final amount and resume the print
 </ul>
 
-The default supplied \_PRE and \_POST macros call PAUSE/RESUME which is typically a similar operation and may be already sufficient. Note: A common problem is that a custom \_POST macro does not return the toolhead to previous position. The MMU will still handle this case but it will move very slowly because it will not be expecting large horizontal movement. To avoid this always return the toolhead to the starting position in your custom macros.
+The default supplied \_PRE and \_POST macros work well. Note: A common problem with user custom edits is that the \_MMU_POST_LOAD macro does not return the toolhead to previous position at the start of the toolchange. The MMU will still handle this case but it will move very slowly because it will not be expecting large horizontal movement. To avoid this always return the toolhead to the starting position in your custom macros.
 
 If you ever get confused you can reset the EndlessSpool groups to the default "one gate per tool" by running:
 
