@@ -66,7 +66,7 @@ Thank you!
 **[Hardware Configuration, Movement and Homing](/doc/hardware_config.md)**<br>
 **[Calibration Guide](/doc/calibration.md)**<br>
 **[Configuation Reference](/doc/configuration.md)**<br>
-**[Gcode Customization](/doc/gcode_customization.md)**<br>
+**[Happy Hare Macro Customization](/doc/gcode_customization.md)**<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)**<br>
 **[LED Support](/doc/leds.md)**<br>
 **[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>

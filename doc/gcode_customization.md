@@ -1,18 +1,19 @@
-# G-Code Customization (including Filament Loading and Unloading)
-Happy Hare provides a few defined "callbacks" that, if they exist, will be called at specific times.  They are designed for you to be able to extend the base functionality and to implement additional operations.  For example, if you want to control your printers LED's based on the action Happy Hare is performing you would modify `_MMU_ACTION_CHANGED`.
+# Happy Hare Macro Customization (including Filament Loading and Unloading)
+Happy Hare provides many "callback macros" that, if they exist, will be called at specific times.  They are designed for you to be able to extend the base functionality and to implement additional operations.  For example, if you want to control your printers LED's based on the action Happy Hare is performing you would modify `_MMU_ACTION_CHANGED`.
 
 All of the default handlers and examples are defined in either `mmu_software.cfg`, `mmu_sequence.cfg`, `mmu_form_tip.cfg` or `mmu_cut_tip.cfg` and serve as a starting point for modification.
 
 > [!NOTE]  
-> Most of the macro names can be changed in `mmu_parameters.cfg`.  Therefore it is best practice to copy the reference macro as a starting point into your own `cfg` file and to RENAME it.  Then simply point to your macro instead of these defaults.  The reason for that is that the reference set can be upgraded and that would overwrie your changes.
-> You can also use the klipper mechanism of renaming macros, replacing with your own of the original name and still calling the reference ones here to maintain functionality.
+> Most of the macro names can be changed in `mmu_parameters.cfg`.  Therefore it is best practice to copy the reference macro as a starting point into your own `cfg` file and to RENAME it.  Then simply point to your macro instead of these defaults.  The reason for that is that the reference set can be upgraded and that would overwrite your changes.
+>
+> You can also use the klipper mechanism of renaming macros, replacing with your own of the original name and still calling the reference ones here from your custom macro to maintain functionality.
 
 <br>
 
 Here are all the callout macros together with details of where to find them:
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_ACTION_CHANGED (mmu_software.cfg)
-Most of the time Happy Hare will be in the `Idle` state but it starts to perform a new action this macro is called.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.mmu.action`
+Most of the time Happy Hare will be in the `Idle` state but it starts to perform a new action this macro is called.  The action string is passed as a `ACTION` parameter to the macro but can also be read with the printer variable `printer.mmu.action`. The previous action is passed in as `OLD_ACTION`
 
 Possible action strings are:
 
@@ -56,7 +57,7 @@ gcode:
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_PRINT_STATE_CHANGED (mmu_software.cfg)
-Happy Hare implements a state machine for state of the print. Full details can be found [here](/doc/TODO).  Every time a state changes this macro will be called. Then new state will be passed with the (new) `STATE` and `OLD_STATE` parameters but these can also be read with the printer variable `printer.mmu.print_state`
+Happy Hare implements a state machine tracking the prgoress of a print. It is difference from the klipper `print_stats` because it is specific to MMU state during a print. Full details can be found [here](/https://github.com/moggieuk/Happy-Hare/tree/development?tab=readme-ov-file#13-job-state-transistions-and-print-startend-handlingdoc/TODO).  Every time a state changes this macro will be called. Then new state will be passed with the `STATE` parameter and the previous state as `OLD_STATE`. The state can also be read with the printer variable `printer.mmu.print_state`
 
 Possible state strings are:
 
@@ -102,6 +103,9 @@ gcode:
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_GATE_MAP_CHANGED (mmu_software.cfg)
 Happy Hare maintains a map of all the filaments in the MMU including material type, color, etc.  When this map changes this macro is called. The `GATE` parameter will either represent a specific gate that has been updated or `-1` meaning that mutliple gates are updated. The actual gate map infomation can be read through printer variables `printer.mmu.gate_color`, `printer.mmu.gate_material`, etc..
 
+Here is the start of the reference macro packaged in `mmu_software.cfg` used to drive LED effects:
+
+
 ```yml
 ###########################################################################
 # Called when the MMU gate_map (containing information about the filament
@@ -120,7 +124,7 @@ gcode:
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Unloading/Loading "Sequence" macros (mmu_sequence.cfg)
-These macros define all the callbacks made during filament loadingor unloading. They can be used for the insertion of logic specific to your printer setup. The ordering of these macros is as follows (if any are not defined they are skipped):
+This set of macros are called during filament loading or unloading. They can be used for the insertion of logic specific to your printer setup. The ordering of these macros is as follows (if any are not defined they are skipped):
 
 ```yml
 Unloading sequence...
@@ -137,24 +141,24 @@ Loading sequence...
 ```
 
 If changing a tool the unload sequence will be immediately followed by the load sequence. Note that Happy Hare has some built in functionality to minimize the logic necessary in these macros:
-* 1. Happy Hare separately implements z-hop moves on toolchange (including EndlessSpool) specified with the 'z_hop_height_toolchange' parameter as well as on errors and print cancellation with 'z_hop_error' parameter.
-* 2. Toolhead will be correctly placed prior to resuming the print although the logic will only be expecting to correct z_hop height and will be slow if horizonal moves are necessary
-* 3. Pressure advance will automatically be restored after tip forming
-* 4. M220 & M221 overrides will be retained after a toolchange
-* 5. If configured, Spoolman will be notified of toolchange
-* 6. Should an error occur causing a pause, the extruder temperature will be saved and restored on MMU_UNLOCK or resume
+* Happy Hare separately implements z-hop moves on toolchange (including EndlessSpool) specified with the 'z_hop_height_toolchange' parameter as well as on errors and print cancellation with 'z_hop_error' parameter.
+* Toolhead will be correctly placed prior to resuming the print although the logic will only be expecting to correct z_hop height and will be slow if horizonal moves are necessary
+* Pressure advance will automatically be restored after tip forming
+* M220 & M221 overrides will be retained after a toolchange
+* If configured, Spoolman will be notified of toolchange
+* Should an error occur causing a pause, the extruder temperature will be saved and restored on MMU_UNLOCK or resume
 
 
 Leveraging the basic callbacks is usually sufficent for customization, however if you really want to do something unusual you can enable the gcode loading/unloading sequences by setting the following in 'mmu_parameters.cfg'
 ```yml
-   'gcode_load_sequence: 1'
-   'gcode_unload_sequence: 1'
+   gcode_load_sequence: 1
+   gcode_unload_sequence: 1
 ```
 This is quite advanced and you will need to understand the Happy Hare state machine before embarking on changes
 
 <p>
 
-The behavour of these default macros is controlled by the following set of variables found at the top of the `mmu_sequence.cfg` file.  Once you have set `variable_park_xy` to the coordinates of a safe park area (usually over your purge bucket) you can set `variable_enable_park: 1` to enable movement of the toolhead away from the print whilst changing filaments.
+The behavior of these default macros is controlled by the following set of variables found at the top of the `mmu_sequence.cfg` file.  Once you have set `variable_park_xy` to the coordinates of a safe park area (usually over your purge bucket) you can set `variable_enable_park: 1` to enable movement of the toolhead away from the print while changing filaments.
 ```yml
 ###########################################################################
 # Variables controlling sequence macros are all set here
@@ -172,28 +176,21 @@ variable_park_after_form_tip: 0         # Set to 1 if tip cutting at toolhead to
 > [!NOTE]  
 > Generally `variable_park_after_form_tip` will be `0` meaning the move away from the print is immediate.  If you are using a cutter at the toolhead you will want to set this to `1`.  This delays the move until after the movement defined in the tip cutting macro.
 
+Here are some examples of logic that might be put in these macros:
 
-### _MMU_PRE_UNLOAD (mmu_sequence.cfg)
+#### _MMU_PRE_UNLOAD (mmu_sequence.cfg)
 Logic here would typically move the toolhead to a safe spot like over the purge bucket
 
-<br>
+#### _MMU_POST_FORM_TIP (mmu_sequence.cfg)
+Optional this logic would do the same this as `_MMU_PRE_UNLOAD` in the case of a tip cutting movement
 
-### _MMU_POST_FORM_TIP (mmu_sequence.cfg)
-Optional this logic would do the same this as _MMU_PRE_UNLOAD in the case of a tip cutting movement
-
-<br>
-
-### _MMU_POST_UNLOAD (mmu_sequence.cfg)
+#### _MMU_POST_UNLOAD (mmu_sequence.cfg)
 Logic here can be used to implement tip cutting and cleanup at the MMU gate
 
-<br>
-
-### _MMU_PRE_LOAD (mmu_sequence.cfg)
+#### _MMU_PRE_LOAD (mmu_sequence.cfg)
 This is a great spot to add logic to take time lapse photography (although it can also be done elsewhere)
 
-<br>
-
-### _MMU_POST_LOAD (mmu_sequence.cfg)
+#### _MMU_POST_LOAD (mmu_sequence.cfg)
 Logic here can perform extra purging operations, pause for ooze and then wipe nozzle before returning to the original position recorded in either the `_MMU_PRE_UNLOAD` or `_MMU_POST_FORM_TIP` macros
 
 > [!NOTE]  
@@ -203,6 +200,10 @@ Logic here can perform extra purging operations, pause for ooze and then wipe no
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_FORM_TIP (form_tip.cfg)
 This is probably the most important aspect of getting a reliable MMU after basic calibration is complete. There is plenty written about tip forming and lots of advice in the forums.  What is important to understand here is that this macro mimicks the tip forming logic from SuperSlicer (almost identical to PrusaSlicer). Read SuperSlicer documentation for hints. That said, here are a few things you should know:
+
+* test `test`
+* another test
+
 <ul>
 <li>This macro will always be used when not printing, but you can elect to use it instead of your slicers logic by:</li>
  <ul>
