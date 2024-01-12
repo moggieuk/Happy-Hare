@@ -506,8 +506,9 @@ read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" "" "_param_"
     parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
-    parse_file "${SRCDIR}/config/base/mmu_filametrix.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_sequence.cfg" "variable_"
+    parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg" "variable_"
+    parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg" "variable_"
 }
 
 # Pull parameters from previous installation
@@ -516,12 +517,15 @@ read_previous_config() {
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
     if [ ! -f "${dest_cfg}" ]; then
-        echo -e "${WARNING}No previous ${cfg} found. Will install default"
+        echo -e "${WARNING}No previous ${cfg} found."
     else
         echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
         parse_file "${dest_cfg}" "" "_param_"
 
         # Upgrade / map / force old parameters
+        if [ "${_param_form_tip_macro}" == "_MMU_FORM_TIP_STANDALONE" ]; then
+            _param_form_tip_macro="_MMU_FORM_TIP"
+        fi
         if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
             _param_gate_unload_buffer=${_param_encoder_unload_buffer}
         fi
@@ -570,9 +574,7 @@ read_previous_config() {
     cfg="mmu_filametrix.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
-    if [ ! -f "${dest_cfg}" ]; then
-        echo -e "${WARNING}No previous ${cfg} found. Will install default"
-    else
+    if [ -f "${dest_cfg}" ]; then
         echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
         parse_file "${dest_cfg}" "variable_"
 
@@ -598,11 +600,11 @@ read_previous_config() {
         fi
     fi
 
-    for cfg in mmu_software.cfg mmu_sequence.cfg ; do
+    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
         if [ ! -f "${dest_cfg}" ]; then
-            echo -e "${WARNING}No previous ${cfg} found. Will install default"
+            echo -e "${WARNING}No previous ${cfg} found. Will install"
         else
             echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
             parse_file "${dest_cfg}" "variable_"
@@ -773,7 +775,7 @@ copy_config_files() {
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
 
-        elif [ "${file}" == "mmu_filametrix.cfg" ]; then
+        elif [ "${file}" == "mmu_form_tip.cfg" -o "${file}" == "mmu_cut_tip.cfg" -o "${file}" == "mmu_sequence.cfg" ]; then
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} > ${dest}
             else
@@ -784,6 +786,14 @@ copy_config_files() {
         else
             cp ${src} ${dest}
 	fi
+    done
+
+    for file in mmu_filametrix.cfg; do
+        dest=${mmu_dir}/base/${file}
+        if [ -f "${dest}" ]; then
+            echo -e "${WARNING}Removing deprecated config files ${file}"
+            rm -f "${dest}"
+        fi
     done
 
     for file in `cd ${SRCDIR}/config/optional ; ls *.cfg`; do
@@ -869,6 +879,9 @@ uninstall_printer_includes() {
             /\[include mmu\/mmu_parameters.cfg\]/ d; \
             /\[include mmu\/mmu_hardware.cfg\]/ d; \
             /\[include mmu\/mmu_filametrix.cfg\]/ d; \
+            /\[include mmu\/mmu_sequence.cfg\]/ d; \
+            /\[include mmu\/mmu_form_tip.cfg\]/ d; \
+            /\[include mmu\/mmu_cut_tip.cfg\]/ d; \
             /\[include mmu\/mmu.cfg\]/ d; \
             /\[include mmu\/base\/\*.cfg\]/ d; \
 	        " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
