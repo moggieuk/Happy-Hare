@@ -123,7 +123,7 @@ gcode:
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Unloading/Loading "Sequence" macros (mmu_sequence.cfg)
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Unloading / Loading "Sequence" Macros (mmu_sequence.cfg)
 This set of macros are called during filament loading or unloading. They can be used for the insertion of logic specific to your printer setup. The ordering of these macros is as follows (if any are not defined they are skipped):
 
 ```yml
@@ -151,8 +151,8 @@ If changing a tool the unload sequence will be immediately followed by the load 
 
 Leveraging the basic callbacks is usually sufficent for customization, however if you really want to do something unusual you can enable the gcode loading/unloading sequences by setting the following in 'mmu_parameters.cfg'
 ```yml
-   gcode_load_sequence: 1
-   gcode_unload_sequence: 1
+gcode_load_sequence: 1
+gcode_unload_sequence: 1
 ```
 This is quite advanced and you will need to understand the Happy Hare state machine before embarking on changes
 
@@ -201,24 +201,15 @@ Logic here can perform extra purging operations, pause for ooze and then wipe no
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_FORM_TIP (form_tip.cfg)
 This is probably the most important aspect of getting a reliable MMU after basic calibration is complete. There is plenty written about tip forming and lots of advice in the forums.  What is important to understand here is that this macro mimicks the tip forming logic from SuperSlicer (almost identical to PrusaSlicer). Read SuperSlicer documentation for hints. That said, here are a few things you should know:
 
-* test `test`
-* another test
-
-<ul>
-<li>This macro will always be used when not printing, but you can elect to use it instead of your slicers logic by:</li>
- <ul>
-  <li>Turning OFF all tip forming logic in your slicer</li>
-  <li>Setting the `variable_standalone: 1` in the `T0` macro</li>
- </ul>
-<li>When tuning if is useful to pull the bowden from your extruder, load filament with the `MMU_LOAD EXTRUDER_ONLY=1` command, then call `MMU_FORM_TIP` command (and not the macro directly) or better still `MMU_EJECT EXTRUDER_ONLY=1`</li>
- <ul>
-  <li>The benefit of calling as desribed is the additional TMC current control and pressure advance restoration will occur so it exactly mimicks what will occur when called automatically later</li>
-  <li>If calling `MMU_FORM_TIP` you will want to set `variable_final_eject: 1` so that the filament is fully ejected for inspection (MMU_EJECT will automatically do this and therefore is recommended)
-  <li>Calling with `MMU_EJECT EXTRUDER_ONLY=1` will also report on the final parking position of the filament</li>
- </ul>
-<li>Before you start tweaking, make sure the settings accurately represent the geometry of your extruder. The defaults are for my Voron Clockwork 2 extruder with Voron Revo hotend with 0.4mm tip</li>
-<li>Lastely there is a setting called `parking_distance` which, if set, will determine the final resting place measured from the nozzle. This should be a postive number!</li>
-</ul>
+* This macro will always be used when not printing, but you can elect to use it instead of your slicers logic by:</li>
+  - Turning OFF all tip forming logic in your slicer</li>
+  - Setting the `variable_standalone: 1` in the `T0` macro</li>
+* When tuning if is useful to pull the bowden from your extruder, load filament with the `MMU_LOAD EXTRUDER_ONLY=1` command, then call `MMU_FORM_TIP` command (and not the macro directly) or better still `MMU_EJECT EXTRUDER_ONLY=1`</li>
+  - The benefit of calling as desribed is the additional TMC current control and pressure advance restoration will occur so it exactly mimicks what will occur when called automatically later</li>
+  - If calling `MMU_FORM_TIP` you will want to set `variable_final_eject: 1` so that the filament is fully ejected for inspection (MMU_EJECT will automatically do this and therefore is recommended)
+  - Calling with `MMU_EJECT EXTRUDER_ONLY=1` will also report on the final parking position of the filament</li>
+* Before you start tweaking, make sure the settings accurately represent the geometry of your extruder. The defaults are for my Voron Clockwork 2 extruder with Voron Revo hotend with 0.4mm tip</li>
+* Lastely there is a setting called `parking_distance` which, if set, will determine the final resting place measured from the nozzle. This should be a postive number!</li>
 
 Here are the default values for tip forming.  These are the exact values I used for non PLA filaments (PLA seems to like skinny dip):
 
@@ -254,7 +245,7 @@ variable_final_eject: 0                # default 0, enable during standalone tun
 ```
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) _MMU_CUT_TIP (cut_tip.cfg)
-To elminate the need to spend time forming tips though fluid dynamics you can opt to cut filament at the toolhead. The filametrix cutter bundled with ERCFv2 is an example of this. Note that Happy Hare can only have one tip creation macro defined. You can switch from the default tip forming to this tip cutting macro by setting `form_tip_macro` in `mmu_parameters.cfg` to point to this macro.
+To elminate the need to spend time tuning the tip forming procedure (you never wanted to understand fluid dynamics, right?!) you can opt to cut filament at the toolhead. The filametrix cutter bundled with ERCFv2 is an example of this. Note that Happy Hare can only have one tip creation macro defined. You can switch from the default tip forming to this tip cutting macro by setting `form_tip_macro: _MMU_CUT_TIP` in `mmu_parameters.cfg` to point to this macro instead.
 
 Here are the default values for tip cutting with explanation:
 
@@ -363,7 +354,9 @@ variable_output_park_pos: 0             # Dynamically set in macro
 > [!WARNING]  
 > This is new EXPERIMENTAL functionality and as such is subject to change (with only a mild apology :-)
 
-By default these macros are not called, however, if `gcode_load_sequence` or `gcode_unload_sequence` are enabled they will be.  The two default macros in `mmu_sequence.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.<br>
+By default these macros are not called, however, if `gcode_load_sequence: 1` or `gcode_unload_sequence: 1` are enabled they will be.  The two default macros in `mmu_sequence.cfg` (copied here) will/should provide exactly the same logic as the internal logic using a set of provided "modular" loading/unloading functions. They are a good starting point.
+
+<br>
 
 `mmu_sequence.cfg` contains futher examples for alternative MMU setups, but before experimenting it is essential to understand the state machine for filament position.  These states are as follows and the loading/unloading sequence must be capable of completing the load/unload sequence for any starting state.<br>
 
@@ -503,7 +496,7 @@ gcode:
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Available Macro Reference
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Internal "step" Macro Reference
 
 The following are internal macros that can be called from within the `_MMU_LOAD_SEQUENCE` and `MMU_UNLOAD_SEQUENCE` callbacks:
 

@@ -66,7 +66,7 @@ Thank you!
 **[Hardware Configuration, Movement and Homing](/doc/hardware_config.md)**<br>
 **[Calibration Guide](/doc/calibration.md)**<br>
 **[Configuation Reference](/doc/configuration.md)**<br>
-**[Happy Hare Macro Customization](/doc/gcode_customization.md)**<br>
+**[Happy Hare Macro Customization](/doc/macro_customization.md)**<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)**<br>
 **[LED Support](/doc/leds.md)**<br>
 **[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
@@ -1029,7 +1029,7 @@ Good luck.  I'm starting to compile an [FAQ](doc/FAQ.md).
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Filament loading and unloading sequences
 
-Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`. These are grouped into "modular phases" that control each step of the process and vary slightly based on the capabilities of your particular MMU. Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later in the [gcode guide](/doc/gcode_customization.md).
+Happy Hare provides built-in loading and unloading sequences that have many options controlled by settings in `mmu_parameters.cfg`. These are grouped into "modular phases" that control each step of the process and vary slightly based on the capabilities of your particular MMU. Normally this provides sufficent flexibility of control. However, for advanced situations, you are able to elect to control the sequences via gcode macros. This capabiltiy is discussed later in the [gcode guide](/doc/macro_customization.md).
 
 ### Understanding the load sequence:
 
@@ -1196,7 +1196,7 @@ extruder_sync_unload_speed: 25               # Synced gear and extruder unload s
 
 ### Advanced customized sequence (gcode macros)
 
-An experimental option is available for users with customized MMU's or for wanting even more control that exposes the loading and unloading sequences as gcode macros. This is a complex setup and requires knowlege of the state machine kept by Happy Hare. For the adventurous, the details are [documented here](/doc/gcode_customization.md#---_mmu_load_sequence--_mmu_unload_sequence).
+An experimental option is available for users with customized MMU's or for wanting even more control that exposes the loading and unloading sequences as gcode macros. This is a complex setup and requires knowlege of the state machine kept by Happy Hare. For the adventurous, the details can be found in the `mmu_sequence.cfg`
 
 <br>
 
