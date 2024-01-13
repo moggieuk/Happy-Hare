@@ -7,7 +7,7 @@ This is a sequential walkthrough of the main configuration files for Happy Hare.
 The first section specifies the type of MMU and is used by Happy Hare to adjust (primarily CAD) options. It is documented in the main [README.md](/README.md)
 
 > [!IMPORTANT]  
-> These three settings must be set. If "Other" is specified you will also need to specify cad dimensions [here](TODO)
+> These three settings must be set. If "Other" is specified you will also need to specify cad dimensions [here](https://github.com/moggieuk/Happy-Hare?tab=readme-ov-file#1-important-mmu-vendor--version-specification)
 
 ```yml
 #
@@ -444,7 +444,7 @@ This final section is commented out because it is not generally needed. It retai
 > [!Note]  
 > Happy Hare will report error if these arrays are not the same length as the configured number of gates.
 
-<br>TODO vvv
+<br>
 Happy Hare has advanced features like:
 1. Managing a tool to gate mapping so you can remap incorrectly spools or map all tools to one gate for mono color prints!
 2. Remembering the state of (presence) of filament in each gate
@@ -452,38 +452,26 @@ Happy Hare has advanced features like:
 4. The filament color in each gate
 5. Grouping gates (spools) into Endless Spool groups
 
-Typically these will be set dynamically over time and automatically saved to 'mmu_vars.cfg'.  When you power up your MMU
-these values are loaded. However, if you explicity reset your MMU state through one of the many reset commands, these values
-will be restored to a default. The system default values are typically empty or in the case of TTG map, 1:1 mapping of
-Tx to Gate #x, or no Endless Spool groups.  However you have the option to define starting values here.
-IMPORTANT: the arrays of values must be the same length as the number of gates on your MMU otherwise they will be rejected.
+Typically these will be set dynamically over time and automatically saved to 'mmu_vars.cfg'.  When you power up your MMU these values are loaded. However, if you explicity reset your MMU state through one of the many reset commands, these values will be restored to a default. The system default values are typically empty or in the case of TTG map, 1:1 mapping of Tx to Gate #x, or no Endless Spool groups.  However you have the option to define starting values here.
 
-This group of settings collectively form the default gate map which can be updated with the `MMU_GATE_MAP` command
-or similar commands that determine gate status. They must all be the same length at the number of gates (0 .. n)
-Note that these are the defaults and will be overriden by saved values in mmu_vars.cfg
+> [!IMPORTANT]  
+> The arrays of values must be the same length as the number of gates on your MMU otherwise they will be rejected.
 
-1. The default mapping for tool to gate.  If not specified or commented out the mapping will default to Tx = Gate #x
-   'MMU_RESET_TTG_MAP' will revert to these default values. 'MMU_REMAP_TTG' will modify and persist during use.
-2. Whether gate has filament available (2=available from buffer, 1=available from spool, 0=empty). If not specified or commentet
-   out the system default of all gates in an unknown state will be assumed
-   'MMU_GATE_MAP' is used to adjust and persist during use
-3. Similarly this specifies the material type present in the gate. If not specified or commented out the name will be empty
-   'MMU_GATE_MAP' is used to adjust and persist during use
-4. Similarly this specifies the color of the filament in each gate. If not specified or commented out the color will be default
-   Color can be w3c color name or RRGGBB (no leading #)
-   'MMU_GATE_MAP' is used to adjust and persist during use
-5. If endless spool is turned on, you should define a list of EndlessSpool groups here, one entry for each gate in your MMU
-   when filament runs out on a gate, it will switch to the next gate with the same group number
-   for example, if set to 1, 2, 3, 1, 2, 3, 1, 2, 3 on a 9 cart MMU, and a runout occurs on gate #0
-   the MMU will switch to using gate #3 and then gate #6 automatically remapping the tool as it goes.
-   Note that this will be overriden by a saved value in mmu_vars.cfg if modified with 'MMU_ENDLESS_SPOOL_GROUPS' command
+This group of settings collectively form the default gate map which can be updated with the `MMU_GATE_MAP` command or similar commands that determine gate status. They must all be the same length at the number of gates (0 .. n). Note that these are the defaults and will be overriden by saved values in mmu_vars.cfg
+
+1. The default mapping for tool to gate.  If not specified or commented out the mapping will default to Tx = Gate #x 'MMU_RESET_TTG_MAP' will revert to these default values. 'MMU_REMAP_TTG' will modify and persist during use.
+2. Whether gate has filament available (2=available from buffer, 1=available from spool, 0=empty). If not specified or commented out the system default of all gates in an unknown state will be assumed 'MMU_GATE_MAP' is used to adjust and persist during use
+3. Similarly this specifies the material type present in the gate. If not specified or commented out the name will be empty 'MMU_GATE_MAP' is used to adjust and persist during use
+4. Similarly this specifies the color of the filament in each gate. If not specified or commented out the color will be default Color can be w3c color name or RRGGBB (no leading #) 'MMU_GATE_MAP' is used to adjust and persist during use
+5. If endless spool is turned on, you should define a list of EndlessSpool groups here, one entry for each gate in your MMU when filament runs out on a gate, it will switch to the next gate with the same group number for example, if set to 1, 2, 3, 1, 2, 3, 1, 2, 3 on a 9 cart MMU, and a runout occurs on gate #0 the MMU will switch to using gate #3 and then gate #6 automatically remapping the tool as it goes. Note that this will be overriden by a saved value in mmu_vars.cfg if modified with 'MMU_ENDLESS_SPOOL_GROUPS' command
 6. If spoolman is active, you can here define the gate to spoolId relation
 
-For completeness and primarily for historical reasons rather than usefulness, the default position of each gate on the selector
-and the optional bypass position can be specified. These would only ever be used if 'mmu_vars.cfg' was deleted
+For completeness and primarily for historical reasons rather than usefulness, the default position of each gate on the selector and the optional bypass position can be specified. These would only ever be used if 'mmu_vars.cfg' was deleted
+```
 #selector_offsets: 3.2, 24.2, 45.2, 71.3, 92.3, 113.3, 141.6, 162.6, 183.6
-#selector_bypass: 123.4			# Set to your measured position, 0 to disable
-<br>TODO ^^^
+#selector_bypass: 123.4   # Set to your measured bypass position, 0 to disable
+```
+<br>
 
 ```yml
 # ADVANCED: See documentation for use of these ---------------------------------------------------------------------------
@@ -501,7 +489,7 @@ and the optional bypass position can be specified. These would only ever be used
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) "Other" MMU CAD Dimensions
 
-TODO
+When `mmu_vendor` and `mmu_version` are set, Happy Hare will use the correct CAD dimensions to aid setup.  Typically this is used for calibration and to apply sensible limits. If you are not using one of those standard MMUs or have heavily customized your setup you can set or override settings by uncommenting the appropriate line and setting a suitable value.
 
 ```yml
 # ADVANCED/CUSTOM MMU: See documentation for use of these ----------------------------------------------------------------
