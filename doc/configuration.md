@@ -459,18 +459,16 @@ Typically these will be set dynamically over time and automatically saved to 'mm
 
 This group of settings collectively form the default gate map which can be updated with the `MMU_GATE_MAP` command or similar commands that determine gate status. They must all be the same length at the number of gates (0 .. n). Note that these are the defaults and will be overriden by saved values in mmu_vars.cfg
 
-1. The default mapping for tool to gate.  If not specified or commented out the mapping will default to Tx = Gate #x 'MMU_RESET_TTG_MAP' will revert to these default values. 'MMU_REMAP_TTG' will modify and persist during use.
-2. Whether gate has filament available (2=available from buffer, 1=available from spool, 0=empty). If not specified or commented out the system default of all gates in an unknown state will be assumed 'MMU_GATE_MAP' is used to adjust and persist during use
-3. Similarly this specifies the material type present in the gate. If not specified or commented out the name will be empty 'MMU_GATE_MAP' is used to adjust and persist during use
-4. Similarly this specifies the color of the filament in each gate. If not specified or commented out the color will be default Color can be w3c color name or RRGGBB (no leading #) 'MMU_GATE_MAP' is used to adjust and persist during use
-5. If endless spool is turned on, you should define a list of EndlessSpool groups here, one entry for each gate in your MMU when filament runs out on a gate, it will switch to the next gate with the same group number for example, if set to 1, 2, 3, 1, 2, 3, 1, 2, 3 on a 9 cart MMU, and a runout occurs on gate #0 the MMU will switch to using gate #3 and then gate #6 automatically remapping the tool as it goes. Note that this will be overriden by a saved value in mmu_vars.cfg if modified with 'MMU_ENDLESS_SPOOL_GROUPS' command
+1. The default mapping for tool to gate.  If not specified or commented out the mapping will default to Tx = Gate #x `MMU_RESET_TTG_MAP` will revert to these default values. `MMU_REMAP_TTG` will modify and persist during use.
+2. Whether gate has filament available (2=available from buffer, 1=available from spool, 0=empty). If not specified or commented out the system default of all gates in an unknown state will be assumed `MMU_GATE_MAP` is used to adjust and persist during use
+3. Similarly this specifies the material type present in the gate. If not specified or commented out the name will be empty `MMU_GATE_MAP` is used to adjust and persist during use
+4. Similarly this specifies the color of the filament in each gate. If not specified or commented out the color will be default Color can be w3c color name or RRGGBB (no leading #) `MMU_GATE_MAP` is used to adjust and persist during use
+5. If endless spool is turned on, you should define a list of EndlessSpool groups here, one entry for each gate in your MMU when filament runs out on a gate, it will switch to the next gate with the same group number for example, if set to 1, 2, 3, 1, 2, 3, 1, 2, 3 on a 9 cart MMU, and a runout occurs on gate #0 the MMU will switch to using gate #3 and then gate #6 automatically remapping the tool as it goes. Note that this will be overriden by a saved value in mmu_vars.cfg if modified with `MMU_ENDLESS_SPOOL_GROUPS` command
 6. If spoolman is active, you can here define the gate to spoolId relation
 
 For completeness and primarily for historical reasons rather than usefulness, the default position of each gate on the selector and the optional bypass position can be specified. These would only ever be used if 'mmu_vars.cfg' was deleted
-```
-#selector_offsets: 3.2, 24.2, 45.2, 71.3, 92.3, 113.3, 141.6, 162.6, 183.6
-#selector_bypass: 123.4   # Set to your measured bypass position, 0 to disable
-```
+> #selector_offsets: 3.2, 24.2, 45.2, 71.3, 92.3, 113.3, 141.6, 162.6, 183.6
+> #selector_bypass: 123.4   # Set to your measured bypass position, 0 to disable
 <br>
 
 ```yml
