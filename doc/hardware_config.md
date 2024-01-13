@@ -13,11 +13,12 @@ The Klipper configuration files for Happy Hare are modular and can be found in t
 mmu/
   base/
     mmu.cfg
+    mmu_cut_tip.cfg
+    mmu_form_tip.cfg
     mmu_hardware.cfg
     mmu_software.cfg
-    mmu_parameters.cfg
     mmu_sequence.cfg
-    mmu_filametrix.cfg
+    mmu_parameters.cfg
 
   optional/
     mmu_menu.cfg

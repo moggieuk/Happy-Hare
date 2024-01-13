@@ -74,15 +74,20 @@ servo_dwell: 0.5			# Minimum time given to servo to complete movement prior to n
 servo_active_down: 0			# CAUTION: 1=Force servo to stay active when down, 0=Release after movement
 servo_buzz_gear_on_down: 1              # Whether to "buzz" the gear stepper on down to aid engagement
 ```
+> [!TIP]  
+> As of HHv2.4 the servo calibration can be performed without updating these values and klipper restarts.  The procedure is documented in the [calibration](/doc/calibration.md) doc, but briefly `MMU_SERVO SAVE=1 POS=[up|down|move]` can be used to persist position after setting correct angle with `MMU_SERVO ANGLE=..`
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Logging
 
 Logging controls control the verbosity level of logging to console and separate `mmu.log` file as well and fun visual filament position and various status messages - it really is unessessary to have verbose logging to the console so defaults are recommended.
 
+> [TIP]  
+> When an error occurs there may be insufficent information on the console to diagnose. In this case open up `mmu.log` (Mainsail now has button for this) and review the DEBUG details.
+
 ```yml
 # Logging ------------------------------------------------------------------------------------------------------------------
 #
-# log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = developer)
+# log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = stepper moves)
 # Generally you can keep console logging to a minimal whilst still sending debug output to the mmu.log file
 # Increasing the console log level is only really useful during initial setup to save having to constantly open the log file
 #
