@@ -2,9 +2,9 @@
 
 This is a sequential walkthrough of the main configuration files for Happy Hare. You should have tertiary understanding and awareness of all the settings but some are essential.  Those are labeled with "IMPORTANT" and you must setup for your MMU setup.
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) MMU vendor, type & size
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) MMU Vendor, Type & Size
 
-The first section specifies the type of MMU and is used by Happy Hare to adjust options. It is documented in the main [README.md](https://github.com/moggieuk/Happy-Hare#1-important-mmu-vendor--version-specification).
+The first section specifies the type of MMU and is used by Happy Hare to adjust (primarily CAD) options. It is documented in the main [README.md](/README.md)
 
 > [!IMPORTANT]  
 > These three settings must be set. If "Other" is specified you will also need to specify cad dimensions [here](TODO)
@@ -49,7 +49,7 @@ selector_max_velocity: 250              # Never to be exceeded selector velocity
 selector_max_accel: 1200                # Never to be exceeded selector accelaration regardless of specific parameters
 ```
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Selector servo
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Selector Servo
 
 The servo configuration allows for up to three positions but some designs (e.g. Tradrack, ERCF v1.1) only require `up`/`down`.  If `move` is not used then comment it out or set it to the same value as `up`.  The servo duraction is the length of PWM burst.  Most digital servos only require a short 0.2 second or so but slower analog servos may require longer (0.4 - 0.5s).  Be very careful if you use the `servo_active_down` option because it will can strain your electronics.
 
@@ -140,7 +140,7 @@ selector_touch_enable: 0                # If selector touch operation configured
 
 Note: Selector touch operation is discussed elsewhere and has a separate speed setting. Even if configured you can disable it's operation with the `selector_touch_enable` setting.
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Gate loading / unloading
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Gate Loading & Unloading
 
 This section controls the module that controls filament loading and unload at the gate when an encoder is present. The `gate_unload_buffer` represents how close to the gate the filament ends up after fast bowden move. You want it close (for speed) but not too close that it can overshoot.  `gate_parking_distance` is how fast away from the gate exit the filament should be parked when unloaded.  It rarely needs to be changed from the default.
 
@@ -165,7 +165,7 @@ gate_parking_distance: 23               # ADVANCED: Parking postion in the gate 
 gate_endstop_to_encoder: 20             # ADVANCED: Distance between gate endstop and encoder (IF both fitted. +ve if encoder after endstop)
 ```
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Bowden tube loading / unloading
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Bowden Loading & Unloading
 
 For more information on the bowden correct move, read about the loading sequence [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).  The `bowden_num_moves` allows a long move to be broken into separate moves.  Only increase this if Klipper throws errors with very long moves - setting it higher than `1` will long down the loading process.
 
@@ -190,7 +190,7 @@ bowden_pre_unload_test: 1               # 1 to check for bowden movement before 
 bowden_pre_unload_error_tolerance: 50
 ```
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Extruder homing
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Extruder Homing
 
 This section controls the optional extruder homing step. The `extruder_homing_endstop` is either a real endstop name or the string "collision" which causes Happy Hare to "feel" for the extruder entrance.  If other options dictate this homing step it will automatically be performed, however it is possible to force it even when not strickly needed by setting the `extruder_force_homing: 1`.
 
@@ -225,7 +225,7 @@ extruder_homing_current: 40             # % gear_stepper current (10%-100%) to u
 extruder_force_homing: 0
 ```
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Toolhead loading / unloading
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Toolhead Loading & Unloading
 
 This section controls the module responsible for loading filament into and unloading from the extruder/toolhead. There are many options and the notes below and in the file explain the options already.  Note that the default of synchronized loading and non-synchronized unloading is recommended. Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 
@@ -406,22 +406,21 @@ gcode_load_sequence: 0          # VERY ADVANCED: Gcode loading sequence 1=enable
 gcode_unload_sequence: 0        # VERY ADVANCED: Gcode unloading sequence, 1=enabled, 0=internal logic (default)
 ```
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Macro name overrides
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Macro Naming
 
-This section contains a list of overrides for macros that Happy Hare calls internally. Currently, there's the option to override the `PAUSE` macro and the `_MMU_FORM_TIP_STANDALONE` macro but other macros or arguments may be added in the future.
+This section contains a list of overrides for macros that Happy Hare calls internally. You can replace these with macros of your own names and is preferred to editing the shipped defaults. The reason is that the defaults may be overwritten on updates to Happy Hare. You can also use the Klipper convention of `rename_existing` but be sure to include in your own `.cfg` file.
+
+All of the load/unload sequence macros are well explained [here](/doc/macro_customization.md). It is unlikely that you would want to change the `pause_macro` which is called on MMU error, but some community cited reasons include:
+* You are using a sparse purge tower and you want Happy Hare errors to park above your purge tower as to not hit any models that are between your tower and normal pause location
+* You want to additionally call a macro that sends a push notification on filament swap error
+* You want to set additional static arguments to either the default pause macro or your own macro
+IMPORTANT: Whatever macro you call _must_ ultimately leave the printer in a paused state
 
 ```yml
 # ADVANCED: MMU macro overrides --- ONLY SET IF YOU'RE COMFORTABLE WITH KLIPPER MACROS -----------------------------------
 #
-# When a MMU print is paused because of error, Happy Hare will call the `pause_macro` (PAUSE by default). Reasons to change:
-# 1. You are using a sparse purge tower and you want Happy Hare errors to park above your purge tower as to not hit
-#    any models that are between your tower and normal pause location
-# 2. You want to additionally call a macro that sends a push notification on filament swap error
-# 3. You want to set additional static arguments to either the default pause macro or your own macro
-#
-# IMPORTANT: Whatever macro you call _must_ ultimately leave the printer in a paused state
-#
-# Other macros are detailed in `mmu_sequence.cfg`
+# 'pause_macro' defines what macro to call on MMU error (must put printer in paused state)
+# Other macros are detailed in 'mmu_sequence.cfg'
 #
 pause_macro: PAUSE
 pre_unload_macro: _MMU_PRE_UNLOAD               # Called before starting the unload
