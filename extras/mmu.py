@@ -3635,7 +3635,7 @@ class Mmu:
                     self._log_info("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload")
                     fhomed = True # Assumption
                 else:
-                    hlength = self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin
+                    hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin
                     self._log_debug("Reverse homing up to %.1fmm to extruder sensor (synced) to exit extruder" % hlength)
                     ts_actual,fhomed,_,_ = self._trace_filament_move("Reverse homing to extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.ENDSTOP_EXTRUDER)
 
