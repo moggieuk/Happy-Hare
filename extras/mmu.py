@@ -3750,6 +3750,8 @@ class Mmu:
                 self._track_load_end()
             if not extruder_only:
                 self._set_action(current_action)
+            if not self._is_printing():
+                self._servo_up()
 
     def _unload_sequence(self, length=None, check_state=False, skip_tip=False, extruder_only=False, runout=False):
         self._movequeues_wait_moves()
