@@ -400,7 +400,7 @@ class Mmu:
         self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_COLLISION)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.)
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
-        self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # PAUL delete me or make constant?
+        self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # PAUL
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
@@ -1553,7 +1553,7 @@ class Mmu:
                         msg += ", then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
                         msg += " and then moves %.1fmm ('toolhead_entry_to_entruder') to extruder extrance" % self.toolhead_entry_to_extruder
-            if self._has_sensor(self.ENDSTOP_TOOLHEAD):
+            if self._has_sensor(self.ENDSTOP_TOOLHEAD): # PAUL
                 msg += "\n- Extruder loads (synced) by homing a maximum of %.1fmm ('toolhead_homing_max') to TOOLHEAD SENSOR before moving the last %.1fmm ('toolhead_sensor_to_nozzle' - 'toolhead_ooze_reduction') to the nozzle" % (self.toolhead_homing_max, self.toolhead_sensor_to_nozzle - self.toolhead_ooze_reduction)
             else:
                 msg += "\n- Extruder loads (synced) by moving %.1fmm ('toolhead_extruder_to_nozzle' - 'toolhead_ooze_reduction') to the nozzle" % (self.toolhead_extruder_to_nozzle - self.toolhead_ooze_reduction)
@@ -3549,6 +3549,18 @@ class Mmu:
 
             fhomed = False
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
+# PAUL
+# toolhead_homing_max
+# if self.FILAMENT_POS_HOMED_EXTRUDER:
+#     if endstop = ENTRY
+#         = entry to extruder + extruder to toolhead + saftey
+#     elif # collision or mmu_gear_touch
+#         = extruder to toolhead + saftey
+#     else # none
+#         = homing max + extruder to toolhead
+# else:
+#         = homing max + extruder to toolhead
+#
                 # With toolhead sensor we always first home to toolhead sensor past the extruder entrance
                 if self.sensors[self.ENDSTOP_TOOLHEAD].runout_helper.filament_present:
                     raise MmuError("Possible toolhead sensor malfunction - filament detected before it entered extruder")
@@ -4647,6 +4659,7 @@ class Mmu:
         self._wrap_gcode_command(self.pre_load_macro, exception=True)
 
         self._select_tool(tool, move_servo=False)
+        self._update_filaments_from_spoolman(gate) # Update material & color
         self._load_sequence()
 
         # Activate the spool in SpoolMan, if enabled
@@ -5283,7 +5296,7 @@ class Mmu:
 
         # TMC current control
         self.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.sync_gear_current, minval=10, maxval=100)
-        self.extruder_homing_current = gcmd.get_int('EXTRUDER_HOMING_CURRENT', self.extruder_homing_current, minval=10, maxval=100) # PAUL rename extruder_collision_homing_current
+        self.extruder_homing_current = gcmd.get_int('EXTRUDER_HOMING_CURRENT', self.extruder_homing_current, minval=10, maxval=100) # TODO rename extruder_collision_homing_current
         self.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.extruder_form_tip_current, minval=100, maxval=150)
 
         # Homing, loading and unloading controls
@@ -5302,7 +5315,7 @@ class Mmu:
         self.extruder_homing_max = gcmd.get_float('EXTRUDER_HOMING_MAX', self.extruder_homing_max, above=10.)
         self.extruder_force_homing = gcmd.get_int('EXTRUDER_FORCE_HOMING', self.extruder_force_homing, minval=0, maxval=1)
 
-        self.toolhead_homing_max = gcmd.get_float('TOOLHEAD_HOMING_MAX', self.toolhead_homing_max, minval=0.)
+        self.toolhead_homing_max = gcmd.get_float('TOOLHEAD_HOMING_MAX', self.toolhead_homing_max, minval=0.) # PAUL
         self.toolhead_entry_to_extruder = gcmd.get_float('TOOLHEAD_ENTRY_TO_EXTRUDER', self.toolhead_entry_to_extruder, minval=0.)
         self.toolhead_sensor_to_nozzle = gcmd.get_float('TOOLHEAD_SENSOR_TO_NOZZLE', self.toolhead_sensor_to_nozzle, minval=0.)
         self.toolhead_extruder_to_nozzle = gcmd.get_float('TOOLHEAD_EXTRUDER_TO_NOZZLE', self.toolhead_extruder_to_nozzle, minval=0.)
@@ -5397,7 +5410,7 @@ class Mmu:
         msg += "\ntoolhead_extruder_to_nozzle = %.1f" % self.toolhead_extruder_to_nozzle
         if self._has_sensor(self.ENDSTOP_TOOLHEAD):
             msg += "\ntoolhead_sensor_to_nozzle = %.1f" % self.toolhead_sensor_to_nozzle
-            msg += "\ntoolhead_homing_max = %.1f" % self.toolhead_homing_max
+            msg += "\ntoolhead_homing_max = %.1f" % self.toolhead_homing_max # PAUL
         if self._has_sensor(self.ENDSTOP_EXTRUDER):
             msg += "\ntoolhead_entry_to_extruder = %.1f" % self.toolhead_entry_to_extruder
         msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
@@ -5471,7 +5484,7 @@ class Mmu:
                     raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
                 self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
 
-                # TODO figure out how to call _change_tool() here
+                # TODO perhaps figure out how to call _change_tool() here for better user feeback
                 self._unload_tool(runout=True)
                 self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
@@ -5762,6 +5775,7 @@ class Mmu:
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}") # Hidden option for bulk update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
@@ -5773,6 +5787,9 @@ class Mmu:
 
         if reset:
             self._reset_gate_map()
+
+        elif refresh:
+            self._update_filaments_from_spoolman()
 
         elif not gate_map == {}:
             self._log_debug("Received gate map update from Spoolman: %s" % gmapstr)
