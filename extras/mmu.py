@@ -5790,6 +5790,7 @@ class Mmu:
 
         elif refresh:
             self._update_filaments_from_spoolman()
+            quiet = True
 
         elif not gate_map == {}:
             self._log_debug("Received gate map update from Spoolman: %s" % gmapstr)
