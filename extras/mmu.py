@@ -2353,7 +2353,7 @@ class Mmu:
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
         self.sync_feedback_operational = False
         self.sync_feedback_last_direction = 0
-        self._log_debug("Reset sync multiplier")
+        self._log_trace("Reset sync multiplier")
         self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
 
     def _update_sync_feedback(self, eventtime):
@@ -2365,7 +2365,7 @@ class Mmu:
         self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
         if self.sync_feedback_last_direction != prev_direction:
             d = self.sync_feedback_last_direction
-            self._log_debug("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
+            self._log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
             self._update_sync_multiplier()
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
@@ -2381,7 +2381,7 @@ class Mmu:
             else:
                 # Compressed when extruding or expanded when retracting, so increase the rotation distance of gear stepper to slow it down
                 multiplier = 1. + (abs(1. - self.sync_multiplier_high) * abs(self.sync_feedback_last_state))
-        self._log_debug("Updated sync multiplier: %.4f" % multiplier)
+        self._log_trace("Updated sync multiplier: %.4f" % multiplier)
         self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) / multiplier)
 
     def _is_printer_printing(self):
@@ -4662,7 +4662,6 @@ class Mmu:
             return
 
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
-
         self._wrap_gcode_command(self.pre_unload_macro, exception=True)
 
         # Remember M220 and M221 overrides, deactivate in SpoolMan
@@ -4910,7 +4909,7 @@ class Mmu:
             self._recover_filament_pos(message=True)
 
         # If actively printing save toolhead position and optionally z-hop to stop blob
-        if self._is_printing():
+        if self._is_printing(force_in_print):
             self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
 
         if self._has_encoder():
@@ -4933,12 +4932,12 @@ class Mmu:
                         self._log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), self._last_toolchange))
                         # Try again but recover_filament_pos will ensure conservative treatment of unload
                         self._recover_filament_pos()
-    
-                # If actively printing then we must restore toolhead position, if paused, mmu_resume will do this
-                if self._is_printing(force_in_print):
-                    self._resume_printing("change_tool")
             finally:
                 self._next_tool = self.TOOL_GATE_UNKNOWN
+    
+            # If actively printing then we must restore toolhead position, if paused, mmu_resume will do this
+            if self._is_printing(force_in_print):
+                self._resume_printing("change_tool")
 
     cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)"
     def cmd_MMU_LOAD(self, gcmd):

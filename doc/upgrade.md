@@ -27,3 +27,6 @@ Once run klipper should startup without the upgrade warning.
 > Note that there are no options passed to install.sh unless you need to specify `-c` or `-k` to point to a none standard Klipper install location. Once run klipper should startup without the upgrade warning.<br>
 > HH v2.3 requires Klipper 0.12.0 or greater -- Klipper made a breaking change and v2.3 addresses that but is not backward compatable with older versions of klipper
 
+### Detailed Change Log
+Can be found [here](/doc/change_log.md)
+
