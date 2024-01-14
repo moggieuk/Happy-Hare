@@ -197,7 +197,7 @@ bowden_pre_unload_error_tolerance: 50
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Extruder Homing
 
-This section controls the optional extruder homing step. The `extruder_homing_endstop` is either a real endstop name or the string "collision" which causes Happy Hare to "feel" for the extruder entrance.  If other options dictate this homing step it will automatically be performed, however it is possible to force it even when not strickly needed by setting the `extruder_force_homing: 1`.
+This section controls the optional extruder homing step. With a toolhead sensor fitted this step is not necessary and will be ignored unless you set `extruder_force_homing: 1`. Without toolhead sensor you really need to home although there is an option not to. The `extruder_homing_endstop` is either a real endstop name (the virtual `mmu_gear_touch` or the pre entry `extruder` sensor), or the string `collision` which causes Happy Hare to "feel" for the extruder entrance using the encoder, or `none` to skip homing.  Whatever homing method is chosen the maximum distance travelled before an error is declared is defined by `extruder_homing_max`. Very long bowden may want to increase this value to add error tolerance caused by slippage on earlier bowden move. When the `collision` method is employed the current of the gear stepper can be reduced to the specified %. This makes detection more sensitive and helps to prevent filament grinding.
 
 ```yml
 # Extruder homing ---------------------------------------------------------------------------------------------------------
@@ -232,7 +232,15 @@ extruder_force_homing: 0
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Toolhead Loading & Unloading
 
-This section controls the module responsible for loading filament into and unloading from the extruder/toolhead. There are many options and the notes below and in the file explain the options already.  Note that the default of synchronized loading and non-synchronized unloading is recommended. Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
+> [!IMPORTANT]  
+> This section controls the module responsible for loading filament into and unloading from the extruder/toolhead and thus is probably one of the most important sections to get right. These settings ineract with each other so you should not guess, instead refer to the picture before and make sure you set accordingly.
+
+Consult this illustration of a typical toolhead or table to determine these dimensions. `toolhead_extruder_to_nozzle` must always be set accurately. It is a fixed distance based on your extruder and hotend and should not be tuned (use `toolhead_ooze_reduction` to tune out oozing of filament after the load). If you have a toolhead sensor then you also need to specify `toolhead_sensor_to_nozzle`. In practive this is often best performed by placing a fragment of filament at the extruder gears and "extruding" 1mm at a time until the toolhead sensor triggers. If you have a pre-extruder or "entry" sensor then you must also specify the distance from when this sensor triggers to the extruder (gears) entrance. The `toolhead_homing_max` determines the maximum distance from the extruder entrance to advance filament to home to the toolhead sensor - make sure this is a little larger than actually required to compensation for previous inaccuracies that may have occured. To further increase reliability, when unloading the `toolhead_unload_safety margin` is added to every theoretical move distance. Typically 5mm-10mm is sufficient. The starting value for `toolhead_ooze_reduction` shoud be `0` but as you tune printing you may increase it to reduce total loading distance to reduce blobs on the purge tower.
+
+Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
+
+> [!TIP]  
+> Once Happy Hare is loaded you can use `MMU_STATUS SHOWCONFIG=1` to describe in english what you have configured for loading and unloading sequences. After changing a config value (see how to use `MMU_TEST_CONFIG` for runtime changes) you can run again to see the impact of the change. Note that this also works for dynamic changes to sensors: e.g. if you disable your toolhead sensor via Mainsail, you will be able to see the fallback approach that Happy Hare is configured to do
 
 ```yml
 # Default toolhead loading and unloading ----------------------------------------------------------------------------------
@@ -276,7 +284,7 @@ toolhead_unload_safety_margin: 10       # Extra movement saftey margin (default:
 # masking of those errors. However the error often indicates that your extruder load speed is too high or the friction is too
 # high on the filament and in that case masking the error is not a good idea. Try reducing friction and lowering speed first!
 #
-toolhead_move_error_tolerance: 60
+toolhead_move_error_tolerance: 60       # ADVANCED default is probably ok
 ```
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Tip Forming
