@@ -3466,6 +3466,7 @@ class Mmu:
     def _home_to_extruder(self, max_length):
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._servo_down()
+        measured = 0
 
         if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
             if self._has_encoder():
