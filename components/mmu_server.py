@@ -106,7 +106,7 @@ class MmuServer:
                 color_hex = filament.get('color_hex', '')[:6] # Strip alpha channel if it exists
 
                 gate_dict[gate_id] = {'spool_id': spool_id, 'material': material, 'color': color_hex}
-            elif resonse.status_code() != 404:
+            elif response.status_code != 404:
                 response.raise_for_status()
         try:
             await kapis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" QUIET=1")

@@ -4647,6 +4647,7 @@ class Mmu:
         self._wrap_gcode_command(self.pre_load_macro, exception=True)
 
         self._select_tool(tool, move_servo=False)
+        self._update_filaments_from_spoolman(gate) # Update material & color
         self._load_sequence()
 
         # Activate the spool in SpoolMan, if enabled
@@ -5283,7 +5284,7 @@ class Mmu:
 
         # TMC current control
         self.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.sync_gear_current, minval=10, maxval=100)
-        self.extruder_homing_current = gcmd.get_int('EXTRUDER_HOMING_CURRENT', self.extruder_homing_current, minval=10, maxval=100)
+        self.extruder_homing_current = gcmd.get_int('EXTRUDER_HOMING_CURRENT', self.extruder_homing_current, minval=10, maxval=100) # TODO rename extruder_collision_homing_current
         self.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.extruder_form_tip_current, minval=100, maxval=150)
 
         # Homing, loading and unloading controls
@@ -5471,7 +5472,7 @@ class Mmu:
                     raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
                 self._log_info("Remapping T%d to gate #%d" % (self.tool_selected, next_gate))
 
-                # TODO figure out how to call _change_tool() here
+                # TODO perhaps figure out how to call _change_tool() here for better user feeback
                 self._unload_tool(runout=True)
                 self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
@@ -5762,6 +5763,7 @@ class Mmu:
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}") # Hidden option for bulk update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
@@ -5773,6 +5775,10 @@ class Mmu:
 
         if reset:
             self._reset_gate_map()
+
+        elif refresh:
+            self._update_filaments_from_spoolman()
+            quiet = True
 
         elif not gate_map == {}:
             self._log_debug("Received gate map update from Spoolman: %s" % gmapstr)
