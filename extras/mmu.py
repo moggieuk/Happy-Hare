@@ -2353,7 +2353,7 @@ class Mmu:
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
         self.sync_feedback_operational = False
         self.sync_feedback_last_direction = 0
-        self._log_trace("Reset sync multiplier")
+        #self._log_trace("Reset sync multiplier")
         self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
 
     def _update_sync_feedback(self, eventtime):
@@ -2365,7 +2365,7 @@ class Mmu:
         self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
         if self.sync_feedback_last_direction != prev_direction:
             d = self.sync_feedback_last_direction
-            self._log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
+            #self._log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
             self._update_sync_multiplier()
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
@@ -2544,7 +2544,7 @@ class Mmu:
         else:
             self._log_error("An issue with the MMU has been detected whilst out of a print\nReason: %s" % reason)
 
-        self._sync_gear_to_extruder(False, servo=True) # Should we just leave state where it ends up?
+        self._sync_gear_to_extruder(False, servo=True)
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
         if recover_pos:
@@ -2602,7 +2602,8 @@ class Mmu:
         if operation and not self.saved_toolhead_position:
             if 'xyz' in homed:
                 self._movequeues_wait_moves()
-                self._log_debug("Saving toolhead position for %s" % operation)
+                toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
+                self._log_debug("Saving toolhead position (%s) for %s" % (toolhead_pos, operation))
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
                 self.saved_toolhead_position = operation
             else:
@@ -2627,8 +2628,9 @@ class Mmu:
         homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
         if self.saved_toolhead_position:
             if 'xyz' in homed:
-                self._log_debug("Restoring toolhead position for %s" % operation)
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
+                toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
+                self._log_debug("Restoring toolhead position (%s) after %s" % (toolhead_pos, operation))
                 self._clear_saved_toolhead_position()
             else:
                 self._log_info("Warning: MMU cannot restore toolhead position because toolhead not homed!")
