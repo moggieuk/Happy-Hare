@@ -29,11 +29,11 @@ class MmuLeds:
         MmuLeds.num_gates = config.getint('num_gates')
         MmuLeds.frame_rate = config.getint('frame_rate', MmuLeds.frame_rate)
 
-        pixels = config.get_printer().lookup_object(led_strip.replace(':', ' '), None)
-        if pixels:
+        try:
+            pixels = config.get_printer().load_object(config, led_strip.replace(':', ' '))
             MmuLeds.led_strip = led_strip
-        else:
-            logging.warning("Happy Hare: not able to load LED strip '%'. Disabling LED support" % led_strip)
+        except Exception as e:
+            raise config.error("Unable to load LED strip '%s': %s" % (led_strip, str(e)))
 
         indicies_used = set()
         try:

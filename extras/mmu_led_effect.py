@@ -20,6 +20,7 @@ class MmuLedEffect:
     def __init__(self, config):
         self.printer = config.get_printer()
         chains = MmuLeds.chains
+        led_strip = MmuLeds.led_strip
         define_on_str = config.get('define_on', "").strip()
         define_on = [segment.strip() for segment in define_on_str.split(',') if segment.strip()]
         if define_on and not all(e in MmuLeds.SEGMENTS for e in define_on):
@@ -32,12 +33,12 @@ class MmuLedEffect:
             for segment in MmuLeds.SEGMENTS:
                 if chains[segment] and (not define_on or segment in define_on):
                     section_to = "%s_%s" % (led_effect_section, segment)
-                    leds = "%s (%s)" % (MmuLeds.led_strip, ",".join(map(str, chains[segment])))
+                    leds = "%s (%s)" % (led_strip, ",".join(map(str, chains[segment])))
                     self._add_led_effect(config, section_to, leds)
                 if chains[segment] and not define_on and len(chains[segment]) > 1:
                     for idx in range(len(chains[segment])):
                         section_to = "%s_%s_%d" % (led_effect_section, segment, chains[segment][idx])
-                        leds = "%s (%s)" % (MmuLeds.led_strip, chains[segment][idx])
+                        leds = "%s (%s)" % (led_strip, chains[segment][idx])
                         self._add_led_effect(config, section_to, leds)
 
     def _add_led_effect(self, config, section_to, leds):

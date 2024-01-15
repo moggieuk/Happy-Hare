@@ -400,7 +400,7 @@ class Mmu:
         self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_COLLISION)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.)
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
-        self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # PAUL
+        self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.)
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
@@ -912,7 +912,7 @@ class Mmu:
         # Ensure that the LED control macro knows the indices of the segments of the LED chain and other essential data
         led_chains = MmuLeds.chains
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-        if gcode_macro:
+        if led_chains and gcode_macro:
             try:
                 led_vars = {}
                 if led_chains:
@@ -1553,7 +1553,7 @@ class Mmu:
                         msg += ", then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
                         msg += " and then moves %.1fmm ('toolhead_entry_to_entruder') to extruder extrance" % self.toolhead_entry_to_extruder
-            if self._has_sensor(self.ENDSTOP_TOOLHEAD): # PAUL
+            if self._has_sensor(self.ENDSTOP_TOOLHEAD):
                 msg += "\n- Extruder loads (synced) by homing a maximum of %.1fmm ('toolhead_homing_max') to TOOLHEAD SENSOR before moving the last %.1fmm ('toolhead_sensor_to_nozzle' - 'toolhead_ooze_reduction') to the nozzle" % (self.toolhead_homing_max, self.toolhead_sensor_to_nozzle - self.toolhead_ooze_reduction)
             else:
                 msg += "\n- Extruder loads (synced) by moving %.1fmm ('toolhead_extruder_to_nozzle' - 'toolhead_ooze_reduction') to the nozzle" % (self.toolhead_extruder_to_nozzle - self.toolhead_ooze_reduction)
@@ -1803,7 +1803,7 @@ class Mmu:
         if self._check_in_bypass(): return
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
-        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print syncing and current
+        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print current
         self._sync_gear_to_extruder(sync, servo=servo, current=self._is_in_print(force_in_print))
 
 
@@ -2574,7 +2574,6 @@ class Mmu:
     def _resume_printing(self, operation, sync=True):
         self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation)
-        self._restore_tool_override(self.tool_selected) # Must be after _restore_toolhead_position()
         self._initialize_filament_position()    # Encoder 0000
         # Ready to continue printing...
 
@@ -2598,24 +2597,27 @@ class Mmu:
             self._set_print_state(state)
 
     def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None):
-        homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
         if operation and not self.saved_toolhead_position:
-            if 'xyz' in homed:
-                self._movequeues_wait_moves()
-                toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
-                self._log_debug("Saving toolhead position (%s) for %s" % (toolhead_pos, operation))
-                self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
-                self.saved_toolhead_position = operation
-            else:
-                self._log_info("Warning: MMU cannot save toolhead position because toolhead not homed!")
+            self._movequeues_wait_moves()
+            toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
+            self._log_debug("Saving toolhead position (%s) for %s" % (toolhead_pos, operation))
+            self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
+            self.saved_toolhead_position = operation
+
+            # Make sure we record the current speed/extruder overrides
+            if self.tool_selected >= 0:
+                mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
+                self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
+                self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
         elif operation:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
         # Immediately lift toolhead off print (potentially going higher but not multiple times)
+        homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
         if z_hop_height is not None and z_hop_height > 0 and z_hop_height > self.saved_toolhead_height:
             z_hop_height -= self.saved_toolhead_height
             self.saved_toolhead_height += z_hop_height
-            if 'z' not in self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']:
+            if 'z' not in homed:
                 self._log_info("Warning: MMU cannot lift toolhead because toolhead not homed!")
             else:
                 self._log_debug("Lifting toolhead %.1fmm" % z_hop_height)
@@ -2625,15 +2627,23 @@ class Mmu:
                 self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
 
     def _restore_toolhead_position(self, operation):
-        homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
         if self.saved_toolhead_position:
-            if 'xyz' in homed:
+            homed = 'xyz' in self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
+
+            # Inject speed/extruder overrides into gcode state restore data
+            if self.tool_selected >= 0:
+                mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
+                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
+                mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
+              
+            if homed:
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
                 toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
                 self._log_debug("Restoring toolhead position (%s) after %s" % (toolhead_pos, operation))
-                self._clear_saved_toolhead_position()
             else:
+                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state")
                 self._log_info("Warning: MMU cannot restore toolhead position because toolhead not homed!")
+            self._clear_saved_toolhead_position()
 
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_position = None
@@ -3551,18 +3561,6 @@ class Mmu:
 
             fhomed = False
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
-# PAUL
-# toolhead_homing_max
-# if self.FILAMENT_POS_HOMED_EXTRUDER:
-#     if endstop = ENTRY
-#         = entry to extruder + extruder to toolhead + saftey
-#     elif # collision or mmu_gear_touch
-#         = extruder to toolhead + saftey
-#     else # none
-#         = homing max + extruder to toolhead
-# else:
-#         = homing max + extruder to toolhead
-#
                 # With toolhead sensor we always first home to toolhead sensor past the extruder entrance
                 if self.sensors[self.ENDSTOP_TOOLHEAD].runout_helper.filament_present:
                     raise MmuError("Possible toolhead sensor malfunction - filament detected before it entered extruder")
@@ -4661,14 +4659,10 @@ class Mmu:
         self._wrap_gcode_command(self.pre_load_macro, exception=True)
 
         self._select_tool(tool, move_servo=False)
-        self._update_filaments_from_spoolman(gate) # Update material & color
+        self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
         self._load_sequence()
-
-        # Activate the spool in SpoolMan, if enabled
-        self._spoolman_activate_spool(self.gate_spool_id[gate])
-
-        # Restore M220 and M221 overrides
-        self._restore_tool_override(self.tool_selected)
+        self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
+        self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
         self._wrap_gcode_command(self.post_load_macro, exception=True)
 
@@ -4681,10 +4675,9 @@ class Mmu:
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
         self._wrap_gcode_command(self.pre_unload_macro, exception=True)
 
-        # Remember M220 and M221 overrides, deactivate in SpoolMan
-        self._record_tool_override()
+        self._record_tool_override() # Remember M220 and M221 overrides
         self._unload_sequence(skip_tip=skip_tip, runout=runout)
-        self._spoolman_activate_spool(0)
+        self._spoolman_activate_spool(0) # Deactivate in SpoolMan
 
         self._wrap_gcode_command(self.post_unload_macro, exception=True)
 
@@ -4911,7 +4904,6 @@ class Mmu:
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
-        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print syncing, current and retry logic
         # TODO currently not registered directly as Tx commands because not visible by Mainsail/Fluuid
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)
@@ -4926,7 +4918,7 @@ class Mmu:
             self._recover_filament_pos(message=True)
 
         # If actively printing save toolhead position and optionally z-hop to stop blob
-        if self._is_printing(force_in_print):
+        if self._is_printing():
             self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
 
         if self._has_encoder():
@@ -4935,7 +4927,7 @@ class Mmu:
             self._last_tool = self.tool_selected
             self._next_tool = tool
 
-            attempts = 2 if self.retry_tool_change_on_error and (self._is_printing(force_in_print) or standalone) else 1 # TODO: replace with inattention timer
+            attempts = 2 if self.retry_tool_change_on_error and (self._is_printing() or standalone) else 1 # TODO: replace with inattention timer
             try:
                 for i in range(attempts):
                     try:
@@ -4953,7 +4945,7 @@ class Mmu:
                 self._next_tool = self.TOOL_GATE_UNKNOWN
     
             # If actively printing then we must restore toolhead position, if paused, mmu_resume will do this
-            if self._is_printing(force_in_print):
+            if self._is_printing():
                 self._resume_printing("change_tool")
 
     cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)"
@@ -5075,14 +5067,14 @@ class Mmu:
     # Not a user facing command - used in automatic wrapper
     cmd_MMU_CANCEL_PRINT_help = "Wrapper around default CANCEL_PRINT macro"
     def cmd_MMU_CANCEL_PRINT(self, gcmd):
-        if not self.is_enabled:
+        if self.is_enabled:
+            self._log_debug("MMU_CANCEL_PRINT wrapper called")
+            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error)
+            self._wrap_gcode_command("__CANCEL_PRINT", None)
+            self._on_print_end("cancelled")
+        else:
             self._wrap_gcode_command("__CANCEL_PRINT", None) # User defined or Klipper default behavior
-            return
 
-        self._log_debug("MMU_CANCEL_PRINT wrapper called")
-        self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error)
-        self._wrap_gcode_command("__CANCEL_PRINT", None)
-        self._on_print_end("cancelled")
 
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
     def cmd_MMU_RECOVER(self, gcmd):
@@ -5317,7 +5309,7 @@ class Mmu:
         self.extruder_homing_max = gcmd.get_float('EXTRUDER_HOMING_MAX', self.extruder_homing_max, above=10.)
         self.extruder_force_homing = gcmd.get_int('EXTRUDER_FORCE_HOMING', self.extruder_force_homing, minval=0, maxval=1)
 
-        self.toolhead_homing_max = gcmd.get_float('TOOLHEAD_HOMING_MAX', self.toolhead_homing_max, minval=0.) # PAUL
+        self.toolhead_homing_max = gcmd.get_float('TOOLHEAD_HOMING_MAX', self.toolhead_homing_max, minval=0.)
         self.toolhead_entry_to_extruder = gcmd.get_float('TOOLHEAD_ENTRY_TO_EXTRUDER', self.toolhead_entry_to_extruder, minval=0.)
         self.toolhead_sensor_to_nozzle = gcmd.get_float('TOOLHEAD_SENSOR_TO_NOZZLE', self.toolhead_sensor_to_nozzle, minval=0.)
         self.toolhead_extruder_to_nozzle = gcmd.get_float('TOOLHEAD_EXTRUDER_TO_NOZZLE', self.toolhead_extruder_to_nozzle, minval=0.)
@@ -5412,7 +5404,7 @@ class Mmu:
         msg += "\ntoolhead_extruder_to_nozzle = %.1f" % self.toolhead_extruder_to_nozzle
         if self._has_sensor(self.ENDSTOP_TOOLHEAD):
             msg += "\ntoolhead_sensor_to_nozzle = %.1f" % self.toolhead_sensor_to_nozzle
-            msg += "\ntoolhead_homing_max = %.1f" % self.toolhead_homing_max # PAUL
+            msg += "\ntoolhead_homing_max = %.1f" % self.toolhead_homing_max
         if self._has_sensor(self.ENDSTOP_EXTRUDER):
             msg += "\ntoolhead_entry_to_extruder = %.1f" % self.toolhead_entry_to_extruder
         msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
@@ -5465,7 +5457,8 @@ class Mmu:
             raise MmuError("Filament runout or clog when filament is not fully loaded - manual intervention is required")
 
         self._log_info("Issue on tool T%d" % self.tool_selected)
-        self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
+        if self._is_printing():
+            self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
 
         # Check for clog by looking for filament at the gate (or in the encoder)
         self._log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)
