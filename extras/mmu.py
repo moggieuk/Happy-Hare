@@ -3054,6 +3054,7 @@ class Mmu:
                 default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
                 default_entry_effect = gcmd.get('ENTRY_EFFECT', variables['default_entry_effect'])
                 default_status_effect = gcmd.get('STATUS_EFFECT', variables['default_status_effect'])
+                quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
 
                 led_vars = {}
                 led_vars['led_enable'] = led_enable
@@ -3068,13 +3069,14 @@ class Mmu:
                     gcode_macro.variables.update(led_vars)
                     self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default")
 
-                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled != -1 else "Unavailable"
-                msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
-                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, variables['exit_first_led_index'])
-                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, variables['entry_first_led_index'])
-                msg += "Default status effect: %s\n" % effect_string(default_status_effect, variables['status_led_index'])
-                msg += "\nOptions:\nENABLE=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color]\nENTRY_EFFECT=[off|gate_status|filament_color]\nSTATUS_EFFECT=[off|on|filament_color]"
-                self._log_always(msg)
+                if not quiet:
+                    effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled != -1 else "Unavailable"
+                    msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
+                    msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, variables['exit_first_led_index'])
+                    msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, variables['entry_first_led_index'])
+                    msg += "Default status effect: %s\n" % effect_string(default_status_effect, variables['status_led_index'])
+                    msg += "\nOptions:\nENABLE=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color]\nENTRY_EFFECT=[off|gate_status|filament_color]\nSTATUS_EFFECT=[off|on|filament_color]"
+                    self._log_always(msg)
             except Exception as e:
                 # Probably/hopefully just means the macro is missing or been messed with
                 self._log_error('Error communicating with the _MMU_SET_LED macro: %s' % str(e))
@@ -5602,7 +5604,7 @@ class Mmu:
         return msg
 
     def _gate_map_to_human_string(self, detail=False):
-        msg = "MMU Gates / Filaments:"
+        msg = "Gates / Filaments:"
         for g in range(self.mmu_num_gates):
             material = self.gate_material[g] if self.gate_material[g] != "" else "n/a"
             color = self.gate_color[g] if self.gate_color[g] != "" else "n/a"
