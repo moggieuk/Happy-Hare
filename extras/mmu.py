@@ -2630,7 +2630,7 @@ class Mmu:
             if 'xyz' in homed:
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
                 toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
-                self._log_debug("Restoring toolhead position (%s) for %s" % (toolhead_pos, operation))
+                self._log_debug("Restoring toolhead position (%s) after %s" % (toolhead_pos, operation))
                 self._clear_saved_toolhead_position()
             else:
                 self._log_info("Warning: MMU cannot restore toolhead position because toolhead not homed!")
