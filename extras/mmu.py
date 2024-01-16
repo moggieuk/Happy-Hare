@@ -83,7 +83,7 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
-    VERSION = 2.4		# When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 2.41		# When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.0            # Delay before running bootup tasks
 
@@ -219,7 +219,7 @@ class Mmu:
                   ('tan','#D2B48C'), ('teal','#008080'), ('thistle','#D8BFD8'), ('tomato','#FF6347'), ('turquoise','#40E0D0'), ('violet','#EE82EE'),
                   ('wheat','#F5DEB3'), ('white','#FFFFFF'), ('whitesmoke','#F5F5F5'), ('yellow','#FFFF00'), ('yellowgreen','#9ACD32')]
 
-    UPGRADE_REMINDER = "Happy Hare minor version has changed which requires you to re-run\n'./install.sh' to update configuration files and klipper modules.\nMore details: https://github.com/moggieuk/Happy-Hare/blob/main/doc/upgrade.md"
+    UPGRADE_REMINDER = "Sorry but Happy Hare requires you to re-run\n'./install.sh' to complete the update.\nMore details: https://github.com/moggieuk/Happy-Hare/blob/main/doc/upgrade.md"
 
     def __init__(self, config):
         self.config = config
@@ -344,7 +344,7 @@ class Mmu:
         self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
-        self.z_hop_height_error = config.getfloat('z_hop_height_error', 5., minval=0.)
+        _ = config.getfloat('z_hop_height_error', 5., minval=0.) # PAUL Deprecated. TODO delete
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 5., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
@@ -1204,7 +1204,7 @@ class Mmu:
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
-                'is_locked': self._is_mmu_paused(), # TODO should deprecate now we have print_state
+                'is_locked': self._is_mmu_paused(),
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
@@ -2519,10 +2519,10 @@ class Mmu:
     def _mmu_pause(self, reason, force_in_print=False):
         run_pause_macro = recover_pos = False
         self.resume_to_state = "printing" if self._is_in_print() else "ready"
-        if self._is_printing(force_in_print):
-            if not self._is_mmu_paused():
-                self._log_error("An issue with the MMU has been detected. Print paused\nReason: %s" % reason)
-                self._log_always("After fixing the issue, call \'RESUME\' to continue printing (MMU_UNLOCK can restore temperature)")
+        if self._is_in_print(force_in_print):
+            if not self._is_mmu_paused() and not self._is_paused():
+                self._log_error("An issue with the MMU has been detected. Print paused.\nReason: %s" % reason)
+                self._log_always("After fixing the issue, call RESUME to continue printing\n(MMU_UNLOCK can restore temperature)")
 
                 if not self.paused_extruder_temp: # Only save the initial pause temp
                     self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
@@ -2533,7 +2533,8 @@ class Mmu:
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_encoder_sensor() # Disable runout/clog detection in pause
-                self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_error)
+                if self._is_printing(force_in_print):
+                    self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_toolchange)
                 run_pause_macro = True
                 self._set_print_state("pause_locked")
                 self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
@@ -2545,8 +2546,9 @@ class Mmu:
             self._log_error("An issue with the MMU has been detected whilst out of a print\nReason: %s" % reason)
 
         self._sync_gear_to_extruder(False, servo=True)
-        if run_pause_macro:
+        if run_pause_macro and not self._is_paused():
             self._wrap_gcode_command(self.pause_macro)
+
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
 
@@ -2609,26 +2611,29 @@ class Mmu:
                 mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
                 self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                 self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
+
+            # Lift toolhead off print the specified z-hop
+            if z_hop_height is not None and z_hop_height > 0:
+                homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
+                if 'z' not in homed:
+                    self._log_info("Warning: MMU cannot lift toolhead because toolhead not homed!")
+                else:
+                    self._log_debug("Lifting toolhead %.1fmm" % z_hop_height)
+                    act_z = self.toolhead.get_position()[2]
+                    max_z = self.toolhead.get_status(self.printer.get_reactor().monotonic())['axis_maximum'].z
+                    safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
+                    self.saved_toolhead_height = safe_z
+                    self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
+
+            # This will contain the same print gcode_position, but position will include the z-hop
+            self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_Z_HOP_state")
+
         elif operation:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
-        # Immediately lift toolhead off print (potentially going higher but not multiple times)
-        homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
-        if z_hop_height is not None and z_hop_height > 0 and z_hop_height > self.saved_toolhead_height:
-            z_hop_height -= self.saved_toolhead_height
-            self.saved_toolhead_height += z_hop_height
-            if 'z' not in homed:
-                self._log_info("Warning: MMU cannot lift toolhead because toolhead not homed!")
-            else:
-                self._log_debug("Lifting toolhead %.1fmm" % z_hop_height)
-                act_z = self.toolhead.get_position()[2]
-                max_z = self.toolhead.get_status(self.printer.get_reactor().monotonic())['axis_maximum'].z
-                safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
-                self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
-
     def _restore_toolhead_position(self, operation):
         if self.saved_toolhead_position:
-            homed = 'xyz' in self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
+            homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
 
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
@@ -2636,7 +2641,7 @@ class Mmu:
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
               
-            if homed:
+            if 'xyz' in homed:
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
                 toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
                 self._log_debug("Restoring toolhead position (%s) after %s" % (toolhead_pos, operation))
@@ -4656,7 +4661,7 @@ class Mmu:
                 self._log_info("Remapping T%d to gate #%d" % (tool, next_gate))
                 gate = self._remap_tool(tool, next_gate)
             else:
-                raise MmuError("Gate #%d is empty!" % gate)
+                raise MmuError("Gate #%d is empty! Use 'MMU_CHECK_GATE GATE=%d' to reset" % (gate, gate))
 
         self._wrap_gcode_command(self.pre_load_macro, exception=True)
 
@@ -5015,7 +5020,7 @@ class Mmu:
     def cmd_MMU_PAUSE(self, gcmd):
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
-        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Force a print_state change
+        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
         self._mmu_pause("MMU_PAUSE macro was directly called", force_in_print)
 
     cmd_MMU_UNLOCK_help = "Wakeup the MMU prior to resume to restore temperatures and timeouts"
@@ -5053,11 +5058,21 @@ class Mmu:
     # Not a user facing command - used in automatic wrapper
     cmd_PAUSE_help = "Wrapper around default PAUSE macro"
     def cmd_PAUSE(self, gcmd):
-        if self.is_enabled:
-            self._log_trace("MMU PAUSE wrapper called")
-            if not self.paused_extruder_temp: # Only save the initial pause temp
-                self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
+        if not self.is_enabled:
+            self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
+            return
+
+        self._log_trace("MMU PAUSE wrapper called")
+        if not self.paused_extruder_temp: # Only save the initial pause temp
+            self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
+
         self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
+
+        if self.saved_toolhead_position:
+            # We cheat pause so that it will resume to where we want it
+            gcode_move = self.printer.lookup_object("gcode_move")
+            mmu_zhop_state = gcode_move.saved_states['MMU_Z_HOP_state']
+            gcode_move.saved_states['PAUSE_STATE'] = mmu_zhop_state
 
     # Not a user facing command - used in automatic wrapper
     cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
@@ -5071,7 +5086,7 @@ class Mmu:
     def cmd_MMU_CANCEL_PRINT(self, gcmd):
         if self.is_enabled:
             self._log_debug("MMU_CANCEL_PRINT wrapper called")
-            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error)
+            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange)
             self._wrap_gcode_command("__CANCEL_PRINT", None)
             self._on_print_end("cancelled")
         else:
@@ -5320,7 +5335,6 @@ class Mmu:
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
 
         # Software behavior options
-        self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
         self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
@@ -5419,7 +5433,6 @@ class Mmu:
         msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
 
         msg += "\n\nOTHER:"
-        msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
         msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         if self._has_encoder():
@@ -5945,7 +5958,7 @@ class Mmu:
                             return
                     except ValueError as ve:
                         msg = "Invalid TOOLS parameter: %s" % tools
-                        if self._is_in_print():
+                        if self._is_printing():
                             self._mmu_pause(msg)
                         else:
                             self._log_always(msg)
@@ -5997,7 +6010,7 @@ class Mmu:
                             self._unload_gate()
                         except MmuError as ee:
                             msg = "Failure during check gate #%d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
-                            if self._is_in_print():
+                            if self._is_printing():
                                 self._mmu_pause(msg)
                             else:
                                 self._log_always(msg)
@@ -6009,7 +6022,7 @@ class Mmu:
                             msg = "Tool T%d on gate #%d marked EMPTY" % (tool, gate)
                         else:
                             msg = "Gate #%d marked EMPTY" % gate
-                        if self._is_in_print():
+                        if self._is_printing():
                             # Use case of in-print verification of all tools used in print
                             self._mmu_pause(msg)
                             self._log_debug("Reason: %s" % str(ee))

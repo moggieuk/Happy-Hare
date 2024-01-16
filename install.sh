@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.4 # Important: Keep synced with mmy.py
+VERSION=2.41 # Important: Keep synced with mmy.py
 
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"
@@ -341,7 +341,7 @@ upgrade_led_effects() {
     fi
 
     if [ "${found_led_effects}" -ne 0 ]; then
-        if echo "$FROM_VERSION 2.4" | awk '{exit !(($1 < $2))}'; then
+        if echo "$FROM_VERSION 2.40" | awk '{exit !(($1 < $2))}'; then
             cat "${hardware_cfg}" | sed -e "\
                     /${LED_SECTION}/,\$ d \
                         " > ${hardware_cfg}.tmp && mv ${hardware_cfg}.tmp ${hardware_cfg}
@@ -568,6 +568,9 @@ read_previous_config() {
         fi
         if [ ! "${_param_servo_move_angle}" == "" ]; then
             _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
+        fi
+        if [ ! "${_param_z_hop_height_error}" == "" ]; then
+            unset _param_z_hop_heigth_error
         fi
     fi
 
