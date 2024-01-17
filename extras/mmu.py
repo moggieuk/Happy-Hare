@@ -616,6 +616,7 @@ class Mmu:
 
         # TTG and Endless spool
         self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help)
+        self.gcode.register_command('MMU_TTG_MAP', self.cmd_MMU_REMAP_TTG, desc = self.cmd_MMU_REMAP_TTG_help) # Alias for MMU_REMAP_TTG
         self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
         self.gcode.register_command('MMU_CHECK_GATE', self.cmd_MMU_CHECK_GATE, desc = self.cmd_MMU_CHECK_GATE_help)
@@ -1553,29 +1554,29 @@ class Mmu:
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
                         msg += " and then moves %.1fmm ('toolhead_entry_to_entruder') to extruder extrance" % self.toolhead_entry_to_extruder
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
-                msg += "\n- Extruder loads (synced) by homing a maximum of %.1fmm ('toolhead_homing_max') to TOOLHEAD SENSOR before moving the last %.1fmm ('toolhead_sensor_to_nozzle' - 'toolhead_ooze_reduction') to the nozzle" % (self.toolhead_homing_max, self.toolhead_sensor_to_nozzle - self.toolhead_ooze_reduction)
+                msg += "\n- Extruder loads (synced) by homing a maximum of %.1fmm ('toolhead_homing_max') to TOOLHEAD SENSOR before moving the last %.1fmm ('toolhead_sensor_to_nozzle - toolhead_ooze_reduction') to the nozzle" % (self.toolhead_homing_max, self.toolhead_sensor_to_nozzle - self.toolhead_ooze_reduction)
             else:
-                msg += "\n- Extruder loads (synced) by moving %.1fmm ('toolhead_extruder_to_nozzle' - 'toolhead_ooze_reduction') to the nozzle" % (self.toolhead_extruder_to_nozzle - self.toolhead_ooze_reduction)
+                msg += "\n- Extruder loads (synced) by moving %.1fmm ('toolhead_extruder_to_nozzle - toolhead_ooze_reduction') to the nozzle" % (self.toolhead_extruder_to_nozzle - self.toolhead_ooze_reduction)
 
             msg += "\n\nUnload Sequence"
             msg += "\n- Tip is %s formed by %s" % (("sometimes", "SLICER") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro)))
             msg += " and tip forming extruder current is %d%%" % self.extruder_form_tip_current
 
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
-                msg += "\n- Extruder unloads (synced) by reverse homing a maximum %.1fmm ('toolhead_sensor_to_nozzle' + 'toolhead_unload_safety_margin') less reported park position to TOOLHEAD SENSOR" % (self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin)
+                msg += "\n- Extruder unloads (synced) by reverse homing a maximum %.1fmm ('toolhead_sensor_to_nozzle + toolhead_unload_safety_margin') less reported park position to TOOLHEAD SENSOR" % (self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin)
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
-                    msg += ", then reverse homes (synced) a maximum of %.1fmm ('toolhead_extruder_to_nozzle' - 'toolhead_sensor_to_nozzle' + 'toolhead_entry_to_extruder' + 'toolhead_unload_safety_margin') to EXTRUDER SENSOR" % (self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin)
+                    msg += ", then reverse homes (synced) a maximum of %.1fmm ('toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle + toolhead_entry_to_extruder + toolhead_unload_safety_margin') to EXTRUDER SENSOR" % (self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin)
                 else:
-                    msg += ", then (unsynced) the remaining %.1fmm ('toolhead_extruder_to_nozzle' - 'toolhead_sensor_to_nozzle') to exist extruder" % (self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle)
+                    msg += ", then (unsynced) the remaining %.1fmm ('toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle') to exist extruder" % (self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle)
             elif self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
-                msg += "\n- Extruder unloads (synced) by reverse homing a maximum of %.1fmm ('toolhead_extruder_to_nozzle' + 'toolhead_entry_to_extruder' + 'toolhead_unload_safety_margin') less reported park position to EXTRUDER SENSOR" % (self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin)
+                msg += "\n- Extruder unloads (synced) by reverse homing a maximum of %.1fmm ('toolhead_extruder_to_nozzle + toolhead_entry_to_extruder + toolhead_unload_safety_margin') less reported park position to EXTRUDER SENSOR" % (self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin)
             else:
-                msg += "\n- Extruder unloads (unsynced) by moving %.1fmm ('toolhead_extruder_to_nozzle' + 'toolhead_unload_safety_margin') less reported park position to exit extruder" % (self.toolhead_extruder_to_nozzle + self.toolhead_unload_safety_margin)
+                msg += "\n- Extruder unloads (unsynced) by moving %.1fmm ('toolhead_extruder_to_nozzle + toolhead_unload_safety_margin') less reported park position to exit extruder" % (self.toolhead_extruder_to_nozzle + self.toolhead_unload_safety_margin)
 
             if self._has_encoder() and self.bowden_pre_unload_test and self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER:
-                msg += "\n- Bowden is unloaded with a short %.1fmm ('encoder_move_step_size') validation move before %.1fmm ('calibration_bowden_length' - 'gate_unload_buffer' - 'encoder_move_step_size') fast move" % (self.encoder_move_step_size, self.calibrated_bowden_length - self.gate_unload_buffer - self.encoder_move_step_size)
+                msg += "\n- Bowden is unloaded with a short %.1fmm ('encoder_move_step_size') validation move before %.1fmm ('calibration_bowden_length - gate_unload_buffer - encoder_move_step_size') fast move" % (self.encoder_move_step_size, self.calibrated_bowden_length - self.gate_unload_buffer - self.encoder_move_step_size)
             else:
-                msg += "\n- Bowden is unloaded with a fast %.1fmm ('calibration_bowden_length' - 'gate_unload_buffer') move" % (self.calibrated_bowden_length - self.gate_unload_buffer)
+                msg += "\n- Bowden is unloaded with a fast %.1fmm ('calibration_bowden_length - gate_unload_buffer') move" % (self.calibrated_bowden_length - self.gate_unload_buffer)
             msg += "\n- Filament is stored by homing a maximum of %.1fmm ('gate_homing_max') to %s and parking %.1fmm ('gate_parking_distance') in the gate" % (self.gate_homing_max, "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "ENDSTOP 'mmu_gate'", self.gate_parking_distance)
 
             if self.sync_form_tip or self.sync_to_extruder:
@@ -1613,8 +1614,7 @@ class Mmu:
         msg += "\n\n%s" % self._state_to_human_string()
 
         if detail:
-            msg += "\n\nTool/gate mapping%s" % (" and EndlessSpool groups:" if self.enable_endless_spool else ":")
-            msg += "\n%s" % self._tool_to_gate_map_to_human_string()
+            msg += "\n\n%s" % self._tool_to_gate_map_to_human_string()
 
         self._log_always(msg)
 
@@ -5555,7 +5555,7 @@ class Mmu:
         else:
             return "?"
 
-    def _tool_to_gate_map_to_human_string(self, summary=False, tool=None):
+    def _tool_to_gate_map_to_human_string(self, summary=False, tool=None, show_groups=True):
         msg = "TTG Map:\n" # String used to filter in KS-HH
         if not summary:
             num_tools = self.mmu_num_gates
@@ -5566,14 +5566,21 @@ class Mmu:
                 msg += "%s-> Gate #%d%s" % (("T%d " % i)[:3], gate, "(" + self._get_filament_char(self.gate_status[gate], show_source=False) + ")")
                 if self.enable_endless_spool:
                     group = self.endless_spool_groups[gate]
-                    es = " in Group_%s: " % group
+                    es = " in EndlessSpool Group %s: " % chr(65 + group) if show_groups else " "
                     prefix = ""
                     starting_gate = self.tool_to_gate_map[i]
-                    for j in range(num_tools): # Gates
-                        gate = (j + starting_gate) % num_tools
-                        if self.endless_spool_groups[gate] == group:
-                            es += "%s%d(%s)" % (prefix, gate, self._get_filament_char(self.gate_status[gate], show_source=False))
-                            prefix = " > "
+                    if show_groups:
+                        for j in range(num_tools): # Gates
+                            gate = (j + starting_gate) % num_tools
+                            if self.endless_spool_groups[gate] == group:
+                                es += "%s%d(%s)" % (prefix, gate, self._get_filament_char(self.gate_status[gate], show_source=False))
+                                prefix = " > "
+                    else:
+                        prefix = " > "
+                        for j in range(num_tools - 1): # Gates
+                            gate = (j + starting_gate + 1) % num_tools
+                            if self.endless_spool_groups[gate] == group:
+                                es += "%s#%d(%s)" % (prefix, gate, self._get_filament_char(self.gate_status[gate], show_source=False))
                     msg += es
                 if i == self.tool_selected:
                     msg += " [SELECTED]"
@@ -5778,7 +5785,7 @@ class Mmu:
         else:
             quiet = False # Display current TTG map
         if not quiet:
-            self._log_info(self._tool_to_gate_map_to_human_string())
+            self._log_info(self._tool_to_gate_map_to_human_string(show_groups=False))
 
     cmd_MMU_GATE_MAP_help = "Display or define the type and color of filaments on each gate"
     def cmd_MMU_GATE_MAP(self, gcmd):
