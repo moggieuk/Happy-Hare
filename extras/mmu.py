@@ -155,8 +155,9 @@ class Mmu:
     GEAR_STEPPER_CONFIG        = "stepper_mmu_gear"
 
     # Gear/Extruder syncing
-    SYNC_FEEDBACK_INTERVAL  = 0.25
-    SYNC_POSITION_TIMERANGE = 0.3
+    SYNC_FEEDBACK_INTERVAL  = 0.5   # How often to check extruder direction
+    SYNC_POSITION_TIMERANGE = 0.6   # Interval to compare movement
+    SYNC_POSITION_MIN_DELTA = 0.001 # Min move distance to be significant
 
     # Vendor MMU's supported
     VENDOR_ERCF     = "ERCF"
@@ -2351,7 +2352,7 @@ class Mmu:
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
         self.sync_feedback_operational = False
         self.sync_feedback_last_direction = 0
-        #self._log_trace("Reset sync multiplier")
+        self._log_trace("Reset sync multiplier")
         self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
 
     def _update_sync_feedback(self, eventtime):
@@ -2359,12 +2360,13 @@ class Mmu:
         extruder = self.toolhead.get_extruder()
         pos = extruder.find_past_position(estimated_print_time)
         past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIMERANGE))
-        prev_direction = self.sync_feedback_last_direction
-        self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
-        if self.sync_feedback_last_direction != prev_direction:
-            d = self.sync_feedback_last_direction
-            #self._log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
-            self._update_sync_multiplier()
+        if abs(pos - past_pos) >= self.SYNC_POSITION_MIN_DELTA:
+            prev_direction = self.sync_feedback_last_direction
+            self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
+            if self.sync_feedback_last_direction != prev_direction:
+                d = self.sync_feedback_last_direction
+                self._log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
+                self._update_sync_multiplier()
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
     def _update_sync_multiplier(self):
