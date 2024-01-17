@@ -77,3 +77,10 @@ New Features:
 - Cleanup and separation of config files based on function
 - Lots of new/updated doc
 
+### v2.4.1
+- Update / fixes to the way toolhead movement occurs through the "sequence macros" like _MMU_PRE_UNLOAD and _MMU_POST_LOAD etc. 
+  - Also if enabled these will now work while not actively printing (that was an oversight)
+  - These macros also play nicely with Klippain  pause/resume macros now
+- The z_hop_height_error has been deprecated. Additional z_hop height can be configured in the macro variables at the start of mmu_sequence.cfg
+- Better error feedback on LED misconfiguration
+
