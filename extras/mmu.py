@@ -344,7 +344,6 @@ class Mmu:
         self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
-        _ = config.getfloat('z_hop_height_error', 5., minval=0.) # PAUL Deprecated. TODO delete
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 5., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
@@ -910,10 +909,10 @@ class Mmu:
             self._log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
         # Ensure that the LED control macro knows the indices of the segments of the LED chain and other essential data
-        led_chains = MmuLeds.chains
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-        if led_chains and gcode_macro:
+        if gcode_macro:
             try:
+                led_chains = MmuLeds.chains
                 led_vars = {}
                 if led_chains:
                     led_vars['led_enable'] = 1
@@ -932,7 +931,6 @@ class Mmu:
                     self._log_debug("LEDs support is not configured")
                 gcode_macro.variables.update(led_vars)
             except Exception as e:
-                # Probably/hopefully just means the macro is missing
                 self._log_error('Error setting up the _MMU_SET_LED macro: %s' % str(e))
         else:
             self._log_error("LEDs macro _MMU_SET_LED not available")
@@ -1215,7 +1213,7 @@ class Mmu:
                 'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
                             "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
                             "Unknown",
-                'filament_position': self.mmu_toolhead.get_position()[1],
+                'filament_position': self._get_filament_position(),
                 'filament_pos': self.filament_pos,
                 'filament_direction': self.filament_direction,
                 'servo': "Up" if self.servo_state == self.SERVO_UP_STATE else
@@ -1523,7 +1521,7 @@ class Mmu:
         config = gcmd.get_int('SHOWCONFIG', 0, minval=0, maxval=1)
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
 
-        msg = "Happy Hare v%.1f running %s v%s" % (self.config_version, self.mmu_vendor, self.mmu_version_string)
+        msg = "MMU: Happy Hare v%.1f running %s v%s" % (self.config_version, self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
         msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_mmu_paused() else "OPERATIONAL")
         msg += "\nServo in %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
@@ -5069,7 +5067,7 @@ class Mmu:
         self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
 
         if self.saved_toolhead_position:
-            # We cheat pause so that it will resume to where we want it
+            # We cheat pause so that it will resume to where we want it to
             gcode_move = self.printer.lookup_object("gcode_move")
             mmu_zhop_state = gcode_move.saved_states['MMU_Z_HOP_state']
             gcode_move.saved_states['PAUSE_STATE'] = mmu_zhop_state
@@ -5556,7 +5554,7 @@ class Mmu:
             return "?"
 
     def _tool_to_gate_map_to_human_string(self, summary=False, tool=None):
-        msg = ""
+        msg = "TTG Map:\n" # String used to filter in KS-HH
         if not summary:
             num_tools = self.mmu_num_gates
             tools = range(num_tools) if tool is None else [tool]
@@ -5617,7 +5615,7 @@ class Mmu:
         return msg
 
     def _gate_map_to_human_string(self, detail=False):
-        msg = "Gates / Filaments:"
+        msg = "Gates / Filaments:" # String used to filter in KS-HH
         for g in range(self.mmu_num_gates):
             material = self.gate_material[g] if self.gate_material[g] != "" else "n/a"
             color = self.gate_color[g] if self.gate_color[g] != "" else "n/a"
