@@ -1501,6 +1501,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
     upgrade_mmu_sensors
     upgrade_led_effects
 
+    # Link in new components
     link_mmu_plugins
     install_update_manager
 
