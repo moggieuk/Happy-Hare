@@ -1115,7 +1115,7 @@ class Mmu:
         try:
             self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare Ready')
             if self.log_startup_status > 0:
-                self._log_always(self._tool_to_gate_map_to_human_string(summary=self.log_startup_status == 1))
+                self._log_always(self._ttg_map_to_string(summary=self.log_startup_status == 1))
                 self._display_visual_state(silent=self.persistence_level < 4)
             self._set_print_state("initialized")
             if self._has_encoder():
@@ -1297,7 +1297,7 @@ class Mmu:
         except Exception as e:
             self._log_debug("Exception whilst tracking gate stats: %s" % str(e))
 
-    def _seconds_to_human_string(self, seconds):
+    def _seconds_to_string(self, seconds):
         result = ""
         hours = int(math.floor(seconds / 3600.))
         if hours >= 1:
@@ -1308,26 +1308,26 @@ class Mmu:
         result += "%d seconds" % int((math.floor(seconds) % 60))
         return result
 
-    def _swap_statistics_to_human_string(self, total=True):
+    def _swap_statistics_to_string(self, total=True):
         (msg, stats) = ("MMU Total Statistics:", self.statistics) if total == True else ("MMU Last Print Statistics:", self.job_statistics)
         msg += "\n%d swaps completed" % stats['total_swaps']
-        msg += "\n%s spent loading (average: %s)" % (self._seconds_to_human_string(stats['time_spent_loading']),
-                                                     self._seconds_to_human_string(stats['time_spent_loading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-        msg += "\n%s spent unloading (average: %s)" % (self._seconds_to_human_string(stats['time_spent_unloading']),
-                                                       self._seconds_to_human_string(stats['time_spent_unloading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-        msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_human_string(stats['time_spent_paused']), stats['total_pauses'])
+        msg += "\n%s spent loading (average: %s)" % (self._seconds_to_string(stats['time_spent_loading']),
+                                                     self._seconds_to_string(stats['time_spent_loading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
+        msg += "\n%s spent unloading (average: %s)" % (self._seconds_to_string(stats['time_spent_unloading']),
+                                                       self._seconds_to_string(stats['time_spent_unloading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
+        msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats['time_spent_paused']), stats['total_pauses'])
         return msg
 
     def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False):
         if self.log_statistics or force_log:
             msg = ""
             if job:
-                msg += self._swap_statistics_to_human_string(total=False)
+                msg += self._swap_statistics_to_string(total=False)
             if total:
                 msg += "\n\n" if msg != "" else ""
-                msg += self._swap_statistics_to_human_string(total=True)
+                msg += self._swap_statistics_to_string(total=True)
             if self._can_use_encoder() and gate:
-                m,d = self._gate_statistics_to_human_string()
+                m,d = self._gate_statistics_to_string()
                 msg += "\n\n" if msg != "" else ""
                 msg += m
                 if detail:
@@ -1339,7 +1339,7 @@ class Mmu:
         self._persist_swap_statistics()
         self._persist_gate_statistics()
 
-    def _gate_statistics_to_human_string(self):
+    def _gate_statistics_to_string(self):
         msg = "Gate Statistics:\n"
         dbg = ""
         for gate in range(self.mmu_num_gates):
@@ -1438,10 +1438,10 @@ class Mmu:
         if direction is not None:
             self.filament_direction = direction
         if not silent and self.log_visual > 0 and not self.calibrating:
-            visual_str = self._state_to_human_string()
+            visual_str = self._state_to_string()
             self._log_always(visual_str)
 
-    def _state_to_human_string(self, direction=None):
+    def _state_to_string(self, direction=None):
         tool_str = str(self.tool_selected) if self.tool_selected >=0 else "?"
         sensor_str = " [sensor] " if self._has_sensor(self.ENDSTOP_TOOLHEAD) else ""
         counter_str = " %.1fmm%s" % (self.mmu_toolhead.get_position()[1], " (e:%.1fmm)" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
@@ -1487,7 +1487,7 @@ class Mmu:
             visual2 = visual2.replace(">", "<")
         return visual2 if self.log_visual == 2 else visual
 
-    def _log_level_to_human_string(self, level):
+    def _log_level_to_string(self, level):
         log = "OFF"
         if level > 3: log = "STEPPER"
         elif level > 2: log = "TRACE"
@@ -1496,7 +1496,7 @@ class Mmu:
         elif level > -1: log = "ESSENTIAL MESSAGES"
         return log
 
-    def _visual_log_level_to_human_string(self, level):
+    def _visual_log_level_to_string(self, level):
         log = "OFF"
         if level > 1: log = "SHORT"
         elif level > 0: log = "LONG"
@@ -1599,22 +1599,23 @@ class Mmu:
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
                 msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state == True else "Empty"))
-            msg += "\nLogging: Console %d(%s)" % (self.log_level, self._log_level_to_human_string(self.log_level))
+            msg += "\nLogging: Console %d(%s)" % (self.log_level, self._log_level_to_string(self.log_level))
 
-            msg += ", Logfile %d(%s)" % (self.log_file_level, self._log_level_to_human_string(self.log_file_level))
-            msg += ", Visual %d(%s)" % (self.log_visual, self._visual_log_level_to_human_string(self.log_visual))
+            msg += ", Logfile %d(%s)" % (self.log_file_level, self._log_level_to_string(self.log_file_level))
+            msg += ", Visual %d(%s)" % (self.log_visual, self._visual_log_level_to_string(self.log_visual))
             msg += ", Statistics %d(%s)" % (self.log_statistics, "ON" if self.log_statistics else "OFF")
 
         if not detail:
-            msg += "\n\nFor details on TTG and endless spool groups add 'DETAIL=1'"
+            msg += "\n\nFor details on TTG and EndlessSpool groups add 'DETAIL=1'"
             if not config:
                 msg += ", for configuration add 'SHOWCONFIG=1'"
 
-        msg += "\n\n%s" % self._tool_to_gate_map_to_human_string(summary=True)
-        msg += "\n\n%s" % self._state_to_human_string()
+        msg += "\n\n%s" % self._ttg_map_to_string(summary=True)
+        msg += "\n\n%s" % self._state_to_string()
 
         if detail:
-            msg += "\n\n%s" % self._tool_to_gate_map_to_human_string()
+            msg += "\n\n%s" % self._ttg_map_to_string(title="EndlessSpool Groups")
+            msg += "\n\n%s" % self._gate_map_to_string()
 
         self._log_always(msg)
 
@@ -2529,7 +2530,7 @@ class Mmu:
                     self._log_trace("Saved desired extruder temperature: %.1f" % self.paused_extruder_temp)
 
                 self._track_pause_start()
-                self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_human_string(self.disable_heater))
+                self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_encoder_sensor() # Disable runout/clog detection in pause
@@ -4313,6 +4314,7 @@ class Mmu:
                     hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
                     init_pos = pos[1]
                     pos[1] += dist
+                    initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position() # PAUL new
                     got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
                     for attempt in range(self.canbus_comms_retries):  # HACK: We can repeat because homing move
                         try:
@@ -4336,8 +4338,9 @@ class Mmu:
                             homed = False
                         finally:
                             halt_pos = self.mmu_toolhead.get_position()
-                            #self._log_error("PAUL DEBUG: halt_pos=%s, trig_pos=%s" % (halt_pos, trig_pos))
+                            stepper_movement = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position() # PAUL added
                             actual = halt_pos[1] - init_pos
+                            self._log_error("PAUL DEBUG: halt_pos=%s, trig_pos=%s, stepper_movement=%.2f, actual=%.2f" % (halt_pos, trig_pos, stepper_movement, actual))
                         if not got_comms_timeout:
                             break
                 else:
@@ -5555,103 +5558,154 @@ class Mmu:
         else:
             return "?"
 
-    def _tool_to_gate_map_to_human_string(self, summary=False, tool=None, show_groups=True):
-        msg = "TTG Map:\n" # String used to filter in KS-HH
+    def _ttg_map_to_string(self, title=None, summary=False, tool=None, show_groups=True):
+        msg = "%s:\n" % title if title else "TTG Map:\n" # String used to filter in KS-HH
         if not summary:
+# PAUL orig logic
+#            num_tools = self.mmu_num_gates
+#            tools = range(num_tools) if tool is None else [tool]
+#            for i in tools:
+#                msg += "\n" if i and tool is None else ""
+#                gate = self.tool_to_gate_map[i]
+#                if self.enable_endless_spool and show_groups:
+#                    msg += "%s" % (("T%d " % i)[:3])
+#                else:
+#                    msg += "%s-> Gate #%d%s" % (("T%d " % i)[:3], gate, "(" + self._get_filament_char(self.gate_status[gate], show_source=False) + ")")
+#                if self.enable_endless_spool:
+#                    group = self.endless_spool_groups[gate]
+#                    es = " in EndlessSpool Group %s: " % chr(65 + group) if show_groups else " "
+#                    prefix = ""
+#                    starting_gate = self.tool_to_gate_map[i]
+#                    if show_groups:
+#                        for j in range(num_tools): # Gates
+#                            gate = (j + starting_gate) % num_tools
+#                            if self.endless_spool_groups[gate] == group:
+#                                es += "%s%d(%s)" % (prefix, gate, self._get_filament_char(self.gate_status[gate], show_source=False))
+#                                prefix = " > "
+#                    else:
+#                        prefix = " > "
+#                        for j in range(num_tools - 1): # Gates
+#                            gate = (j + starting_gate + 1) % num_tools
+#                            if self.endless_spool_groups[gate] == group:
+#                                es += "%s#%d(%s)" % (prefix, gate, self._get_filament_char(self.gate_status[gate], show_source=False))
+#                    msg += es
+#                if i == self.tool_selected:
+#                    msg += " [SELECTED]"
             num_tools = self.mmu_num_gates
             tools = range(num_tools) if tool is None else [tool]
             for i in tools:
-                msg += "\n" if i and tool is None else ""
                 gate = self.tool_to_gate_map[i]
-                msg += "%s-> Gate #%d%s" % (("T%d " % i)[:3], gate, "(" + self._get_filament_char(self.gate_status[gate], show_source=False) + ")")
+                filament_char = self._get_filament_char(self.gate_status[gate], show_source=False)
+                msg += "\n" if i and tool is None else ""
+        
+                if self.enable_endless_spool and show_groups:
+                    msg += "T%d " % i
+                else:
+                    msg += "T%d-> Gate %d(%s)" % (i, gate, filament_char)
+
                 if self.enable_endless_spool:
                     group = self.endless_spool_groups[gate]
-                    es = " in EndlessSpool Group %s: " % chr(65 + group) if show_groups else " "
-                    prefix = ""
-                    starting_gate = self.tool_to_gate_map[i]
                     if show_groups:
-                        for j in range(num_tools): # Gates
-                            gate = (j + starting_gate) % num_tools
-                            if self.endless_spool_groups[gate] == group:
-                                es += "%s%d(%s)" % (prefix, gate, self._get_filament_char(self.gate_status[gate], show_source=False))
-                                prefix = " > "
+                        es = " in EndlessSpool Group %s: " % chr(65 + group)
+                        gates_in_group = [(j + gate) % num_tools for j in range(num_tools)]
                     else:
-                        prefix = " > "
-                        for j in range(num_tools - 1): # Gates
-                            gate = (j + starting_gate + 1) % num_tools
-                            if self.endless_spool_groups[gate] == group:
-                                es += "%s#%d(%s)" % (prefix, gate, self._get_filament_char(self.gate_status[gate], show_source=False))
+                        es = " "
+                        gates_in_group = [(j + gate + 1) % num_tools for j in range(num_tools - 1)]
+
+                    es += " > ".join("%d(%s)" % (g, self._get_filament_char(self.gate_status[g], show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
                     msg += es
+
                 if i == self.tool_selected:
                     msg += " [SELECTED]"
-            if tool is None:
-                msg += "\n\n"
-                msg += self._gate_map_to_human_string(True)
         else:
             multi_tool = False
-            msg_gates = "Gates: "
-            msg_avail = "Avail: "
-            msg_tools = "Tools: "
-            msg_selct = "Selct: "
-            for g in range(self.mmu_num_gates):
-                msg_gates += ("|#%d " % g)[:4]
-                msg_avail += "| %s " % self._get_filament_char(self.gate_status[g], no_space=True, show_source=True)
-                tool_str = ""
-                prefix = ""
-                for t in range(self.mmu_num_gates):
-                    if self.tool_to_gate_map[t] == g:
-                        if len(prefix) > 0: multi_tool = True
-                        tool_str += "%sT%d" % (prefix, t)
-                        prefix = "+"
-                if tool_str == "": tool_str = " . "
-                msg_tools += ("|%s " % tool_str)[:4]
+            num_gates = self.mmu_num_gates
+            gate_indices = range(num_gates)
+            msg_gates = "Gates: " + "".join("| %d " % g for g in gate_indices)[:4 * num_gates] + "|"
+            msg_avail = "Avail: " + "".join("| %s " % self._get_filament_char(self.gate_status[g], no_space=True, show_source=True) for g in gate_indices) + "|"
+            tool_strings = []
+            for g in gate_indices:
+                tool_str = "+".join("T%d" % t for t in gate_indices if self.tool_to_gate_map[t] == g)
+                multi_tool |= len(tool_str) > 2
+                tool_strings.append(("|%s " % (tool_str if tool_str else " . "))[:4])
+            msg_tools = "Tools: " + "".join(tool_strings) + "|"
+            #msg_tools += " Some gates support multiple tools!" if multi_tool else ""
+            select_strings = ["|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----" for g in gate_indices]
+            for i, g in enumerate(gate_indices):
                 if self.gate_selected == g:
-                    msg_selct += ("| %s " % self._get_filament_char(self.gate_status[g], no_space=True))
-                else:
-                    msg_selct += "|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----"
-            msg += msg_gates
-            msg += "|\n"
-            msg += msg_tools
-            msg += "|\n" # msg += "|%s\n" % (" Some gates support multiple tools!" if multi_tool else "")
-            msg += msg_avail
-            msg += "|\n"
-            msg += msg_selct
-            msg += "|" if self.gate_selected == self.mmu_num_gates - 1 else "-"
+                    select_strings[i] = "| %s " % self._get_filament_char(self.gate_status[g], no_space=True)
+            msg_selct = "Selct: " + "".join(select_strings) + ("|" if self.gate_selected == num_gates - 1 else "-")
+            msg = "\n".join([msg_gates, msg_tools, msg_avail, msg_selct])
             if self.is_homed:
                 msg += " Bypass" if self.gate_selected == self.TOOL_GATE_BYPASS else (" T%d" % self.tool_selected) if self.tool_selected >= 0 else ""
             else:
                 msg += " NOT HOMED"
+# PAUL old logic
+#            multi_tool = False
+#            msg_gates = "Gates: "
+#            msg_avail = "Avail: "
+#            msg_tools = "Tools: "
+#            msg_selct = "Selct: "
+#            for g in range(self.mmu_num_gates):
+#                msg_gates += ("| %d " % g)[:4]
+#                msg_avail += "| %s " % self._get_filament_char(self.gate_status[g], no_space=True, show_source=True)
+#                tool_str = ""
+#                prefix = ""
+#                for t in range(self.mmu_num_gates):
+#                    if self.tool_to_gate_map[t] == g:
+#                        if len(prefix) > 0: multi_tool = True
+#                        tool_str += "%sT%d" % (prefix, t)
+#                        prefix = "+"
+#                if tool_str == "": tool_str = " . "
+#                msg_tools += ("|%s " % tool_str)[:4]
+#                if self.gate_selected == g:
+#                    msg_selct += ("| %s " % self._get_filament_char(self.gate_status[g], no_space=True))
+#                else:
+#                    msg_selct += "|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----"
+#            msg += msg_gates
+#            msg += "|\n"
+#            msg += msg_tools
+#            msg += "|\n" # msg += "|%s\n" % (" Some gates support multiple tools!" if multi_tool else "")
+#            msg += msg_avail
+#            msg += "|\n"
+#            msg += msg_selct
+#            msg += "|" if self.gate_selected == self.mmu_num_gates - 1 else "-"
+#            if self.is_homed:
+#                msg += " Bypass" if self.gate_selected == self.TOOL_GATE_BYPASS else (" T%d" % self.tool_selected) if self.tool_selected >= 0 else ""
+#            else:
+#                msg += " NOT HOMED"
         return msg
 
-    def _gate_map_to_human_string(self, detail=False):
+    def _gate_map_to_string(self, detail=False):
         msg = "Gates / Filaments:" # String used to filter in KS-HH
+        available_status = {
+            self.GATE_AVAILABLE_FROM_BUFFER: "Buffer",
+            self.GATE_AVAILABLE: "Spool",
+            self.GATE_EMPTY: "Empty",
+            self.GATE_UNKNOWN: "Unknown"
+        }
+
         for g in range(self.mmu_num_gates):
-            material = self.gate_material[g] if self.gate_material[g] != "" else "n/a"
-            color = self.gate_color[g] if self.gate_color[g] != "" else "n/a"
-            available = {
-                self.GATE_AVAILABLE_FROM_BUFFER: "Buffered",
-                self.GATE_AVAILABLE: "Available",
-                self.GATE_EMPTY: "Empty",
-                self.GATE_UNKNOWN: "Unknown"
-            }[self.gate_status[g]]
+            material = self.gate_material[g] or "n/a"
+            color = self.gate_color[g] or "n/a"
+            available = available_status[self.gate_status[g]]
+
+            gate_detail = ""
             if detail:
-                msg += "\nGate #%d%s" % (g, "(" + self._get_filament_char(self.gate_status[g], show_source=False) + ")")
-                tool_str = " supporting "
-                prefix = ""
-                for t in range(self.mmu_num_gates):
-                    if self.tool_to_gate_map[t] == g:
-                        tool_str += "%sT%d" % (prefix, t)
-                        prefix = ","
-                msg += tool_str
-                msg += "?, " if prefix == "" else ", "
+                filament_char = self._get_filament_char(self.gate_status[g], show_source=False)
+                tools_supported = ", ".join("T{}".format(t) for t in range(self.mmu_num_gates) if self.tool_to_gate_map[t] == g)
+                tools_str = " supporting {}".format(tools_supported) if tools_supported else "?, "
+                gate_detail = "\nGate {}({}){}".format(g, filament_char, tools_str)
+                if g == self.gate_selected:
+                    gate_detail += " [SELECTED]"
             else:
-                msg += ("\nGate #%d: " % g)
-            msg += ("Status: %s, Material: %s, Color: %s" % (available, material, color))
-            if self.enable_spoolman:
-                spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
-                msg += (", SpoolID: %s" % (spool_id))
-            if detail and g == self.gate_selected:
-                msg += " [SELECTED]"
+                gate_detail = "\nGate {}: ".format(g)
+
+            spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
+            spool_info = ", SpoolID: {}".format(spool_id) if self.enable_spoolman else ""
+    
+            msg += "{}Status: {}, Material: {}, Color: {}{}".format(gate_detail, available, material, color, spool_info)
+
         return msg
 
     def _remap_tool(self, tool, gate, available=None):
@@ -5697,8 +5751,8 @@ class Mmu:
     cmd_MMU_ENCODER_INSERT_help = "Internal encoder filament insert detection handler"
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
         if self._check_is_disabled(): return
-        self._log_debug("Filament insertion not implemented yet! Check back later")
-        # TODO Future preload feature especially bypass :-)
+        self._log_trace("Filament insertion not implemented yet!")
+        # TODO Future bypass preload feature - make gate act like bypass
         #try:
         #    self._handle_detection()
         #except MmuError as ee:
@@ -5715,8 +5769,8 @@ class Mmu:
     cmd_MMU_GATE_INSERT_help = "Internal gate filament insert detection handler"
     def cmd_MMU_GATE_INSERT(self, gcmd):
         if self._check_is_disabled(): return
-        self._log_debug("Filament insertion not implemented yet! Check back later")
-        # TODO Future preload feature see MMU_ENCODER_INSERT
+        self._log_trace("Filament insertion not implemented yet!")
+        # TODO Future bypass preload feature - make gate act like bypass
 
     # This callback is not protected by klipper is_printing check so be careful
     cmd_MMU_PRE_GATE_RUNOUT_help = "Internal pre-gate filament runout handler"
@@ -5785,7 +5839,7 @@ class Mmu:
         else:
             quiet = False # Display current TTG map
         if not quiet:
-            self._log_info(self._tool_to_gate_map_to_human_string(show_groups=False))
+            self._log_info(self._ttg_map_to_string(show_groups=False))
 
     cmd_MMU_GATE_MAP_help = "Display or define the type and color of filaments on each gate"
     def cmd_MMU_GATE_MAP(self, gcmd):
@@ -5855,7 +5909,7 @@ class Mmu:
             quiet = False # Display current map
 
         if not quiet:
-            self._log_info(self._gate_map_to_human_string())
+            self._log_info(self._gate_map_to_string())
 
     cmd_MMU_ENDLESS_SPOOL_help = "Diplay or Manage EndlessSpool functionality and groups"
     def cmd_MMU_ENDLESS_SPOOL(self, gcmd):
@@ -5892,7 +5946,7 @@ class Mmu:
         else:
             quiet = False # Display current map
         if not quiet:
-            self._log_info(self._tool_to_gate_map_to_human_string())
+            self._log_info(self._ttg_map_to_string(title="EndlessSpool Groups"))
 
     cmd_MMU_TOOL_OVERRIDES_help = "Displays, sets or clears tool speed and extrusion factors (M220 & M221)"
     def cmd_MMU_TOOL_OVERRIDES(self, gcmd):
@@ -5907,28 +5961,17 @@ class Mmu:
         elif tool >= 0:
             self._set_tool_override(tool, speed, extrusion)
 
-        msg = ""
         msg_tool = "Tools: "
         msg_sped = "M220 : "
         msg_extr = "M221 : "
-         # First line
         for i in range(self.mmu_num_gates):
-            range_end = 5
-            tool_speed = self.tool_speed_multipliers[i] * 100
-            tool_extr = self.tool_extrusion_multipliers[i] * 100
-            if i > 9:
-                range_end = 6
-
+            range_end = 6 if i > 9 else 5
+            tool_speed = int(self.tool_speed_multipliers[i] * 100)
+            tool_extr = int(self.tool_extrusion_multipliers[i] * 100)
             msg_tool += ("| T%d  " % i)[:range_end]
             msg_sped += ("| %d  " % tool_speed)[:range_end]
             msg_extr += ("| %d  " % tool_extr)[:range_end]
-
-        msg += msg_tool
-        msg += "|\n"
-        msg += msg_sped
-        msg += "|\n"
-        msg += msg_extr
-        msg += "|\n"
+        msg = "|\n".join([msg_tool, msg_sped, msg_extr]) + "|\n"
         self._log_always(msg)
 
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
@@ -6054,7 +6097,7 @@ class Mmu:
                     self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
     
                 if not quiet:
-                    self._log_info(self._tool_to_gate_map_to_human_string(summary=True))
+                    self._log_info(self._ttg_map_to_string(summary=True))
             finally:
                 self._servo_auto()
 
