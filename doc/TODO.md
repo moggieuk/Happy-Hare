@@ -1,4 +1,19 @@
 Scratch pad TODO list
+1. Rewrite automated bowden calibration
+2. Finish homing measured for non-homing extruder
+3. Pass params to RESUME
+4. Compression pin homing feedback for extruder (same as collision)
+5. Record the gate homing point with calibration so dead space can be added/subtracted for quick change
+6. Check that entry_to_extruder amount is added / subtracted too
+7. Virtual selector
+8. Switching drive gear
+9. Virtual servo (force sync KMS case)
+10. Prusa_servo mock class .. maybe make servo a separate class for this and #9
+11. Inattention time instead of retry on fail. Remove ‘retry_change_on_error’
+12. force_form_tip_standalone —> allow_slicer_form_tip or tip forming strategy form|slicer|cut cut_mmu??
+13. _form_tip as separate “_STEP”
+14. Externalize ‘boot up tasks’ so users could add things like “check_gates”
+
 --
 USER FEEDBACK:
 Bug?: If EndlessSpool enabled and initial tool is empty, auto map to next gate
@@ -27,32 +42,22 @@ PIN[MELLOW_FLY_ERCF,selector_endstop_pin]="ercf:gpio20";
 PIN[MELLOW_FLY_ERCF,servo_pin]="ercf:gpio21";
 PIN[MELLOW_FLY_ERCF,encoder_pin]="ercf:gpio15";
 
-
-> **Note**\
-> This is note!!
-
-> **Warning**
-> This is a warning2
-
-> [!Important]\
-> This is important!!
+### Reference Markdown
 
 > [!NOTE]  
 > Highlights information that users should take into account, even when skimming.
 
-> [!IMPORTANT] test<br>Crucial information necessary for users to succeed.
+> [!TIP]
+> Optional information to help a user be more successful.
+
+> [!IMPORTANT]  
+> Crucial information necessary for users to succeed.
 
 > [!WARNING]  
 > Critical content demanding immediate user attention due to potential risks.
 
-> Whoa! This will not be shown.\
-> [!NOTE]\
-> This is a note.
-
-> Hello
->> [!NOTE]\
->> This is a note.
-
+> [!CAUTION]
+> Negative potential consequences of an action.
 
 
 ```mermaid

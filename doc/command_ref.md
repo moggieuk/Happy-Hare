@@ -10,10 +10,10 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_CHANGE_TOOL : Perform a tool swap
     MMU_CHECK_GATE : Automatically inspects gate(s), parks filament and marks availability
     MMU_STATS : Dump or reset the MMU statistics
-    MMU_EJECT : Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
+    MMU_EJECT : aka MMU_UNLOAD Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
     MMU_ENDLESS_SPOOL : Display or redefine the EndlessSpool groups
-    MMU_FORM_TIP : Convenience macro to call the standalone tip forming functionality
+    MMU_FORM_TIP : aka MMU_TEST_FORM_TIP Convenience macro to call the standalone tip forming functionality
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
     MMU_LED : Manage mode of operation of optional MMU LED's
@@ -24,7 +24,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
     MMU_PRINT_END : Restore MMU idle state after print
     MMU_PRINT_START : Initialize MMU state and ready for print
     MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
-    MMU_REMAP_TTG : Display or remap a tool to a specific gate and set gate availability
+    MMU_TTG_MAP : aka MMU_REMAP_TTG Display or remap a tool to a specific gate and set gate availability
     MMU_RESET : Forget persisted state and re-initialize defaults
     MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS : Select the filament bypass
@@ -53,7 +53,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_PAUSE` | Pause the current print and lock the MMU operations. (`MMU_UNLOCK + RESUME` or just `RESUME` to continue print) | `FORCE_IN_PRINT=[0\|1]` This option forces the handling of pause as if it occurred in print and is useful for testing. Calls `PAUSE` by default or your `pause_macro` if set |
   | `MMU_RECOVER` | Recover filament position and optionally reset MMU state. Useful to call prior to RESUME if you intervene/manipulate filament by hand | `TOOL=[0..n]\|-2` Optionally force set the currently selected tool (-2 = bypass). Use caution! <br>`GATE=[0..n]` Optionally force set the currently selected gate if TTG mapping is being leveraged otherwise it will get the gate associated with current tool. Use caution! <br>`LOADED=[0\|1]` Optionally specify if the filamanet is fully loaded or fully unloaded. Use caution! If not specified, MMU will try to discover filament position <br>`STRICT=[0\|1]` If automatically detecting impose stricter testing for filament position (temporarily sets 'strict_filament_recovery' parameter) |
   | `MMU_ENCODER` | Displays the current value of the MMU encoder or explicitly enable or disable the encoder. Note that the encoder state is set automatically so this will only be sticky until next tool change | `ENABLE=[0\|1]` 0=Disable, 1=Enable <br>`VALUE=..` Set the current distance |
-  | `MMU_FORM_TIP` : Convenience macro to call to test the standalone tip forming functionality | Any valid `_MMU_FORM_TIP_STANDALONE` gcode variable can be supplied as a parameter and will override the defaults in the `mmu_software.cfg` file. overrides will remain active (sticky) until called with `RESET=1` which will cause Happy Hare to revert to starting values (in `mmu_software.cfg`) <br> `SHOW=1` will just list the current macro variable values and not run macro <br> `RUN=0` will set the variable but not run the macro <br> `FORCE_IN_PRINT=1` behave like in print with gear/extruder syncing and current <br> `EJECT=[0\|1]` Force ejection of filament after tip forming, akin to setting `variable_final_eject=1` |
+  | `MMU_FORM_TIP` | see `MMU_TEST_FORM_TIP` | |
   | `MMU_TOOL_OVERRIDES` | Displays, sets or clears tool speed and extrusion factors (M220 & M221) | `TOOL=[0..n]` Specify tool to set <br> `M220=[0-200]` Speed (feedrate) multiplier percentage <br> `M221=[0-200]` Extrusion multiplier percentage <br> `RESET=1` Reset specified override for specified tool to default 100%. Note that omitting `TOOL=` will reset all tools |
   | `MMU_UNLOCK` | Wakeup the MMU prior to RESUME to restore temperatures and timeouts | None |
   | `MMU_HELP` | Generate reminder list of command set | `TESTING=[0\|1]` Also list the testing commands <br>`MACROS=[0\|1]` Also list the callback backros |
@@ -87,7 +87,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | ------- | ----------- | ---------- |
   | `MMU_SERVO` | Set the servo to specified postion or a sepcific angle for testing. Will also report position when run without parameters | `POS=[up\|down\|move]` Move servo to predetermined position <br>`ANGLE=..` Move servo to specified angle <br>`SAVE=1` Specifed with the POS= parameter will cause Happy Hare to store the current servo angle for the specified position. This is written to `mmu_vars.cfg` |
   | `MMU_MOTORS_OFF` | Turn off both MMU motors | None |
-  | `MMU_SYNC_GEAR_MOTOR` | Explicitly override the synchronization of extruder and gear motors. Note that synchronization is set automatically so this will only be sticky until the next tool change | `SYNC=[0\|1]` Turn gear/extruder synchronization on/off (default 1) <br>`SERVO=[0\|1]` If 1 (the default) servo will engage if SYNC=1 or disengage if SYNC=0 otherwise servo position will not change <br>`IN_PRINT=[0\|1]` If 1, gear stepper current will be set according to `sync_gear_current`. If 0, gear stepper current is set to 100%. The default is automatically determined based on print state but can be overridden with this argument. Only meaningful if `SYNC=1` |
+  | `MMU_SYNC_GEAR_MOTOR` | Explicitly override the synchronization of extruder and gear motors. Note that synchronization is set automatically so this will only be sticky until the next tool change | `SYNC=[0\|1]` Turn gear/extruder synchronization on/off (default 1) <br>`SERVO=[0\|1]` If 1 (the default) servo will engage if SYNC=1 or disengage if SYNC=0 otherwise servo position will not change <br>`FORCE_IN_PRINT=[0\|1]` If 1, gear stepper current will be set according to `sync_gear_current`. If 0, gear stepper current is set to 100%. The default is automatically determined based on print state but can be overridden with this argument. Only meaningful if `SYNC=1` |
   
   <br>
 
@@ -132,6 +132,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_SOAKTEST_LOAD_SEQUENCE` | Soak testing of load sequence. Great for testing reliability and repeatability| `LOOP=..[10]` Number of times to loop while testing <br>`RANDOM=[0\|1]` Whether to randomize tool selection <br>`FULL=[0\|1]` Whether to perform full load to nozzle or short load just past encoder |
   | `MMU_TEST_BUZZ_MOTOR` | Buzz the sepcified MMU motor. If the gear motor is buzzed it will also report if filament is detected | `MOTOR=[gear\|selector\|servo]` |
   | `MMU_TEST_GRIP` | Test the MMU grip of the currently selected tool by gripping filament but relaxing the gear motor so you can check for good contact | None |
+  | `MMU_TEST_FORM_TIP` : Convenience macro to call to test the standalone tip forming functionality | Any valid `_MMU_FORM_TIP` gcode variable can be supplied as a parameter and will override the defaults in the `mmu_software.cfg` file. overrides will remain active (sticky) until called with `RESET=1` which will cause Happy Hare to revert to starting values (in `mmu_software.cfg`) <br> `SHOW=1` will just list the current macro variable values and not run macro <br> `RUN=0` will set the variable but not run the macro <br> `FORCE_IN_PRINT=1` behave like in print with gear/extruder syncing and current <br> `EJECT=[0\|1]` Force ejection of filament after tip forming, akin to setting `variable_final_eject=1` |
   | `MMU_TEST_LOAD` | Test loading filament from park position in the gate. (MMU_EJECT will unload) | `LENGTH=..[100]` Test load the specified length of filament into selected tool <br>`FULL=[0\|1]` If set to one a full bowden move will occur and filament will home to extruder |
   | `MMU_TEST_TRACKING | Simple visual test to see how encoder tracks with gear motor | `DIRECTION=[-1\|1]` Direction to perform the test (default load direction) <br>`STEP=[0.5 .. 20]` Size of individual steps (default 1mm) <br>`SENSITIVITY=..` (defaults to expected encoder resolution) Sets the scaling for the +/- mismatch visualization |
   | `MMU_TEST_MOVE` | Simple test move the MMU gear stepper | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` (defaults to min accel defined on steppers employed in move) Motor acceleration <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement |

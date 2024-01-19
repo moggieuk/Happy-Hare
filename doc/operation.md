@@ -25,7 +25,7 @@ Load Sequence
 - Extruder loads (synced) by homing a maximum of 50.0mm ('toolhead_homing_max') to TOOLHEAD SENSOR before moving the last 62.0mm ('toolhead_sensor_to_nozzle') to the nozzle
 
 Unload Sequence
-- Tip is always formed by '_MMU_FORM_TIP_STANDALONE' macro and tip forming extruder current is 120%
+- Tip is always formed by '_MMU_FORM_TIP' macro and tip forming extruder current is 120%
 - Extruder unloads (synced) by reverse homing a maximum 72.0mm ('toolhead_sensor_to_nozzle' + 'toolhead_unload_safety_margin') less reported park position to TOOLHEAD SENSOR, then (unsynced) the remaining 10.0mm ('toolhead_extruder_to_nozzle' - 'toolhead_sensor_to_nozzle') to exist extruder
 - Bowden is unloaded with a short 15.0mm ('encoder_move_step_size') validation move before 643.0mm ('calibration_bowden_length' - 'gate_unload_buffer' - 'encoder_move_step_size') fast move
 - Filament is stored by homing a maximum of 70.0mm ('gate_homing_max') to ENCODER and parking 23.0mm ('gate_parking_distance') in the gate
@@ -94,7 +94,7 @@ Similar to loading the sequence is also modified through parameters in `mmu_para
 
 ```
 Unload Sequence
-- Tip is always formed by '_MMU_FORM_TIP_STANDALONE' macro and tip forming extruder current is 120%
+- Tip is always formed by '_MMU_FORM_TIP' macro and tip forming extruder current is 120%
 - Extruder unloads (synced) by reverse homing a maximum 72.0mm ('toolhead_sensor_to_nozzle' + 'toolhead_unload_safety_margin') less reported park position to TOOLHEAD SENSOR, then (unsynced) the remaining 10.0mm ('toolhead_extruder_to_nozzle' - 'toolhead_sensor_to_nozzle') to exist extruder
 - Bowden is unloaded with a short 15.0mm ('encoder_move_step_size') validation move before 643.0mm ('calibration_bowden_length' - 'gate_unload_buffer' - 'encoder_move_step_size') fast move
 - Filament is stored by homing a maximum of 70.0mm ('gate_homing_max') to ENCODER and parking 23.0mm ('gate_parking_distance') in the gate

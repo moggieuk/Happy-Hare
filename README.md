@@ -185,7 +185,7 @@ Also Happy Hare exposes a large array of 'printer' variables that are useful in 
     MMU_CHANGE_TOOL : Perform a tool swap
     MMU_CHECK_GATE : Automatically inspects gate(s), parks filament and marks availability
     MMU_STATS : Dump (and optionally reset) the MMU statistics
-    MMU_EJECT : Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
+    MMU_EJECT : aka MMU_UNLOAD Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
     MMU_ENDLESS_SPOOL : Display TTG map or redefine the EndlessSpool groups
     MMU_FORM_TIP : Convenience macro for calling the standalone tip forming functionality
@@ -197,7 +197,7 @@ Also Happy Hare exposes a large array of 'printer' variables that are useful in 
     MMU_PAUSE : Pause the current print and lock the MMU operations
     MMU_PRELOAD : Preloads filament at specified or current gate
     MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
-    MMU_REMAP_TTG : Display TTG map or remap a tool to a specific gate and set gate availability
+    MMU_TTG_MAP : aka MMU_REMAP_TTG Display TTG map or remap a tool to a specific gate and set gate availability
     MMU_RESET : Forget persisted state and re-initialize defaults
     MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS : Select the filament bypass
@@ -432,7 +432,7 @@ Running without any parameters will display the current values:
     log_visual = 2
     log_statistics = 1
     pause_macro = PAUSE                          # Advanced
-    form_tip_macro = _MMU_FORM_TIP_STANDALONE    # Advanced
+    form_tip_macro = _MMU_FORM_TIP               # Advanced
 
     CALIBRATION:
     mmu_calibration_bowden_length = 698.0
