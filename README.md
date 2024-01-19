@@ -695,7 +695,7 @@ sync_feedback_compression_pin:
 **mmu_parameters.cfg parameters:**
 ```yaml
 sync_feedback_enable: 1         # 0 = Turn off (even with fitted sensor), 1 = Turn on when printing
-sync_multiplier_high: 1.5       # Maximum factor to apply to gear stepper `rotation_distance`
+sync_multiplier_high: 1.05      # Maximum factor to apply to gear stepper `rotation_distance`
 sync_multipler_low: 0.95        # Minimum factor to apply
 ```
 This feature can be disabled even if hardware is configure by setting the `sync_feedback_enable` parameter (during print you can use `MMU_TEST_CONFIG sync_feedback_enable=[0|1]`
