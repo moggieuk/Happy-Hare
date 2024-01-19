@@ -31,8 +31,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
 
         self.mcu = self.all_mcus[0]
-        self.move_queue = toolhead.MoveQueue(self) # Happy Hare: Use base class MoveQueue
-        self.move_queue.set_flush_time(toolhead.BUFFER_TIME_HIGH) # Happy Hare: Use base class
+        self.lookahead = toolhead.LookAheadQueue(self) # Happy Hare: Use base class LookAheadQueue
+        self.lookahead.set_flush_time(toolhead.BUFFER_TIME_HIGH) # Happy Hare: Use base class
         self.commanded_pos = [0., 0., 0., 0.]
 
         self.gear_motion_queue = self.extruder_synced_to_gear = None # Happy Hare: For bi-directional syncing of gear and extruder
