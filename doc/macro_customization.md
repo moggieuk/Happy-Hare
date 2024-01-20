@@ -362,11 +362,14 @@ By default these macros are not called, however, if `gcode_load_sequence: 1` or 
 
 ```mermaid
 graph TD;
+    UNLOADED --> HOMED_GATE
     UNLOADED --> START_BOWDEN
+    HOMED_GATE --> START_BOWDEN
     START_BOWDEN --> IN_BOWDEN
     IN_BOWDEN --> END_BOWDEN
+    END_BOWDEN --> HOMED_ENTRY
+    HOMED_ENTRY --> HOMED_EXTRUDER
     END_BOWDEN --> HOMED_EXTRUDER
-    END_BOWDEN --> EXTRUDER_ENTRY
     HOMED_EXTRUDER --> EXTRUDER_ENTRY
     EXTRUDER_ENTRY --> HOMED_TS
     EXTRUDER_ENTRY --> IN_EXTRUDER
@@ -403,14 +406,16 @@ In additon to these states the macros are passed some additional information and
 #
 #        FILAMENT_POS_UNKNOWN = -1
 #  L  ^  FILAMENT_POS_UNLOADED = 0
-#  O  |  FILAMENT_POS_START_BOWDEN = 1
-#  A  |  FILAMENT_POS_IN_BOWDEN = 2
-#  D  U  FILAMENT_POS_END_BOWDEN = 3
-#  |  N  FILAMENT_POS_HOMED_EXTRUDER = 4
-#  |  L  FILAMENT_POS_EXTRUDER_ENTRY = 5
-#  |  O  FILAMENT_POS_HOMED_TS = 6
-#  |  A  FILAMENT_POS_IN_EXTRUDER = 7    # AKA Filament is past the Toolhead Sensor
-#  v  D  FILAMENT_POS_LOADED = 8         # AKA Filament is homed to the nozzle
+#  O  |  FILAMENT_POS_HOMED_GATE = 1     # If gate sensor fitted
+#  A  |  FILAMENT_POS_START_BOWDEN = 2
+#  D  |  FILAMENT_POS_IN_BOWDEN = 3
+#        FILAMENT_POS_END_BOWDEN = 4
+#  |  U  FILAMENT_POS_HOMED_ENTRY = 5    # If extruder (entry) sensor fitted
+#  |  N  FILAMENT_POS_HOMED_EXTRUDER = 6
+#  |  L  FILAMENT_POS_PAST_EXTRUDER = 7
+#  |  O  FILAMENT_POS_HOMED_TS = 8       # If toolhead sensor fitted
+#  |  A  FILAMENT_POS_IN_EXTRUDER = 9    # AKA Filament is past the Toolhead Sensor
+#  v  D  FILAMENT_POS_LOADED = 10        # AKA Filament is homed to the nozzle
 #
 # Final notes:
 # 1) You need to respect the context being passed into the macro such as the
@@ -432,7 +437,7 @@ gcode:
     {% if extruder_only %}
         _MMU_STEP_LOAD_TOOLHEAD EXTRUDER_ONLY=1
 
-    {% elif filament_pos >= 5 %}
+    {% elif filament_pos >= 7 %}                        # FILAMENT_POS_PAST_EXTRUDER
         {action_raise_error("Can't load - already in extruder!")}
 
     {% else %}
@@ -440,11 +445,11 @@ gcode:
             _MMU_STEP_LOAD_GATE
         {% endif %}
 
-        {% if filament_pos < 3 %}                       # FILAMENT_POS_END_BOWDEN
+        {% if filament_pos < 4 %}                       # FILAMENT_POS_END_BOWDEN
             _MMU_STEP_LOAD_BOWDEN LENGTH={length}
         {% endif %}
 
-        {% if filament_pos < 4 and home_extruder %}     # FILAMENT_POS_HOMED_EXTRUDER
+        {% if filament_pos < 6 and home_extruder %}     # FILAMENT_POS_HOMED_EXTRUDER
             _MMU_STEP_HOME_EXTRUDER
         {% endif %}
 
@@ -463,7 +468,7 @@ gcode:
     {% set park_pos = params.PARK_POS|float %}
 
     {% if extruder_only %}
-        {% if filament_pos >= 5 %}                      # FILAMENT_POS_PAST_EXTRUDER
+        {% if filament_pos >= 7 %}                      # FILAMENT_POS_PAST_EXTRUDER
             _MMU_STEP_UNLOAD_TOOLHEAD EXTRUDER_ONLY=1 PARK_POS={park_pos}
         {% else %}
             {action_raise_error("Can't unload extruder - already unloaded!")}
@@ -473,17 +478,17 @@ gcode:
         {action_raise_error("Can't unload - already unloaded!")}
 
     {% else %}
-        {% if filament_pos >= 5 %}                      # FILAMENT_POS_PAST_EXTRUDER
+        {% if filament_pos >= 7 %}                      # FILAMENT_POS_PAST_EXTRUDER
             # Exit extruder, fast unload of bowden, then slow unload encoder
             _MMU_STEP_UNLOAD_TOOLHEAD PARK_POS={park_pos}
         {% endif %}
 
-        {% if filament_pos >= 3 %}                      # FILAMENT_POS_END_BOWDEN
+        {% if filament_pos >= 4 %}                      # FILAMENT_POS_END_BOWDEN
             # Fast unload of bowden, then slow unload encoder
             _MMU_STEP_UNLOAD_BOWDEN FULL=1
             _MMU_STEP_UNLOAD_GATE
 
-        {% elif filament_pos >= 1 %}                    # FILAMENT_POS_START_BOWDEN
+        {% elif filament_pos >= 2 %}                    # FILAMENT_POS_START_BOWDEN
             # Have to do slow unload because we don't know exactly where in the bowden we are
             _MMU_STEP_UNLOAD_GATE FULL=1
         {% endif %}
@@ -509,7 +514,7 @@ The following are internal macros that can be called from within the `_MMU_LOAD_
   | `_MMU_STEP_UNLOAD_TOOLHEAD` | User composable unloading step: Toolhead unloading | `EXTRUDER_ONLY=[0\|1]` <br> `PARK_POS=..` |
   | `_MMU_STEP_UNLOAD_BOWDEN` | User composable unloading step: Smart unloading of bowden | `FULL=[0\|1]` <br> `LENGTH=..` |
   | `_MMU_STEP_UNLOAD_GATE` | User composable unloading step: Move filament from start of bowden and park in the gate using gate sensor or encoder | `FULL=[0\|1]` |
-  | `_MMU_STEP_SET_FILAMENT` | User composable loading step: Set filament position state | `STATE=[0..8]` The filament position (see states below) <br> `SILENT=[0\|1] <br> States: <br> UNKNOWN = -1 <br> UNLOADED = 0 <br> START_BOWDEN = 1 <br> IN_BOWDEN = 2 <br> END_BOWDEN = 3 <br> HOMED_EXTRUDER = 4 <br> EXTRUDER_ENTRY = 5 <br> HOMED_TS = 6 <br> IN_EXTRUDER (past TS) = 7 <br> LOADED = 8 |
+  | `_MMU_STEP_SET_FILAMENT` | User composable loading step: Set filament position state | `STATE=[0..8]` The filament position (see states below) <br> `SILENT=[0\|1] <br> States: <br> UNKNOWN = -1 <br> UNLOADED = 0 <br> HOMED_GATE = 1 <br> START_BOWDEN = 2 <br> IN_BOWDEN = 3 <br> END_BOWDEN = 4 <br> HOMED_ENTRY = 5 <br> HOMED_EXTRUDER = 6 <br> EXTRUDER_ENTRY = 7 <br> HOMED_TS = 8 <br> IN_EXTRUDER (past TS) = 9 <br> LOADED = 10 |
   | `_MMU_STEP_MOVE` | User composable loading step: Generic move | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` (defaults to min accel defined on steppers employed in move) Motor acceleration <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement |
   | `_MMU_STEP_HOMING_MOVE` | User composable loading step: Generic homing move | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` Motor accelaration (defaults to min accel defined on steppers employed in homing move) <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement. This is important for homing because the endstop must be on the commanded stepper <br>`ENDSTOP=..` Symbolic name of endstop to home to as defined in mmu_hardware.cfg. Must be defined on the primary stepper <br>`STOP_ON_ENDSTOP=[1\|-1]` (default 1) The direction of homing move. 1 is in the normal direction with endstop firing, -1 is in the reverse direction waiting for endstop to release. Note that virtual (touch) endstops can only be homed in a forward direction |
 
