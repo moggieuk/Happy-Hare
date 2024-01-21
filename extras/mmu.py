@@ -1464,18 +1464,18 @@ class Mmu:
         es = "(e)"
         ts = "(t)"
         past  = lambda pos: arrow if self.filament_pos >= pos else space
-        homed = lambda pos: (' ',arrow) if self.filament_pos > pos else (home,space) if self.filament_pos == pos else (' ',space)
+        homed = lambda pos, sensor: (' ',arrow,sensor) if self.filament_pos > pos else (home,space,sensor) if self.filament_pos == pos else (' ',space,sensor)
         trig  = lambda name, sensor: re.sub(r'[a-zA-Z]', '*', name) if self._check_sensor(sensor) else name
     
         t_str   = ("[T%s] " % str(self.tool_selected)) if self.tool_selected >= 0 else "BYPASS " if self.tool_selected == TOOL_GATE_BYPASS else "[T?] "
         g_str   = "{}".format(past(self.FILAMENT_POS_UNLOADED))
-        gs_str  = "{0}{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_GATE), trig(gs, self.ENDSTOP_GATE)) if self._has_sensor(self.ENDSTOP_GATE) else ""
+        gs_str  = "{0}{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_GATE, trig(gs, self.ENDSTOP_GATE))) if self._has_sensor(self.ENDSTOP_GATE) else ""
         en_str  = " En {0}".format(past(self.FILAMENT_POS_IN_BOWDEN if self.gate_homing_endstop == self.ENDSTOP_GATE else self.FILAMENT_POS_START_BOWDEN)) if self._has_encoder() else ""
         bowden1 = "{0}{0}{0}{0}".format(past(self.FILAMENT_POS_IN_BOWDEN))
         bowden2 = "{0}{0}{0}{0}".format(past(self.FILAMENT_POS_END_BOWDEN))
-        es_str  = "{0}{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_ENTRY), trig(es, self.ENDSTOP_EXTRUDER)) if self._has_sensor(self.ENDSTOP_EXTRUDER) else ""
-        ex_str  = "{0}[{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_EXTRUDER), "Ex")
-        ts_str  = "{0}{2} {1}".format(*homed(self.FILAMENT_POS_HOMED_TS), trig(ts, self.ENDSTOP_TOOLHEAD)) if self._has_sensor(self.ENDSTOP_TOOLHEAD) else ""
+        es_str  = "{0}{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_ENTRY, trig(es, self.ENDSTOP_EXTRUDER))) if self._has_sensor(self.ENDSTOP_EXTRUDER) else ""
+        ex_str  = "{0}[{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_EXTRUDER, "Ex"))
+        ts_str  = "{0}{2} {1}".format(*homed(self.FILAMENT_POS_HOMED_TS, trig(ts, self.ENDSTOP_TOOLHEAD))) if self._has_sensor(self.ENDSTOP_TOOLHEAD) else ""
         nz_str  = "{} Nz]".format(past(self.FILAMENT_POS_LOADED))
         summary = " LOADED" if self.filament_pos == self.FILAMENT_POS_LOADED else " UNLOADED" if self.filament_pos == self.FILAMENT_POS_UNLOADED else " UNKNOWN" if self.filament_pos == self.FILAMENT_POS_UNKNOWN else ""
         counter = " %.1fmm%s" % (self.mmu_toolhead.get_position()[1], " (e:%.1fmm)" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
