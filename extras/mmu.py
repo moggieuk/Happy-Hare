@@ -614,7 +614,7 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
         self.gcode.register_command('MMU_TEST_RUNOUT', self.cmd_MMU_TEST_RUNOUT, desc = self.cmd_MMU_TEST_RUNOUT_help)
         self.gcode.register_command('MMU_TEST_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help)
-        self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help) # TODO PAUL: Deprecate Alias for MMU_TEST_FORM_TIP
+        self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help) # TODO : Deprecate Alias for MMU_TEST_FORM_TIP
         self.gcode.register_command('_MMU_TEST', self.cmd_MMU_TEST, desc = self.cmd_MMU_TEST_help) # Internal for testing
 
         # Soak Testing
@@ -1474,9 +1474,9 @@ class Mmu:
         bowden1 = "{0}{0}{0}{0}".format(past(self.FILAMENT_POS_IN_BOWDEN))
         bowden2 = "{0}{0}{0}{0}".format(past(self.FILAMENT_POS_END_BOWDEN))
         es_str  = "{0}{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_ENTRY), trig(es, self.ENDSTOP_EXTRUDER)) if self._has_sensor(self.ENDSTOP_EXTRUDER) else ""
-        ex_str   = "{0}[{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_EXTRUDER), "Ex")
+        ex_str  = "{0}[{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_EXTRUDER), "Ex")
         ts_str  = "{0}{2} {1}".format(*homed(self.FILAMENT_POS_HOMED_TS), trig(ts, self.ENDSTOP_TOOLHEAD)) if self._has_sensor(self.ENDSTOP_TOOLHEAD) else ""
-        nz_str   = "{} Nz]".format(past(self.FILAMENT_POS_LOADED))
+        nz_str  = "{} Nz]".format(past(self.FILAMENT_POS_LOADED))
         summary = " LOADED" if self.filament_pos == self.FILAMENT_POS_LOADED else " UNLOADED" if self.filament_pos == self.FILAMENT_POS_UNLOADED else " UNKNOWN" if self.filament_pos == self.FILAMENT_POS_UNKNOWN else ""
         counter = " %.1fmm%s" % (self.mmu_toolhead.get_position()[1], " (e:%.1fmm)" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
     
@@ -3298,10 +3298,10 @@ class Mmu:
                 msg = "Initial homing to gate sensor" if i == 0 else ("Retry homing to gate sensor #%d" % i)
                 actual,homed,measured,_ = self._trace_filament_move(msg, self.gate_homing_max, motor="gear", homing_move=1, endstop_name=self.ENDSTOP_GATE)
                 if homed:
-                    self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
                     self._log_debug("Gate endstop reached after %.1fmm (measured %.1fmm)" % (actual, measured))
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
                     self._initialize_filament_position()
+                    self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
 #                    self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN) # PAUL can we avoid this?
                     return
                 else:
@@ -3485,7 +3485,7 @@ class Mmu:
         self._random_failure()
         self._movequeues_wait_moves()
         if full:
-            self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN) # PAUL correct
+            self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
         elif not self.filament_pos == self.FILAMENT_POS_IN_BOWDEN:
             self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
@@ -3702,7 +3702,6 @@ class Mmu:
 
             self._random_failure()
             self._movequeues_wait_moves()
-#            self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN) # PAUL
             self._log_debug("Filament should be out of extruder")
 
 
@@ -3852,8 +3851,7 @@ class Mmu:
                     self._unload_bowden(length)
                     self._unload_gate()
 
-#                elif start_filament_pos >= self.FILAMENT_POS_START_BOWDEN: # PAUL should be homed gate
-                elif start_filament_pos >= self.FILAMENT_POS_HOMED_GATE: # PAUL
+                elif start_filament_pos >= self.FILAMENT_POS_HOMED_GATE:
                     # Have to do slow unload because we don't know exactly where we are
                     self._unload_gate(homing_max=length) # Full slow unload
 

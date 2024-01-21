@@ -541,7 +541,9 @@ read_previous_config() {
         if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
             _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
         fi
-
+        if [ ! "${_param_log_visual}" == "2" ]; then
+            _param_log_visual=1
+        fi
         if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
             if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
                 _param_servo_buzz_gear_on_down=0
