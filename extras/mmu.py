@@ -3654,6 +3654,7 @@ class Mmu:
                     # We know exactly where end of filament is so true up
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY)
                     self._set_filament_position(-(self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder))
+                # PAUL TODO. validate toolhead sensor if also off!
 
             else:
                 if self._has_sensor(self.ENDSTOP_TOOLHEAD):
@@ -4344,7 +4345,7 @@ class Mmu:
                         finally:
                             halt_pos = self.mmu_toolhead.get_position()
                             actual = halt_pos[1] - init_pos
-                            self._log_error("PAUL: actual=%s, real=%s" % (actual, initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()))
+                            #self._log_error("PAUL: actual=%s, real=%s" % (actual, initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()))
                         if not got_comms_timeout:
                             break
                 else:
