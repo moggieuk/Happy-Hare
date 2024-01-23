@@ -60,7 +60,7 @@ gcode:
 
     MMU_CHECK_GATE TOOLS={REFERENCED_TOOLS}
 
-    MMU_CHANGE_TOOL STANDALONE=1 TOOL={INITIAL_TOOL} # Optional: load initial tool
+    MMU_CHANGE_TOOL STANDALONE=1 TOOL={INITIAL_TOOL}    # Optional: load initial tool
 
     :
 ```
@@ -91,8 +91,8 @@ gcode:
     {% set ns = namespace(tool = 0) %}
     {% set ttg_map = printer.mmu.ttg_map %}
     {% for color in colors %}
-        {% set gate = ttg_map[ns.tool] %}         # Make sure map to correct gate in case of TTG map
-        MMU_GATE_MAP GATE={gate} COLOR={color} # Register the filament color against correct gate
+        {% set gate = ttg_map[ns.tool] %}               # Make sure map to correct gate in case of TTG map
+        MMU_GATE_MAP GATE={gate} COLOR={color}          # Register the filament color against correct gate
         {% set ns.tool = ns.tool + 1 %}
     {% endfor %}
 ```
@@ -104,7 +104,7 @@ MMU_LED EXIT_EFFECT=filament_color STATUS_EFFECT=filament_color
 
 Another idea is to set the custom_colors array and combine with referenced tools to light up the colors of just the used used in the print on the exit led segment.  Here is the complete code of how to accomplish that:
 
-```
+```yml
 [gcode_macro START_PRINT]
 description: Called when starting print
 gcode:
@@ -139,7 +139,7 @@ gcode:
     MMU_CHANGE_TOOL STANDALONE=1 TOOL={INITIAL_TOOL}    # Optional: load initial tool
 ```
 
-Alternatively you can retrieve the RBG colors necessary to directly drive other leds by accessing the printer variable `printer.mmu.gate_color_rbg` which contains a list of truples contains the 0-1.0 value for each of the R,G,B pixels.  See led doc for more details.
+Alternatively you can retrieve the RGB colors necessary to directly drive other leds by accessing the printer variable `printer.mmu.gate_color_rbg` which contains a list of truples contains the 0-1.0 value for each of the R,G,B pixels.  See led doc for more details.
 
 ### !temperatures!
 This placeholder is substituted with a comma separated list of filament temperatures as defined in the slicer.
