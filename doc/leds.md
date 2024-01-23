@@ -75,11 +75,15 @@ Happy Hare also has an empirical command to control LEDs:
 ```yaml
 > MMU_LED
   LEDs are enabled
-  Default gate effect: 'gate_status'
-  Default exit effect: `filament_color`
-  ENABLE=[0|1] EFFECT=[off|gate_status|filament_color] EXIT_EFFECT=[off|on|filament_color]
+  Default exit effect: 'filament_color'
+  Default entry effect: 'gate_status'
+  Default status effect: 'filament_color'
+  ENABLE=[0|1] EXIT_EFFECT=[off|gate_status|filament_color|custom_color] ENTRY_EFFECT=[off|gate_status|filament_color|custom_color] STATUS_EFFECT=[off|on|filament_color|custom_color]
 ```
 
 You can change default effect or enable/disable. E.g. `MMU_LED ENABLE=0` will turn off and disable the LED operation.  Please note that similar to `MMU_TEST_CONFIG` changes made like this don't persist on a restart.  Update the macro variables in `mmu_software.cfg` to make changes persistent.
 
-I have found it convenient to add a "toggle" button my my Klipperscreent to switch between `gate_status` and `filament_color` for the default gate effect...
+The `custom_color` is not persisted and can be set with the command `MMU_LED GATE=.. COLOR=..`. The color can be a w3c color name or `RRGGBB` value.  One interesting use case is to set these colors to those defined in the gcode but the slicer using the example "placeholder" logic described in the [gcode preprocessing section](gcode_preprocessing.md)
+
+The Happy Hare version of Klipperscreen has buttons to quickly "toggle" between `gate_status` and `filament_color` for the default gate effect...
+

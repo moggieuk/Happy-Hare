@@ -975,6 +975,7 @@ class Mmu:
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "ready"
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
+        self.custom_color_rgb = ['000000'] * self.mmu_num_gates
 
     # Helper to infer type for setting gcode macro variables
     def _fix_type(self, s):
@@ -995,7 +996,7 @@ class Mmu:
         hex_rgb = color.lstrip('#')
         length = len(hex_rgb)
         if length % 3 == 0:
-            return tuple(round(float(int(hex_rgb[i:i + length // 3], 16)) / 255, 2) for i in range(0, length, length // 3))
+            return tuple(round(float(int(hex_rgb[i:i + length // 3], 16)) / 255, 3) for i in range(0, length, length // 3))
         return (0.,0.,0.)
 
     # Helper to return validated color string or None if invalid
@@ -1242,6 +1243,7 @@ class Mmu:
                 'gate_material': list(self.gate_material),
                 'gate_color': list(self.gate_color),
                 'gate_color_rgb': self.gate_color_rgb,
+                'custom_color_rgb': list(self.custom_color_rgb),
                 'gate_spool_id': list(self.gate_spool_id),
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'tool_extrusion_multipliers': list(self.tool_extrusion_multipliers),
@@ -3049,6 +3051,13 @@ class Mmu:
     def cmd_MMU_LED(self, gcmd):
         if self._check_has_leds(): return
         if self._check_is_disabled(): return
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_num_gates - 1)
+        if gate is not None:
+            self.custom_color_rgb[gate] = self._color_to_rgb(gcmd.get('COLOR', '000000'))
+            quiet = True
+
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
         if gcode_macro:
             try:
@@ -3058,7 +3067,6 @@ class Mmu:
                 default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
                 default_entry_effect = gcmd.get('ENTRY_EFFECT', variables['default_entry_effect'])
                 default_status_effect = gcmd.get('STATUS_EFFECT', variables['default_status_effect'])
-                quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
 
                 led_vars = {}
                 led_vars['led_enable'] = led_enable
@@ -3079,7 +3087,7 @@ class Mmu:
                     msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, variables['exit_first_led_index'])
                     msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, variables['entry_first_led_index'])
                     msg += "Default status effect: %s\n" % effect_string(default_status_effect, variables['status_led_index'])
-                    msg += "\nOptions:\nENABLE=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color]\nENTRY_EFFECT=[off|gate_status|filament_color]\nSTATUS_EFFECT=[off|on|filament_color]"
+                    msg += "\nOptions:\nENABLE=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|custom_color]\nENTRY_EFFECT=[off|gate_status|filament_color|custom_color]\nSTATUS_EFFECT=[off|on|filament_color|custom_color]"
                     self._log_always(msg)
             except Exception as e:
                 # Probably/hopefully just means the macro is missing or been messed with
