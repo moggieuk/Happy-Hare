@@ -70,3 +70,39 @@ gcode:
 > * Any tool that was loaded prior to calling `MMU_CHECK_GATES` will be automatically restored at the end of the checking procedure.<br>
 > * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `REFERENCED_TOOLS` (which counts `Tx` commands) will be empty. This code will ensure that `REFERENCED_TOOLS` will always contain the initial tool.
 
+### !colors!
+This placeholder is substituted with a comma separated list of extruder colors as defined in the slicer. This could be used to setup the filament colors in the MMU gate map.  Although the colors defined in the slicer have nothing to do with the actual filaments loaded in the MMU it might be convenient (if not using spoolman) to transfer over the colors from the slicer gcode file, light LEDs on the MMU and perform a visual match on the whether the correct filaments are loaded
+
+To implement incorporate into your start g-code on your Slicer:
+
+```yml
+START_PRINT COLORS=!colors! ...the other parameters...
+```
+
+Then in you print start macro add logic similar to:
+
+```yml
+[gcode_macro START_PRINT]
+description: Called when starting print
+gcode:
+    {% set COLORS = params.COLORS|default("")|string %}
+    {% set colors = COLORS.split(",") %}
+
+    {% set ns = namespace(tool = 0) %}
+    {% set ttg_map = printer.mmu.ttg_map %}
+    {% for color in colors %}
+        {% set gate = ttg_map[tool] %}         # Make sure map to correct gate in case of TTG map
+        MMU_GATE_MAP GATE={gate} COLOR={color} # Register the filament color against correct gate
+        {% set ns.tool = ns.tool + 1 %}
+    {% endfor %}
+```
+
+To see the colors displayed you need to enable LED support and use the `filament_color` effect. E.g. to display both on exit led and the color of current filament on the status led:
+```
+MMU_LED EXIT_EFFECT=filament_color STATUS_EFFECT=filament_color
+```
+
+Alternatively you can retrieve the RBG colors necessary to directly drive leds by accessing the printer variable `printer.mmu.gate_color_rbg` which contains a list of truples contains the 0-1.0 value for each of the R,G,B pixels.  See doc for more details.
+
+### !temperatures!
+This placeholder is substituted with a comma separated list of filament temperatures as defined in the slicer.
