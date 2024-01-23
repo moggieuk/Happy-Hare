@@ -975,7 +975,7 @@ class Mmu:
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "ready"
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
-        self.custom_color_rgb = ['000000'] * self.mmu_num_gates
+        self.custom_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
 
     # Helper to infer type for setting gcode macro variables
     def _fix_type(self, s):
