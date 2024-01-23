@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.41 # Important: Keep synced with mmy.py
+VERSION=2.42 # Important: Keep synced with mmy.py
 
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"

@@ -26,7 +26,7 @@ The Happy Hare pre-processor implements similar functionality but runs when the 
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Supported Placeholders
 
-### !referenced_tools!
+### Placeholder: !referenced_tools!
 This placeholder is substituted with a comma separated list of tools used in a print.  If there are no toolchanges (non MMU print) it will be an empty string. E.g. `0,2,5,6` means that T0, T2, T5 and T6 are used in the print.
 
 __Why is this useful?__
@@ -70,7 +70,7 @@ gcode:
 > * Any tool that was loaded prior to calling `MMU_CHECK_GATES` will be automatically restored at the end of the checking procedure.<br>
 > * In the gcode snippet above we also pass in the slicer placeholder {initial_tool} because single color prints have no tool changes and thus `REFERENCED_TOOLS` (which counts `Tx` commands) will be empty. This code will ensure that `REFERENCED_TOOLS` will always contain the initial tool.
 
-### !colors!
+### Placeholder: !colors!
 This placeholder is substituted with a comma separated list of extruder colors as defined in the slicer. This could be used to setup the filament colors in the MMU gate map.  Although the colors defined in the slicer have nothing to do with the actual filaments loaded in the MMU it might be convenient (if not using spoolman) to transfer over the colors from the slicer gcode file, light LEDs on the MMU and perform a visual match on the whether the correct filaments are loaded
 
 To implement incorporate into your start g-code on your Slicer:
@@ -141,5 +141,6 @@ gcode:
 
 Alternatively you can retrieve the RGB colors necessary to directly drive other leds by accessing the printer variable `printer.mmu.gate_color_rbg` which contains a list of truples contains the 0-1.0 value for each of the R,G,B pixels.  See led doc for more details.
 
-### !temperatures!
+### Placeholder: !temperatures!
 This placeholder is substituted with a comma separated list of filament temperatures as defined in the slicer.
+
