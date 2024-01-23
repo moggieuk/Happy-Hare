@@ -91,8 +91,8 @@ gcode:
     {% set ns = namespace(tool = 0) %}
     {% set ttg_map = printer.mmu.ttg_map %}
     {% for color in colors %}
-        {% set gate = ttg_map[tool] %}           # Make sure map to correct gate in case of TTG map
-        MMU_GATE_MAP GATE={gate} COLOR={color}   # Register the filament color against correct gate
+        {% set gate = ttg_map[ns.tool] %}         # Make sure map to correct gate in case of TTG map
+        MMU_GATE_MAP GATE={gate} COLOR={color} # Register the filament color against correct gate
         {% set ns.tool = ns.tool + 1 %}
     {% endfor %}
 ```
