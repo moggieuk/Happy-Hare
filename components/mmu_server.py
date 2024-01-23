@@ -3,7 +3,7 @@
 #
 # Copyright (C) 2023  Kieran Eglin <@kierantheman (discord)>, <kieran.eglin@gmail.com>
 #
-# Spoolman integration:
+# Spoolman integration, colors & temp extension
 # Copyright (C) 2023  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
 # (\_/)
@@ -17,7 +17,14 @@ import logging, os, re, fileinput
 
 class MmuServer:
     TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<tool>\d{1,2})"
-    METADATA_REPLACEMENT_STRING = "!referenced_tools!"
+    METADATA_TOOL_DISCOVERY = "!referenced_tools!"
+
+    COLORS1_REGEX = r"^; extruder_colour =(.*)$" # PS/SS
+    COLORS2_REGEX = r"^; filament_colour_colour =(.*)$" # Orca slicer
+    METADATA_COLORS = "!colors!"
+
+    TEMPS_REGEX = r"^; temperature =(.*)$"
+    METADATA_TEMPS = "!temperatures!"
 
     def __init__(self, config):
         self.config = config
@@ -42,15 +49,15 @@ class MmuServer:
                 self._write_mmu_metadata(filepath)
 
     def _write_mmu_metadata(self, file_path):
-        self._log("Checking for MMU metadata placeholder in file: " + file_path)
-        has_placeholder, tools_used = self._enumerate_used_tools(file_path)
+        self._log("Checking for MMU metadata placeholders in file: " + file_path)
+        has_placeholder, tools_used, colors, temps = self._parse_gcode_file(file_path)
 
         # An edit-in-place is seen by Moonraker as a file change (rightly so),
         # BUT it's seen this way even if no changes are made. We use `has_placeholder`
         # to determine whether there are any changes to make to prevent an infinite loop.
         if has_placeholder:
             self._log("Writing MMU metadata to file: " + file_path)
-            return self._inject_tool_usage(file_path, tools_used)
+            return self._inject_placeholders(file_path, tools_used, colors, temps)
         else:
             self._log("No MMU metadata placeholder found in file: " + file_path)
             return False
@@ -58,32 +65,69 @@ class MmuServer:
     def _log(self, message):
         logging.info("mmu_server: " + message)
 
-    def _enumerate_used_tools(self, file_path):
-        regex = re.compile(self.TOOL_DISCOVERY_REGEX, re.IGNORECASE)
+    def _parse_gcode_file(self, file_path):
+        tools_regex = re.compile(self.TOOL_DISCOVERY_REGEX, re.IGNORECASE)
+        colors1_regex = re.compile(self.COLORS1_REGEX, re.IGNORECASE)
+        colors2_regex = re.compile(self.COLORS2_REGEX, re.IGNORECASE)
+        color_regexes = [colors1_regex, colors2_regex]
+        temps_regex = re.compile(self.TEMPS_REGEX, re.IGNORECASE)
+
+        has_tools_placeholder = has_colors_placeholder = has_temps_placeholder = False
+        found_colors = found_temps = False
+
         tools_used = set()
-        has_placeholder = False
+        colors = []
+        temps = []
 
         with open(file_path, "r") as f:
             for line in f:
-                if not has_placeholder and not line.startswith(";") and self.METADATA_REPLACEMENT_STRING in line:
-                    has_placeholder = True
+                # !referenced_tools! processing
+                if not has_tools_placeholder and not line.startswith(";") and self.METADATA_TOOL_DISCOVERY in line:
+                    has_tools_placeholder = True
 
-                match = regex.match(line)
+                match = tools_regex.match(line)
                 if match:
                     tool = match.group("tool")
                     tools_used.add(int(tool))
 
-        return (has_placeholder, sorted(tools_used))
+                # !colors! processing
+                if not has_colors_placeholder and not line.startswith(";") and self.METADATA_COLORS in line:
+                    has_colors_placeholder = True
 
-    def _inject_tool_usage(self, file_path, tools_used):
+                if not found_colors:
+                    for regex in color_regexes:
+                        match = regex.match(line)
+                        if match:
+                            colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
+                            colors.extend(colors_csv)
+                            found_colors = True
+                            break
+
+                # !temps! processing
+                if not has_temps_placeholder and not line.startswith(";") and self.METADATA_TEMPS in line:
+                    has_temps_placeholder = True
+
+                if not found_temps:
+                    match = temps_regex.match(line)
+                    if match:
+                        temps_csv = match.group(1).strip().split(';')
+                        temps.extend(temps_csv)
+                        found_temps = True
+
+        return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder, sorted(tools_used), colors, temps)
+
+    def _inject_placeholders(self, file_path, tools_used, colors, temps):
         with fileinput.FileInput(file_path, inplace=1) as file:
             for line in file:
-                if not line.startswith(";") and self.METADATA_REPLACEMENT_STRING in line:
-                    # Ignore comment lines to preserve slicer metadata comments
-                    print(line.replace(self.METADATA_REPLACEMENT_STRING, ",".join(map(str, tools_used))), end="")
-                else:
-                    print(line, end="")
-
+                # Ignore comment lines to preserve slicer metadata comments
+                if not line.startswith(";"):
+                    if self.METADATA_TOOL_DISCOVERY in line:
+                        line = line.replace(self.METADATA_TOOL_DISCOVERY, ",".join(map(str, tools_used)))
+                    if self.METADATA_COLORS in line:
+                        line = line.replace(self.METADATA_COLORS, ",".join(map(str, colors)))
+                    if self.METADATA_TEMPS in line:
+                        line = line.replace(self.METADATA_TEMPS, ",".join(map(str, temps)))
+                print(line, end="")
         return True
 
     # Logic to provide spoolman integration.
