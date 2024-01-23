@@ -8,8 +8,8 @@ TODO
 
 ### Turning off slicer tip forming
 
-<img src="/doc/toolchange/printer_settings.png" alt="Slicer printer settings">
-<img src="/doc/toolchange/filament_settings.png" alt="Slicer print settings">
+<img src="/doc/toolchange/printer_settings.png" width="500" alt="Slicer printer settings">
+<img src="/doc/toolchange/filament_settings.png" width="680" alt="Slicer print settings">
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Role of Happy Hare
 
@@ -31,5 +31,5 @@ TODO
 
 ### Turning off slicer tip forming
 
-<img src="/doc/toolchange/print_settings.png" alt="Slicer print settings">
+<img src="/doc/toolchange/print_settings.png" width="500" alt="Slicer print settings">
 <img src="/doc/toolchange/forming_custom_purge_hh.png" width="800" alt="Tip Forming by HH No Wipetower">
