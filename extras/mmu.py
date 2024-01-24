@@ -61,22 +61,6 @@ class MultiLineFormatter(logging.Formatter):
         lines = super(MultiLineFormatter, self).format(record)
         return lines.replace('\n', '\n' + indent)
 
-# Class to track filament sensor state
-class SimpleButtonHandler:
-    handlers = {}
-    def __init__(self, sensor_name):
-        self.name = sensor_name
-        self.enabled = True
-        self.filament_present = False
-        SimpleButtonHandler.handlers[sensor_name] = self
-
-    def note_filament_present(self, eventtime, state):
-        self.filament_present = state
-
-    @staticmethod
-    def is_filament_present(sensor_name):
-        return SimpleButtonHandler.handlers[sensor_name].filament_present
-
 # Mmu exception error class
 class MmuError(Exception):
     pass
@@ -623,7 +607,6 @@ class Mmu:
 
         # TTG and Endless spool
         self.gcode.register_command('MMU_TTG_MAP', self.cmd_MMU_TTG_MAP, desc = self.cmd_MMU_TTG_MAP_help)
-        self.gcode.register_command('MMU_REMAP_TTG', self.cmd_MMU_TTG_MAP, desc = self.cmd_MMU_TTG_MAP_help) # Alias for MMU_REMAP_TTG
         self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
         self.gcode.register_command('MMU_CHECK_GATE', self.cmd_MMU_CHECK_GATE, desc = self.cmd_MMU_CHECK_GATE_help)
@@ -646,8 +629,6 @@ class Mmu:
         self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
         self.gcode.register_command('__MMU_GATE_RUNOUT', self.cmd_MMU_GATE_RUNOUT, desc = self.cmd_MMU_GATE_RUNOUT_help)
         self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
-        self.gcode.register_command('__MMU_PRE_GATE_RUNOUT', self.cmd_MMU_PRE_GATE_RUNOUT, desc = self.cmd_MMU_PRE_GATE_RUNOUT_help)
-        self.gcode.register_command('__MMU_PRE_GATE_INSERT', self.cmd_MMU_PRE_GATE_INSERT, desc = self.cmd_MMU_PRE_GATE_INSERT_help)
         self.gcode.register_command('__MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
 
         # Initializer tasks
@@ -889,6 +870,9 @@ class Mmu:
         self.printer.register_event_handler("mmu:print_unsynced", self._disable_sync_feedback)
         self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
         self._setup_sync_feedback()
+
+        # Early notice of runout condition
+        self.printer.register_event_handler("mmu:runout", self._handle_runout_event)
 
         self._setup_heater_off_reactor()
         self._clear_saved_toolhead_position()
@@ -2578,7 +2562,8 @@ class Mmu:
     def _resume_printing(self, operation, sync=True):
         self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation)
-        self._initialize_filament_position()    # Encoder 0000
+        self._initialize_filament_position() # Encoder 0000
+        self.pause_resume.send_resume_command() # Make sure the virtual SD card is woken up
         # Ready to continue printing...
 
     # If this is called automatically it will occur after the user's print ends.
@@ -2964,6 +2949,7 @@ class Mmu:
         if not self._check_is_calibrated(silent=True):
             self._load_persisted_state()
         self.is_enabled = True
+        self.printer.send_event("mmu:enabled")
         self._log_always("MMU enabled and reset")
         self._schedule_mmu_bootup_tasks()
 
@@ -2973,6 +2959,7 @@ class Mmu:
         self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.is_enabled = False
+        self.printer.send_event("mmu:disabled")
         self._set_print_state("standby")
         self._log_always("MMU disabled")
 
@@ -5483,7 +5470,13 @@ class Mmu:
 # RUNOUT, ENDLESS SPOOL and GATE HANDLING #
 ###########################################
 
-    def _handle_runout(self, force_runout=False):
+    def _handle_runout_event(self, eventtime):
+        if self.is_enabled:
+            if self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing":
+                #self._log_error("PAUL: send_pause_command()")
+                self.pause_resume.send_pause_command()
+
+    def _runout(self, force_runout=False):
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
@@ -5688,7 +5681,7 @@ class Mmu:
         if self._check_is_disabled(): return
         force_runout = bool(gcmd.get_int('FORCE_RUNOUT', 1, minval=0, maxval=1))
         try:
-            self._handle_runout(force_runout)
+            self._runout(force_runout)
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
@@ -5696,59 +5689,50 @@ class Mmu:
     def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
         try:
-            self._handle_runout()
+            self._log_debug("Filament runout detected by encoder")
+            self._runout()
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
     cmd_MMU_ENCODER_INSERT_help = "Internal encoder filament insert detection handler"
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
         if self._check_is_disabled(): return
-        self._log_trace("Filament insertion not implemented yet!")
+        self._log_trace("Filament insertion detected by encoder")
         # TODO Future bypass preload feature - make gate act like bypass
         #try:
         #    self._handle_detection()
         #except MmuError as ee:
         #    self._mmu_pause(str(ee))
 
-    cmd_MMU_GATE_RUNOUT_help = "Internal gate filament runout handler"
+    # This callback is not protected by klipper is_printing check so be careful
+    cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
         try:
-            self._handle_runout(True)
-        except MmuError as ee:
-            self._mmu_pause(str(ee))
-
-    cmd_MMU_GATE_INSERT_help = "Internal gate filament insert detection handler"
-    def cmd_MMU_GATE_INSERT(self, gcmd):
-        if self._check_is_disabled(): return
-        self._log_trace("Filament insertion not implemented yet!")
-        # TODO Future bypass preload feature - make gate act like bypass
-
-    # This callback is not protected by klipper is_printing check so be careful
-    cmd_MMU_PRE_GATE_RUNOUT_help = "Internal pre-gate filament runout handler"
-    def cmd_MMU_PRE_GATE_RUNOUT(self, gcmd):
-        active = self._is_printer_printing()
-        if self._check_is_disabled(): return
-        try:
-            gate = gcmd.get_int('GATE')
-            self._log_debug("Filament runout detected by pre-gate sensor on gate #%d" % gate)
-            self._set_gate_status(gate, self.GATE_EMPTY)
-            if self._is_in_print() and active and gate == self.gate_selected:
-                self._handle_runout(True)
+            active = self._is_printer_printing()
+            gate = gcmd.get_int('GATE', None)
+            #logging.error("PAUL: MMU_GATE_RUNOUT active=%s, gate=%s" % (active, gate))
+            self._log_debug("Filament runout detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
+            if gate is not None:
+                self._set_gate_status(gate, self.GATE_EMPTY)
+            if self._is_in_print() and active and (gate is None or gate == self.gate_selected):
+                self._runout(True)
         except MmuError as ee:
             self._mmu_pause(str(ee))
         
     # This callback is not protected by klipper "is printing" check so be careful
-    cmd_MMU_PRE_GATE_INSERT_help = "Internal pre-gate filament detection handler"
-    def cmd_MMU_PRE_GATE_INSERT(self, gcmd):
-        active = self._is_printer_printing()
+    cmd_MMU_GATE_INSERT_help = "Internal MMU filament detection handler"
+    def cmd_MMU_GATE_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         try:
-            gate = gcmd.get_int('GATE')
-            self._log_debug("Filament insertion detected by pre-gate sensor on gate #%d" % gate)
-            self._set_gate_status(gate, self.GATE_UNKNOWN)
-            if not self._is_in_print() and not active:
-                self.cmd_MMU_PRELOAD(gcmd)
+            active = self._is_printer_printing()
+            gate = gcmd.get_int('GATE', None)
+            self._log_debug("Filament insertion detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
+            if gate is not None:
+                self._set_gate_status(gate, self.GATE_UNKNOWN)
+                if not self._is_in_print() and not active:
+                    #self._log_error("PAUL: **** RUNNING PRELOAD")
+                    self.cmd_MMU_PRELOAD(gcmd)
         except MmuError as ee:
             self._mmu_pause(str(ee))
 

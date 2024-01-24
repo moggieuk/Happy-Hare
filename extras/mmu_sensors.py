@@ -8,7 +8,8 @@
 #   Each has name `mmu_pre_gate_X` where X is gate number
 #
 # mmu_gate sensor:
-#   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks.
+#   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks with modified runout event handling
+#   to pause virtual SD card without running PAUSE macro
 #   Named `mmu_gate`
 #
 # extruder & toolhead sensor:
@@ -21,7 +22,7 @@
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
 #
-# Based on:
+# RunoutHelper based on:
 # Generic Filament Sensor Module                 Copyright (C) 2019  Eric Callahan <arksine.code@gmail.com>
 #
 # (\_/)
@@ -32,15 +33,16 @@
 #
 import logging, time
 
-class PreGateRunoutHelper:
-
-    def __init__(self, printer, name, gate):
-        self.printer, self.name, self.gate = printer, name, gate
+class MmuRunoutHelper:
+    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay, pause_delay):
+        self.printer, self.name = printer, name
+        self.insert_gcode, self.runout_gcode = insert_gcode, runout_gcode
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
         self.min_event_systime = self.reactor.NEVER
-        self.event_delay = 1. # Time between generated events
+        self.event_delay = event_delay # Time between generated events
+        self.pause_delay = pause_delay # Time to wait after reactor is paused
         self.filament_present = False
         self.sensor_enabled = True
 
@@ -56,20 +58,29 @@ class PreGateRunoutHelper:
         prev_values[self.name] = self.cmd_SET_FILAMENT_SENSOR
 
     def _handle_ready(self):
-        self.min_event_systime = self.reactor.monotonic() + 2. # Time to wait until events are processed
+        self.min_event_systime = self.reactor.monotonic() + 2. # Time to wait before first events are processed
 
     def _insert_event_handler(self, eventtime):
-        self._exec_gcode("__MMU_PRE_GATE_INSERT GATE=%d" % self.gate)
+        #logging.info("PAUL: Exec Insert gcode")
+        self._exec_gcode(self.insert_gcode)
 
     def _runout_event_handler(self, eventtime):
-        self._exec_gcode("__MMU_PRE_GATE_RUNOUT GATE=%d" % self.gate)
+        # Determine "printing" status, if so tell Happy Hare about it
+        idle_timeout = self.printer.lookup_object("idle_timeout")
+        is_printing = idle_timeout.get_status(eventtime)["state"] == "Printing"
+        if is_printing:
+            self.printer.send_event("mmu:runout", eventtime)
+            if self.pause_delay:
+                self.printer.get_reactor().pause(eventtime + self.pause_delay)
+        #logging.exception("PAUL: Exec Runout gcode")
+        self._exec_gcode(self.runout_gcode)
 
     def _exec_gcode(self, command):
         try:
             #self.gcode.run_script(command)
             self.gcode.run_script(command + "\n__MMU_M400")
         except Exception:
-            logging.exception("Error running pre-gate handler: `%s`" % command)
+            logging.exception("Error running mmu sensor handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def note_filament_present(self, is_filament_present):
@@ -80,14 +91,14 @@ class PreGateRunoutHelper:
         # Don't handle too early or if disabled
         if eventtime < self.min_event_systime or not self.sensor_enabled: return
 
-        # Let Happy Hare decide what processing is possible based on current state
+        # Let Happy Hare decide what processing is possible based on printing state
         if is_filament_present: # Insert detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("MMU Pre-gate filament sensor %s: insert event detected, Time %.2f" % (self.name, eventtime))
+            logging.info("MMU filament sensor %s: insert event detected, Time %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._insert_event_handler)
         else: # Runout detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("MMU Pre-gate filament sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
+            logging.info("MMU filament sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._runout_event_handler)
 
     def get_status(self, eventtime):
@@ -106,7 +117,7 @@ class PreGateRunoutHelper:
 
     cmd_SET_FILAMENT_SENSOR_help = "Sets the filament sensor on/off"
     def cmd_SET_FILAMENT_SENSOR(self, gcmd):
-        self.sensor_enabled = gcmd.get_int("ENABLE", 1)
+        self.sensor_enabled = bool(gcmd.get_int("ENABLE", 1))
 
 
 class MmuSensors:
@@ -118,6 +129,9 @@ class MmuSensors:
 
     def __init__(self, config):
         self.printer = config.get_printer()
+
+        event_delay = config.get('event_delay', 1.)
+        pause_delay = config.get('pause_delay', .3)
 
         # Setup and pre-gate sensors that are defined...
         for gate in range(23):
@@ -132,26 +146,32 @@ class MmuSensors:
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
-            config.fileconfig.set(section, "insert_gcode", "__MMU_PRE_GATE_INSERT GATE=%d" % gate)
-            config.fileconfig.set(section, "runout_gcode", "__MMU_PRE_GATE_RUNOUT GATE=%d" % gate)
+            insert_gcode = "__MMU_GATE_INSERT GATE=%d" % gate
+            runout_gcode = "__MMU_GATE_RUNOUT GATE=%d" % gate
             fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper because limited operation is possible during print
-            pre_gate_helper = PreGateRunoutHelper(self.printer, name, gate)
-            fs.runout_helper = pre_gate_helper
-            fs.get_status = pre_gate_helper.get_status
+            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            fs.runout_helper = gate_helper
+            fs.get_status = gate_helper.get_status
 
         # Setup gate sensor...
         switch_pin = config.get('gate_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
-            section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_GATE
+            name = self.ENDSTOP_GATE
+            section = "filament_switch_sensor %s_sensor" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
-            config.fileconfig.set(section, "insert_gcode", "__MMU_GATE_INSERT")
-            config.fileconfig.set(section, "runout_gcode", "__MMU_GATE_RUNOUT")
+            insert_gcode = "__MMU_GATE_INSERT"
+            runout_gcode = "__MMU_GATE_RUNOUT"
             fs = self.printer.load_object(config, section)
+
+            # Replace with custom runout_helper to pause virtual_sdcard but not PAUSE
+            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            fs.runout_helper = gate_helper
+            fs.get_status = gate_helper.get_status
 
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
