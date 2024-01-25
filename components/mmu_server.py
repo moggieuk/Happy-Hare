@@ -20,7 +20,7 @@ class MmuServer:
     METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 
     COLORS1_REGEX = r"^; extruder_colour =(.*)$" # PS/SS
-    COLORS2_REGEX = r"^; filament_colour_colour =(.*)$" # Orca slicer
+    COLORS2_REGEX = r"^; filament_colour =(.*)$" # Orca slicer
     METADATA_COLORS = "!colors!"
 
     TEMPS_REGEX = r"^; temperature =(.*)$"

@@ -9,6 +9,7 @@ TODO
 ### Turning off slicer tip forming
 
 <img src="/doc/toolchange/printer_settings.png" width="500" alt="Slicer printer settings">
+<img src="/doc/toolchange/printer_settings_extruder.png" width="500" alt="Slicer printer settings per extruder">
 <img src="/doc/toolchange/filament_settings.png" width="680" alt="Slicer print settings">
 
 ### Turning off slicer wipetower

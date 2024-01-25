@@ -61,7 +61,7 @@ class MmuRunoutHelper:
         self.min_event_systime = self.reactor.monotonic() + 2. # Time to wait before first events are processed
 
     def _insert_event_handler(self, eventtime):
-        #logging.info("PAUL: Exec Insert gcode")
+        logging.info("PAUL: Exec Insert gcode")
         self._exec_gcode(self.insert_gcode)
 
     def _runout_event_handler(self, eventtime):
@@ -72,7 +72,7 @@ class MmuRunoutHelper:
             self.printer.send_event("mmu:runout", eventtime)
             if self.pause_delay:
                 self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        #logging.exception("PAUL: Exec Runout gcode")
+        logging.exception("PAUL: Exec Runout gcode")
         self._exec_gcode(self.runout_gcode)
 
     def _exec_gcode(self, command):
@@ -159,8 +159,8 @@ class MmuSensors:
         switch_pin = config.get('gate_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
-            name = self.ENDSTOP_GATE
-            section = "filament_switch_sensor %s_sensor" % name
+            name = "%s_sensor" % self.ENDSTOP_GATE
+            section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")

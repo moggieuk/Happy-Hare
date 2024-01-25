@@ -5473,7 +5473,7 @@ class Mmu:
     def _handle_runout_event(self, eventtime):
         if self.is_enabled:
             if self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing":
-                #self._log_error("PAUL: send_pause_command()")
+                self._log_error("PAUL: send_pause_command()")
                 self.pause_resume.send_pause_command()
 
     def _runout(self, force_runout=False):
@@ -5709,13 +5709,12 @@ class Mmu:
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
         try:
-            active = self._is_printer_printing()
             gate = gcmd.get_int('GATE', None)
-            #logging.error("PAUL: MMU_GATE_RUNOUT active=%s, gate=%s" % (active, gate))
+            logging.error("PAUL: MMU_GATE_RUNOUT active=%s, gate=%s" % (self._is_printer_printing(), gate))
             self._log_debug("Filament runout detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
             if gate is not None:
                 self._set_gate_status(gate, self.GATE_EMPTY)
-            if self._is_in_print() and active and (gate is None or gate == self.gate_selected):
+            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected):
                 self._runout(True)
         except MmuError as ee:
             self._mmu_pause(str(ee))
@@ -5725,14 +5724,13 @@ class Mmu:
     def cmd_MMU_GATE_INSERT(self, gcmd):
         if self._check_is_disabled(): return
         try:
-            active = self._is_printer_printing()
             gate = gcmd.get_int('GATE', None)
             self._log_debug("Filament insertion detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
             if gate is not None:
                 self._set_gate_status(gate, self.GATE_UNKNOWN)
-                if not self._is_in_print() and not active:
-                    #self._log_error("PAUL: **** RUNNING PRELOAD")
-                    self.cmd_MMU_PRELOAD(gcmd)
+                if not self._is_in_print():
+                    self._log_error("PAUL: **** RUNNING PRELOAD")
+                    #self.cmd_MMU_PRELOAD(gcmd) # PAUL
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
