@@ -1,6 +1,6 @@
 # Tool Changing
 
-TODO
+The tool change movement options in the guide assume you have configured key toolhead locations (if applicable to your setup) by editing the `mmu_sequence.cfg` and `mmu_cut_tip.cfg` files:
 
 <img src="/doc/toolchange/toolhead_locations.png" width="900" alt="Toolhead Locations">
 
@@ -9,7 +9,7 @@ TODO
 The most important part of MMU printing is understanding how to configure your slicer for "single extruder multi material".  Because each slicer is different this is beyond the scope this documentation.  That said, the common slicers: Prusaslicer, Superslicer and Orcaslicer all have similar interfaces and there are a couple of settings you need to be aware of in deciding between what is performed by Happy Hare (the MMU "firmware") and the slicer.
 
 ### Turning off slicer tip forming
-The first thing has has to happen on a tool change is to prepare the tip of the filament being removed from the extruder. The simplist and recommend approach is to disable the tip creation process in the slicer and allow Happy Hare to do this. The reason is Happy Hare will have to do this while not actively printing anyway - so why configure what will likely be the most furstrating part of your journey in two places.
+The first thing that has to happen on a tool change is to prepare the tip of the filament being removed from the extruder. The simplist and recommend approach is to disable the tip creation process in the slicer and allow Happy Hare to do this. The reason is Happy Hare will have to do this while not actively printing anyway - so why configure what will likely be the most furstrating part of your journey in two places.
 
 Slicers have some quirks and don't make it very straighforward to turn off as you would expect. Instead you need to configure in a number of different areas.  This screenshots shown here are for Prusaslicer but Superslicer and Orcaslicer are very similar.
 
@@ -21,12 +21,15 @@ The first place is a setting like this on the `printer settings` tab.  This disa
 <img src="/doc/toolchange/printer_settings.png" width="500" alt="Slicer printer settings">
 
 Working in conjunction with the above and found on the `filament settings` tab is this area where you should zero out all all movement speeds and distances.  Leave only the timing inputs that you can tune once you know the average loading and unloading time for your particular MMU.
+
 <img src="/doc/toolchange/filament_settings.png" width="680" alt="Slicer filament settings">
 
 The next setting must be configure on each of your extruders.  This turns off an initial retraction and subsequent extrude that will leave blobs on your wipetower.  The reason to turn this off is that Happy Hare will correctly load the filament exatly to the nozzle and additonal extrusion will cause a blob.
+
 <img src="/doc/toolchange/printer_settings_extruder.png" width="500" alt="Slicer printer settings per extruder">
 
 Unless you have a sepcialized purge system (documented later) you will want the slicer to manage a wipe tower used to purge out the remains of the previous filament.  To do this, make sure this option is enabled (it usually is by default):
+
 <img src="/doc/toolchange/print_settings.png" width="500" alt="Slicer print settings">
 
 ### Turning off slicer wipetower
@@ -44,42 +47,42 @@ Firstly, although the default way to form tips is through calculated filament mo
 
 To set this up you need to edit three modular configuraton files: `mmu_parameters.cfg` (the primary setup), `mmu_cut_tip.cfg` (contains the tip cutting macro) and `mmu_sequence.cfg` (contains the default toolhead movement options)
 
-Option 1: Cutting tip and parking at the cutter while making the tool change.
-Pro: Minimizes movement
-Con: Possibility of oozing in a undesirable part of the build plate
+#### Option 1: Cutting tip and parking at the cutter while making the tool change.
+- Pro: Minimizes movement
+- Con: Possibility of oozing in a undesirable part of the build plate
 <img src="/doc/toolchange/cutter_cutter.png" width="900" alt="Cutting and Parking at Cutter">
 
-Option 2: Cutting tip and parking in a designated park area (often over purge bucket) while making the tool change.
-Pro: Allows of addition of brush cleaning move after the new filament is loaded before returning to wipe tower
+#### Option 2: Cutting tip and parking in a designated park area (often over purge bucket) while making the tool change.
+- Pro: Allows of addition of brush cleaning move after the new filament is loaded before returning to wipe tower
 <img src="/doc/toolchange/cutter_park_area.png" width="900" alt="Cutting and Parking at Purge">
 
-Option 3: Cutting tip and parking at the wipetower
-Pro: Minimizes movement
-Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
+#### Option 3: Cutting tip and parking at the wipetower
+- Pro: Minimizes movement
+- Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
 <img src="/doc/toolchange/cutter_wipe_tower.png" width="900" alt="Cutting and Parking on Wipetower">
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Tip Forming Options
 
-Option 4: Forming tip by Happy Hare and parking in a designated park area (often over purge bucket) while making the tool change.
-Pro: Allows of addition of brush cleaning move after the new filament is loaded before returning to wipe tower
+#### Option 4: Forming tip by Happy Hare and parking in a designated park area (often over purge bucket) while making the tool change.
+- Pro: Allows of addition of brush cleaning move after the new filament is loaded before returning to wipe tower
 <img src="/doc/toolchange/forming_park_area_hh.png" width="900" alt="Tip Forming by HH at Park Area">
 
-Option 5: Forming tip by Happy Hare and parking at the wipetower
-Pro: Minimizes movement
-Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
+#### Option 5: Forming tip by Happy Hare and parking at the wipetower
+- Pro: Minimizes movement
+- Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
 <img src="/doc/toolchange/forming_wipe_tower_hh.png" width="900" alt="Tip Forming by HH at Wipetower">
 
-Option 6: Forming tip by slicer and parking at the wipetower
-Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
-Con: You will also need to tune tip forming in the slicer and manage all the settings that were zeroed out above.
-Con: Movement during a toolchange will also be different in a print verses out of a print
+#### Option 6: Forming tip by slicer and parking at the wipetower
+- Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
+- Con: You will also need to tune tip forming in the slicer and manage all the settings that were zeroed out above.
+- Con: Movement during a toolchange will also be different in a print verses out of a print
 <img src="/doc/toolchange/forming_wipe_tower_slicer.png" width="900" alt="Tip Forming by Slicer at Wipetower">
 
 ### No wipetower
 
-Option 7: Forming tip by Happy Hare, custom purge with no wipe tower
-Pro: You get your full buildplate to work with because wipe tower is disabled
-Con: You will need to implement your own purging routine.  This could just be a purge into a large bin followed by nozzle cleaning or, more likely, some form of pellet forming and cleaning.
-Neutral: This is perhaps the coolest option!
+#### Option 7: Forming tip by Happy Hare, custom purge with no wipe tower
+- Pro: You get your full buildplate to work with because wipe tower is disabled
+- Con: You will need to implement your own purging routine.  This could just be a purge into a large bin followed by nozzle cleaning or, more likely, some form of pellet forming and cleaning.
+- Neutral: This is perhaps the coolest option!
 <img src="/doc/toolchange/forming_custom_purge_hh.png" width="900" alt="Tip Forming by HH No Wipetower">
 
