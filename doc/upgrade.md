@@ -10,8 +10,8 @@ More details: https://github.com/moggieuk/Happy-Hare/doc/upgrade.md
 
 Happy Hare version as seen in Mainsail & Fluidd UI's is in the form: `Major`.`Minor`.`Point`-`Patch`. The meaning of each number is as follows:
 - `Major` - Major change of functionality that requires a complete re-install
-- `Minor` - A change has been made that requires update to config file or install a new Klipper module
-- `Point` - Enhancement that doesn't require any special treatment other than Klipper restart
+- `Minor` - A significant change has been made that requires update to config file or installation of a new Klipper module. './install.sh' must be run and configuration should be checked afterwards
+- `Point` - Enhancement that may make a minor change to configuration files.  You will be instructed if you need to rerun './install.sh'
 - `Patch` - Routine update to address a bug that doesn require any special treatment other than Klipper restart
 
 The most common is `Minor` change and to fix that you simply need to log into your rpi and run the following:
