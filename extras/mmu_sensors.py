@@ -61,7 +61,6 @@ class MmuRunoutHelper:
         self.min_event_systime = self.reactor.monotonic() + 2. # Time to wait before first events are processed
 
     def _insert_event_handler(self, eventtime):
-        #logging.info("PAUL: Exec Insert gcode")
         self._exec_gcode(self.insert_gcode)
 
     def _runout_event_handler(self, eventtime):
@@ -72,7 +71,6 @@ class MmuRunoutHelper:
             self.printer.send_event("mmu:runout", eventtime)
             if self.pause_delay:
                 self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        #logging.exception("PAUL: Exec Runout gcode")
         self._exec_gcode(self.runout_gcode)
 
     def _exec_gcode(self, command):

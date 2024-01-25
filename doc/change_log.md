@@ -86,3 +86,18 @@ New Features:
   - Better error feedback on LED misconfiguration
   - Fix for led index when order of reversed.
 
+### v2.4.2
+- New placeholder preprocessing for colors and filament temps pulled from you slicer ( !colors! and !temperatures! )
+- LED update: New effect "custom_color".  This will display colors stored for each gate based on user setting. One example use is to render the colors used in the slicer so you can visually compare with what is loaded.  Documentation is in the gcode pre-processing section.
+- Improved movement "sequence" macros.  These now work better when not completely homed (e.g. z-hop is optional.
+- CUT_TIP macro now has option to control whether movement goes back to wipetower or not after cut
+- Faster pausing on runout
+- Fix for not automatically engaging the sync/servo after fixing error and resuming.
+- New doc on how to setup your slicer to disable tip forming
+- New doc on how to setup toolhead movement during toolchange or error
+- Couple of new states to filament movement.  These are to enable and display of various other sensors such as a gate sensor (option to encoder) and pre-entry extruder sensor.
+- New rendering of filament position in console (and KlipperScreen-HH) showing all sensor options if fitted
+- Imporved use of miscellaneous sensors to detect errors or non-errors
+- Cleanup of the status displays of various commands `MMU_GATE_MAP`, `MMU_TTG_MAP`, `MMU_ENDLESS_SPOOL`
+- Other bug fixes report in `Issues`
+
