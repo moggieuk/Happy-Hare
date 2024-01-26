@@ -4,7 +4,7 @@
   - [Tip Cutting Options](#tip-cutting-options)<br>
   - [Tip Forming Options](#tip-forming-options)<br>
   - [Printing without wipetower](#printing_without_wipetower)<br>
-- [Z-hop moves](#zhop-moves)<br>
+- [Z-hop moves](#---z-hop-moves)<br>
 
 The tool change movement options in the guide assume you have configured key toolhead locations (if applicable to your setup) by editing the `mmu_sequence.cfg` and `mmu_cut_tip.cfg` files:
 
