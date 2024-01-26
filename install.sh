@@ -1469,6 +1469,7 @@ fi
 
 git pull # PAUL test of updgrade
 # this is a another test line
+echo "PAUL PAUL PAUL"
 verify_not_root
 verify_home_dirs
 check_klipper
