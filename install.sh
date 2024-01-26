@@ -1468,6 +1468,7 @@ if [ "${INSTALL}" -eq 0 -a "${UNINSTALL}" -eq 0 ]; then
 fi
 
 git pull # PAUL test of updgrade
+# this is a another test line
 verify_not_root
 verify_home_dirs
 check_klipper
