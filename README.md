@@ -61,14 +61,14 @@ Thank you!
 
 #### Other Docs:
 
-**[Understanding Operation with MMU_STATUS](/doc/operation.md)**<br>
+**[Understanding Operation with MMU_STATUS](/doc/operation.md)** 🆕<br>
 **[Command Reference](/doc/command_ref.md)**<br>
 **[Hardware Configuration, Movement and Homing](/doc/hardware_config.md)**<br>
 **[Calibration Guide](/doc/calibration.md)**<br>
 **[Configuation Reference](/doc/configuration.md)**<br>
-**[Toochange Movement and Slicer Setup](/doc/toolchange_movement.md)**<br>
-**[Happy Hare Macro Customization](/doc/macro_customization.md)**<br>
-**[Gcode Preprocessing](/doc/gcode_preprocessing.md)**<br>
+**[Toochange Movement and Slicer Setup](/doc/toolchange_movement.md)** 🆕<br>
+**[Happy Hare Macro Customization](/doc/macro_customization.md)** 🆕<br>
+**[Gcode Preprocessing](/doc/gcode_preprocessing.md)** 🆕<br>
 **[LED Support](/doc/leds.md)**<br>
 **[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
 
