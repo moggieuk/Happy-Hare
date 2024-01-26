@@ -81,7 +81,7 @@ servo_buzz_gear_on_down: 1              # Whether to "buzz" the gear stepper on 
 
 Logging controls control the verbosity level of logging to console and separate `mmu.log` file as well and fun visual filament position and various status messages - it really is unessessary to have verbose logging to the console so defaults are recommended.
 
-> [TIP]  
+> [!TIP]  
 > When an error occurs there may be insufficent information on the console to diagnose. In this case open up `mmu.log` (Mainsail now has button for this) and review the DEBUG details.
 
 ```yml
@@ -291,7 +291,9 @@ toolhead_move_error_tolerance: 60       # ADVANCED default is probably ok
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Tip Forming
 
-TODO
+TODO...
+
+Some more details on slicer setup can be found [here](/doc/toolchange_movement.md#---role-of-the-slicer)
 
 ``` yml
 # Tip forming -------------------------------------------------------------------------------------------------------------
@@ -455,7 +457,7 @@ load_sequence_macro: _MMU_LOAD_SEQUENCE         # VERY ADVANCED: Optionally call
 
 This final section is commented out because it is not generally needed. It retains abilities that existed in earlier versions of Happy Hare which may still be useful in some specific cases.  Normally when reset Happy Hare will default to empty or simple values for these settings. However, you can define the default here so that after a MMU reset has been performed they will be the starting values perhaps saving some additional configuration. E.g. if you always have specific filament spools loaded on a particular gate (I always have ABS black on gate #8 for example) you can define that here by setting the starting `gate_material` and `gate_color` arrays. Read [here](https://github.com/moggieuk/Happy-Hare#3-tool-to-gate-ttg-mapping) and [here](https://github.com/moggieuk/Happy-Hare#12-gate-map-describing-filament-type-color-and-status) for more details.
 
-> [!Note]  
+> [!NOTE]  
 > Happy Hare will report error if these arrays are not the same length as the configured number of gates.
 
 <br>
