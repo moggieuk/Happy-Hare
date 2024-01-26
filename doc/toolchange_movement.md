@@ -1,4 +1,10 @@
 # Tool Changing
+- [Turning off slicer tip forming](#turning-off-slicer-tip-forming)<br>
+- [Turning off slicer wipetower](#turning-off-slicer-wipetower)<br>
+  - [Tip Cutting Options](#tip-cutting-options)<br>
+  - [Tip Forming Options](#tip-forming-options)<br>
+  - [Printing without wipetower](#printing_without_wipetower)<br>
+- [Z-hop moves](#zhop-moves)<br>
 
 The tool change movement options in the guide assume you have configured key toolhead locations (if applicable to your setup) by editing the `mmu_sequence.cfg` and `mmu_cut_tip.cfg` files:
 
@@ -16,7 +22,7 @@ Slicers have some quirks and don't make it very straighforward to turn off as yo
 The first place is a setting like this on the `printer settings` tab.  This disables the primary retract/extrude oscillation that is the bulk of the tip forming and cooling movement.
 
 > [!NOTE]  
-> Whilst it is logical to zero all these settings out, Prusaslicer at least has bug that will insert illegal `G1 F0` commands if all the fields are exactly 0.  Instead use a tiny value for the cooling tube length.
+> Whilst it is logical to zero all these settings out, Prusaslicer (v2.5) at least has bug that will insert illegal `G1 F0` commands if all the fields are exactly 0.  Instead use a tiny value for the cooling tube length.
 
 <img src="/doc/toolchange/printer_settings.png" width="500" alt="Slicer printer settings">
 
@@ -78,7 +84,7 @@ To set this up you need to edit three modular configuraton files: `mmu_parameter
 - Con: Movement during a toolchange will also be different in a print verses out of a print
 <img src="/doc/toolchange/forming_wipe_tower_slicer.png" width="900" alt="Tip Forming by Slicer at Wipetower">
 
-### No wipetower
+### Printing without wipetower
 
 #### Option 7: Forming tip by Happy Hare, custom purge with no wipe tower
 - Pro: You get your full buildplate to work with because wipe tower is disabled
@@ -86,3 +92,10 @@ To set this up you need to edit three modular configuraton files: `mmu_parameter
 - Neutral: This is perhaps the coolest option!
 <img src="/doc/toolchange/forming_custom_purge_hh.png" width="900" alt="Tip Forming by HH No Wipetower">
 
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Z-Hop Moves
+It's worth noting that there are three possible origins for z-hop moves during a toolchange:
+- The first is input by the slicer. With the settings described here that should be disabled.
+- The second is by Happy Hare: during a print, HH will immediately lift the toolhead away from the print on toolchange and on error if `z_hop_height_toolchange` is non-zero in `mmu_parameters.cfg`. This move only occurs when in a print and is designed to prevent any chance of a blob forming on your part.  The z-hop move is the first move and occurs before any movement in the horizontal plane.
+- Finally, the movement macro defined in `mmu_sequence.cfg` can optionally define a Z-hop move. This lifting move, if configured (`variable_enable_park` and `variable_park_z_hop`) will always happen both in and out of a print. Out of a print and for convenience it will be automatically skipped if the z-axis has not been homed.
+
+Personally I find it useful to set z-hop to 0.8mm in Happy Hare and 0mm in the parking (`mmu_sequence.cfg`) macro since out of a print I'm not worried about hitting objects or possible blobs.
