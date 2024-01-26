@@ -1466,8 +1466,8 @@ fi
 if [ "${INSTALL}" -eq 0 -a "${UNINSTALL}" -eq 0 ]; then
     echo -e "${TITLE}Upgrading previous version of Happy Hare..."
 fi
-# PAUL test of updgrade
 
+git pull # PAUL test of updgrade
 verify_not_root
 verify_home_dirs
 check_klipper
