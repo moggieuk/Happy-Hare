@@ -235,9 +235,16 @@ extruder_force_homing: 0
 > [!IMPORTANT]  
 > This section controls the module responsible for loading filament into and unloading from the extruder/toolhead and thus is probably one of the most important sections to get right. These settings ineract with each other so you should not guess, instead refer to the picture before and make sure you set accordingly.
 
-  <img src="extruder_dimensions.jpg" alt='Extruder Dimensions' width='30%'>
+  <img src="extruder_dimensions.png" alt='Extruder Dimensions' width='60%'>
 
 Consult this illustration of a typical toolhead or table of popular configurations to determine these dimensions. `toolhead_extruder_to_nozzle` must always be set accurately. It is a fixed distance based on your extruder and hotend and should not be tuned (use `toolhead_ooze_reduction` to tune out oozing of filament after the load). If you have a toolhead sensor then you also need to specify `toolhead_sensor_to_nozzle`. In practive this is often best performed by placing a fragment of filament at the extruder gears and "extruding" 1mm at a time until the toolhead sensor triggers. If you have a pre-extruder or "entry" sensor then you must also specify the distance from when this sensor triggers to the extruder (gears) entrance. The `toolhead_homing_max` determines the maximum distance from the extruder entrance to advance filament to home to the toolhead sensor - make sure this is a little larger than actually required to compensation for previous inaccuracies that may have occured. To further increase reliability, when unloading the `toolhead_unload_safety margin` is added to every theoretical move distance. Typically 5mm-10mm is sufficient. The starting value for `toolhead_ooze_reduction` shoud be `0` but as you tune printing you may increase it to reduce total loading distance to reduce blobs on the purge tower.
+
+  | Dimension | ERCFv2 CW2 - Revo | Please Help (submit your verified setup) |
+  | --------- | ----------------- | -----------------------------------------|
+  | toolhead_extruder_to_nozzle | 72 | |
+  | toolhead_sensor_to_nozzle | 62 | |
+  | toolhead_entry_to_extruder | 8 | |
+  | variable_blade_pos<br>(mmu_cut_tip.cfg) | 37.5 | |
 
 Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 
