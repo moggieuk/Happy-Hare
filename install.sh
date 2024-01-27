@@ -159,27 +159,27 @@ self_update() {
     cd "$SCRIPTPATH"
     BRANCH=$(timeout 2s git branch --show-current)
     [ -z "${BRANCH}" ] && {
-        echo -e "${EMPHASIZE}Timeout talking to github. Skipping upgrade check"
+        echo -e "${B_GREEN}Timeout talking to github. Skipping upgrade check"
         return
     }
 
-    echo -e "${EMPHASIZE}On '${BRANCH}' branch"
+    echo -e "${B_GREEN}On '${BRANCH}' branch"
     git fetch --quiet
     git diff --quiet --exit-code "origin/$BRANCH"
     [ $? -eq 1 ] && {
-        echo -e "${EMPHASIZE}Found a new version of Happy Hare on github, updating myself..."
+        echo -e "${B_GREEN}Found a new version of Happy Hare on github, updating..."
         [ -n "$(git status --porcelain)" ] && {
             git stash push -m 'local changes stashed before self update' --quiet
         }
         git pull --quiet --force
-        git checkout $BRANCH
+        git checkout $BRANCH --quiet
         git pull --quiet --force
-        echo -e "${EMPHASIZE}Running the new version..."
+        echo -e "${B_GREEN}Running the new version..."
         cd - >/dev/null
         exec "$SCRIPTNAME" "${ARGS[@]}"
         exit 1 # Exit this old instance
     }
-    echo "Happy Already the latest version."
+    echo -e "${B_GREEN}Already the latest version."
 }
 
 function nextfilename {
@@ -1468,11 +1468,6 @@ usage() {
     exit 1
 }
 
-# Force script to exit if an error occurs
-# PAUL
-#set -e
-#clear
-
 # Find SRCDIR from the pathname of this script
 SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/ && pwd )"
 SETUP_TOOLHEAD_SENSOR=0
@@ -1500,11 +1495,6 @@ if [ "${INSTALL}" -eq 1 -a "${UNINSTALL}" -eq 1 ]; then
     echo -e "${ERROR}Can't install and uninstall at the same time!"
     usage
 fi
-
-# PAUL
-#if [ "${INSTALL}" -eq 0 -a "${UNINSTALL}" -eq 0 ]; then
-#    echo -e "${TITLE}Upgrading previous version of Happy Hare..."
-#fi
 
 verify_not_root
 [ -z "${SKIP_UPDATE}" ] && {
