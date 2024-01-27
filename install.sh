@@ -6,6 +6,12 @@
 #
 VERSION=2.42 # Important: Keep synced with mmy.py
 
+SCRIPT="$(readlink -f "$0")"
+SCRIPTFILE="$(basename "$SCRIPT")"
+SCRIPTPATH="$(dirname "$SCRIPT")"
+SCRIPTNAME="$0"
+ARGS=( "$@" )
+
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"
 KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
@@ -13,7 +19,6 @@ KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 SENSORS_SECTION="FILAMENT SENSORS"
 LED_SECTION="MMU OPTIONAL NEOPIXEL"
-
 
 declare -A PIN 2>/dev/null || {
     echo "Please run this script with bash $0"
@@ -145,6 +150,38 @@ WARNING="${B_YELLOW}"
 PROMPT="${CYAN}"
 INPUT="${OFF}"
 SECTION="----------\n"
+
+self_update() {
+    [ "$UPDATE_GUARD" ] && return
+    export UPDATE_GUARD=YES
+    clear
+
+    cd "$SCRIPTPATH"
+    BRANCH=$(timeout 2s git branch --show-current)
+    [ -z "${BRANCH}" ] && {
+        echo -e "${EMPHASIZE}Timeout talking to github. Skipping upgrade check"
+        return
+    }
+
+    set -x
+    echo -e "${EMPHASIZE}On '${BRANCH}' branch"
+    git fetch --quiet
+    git diff --quiet --exit-code "origin/$BRANCH"
+    [ $? -eq 1 ] && {
+        echo -e "${EMPHASIZE}Found a new version of Happy Hare on github, updating myself..."
+        [ -n "$(git status --porcelain)" ] && {
+            git stash push -m 'local changes stashed before self update' --quiet
+        }
+        git pull --quiet --force
+        git checkout $BRANCH
+        git pull --quiet --force
+        echo -e "${EMPHASIZE}Running the new version..."
+        cd - >/dev/null
+        exec "$SCRIPTNAME" "${ARGS[@]}"
+        exit 1 # Exit this old instance
+    }
+    echo "Happy Already the latest version."
+}
 
 function nextfilename {
     local name="$1"
@@ -1433,8 +1470,9 @@ usage() {
 }
 
 # Force script to exit if an error occurs
-set -e
-clear
+# PAUL
+#set -e
+#clear
 
 # Find SRCDIR from the pathname of this script
 SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/ && pwd )"
@@ -1446,7 +1484,7 @@ INSTALL=0
 UNINSTALL=0
 NOSERVICE=0
 INSTALL_KLIPPER_SCREEN_ONLY=0
-while getopts "k:c:m:ids" arg; do
+while getopts "k:c:m:idsz" arg; do
     case $arg in
         k) KLIPPER_HOME=${OPTARG};;
         m) MOONRAKER_HOME=${OPTARG};;
@@ -1454,6 +1492,7 @@ while getopts "k:c:m:ids" arg; do
         i) INSTALL=1;;
         d) UNINSTALL=1;;
         s) NOSERVICE=1;;
+        z) SKIP_UPDATE=1;;
         *) usage;;
     esac
 done
@@ -1463,14 +1502,15 @@ if [ "${INSTALL}" -eq 1 -a "${UNINSTALL}" -eq 1 ]; then
     usage
 fi
 
-if [ "${INSTALL}" -eq 0 -a "${UNINSTALL}" -eq 0 ]; then
-    echo -e "${TITLE}Upgrading previous version of Happy Hare..."
-fi
+# PAUL
+#if [ "${INSTALL}" -eq 0 -a "${UNINSTALL}" -eq 0 ]; then
+#    echo -e "${TITLE}Upgrading previous version of Happy Hare..."
+#fi
 
-git pull # PAUL test of updgrade
-# this is a another test line
-echo "PAUL  PAUL"
 verify_not_root
+[ -z "${SKIP_UPDATE}" ] && {
+    self_update # Make sure the repo is up-to-date
+}
 verify_home_dirs
 check_klipper
 cleanup_old_ercf
