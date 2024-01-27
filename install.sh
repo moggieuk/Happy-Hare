@@ -163,7 +163,7 @@ self_update() {
         return
     }
 
-    echo -e "${B_GREEN}Running '${BRANCH}' branch"
+    echo -e "${B_GREEN}Running on '${BRANCH}' branch"
     git fetch --quiet
     git diff --quiet --exit-code "origin/$BRANCH"
     [ $? -eq 1 ] && {
@@ -174,7 +174,7 @@ self_update() {
         git pull --quiet --force
         git checkout $BRANCH --quiet
         git pull --quiet --force
-        echo -e "${B_GREEN}Running the new version..."
+        echo -e "${B_GREEN}Running the new install script..."
         cd - >/dev/null
         exec "$SCRIPTNAME" "${ARGS[@]}"
         exit 1 # Exit this old instance
