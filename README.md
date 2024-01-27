@@ -1251,7 +1251,7 @@ STILL FORMING EXPERIENCE
 <details>
 <summary><sub>🔹 Read move about my learnings with Tradrack v1.0...</sub></summary>
 <br>
-STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS READY! I few folks in the community are using with Binky encoder modification but it is now possible to run without encoder if you wish.
+STILL WAITING TO GET MY HANDS ON ONE, BUT HAPPY HARE IS IN USE BY MANY USERS!
 
 </details>
 
