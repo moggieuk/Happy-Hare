@@ -157,13 +157,13 @@ self_update() {
     clear
 
     cd "$SCRIPTPATH"
-    BRANCH=$(timeout 2s git branch --show-current)
+    BRANCH=$(timeout 3s git branch --show-current)
     [ -z "${BRANCH}" ] && {
         echo -e "${B_GREEN}Timeout talking to github. Skipping upgrade check"
         return
     }
 
-    echo -e "${B_GREEN}On '${BRANCH}' branch"
+    echo -e "${B_GREEN}Running '${BRANCH}' branch"
     git fetch --quiet
     git diff --quiet --exit-code "origin/$BRANCH"
     [ $? -eq 1 ] && {
