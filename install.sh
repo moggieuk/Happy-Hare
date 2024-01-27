@@ -163,7 +163,6 @@ self_update() {
         return
     }
 
-    set -x
     echo -e "${EMPHASIZE}On '${BRANCH}' branch"
     git fetch --quiet
     git diff --quiet --exit-code "origin/$BRANCH"
