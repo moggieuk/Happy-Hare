@@ -43,18 +43,18 @@ PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";         
 PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
 PIN[ERB,neopixel_pin]="gpio21";          PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
 PIN[ERB,gate_sensor_pin]="gpio22";       PIN[EASY-BRD,gate_sensor_pin]="PA6";       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
-PIN[ERB,pre_gate_0_pin]="";              PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
-PIN[ERB,pre_gate_1_pin]="";              PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
-PIN[ERB,pre_gate_2_pin]="";              PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
-PIN[ERB,pre_gate_3_pin]="";              PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
-PIN[ERB,pre_gate_4_pin]="";              PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
-PIN[ERB,pre_gate_5_pin]="";              PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
-PIN[ERB,pre_gate_6_pin]="";              PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
-PIN[ERB,pre_gate_7_pin]="";              PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
-PIN[ERB,pre_gate_8_pin]="";              PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
-PIN[ERB,pre_gate_9_pin]="";              PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
-PIN[ERB,pre_gate_10_pin]="";             PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
-PIN[ERB,pre_gate_11_pin]="";             PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
+PIN[ERB,pre_gate_0_pin]="gpio0";         PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
+PIN[ERB,pre_gate_1_pin]="gpio1";         PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
+PIN[ERB,pre_gate_2_pin]="gpio2";         PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
+PIN[ERB,pre_gate_3_pin]="gpio3";         PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
+PIN[ERB,pre_gate_4_pin]="gpio4";         PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
+PIN[ERB,pre_gate_5_pin]="gpio5";         PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
+PIN[ERB,pre_gate_6_pin]="gpio6";         PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
+PIN[ERB,pre_gate_7_pin]="gpio7";         PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
+PIN[ERB,pre_gate_8_pin]="gpio26";        PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
+PIN[ERB,pre_gate_9_pin]="gpio27";        PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
+PIN[ERB,pre_gate_10_pin]="gpio28";       PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
+PIN[ERB,pre_gate_11_pin]="gpio29";       PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
 # Pins for Mellow EASY-BRD with CANbus
 #
@@ -68,21 +68,21 @@ PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";
 PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";
 PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";
 PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";
-PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";
-PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";
-PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";
-PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";	# Endstop
+PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";		# Servo
+PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";		# Encoder
+PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		# Extra
+PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";	# Encoder (Alt)
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	# Exp 5
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	# Exp 6
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	# Exp 7
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	# Exp 8
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	# Exp 9
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	# Exp 10
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	# Exp 11
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	# Exp 12
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	# Exp 13
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	# Exp 14
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";
 

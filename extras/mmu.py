@@ -955,6 +955,7 @@ class Mmu:
         self.action = self.ACTION_IDLE
         self.calibrating = False
         self._clear_saved_toolhead_position()
+        self.sent_pause_command = False
         self._servo_reset_state()
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "ready"
@@ -2488,6 +2489,7 @@ class Mmu:
         if self.print_state not in ["started", "printing"]:
             self._log_trace("_on_print_start(->started)")
             self._clear_saved_toolhead_position()
+            self.sent_pause_command = False
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
@@ -2563,7 +2565,9 @@ class Mmu:
         self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation)
         self._initialize_filament_position() # Encoder 0000
-        self.pause_resume.send_resume_command() # Make sure the virtual SD card is woken up
+        if self.sent_pause_command:
+            self.pause_resume.send_resume_command() # Make sure the virtual SD card is woken up
+            self.sent_pause_command = False
         # Ready to continue printing...
 
     # If this is called automatically it will occur after the user's print ends.
@@ -2573,6 +2577,7 @@ class Mmu:
             self._log_trace("_on_print_end(%s)" % state)
             self._movequeues_wait_moves()
             self._clear_saved_toolhead_position()
+            self.sent_pause_command = False
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
@@ -5474,6 +5479,7 @@ class Mmu:
         if self.is_enabled:
             if self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing":
                 self.pause_resume.send_pause_command()
+                self.sent_pause_command = True
 
     def _runout(self, force_runout=False):
         if self.tool_selected < 0:
