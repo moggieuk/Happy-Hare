@@ -1899,7 +1899,7 @@ class Mmu:
                     self._log_always("Failed to detect a reliable home position on this attempt")
 
                 self._initialize_filament_position(True) # Encoder 0000
-                self._unload_bowden(reference - self.gate_unload_buffer)
+                self._unload_bowden(reference)
                 self._unload_gate()
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
 
