@@ -2510,7 +2510,7 @@ class Mmu:
             self._set_print_state("printing")
 
     def _mmu_pause(self, reason, force_in_print=False):
-        run_pause_macro = recover_pos = False
+        run_pause_macro = False
         self.resume_to_state = "printing" if self._is_in_print() else "ready"
         if self._is_in_print(force_in_print):
             if not self._is_mmu_paused() and not self._is_paused():
@@ -2530,17 +2530,12 @@ class Mmu:
                 self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
             else:
                 self._log_error("An issue with the MMU has been detected whilst printer is paused\nReason: %s" % reason)
-            recover_pos = True
-
         else:
             self._log_error("An issue with the MMU has been detected whilst out of a print\nReason: %s" % reason)
 
-        self._sync_gear_to_extruder(False, servo=True)
         if run_pause_macro and not self._is_paused():
             self._wrap_gcode_command(self.pause_macro)
-
-        if recover_pos:
-            self._recover_filament_pos(strict=False, message=True)
+        self._sync_gear_to_extruder(False, servo=True)
 
     def _mmu_unlock(self):
         if self._is_mmu_paused():
@@ -2567,10 +2562,9 @@ class Mmu:
         self._restore_toolhead_position(operation)
         self._initialize_filament_position() # Encoder 0000
 
-        # send_resume_command() is not itempotent so be careful that call is appropriate
+        # Make sure the virtual SD card is woken up (Runout / EndlessSpool use case)
         if self.sent_pause_command and self.virtual_sdcard and not self.virtual_sdcard.is_active():
-            self.pause_resume.send_resume_command() # Make sure the virtual SD card is woken up
-            self.sent_pause_command = False
+            self.virtual_sdcard.do_resume()
         # Ready to continue printing...
 
     # If this is called automatically it will occur after the user's print ends.
@@ -5481,8 +5475,9 @@ class Mmu:
     def _handle_runout_event(self, eventtime):
         if self.is_enabled:
             if self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing":
-                self.pause_resume.send_pause_command()
-                self.sent_pause_command = True
+                if self.virtual_sdcard and self.virtual_sdcard.is_active():
+                    self.virtual_sdcard.do_pause()
+                    self.sent_pause_command = True
 
     def _runout(self, force_runout=False):
         if self.tool_selected < 0:
