@@ -753,6 +753,7 @@ class Mmu:
         self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
         # Sanity check that required klipper options are enabled
+        self.virtual_sdcard = self.printer.lookup_object('virtual_sdcard', None)
         self.print_stats = self.printer.lookup_object("print_stats", None)
         if self.print_stats is None:
             self._log_debug("[virtual_sdcard] is not found in config, advanced state control is not possible")
@@ -2565,7 +2566,9 @@ class Mmu:
         self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation)
         self._initialize_filament_position() # Encoder 0000
-        if self.sent_pause_command:
+
+        # send_resume_command() is not itempotent so be careful that call is appropriate
+        if self.sent_pause_command and self.virtual_sdcard and not self.virtual_sdcard.is_active():
             self.pause_resume.send_resume_command() # Make sure the virtual SD card is woken up
             self.sent_pause_command = False
         # Ready to continue printing...
