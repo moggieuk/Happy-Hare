@@ -5723,8 +5723,9 @@ class Mmu:
             self._log_debug("Filament runout detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
             if gate is not None:
                 self._set_gate_status(gate, self.GATE_EMPTY)
-            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected):
-                self._runout(True)
+# TODO needs more testing. What about eject!!! Ignore when toolchanging..
+#            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected):
+#                self._runout(True)
         except MmuError as ee:
             self._mmu_pause(str(ee))
         
