@@ -2569,9 +2569,9 @@ class Mmu:
         self._initialize_filament_position() # Encoder 0000
         # Ready to continue printing...
 
-#        # Make sure the virtual SD card is woken up (Runout / EndlessSpool use case)
-#        if self.sent_pause_command and self.virtual_sdcard and not self.virtual_sdcard.is_active():
-#            self.virtual_sdcard.do_resume()
+        # Make sure the virtual SD card is woken up (Runout / EndlessSpool use case)
+        if self.sent_pause_command and self.virtual_sdcard and not self.virtual_sdcard.is_active():
+            self.virtual_sdcard.do_resume()
 
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics
@@ -5479,12 +5479,11 @@ class Mmu:
 ###########################################
 
     def _handle_runout_event(self, eventtime):
-        pass
-#        if self.is_enabled:
-#            if self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing":
-#                if self.virtual_sdcard and self.virtual_sdcard.is_active():
-#                    self.virtual_sdcard.do_pause()
-#                    self.sent_pause_command = True
+        if self.is_enabled:
+            if self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing":
+                if self.virtual_sdcard and self.virtual_sdcard.is_active():
+                    self.virtual_sdcard.do_pause()
+                    self.sent_pause_command = True
 
     def _runout(self, force_runout=False):
         if self.tool_selected < 0:
