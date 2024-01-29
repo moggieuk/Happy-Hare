@@ -2530,16 +2530,16 @@ class Mmu:
                 self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
             else:
                 self._log_error("An issue with the MMU has been detected whilst printer is paused\nReason: %s" % reason)
-            #recover_pos = True # TODO Can't remember the use case for this
+            recover_pos = True
 
         else:
             self._log_error("An issue with the MMU has been detected whilst out of a print\nReason: %s" % reason)
 
-        if recover_pos:
-            self._recover_filament_pos(strict=False, message=True)
-
         if run_pause_macro and not self._is_paused():
             self._wrap_gcode_command(self.pause_macro)
+
+        if recover_pos:
+            self._recover_filament_pos(strict=False, message=True)
 
         self._sync_gear_to_extruder(False, servo=True)
 
