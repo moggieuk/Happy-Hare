@@ -2530,16 +2530,16 @@ class Mmu:
                 self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
             else:
                 self._log_error("An issue with the MMU has been detected whilst printer is paused\nReason: %s" % reason)
-            #recover_pos = True # TODO Can't remember the use case for this
+            recover_pos = True
 
         else:
             self._log_error("An issue with the MMU has been detected whilst out of a print\nReason: %s" % reason)
 
-        if recover_pos:
-            self._recover_filament_pos(strict=False, message=True)
-
         if run_pause_macro and not self._is_paused():
             self._wrap_gcode_command(self.pause_macro)
+
+        if recover_pos:
+            self._recover_filament_pos(strict=False, message=True)
 
         self._sync_gear_to_extruder(False, servo=True)
 
@@ -5722,8 +5722,9 @@ class Mmu:
             self._log_debug("Filament runout detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
             if gate is not None:
                 self._set_gate_status(gate, self.GATE_EMPTY)
-            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected):
-                self._runout(True)
+# TODO needs more testing. What about eject!!! Ignore when toolchanging..
+#            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected):
+#                self._runout(True)
         except MmuError as ee:
             self._mmu_pause(str(ee))
         
