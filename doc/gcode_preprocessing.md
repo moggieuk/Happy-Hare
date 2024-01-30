@@ -87,13 +87,11 @@ description: Called when starting print
 gcode:
     {% set COLORS = params.COLORS|default("")|string %}
     {% set colors = COLORS.split(",") %}
-
-    {% set ns = namespace(tool = 0) %}
     {% set ttg_map = printer.mmu.ttg_map %}
-    {% for color in colors %}
-        {% set gate = ttg_map[ns.tool] %}               # Make sure map to correct gate in case of TTG map
-        MMU_GATE_MAP GATE={gate} COLOR={color}          # Register the filament color against correct gate
-        {% set ns.tool = ns.tool + 1 %}
+
+    {% for tool, color in enumerate(colors) %}
+        {% set gate = ttg_map[tool] %}                  # Make sure map to correct gate in case of TTG map
+        MMU_GATE_MAP GATE={gate} COLOR={color}          # Register the filament color against correct gate in gate map
     {% endfor %}
 ```
 
@@ -102,7 +100,7 @@ To see the colors displayed you need to enable LED support and use the `filament
 MMU_LED EXIT_EFFECT=filament_color STATUS_EFFECT=filament_color
 ```
 
-Another idea is to set the custom_colors array and combine with referenced tools to light up the colors of just the used used in the print on the exit led segment.  Here is the complete code of how to accomplish that:
+Another, perhaps more useful idea, is to set the `custom_colors` array and combine with referenced tools to light up the colors of just the filaments used and defined in your slicer for the current print. That way you can visually check that the colors loaded in your MMU match the print design. Here is the complete code of how to accomplish that:
 
 ```yml
 [gcode_macro START_PRINT]
@@ -136,6 +134,7 @@ gcode:
 
     MMU_LED EXIT_EFFECT=custom_color QUIET=1            # Turn on the custom color effect on gate exit
     MMU_CHECK_GATE TOOLS={REFERENCED_TOOLS}             # Verify all necessary tools are loaded
+
     MMU_CHANGE_TOOL STANDALONE=1 TOOL={INITIAL_TOOL}    # Optional: load initial tool
 ```
 
