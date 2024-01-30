@@ -4315,7 +4315,7 @@ class Mmu:
                     got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
                     for attempt in range(self.canbus_comms_retries):  # HACK: We can repeat because homing move
                         try:
-                            initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position() # DEBUG temp
+                            initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For not homing extruder
                             #init_pos = pos[1]
                             #pos[1] += dist
                             with self._wrap_accel(accel):
@@ -4337,7 +4337,10 @@ class Mmu:
                         finally:
                             halt_pos = self.mmu_toolhead.get_position()
                             actual = halt_pos[1] - init_pos
-                            #self._log_error("DEBUG: actual=%s, real=%s" % (actual, initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()))
+                            if not self.homing_extruder:
+                                # This isn't super accurate if extruder is on different mcu from MMU gear steppers, but it's
+                                # good enough if the user has opted out of the default homing extruder
+                                actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - initial_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
                         if not got_comms_timeout:
                             break
                 else:
