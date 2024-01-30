@@ -13,6 +13,8 @@ Scratch pad TODO list
 12. force_form_tip_standalone —> allow_slicer_form_tip or tip forming strategy form|slicer|cut cut_mmu??
 13. _form_tip as separate “_STEP”
 14. Externalize ‘boot up tasks’ so users could add things like “check_gates”
+15. Remove sd_card pause..
+16. Disable runout during tool change -- maybe code encoder to disable that way too..?
 
 --
 Idea: DONE - If EndlessSpool enabled and initial tool is empty, auto map to next gate

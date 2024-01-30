@@ -34,7 +34,7 @@
 import logging, time
 
 class MmuRunoutHelper:
-    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay, pause_delay):
+    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay):
         self.printer, self.name = printer, name
         self.insert_gcode, self.runout_gcode = insert_gcode, runout_gcode
         self.reactor = self.printer.get_reactor()
@@ -42,7 +42,6 @@ class MmuRunoutHelper:
 
         self.min_event_systime = self.reactor.NEVER
         self.event_delay = event_delay # Time between generated events
-        self.pause_delay = pause_delay # Time to wait after reactor is paused
         self.filament_present = False
         self.sensor_enabled = True
 
@@ -64,13 +63,6 @@ class MmuRunoutHelper:
         self._exec_gcode(self.insert_gcode)
 
     def _runout_event_handler(self, eventtime):
-        # Determine "printing" status, if so tell Happy Hare about it
-        idle_timeout = self.printer.lookup_object("idle_timeout")
-        is_printing = idle_timeout.get_status(eventtime)["state"] == "Printing"
-        if is_printing:
-            self.printer.send_event("mmu:runout", eventtime)
-            if self.pause_delay:
-                self.printer.get_reactor().pause(eventtime + self.pause_delay)
         self._exec_gcode(self.runout_gcode)
 
     def _exec_gcode(self, command):
@@ -129,7 +121,6 @@ class MmuSensors:
         self.printer = config.get_printer()
 
         event_delay = config.get('event_delay', 1.)
-        pause_delay = config.get('pause_delay', .3)
 
         # Setup and pre-gate sensors that are defined...
         for gate in range(23):
@@ -149,7 +140,7 @@ class MmuSensors:
             fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper because limited operation is possible during print
-            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
             fs.runout_helper = gate_helper
             fs.get_status = gate_helper.get_status
 
@@ -167,7 +158,7 @@ class MmuSensors:
             fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper to pause virtual_sdcard but not PAUSE
-            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
             fs.runout_helper = gate_helper
             fs.get_status = gate_helper.get_status
 

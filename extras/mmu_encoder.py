@@ -77,6 +77,9 @@ class MmuEncoder:
         self.printer.register_event_handler('idle_timeout:ready', self._handle_not_printing)
         self.printer.register_event_handler('idle_timeout:idle', self._handle_not_printing)
 
+        self.printer.register_event_handler('mmu:enable_runout', self.enable) # PAUL
+        self.printer.register_event_handler('mmu:disable_runout', self.disable) # PAUL
+
     def _handle_connect(self):
         try:
             self.extruder = self.printer.lookup_object(self.extruder_name)
@@ -196,7 +199,6 @@ class MmuEncoder:
         else:
             if is_printing and self.runout_gcode is not None:
                 # Runout detected
-                self.printer.send_event("mmu:runout", eventtime)
                 self.min_event_systime = self.reactor.NEVER
                 logging.info("Encoder Sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._runout_event_handler)

@@ -753,7 +753,6 @@ class Mmu:
         self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
         # Sanity check that required klipper options are enabled
-        self.virtual_sdcard = self.printer.lookup_object('virtual_sdcard', None)
         self.print_stats = self.printer.lookup_object("print_stats", None)
         if self.print_stats is None:
             self._log_debug("[virtual_sdcard] is not found in config, advanced state control is not possible")
@@ -872,9 +871,6 @@ class Mmu:
         self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
         self._setup_sync_feedback()
 
-        # Early notice of runout condition
-        self.printer.register_event_handler("mmu:runout", self._handle_runout_event)
-
         self._setup_heater_off_reactor()
         self._clear_saved_toolhead_position()
 
@@ -943,6 +939,7 @@ class Mmu:
 
     def _initialize_state(self):
         self.is_enabled = True
+        self.runout_suspended = False
         self.paused_extruder_temp = None
         self.is_homed = False
         self.last_print_stats = None
@@ -956,7 +953,6 @@ class Mmu:
         self.action = self.ACTION_IDLE
         self.calibrating = False
         self._clear_saved_toolhead_position()
-        self.sent_pause_command = False
         self._servo_reset_state()
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "ready"
@@ -1122,7 +1118,7 @@ class Mmu:
             self._set_print_state("initialized")
             if self._has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
-                self._disable_encoder_sensor() # Initially disable clog/runout detection
+                self._disable_runout() # Initially disable clog/runout detection
             self._servo_move()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delay to allow for correct initial state
             self._update_filaments_from_spoolman()
@@ -2490,11 +2486,10 @@ class Mmu:
         if self.print_state not in ["started", "printing"]:
             self._log_trace("_on_print_start(->started)")
             self._clear_saved_toolhead_position()
-            self.sent_pause_command = False
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
-            self._enable_encoder_sensor(True) # Enable runout/clog detection
+            self._enable_runout() # Enable runout/clog detection while printing
             self._initialize_filament_position(dwell=None) # Encoder 0000
             self._set_print_state("started", call_macro=False)
 
@@ -2522,7 +2517,7 @@ class Mmu:
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
-                self._disable_encoder_sensor() # Disable runout/clog detection in pause
+                self._disable_runout() # Disable runout/clog detection in pause
                 if self._is_printing(force_in_print):
                     self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_toolchange)
                 run_pause_macro = True
@@ -2557,7 +2552,7 @@ class Mmu:
             self.paused_extruder_temp = None
 
             self._track_pause_end()
-            self._enable_encoder_sensor(True) # Enable runout/clog detection if printing
+            self._enable_runout() # Enable runout/clog detection while printing
             self._set_print_state(self.resume_to_state)
             self._resume_printing("resume", sync=(self.resume_to_state == "printing"))
             self.resume_to_state = "ready"
@@ -2569,10 +2564,6 @@ class Mmu:
         self._initialize_filament_position() # Encoder 0000
         # Ready to continue printing...
 
-        # Make sure the virtual SD card is woken up (Runout / EndlessSpool use case)
-        if self.sent_pause_command and self.virtual_sdcard and not self.virtual_sdcard.is_active():
-            self.virtual_sdcard.do_resume()
-
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics
     def _on_print_end(self, state="complete"):
@@ -2580,11 +2571,10 @@ class Mmu:
             self._log_trace("_on_print_end(%s)" % state)
             self._movequeues_wait_moves()
             self._clear_saved_toolhead_position()
-            self.sent_pause_command = False
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
-            self._disable_encoder_sensor() # Disable runout/clog detection after print
+            self._disable_runout() # Disable runout/clog detection after print
 
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
@@ -2649,26 +2639,25 @@ class Mmu:
         self.saved_toolhead_position = None
         self.saved_toolhead_height = 0.
 
-    def _disable_encoder_sensor(self):
+    def _disable_runout(self):
+        self._log_trace("Disabled runout detection")
         if self._has_encoder() and self.encoder_sensor.is_enabled():
-            self._log_debug("Disabled encoder sensor. Status: %s" % self.encoder_sensor.get_status(0))
             self.encoder_sensor.disable()
-            return True
-        return False
+        self.runout_suspended = True
 
-    def _enable_encoder_sensor(self, force_in_print=False):
-        if self._has_encoder() and self._is_in_print(force_in_print):
-            if not self.encoder_sensor.is_enabled():
-                self._log_debug("Enabled encoder sensor, force_in_print=%s. Status: %s" % (force_in_print, self.encoder_sensor.get_status(0)))
-                self.encoder_sensor.enable()
+    def _enable_runout(self):
+        self._log_trace("Enabled runout detection")
+        if self._has_encoder() and not self.encoder_sensor.is_enabled():
+            self.encoder_sensor.enable()
+        self.runout_suspended = False
 
     @contextlib.contextmanager
-    def _wrap_disable_encoder(self):
-        old_enable = self._disable_encoder_sensor()
+    def _wrap_suspend_runout(self):
+        self._disable_runout()
         try:
             yield self
         finally:
-            self._enable_encoder_sensor(old_enable)
+            self._enable_runout()
 
     def _has_encoder(self):
         return self.encoder_sensor is not None and not self.test_disable_encoder
@@ -3019,16 +3008,16 @@ class Mmu:
             msg += smsg
         self._log_always(msg)
 
-    cmd_MMU_ENCODER_help = "Display encoder position and stats or temporarily enable/disable detection logic in encoder"
+    cmd_MMU_ENCODER_help = "Display encoder position and stats or enable/disable runout detection logic in encoder"
     def cmd_MMU_ENCODER(self, gcmd):
         if self._check_has_encoder(): return
         if self._check_is_disabled(): return
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         if enable == 1:
-            self._enable_encoder_sensor(True)
+            self.encoder_sensor.set_mode(self.enable_clog_detection)
         elif enable == 0:
-            self._disable_encoder_sensor()
+            self.encoder_sensor.set_mode(self.encoder_sensor.RUNOUT_DISABLED)
             return
         elif value >= 0.:
             self._set_encoder_distance(value)
@@ -4940,7 +4929,7 @@ class Mmu:
 
         if self._has_encoder():
             self.encoder_sensor.update_clog_detection_length()
-        with self._wrap_disable_encoder(): # Don't want runout accidently triggering during tool change
+        with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
             self._last_tool = self.tool_selected
             self._next_tool = tool
 
@@ -4970,7 +4959,7 @@ class Mmu:
         if self._check_is_disabled(): return
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
-        with self._wrap_disable_encoder(): # Don't want runout accidently triggering during filament load
+        with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
             try:
                 if not extruder_only:
                     self._select_and_load_tool(self.tool_selected) # This could change gate tool is mapped to
@@ -4991,7 +4980,7 @@ class Mmu:
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
         skip_tip = bool(gcmd.get_int('SKIP_TIP', 0, minval=0, maxval=1))
 
-        with self._wrap_disable_encoder(): # Don't want runout accidently triggering during filament load
+        with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
             try:
                 if not extruder_only:
                     self._unload_tool(skip_tip=skip_tip)
@@ -5478,14 +5467,7 @@ class Mmu:
 # RUNOUT, ENDLESS SPOOL and GATE HANDLING #
 ###########################################
 
-    def _handle_runout_event(self, eventtime):
-        if self.is_enabled:
-            if self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing":
-                if self.virtual_sdcard and self.virtual_sdcard.is_active():
-                    self.virtual_sdcard.do_pause()
-                    self.sent_pause_command = True
-
-    def _runout(self, force_runout=False):
+    def _handle_runout(self, force_runout=False):
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
@@ -5504,7 +5486,7 @@ class Mmu:
             raise MmuError("A clog has been detected and requires manual intervention")
 
         # We have a filament runout
-        with self._wrap_disable_encoder(): # Don't want runout accidently triggering during swap
+        with self._wrap_suspend_runout(): # Don't want runout accidently triggering during swap
             self._log_always("A runout has been detected")
 
             if self.enable_endless_spool:
@@ -5690,7 +5672,7 @@ class Mmu:
         if self._check_is_disabled(): return
         force_runout = bool(gcmd.get_int('FORCE_RUNOUT', 1, minval=0, maxval=1))
         try:
-            self._runout(force_runout)
+            self._handle_runout(force_runout)
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
@@ -5698,8 +5680,8 @@ class Mmu:
     def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
         try:
-            self._log_debug("Filament runout detected by encoder")
-            self._runout()
+            self._log_debug("Filament runout/clog detected by MMU encoder")
+            self._handle_runout()
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
@@ -5708,12 +5690,10 @@ class Mmu:
         if self._check_is_disabled(): return
         self._log_trace("Filament insertion detected by encoder")
         # TODO Future bypass preload feature - make gate act like bypass
-        #try:
-        #    self._handle_detection()
-        #except MmuError as ee:
-        #    self._mmu_pause(str(ee))
 
-    # This callback is not protected by klipper is_printing check so be careful
+    # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate
+    # sensor that fired.  This is not protected by klipper is_printing check so be careful when
+    # runout handle_logic is fired
     cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
         if self._check_is_disabled(): return
@@ -5722,9 +5702,8 @@ class Mmu:
             self._log_debug("Filament runout detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
             if gate is not None:
                 self._set_gate_status(gate, self.GATE_EMPTY)
-# TODO needs more testing. What about eject!!! Ignore when toolchanging..
-#            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected):
-#                self._runout(True)
+            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected) and not self.runout_suspended:
+                self._handle_runout(True)
         except MmuError as ee:
             self._mmu_pause(str(ee))
         
