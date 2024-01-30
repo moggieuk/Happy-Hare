@@ -668,14 +668,15 @@ class Mmu:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
-                # With MMU this must not accidentally pause nor call user defined macros
+                # With MMU toolhead sensors  must not accidentally pause nor call user defined macros
                 # (this is done in [mmu_sensors] but legacy setups may have discrete [filament_switch_sensors])
-                self.sensors[name].runout_helper.runout_pause = False
-                self.sensors[name].runout_helper.runout_gcode = None
-                self.sensors[name].runout_helper.insert_gcode = None
-                sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
+                if name not in [self.ENDSTOP_GATE]:
+                    self.sensors[name].runout_helper.runout_pause = False
+                    self.sensors[name].runout_helper.runout_gcode = None
+                    self.sensors[name].runout_helper.insert_gcode = None
     
                 # Add sensor pin as an extra endstop for gear rail
+                sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
                 ppins = self.printer.lookup_object('pins')
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
                 share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
@@ -2500,7 +2501,7 @@ class Mmu:
             if self.filament_pos == self.FILAMENT_POS_LOADED:
                 msg += " (initial tool T%s loaded)" % self.tool_selected
             else:
-                msg += " (no filament loaded)"
+                msg += " (no filament preloaded)"
             self._log_info(msg)
             self._set_print_state("printing")
 
@@ -5032,7 +5033,8 @@ class Mmu:
     cmd_MMU_RESUME_help = "Wrapper around default RESUME macro"
     def cmd_MMU_RESUME(self, gcmd):
         if not self.is_enabled:
-            self._wrap_gcode_command("__RESUME", None) # User defined or Klipper default behavior
+            # User defined or Klipper default behavior
+            self._wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), None)
             return
 
         self._log_trace("MMU RESUME wrapper called")
@@ -5050,7 +5052,7 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
 
-        self._wrap_gcode_command("__RESUME", None) # TODO VELOCITY param not passed!
+        self._wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), None)
         self._mmu_resume()
         # Continue printing...
 
@@ -5487,7 +5489,7 @@ class Mmu:
 
         # We have a filament runout
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during swap
-            self._log_always("A runout has been detected")
+            self._log_error("A runout has been detected")
 
             if self.enable_endless_spool:
                 self._set_gate_status(self.gate_selected, self.GATE_EMPTY) # Indicate current gate is empty
@@ -5699,7 +5701,7 @@ class Mmu:
         if self._check_is_disabled(): return
         try:
             gate = gcmd.get_int('GATE', None)
-            self._log_debug("Filament runout detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
+            self._log_debug("Filament runout detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
             if gate is not None:
                 self._set_gate_status(gate, self.GATE_EMPTY)
             if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected) and not self.runout_suspended:
@@ -5713,7 +5715,7 @@ class Mmu:
         if self._check_is_disabled(): return
         try:
             gate = gcmd.get_int('GATE', None)
-            self._log_debug("Filament insertion detected by MMU %s" % ("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor")
+            self._log_debug("Filament insertion detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
             if gate is not None:
                 self._set_gate_status(gate, self.GATE_UNKNOWN)
                 if not self._is_in_print():

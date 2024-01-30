@@ -77,9 +77,6 @@ class MmuEncoder:
         self.printer.register_event_handler('idle_timeout:ready', self._handle_not_printing)
         self.printer.register_event_handler('idle_timeout:idle', self._handle_not_printing)
 
-        self.printer.register_event_handler('mmu:enable_runout', self.enable) # PAUL
-        self.printer.register_event_handler('mmu:disable_runout', self.disable) # PAUL
-
     def _handle_connect(self):
         try:
             self.extruder = self.printer.lookup_object(self.extruder_name)
