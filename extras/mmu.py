@@ -165,6 +165,7 @@ class Mmu:
     VARS_MMU_GATE_MATERIAL          = "mmu_state_gate_material"
     VARS_MMU_GATE_COLOR             = "mmu_state_gate_color"
     VARS_MMU_GATE_SPOOL_ID          = "mmu_state_gate_spool_id"
+    VARS_MMU_GATE_SPEED_OVERRIDE    = "mmu_state_gate_speed_override"
     VARS_MMU_GATE_SELECTED          = "mmu_state_gate_selected"
     VARS_MMU_TOOL_SELECTED          = "mmu_state_tool_selected"
     VARS_MMU_FILAMENT_POS           = "mmu_state_filament_pos"
@@ -371,6 +372,7 @@ class Mmu:
         self.default_gate_material = list(config.getlist('gate_material', []))
         self.default_gate_color = list(config.getlist('gate_color', []))
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
+        self.default_gate_speed_override = list(config.getintlist('gate_speed_override', []))
 
         # Configuration for gate loading and unloading
         self.gate_homing_endstop = config.getchoice('gate_homing_endstop', {o: o for o in self.GATE_ENDSTOPS}, self.ENDSTOP_ENCODER)
@@ -489,41 +491,24 @@ class Mmu:
                 self.default_endless_spool_groups.append(i)
         self.endless_spool_groups = list(self.default_endless_spool_groups)
 
-        # Status (availability of filament) at each gate
-        if len(self.default_gate_status) > 0:
-            if not len(self.default_gate_status) == self.mmu_num_gates:
-                raise self.config.error("gate_status has different number of values than the number of gates")
-        else:
-            for i in range(self.mmu_num_gates):
-                self.default_gate_status.append(self.GATE_UNKNOWN)
-        self.gate_status = list(self.default_gate_status)
+        # Components of the gate map (status, material, color, spool_id and speed override)
+        self.gate_map_vars = [ (self.VARS_MMU_GATE_STATUS, 'gate_status', self.GATE_UNKNOWN),
+                               (self.VARS_MMU_GATE_MATERIAL, 'gate_material', ""),
+                               (self.VARS_MMU_GATE_COLOR, 'gate_color', ""),
+                               (self.VARS_MMU_GATE_SPOOL_ID, 'gate_spool_id', -1),
+                               (self.VARS_MMU_GATE_SPEED_OVERRIDE, 'gate_speed_override', 100) ]
 
-        # Filmament material at each gate
-        if len(self.default_gate_material) > 0:
-            if not len(self.default_gate_material) == self.mmu_num_gates:
-                raise self.config.error("gate_material has different number of entries than the number of gates")
-        else:
-            for i in range(self.mmu_num_gates):
-                self.default_gate_material.append("")
-        self.gate_material = list(self.default_gate_material)
-
-        # Filmament color at each gate
-        if len(self.default_gate_color) > 0:
-            if not len(self.default_gate_color) == self.mmu_num_gates:
-                raise self.config.error("gate_color has different number of entries than the number of gates")
-        else:
-            for i in range(self.mmu_num_gates):
-                self.default_gate_color.append("")
-        self._update_gate_color(list(self.default_gate_color))
-       
-        # SpoolID for each gate
-        if len(self.default_gate_spool_id) > 0:
-            if not len(self.default_gate_spool_id) == self.mmu_num_gates:
-                raise self.config.error("gate_spool_id has different number of entries than the number of gates")
-        else:
-            for i in range(self.mmu_num_gates):
-                self.default_gate_spool_id.append(-1)
-        self.gate_spool_id = list(self.default_gate_spool_id)
+        for var, attr, default in self.gate_map_vars:
+            default_attr_name = "default_" + attr
+            default_attr = getattr(self, default_attr_name)
+            if len(default_attr) > 0:
+                if len(default_attr) != self.mmu_num_gates:
+                    raise self.config.error("%s has different number of entries than the number of gates" % attr)
+            else:
+                default_attr.extend([default] * self.mmu_num_gates)
+            setattr(self, attr, list(default_attr))
+            if attr == 'gate_color':
+                self._update_gate_color(getattr(self, attr))
 
         # Tool to gate mapping
         if len(self.default_tool_to_gate_map) > 0:
@@ -1027,7 +1012,7 @@ class Mmu:
                 errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_ENDLESS_SPOOL_GROUPS)
 
         if self.persistence_level >= 2:
-            # Load tool to gate map
+            # Load TTG map
             tool_to_gate_map = self.variables.get(self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map)
             if len(tool_to_gate_map) == self.mmu_num_gates:
                 self.tool_to_gate_map = tool_to_gate_map
@@ -1035,33 +1020,16 @@ class Mmu:
                 errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_TOOL_TO_GATE_MAP)
 
         if self.persistence_level >= 3:
-            # Load gate status (filament present or not)
-            gate_status = self.variables.get(self.VARS_MMU_GATE_STATUS, self.gate_status)
-            if len(gate_status) == self.mmu_num_gates:
-                self.gate_status = gate_status
-            else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_STATUS)
-
-            # Load filament material at each gate
-            gate_material = self.variables.get(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
-            if len(gate_status) == self.mmu_num_gates:
-                self.gate_material = gate_material
-            else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_MATERIAL)
-
-            # Load filament color at each gate
-            gate_color = self.variables.get(self.VARS_MMU_GATE_COLOR, self.gate_color)
-            if len(gate_status) == self.mmu_num_gates:
-                self._update_gate_color(gate_color)
-            else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_COLOR)
-
-            # Load filament spool ID at each gate
-            gate_spool_id = self.variables.get(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
-            if len(gate_status) == self.mmu_num_gates:
-                self.gate_spool_id = gate_spool_id
-            else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_GATE_SPOOL_ID)
+            # Load gate map
+            for var, attr, default in self.gate_map_vars:
+                value = self.variables.get(var, getattr(self, attr))
+                if len(value) == self.mmu_num_gates:
+                    if attr == "gate_color":
+                        self._update_gate_color(value)
+                    else:
+                        setattr(self, attr, value)
+                else:
+                    errors.append("Incorrect number of gates specified in %s" % var)
 
         if self.persistence_level >= 4:
             # Load selected tool and gate
@@ -1398,6 +1366,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ('%s' %x), self.gate_material))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ('%s' %x), self.gate_color))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override))
         gcode = self.printer.lookup_object('gcode_macro _MMU_GATE_MAP_CHANGED', None)
         if gcode is not None:
             self._wrap_gcode_command("_MMU_GATE_MAP_CHANGED GATE=-1")
@@ -4306,6 +4275,12 @@ class Mmu:
             self._log_error("Assertion failure: Invalid motor specification '%'" % motor)
             return null_rtn
 
+        # Apply pre-gate speed override
+        if self.gate_selected >= 0:
+            adjust = self.gate_speed_override[self.gate_selected] / 100.
+            speed *= adjust
+            accel *= adjust
+
         if sync:
             self._movequeues_sync()
 
@@ -5650,9 +5625,8 @@ class Mmu:
 
             spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
             spool_info = ", SpoolID: {}".format(spool_id) if self.enable_spoolman else ""
-    
-            msg += "{}Status: {}, Material: {}, Color: {}{}".format(gate_detail, available, material, color, spool_info)
-
+            speed_info = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
+            msg += "{}Status: {}, Material: {}, Color: {}{}{}".format(gate_detail, available, material, color, spool_info, speed_info)
         return msg
 
     def _remap_tool(self, tool, gate, available=None):
@@ -5673,6 +5647,7 @@ class Mmu:
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
         self.gate_spool_id = list(self.default_gate_spool_id)
+        self.gate_speed_override = list(self.default_gate_speed_override)
         self._persist_gate_map()
 
 
@@ -5827,6 +5802,7 @@ class Mmu:
                 material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
                 color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
                 spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
+                speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
                 color = self._validate_color(color)
                 if color is None:
                     raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
@@ -5834,6 +5810,7 @@ class Mmu:
                 self.gate_color[gate] = color
                 self.gate_status[gate] = available
                 self.gate_spool_id[gate] = spool_id
+                self.gate_speed_override[gate] = speed_override
 
             self._update_gate_color(self.gate_color)
             self._persist_gate_map() # This will also update LED status
