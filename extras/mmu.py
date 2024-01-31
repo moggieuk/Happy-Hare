@@ -268,6 +268,9 @@ class Mmu:
         self.cad_bypass_block_delta = 9.
         self.cad_selector_tolerance = 10.
 
+        # Vendor specific attributes
+        self.variable_gate_ratios = 1 # Whether ratio of each gate can be different and needs separate calibration
+
         # Non CAD default parameters
         self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
 
@@ -308,6 +311,7 @@ class Mmu:
             self.cad_last_gate_offset = 0. # Doesn't have reliable hard stop at limit of travel
 
             self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
+            self.variable_gate_ratios = 0
 
             # Modifications:
             #  e = has encoder modification
@@ -326,6 +330,8 @@ class Mmu:
         self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.) # ERCF v1.1 only
         self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1 only
         self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
+        # Allow model parameters to be customized
+        self.variable_gate_ratios = config.getint('variable_gate_ratios', self.variable_gate_ratios, minval=0, maxval=1)
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -3387,12 +3393,12 @@ class Mmu:
 
         # See if we need to automatically set calibration ratio for this gate
         current_ratio = self.variables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), None)
-        if self._can_use_encoder() and self.auto_calibrate_gates and self.gate_selected > 0 and not current_ratio and not self.calibrating:
-            reference_load = True
-        else:
-            reference_load = False
-        if current_ratio is None and not self.calibrating:
-            self._log_info("Warning: Gate #%d not calibrated! Using default 1.0 gear ratio!" % self.gate_selected)
+        reference_load = False
+        if self.variable_gate_ratios:
+            if self._can_use_encoder() and self.auto_calibrate_gates and self.gate_selected > 0 and not current_ratio and not self.calibrating:
+                reference_load = True
+            if current_ratio is None and not self.calibrating:
+                self._log_info("Warning: Gate #%d not calibrated! Using default 1.0 gear ratio!" % self.gate_selected)
 
         # "Fast" load
         _,_,_,delta = self._trace_filament_move("Course loading move into bowden", length, track=True, encoder_dwell=reference_load)
