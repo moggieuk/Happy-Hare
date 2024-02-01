@@ -40,7 +40,7 @@ Unless you have a sepcialized purge system (documented later) you will want the 
 
 > [!NOTE]
 > If you use SuperSlicer, be sure to turn off Skinnydip:
-> ![Skinnydip disabling](https://github.com/IRTrail/Happy-Hare/assets/53546870/3771cbcd-2c81-401a-b219-1aede5a06354)
+> ![Skinnydip disabling](https://github.com/IRTrail/Happy-Hare/assets/53546870/3771cbcd-2c81-401a-b219-1aede5a06354)  
 > It's probably also a good idea to zero out the distances below.
 > Doing this prevents Superslicer from pushing out a blob of filament before cutting the tip.
 
