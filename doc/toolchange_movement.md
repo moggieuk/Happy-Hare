@@ -38,6 +38,13 @@ Unless you have a sepcialized purge system (documented later) you will want the 
 
 <img src="/doc/toolchange/print_settings.png" width="500" alt="Slicer print settings">
 
+> [!NOTE]
+> If you use SuperSlicer, be sure to turn off Skinnydip:
+> ![Skinnydip disabling](https://github.com/IRTrail/Happy-Hare/assets/53546870/3771cbcd-2c81-401a-b219-1aede5a06354)
+> It's probably also a good idea to zero out the distances below.
+> Doing this prevents Superslicer from pushing out a blob of filament before cutting the tip.
+
+
 ### Turning off slicer wipetower
 To switch to a custom purge system you need only to untoggle the `enable wipetower` option.  All tip forming settings remain the same.
 
