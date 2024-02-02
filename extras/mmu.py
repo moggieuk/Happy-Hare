@@ -5589,7 +5589,7 @@ class Mmu:
             multi_tool = False
             num_gates = self.mmu_num_gates
             gate_indices = range(num_gates)
-            msg_gates = "Gates: " + "".join("|{:^3}".format(g) for g in gate_indices) + "|"
+            msg_gates = "Gates: " + "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g) for g in gate_indices) + "|"
             msg_avail = "Avail: " + "".join("| %s " % self._get_filament_char(self.gate_status[g], no_space=True, show_source=True) for g in gate_indices) + "|"
             tool_strings = []
             for g in gate_indices:
