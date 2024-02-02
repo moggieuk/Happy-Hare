@@ -44,6 +44,7 @@ class MmuRunoutHelper:
         self.event_delay = event_delay # Time between generated events
         self.filament_present = False
         self.sensor_enabled = True
+        self.runout_suspended = False
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
@@ -67,8 +68,7 @@ class MmuRunoutHelper:
 
     def _exec_gcode(self, command):
         try:
-            #self.gcode.run_script(command)
-            self.gcode.run_script(command + "\n__MMU_M400")
+            self.gcode.run_script(command + " DO_RUNOUT=" + str(int(not self.runout_suspended)) + "\n__MMU_M400")
         except Exception:
             logging.exception("Error running mmu sensor handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
@@ -90,6 +90,9 @@ class MmuRunoutHelper:
             self.min_event_systime = self.reactor.NEVER
             logging.info("MMU filament sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._runout_event_handler)
+
+    def suspend_runout(self, suspend):
+        self.runout_suspended = suspend
 
     def get_status(self, eventtime):
         return {

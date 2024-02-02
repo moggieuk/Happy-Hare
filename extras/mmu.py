@@ -931,7 +931,6 @@ class Mmu:
 
     def _initialize_state(self):
         self.is_enabled = True
-        self.runout_suspended = False
         self.paused_extruder_temp = None
         self.is_homed = False
         self.last_print_stats = None
@@ -2619,13 +2618,13 @@ class Mmu:
         self._log_trace("Disabled runout detection")
         if self._has_encoder() and self.encoder_sensor.is_enabled():
             self.encoder_sensor.disable()
-        self.runout_suspended = True
+        self._suspend_runout(True)
 
     def _enable_runout(self):
         self._log_trace("Enabled runout detection")
         if self._has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
-        self.runout_suspended = False
+        self._suspend_runout(False)
 
     @contextlib.contextmanager
     def _wrap_suspend_runout(self):
@@ -2759,6 +2758,18 @@ class Mmu:
         for name, sensor in self.sensors.items():
             result[name] = sensor.runout_helper.filament_present if sensor.runout_helper.sensor_enabled else None
         return result
+
+    def _suspend_runout(self, suspend):
+        runout_helpers = []
+        for gate in range(self.mmu_num_gates):
+            sensor = self.printer.lookup_object("filament_switch_sensor %s_%d" % (self.PRE_GATE_SENSOR_PREFIX, gate), None)
+            if sensor:
+                runout_helpers.append(sensor.runout_helper)
+        sensor = self.sensors.get(self.ENDSTOP_GATE, None)
+        if sensor:
+            runout_helpers.append(sensor.runout_helper)
+        for rh in runout_helpers:
+            rh.suspend_runout(suspend)
 
     def _must_home_to_extruder(self):
         return self.extruder_force_homing or not self._has_sensor(self.ENDSTOP_TOOLHEAD)
@@ -4939,7 +4950,7 @@ class Mmu:
             if self._is_printing():
                 self._resume_printing("change_tool")
 
-    cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)"
+    cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTRUDER_ONLY=1)"
     def cmd_MMU_LOAD(self, gcmd):
         if self._check_is_disabled(): return
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
@@ -5453,7 +5464,7 @@ class Mmu:
 # RUNOUT, ENDLESS SPOOL and GATE HANDLING #
 ###########################################
 
-    def _handle_runout(self, force_runout=False):
+    def _runout(self, force_runout=False):
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
@@ -5658,49 +5669,51 @@ class Mmu:
         if self._check_is_disabled(): return
         force_runout = bool(gcmd.get_int('FORCE_RUNOUT', 1, minval=0, maxval=1))
         try:
-            self._handle_runout(force_runout)
+            self._runout(force_runout)
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
     cmd_MMU_ENCODER_RUNOUT_help = "Internal encoder filament runout handler"
     def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
-        if self._check_is_disabled(): return
+        if not self.is_enabled: return
         try:
             self._log_debug("Filament runout/clog detected by MMU encoder")
-            self._handle_runout()
+            self._runout()
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
     cmd_MMU_ENCODER_INSERT_help = "Internal encoder filament insert detection handler"
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
-        if self._check_is_disabled(): return
+        if not self.is_enabled: return
         self._log_trace("Filament insertion detected by encoder")
         # TODO Future bypass preload feature - make gate act like bypass
 
     # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate
     # sensor that fired.  This is not protected by klipper is_printing check so be careful when
     # runout handle_logic is fired
+
     cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
-        if self._check_is_disabled(): return
+        if not self.is_enabled: return
         try:
             gate = gcmd.get_int('GATE', None)
-            self._log_debug("Filament runout detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
+            do_runout = gcmd.get_int('DO_RUNOUT', 0)
             if gate is not None:
                 self._set_gate_status(gate, self.GATE_EMPTY)
-            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected) and not self.runout_suspended:
-                self._handle_runout(True)
+            if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected) and do_runout:
+                self._log_debug("Handling runout detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
+                self._runout(True)
         except MmuError as ee:
             self._mmu_pause(str(ee))
         
     # This callback is not protected by klipper "is printing" check so be careful
     cmd_MMU_GATE_INSERT_help = "Internal MMU filament detection handler"
     def cmd_MMU_GATE_INSERT(self, gcmd):
-        if self._check_is_disabled(): return
+        if not self.is_enabled: return
         try:
             gate = gcmd.get_int('GATE', None)
-            self._log_debug("Filament insertion detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
             if gate is not None:
+                self._log_debug("Handling insertion detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
                 self._set_gate_status(gate, self.GATE_UNKNOWN)
                 if not self._is_in_print():
                     self.cmd_MMU_PRELOAD(gcmd)
