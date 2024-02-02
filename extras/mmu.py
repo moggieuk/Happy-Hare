@@ -2529,7 +2529,7 @@ class Mmu:
             self._track_pause_end()
             self._enable_runout() # Enable runout/clog detection while printing
             self._set_print_state(self.resume_to_state)
-            self._resume_printing("resume", sync=(self.resume_to_state == "printing"))
+            self._resume_printing("resume", sync=(self.resume_to_state == "printing")) # PAUL problem of printing -> PAUSE -> Txx -> RESUME
             self.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed") # Notify MMU resumed event
 
@@ -5589,7 +5589,7 @@ class Mmu:
             multi_tool = False
             num_gates = self.mmu_num_gates
             gate_indices = range(num_gates)
-            msg_gates = "Gates: " + "".join("| %d " % g for g in gate_indices)[:4 * num_gates] + "|"
+            msg_gates = "Gates: " + "".join("|{:^3}".format(g) for g in gate_indices) + "|"
             msg_avail = "Avail: " + "".join("| %s " % self._get_filament_char(self.gate_status[g], no_space=True, show_source=True) for g in gate_indices) + "|"
             tool_strings = []
             for g in gate_indices:
