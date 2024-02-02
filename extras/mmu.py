@@ -2470,7 +2470,7 @@ class Mmu:
 
         if not pre_start_only and self.print_state not in ["printing"]:
             self._log_trace("_on_print_start(->printing)")
-            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
+            self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True) # PAUL what if we start with no filament loaded? This can occur any time during the first few instructions..
             msg = "MMU initialized ready for print"
             if self.filament_pos == self.FILAMENT_POS_LOADED:
                 msg += " (initial tool T%s loaded)" % self.tool_selected
