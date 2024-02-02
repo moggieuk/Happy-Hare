@@ -2492,7 +2492,7 @@ class Mmu:
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
-                self._disable_runout() # Disable runout/clog detection in pause
+                self._disable_runout() # Disable runout/clog detection while in pause
                 if self._is_printing(force_in_print):
                     self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_toolchange)
                 run_pause_macro = True
@@ -5476,11 +5476,12 @@ class Mmu:
             self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
 
         # Check for clog by looking for filament at the gate (or in the encoder)
-        self._log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)
-        if not force_runout and self._check_filament_at_gate():
-            if self._has_encoder():
-                self.encoder_sensor.update_clog_detection_length()
-            raise MmuError("A clog has been detected and requires manual intervention")
+        if not force_runout:
+            self._log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)
+            if self._check_filament_at_gate():
+                if self._has_encoder():
+                    self.encoder_sensor.update_clog_detection_length()
+                raise MmuError("A clog has been detected and requires manual intervention")
 
         # We have a filament runout
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during swap
@@ -5691,7 +5692,6 @@ class Mmu:
     # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate
     # sensor that fired.  This is not protected by klipper is_printing check so be careful when
     # runout handle_logic is fired
-
     cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
         if not self.is_enabled: return

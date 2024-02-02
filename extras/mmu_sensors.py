@@ -63,12 +63,15 @@ class MmuRunoutHelper:
     def _insert_event_handler(self, eventtime):
         self._exec_gcode(self.insert_gcode)
 
-    def _runout_event_handler(self, eventtime):
+    def _remove_event_handler(self, eventtime):
         self._exec_gcode(self.runout_gcode)
+
+    def _runout_event_handler(self, eventtime):
+        self.gcode.run_script(self.runout_gcode + " DO_RUNOUT=1\n__MMU_M400")
 
     def _exec_gcode(self, command):
         try:
-            self.gcode.run_script(command + " DO_RUNOUT=" + str(int(not self.runout_suspended)) + "\n__MMU_M400")
+            self.gcode.run_script(command)
         except Exception:
             logging.exception("Error running mmu sensor handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
@@ -84,12 +87,16 @@ class MmuRunoutHelper:
         # Let Happy Hare decide what processing is possible based on printing state
         if is_filament_present: # Insert detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("MMU filament sensor %s: insert event detected, Time %.2f" % (self.name, eventtime))
+            logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._insert_event_handler)
         else: # Runout detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("MMU filament sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
-            self.reactor.register_callback(self._runout_event_handler)
+            if self.runout_suspended:
+                logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.reactor.register_callback(self._remove_event_handler)
+            else:
+                logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.reactor.register_callback(self._runout_event_handler)
 
     def suspend_runout(self, suspend):
         self.runout_suspended = suspend
