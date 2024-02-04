@@ -53,7 +53,8 @@ class MmuEncoder:
         self.next_calibration_point = self.calibration_length = config.getfloat('calibration_length', 10000., minval=50.) # 10m
         # Detection length will be set by MMU calibration
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
-        self.event_delay = config.getfloat('event_delay', 3., above=0.)
+        self.event_delay = config.getfloat('event_delay', 2., above=0.)
+        self.pause_delay = config.getfloat('pause_delay', 0.1, above=0.)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '__MMU_ENCODER_RUNOUT')
         self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '__MMU_ENCODER_INSERT')
@@ -201,6 +202,11 @@ class MmuEncoder:
                 self.reactor.register_callback(self._runout_event_handler)
 
     def _runout_event_handler(self, eventtime):
+        # Pausing from inside an event requires that the pause portion of pause_resume execute immediately.
+        pause_resume = self.printer.lookup_object('pause_resume')
+        pause_resume.send_pause_command()
+        self.printer.get_reactor().pause(eventtime + self.pause_delay)
+        self.gcode.run_script("PAUSE\n" + self.runout_gcode + "\nM400")
         self._exec_gcode(self.runout_gcode)
 
     def _insert_event_handler(self, eventtime):
