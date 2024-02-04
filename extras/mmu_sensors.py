@@ -151,7 +151,6 @@ class MmuSensors:
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
-# PAUL            config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper because limited operation is possible during print
@@ -169,7 +168,6 @@ class MmuSensors:
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
-# PAUL            config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper to pause virtual_sdcard but not PAUSE
