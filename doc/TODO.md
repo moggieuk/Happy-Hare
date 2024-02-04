@@ -14,7 +14,10 @@ Scratch pad TODO list
 13. _form_tip as separate “_STEP”
 14. Externalize ‘boot up tasks’ so users could add things like “check_gates”
 15. Remove sd_card pause..
-16. Disable runout during tool change -- maybe code encoder to disable that way too..?
+16. DONE - Disable gate runout during tool change -- maybe code encoder to disable that way too..?
+17. Ensure z_hop is correct if gcode offset is specified. E.g.
+     {% set z_min = params.Z_MIN|default(0)|float %}
+     {% set z_park = [[(act.z + park_dz), z_min]|max, (max.z - origin.z)]|min %}
 
 --
 Idea: DONE - If EndlessSpool enabled and initial tool is empty, auto map to next gate

@@ -34,16 +34,18 @@
 import logging, time
 
 class MmuRunoutHelper:
-    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay):
+    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay, pause_delay):
         self.printer, self.name = printer, name
         self.insert_gcode, self.runout_gcode = insert_gcode, runout_gcode
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
         self.min_event_systime = self.reactor.NEVER
+        self.pause_delay = pause_delay # Time to wait after pause
         self.event_delay = event_delay # Time between generated events
         self.filament_present = False
         self.sensor_enabled = True
+        self.runout_suspended = False
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
@@ -62,13 +64,19 @@ class MmuRunoutHelper:
     def _insert_event_handler(self, eventtime):
         self._exec_gcode(self.insert_gcode)
 
-    def _runout_event_handler(self, eventtime):
+    def _remove_event_handler(self, eventtime):
         self._exec_gcode(self.runout_gcode)
+
+    def _runout_event_handler(self, eventtime):
+        # Pausing from inside an event requires that the pause portion of pause_resume execute immediately.
+        pause_resume = self.printer.lookup_object('pause_resume')
+        pause_resume.send_pause_command()
+        self.printer.get_reactor().pause(eventtime + self.pause_delay)
+        self.gcode.run_script("PAUSE\n" + self.runout_gcode + " DO_RUNOUT=1\n__MMU_M400")
 
     def _exec_gcode(self, command):
         try:
-            #self.gcode.run_script(command)
-            self.gcode.run_script(command + "\n__MMU_M400")
+            self.gcode.run_script(command)
         except Exception:
             logging.exception("Error running mmu sensor handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
@@ -84,17 +92,25 @@ class MmuRunoutHelper:
         # Let Happy Hare decide what processing is possible based on printing state
         if is_filament_present: # Insert detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("MMU filament sensor %s: insert event detected, Time %.2f" % (self.name, eventtime))
+            logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._insert_event_handler)
         else: # Runout detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("MMU filament sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
-            self.reactor.register_callback(self._runout_event_handler)
+            if self.runout_suspended:
+                logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.reactor.register_callback(self._remove_event_handler)
+            else:
+                logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.reactor.register_callback(self._runout_event_handler)
+
+    def enable_runout(self, enable):
+        self.runout_suspended = not enable
 
     def get_status(self, eventtime):
         return {
             "filament_detected": bool(self.filament_present),
             "enabled": bool(self.sensor_enabled),
+            "runout_suspended": bool(self.runout_suspended),
         }
 
     cmd_QUERY_FILAMENT_SENSOR_help = "Query the status of the Filament Sensor"
@@ -121,6 +137,7 @@ class MmuSensors:
         self.printer = config.get_printer()
 
         event_delay = config.get('event_delay', 1.)
+        pause_delay = config.get('pause_delay', 0.1)
 
         # Setup and pre-gate sensors that are defined...
         for gate in range(23):
@@ -134,13 +151,12 @@ class MmuSensors:
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
-            config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper because limited operation is possible during print
             insert_gcode = "__MMU_GATE_INSERT GATE=%d" % gate
             runout_gcode = "__MMU_GATE_RUNOUT GATE=%d" % gate
-            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
+            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
             fs.runout_helper = gate_helper
             fs.get_status = gate_helper.get_status
 
@@ -152,13 +168,12 @@ class MmuSensors:
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
-            config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper to pause virtual_sdcard but not PAUSE
             insert_gcode = "__MMU_GATE_INSERT"
             runout_gcode = "__MMU_GATE_RUNOUT"
-            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
+            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
             fs.runout_helper = gate_helper
             fs.get_status = gate_helper.get_status
 
