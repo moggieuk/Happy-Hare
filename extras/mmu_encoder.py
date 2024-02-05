@@ -56,8 +56,8 @@ class MmuEncoder:
         self.event_delay = config.getfloat('event_delay', 2., above=0.)
         self.pause_delay = config.getfloat('pause_delay', 0.1, above=0.)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
-        self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '__MMU_ENCODER_RUNOUT')
-        self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '__MMU_ENCODER_INSERT')
+        self.runout_gcode = '__MMU_ENCODER_RUNOUT'
+        self.insert_gcode = '__MMU_ENCODER_INSERT'
         self._enabled = True # Runout/Clog functionality
         self.min_event_systime = self.reactor.NEVER
         self.extruder = self.estimated_print_time = None
@@ -206,17 +206,16 @@ class MmuEncoder:
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
         self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        self.gcode.run_script("PAUSE\n" + self.runout_gcode + "\nM400")
-        self._exec_gcode(self.runout_gcode)
+        self._exec_gcode("PAUSE\n" + self.runout_gcode + "\n__MMU_M400")
 
     def _insert_event_handler(self, eventtime):
         self._exec_gcode(self.insert_gcode)
 
-    def _exec_gcode(self, template):
+    def _exec_gcode(self, command):
         try:
-            self.gcode.run_script(template.render())
+            self.gcode.run_script(command)
         except Exception:
-            logging.exception("Script running error")
+            logging.exception("Error running mmu encoder handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def get_clog_detection_length(self):
