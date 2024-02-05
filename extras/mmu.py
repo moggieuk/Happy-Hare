@@ -930,6 +930,7 @@ class Mmu:
 
     def _initialize_state(self):
         self.is_enabled = True
+        self.runout_enabled = False
         self.paused_extruder_temp = None
         self.is_homed = False
         self.last_print_stats = None
@@ -2621,12 +2622,16 @@ class Mmu:
         self.saved_toolhead_height = 0.
 
     def _disable_runout(self):
+        current_state = self.runout_enabled
         self._log_trace("Disabled runout detection")
         if self._has_encoder() and self.encoder_sensor.is_enabled():
             self.encoder_sensor.disable()
         self._set_sensor_runout(False)
+        self.runout_enabled = False
+        return current_state
 
     def _enable_runout(self):
+        self.runout_enabled = True
         self._log_trace("Enabled runout detection")
         if self._has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
@@ -2643,11 +2648,12 @@ class Mmu:
 
     @contextlib.contextmanager
     def _wrap_suspend_runout(self):
-        self._disable_runout()
+        current_state = self._disable_runout()
         try:
             yield self
         finally:
-            self._enable_runout()
+            if current_state:
+                self._enable_runout()
 
     def _has_encoder(self):
         return self.encoder_sensor is not None and not self.test_disable_encoder
