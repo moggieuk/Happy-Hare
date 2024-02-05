@@ -930,7 +930,7 @@ class Mmu:
 
     def _initialize_state(self):
         self.is_enabled = True
-        self.runout_enabled = False
+        self.runout_enabled = True
         self.paused_extruder_temp = None
         self.is_homed = False
         self.last_print_stats = None
@@ -2622,13 +2622,15 @@ class Mmu:
         self.saved_toolhead_height = 0.
 
     def _disable_runout(self):
-        current_state = self.runout_enabled
-        self._log_trace("Disabled runout detection")
-        if self._has_encoder() and self.encoder_sensor.is_enabled():
-            self.encoder_sensor.disable()
-        self._set_sensor_runout(False)
-        self.runout_enabled = False
-        return current_state
+        enabled = self.runout_enabled
+        if enabled:
+            self._log_trace("Disabled runout detection")
+            if self._has_encoder() and self.encoder_sensor.is_enabled():
+                self.encoder_sensor.disable()
+            self._set_sensor_runout(False)
+            self.runout_enabled = False
+            return enabled
+        return False
 
     def _enable_runout(self):
         self.runout_enabled = True
@@ -2648,11 +2650,11 @@ class Mmu:
 
     @contextlib.contextmanager
     def _wrap_suspend_runout(self):
-        current_state = self._disable_runout()
+        enabled = self._disable_runout()
         try:
             yield self
         finally:
-            if current_state:
+            if enabled:
                 self._enable_runout()
 
     def _has_encoder(self):
@@ -3020,11 +3022,11 @@ class Mmu:
             return
         status = self.encoder_sensor.get_status(0)
         msg = "Encoder position: %.1f" % status['encoder_pos']
-        if status['enabled']:
-            clog = "Automatic" if status['detection_mode'] == 2 else "On" if status['detection_mode'] == 1 else "Off"
-            msg += "\nClog/Runout detection: %s (Detection length: %.1f)" % (clog, status['detection_length'])
-            msg += "\nTrigger headroom: %.1f (Minimum observed: %.1f)" % (status['headroom'], status['min_headroom'])
-            msg += "\nFlowrate: %d %%" % status['flow_rate']
+        msg += "\nRunout detection: %s" % ("Enabled" if status['enabled'] else "Disabled")
+        clog = "Automatic" if status['detection_mode'] == 2 else "On" if status['detection_mode'] == 1 else "Off"
+        msg += "\nClog/Runout mode: %s (Detection length: %.1f)" % (clog, status['detection_length'])
+        msg += "\nTrigger headroom: %.1f (Minimum observed: %.1f)" % (status['headroom'], status['min_headroom'])
+        msg += "\nFlowrate: %d %%" % status['flow_rate']
         self._log_info(msg)
 
     cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
