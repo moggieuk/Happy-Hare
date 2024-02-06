@@ -9,7 +9,6 @@
 #
 # mmu_gate sensor:
 #   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks with modified runout event handling
-#   to pause virtual SD card without running PAUSE macro
 #   Named `mmu_gate`
 #
 # extruder & toolhead sensor:
@@ -72,7 +71,8 @@ class MmuRunoutHelper:
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
         self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        self._exec_gcode("PAUSE\n" + self.runout_gcode + " DO_RUNOUT=1\n__MMU_M400")
+        self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1\n__MMU_M400")
+        #self._exec_gcode("PAUSE\n" + self.runout_gcode + " DO_RUNOUT=1\n__MMU_M400")
 
     def _exec_gcode(self, command):
         try:
