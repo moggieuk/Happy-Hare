@@ -2352,14 +2352,14 @@ class Mmu:
         idle_timeout = self.printer.lookup_object("idle_timeout")
         return idle_timeout.get_status(eventtime)["state"] == "Printing"
 
+    def _is_printer_paused(self):
+        return self.pause_resume.is_paused
+
     def _is_printing(self, force_in_print=False): # Actively printing and not paused
         return self.print_state in ["started", "printing"] or force_in_print or self.test_force_in_print
 
     def _is_in_print(self, force_in_print=False): # Printing or paused
         return self.print_state in ["printing", "pause_locked", "paused"] or force_in_print or self.test_force_in_print
-
-    def _is_paused(self): # Printer is paused according to pause_resume
-        return self.pause_resume.is_paused
 
     def _is_mmu_paused(self): # The MMU is paused
         return self.print_state in ["pause_locked", "paused"]
@@ -2447,7 +2447,7 @@ class Mmu:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
             self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, z_hop @%.1fmm, pause_resume: %s, Idle timeout: %.2fs)"
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
-                        self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_paused(), idle_timeout))
+                        self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_printer_paused(), idle_timeout))
             if call_macro:
                 gcode = self.printer.lookup_object('gcode_macro _MMU_PRINT_STATE_CHANGED', None)
                 if gcode is not None:
@@ -2490,8 +2490,9 @@ class Mmu:
         run_pause_macro = recover_pos = False
         self.resume_to_state = "printing" if self._is_in_print() else "ready"
         if self._is_in_print(force_in_print):
-            if not self._is_mmu_paused() and not self._is_paused():
-                self._log_error("An issue with the MMU has been detected. Print paused.\nReason: %s" % reason)
+            #if not self._is_mmu_paused() and not self._is_printer_paused():
+            if not self._is_mmu_paused():
+                self._log_error("An issue with the MMU has been detected. Print%s paused.\nReason: %s" % (" was already" if self._is_printer_paused() else "", reason))
                 self._log_always("After fixing the issue, call RESUME to continue printing\n(MMU_UNLOCK can restore temperature)")
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
                 self._log_trace("Saved desired extruder temperature: %.1f" % self.paused_extruder_temp)
@@ -2512,7 +2513,7 @@ class Mmu:
         else:
             self._log_error("An issue with the MMU has been detected whilst out of a print\nReason: %s" % reason)
 
-        if run_pause_macro and not self._is_paused():
+        if run_pause_macro and not self._is_printer_paused():
             self._wrap_gcode_command(self.pause_macro)
 
         if recover_pos:
@@ -5050,7 +5051,7 @@ class Mmu:
             return
 
         self._log_trace("MMU RESUME wrapper called")
-        if not self._is_paused() and not self._is_mmu_paused():
+        if not self._is_printer_paused() and not self._is_mmu_paused():
             self._log_always("Print is not paused. Resume ignored.")
             return
 
