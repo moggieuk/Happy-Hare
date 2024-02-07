@@ -1084,8 +1084,9 @@ class Mmu:
 
     cmd_MMU_BOOTUP_TASKS_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP_TASKS(self, gcmd):
+        fversion = lambda f: "v" + str(f)[0] + "." + ".".join(str(f)[2:])
         try:
-            self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare Ready')
+            self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare %s Ready' % fversion(self.config_version))
             if self.log_startup_status > 0:
                 self._log_always(self._ttg_map_to_string(summary=self.log_startup_status == 1))
                 self._display_visual_state(silent=self.persistence_level < 4)
@@ -1473,7 +1474,8 @@ class Mmu:
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
         on_off = lambda x: "ON" if x else "OFF"
 
-        msg = "MMU: Happy Hare v%.1f running %s v%s" % (self.config_version, self.mmu_vendor, self.mmu_version_string)
+        fversion = lambda f: "v" + str(f)[0] + "." + ".".join(str(f)[2:])
+        msg = "MMU: Happy Hare %s running %s v%s" % (fversion(self.config_version), self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
         msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_mmu_paused() else "OPERATIONAL")
         msg += "\nServo in %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
