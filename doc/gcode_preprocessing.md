@@ -56,13 +56,13 @@ gcode:
         {% set REFERENCED_TOOLS = INITIAL_TOOL %}
     {% endif %}
 
-    :
+    ; other logic..
 
     MMU_CHECK_GATE TOOLS={REFERENCED_TOOLS}
 
-    MMU_CHANGE_TOOL STANDALONE=1 TOOL={INITIAL_TOOL}    # Optional: load initial tool
+    ; other logic..
 
-    :
+    MMU_CHANGE_TOOL STANDALONE=1 TOOL={INITIAL_TOOL}    # Optional: load initial tool
 ```
 
 > [!NOTE]  
