@@ -89,7 +89,8 @@ gcode:
     {% set colors = COLORS.split(",") %}
     {% set ttg_map = printer.mmu.ttg_map %}
 
-    {% for tool, color in enumerate(colors) %}
+    {% for color in colors %}
+        {% set tool = loop.index0 %}
         {% set gate = ttg_map[tool] %}                  # Make sure map to correct gate in case of TTG map
         MMU_GATE_MAP GATE={gate} COLOR={color}          # Register the filament color against correct gate in gate map
     {% endfor %}
