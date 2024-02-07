@@ -1459,10 +1459,11 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-i] [-u]"
+    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-i] [-u] [-z]"
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
+    echo "-z skip github check"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
