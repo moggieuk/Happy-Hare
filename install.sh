@@ -174,6 +174,8 @@ self_update() {
         git pull --quiet --force
         git checkout $BRANCH --quiet
         git pull --quiet --force
+        GIT_VER=$(git describe --tags)
+        echo -e "${B_GREEN}Now on git version {GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
         cd - >/dev/null
         exec "$SCRIPTNAME" "${ARGS[@]}"
