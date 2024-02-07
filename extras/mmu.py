@@ -2500,7 +2500,7 @@ class Mmu:
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause
-                self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_toolchange)
+                self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_toolchange, force_in_print=force_in_print)
                 run_pause_macro = True
                 self._set_print_state("pause_locked")
                 self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
@@ -2565,7 +2565,7 @@ class Mmu:
         if state == "standby" and not self._is_in_standby():
             self._set_print_state(state)
 
-    def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None):
+    def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None, force_in_print=False):
         if operation and not self.saved_toolhead_position:
             self._movequeues_wait_moves()
             toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
@@ -2580,7 +2580,7 @@ class Mmu:
                 self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
             # Lift toolhead off print the specified z-hop
-            if self._is_in_print() and z_hop_height is not None and z_hop_height > 0:
+            if self._is_in_print(force_in_print) and z_hop_height is not None and z_hop_height > 0:
                 homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
                 if 'z' not in homed:
                     self._log_info("Warning: MMU cannot lift toolhead because toolhead not homed!")
@@ -2591,6 +2591,7 @@ class Mmu:
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
                     self.saved_toolhead_height = safe_z
                     self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
+
         elif operation:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
@@ -5075,7 +5076,7 @@ class Mmu:
 
         self._log_trace("MMU PAUSE wrapper called")
         self._fix_started_state() # Get out of 'started' state before transistion to pause
-        self._save_toolhead_position_and_lift("pause") # Save position but don't lift
+        self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_toolchange)
         self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
