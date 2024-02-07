@@ -2500,8 +2500,7 @@ class Mmu:
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause
-                if self._is_printing(force_in_print):
-                    self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_toolchange)
+                self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_toolchange)
                 run_pause_macro = True
                 self._set_print_state("pause_locked")
                 self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
@@ -2581,7 +2580,7 @@ class Mmu:
                 self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
             # Lift toolhead off print the specified z-hop
-            if z_hop_height is not None and z_hop_height > 0:
+            if self._is_in_print() and z_hop_height is not None and z_hop_height > 0:
                 homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
                 if 'z' not in homed:
                     self._log_info("Warning: MMU cannot lift toolhead because toolhead not homed!")
@@ -2592,10 +2591,6 @@ class Mmu:
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
                     self.saved_toolhead_height = safe_z
                     self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
-# PAUL
-#            # This will contain the same print gcode_position, but position will include the z-hop
-#            self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_Z_HOP_state")
-
         elif operation:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
@@ -2615,7 +2610,7 @@ class Mmu:
                 self._log_debug("Restoring toolhead position (%s) after %s" % (toolhead_pos, operation))
             else:
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state")
-                self._log_info("Warning: MMU cannot restore toolhead position because toolhead not homed!")
+                self._log_debug("Clearing toolhead position after %s (could not move because not homed)" % operation)
             self._clear_saved_toolhead_position()
 
     def _clear_saved_toolhead_position(self):
@@ -4932,9 +4927,7 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
             self._recover_filament_pos(message=True)
 
-        # If actively printing save toolhead position and optionally z-hop to stop blob
-        if self._is_printing():
-            self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
 
         if self._has_encoder():
             self.encoder_sensor.update_clog_detection_length()
@@ -5081,15 +5074,9 @@ class Mmu:
             return
 
         self._log_trace("MMU PAUSE wrapper called")
+        self._fix_started_state() # Get out of 'started' state before transistion to pause
         self._save_toolhead_position_and_lift("pause") # Save position but don't lift
         self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
-# PAUL
-#        if self.saved_toolhead_position:
-#            # We cheat base pause so that it will resume to where we want it to even if it ran first
-#            self._log_trace("Injected z_hop into saved state")
-#            gcode_move = self.printer.lookup_object("gcode_move")
-#            mmu_zhop_state = gcode_move.saved_states['MMU_Z_HOP_state']
-#            gcode_move.saved_states['PAUSE_STATE'] = mmu_zhop_state
 
     # Not a user facing command - used in automatic wrapper
     cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
@@ -5103,7 +5090,7 @@ class Mmu:
     def cmd_MMU_CANCEL_PRINT(self, gcmd):
         if self.is_enabled:
             self._log_debug("MMU_CANCEL_PRINT wrapper called")
-            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange)
+            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange) # Lift Z but don't save
             self._wrap_gcode_command("__CANCEL_PRINT", None)
             self._on_print_end("cancelled")
         else:
