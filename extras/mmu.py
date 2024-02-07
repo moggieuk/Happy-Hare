@@ -1181,7 +1181,7 @@ class Mmu:
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
-                'material': self.gate_material[self.gate_selected] if self.gate_selected >= 0 else '',
+                'material': self.gate_material[self.gate_selected] if self.gate_selected >= 0 else '', # Deprecate?
                 'next_tool': self._next_tool,
                 'last_tool': self._last_tool,
                 'last_toolchange': self._last_toolchange,
@@ -1200,8 +1200,8 @@ class Mmu:
                 'gate_material': list(self.gate_material),
                 'gate_color': list(self.gate_color),
                 'gate_color_rgb': self.gate_color_rgb,
-                'custom_color_rgb': list(self.custom_color_rgb),
                 'gate_spool_id': list(self.gate_spool_id),
+                'custom_color_rgb': list(self.custom_color_rgb),
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'tool_extrusion_multipliers': list(self.tool_extrusion_multipliers),
                 'tool_speed_multipliers': list(self.tool_speed_multipliers),

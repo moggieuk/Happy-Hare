@@ -175,13 +175,14 @@ self_update() {
         git checkout $BRANCH --quiet
         git pull --quiet --force
         GIT_VER=$(git describe --tags)
-        echo -e "${B_GREEN}Now on git version {GIT_VER}"
+        echo -e "${B_GREEN}Now on git version: {GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
         cd - >/dev/null
         exec "$SCRIPTNAME" "${ARGS[@]}"
         exit 1 # Exit this old instance
     }
-    echo -e "${B_GREEN}Already the latest version."
+    GIT_VER=$(git describe --tags)
+    echo -e "${B_GREEN}Already the latest version: {GIT_VER}"
 }
 
 function nextfilename {
