@@ -20,6 +20,8 @@ OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 SENSORS_SECTION="FILAMENT SENSORS"
 LED_SECTION="MMU OPTIONAL NEOPIXEL"
 
+set -e # Exit immediately on error
+
 declare -A PIN 2>/dev/null || {
     echo "Please run this script with bash $0"
     exit 1

@@ -367,7 +367,7 @@ class Mmu:
         self.mmu_num_gates = config.getint('mmu_num_gates')
         self.selector_offsets = list(config.getfloatlist('selector_offsets', []))
         self.bypass_offset = config.getfloat('selector_bypass', 0)
-        self.default_tool_to_gate_map = list(config.getintlist('tool_to_gate_map', []))
+        self.default_ttg_map = list(config.getintlist('tool_to_gate_map', []))
         self.default_gate_status = list(config.getintlist('gate_status', []))
         self.default_gate_material = list(config.getlist('gate_material', []))
         self.default_gate_color = list(config.getlist('gate_color', []))
@@ -510,12 +510,12 @@ class Mmu:
                 self._update_gate_color(getattr(self, attr))
 
         # Tool to gate mapping
-        if len(self.default_tool_to_gate_map) > 0:
-            if not len(self.default_tool_to_gate_map) == self.mmu_num_gates:
+        if len(self.default_ttg_map) > 0:
+            if not len(self.default_ttg_map) == self.mmu_num_gates:
                 raise self.config.error("tool_to_gate_map has different number of values than the number of gates")
         else:
-            self.default_tool_to_gate_map = list(range(self.mmu_num_gates))
-        self.tool_to_gate_map = list(self.default_tool_to_gate_map)
+            self.default_ttg_map = list(range(self.mmu_num_gates))
+        self.ttg_map = list(self.default_ttg_map)
 
 
         # Tool speed and extrusion multipliers
@@ -1012,9 +1012,9 @@ class Mmu:
 
         if self.persistence_level >= 2:
             # Load TTG map
-            tool_to_gate_map = self.variables.get(self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map)
+            tool_to_gate_map = self.variables.get(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
             if len(tool_to_gate_map) == self.mmu_num_gates:
-                self.tool_to_gate_map = tool_to_gate_map
+                self.ttg_map = tool_to_gate_map
             else:
                 errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_TOOL_TO_GATE_MAP)
 
@@ -1039,10 +1039,10 @@ class Mmu:
                 self.gate_selected = gate_selected
 
                 if self.gate_selected >= 0:
-                    if self.tool_selected < 0 or self.tool_to_gate_map[self.tool_selected] != self.gate_selected:
+                    if self.tool_selected < 0 or self.ttg_map[self.tool_selected] != self.gate_selected:
                         # Find a tool that maps to gate
                         for tool in range(self.mmu_num_gates):
-                            if self.tool_to_gate_map[tool] == self.gate_selected:
+                            if self.ttg_map[tool] == self.gate_selected:
                                 self._set_tool_selected(tool)
                                 break
                         else:
@@ -1195,7 +1195,7 @@ class Mmu:
                          "Down" if self.servo_state == self.SERVO_DOWN_STATE else
                          "Move" if self.servo_state == self.SERVO_MOVE_STATE else
                          "Unknown",
-                'ttg_map': list(self.tool_to_gate_map),
+                'ttg_map': list(self.ttg_map),
                 'gate_status': list(self.gate_status),
                 'gate_material': list(self.gate_material),
                 'gate_color': list(self.gate_color),
@@ -2350,9 +2350,7 @@ class Mmu:
         self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) / multiplier)
 
     def _is_printer_printing(self):
-        eventtime = self.reactor.monotonic()
-        idle_timeout = self.printer.lookup_object("idle_timeout")
-        return idle_timeout.get_status(eventtime)["state"] == "Printing"
+        return self.print_stats.state == "printing"
 
     def _is_printer_paused(self):
         return self.pause_resume.is_paused
@@ -2478,12 +2476,14 @@ class Mmu:
                 msg += " (initial tool T%s loaded)" % self.tool_selected
             else:
                 msg += " (no filament preloaded)"
+            if self.ttg_map != self.default_ttg_map:
+                msg += "\nWarning: Non default TTG map in effect"
             self._log_info(msg)
             self._set_print_state("printing")
 
-    # Force state transistion from started to printing for any early moves
+    # Force state transistion to printing for any early moves
     def _fix_started_state(self):
-        if self.print_state in ["started"]:
+        if self._is_printer_printing() and not self._is_in_print():
             self._wrap_gcode_command("_MMU_PRINT_START")
 
     def _mmu_pause(self, reason, force_in_print=False):
@@ -3089,8 +3089,8 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
         self.endless_spool_groups = list(self.default_endless_spool_groups)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
-        self.tool_to_gate_map = list(self.default_tool_to_gate_map)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+        self.ttg_map = list(self.default_ttg_map)
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
@@ -4656,7 +4656,7 @@ class Mmu:
     # Primary method to select and loads tool. Assumes we are unloaded.
     def _select_and_load_tool(self, tool):
         self._log_debug('Loading tool T%d...' % tool)
-        gate = self.tool_to_gate_map[tool]
+        gate = self.ttg_map[tool]
         if self.gate_status[gate] == self.GATE_EMPTY:
             if self.enable_endless_spool and self.endless_spool_on_load:
                 self._log_info("Gate #%d is empty!" % gate)
@@ -4698,7 +4698,7 @@ class Mmu:
         self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
         skip_unload = False
         initial_tool_string = "Unknown" if self.tool_selected < 0 else ("T%d" % self.tool_selected)
-        if tool == self.tool_selected and self.tool_to_gate_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
+        if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
             self._log_always("Tool T%d is already loaded" % tool)
             return False
 
@@ -4718,7 +4718,7 @@ class Mmu:
         self._log_always(msg)
 
         # Check TTG map. We might be mapped to same gate
-        if self.tool_to_gate_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
+        if self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
             self._select_tool(tool)
             self.gcode.run_script_from_command("M117 T%s" % tool)
             return False
@@ -4750,7 +4750,7 @@ class Mmu:
             self._log_always("Tool %d does not exist" % tool)
             return
 
-        gate = self.tool_to_gate_map[tool]
+        gate = self.ttg_map[tool]
         if tool == self.tool_selected and gate == self.gate_selected:
             return
 
@@ -4894,11 +4894,11 @@ class Mmu:
                 self._select_gate(gate)
                 # Find the first tool that maps to this gate or current tool if it maps
                 # (Remember multiple tools can map to the same gate)
-                if self.tool_selected >= 0 and self.tool_to_gate_map[self.tool_selected] == gate:
+                if self.tool_selected >= 0 and self.ttg_map[self.tool_selected] == gate:
                     pass
                 else:
-                    for tool in range(len(self.tool_to_gate_map)):
-                        if self.tool_to_gate_map[tool] == gate:
+                    for tool in range(len(self.ttg_map)):
+                        if self.ttg_map[tool] == gate:
                             self._select_tool(tool)
                             break
                     else:
@@ -5118,7 +5118,7 @@ class Mmu:
             self._set_selector_pos(self.bypass_offset) # In case selector stepper was turned off
         elif tool >= 0: # If tool is specified then use and optionally override the gate
             self._set_tool_selected(tool)
-            gate = self.tool_to_gate_map[tool]
+            gate = self.ttg_map[tool]
             if mod_gate >= 0:
                 gate = mod_gate
             if gate >= 0:
@@ -5192,7 +5192,7 @@ class Mmu:
                     tool = t
                     if random == 1:
                         tool = randint(0, self.mmu_num_gates - 1)
-                    gate = self.tool_to_gate_map[tool]
+                    gate = self.ttg_map[tool]
                     if self.gate_status[gate] == self.GATE_EMPTY:
                         self._log_always("Skipping tool %d of %d because gate %d is empty" % (tool, self.mmu_num_gates, gate))
                     else:
@@ -5534,8 +5534,8 @@ class Mmu:
         return next_gate, checked_gates
 
     def _set_tool_to_gate(self, tool, gate):
-        self.tool_to_gate_map[tool] = gate
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+        self.ttg_map[tool] = gate
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
 
     def _set_gate_status(self, gate, state):
         if gate >= 0:
@@ -5576,7 +5576,7 @@ class Mmu:
             num_tools = self.mmu_num_gates
             tools = range(num_tools) if tool is None else [tool]
             for i in tools:
-                gate = self.tool_to_gate_map[i]
+                gate = self.ttg_map[i]
                 filament_char = self._get_filament_char(self.gate_status[gate], show_source=False)
                 msg += "\n" if i and tool is None else ""
         
@@ -5607,7 +5607,7 @@ class Mmu:
             msg_avail = "Avail: " + "".join("| %s " % self._get_filament_char(self.gate_status[g], no_space=True, show_source=True) for g in gate_indices) + "|"
             tool_strings = []
             for g in gate_indices:
-                tool_str = "+".join("T%d" % t for t in gate_indices if self.tool_to_gate_map[t] == g)
+                tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
                 multi_tool |= len(tool_str) > 2
                 tool_strings.append(("|%s " % (tool_str if tool_str else " . "))[:4])
             msg_tools = "Tools: " + "".join(tool_strings) + "|"
@@ -5641,7 +5641,7 @@ class Mmu:
             gate_detail = ""
             if detail:
                 filament_char = self._get_filament_char(self.gate_status[g], show_source=False)
-                tools_supported = ", ".join("T{}".format(t) for t in range(self.mmu_num_gates) if self.tool_to_gate_map[t] == g)
+                tools_supported = ", ".join("T{}".format(t) for t in range(self.mmu_num_gates) if self.ttg_map[t] == g)
                 tools_str = " supporting {}".format(tools_supported) if tools_supported else "?, "
                 gate_detail = "\nGate {}({}){}".format(g, filament_char, tools_str)
                 if g == self.gate_selected:
@@ -5663,8 +5663,8 @@ class Mmu:
 
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
-        self.tool_to_gate_map = self.default_tool_to_gate_map
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+        self.ttg_map = self.default_ttg_map
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
         self._unselect_tool()
 
     def _reset_gate_map(self):
@@ -5721,7 +5721,7 @@ class Mmu:
                 self._set_gate_status(gate, self.GATE_EMPTY)
 
             if do_runout:
-                if self._is_in_print() and self._is_printer_printing() and (gate is None or gate == self.gate_selected):
+                if self._is_in_print() and (gate is None or gate == self.gate_selected):
                     self._log_debug("Handling runout detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
                     self._runout(True)
                 else:
@@ -5765,13 +5765,13 @@ class Mmu:
             if len(ttg_map) != self.mmu_num_gates:
                 self._log_always("The number of map values (%d) is not the same as number of gates (%d)" % (len(ttg_map), self.mmu_num_gates))
                 return
-            self.tool_to_gate_map = []
+            self.ttg_map = []
             for gate in ttg_map:
                 if gate.isdigit():
-                    self.tool_to_gate_map.append(int(gate))
+                    self.ttg_map.append(int(gate))
                 else:
-                    self.tool_to_gate_map.append(0)
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.tool_to_gate_map))
+                    self.ttg_map.append(0)
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
         elif gate != -1:
             status = self.gate_status[gate]
             if not available == self.GATE_UNKNOWN or (available == self.GATE_UNKNOWN and status == self.GATE_EMPTY):
@@ -5952,7 +5952,7 @@ class Mmu:
                             if not tool == "":
                                 tool = int(tool)
                                 if tool >= 0 and tool < self.mmu_num_gates:
-                                    gate = self.tool_to_gate_map[tool]
+                                    gate = self.ttg_map[tool]
                                     gates_tools.append([gate, tool])
                         if len(gates_tools) == 0:
                             self._log_debug("No tools to check, assuming default tool is already loaded")
@@ -5976,7 +5976,7 @@ class Mmu:
                         return
                 elif tool >= 0:
                     # Individual tool
-                    gate = self.tool_to_gate_map[tool]
+                    gate = self.ttg_map[tool]
                     gates_tools.append([gate, tool])
                 elif gate >= 0:
                     # Individual gate
@@ -5995,10 +5995,12 @@ class Mmu:
                     self._mmu_pause(str(ee))
                     return
     
+                if len(gates_tools) > 1:
+                    self._log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
                 for gate, tool in gates_tools:
                     try:
                         self._select_gate(gate)
-                        self._initialize_filament_position()    # Encoder 0000
+                        self._initialize_filament_position() # Encoder 0000
                         self.calibrating = True # To suppress visual filament position
                         self._log_info("Checking gate #%d..." % gate)
                         self._load_gate(allow_retry=False, adjust_servo_on_error=False)
