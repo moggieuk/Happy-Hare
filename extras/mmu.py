@@ -2489,37 +2489,41 @@ class Mmu:
     def _mmu_pause(self, reason, force_in_print=False):
         self._fix_started_state() # Get out of 'started' state before transistion to pause
 
-        run_pause_macro = recover_pos = False
+        run_pause_macro = recover_pos = send_event = False
         self.resume_to_state = "printing" if self._is_in_print() else "ready"
         if self._is_in_print(force_in_print):
             if not self._is_mmu_paused():
-                self._log_error("An issue with the MMU has been detected. Print%s paused.\nReason: %s" % (" was already" if self._is_printer_paused() else "", reason))
-                self._log_always("After fixing the issue, call RESUME to continue printing\n(MMU_UNLOCK can restore temperature)")
+                self._log_error("MMU issue detected. Print%s paused.\nReason: %s" % (" was already" if self._is_printer_paused() else " will be", reason))
+                self._log_always("After fixing, call RESUME to continue printing\n(MMU_UNLOCK to restore temperature)")
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
                 self._log_trace("Saved desired extruder temperature: %.1f" % self.paused_extruder_temp)
                 self._track_pause_start()
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
-                self._disable_runout() # Disable runout/clog detection while in pause
+                self._disable_runout() # Disable runout/clog detection while in pause state
                 self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_toolchange, force_in_print=force_in_print)
-                run_pause_macro = True
+                run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
-                self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
+                send_event = True
+                recover_pos = True
             else:
-                self._log_error("An issue with the MMU has been detected whilst printer is paused\nReason: %s" % reason)
-            recover_pos = True
-
+                self._log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
+                recover_pos = True
         else:
-            self._log_error("An issue with the MMU has been detected whilst out of a print\nReason: %s" % reason)
+            self._log_error("MMU issue detected whilst out of a print\nReason: %s" % reason)
 
-        if run_pause_macro and not self._is_printer_paused():
+        # Be deliberate about order of these tasks
+        if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
 
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
 
         self._sync_gear_to_extruder(False, servo=True)
+
+        if send_event:
+            self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
 
     def _mmu_unlock(self):
         if self._is_mmu_paused():
@@ -5726,7 +5730,7 @@ class Mmu:
                     self._runout(True)
                 else:
                     self._log_debug("Assertion failure: runout detected but not in print or occured on unexpected gate. Ignored")
-                    self.pause_resume.send_resume_command()
+                    self.pause_resume.send_resume_command() # Undo what runout sensor handling did
         except MmuError as ee:
             self._mmu_pause(str(ee))
         
