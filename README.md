@@ -226,6 +226,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.next_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change)
     printer.mmu.last_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change after unload)
     printer.mmu.last_toolchange : {string} description of last change similar to M117 display
+    printer.mmu.runout : {bool} True while MMU is handling a runout
     printer.mmu.filament : {string} filament state in extruder (Loaded | Unloaded | Unknown)
     printer.mmu.filament_pos : {int} state machine - exact location of filament
     printer.mmu.filament_direction : {int} 1 (load) | -1 (unload)

@@ -929,10 +929,8 @@ class Mmu:
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
     def _initialize_state(self):
-        self.is_enabled = True
-        self.runout_enabled = True
-        self.paused_extruder_temp = None
-        self.is_homed = False
+        self.is_enabled = self.runout_enabled = self.paused_extruder_temp = None
+        self.is_homed = self.is_handling_runout = self.calibrating = False
         self.last_print_stats = None
         self.tool_selected = self._next_tool = self._last_tool = self.TOOL_GATE_UNKNOWN
         self._last_toolchange = "Unknown"
@@ -942,7 +940,6 @@ class Mmu:
         self.filament_direction = self.DIRECTION_UNKNOWN
         self.filament_remaining = 0. # Tracker of filament left in extruder by cutter
         self.action = self.ACTION_IDLE
-        self.calibrating = False
         self._clear_saved_toolhead_position()
         self._servo_reset_state()
         self._reset_job_statistics()
@@ -1181,10 +1178,11 @@ class Mmu:
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
-                'material': self.gate_material[self.gate_selected] if self.gate_selected >= 0 else '', # Deprecate?
+                'material': self.gate_material[self.gate_selected] if self.gate_selected >= 0 else '', # Deprecate or add temp?
                 'next_tool': self._next_tool,
                 'last_tool': self._last_tool,
                 'last_toolchange': self._last_toolchange,
+                'runout': self.is_handling_runout,
                 'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
                             "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
                             "Unknown",
@@ -2464,6 +2462,7 @@ class Mmu:
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self.is_handling_runout = False
             self._enable_runout() # Enable runout/clog detection while printing
             self._initialize_filament_position(dwell=None) # Encoder 0000
             self._set_print_state("started", call_macro=False)
@@ -2542,6 +2541,7 @@ class Mmu:
             self.printer.send_event("mmu:mmu_resumed") # Notify MMU resumed event
 
     def _continue_printing(self, operation, sync=True):
+        self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
         if self._is_in_print():
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation)
@@ -2628,8 +2628,7 @@ class Mmu:
                 self.encoder_sensor.disable()
             self._set_sensor_runout(False)
             self.runout_enabled = False
-            return enabled
-        return False
+        return enabled
 
     def _enable_runout(self):
         self.runout_enabled = True
@@ -5500,6 +5499,7 @@ class Mmu:
         # We have a filament runout
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during swap
             self._log_error("A runout has been detected")
+            self.is_handling_runout = True # Will remain true until complete and continue or resume after error
 
             if self.enable_endless_spool:
                 self._set_gate_status(self.gate_selected, self.GATE_EMPTY) # Indicate current gate is empty
