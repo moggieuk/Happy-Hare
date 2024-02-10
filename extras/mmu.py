@@ -2497,7 +2497,7 @@ class Mmu:
                 self._log_error("MMU issue detected. Print%s paused.\nReason: %s" % (" was already" if self._is_printer_paused() else " will be", reason))
                 self._log_always("After fixing, call RESUME to continue printing\n(MMU_UNLOCK to restore temperature)")
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
-                self._log_trace("Saved desired extruder temperature: %.1f" % self.paused_extruder_temp)
+                self._log_trace("Saved desired extruder temperature: %.1f\u00B0C" % self.paused_extruder_temp)
                 self._track_pause_start()
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
@@ -2916,7 +2916,7 @@ class Mmu:
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 1:
                 with self._wrap_action(self.ACTION_HEATING):
-                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f" % (source, new_target_temp))
+                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f\u00B0C" % (source, new_target_temp))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _selected_tool_string(self):
