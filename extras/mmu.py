@@ -2941,7 +2941,7 @@ class Mmu:
         self.action = action
         gcode = self.printer.lookup_object("gcode_macro %s" % self.action_changed_macro, None)
         if gcode is not None:
-            self._wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % ( % self.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
+            self._wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % (self.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
         return old_action
 
     @contextlib.contextmanager
