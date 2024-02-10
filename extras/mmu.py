@@ -342,7 +342,8 @@ class Mmu:
         self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
-        self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 5., minval=0.)
+        self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.2, minval=0.)
+        self.z_hop_height_error = config.getfloat('z_hop_height_error', 1., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
         self.force_form_tip_standalone = config.getint('force_form_tip_standalone', 0, minval=0, maxval=1)
@@ -354,8 +355,10 @@ class Mmu:
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
+        self.action_changed_macro = config.get('action_changed_macro', '_MMU_ACTION_CHANGED')
+        self.print_state_changed_macro = config.get('print_state_changed_macro', '_MMU_PRINT_STATE_CHANGED')
         self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP')
-        self.pre_unload_macro = config.get('pre_unload_macro', '_MMU_PRE_UNLOAD_MACRO')
+        self.pre_unload_macro = config.get('pre_unload_macro', '_MMU_PRE_UNLOAD')
         self.post_form_tip_macro = config.get('post_form_tip_macro', '_MMU_POST_FORM_TIP')
         self.post_unload_macro = config.get('post_unload_macro', '_MMU_POST_UNLOAD')
         self.pre_load_macro = config.get('pre_load_macro', '_MMU_PRE_LOAD')
@@ -2279,7 +2282,7 @@ class Mmu:
         self.heater_off_handler = self.reactor.register_timer(self._handle_pause_timeout, self.reactor.NEVER)
 
     def _handle_pause_timeout(self, eventtime):
-        self._log_info("Disable extruder heater")
+        self._log_info("Disabled extruder heater")
         self.gcode.run_script_from_command("M104 S0")
         return self.reactor.NEVER
 
@@ -2447,9 +2450,9 @@ class Mmu:
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_printer_paused(), idle_timeout))
             if call_macro:
-                gcode = self.printer.lookup_object('gcode_macro _MMU_PRINT_STATE_CHANGED', None)
+                gcode = self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro, None)
                 if gcode is not None:
-                    self._wrap_gcode_command("_MMU_PRINT_STATE_CHANGED STATE='%s' OLD_STATE='%s'" % (print_state, self.print_state))
+                    self._wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.print_state_changed_macro, print_state, self.print_state))
             self.print_state = print_state
 
     # If this is called automatically when printing starts. The pre_start_only operations are performed on an idle_timeout
@@ -2495,13 +2498,13 @@ class Mmu:
                 self._log_error("MMU issue detected. Print%s paused.\nReason: %s" % (" was already" if self._is_printer_paused() else " will be", reason))
                 self._log_always("After fixing, call RESUME to continue printing\n(MMU_UNLOCK to restore temperature)")
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
-                self._log_trace("Saved desired extruder temperature: %.1f" % self.paused_extruder_temp)
+                self._log_trace("Saved desired extruder temperature: %.1f\u00B0C" % self.paused_extruder_temp)
                 self._track_pause_start()
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
-                self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_toolchange, force_in_print=force_in_print)
+                self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_error, force_in_print=force_in_print)
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
@@ -2526,11 +2529,14 @@ class Mmu:
 
     def _mmu_unlock(self):
         if self._is_mmu_paused():
-            # Logic must be idempotent
+            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
+            # Important to wait for stable temperature to resume exactly how we paused
+            self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
+
+            if self.paused_extruder_temp:
+                self._log_info("Enabled extruder heater")
+            self._ensure_safe_extruder_temperature("pause", wait=True)
             self._set_print_state("paused")
-            self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
-            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
-            self._ensure_safe_extruder_temperature("pause", wait=True) # Important to wait for stable temperature to resume exactly how we paused
 
     def _mmu_resume(self):
         if self._is_mmu_paused():
@@ -2900,20 +2906,19 @@ class Mmu:
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
                 # We use error channel to aviod heating surprise. This will also cause popup in Klipperscreen
-                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f)" % (source, new_target_temp))
+                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
             else:
-                self._log_info("Heating extruder to %s temp (%.1f)" % (source, new_target_temp))
+                self._log_info("Heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
-            self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % new_target_temp)
+            self.gcode.run_script_from_command("M104 S%.1f" % new_target_temp)
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
-            if wait:
-                if abs(new_target_temp - current_temp) > 1:
-                    with self._wrap_action(self.ACTION_HEATING):
-                        self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f" % (source, new_target_temp))
-                        self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
+            if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 1:
+                with self._wrap_action(self.ACTION_HEATING):
+                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f\u00B0C" % (source, new_target_temp))
+                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _selected_tool_string(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS:
@@ -2935,9 +2940,9 @@ class Mmu:
         if action == self.action: return
         old_action = self.action
         self.action = action
-        gcode = self.printer.lookup_object('gcode_macro _MMU_ACTION_CHANGED', None)
+        gcode = self.printer.lookup_object("gcode_macro %s" % self.action_changed_macro, None)
         if gcode is not None:
-            self._wrap_gcode_command("_MMU_ACTION_CHANGED ACTION='%s' OLD_ACTION='%s'" % (self._get_action_string(), self._get_action_string(old_action)))
+            self._wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % (self.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
         return old_action
 
     @contextlib.contextmanager
@@ -5089,7 +5094,7 @@ class Mmu:
 
         self._log_trace("MMU PAUSE wrapper called")
         self._fix_started_state() # Get out of 'started' state before transistion to pause
-        self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_error)
         self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
@@ -5104,7 +5109,7 @@ class Mmu:
     def cmd_MMU_CANCEL_PRINT(self, gcmd):
         if self.is_enabled:
             self._log_debug("MMU_CANCEL_PRINT wrapper called")
-            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_toolchange) # Lift Z but don't save
+            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error) # Lift Z but don't save
             self._wrap_gcode_command("__CANCEL_PRINT", None)
             self._on_print_end("cancelled")
         else:
@@ -5361,6 +5366,7 @@ class Mmu:
 
         # Software behavior options
         self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
+        self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
@@ -5377,7 +5383,6 @@ class Mmu:
         self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.retry_tool_change_on_error, minval=0, maxval=1)
         self.print_start_detection = gcmd.get_int('PRINT_START_DETECTION', self.print_start_detection, minval=0, maxval=1)
-        self.pause_macro = gcmd.get('PAUSE_MACRO', self.pause_macro)
         form_tip_macro = gcmd.get('FORM_TIP_MACRO', self.form_tip_macro)
         if form_tip_macro != self.form_tip_macro:
             self.form_tip_vars = None # If macro is changed invalidate defaults
@@ -5459,6 +5464,7 @@ class Mmu:
 
         msg += "\n\nOTHER:"
         msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
+        msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         if self._has_encoder():
             msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
@@ -5476,7 +5482,6 @@ class Mmu:
         if self.mmu_logger:
             msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
-        msg += "\npause_macro = %s" % self.pause_macro
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
@@ -5494,7 +5499,7 @@ class Mmu:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
         if self.filament_pos != self.FILAMENT_POS_LOADED and not force_runout:
-            raise MmuError("Filament runout or clog when filament is not fully loaded - manual intervention is required")
+            raise MmuError("Filament runout or clog occured but filament is not fully loaded! - manual intervention is required")
 
         self._log_info("Issue on tool T%d" % self.tool_selected)
         self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)

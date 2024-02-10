@@ -157,6 +157,7 @@ self_update() {
     [ "$UPDATE_GUARD" ] && return
     export UPDATE_GUARD=YES
     clear
+    set +e
 
     cd "$SCRIPTPATH"
     BRANCH=$(timeout 3s git branch --show-current)
@@ -166,6 +167,7 @@ self_update() {
     }
 
     echo -e "${B_GREEN}Running on '${BRANCH}' branch"
+    echo -e "${B_GREEN}Checking for updates..."
     git fetch --quiet
     git diff --quiet --exit-code "origin/$BRANCH"
     [ $? -eq 1 ] && {
@@ -185,6 +187,7 @@ self_update() {
     }
     GIT_VER=$(git describe --tags)
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
+    set -e
 }
 
 function nextfilename {
