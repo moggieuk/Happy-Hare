@@ -2279,7 +2279,7 @@ class Mmu:
         self.heater_off_handler = self.reactor.register_timer(self._handle_pause_timeout, self.reactor.NEVER)
 
     def _handle_pause_timeout(self, eventtime):
-        self._log_info("Disable extruder heater")
+        self._log_info("Disabled extruder heater")
         self.gcode.run_script_from_command("M104 S0")
         return self.reactor.NEVER
 
@@ -2525,11 +2525,14 @@ class Mmu:
 
     def _mmu_unlock(self):
         if self._is_mmu_paused():
-            # Logic must be idempotent
+            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
+            # Important to wait for stable temperature to resume exactly how we paused
+            self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
+
+            if self.paused_extruder_temp:
+                self._log_info("Enabled extruder heater")
+            self._ensure_safe_extruder_temperature("pause", wait=True)
             self._set_print_state("paused")
-            self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
-            self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
-            self._ensure_safe_extruder_temperature("pause", wait=True) # Important to wait for stable temperature to resume exactly how we paused
 
     def _mmu_resume(self):
         if self._is_mmu_paused():
@@ -2905,14 +2908,13 @@ class Mmu:
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
-            self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=%.1f" % new_target_temp)
+            self.gcode.run_script_from_command("M104 S%.1f" % new_target_temp)
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
-            if wait:
-                if abs(new_target_temp - current_temp) > 1:
-                    with self._wrap_action(self.ACTION_HEATING):
-                        self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f" % (source, new_target_temp))
-                        self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
+            if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 1:
+                with self._wrap_action(self.ACTION_HEATING):
+                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f" % (source, new_target_temp))
+                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _selected_tool_string(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS:
@@ -5493,7 +5495,7 @@ class Mmu:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
         if self.filament_pos != self.FILAMENT_POS_LOADED and not force_runout:
-            raise MmuError("Filament runout or clog when filament is not fully loaded - manual intervention is required")
+            raise MmuError("Filament runout or clog occured when filament is not fully loaded - manual intervention is required")
 
         self._log_info("Issue on tool T%d" % self.tool_selected)
         self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
