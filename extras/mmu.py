@@ -929,9 +929,9 @@ class Mmu:
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
     def _initialize_state(self):
-        self.is_enabled = self.runout_enabled = self.paused_extruder_temp = None
+        self.is_enabled = self.runout_enabled = True
         self.is_homed = self.is_handling_runout = self.calibrating = False
-        self.last_print_stats = None
+        self.last_print_stats = self.paused_extruder_temp = None
         self.tool_selected = self._next_tool = self._last_tool = self.TOOL_GATE_UNKNOWN
         self._last_toolchange = "Unknown"
         self.gate_selected = self.TOOL_GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
@@ -1118,7 +1118,7 @@ class Mmu:
                 else:
                     self._log_error("Error running %s: %s" % (macro, str(e)))
             else:
-                raise e
+                raise
 
     def _movequeues_wait_moves(self, toolhead=True, mmu_toolhead=True):
         #self._log_trace("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
