@@ -157,6 +157,7 @@ self_update() {
     [ "$UPDATE_GUARD" ] && return
     export UPDATE_GUARD=YES
     clear
+    set +e
 
     cd "$SCRIPTPATH"
     BRANCH=$(timeout 3s git branch --show-current)
