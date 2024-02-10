@@ -2574,26 +2574,34 @@ class Mmu:
     def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None, force_in_print=False):
         if operation and not self.saved_toolhead_position:
             self._movequeues_wait_moves()
-            toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
-            self._log_debug("Saving toolhead position (%s) for %s" % (toolhead_pos, operation))
-            self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
-            self.saved_toolhead_position = operation
+            eventtime = self.reactor.monotonic()
+            homed = self.toolhead.get_status(eventtime)['homed_axes']
+            gcode_move = self.printer.lookup_object("gcode_move")
 
-            # Make sure we record the current speed/extruder overrides
-            if self.tool_selected >= 0:
-                mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
-                self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
-                self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
+            # Safe toolhead position
+            if 'xyz' in homed:
+                toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
+                self._log_debug("Saving toolhead position (%s) for %s" % (toolhead_pos, operation))
+                self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
+                self.saved_toolhead_position = operation
+
+                # Make sure we record the current speed/extruder overrides
+                if self.tool_selected >= 0:
+                    mmu_state = gcode_move.saved_states['MMU_state']
+                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
+                    self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
+            else:
+                self._log_debug("Cannot save toolhead position for %s because not homed" % operation)
 
             # Lift toolhead off print the specified z-hop
             if self._is_in_print(force_in_print) and z_hop_height is not None and z_hop_height > 0:
-                homed = self.toolhead.get_status(self.printer.get_reactor().monotonic())['homed_axes']
                 if 'z' not in homed:
-                    self._log_info("Warning: MMU cannot lift toolhead because toolhead not homed!")
+                    self._log_info("Warning: MMU cannot lift toolhead because not homed!")
                 else:
                     self._log_debug("Lifting toolhead %.1fmm" % z_hop_height)
                     act_z = self.toolhead.get_position()[2]
-                    max_z = self.toolhead.get_status(self.printer.get_reactor().monotonic())['axis_maximum'].z
+                    max_z = self.toolhead.get_status(eventtime)['axis_maximum'].z
+                    max_z -= gcode_move.get_status(eventtime)['homing_origin'].z
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
                     self.saved_toolhead_height = safe_z
                     self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
