@@ -2905,9 +2905,9 @@ class Mmu:
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
                 # We use error channel to aviod heating surprise. This will also cause popup in Klipperscreen
-                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f)" % (source, new_target_temp))
+                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
             else:
-                self._log_info("Heating extruder to %s temp (%.1f)" % (source, new_target_temp))
+                self._log_info("Heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
