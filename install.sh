@@ -659,60 +659,30 @@ read_previous_config() {
             parse_file "${dest_cfg}" "variable_"
 
             if [ ! "${variable_enable_park}" == "" ]; then
-                if [ ${variable_enable_park} -eq 1 ]; then
-                    variable_enable_park=True
-                    variable_enable_park_runout=True
-                    variable_enable_park_standalone=True
-                else
-                    variable_enable_park=False
-                    variable_enable_park_runout=False
-                    variable_enable_park_standalone=False
-                fi
+                variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
+                variable_enable_park_runout=${variable_enable_park}
+                variable_enable_park_standalone=${variable_enable_park}
             fi
             if [ ! "${variable_ramming_volume}" == "" ]; then
                 variable_ramming_volume_standalone=${variable_ramming_volue}
             fi
             if [ ! "${variable_auto_home}" == "" ]; then
-                if [ ${variable_auto_home} -eq 1 ]; then
-                    variable_auto_home=True
-                else
-                    variable_auto_home=False
-                fi
+                variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
             fi
             if [ ! "${variable_park_after_form_tip}" == "" ]; then
-                if [ ${variable_park_after_form_tip} -eq 1 ]; then
-                    variable_park_after_form_tip=True
-                else
-                    variable_park_after_form_tip=False
-                fi
+                variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
             fi
             if [ ! "${variable_restore_position}" == "" ]; then
-                if [ ${variable_restore_position} -eq 1 ]; then
-                    variable_restore_position=True
-                else
-                    variable_restore_position=False
-                fi
+                variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
             fi
             if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
-                if [ ${variable_gantry_servo_enabled} -eq 1 ]; then
-                    variable_gantry_servo_enabled=True
-                else
-                    variable_gantry_servo_enabled=False
-                fi
+                variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
             fi
             if [ ! "${variable_use_skinnydip}" == "" ]; then
-                if [ ${variable_use_skinnydip} -eq 1 ]; then
-                    variable_use_skinnydip=True
-                else
-                    variable_use_skinnydip=False
-                fi
+                variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
             fi
             if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
-                if [ ${variable_use_fast_skinnydip} -eq 1 ]; then
-                    variable_use_fast_skinnydip=True
-                else
-                    variable_use_fast_skinnydip=False
-                fi
+                variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
             fi
             variable_pin_loc_xy=${variable_pin_loc_x},${variable_pin_loc_y}
             variable_safe_margin_xy=${variable_safe_margin_x},${variable_safe_margin_y}
@@ -722,6 +692,16 @@ read_previous_config() {
     if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
         mmu_num_gates=$_param_mmu_num_gates
         mmu_num_leds=$(expr $mmu_num_gates + 1)
+    fi
+}
+
+convert_to_boolean_string() {
+    if [ "$1" -eq 1 ] 2>/dev/null; then
+        echo "True"
+    elif [ "$1" -eq 0 ] 2>/dev/null; then
+        echo "False"
+    else
+        echo "$1"
     fi
 }
 
