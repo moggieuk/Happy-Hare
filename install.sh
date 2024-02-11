@@ -659,7 +659,7 @@ read_previous_config() {
             parse_file "${dest_cfg}" "variable_"
 
             if [ ! "${variable_enable_park}" == "" ]; then
-                if [ "${variable_enable_park}" -eq 1 ]; then
+                if [ ${variable_enable_park} -eq 1 ]; then
                     variable_enable_park=True
                     variable_enable_park_runout=True
                     variable_enable_park_standalone=True
@@ -673,42 +673,42 @@ read_previous_config() {
                 variable_ramming_volume_standalone=${variable_ramming_volue}
             fi
             if [ ! "${variable_auto_home}" == "" ]; then
-                if [ "${variable_auto_home}" -eq 1 ]; then
+                if [ ${variable_auto_home} -eq 1 ]; then
                     variable_auto_home=True
                 else
                     variable_auto_home=False
                 fi
             fi
             if [ ! "${variable_park_after_form_tip}" == "" ]; then
-                if [ "${variable_park_after_form_tip}" -eq 1 ]; then
+                if [ ${variable_park_after_form_tip} -eq 1 ]; then
                     variable_park_after_form_tip=True
                 else
                     variable_park_after_form_tip=False
                 fi
             fi
             if [ ! "${variable_restore_position}" == "" ]; then
-                if [ "${variable_restore_position}" -eq 1 ]; then
+                if [ ${variable_restore_position} -eq 1 ]; then
                     variable_restore_position=True
                 else
                     variable_restore_position=False
                 fi
             fi
             if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
-                if [ "${variable_gantry_servo_enabled}" -eq 1 ]; then
+                if [ ${variable_gantry_servo_enabled} -eq 1 ]; then
                     variable_gantry_servo_enabled=True
                 else
                     variable_gantry_servo_enabled=False
                 fi
             fi
             if [ ! "${variable_use_skinnydip}" == "" ]; then
-                if [ "${variable_use_skinnydip}" -eq 1 ]; then
+                if [ ${variable_use_skinnydip} -eq 1 ]; then
                     variable_use_skinnydip=True
                 else
                     variable_use_skinnydip=False
                 fi
             fi
             if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
-                if [ "${variable_use_fast_skinnydip}" -eq 1 ]; then
+                if [ ${variable_use_fast_skinnydip} -eq 1 ]; then
                     variable_use_fast_skinnydip=True
                 else
                     variable_use_fast_skinnydip=False
