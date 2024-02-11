@@ -2809,9 +2809,9 @@ class Mmu:
         return False
 
     def _check_in_bypass(self):
-        if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos not in [self.FILAMENT_POS_UNLOADED, self.FILAMENT_POS_UNKNOWN]:
-            self._log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
-            return True
+        if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos not in [self.FILAMENT_POS_UNLOADED]:
+                self._log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
+                return True
         return False
 
     def _check_not_bypass(self):
@@ -2922,9 +2922,9 @@ class Mmu:
 
     def _selected_tool_string(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS:
-            return "bypass"
+            return "Bypass"
         elif self.tool_selected == self.TOOL_GATE_UNKNOWN:
-            return "unknown"
+            return "Unknown"
         else:
             return "T%d" % self.tool_selected
 
@@ -4713,7 +4713,7 @@ class Mmu:
     def _change_tool(self, tool, skip_tip=True):
         self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
         skip_unload = False
-        initial_tool_string = "Unknown" if self.tool_selected < 0 else ("T%d" % self.tool_selected)
+        initial_tool_string = self._selected_tool_string()
         if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
             self._log_always("Tool T%d is already loaded" % tool)
             return False
@@ -5636,7 +5636,7 @@ class Mmu:
             msg_selct = "Selct: " + "".join(select_strings) + ("|" if self.gate_selected == num_gates - 1 else "-")
             msg = "\n".join([msg_gates, msg_tools, msg_avail, msg_selct])
             if self.is_homed:
-                msg += " Bypass" if self.gate_selected == self.TOOL_GATE_BYPASS else (" T%d" % self.tool_selected) if self.tool_selected >= 0 else ""
+                msg += " " + self._selected_tool_string()
             else:
                 msg += " NOT HOMED"
         return msg
