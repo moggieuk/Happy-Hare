@@ -549,10 +549,12 @@ set_default_tokens() {
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" "" "_param_"
+    parse_file "${SRCDIR}/config/base/mmu_variables.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_sequence.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg" "variable_"
+    parse_file "${SRCDIR}/config/base/mmu_leds.cfg" "variable_"
 }
 
 # Pull parameters from previous installation
