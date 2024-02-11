@@ -487,14 +487,21 @@ update_copy_file() {
     # Read the file line by line
     while IFS="" read -r line || [ -n "$line" ]
     do
-        if echo "$line" | egrep -q '^#'; then
+        if echo "$line" | egrep -q '^[#;]'; then
             # Just copy simple comments
             echo "$line"
         elif [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
             # Line of interest
             # Split the line into the part before # and the part after #
-            parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | cut -d'#' -f1)
-            comment=$(echo "$line" | cut -s -d'#' -f2-)
+            parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/;/# /' | cut -d'#' -f1)
+
+            if echo "$line" | grep -q "#"; then
+                commentChar="#"
+                comment=$(echo "$line" | sed 's/.*#//')
+            elif echo "$line" | grep -q ";"; then
+                commentChar=";"
+                comment=$(echo "$line" | sed 's/.*;//')
+            fi
             space=`printf "%s" "$parameterAndValueAndSpace" | sed 's/.*[^[:space:]]\(.*\)$/\1/'`
 
             if echo "$parameterAndValueAndSpace" | egrep -q "${prefix_filter}"; then
@@ -519,7 +526,7 @@ update_copy_file() {
                         new_value="{$parameter}"
                     fi
                     if [ -n "$comment" ]; then
-                        echo "${parameter}: ${new_value}${space}#${comment}"
+                        echo "${parameter}: ${new_value}${space}${commentChar}${comment}"
                     else
                         echo "${parameter}: ${new_value}"
                     fi
@@ -651,7 +658,7 @@ read_previous_config() {
         fi
     fi
 
-    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg; do
+    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_leds.cfg mmu_variables.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
         if [ ! -f "${dest_cfg}" ]; then
@@ -666,7 +673,7 @@ read_previous_config() {
                 variable_enable_park_standalone=${variable_enable_park}
             fi
             if [ ! "${variable_ramming_volume}" == "" ]; then
-                variable_ramming_volume_standalone=${variable_ramming_volue}
+                variable_ramming_volume_standalone=${variable_ramming_volume}
             fi
             if [ ! "${variable_auto_home}" == "" ]; then
                 variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
@@ -686,8 +693,12 @@ read_previous_config() {
             if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
                 variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
             fi
-            variable_pin_loc_xy=${variable_pin_loc_x},${variable_pin_loc_y}
-            variable_safe_margin_xy=${variable_safe_margin_x},${variable_safe_margin_y}
+            if [ ! "${variable_pin_loc_x}" == "" ]; then
+                variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
+            fi
+            if [ ! "${variable_safe_margin_x}" == "" ]; then
+                variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
+            fi
         fi
     done
 
@@ -866,7 +877,6 @@ copy_config_files() {
             fi
 
         # Variables macro ---------------------------------------------------------------------
-# PAUL  elif [ "${file}" == "mmu_form_tip.cfg" -o "${file}" == "mmu_cut_tip.cfg" -o "${file}" == "mmu_sequence.cfg" ]; then
         elif [ "${file}" == "mmu_variables.cfg" ]; then
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} > ${dest}
