@@ -520,7 +520,6 @@ class Mmu:
             self.default_ttg_map = list(range(self.mmu_num_gates))
         self.ttg_map = list(self.default_ttg_map)
 
-
         # Tool speed and extrusion multipliers
         for i in range(self.mmu_num_gates):
             self.tool_extrusion_multipliers.append(1.)
@@ -591,7 +590,6 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
         self.gcode.register_command('MMU_TEST_RUNOUT', self.cmd_MMU_TEST_RUNOUT, desc = self.cmd_MMU_TEST_RUNOUT_help)
         self.gcode.register_command('MMU_TEST_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help)
-        self.gcode.register_command('MMU_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help) # TODO : Deprecate Alias for MMU_TEST_FORM_TIP
         self.gcode.register_command('_MMU_TEST', self.cmd_MMU_TEST, desc = self.cmd_MMU_TEST_help) # Internal for testing
 
         # Soak Testing
@@ -3135,24 +3133,27 @@ class Mmu:
         gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, None)
         if gcode_macro is None:
             raise gcmd.error("Filament tip forming macro '%s' not found" % self.form_tip_macro)
+        gcode_macro_vars = self.printer.lookup_object("gcode_macro %s_VARS" % self.form_tip_macro, None)
+        if gcode_macro_vars is None:
+            gcode_macro_vars = gcode_macro
 
         if reset:
             if self.form_tip_vars is not None:
-                gcode_macro.variables = dict(self.form_tip_vars)
+                gcode_macro_vars.variables = dict(self.form_tip_vars)
                 self.form_tip_vars = None
                 self._log_always("Reset '%s' macro variables to defaults" % self.form_tip_macro)
             show = True
 
         if show:
             msg = "Variable settings for macro '%s':" % self.form_tip_macro
-            for k, v in gcode_macro.variables.items():
+            for k, v in gcode_macro_vars.variables.items():
                 msg += "\nvariable_%s: %s" % (k, v)
             self._log_always(msg)
             return
 
         # Save restore point on first call
         if self.form_tip_vars is None:
-            self.form_tip_vars = dict(gcode_macro.variables)
+            self.form_tip_vars = dict(gcode_macro_vars.variables)
 
         for param in gcmd.get_command_parameters():
             value = gcmd.get(param)
@@ -3160,15 +3161,14 @@ class Mmu:
             if param.startswith("variable_"):
                 self._log_always("Removing 'variable_' prefix from '%s' - not necessary" % param)
                 param = param[9:]
-            if param in gcode_macro.variables:
-                gcode_macro.variables[param] = self._fix_type(value)
+            if param in gcode_macro_vars.variables:
+                gcode_macro_vars.variables[param] = self._fix_type(value)
             elif param not in ["reset", "show", "run", "eject", "force_in_print"]:
                 self._log_error("Variable '%s' is not defined for '%s' macro" % (param, self.form_tip_macro))
 
-        # Run the macro ensuring final_eject is set
-        gcode_macro.variables['final_eject'] = 1 if eject else 0
+        # Run the macro in test mode (final_eject is set)
         msg = "Running macro '%s' with the following variable settings:" % self.form_tip_macro
-        for k, v in gcode_macro.variables.items():
+        for k, v in gcode_macro_vars.variables.items():
             msg += "\nvariable_%s: %s" % (k, v)
         self._log_always(msg)
 
@@ -3177,7 +3177,6 @@ class Mmu:
             # Mimick in print if requested
             self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print))
             _,_,_ = self._do_form_tip(test=True)
-            gcode_macro.variables['final_eject'] = 0
             self._sync_gear_to_extruder(False, servo=True)
 
     cmd_MMU_STEP_LOAD_GATE_help = "User composable loading step: Move filament from gate to start of bowden"
@@ -4012,7 +4011,7 @@ class Mmu:
             try:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
-                self._wrap_gcode_command(self.form_tip_macro, exception=True)
+                self._wrap_gcode_command("%s%s" % (self.form_tip_macro, " FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
