@@ -883,7 +883,9 @@ copy_config_files() {
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
 
-        elif [ "${file}" == "mmu_form_tip.cfg" -o "${file}" == "mmu_cut_tip.cfg" -o "${file}" == "mmu_sequence.cfg" ]; then
+        # Variables macro ---------------------------------------------------------------------
+# PAUL  elif [ "${file}" == "mmu_form_tip.cfg" -o "${file}" == "mmu_cut_tip.cfg" -o "${file}" == "mmu_sequence.cfg" ]; then
+        elif [ "${file}" == "mmu_variables.cfg" ]; then
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} > ${dest}
             else
@@ -891,8 +893,9 @@ copy_config_files() {
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
 
+        # Everything else is read-only symlink ------------------------------------------------
         else
-            cp ${src} ${dest}
+            ln -sf ${src} ${dest}
 	fi
     done
 
