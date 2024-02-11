@@ -557,39 +557,6 @@ read_default_config() {
 
 # Pull parameters from previous installation
 read_previous_config() {
-
-# ### TODO
-# # Set runout and standalone to enable_park in upgrade
-# variable_enable_park            : True
-# variable_enable_park_runout     : True
-# variable_enable_park_standalone : True
-# 
-# # Convert these from 0 and 1 to True / False
-# variable_auto_home              : True
-# variable_park_after_form_tip    : False
-# variable_restore_position       : True
-# 
-# variable_gantry_servo_enabled   : True # mmu_cut_tip
-# 
-# variable_use_skinnydip          : False
-# variable_use_fast_skinnydip     : False
-# 
-# variable_toolchange_fan_assist  : False	# New mmu_form_tip
-# variable_toolchange_fan_speed   : 50 # New mmu_form_tip
-# 
-# # New mmu_sequence
-# variable_timelapse              : False
-# 
-# 
-# # create by combining pin_loc_x and pin_loc_y
-# variable_pin_loc_xy             : 14,250
-# 
-# # create by combining safe_margin_x and safe_margin_y
-# variable_safe_margin_xy         : 30, 30
-#
-## Set this to ramming_volume
-#variable_ramming_volume_standalone : 0 # mmu_form_tip
-
     cfg="mmu_parameters.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
@@ -690,6 +657,65 @@ read_previous_config() {
         else
             echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
             parse_file "${dest_cfg}" "variable_"
+
+            if [ ! "${variable_enable_park}" == "" ]; then
+                if [ "${variable_enable_park}" -eq 1 ]; then
+                    variable_enable_park=True
+                    variable_enable_park_runout=True
+                    variable_enable_park_standalone=True
+                else
+                    variable_enable_park=False
+                    variable_enable_park_runout=False
+                    variable_enable_park_standalone=False
+                fi
+            fi
+            if [ ! "${variable_ramming_volume}" == "" ]; then
+                variable_ramming_volume_standalone=${variable_ramming_volue}
+            fi
+            if [ ! "${variable_auto_home}" == "" ]; then
+                if [ "${variable_auto_home}" -eq 1 ]; then
+                    variable_auto_home=True
+                else
+                    variable_auto_home=False
+                fi
+            fi
+            if [ ! "${variable_park_after_form_tip}" == "" ]; then
+                if [ "${variable_park_after_form_tip}" -eq 1 ]; then
+                    variable_park_after_form_tip=True
+                else
+                    variable_park_after_form_tip=False
+                fi
+            fi
+            if [ ! "${variable_restore_position}" == "" ]; then
+                if [ "${variable_restore_position}" -eq 1 ]; then
+                    variable_restore_position=True
+                else
+                    variable_restore_position=False
+                fi
+            fi
+            if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
+                if [ "${variable_gantry_servo_enabled}" -eq 1 ]; then
+                    variable_gantry_servo_enabled=True
+                else
+                    variable_gantry_servo_enabled=False
+                fi
+            fi
+            if [ ! "${variable_use_skinnydip}" == "" ]; then
+                if [ "${variable_use_skinnydip}" -eq 1 ]; then
+                    variable_use_skinnydip=True
+                else
+                    variable_use_skinnydip=False
+                fi
+            fi
+            if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
+                if [ "${variable_use_fast_skinnydip}" -eq 1 ]; then
+                    variable_use_fast_skinnydip=True
+                else
+                    variable_use_fast_skinnydip=False
+                fi
+            fi
+            variable_pin_loc_xy=${variable_pin_loc_x},${variable_pin_loc_y}
+            variable_safe_margin_xy=${variable_safe_margin_x},${variable_safe_margin_y}
         fi
     done
 
