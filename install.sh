@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.42 # Important: Keep synced with mmy.py
+VERSION=2.50 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
@@ -1579,7 +1579,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
 
     # Important to update version
     FROM_VERSION=${_param_happy_hare_version}
-    if [ ! "${FROM_VERSION}" == "" ]; then
+    if [ ! "${FROM_VERSION}" == "" ] && [ ! "${FROM_VERSION}" == "${VERSION}" ]; then
         echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
     fi
     _param_happy_hare_version=${VERSION}

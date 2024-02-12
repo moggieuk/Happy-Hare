@@ -67,9 +67,9 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
-    VERSION = 2.42		# When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 2.50 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
-    BOOT_DELAY = 2.0            # Delay before running bootup tasks
+    BOOT_DELAY = 2.0 # Delay before running bootup tasks
 
     # Calibration steps
     CALIBRATED_GEAR     = 0b00001
@@ -102,8 +102,8 @@ class Mmu:
     FILAMENT_POS_HOMED_EXTRUDER = 6
     FILAMENT_POS_EXTRUDER_ENTRY = 7
     FILAMENT_POS_HOMED_TS = 8
-    FILAMENT_POS_IN_EXTRUDER = 9    # AKA FILAMENT_POS_PAST_TS
-    FILAMENT_POS_LOADED = 10        # AKA FILAMENT_POS_HOMED_NOZZLE
+    FILAMENT_POS_IN_EXTRUDER = 9 # AKA FILAMENT_POS_PAST_TS
+    FILAMENT_POS_LOADED = 10     # AKA FILAMENT_POS_HOMED_NOZZLE
 
     DIRECTION_LOAD = 1
     DIRECTION_UNKNOWN = 0
