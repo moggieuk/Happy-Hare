@@ -1369,9 +1369,13 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ('%s' %x), self.gate_color))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override))
-        gcode = self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None)
-        if gcode is not None:
+        if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
+
+    def _log_to_file(self, message):
+        message = "> %s" % message
+        if self.mmu_logger:
+            self.mmu_logger.info(message)
 
     def _log_to_file(self, message):
         message = "> %s" % message
@@ -2468,8 +2472,7 @@ class Mmu:
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_printer_paused(), idle_timeout))
             if call_macro:
-                gcode = self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro, None)
-                if gcode is not None:
+                if self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro, None) is not None:
                     self._wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.print_state_changed_macro, print_state, self.print_state))
             self.print_state = print_state
 
@@ -2963,8 +2966,7 @@ class Mmu:
         if action == self.action: return
         old_action = self.action
         self.action = action
-        gcode = self.printer.lookup_object("gcode_macro %s" % self.action_changed_macro, None)
-        if gcode is not None:
+        if self.printer.lookup_object("gcode_macro %s" % self.action_changed_macro, None) is not None:
             self._wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % (self.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
         return old_action
 
@@ -3020,7 +3022,7 @@ class Mmu:
         steps = gcmd.get_int('STEPS', 0, minval=0, maxval=1)
         msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full command set)\n"
         tmsg = "\nCalibration and testing commands:\n"
-        mmsg = "\nMacros and callbacks (defined in mmu_software.cfg, mmu_form_tip.cfg, mmu_cut_tip.cfg, mmu_sequence.cfg):\n"
+        mmsg = "\nMacros and callbacks (defined in mmu_form_tip.cfg, mmu_cut_tip.cfg, mmu_sequence.cfg, mmu_state.cfg):\n"
         smsg = "\nIndividual load/unload sequence steps:\n"
         cmds = list(self.gcode.ready_gcode_handlers.keys())
         cmds.sort()
@@ -3034,7 +3036,7 @@ class Mmu:
                     tmsg += "%s : %s\n" % (c.upper(), d)
             elif c.startswith("_MMU"):
                 if not c.startswith("_MMU_STEP"):
-                    if c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_TEST", "_MMU_VARIABLES", "_MMU_CUT_TIP", "_MMU_FORM_TIP"]: # Remove internal helpers
+                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_VARIABLES", "_MMU_CUT_TIP", "_MMU_FORM_TIP"]: # Remove internal helpers
                         mmsg += "%s : %s\n" % (c.upper(), d)
                 else:
                     smsg += "%s : %s\n" % (c.upper(), d)
@@ -5615,8 +5617,7 @@ class Mmu:
             if state != self.gate_status[gate]:
                 self.gate_status[gate] = state
                 self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
-                gcode = self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None)
-                if gcode is not None:
+                if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
                     self._wrap_gcode_command("%s GATE='%d'" % (self.gate_map_changed_macro, gate))
 
     # Use pre-gate sensors (if fitted) to "correct" gate status
