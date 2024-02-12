@@ -357,6 +357,7 @@ class Mmu:
         self.pause_macro = config.get('pause_macro', 'PAUSE')
         self.action_changed_macro = config.get('action_changed_macro', '_MMU_ACTION_CHANGED')
         self.print_state_changed_macro = config.get('print_state_changed_macro', '_MMU_PRINT_STATE_CHANGED')
+        self.gate_map_changed_macro = config.get('gate_map_changed_macro', '_MMU_GATE_MAP_CHANGED')
         self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP')
         self.pre_unload_macro = config.get('pre_unload_macro', '_MMU_PRE_UNLOAD')
         self.post_form_tip_macro = config.get('post_form_tip_macro', '_MMU_POST_FORM_TIP')
@@ -905,7 +906,7 @@ class Mmu:
                 led_chains = MmuLeds.chains
                 led_vars = {}
                 if led_chains:
-                    led_vars['led_enable'] = 1
+                    led_vars['led_enable'] = 'True'
                     exit = led_chains['exit']
                     led_vars['exit_first_led_index'] = exit[0] if exit else -1
                     led_vars['exit_reverse_order'] = int(exit[0] > exit[-1]) if exit else 0
@@ -917,7 +918,7 @@ class Mmu:
                     self.has_leds = True
                     self._log_debug("LEDs support enabled")
                 else:
-                    led_vars['led_enable'] = 0
+                    led_vars['led_enable'] = 'False'
                     self._log_debug("LEDs support is not configured")
                 gcode_macro.variables.update(led_vars)
             except Exception as e:
@@ -1366,9 +1367,9 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ('%s' %x), self.gate_color))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override))
-        gcode = self.printer.lookup_object('gcode_macro _MMU_GATE_MAP_CHANGED', None)
+        gcode = self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None)
         if gcode is not None:
-            self._wrap_gcode_command("_MMU_GATE_MAP_CHANGED GATE=-1")
+            self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
     def _log_error(self, message):
         if self.mmu_logger:
@@ -3054,10 +3055,12 @@ class Mmu:
             quiet = True
 
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
+        gcode_vars = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", gcode_macro)
         if gcode_macro:
             try:
-                variables = gcode_macro.variables
-                current_led_enable = int(variables['led_enable'])
+                variables = gcode_vars.variables
+                macro_variables = gcode_macro.variables
+                current_led_enable = variables['led_enable']
                 led_enable = gcmd.get_int('ENABLE', current_led_enable, minval=0, maxval=1)
                 default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
                 default_entry_effect = gcmd.get('ENTRY_EFFECT', variables['default_entry_effect'])
@@ -3071,17 +3074,17 @@ class Mmu:
                 if current_led_enable and not led_enable:
                     # Enabled to disabled
                     self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off")
-                    gcode_macro.variables.update(led_vars)
+                    gcode_vars.variables.update(led_vars)
                 else:
-                    gcode_macro.variables.update(led_vars)
+                    gcode_vars.variables.update(led_vars)
                     self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default")
 
                 if not quiet:
                     effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled != -1 else "Unavailable"
                     msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
-                    msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, variables['exit_first_led_index'])
-                    msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, variables['entry_first_led_index'])
-                    msg += "Default status effect: %s\n" % effect_string(default_status_effect, variables['status_led_index'])
+                    msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, macro_variables['exit_first_led_index'])
+                    msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, macro_variables['entry_first_led_index'])
+                    msg += "Default status effect: %s\n" % effect_string(default_status_effect, macro_variables['status_led_index'])
                     msg += "\nOptions:\nENABLE=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|custom_color]\nENTRY_EFFECT=[off|gate_status|filament_color|custom_color]\nSTATUS_EFFECT=[off|on|filament_color|custom_color]"
                     self._log_always(msg)
             except Exception as e:
@@ -3133,27 +3136,25 @@ class Mmu:
         gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, None)
         if gcode_macro is None:
             raise gcmd.error("Filament tip forming macro '%s' not found" % self.form_tip_macro)
-        gcode_macro_vars = self.printer.lookup_object("gcode_macro %s_VARS" % self.form_tip_macro, None)
-        if gcode_macro_vars is None:
-            gcode_macro_vars = gcode_macro
+        gcode_vars = self.printer.lookup_object("gcode_macro %s_VARS" % self.form_tip_macro, gcode_macro)
 
         if reset:
             if self.form_tip_vars is not None:
-                gcode_macro_vars.variables = dict(self.form_tip_vars)
+                gcode_vars.variables = dict(self.form_tip_vars)
                 self.form_tip_vars = None
                 self._log_always("Reset '%s' macro variables to defaults" % self.form_tip_macro)
             show = True
 
         if show:
             msg = "Variable settings for macro '%s':" % self.form_tip_macro
-            for k, v in gcode_macro_vars.variables.items():
+            for k, v in gcode_vars.variables.items():
                 msg += "\nvariable_%s: %s" % (k, v)
             self._log_always(msg)
             return
 
         # Save restore point on first call
         if self.form_tip_vars is None:
-            self.form_tip_vars = dict(gcode_macro_vars.variables)
+            self.form_tip_vars = dict(gcode_vars.variables)
 
         for param in gcmd.get_command_parameters():
             value = gcmd.get(param)
@@ -3161,14 +3162,14 @@ class Mmu:
             if param.startswith("variable_"):
                 self._log_always("Removing 'variable_' prefix from '%s' - not necessary" % param)
                 param = param[9:]
-            if param in gcode_macro_vars.variables:
-                gcode_macro_vars.variables[param] = self._fix_type(value)
+            if param in gcode_vars.variables:
+                gcode_vars.variables[param] = self._fix_type(value)
             elif param not in ["reset", "show", "run", "eject", "force_in_print"]:
                 self._log_error("Variable '%s' is not defined for '%s' macro" % (param, self.form_tip_macro))
 
         # Run the macro in test mode (final_eject is set)
         msg = "Running macro '%s' with the following variable settings:" % self.form_tip_macro
-        for k, v in gcode_macro_vars.variables.items():
+        for k, v in gcode_vars.variables.items():
             msg += "\nvariable_%s: %s" % (k, v)
         self._log_always(msg)
 
@@ -5558,9 +5559,9 @@ class Mmu:
             if state != self.gate_status[gate]:
                 self.gate_status[gate] = state
                 self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
-                gcode = self.printer.lookup_object('gcode_macro _MMU_GATE_MAP_CHANGED', None)
+                gcode = self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None)
                 if gcode is not None:
-                    self._wrap_gcode_command("_MMU_GATE_MAP_CHANGED GATE='%d'" % gate)
+                    self._wrap_gcode_command("%s GATE='%d'" % (self.gate_map_changed_macro, gate))
 
     # Use pre-gate sensors (if fitted) to "correct" gate status
     # Return updated gate_status
@@ -6101,8 +6102,8 @@ class Mmu:
                     except MmuError as ee:
                         # Exception just means filament is not loaded yet, so continue
                         self._log_trace("Exception on preload: %s" % str(ee))
-                self._set_gate_status(gate, self.GATE_EMPTY)
                 self._log_always("Filament not detected in gate #%d" % gate)
+                self._set_gate_status(gate, self.GATE_EMPTY)
             except MmuError as ee:
                 self._log_always("Filament preload for gate #%d failed: %s" % (gate, str(ee)))
             finally:
