@@ -852,6 +852,15 @@ copy_config_files() {
                 done
             done >> $dest
 
+        # Variables macro ---------------------------------------------------------------------
+        elif [ "${file}" == "mmu_variables.cfg" ]; then
+            if [ "${INSTALL}" -eq 1 ]; then
+                cat ${src} > ${dest}
+            else
+                cat ${src} > ${dest}.tmp
+                update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
+            fi
+
         # Software macros --------------------------------------------------------------------
         elif [ "${file}" == "mmu_software.cfg" ]; then
             tx_macros=""
@@ -876,15 +885,6 @@ copy_config_files() {
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
 
-        # Variables macro ---------------------------------------------------------------------
-        elif [ "${file}" == "mmu_variables.cfg" ]; then
-            if [ "${INSTALL}" -eq 1 ]; then
-                cat ${src} > ${dest}
-            else
-                cat ${src} > ${dest}.tmp
-                update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
-            fi
-
         # Everything else is read-only symlink ------------------------------------------------
         else
             ln -sf ${src} ${dest}
@@ -902,7 +902,7 @@ copy_config_files() {
     for file in `cd ${SRCDIR}/config/optional ; ls *.cfg`; do
         src=${SRCDIR}/config/optional/${file}
         dest=${KLIPPER_CONFIG_HOME}/mmu/optional/${file}
-        cp ${src} ${dest}
+        ln -sf ${src} ${dest}
     done
 
     src=${SRCDIR}/config/mmu_vars.cfg
