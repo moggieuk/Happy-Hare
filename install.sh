@@ -157,12 +157,13 @@ self_update() {
     [ "$UPDATE_GUARD" ] && return
     export UPDATE_GUARD=YES
     clear
-    set +e
 
+    set +e
+    (set -e
     cd "$SCRIPTPATH"
     BRANCH=$(timeout 3s git branch --show-current)
     [ -z "${BRANCH}" ] && {
-        echo -e "${B_GREEN}Timeout talking to github. Skipping upgrade check"
+        echo -e "${ERROR}Timeout talking to github. Skipping upgrade check"
         return
     }
 
@@ -187,6 +188,12 @@ self_update() {
     }
     GIT_VER=$(git describe --tags)
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
+    )
+    if [ $? -ne 0 ]; then
+        echo -e "${ERROR}Error automatically updating from github"
+        echo -e "${ERROR}Looks like you might have an old version of git"
+        echo -e "${ERROR}Skipping..." 
+    fi
     set -e
 }
 
