@@ -2569,12 +2569,17 @@ class Mmu:
             self.printer.send_event("mmu:mmu_resumed") # Notify MMU resumed event
 
     def _continue_printing(self, operation, sync=True):
+        self._clear_macro_state()
         self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
         if self._is_in_print():
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation)
         self._initialize_filament_position() # Encoder 0000
         # Ready to continue printing...
+
+    def _clear_macro_state(self):
+        if self.printer.lookup_object('gcode_macro _MMU_CLEAR_POSITION', None) is not None:
+            self._wrap_gcode_command("_MMU_CLEAR_POSITION")
 
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics
@@ -5065,10 +5070,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if not self._is_in_print():
             self._on_print_start()
-            # Paranoia...
-            gcode = self.printer.lookup_object('gcode_macro _MMU_CLEAR_POSITION', None)
-            if gcode is not None:
-                self._wrap_gcode_command("_MMU_CLEAR_POSITION")
+            self._clear_macro_state()
 
     cmd_MMU_PRINT_END_help = "Cleans up state after after print end"
     def cmd_MMU_PRINT_END(self, gcmd):
@@ -5076,10 +5078,7 @@ class Mmu:
         end_state = gcmd.get('STATE', "complete")
         if end_state in ["complete", "error", "cancelled", "ready", "standby"]:
             self._on_print_end(end_state)
-            # Paranoia...
-            gcode = self.printer.lookup_object('gcode_macro _MMU_CLEAR_POSITION', None)
-            if gcode is not None:
-                self._wrap_gcode_command("_MMU_CLEAR_POSITION")
+            self._clear_macro_state()
         else:
             raise gcmd.error("Unknown endstate '%s'" % end_state)
 
