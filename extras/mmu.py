@@ -1084,7 +1084,7 @@ class Mmu:
     cmd_MMU_BOOTUP_TASKS_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP_TASKS(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
-        fversion = lambda f: "v" + str(f)[0] + "." + ".".join(str(f)[2:])
+        fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
         try:
             self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare %s Ready' % fversion(self.config_version))
             if self.log_startup_status > 0:
@@ -1483,7 +1483,7 @@ class Mmu:
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
         on_off = lambda x: "ON" if x else "OFF"
 
-        fversion = lambda f: "v" + str(f)[0] + "." + ".".join(str(f)[2:])
+        fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
         msg = "MMU: Happy Hare %s running %s v%s" % (fversion(self.config_version), self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
         msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_mmu_paused() else "OPERATIONAL")
