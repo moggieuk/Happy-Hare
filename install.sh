@@ -854,15 +854,6 @@ copy_config_files() {
 
         # Variables macro ---------------------------------------------------------------------
         elif [ "${file}" == "mmu_variables.cfg" ]; then
-            if [ "${INSTALL}" -eq 1 ]; then
-                cat ${src} > ${dest}
-            else
-                cat ${src} > ${dest}.tmp
-                update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
-            fi
-
-        # Software macros --------------------------------------------------------------------
-        elif [ "${file}" == "mmu_software.cfg" ]; then
             tx_macros=""
             for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
             do
@@ -874,13 +865,11 @@ copy_config_files() {
                 cat ${src} | sed -e "\
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
-                    s%{led_enable}%${SETUP_LED}%g; \
                         " > ${dest}
             else
                 cat ${src} | sed -e "\
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
-                    s%{led_enable}%${SETUP_LED}%g; \
                         " > ${dest}.tmp
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
