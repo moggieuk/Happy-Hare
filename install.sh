@@ -190,9 +190,9 @@ self_update() {
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
     )
     if [ $? -ne 0 ]; then
-        echo -e "${ERROR}Error automatically updating from github"
+        echo -e "${ERROR}Error updating from github"
         echo -e "${ERROR}Looks like you might have an old version of git"
-        echo -e "${ERROR}Skipping..." 
+        echo -e "${ERROR}Skipping automatic update..." 
     fi
     set -e
 }
