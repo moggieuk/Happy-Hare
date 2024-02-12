@@ -747,7 +747,11 @@ copy_config_files() {
                 echo -e "${WARNING}Skipping copy of hardware config file ${file} because already exists"
                 continue
             else
-                echo -e "${INFO}Installing/Upgrading configuration file ${file}"
+                if [ "${file}" == "mmu_parameters.cfg" ] || [ "${file}" == "mmu_variables.cfg" ]; then
+                    echo -e "${INFO}Upgrading configuration file ${file}"
+                else
+                    echo -e "${INFO}Installing configuration file ${file}"
+                fi
                 mv ${dest} ${next_dest}
             fi
         fi
