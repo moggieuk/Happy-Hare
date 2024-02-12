@@ -728,7 +728,8 @@ copy_config_files() {
         mkdir ${mmu_dir}/base
         mkdir ${mmu_dir}/optional
     else
-        echo -e "${DETAIL}Config directory ${mmu_dir} already exists - backing up old config files to ${next_mmu_dir}"
+        echo -e "${DETAIL}Config directory ${mmu_dir} already exists"
+        echo -e "${DETAIL}Backing up old config files to ${next_mmu_dir}"
         mkdir ${next_mmu_dir}
         (cd "${mmu_dir}"; cp -r * "${next_mmu_dir}")
     fi
