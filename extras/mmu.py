@@ -352,6 +352,7 @@ class Mmu:
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
         self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
         self.print_start_detection = config.getint('print_start_detection', 1, minval=0, maxval=1)
+        self.raise_prompt_dialog = config.getint('raise_prompt_dialog', 0, minval=0, maxval=1)
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
@@ -933,7 +934,7 @@ class Mmu:
     def _initialize_state(self):
         self.is_enabled = self.runout_enabled = True
         self.is_homed = self.is_handling_runout = self.calibrating = False
-        self.last_print_stats = self.paused_extruder_temp = None
+        self.last_print_stats = self.paused_extruder_temp = self.reason_for_pause = None
         self.tool_selected = self._next_tool = self._last_tool = self.TOOL_GATE_UNKNOWN
         self._last_toolchange = "Unknown"
         self.gate_selected = self.TOOL_GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
@@ -1214,7 +1215,8 @@ class Mmu:
                 'print_state': self.print_state,
                 'clog_detection': self.enable_clog_detection,
                 'endless_spool': self.enable_endless_spool,
-                'print_start_detection': self.print_start_detection,
+                'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
+                'reason_for_pause': self.reason_for_pause if self._is_mmu_paused() else "",
         }
 
     def _reset_statistics(self):
@@ -2528,8 +2530,11 @@ class Mmu:
                 self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_error, force_in_print=force_in_print)
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
+                self.reason_for_pause = reason
                 send_event = True
                 recover_pos = True
+                if self.raise_prompt_dialog: # PAUL
+                    self._mmu_prompt_dialog(reason) # PAUL
             else:
                 self._log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
                 recover_pos = True
@@ -2548,6 +2553,10 @@ class Mmu:
         if send_event:
             self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
 
+    def _mmu_prompt_dialog(self, message): # PAUL
+        if self.printer.lookup_object('gcode_macro _MMU_PAUSE_DIALOG', None) is not None:
+            self._wrap_gcode_command("_MMU_PAUSE_DIALOG MSG='%s'" % self.reason_for_pause)
+
     def _mmu_unlock(self):
         if self._is_mmu_paused():
             self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
@@ -2561,6 +2570,7 @@ class Mmu:
 
     def _mmu_resume(self):
         if self._is_mmu_paused():
+            self.reason_for_pause = None
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.paused_extruder_temp = None
 
@@ -6049,7 +6059,7 @@ class Mmu:
                     except ValueError as ve:
                         msg = "Invalid TOOLS parameter: %s" % tools
                         if self._is_printing():
-                            self._mmu_pause(msg)
+                            self._mmu_pause(msg) # PAUL
                         else:
                             self._log_always(msg)
                         return
@@ -6081,7 +6091,7 @@ class Mmu:
                         self._log_info("Unloading current tool prior to checking gates")
                         self._unload_tool()
                 except MmuError as ee:
-                    self._mmu_pause(str(ee))
+                    self._mmu_pause(str(ee)) # PAUL
                     return
     
                 if len(gates_tools) > 1:
@@ -6103,7 +6113,7 @@ class Mmu:
                         except MmuError as ee:
                             msg = "Failure during check gate #%d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
                             if self._is_printing():
-                                self._mmu_pause(msg)
+                                self._mmu_pause(msg) # PAUL
                             else:
                                 self._log_always(msg)
                             return
@@ -6116,7 +6126,7 @@ class Mmu:
                             msg = "Gate #%d marked EMPTY" % gate
                         if self._is_printing():
                             # Use case of in-print verification of all tools used in print
-                            self._mmu_pause("Required " + msg)
+                            self._mmu_pause("Required " + msg) # PAUL
                             self._log_debug("Reason: %s" % str(ee))
                             return
                         else:
