@@ -3078,8 +3078,12 @@ class Mmu:
         if self._check_has_leds(): return
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_num_gates - 1)
+
+        if reset:
+            self.custom_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
+
         if gate is not None:
             self.custom_color_rgb[gate] = self._color_to_rgb(gcmd.get('COLOR', '000000'))
             quiet = True
@@ -5088,9 +5092,9 @@ class Mmu:
     def cmd_MMU_PAUSE(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        if self._check_in_bypass(): return
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
-        self._mmu_pause("MMU_PAUSE macro was directly called", force_in_print)
+        msg = gcmd.get('MSG',"MMU_PAUSE macro was directly called")
+        self._mmu_pause(msg, force_in_print)
 
     cmd_MMU_UNLOCK_help = "Wakeup the MMU prior to resume to restore temperatures and timeouts"
     def cmd_MMU_UNLOCK(self, gcmd):
