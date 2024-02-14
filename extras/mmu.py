@@ -352,6 +352,7 @@ class Mmu:
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
         self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
         self.print_start_detection = config.getint('print_start_detection', 1, minval=0, maxval=1)
+        self.show_error_dialog = config.getint('show_error_dialog', 1, minval=0, maxval=1)
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
@@ -2517,8 +2518,8 @@ class Mmu:
         self.resume_to_state = "printing" if self._is_in_print() else "ready"
         if self._is_in_print(force_in_print):
             if not self._is_mmu_paused():
-                self._log_error("MMU issue detected. Print%s paused.\nReason: %s" % (" was already" if self._is_printer_paused() else " will be", reason))
-                self._log_always("After fixing, call RESUME to continue printing\n(MMU_UNLOCK to restore temperature)")
+                self.reason_for_pause = reason
+                self._display_mmu_error()
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
                 self._log_trace("Saved desired extruder temperature: %.1f\u00B0C" % self.paused_extruder_temp)
                 self._track_pause_start()
@@ -2529,8 +2530,6 @@ class Mmu:
                 self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_error, force_in_print=force_in_print)
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
-                self.reason_for_pause = reason
-                self._mmu_pause_dialog()
                 send_event = True
                 recover_pos = True
             else:
@@ -2551,9 +2550,16 @@ class Mmu:
         if send_event:
             self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
 
-    def _mmu_pause_dialog(self): # PAUL
-        if self.printer.lookup_object('gcode_macro _MMU_PAUSE_DIALOG', None) is not None:
-            self._wrap_gcode_command("_MMU_PAUSE_DIALOG")
+    # Displays MMU error/pause avoiding duplicate pop-ups that can occur in Klipperscreen with error message and dialog
+    def _display_mmu_error(self):
+        msg= "Print%s paused." % " was already" if self._is_printer_paused() else " will be"
+        reason = "Reason: %s" % self.reason_for_pause
+        if self.show_error_dialog and self.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG', None) is not None:
+            self._wrap_gcode_command("_MMU_ERROR_DIALOG MSG='%s'" % msg)
+            self._log_always("MMU issue detected. %s\n%s" % (msg, reason))
+        else:
+            self._log_error("MMU issue detected. %s\n%s" % (msg, reason))
+        self._log_always("After fixing, call RESUME to continue printing\n(MMU_UNLOCK to restore temperature)")
 
     def _mmu_unlock(self):
         if self._is_mmu_paused():
@@ -5453,6 +5459,7 @@ class Mmu:
         self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.retry_tool_change_on_error, minval=0, maxval=1)
         self.print_start_detection = gcmd.get_int('PRINT_START_DETECTION', self.print_start_detection, minval=0, maxval=1)
+        self.show_error_dialog = gcmd.get_int('SHOW_ERROR_DIALOG', self.show_error_dialog, minval=0, maxval=1)
         form_tip_macro = gcmd.get('FORM_TIP_MACRO', self.form_tip_macro)
         if form_tip_macro != self.form_tip_macro:
             self.form_tip_vars = None # If macro is changed invalidate defaults
@@ -5547,6 +5554,7 @@ class Mmu:
             msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
         msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
         msg += "\nprint_start_detection = %d" % self.print_start_detection
+        msg += "\nshow_error_dialog = %d" % self.show_error_dialog
         msg += "\nlog_level = %d" % self.log_level
         msg += "\nlog_file_level = %d" % self.log_file_level
         if self.mmu_logger:
