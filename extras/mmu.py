@@ -352,7 +352,6 @@ class Mmu:
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
         self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
         self.print_start_detection = config.getint('print_start_detection', 1, minval=0, maxval=1)
-        self.raise_prompt_dialog = config.getint('raise_prompt_dialog', 0, minval=0, maxval=1)
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
@@ -2531,10 +2530,9 @@ class Mmu:
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
                 self.reason_for_pause = reason
+                self._mmu_pause_dialog()
                 send_event = True
                 recover_pos = True
-                if self.raise_prompt_dialog: # PAUL
-                    self._mmu_prompt_dialog(reason) # PAUL
             else:
                 self._log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
                 recover_pos = True
@@ -2553,9 +2551,9 @@ class Mmu:
         if send_event:
             self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
 
-    def _mmu_prompt_dialog(self, message): # PAUL
+    def _mmu_pause_dialog(self): # PAUL
         if self.printer.lookup_object('gcode_macro _MMU_PAUSE_DIALOG', None) is not None:
-            self._wrap_gcode_command("_MMU_PAUSE_DIALOG MSG='%s'" % self.reason_for_pause)
+            self._wrap_gcode_command("_MMU_PAUSE_DIALOG")
 
     def _mmu_unlock(self):
         if self._is_mmu_paused():
