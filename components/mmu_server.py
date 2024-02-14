@@ -28,6 +28,9 @@ class MmuServer:
     TEMPS_REGEX = r"^; temperature =(.*)$"
     METADATA_TEMPS = "!temperatures!"
 
+    MATERIALS_REGEX = r"^; filament_type =(.*)$"
+    METADATA_MATERIALS = "!materials!"
+
 
     def __init__(self, config):
         self.config = config
@@ -53,7 +56,7 @@ class MmuServer:
 
     def _write_mmu_metadata(self, file_path):
         self._log("Checking for MMU metadata placeholders in file: " + file_path)
-        has_placeholder, tools_used, colors, temps, slicer = self._parse_gcode_file(file_path)
+        has_placeholder, tools_used, colors, temps, materials, slicer = self._parse_gcode_file(file_path)
         self._log(f"Detected gcode by slicer:{slicer}")
 
         # An edit-in-place is seen by Moonraker as a file change (rightly so),
@@ -61,7 +64,7 @@ class MmuServer:
         # to determine whether there are any changes to make to prevent an infinite loop.
         if has_placeholder:
             self._log("Writing MMU metadata to file: " + file_path)
-            return self._inject_placeholders(file_path, tools_used, colors, temps)
+            return self._inject_placeholders(file_path, tools_used, colors, temps, materials)
         else:
             self._log("No MMU metadata placeholders found in file: " + file_path)
             return False
@@ -76,14 +79,16 @@ class MmuServer:
         colors1_regex = re.compile(self.COLORS1_REGEX, re.IGNORECASE)
         color_regexes = [colors0_regex, colors1_regex]
         temps_regex = re.compile(self.TEMPS_REGEX, re.IGNORECASE)
+        materials_regex = re.compile(self.MATERIALS_REGEX, re.IGNORECASE)
 
-        has_tools_placeholder = has_colors_placeholder = has_temps_placeholder = False
-        found_colors = found_temps = False
+        has_tools_placeholder = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = False
+        found_colors = found_temps = found_materials = False
         slicer = None
 
         tools_used = set()
         colors = [[],[]]
         temps = []
+        materials = []
 
         with open(file_path, "r") as f:
             for line in f:
@@ -126,11 +131,22 @@ class MmuServer:
                         temps.extend(temps_csv)
                         found_temps = True
 
+                # !materials! processing
+                if not has_materials_placeholder and not line.startswith(";") and self.METADATA_MATERIALS in line:
+                    has_materials_placeholder = True
+
+                if not found_materials:
+                    match = materials_regex.match(line)
+                    if match:
+                        materials_csv = match.group(1).strip().split(';')
+                        materials.extend(materials_csv)
+                        found_materials = True
+
         fcolors = colors[1] if slicer == "orcaslicer" else colors[0]
 
-        return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder, sorted(tools_used), fcolors, temps, slicer)
+        return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder, sorted(tools_used), fcolors, temps, materials, slicer)
 
-    def _inject_placeholders(self, file_path, tools_used, colors, temps):
+    def _inject_placeholders(self, file_path, tools_used, colors, temps, materials):
         with fileinput.FileInput(file_path, inplace=1) as file:
             for line in file:
                 # Ignore comment lines to preserve slicer metadata comments
@@ -141,6 +157,8 @@ class MmuServer:
                         line = line.replace(self.METADATA_COLORS, ",".join(map(str, colors)))
                     if self.METADATA_TEMPS in line:
                         line = line.replace(self.METADATA_TEMPS, ",".join(map(str, temps)))
+                    if self.METADATA_MATERIALS in line:
+                        line = line.replace(self.METADATA_MATERIALS, ",".join(map(str, materials)))
                 print(line, end="")
         return True
 
