@@ -2555,16 +2555,19 @@ class Mmu:
         if send_event:
             self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
 
-    # Displays MMU error/pause avoiding duplicate pop-ups that can occur in Klipperscreen with error message and dialog
+    # Displays MMU error/pause as pop-up dialog and/or via console
     def _display_mmu_error(self):
         msg= "Print%s paused" % (" was already" if self._is_printer_paused() else " will be")
         dialog_macro = self.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG', None)
         if self.show_error_dialog and dialog_macro is not None:
             self._wrap_gcode_command("_MMU_ERROR_DIALOG MSG='%s' REASON='%s'" % (msg, self.reason_for_pause))
-            self._log_always("MMU issue detected. %s\nReason: %s" % (msg, self.reason_for_pause))
-        else:
-            self._log_error("MMU issue detected. %s\nReason: %s" % (msg, self.reason_for_pause))
+        self._log_error("MMU issue detected. %s\nReason: %s" % (msg, self.reason_for_pause))
         self._log_always("After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
+
+    def _clear_mmu_error_dialog(self):
+        dialog_macro = self.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG', None)
+        if self.show_error_dialog and dialog_macro is not None:
+            self._wrap_gcode_command('RESPOND TYPE=command MSG="action:prompt_end"')
 
     def _mmu_unlock(self):
         if self._is_mmu_paused():
@@ -5120,6 +5123,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         if self._is_mmu_pause_locked():
+            self._clear_mmu_error_dialog()
             self._mmu_unlock()
 
     # Not a user facing command - used in automatic wrapper
@@ -5146,10 +5150,12 @@ class Mmu:
                 if self._check_sensor(self.ENDSTOP_TOOLHEAD) is True:
                     self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
                     self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
+            self._clear_mmu_error_dialog()
             self._wrap_gcode_command(resume_cmd)
             self._mmu_resume()
             # Continue printing...
         else:
+            self._clear_mmu_error_dialog()
             self._wrap_gcode_command(resume_cmd)
             self._continue_printing("resume")
             # Continue printing...
@@ -5182,6 +5188,7 @@ class Mmu:
         if self.is_enabled:
             self._log_debug("MMU_CANCEL_PRINT wrapper called")
             self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error) # Lift Z but don't save
+            self._clear_mmu_error_dialog()
             self._wrap_gcode_command("__CANCEL_PRINT", None)
             self._on_print_end("cancelled")
         else:
