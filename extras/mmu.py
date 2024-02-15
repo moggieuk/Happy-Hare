@@ -2501,7 +2501,7 @@ class Mmu:
         if not pre_start_only and self.print_state not in ["printing"]:
             self._log_trace("_on_print_start(->printing)")
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
-            msg = "MMU initialized ready for print"
+            msg = "Happy Hare initialized ready for print"
             if self.filament_pos == self.FILAMENT_POS_LOADED:
                 msg += " (initial tool T%s loaded)" % self.tool_selected
             else:
