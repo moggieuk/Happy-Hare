@@ -908,7 +908,7 @@ class Mmu:
                 led_chains = MmuLeds.chains
                 led_vars = {}
                 if led_chains:
-                    led_vars['led_enable'] = 'True'
+                    led_vars['led_enable'] = True
                     exit = led_chains['exit']
                     led_vars['exit_first_led_index'] = exit[0] if exit else -1
                     led_vars['exit_reverse_order'] = int(exit[0] > exit[-1]) if exit else 0
@@ -920,7 +920,7 @@ class Mmu:
                     self.has_leds = True
                     self._log_debug("LEDs support enabled")
                 else:
-                    led_vars['led_enable'] = 'False'
+                    led_vars['led_enable'] = False
                     self._log_debug("LEDs support is not configured")
                 gcode_macro.variables.update(led_vars)
             except Exception as e:
@@ -3117,7 +3117,7 @@ class Mmu:
                 variables = gcode_vars.variables
                 macro_variables = gcode_macro.variables
                 current_led_enable = variables['led_enable']
-                led_enable = gcmd.get_int('ENABLE', current_led_enable, minval=0, maxval=1)
+                led_enable = bool(gcmd.get_int('ENABLE', current_led_enable, minval=0, maxval=1))
                 default_exit_effect = gcmd.get('EXIT_EFFECT', variables['default_exit_effect'])
                 default_entry_effect = gcmd.get('ENTRY_EFFECT', variables['default_entry_effect'])
                 default_status_effect = gcmd.get('STATUS_EFFECT', variables['default_status_effect'])
