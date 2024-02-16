@@ -893,7 +893,8 @@ copy_config_files() {
 	fi
     done
 
-    for file in mmu_filametrix.cfg; do
+    # Handle deprecated files -----------------------------------------------------------------
+    for file in mmu_filametrix.cfg mmu_variables.cfg; do
         dest=${mmu_dir}/base/${file}
         if [ -f "${dest}" ]; then
             echo -e "${WARNING}Removing deprecated config files ${file}"
@@ -901,12 +902,14 @@ copy_config_files() {
         fi
     done
 
+    # Optional config are read-only symlinks --------------------------------------------------
     for file in `cd ${SRCDIR}/config/optional ; ls *.cfg`; do
         src=${SRCDIR}/config/optional/${file}
         dest=${KLIPPER_CONFIG_HOME}/mmu/optional/${file}
         ln -sf ${src} ${dest}
     done
 
+    # Don't stompt on existing persisted state ------------------------------------------------
     src=${SRCDIR}/config/mmu_vars.cfg
     dest=${KLIPPER_CONFIG_HOME}/mmu/mmu_vars.cfg
     if [ -f "${dest}" ]; then
