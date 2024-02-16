@@ -563,7 +563,8 @@ set_default_tokens() {
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" "" "_param_"
-    parse_file "${SRCDIR}/config/base/mmu_variables.cfg" "variable_"
+    parse_file "${SRCDIR}/config/base/mmu_variables.cfg" "variable_" # PAUL: Remove before releasing
+    parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_sequence.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg" "variable_"
@@ -665,7 +666,8 @@ read_previous_config() {
         fi
     fi
 
-    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_leds.cfg mmu_variables.cfg; do
+    # PAUL remove mmu_variables before releasing
+    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_leds.cfg mmu_variables.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
         if [ ! -f "${dest_cfg}" ]; then
@@ -755,7 +757,7 @@ copy_config_files() {
                 echo -e "${WARNING}Skipping copy of hardware config file ${file} because already exists"
                 continue
             else
-                if [ "${file}" == "mmu_parameters.cfg" ] || [ "${file}" == "mmu_variables.cfg" ]; then
+                if [ "${file}" == "mmu_parameters.cfg" ] || [ "${file}" == "mmu_macro_vars.cfg" ]; then
                     echo -e "${INFO}Upgrading configuration file ${file}"
                 else
                     echo -e "${INFO}Installing configuration file ${file}"
@@ -865,7 +867,7 @@ copy_config_files() {
             done >> $dest
 
         # Variables macro ---------------------------------------------------------------------
-        elif [ "${file}" == "mmu_variables.cfg" ]; then
+        elif [ "${file}" == "mmu_macro_vars.cfg" ]; then
             tx_macros=""
             for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
             do
