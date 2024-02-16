@@ -563,7 +563,6 @@ set_default_tokens() {
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" "" "_param_"
-    parse_file "${SRCDIR}/config/base/mmu_variables.cfg" "variable_" # PAUL: Remove before releasing
     parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_sequence.cfg" "variable_"
