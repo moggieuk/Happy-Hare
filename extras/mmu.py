@@ -2441,7 +2441,7 @@ class Mmu:
 
         # Capture transition to standby
         if event_type == "idle" and self.print_state != "standby":
-            self._exec_gcode("_MMU_PRINT_END STATE=standby")
+            self._on_print_end("standby")
 
     def _exec_gcode(self, command):
         try:
@@ -2581,7 +2581,7 @@ class Mmu:
             self._wrap_gcode_command("_MMU_CLEAR_POSITION")
 
     # If this is called automatically it will occur after the user's print ends.
-    # Therefore don't do anything that requires operating kinematics
+    # Therefore don't do anything that requires operating kinematics or execute gcode
     def _on_print_end(self, state="complete"):
         if not self._is_in_endstate():
             self._log_trace("_on_print_end(%s)" % state)
