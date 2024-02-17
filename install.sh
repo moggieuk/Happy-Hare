@@ -158,8 +158,8 @@ self_update() {
     export UPDATE_GUARD=YES
     clear
 
-#    set +e
-    (
+    set +e
+    (set -e
     cd "$SCRIPTPATH"
     BRANCH=$(timeout 3s git branch --show-current)
     [ -z "${BRANCH}" ] && {
@@ -189,8 +189,8 @@ self_update() {
     fi
 
     if [ -n "${RESTART}" ]; then
-        git checkout $BRANCH --quiet
-        git pull --quiet --force
+        #git checkout $BRANCH --quiet
+        #git pull --quiet --force
         GIT_VER=$(git describe --tags)
         echo -e "${B_GREEN}Now on git version ${GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
@@ -207,7 +207,7 @@ self_update() {
         echo -e "${ERROR}You might have an old version of git"
         echo -e "${ERROR}Skipping automatic update..." 
     fi
-#    set -e
+    set -e
 }
 
 function nextfilename {
