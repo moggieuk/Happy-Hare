@@ -127,10 +127,12 @@ class MmuRunoutHelper:
 
 class MmuSensors:
 
-    ENDSTOP_PRE_GATE  = "mmu_pre_gate"
-    ENDSTOP_GATE      = "mmu_gate"
-    ENDSTOP_EXTRUDER  = "extruder"
-    ENDSTOP_TOOLHEAD  = "toolhead"
+    ENDSTOP_PRE_GATE  = 'mmu_pre_gate'
+    ENDSTOP_GATE      = 'mmu_gate'
+    ENDSTOP_EXTRUDER  = 'extruder'
+    ENDSTOP_TOOLHEAD  = 'toolhead'
+    SWITCH_SYNC_FEEDBACK_TENSION     = 'sync_feedback_tension'
+    SWITCH_SYNC_FEEDBACK_COMPRESSION = 'sync_feedback_compression'
 
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -239,8 +241,8 @@ class MmuSensors:
 
     def get_status(self, eventtime):
         return {
-                'sync_feedback_tension_switch': self.tension_switch_state,
-                'sync_feedback_compression_switch': self.compression_switch_state,
+            self.SWITCH_SYNC_FEEDBACK_TENSION: self.tension_switch_state,
+            self.SWITCH_SYNC_FEEDBACK_COMPRESSION: self.compression_switch_state,
         }
 
 def load_config(config):

@@ -144,6 +144,8 @@ class Mmu:
     GEAR_STEPPER_CONFIG        = "stepper_mmu_gear"
 
     # Gear/Extruder syncing
+    SWITCH_SYNC_FEEDBACK_TENSION     = "sync_feedback_tension"
+    SWITCH_SYNC_FEEDBACK_COMPRESSION = "sync_feedback_compression"
     SYNC_FEEDBACK_INTERVAL  = 0.5   # How often to check extruder direction
     SYNC_POSITION_TIMERANGE = 0.6   # Interval to compare movement
     SYNC_POSITION_MIN_DELTA = 0.001 # Min extruder move distance to be significant
@@ -662,7 +664,7 @@ class Mmu:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
-                # With MMU toolhead sensors  must not accidentally pause nor call user defined macros
+                # With MMU toolhead sensors must not accidentally pause nor call user defined macros
                 # (this is done in [mmu_sensors] but legacy setups may have discrete [filament_switch_sensors])
                 if name not in [self.ENDSTOP_GATE]:
                     self.sensors[name].runout_helper.runout_pause = False
@@ -1594,11 +1596,25 @@ class Mmu:
         if self._check_is_disabled(): return
         eventtime = self.reactor.monotonic()
         if self.mmu_sensors:
+
+            # Sync feedback sensors
             trg_string = lambda s : 'TRIGGERED' if s == 1 else 'open' if s == 0 else 'not available'
-            for sensor in ['sync_feedback_tension_switch', 'sync_feedback_compression_switch']:
+            for sensor in [self.SWITCH_SYNC_FEEDBACK_TENSION, self.SWITCH_SYNC_FEEDBACK_COMPRESSION]:
                 state = self.mmu_sensors.get_status(eventtime)[sensor]
                 if state != -1:
                     self._log_always("%s: %s" % (sensor, trg_string(state)))
+
+            # Endstop sensors
+            sensors = self._check_all_sensors()
+            for name, state in sensors.items():
+                if state is not None:
+                    self._log_always("%s: %s" % (name, trg_string(state)))
+
+            # Pre-gate sensors
+            for gate in range(self.mmu_num_gates):
+                name, state = "%s_%d" % (self.PRE_GATE_SENSOR_PREFIX, gate), self._check_pre_gate_sensor(gate)
+                if state is not None:
+                    self._log_always("%s: %s" % (name, trg_string(state)))
         else:
             self._log_always("No MMU sensors configured")
 
