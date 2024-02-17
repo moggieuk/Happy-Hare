@@ -166,32 +166,45 @@ self_update() {
         echo -e "${ERROR}Timeout talking to github. Skipping upgrade check"
         return
     }
-
     echo -e "${B_GREEN}Running on '${BRANCH}' branch"
+
+    # Both check for updates but also help me not loose changes accidently
     echo -e "${B_GREEN}Checking for updates..."
     git fetch --quiet
+    set +e
     git diff --quiet --exit-code "origin/$BRANCH"
-    [ $? -eq 1 ] && {
+    if [ $? -eq 1 ]; then
         echo -e "${B_GREEN}Found a new version of Happy Hare on github, updating..."
         [ -n "$(git status --porcelain)" ] && {
             git stash push -m 'local changes stashed before self update' --quiet
         }
-        git pull --quiet --force
+        RESTART=1
+    fi
+    set -e
+
+    if [ -n "${N_BRANCH}" -a "${BRANCH}" != "${N_BRANCH}" ]; then
+        BRANCH=${N_BRANCH}
+        echo -e "${B_GREEN}Switching to '${BRANCH}' branch"
+        RESTART=1
+    fi
+
+    if [ -n "${RESTART}" ]; then
         git checkout $BRANCH --quiet
         git pull --quiet --force
         GIT_VER=$(git describe --tags)
         echo -e "${B_GREEN}Now on git version ${GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
         cd - >/dev/null
+        exit 0
         exec "$SCRIPTNAME" "${ARGS[@]}"
         exit 1 # Exit this old instance
-    }
+    fi
     GIT_VER=$(git describe --tags)
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
     )
     if [ $? -ne 0 ]; then
         echo -e "${ERROR}Error updating from github"
-        echo -e "${ERROR}Looks like you might have an old version of git"
+        echo -e "${ERROR}You might have an old version of git"
         echo -e "${ERROR}Skipping automatic update..." 
     fi
     set -e
@@ -1526,11 +1539,11 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-i] [-u] [-z]"
+    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-i] [-d] [-z]"
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
-    echo "-z skip github check"
+    echo "-z skip github check (nullifies -b <branch>)"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
@@ -1546,8 +1559,9 @@ INSTALL=0
 UNINSTALL=0
 NOSERVICE=0
 INSTALL_KLIPPER_SCREEN_ONLY=0
-while getopts "k:c:m:idsz" arg; do
+while getopts "b:k:c:m:idsz" arg; do
     case $arg in
+        b) N_BRANCH=${OPTARG};;
         k) KLIPPER_HOME=${OPTARG};;
         m) MOONRAKER_HOME=${OPTARG};;
         c) KLIPPER_CONFIG_HOME=${OPTARG};;
@@ -1566,7 +1580,7 @@ fi
 
 verify_not_root
 [ -z "${SKIP_UPDATE}" ] && {
-    self_update # Make sure the repo is up-to-date
+    self_update # Make sure the repo is up-to-date on correct branch
 }
 verify_home_dirs
 check_klipper
