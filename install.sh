@@ -158,25 +158,47 @@ self_update() {
     export UPDATE_GUARD=YES
     clear
 
-    set +e
-    (set -e
     cd "$SCRIPTPATH"
+
+    set +e
     BRANCH=$(timeout 3s git branch --show-current)
+    if [ $? -ne 0 ]; then
+        echo -e "${ERROR}Error updating from github"
+        echo -e "${ERROR}You might have an old version of git"
+        echo -e "${ERROR}Skipping automatic update..." 
+        set -e
+        return
+    fi
+    set -e
+
     [ -z "${BRANCH}" ] && {
         echo -e "${ERROR}Timeout talking to github. Skipping upgrade check"
         return
     }
-
     echo -e "${B_GREEN}Running on '${BRANCH}' branch"
+
+    # Both check for updates but also help me not loose changes accidently
     echo -e "${B_GREEN}Checking for updates..."
     git fetch --quiet
+
+    set +e
     git diff --quiet --exit-code "origin/$BRANCH"
-    [ $? -eq 1 ] && {
+    if [ $? -eq 1 ]; then
         echo -e "${B_GREEN}Found a new version of Happy Hare on github, updating..."
         [ -n "$(git status --porcelain)" ] && {
             git stash push -m 'local changes stashed before self update' --quiet
         }
-        git pull --quiet --force
+        RESTART=1
+    fi
+    set -e
+
+    if [ -n "${N_BRANCH}" -a "${BRANCH}" != "${N_BRANCH}" ]; then
+        BRANCH=${N_BRANCH}
+        echo -e "${B_GREEN}Switching to '${BRANCH}' branch"
+        RESTART=1
+    fi
+
+    if [ -n "${RESTART}" ]; then
         git checkout $BRANCH --quiet
         git pull --quiet --force
         GIT_VER=$(git describe --tags)
@@ -184,17 +206,10 @@ self_update() {
         echo -e "${B_GREEN}Running the new install script..."
         cd - >/dev/null
         exec "$SCRIPTNAME" "${ARGS[@]}"
-        exit 1 # Exit this old instance
-    }
+        exit 0 # Exit this old instance
+    fi
     GIT_VER=$(git describe --tags)
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
-    )
-    if [ $? -ne 0 ]; then
-        echo -e "${ERROR}Error updating from github"
-        echo -e "${ERROR}Looks like you might have an old version of git"
-        echo -e "${ERROR}Skipping automatic update..." 
-    fi
-    set -e
 }
 
 function nextfilename {
