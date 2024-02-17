@@ -466,6 +466,10 @@ parse_file() {
     prefix_filter="$2"
     namespace="$3"
 
+    if [ ! -f "${filename}" ]; then
+        return
+    fi
+
     # Read old config files
     while IFS= read -r line
     do
