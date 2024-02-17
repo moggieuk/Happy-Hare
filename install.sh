@@ -159,7 +159,7 @@ self_update() {
     clear
 
     set +e
-    (set -e
+    (
     cd "$SCRIPTPATH"
     BRANCH=$(timeout 3s git branch --show-current)
     [ -z "${BRANCH}" ] && {
