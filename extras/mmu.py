@@ -2467,7 +2467,7 @@ class Mmu:
 
         # Capture transition to standby
         if event_type == "idle" and self.print_state != "standby":
-            self._exec_gcode("_MMU_PRINT_END STATE=standby")
+            self._on_print_end("standby")
 
     def _exec_gcode(self, command):
         try:
