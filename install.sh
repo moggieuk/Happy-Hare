@@ -158,16 +158,16 @@ self_update() {
     export UPDATE_GUARD=YES
     clear
 
-    (
     cd "$SCRIPTPATH"
 
     set +e
-    BRANCH=$(timeout 3s git branch --show-current)
+    BRANCH=$(timeout 3s git branch --show-current2)
     if [ $? -ne 0 ]; then
         echo -e "${ERROR}Error updating from github"
         echo -e "${ERROR}You might have an old version of git"
         echo -e "${ERROR}Skipping automatic update..." 
-        exit 0
+        set -e
+        return
     fi
     set -e
 
@@ -206,12 +206,10 @@ self_update() {
         echo -e "${B_GREEN}Running the new install script..."
         cd - >/dev/null
         exec "$SCRIPTNAME" "${ARGS[@]}"
-        exit 1 # Exit this old instance
+        exit 0 # Exit this old instance
     fi
     GIT_VER=$(git describe --tags)
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
-    )
-    set -e
 }
 
 function nextfilename {
