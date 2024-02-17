@@ -1474,7 +1474,7 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-i] [-u] [-z]"
+    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-i] [-d] [-z]"
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
@@ -1494,8 +1494,9 @@ INSTALL=0
 UNINSTALL=0
 NOSERVICE=0
 INSTALL_KLIPPER_SCREEN_ONLY=0
-while getopts "k:c:m:idsz" arg; do
+while getopts "b:k:c:m:idsz" arg; do
     case $arg in
+        b) N_BRANCH=${OPTARG};;
         k) KLIPPER_HOME=${OPTARG};;
         m) MOONRAKER_HOME=${OPTARG};;
         c) KLIPPER_CONFIG_HOME=${OPTARG};;
