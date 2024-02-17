@@ -158,10 +158,19 @@ self_update() {
     export UPDATE_GUARD=YES
     clear
 
-    set +e
-    (set -e
+    (
     cd "$SCRIPTPATH"
+
+    set +e
     BRANCH=$(timeout 3s git branch --show-current)
+    if [ $? -ne 0 ]; then
+        echo -e "${ERROR}Error updating from github"
+        echo -e "${ERROR}You might have an old version of git"
+        echo -e "${ERROR}Skipping automatic update..." 
+        exit 0
+    fi
+    set -e
+
     [ -z "${BRANCH}" ] && {
         echo -e "${ERROR}Timeout talking to github. Skipping upgrade check"
         return
@@ -171,6 +180,7 @@ self_update() {
     # Both check for updates but also help me not loose changes accidently
     echo -e "${B_GREEN}Checking for updates..."
     git fetch --quiet
+
     set +e
     git diff --quiet --exit-code "origin/$BRANCH"
     if [ $? -eq 1 ]; then
@@ -189,25 +199,18 @@ self_update() {
     fi
 
     if [ -n "${RESTART}" ]; then
-        #git checkout $BRANCH --quiet
-        #git pull --quiet --force
+        git checkout $BRANCH --quiet
+        git pull --quiet --force
         GIT_VER=$(git describe --tags)
         echo -e "${B_GREEN}Now on git version ${GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
         cd - >/dev/null
         exec "$SCRIPTNAME" "${ARGS[@]}"
         exit 1 # Exit this old instance
-        echo -e "${ERROR}PAUL -- should not get here!"
     fi
     GIT_VER=$(git describe --tags)
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
     )
-    if [ $? -ne 0 ]; then
-        echo -e "${ERROR}Error updating from github"
-        echo -e "${ERROR}You might have an old version of git"
-        echo -e "${ERROR}Skipping automatic update..." 
-    fi
-    set -e
 }
 
 function nextfilename {
