@@ -161,7 +161,7 @@ self_update() {
     cd "$SCRIPTPATH"
 
     set +e
-    BRANCH=$(timeout 3s git branch --show-current2)
+    BRANCH=$(timeout 3s git branch --show-current)
     if [ $? -ne 0 ]; then
         echo -e "${ERROR}Error updating from github"
         echo -e "${ERROR}You might have an old version of git"
