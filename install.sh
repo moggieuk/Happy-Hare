@@ -211,6 +211,7 @@ self_update() {
     GIT_VER=$(git describe --tags)
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
     )
+    set -e
 }
 
 function nextfilename {
