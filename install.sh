@@ -195,7 +195,6 @@ self_update() {
         echo -e "${B_GREEN}Now on git version ${GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
         cd - >/dev/null
-        exit 0
         exec "$SCRIPTNAME" "${ARGS[@]}"
         exit 1 # Exit this old instance
     fi
