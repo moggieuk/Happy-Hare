@@ -5,34 +5,32 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   > MMU_HELP
 
 ```yml
-    Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 for full command set)
+Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full command set)
     MMU : Enable/Disable functionality and reset state
-    MMU_CHANGE_TOOL : Perform a tool swap
+    MMU_CHANGE_TOOL : Perform a tool swap (called from Tx command)
     MMU_CHECK_GATE : Automatically inspects gate(s), parks filament and marks availability
-    MMU_STATS : Dump or reset the MMU statistics
     MMU_EJECT : aka MMU_UNLOAD Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
-    MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
-    MMU_ENDLESS_SPOOL : Display or redefine the EndlessSpool groups
-    MMU_FORM_TIP : aka MMU_TEST_FORM_TIP Convenience macro to call the standalone tip forming functionality
+    MMU_ENCODER : Display encoder position and stats or enable/disable runout detection logic in encoder
+    MMU_ENDLESS_SPOOL : Diplay or Manage EndlessSpool functionality and groups
+    MMU_GATE_MAP : Display or define the type and color of filaments on each gate
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
     MMU_LED : Manage mode of operation of optional MMU LED's
-    MMU_LOAD : Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTUDER_ONLY=1)
+    MMU_LOAD : Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTRUDER_ONLY=1)
     MMU_MOTORS_OFF : Turn off both MMU motors
     MMU_PAUSE : Pause the current print and lock the MMU operations
     MMU_PRELOAD : Preloads filament at specified or current gate
-    MMU_PRINT_END : Restore MMU idle state after print
-    MMU_PRINT_START : Initialize MMU state and ready for print
     MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
-    MMU_TTG_MAP : aka MMU_REMAP_TTG Display or remap a tool to a specific gate and set gate availability
     MMU_RESET : Forget persisted state and re-initialize defaults
     MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS : Select the filament bypass
+    MMU_SENSORS : Query state of sensors fitted to mmu
     MMU_SERVO : Move MMU servo to position specified position or angle
-    MMU_GATE_MAP : Display or define the type and color of filaments on each gate and optionally spoolman ID
+    MMU_STATS : Dump and optionally reset the MMU statistics
     MMU_STATUS : Complete dump of current MMU state and important configuration
-    MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder motor
+    MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder stepper
     MMU_TOOL_OVERRIDES : Displays, sets or clears tool speed and extrusion factors (M220 & M221)
+    MMU_TTG_MAP : aka MMU_REMAP_TTG Display or remap a tool to a specific gate and set gate availability
     MMU_UNLOCK : Wakeup the MMU prior to resume to restore temperatures and timeouts
 ```
 
@@ -59,12 +57,6 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_HELP` | Generate reminder list of command set | `TESTING=[0\|1]` Also list the testing commands <br>`MACROS=[0\|1]` Also list the callback backros |
   <br>
 
-  | Command | Description | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Parameters&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; |
-  | ------- | ----------- | ---------- |
-  | `_MMU_PRINT_START` | Initialize MMU state and ready for print (optionally include in print start macro) | None |
-  | `_MMU_PRINT_END` | Restore MMU idle state after print (optionally include in print end macro) | None |
-
-
   ### Filament specification, Tool to Gate map and Endless spool commands
   | Command | Description | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Parameters&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp |
   | ------- | ----------- | ---------- |
@@ -80,6 +72,7 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_RESET` | Reset the MMU persisted state back to defaults | `CONFIRM=[0\|1]` Must be sepcifed for affirmative action of this dangerous command |
   | `MMU_STATS` | Dump (and optionally reset) the MMU statistics for current print job or total | `RESET=1` If specified the persisted statistics will be reset <br> `TOTAL=[0\|1]` whether to also show the total swap stats in addition to the current/last print job <br> `DETAIL=[0\|1]` Whether to display additional details about the per-gate statistics |
   | `MMU_STATUS` | Report on MMU state, capabilities and Tool-to-Gate map | `DETAIL=[0\|1]` Whether to show a more detailed view including EndlessSpool groups and full Tool-To-Gate mapping <br>`SHOWCONFIG=[0\|1]` (default 0) Whether or not to describe the machine configuration in status message |
+  | `MMU_SENSORS` | Report on the state of all sensors connected to the MMU | |
   <br>
   
   ### Servo and motor control
@@ -94,11 +87,11 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Calibration
 
 ```yml
-    MMU_CALIBRATE_BOWDEN - Calibration of reference bowden length for gate #0
-    MMU_CALIBRATE_ENCODER - Calibration routine for the MMU encoder
-    MMU_CALIBRATE_GATES - Optional calibration of individual MMU gate
-    MMU_CALIBRATE_GEAR - Calibration routine for gear stepper rotational distance
-    MMU_CALIBRATE_SELECTOR - Calibration of the selector positions or postion of specified gate
+    MMU_CALIBRATE_BOWDEN : Calibration of reference bowden length for gate 0
+    MMU_CALIBRATE_ENCODER : Calibration routine for the MMU encoder
+    MMU_CALIBRATE_GATES : Optional calibration of individual MMU gate
+    MMU_CALIBRATE_GEAR : Calibration routine for gear stepper rotational distance
+    MMU_CALIBRATE_SELECTOR : Calibration of the selector positions or postion of specified gate
 ```
   
   | Command | Description | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Parameters&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; |
@@ -114,16 +107,17 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Testing
 
 ```yml
-    MMU_SOAKTEST_LOAD_SEQUENCE - Soak test tool load/unload sequence
-    MMU_SOAKTEST_SELECTOR - Soak test of selector movement
-    MMU_TEST_BUZZ_MOTOR - Simple buzz the selected motor (default gear) for setup testing
-    MMU_TEST_CONFIG - Runtime adjustment of MMU configuration for testing or in-print tweaking purposes
-    MMU_TEST_RUNOUT - Convenience macro to spoof a filament runout condition
-    MMU_TEST_GRIP - Test the MMU grip for a Tool
-    MMU_TEST_HOMING_MOVE - Test filament homing move to help debug setup / options
-    MMU_TEST_LOAD - For quick testing filament loading from gate to the extruder
-    MMU_TEST_MOVE - Test filament move to help debug setup / options
-    MMU_TEST_TRACKING - Test the tracking of gear feed and encoder sensing
+    MMU_SOAKTEST_LOAD_SEQUENCE : Soak test tool load/unload sequence
+    MMU_SOAKTEST_SELECTOR : Soak test of selector movement
+    MMU_TEST_BUZZ_MOTOR : Simple buzz the selected motor (default gear) for setup testing
+    MMU_TEST_CONFIG : Runtime adjustment of MMU configuration for testing or in-print tweaking purposes
+    MMU_TEST_FORM_TIP : Convenience macro for calling the standalone tip forming functionality (or cutter logic)
+    MMU_TEST_GRIP : Test the MMU grip for a Tool
+    MMU_TEST_HOMING_MOVE : Test filament homing move to help debug setup / options
+    MMU_TEST_LOAD : For quick testing filament loading from gate to the extruder
+    MMU_TEST_MOVE : Test filament move to help debug setup / options
+    MMU_TEST_RUNOUT : Manually invoke the clog/runout detection logic for testing
+    MMU_TEST_TRACKING : Test the tracking of gear feed and encoder sensing
 ```
     
   | Command | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Description&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Parameters |
@@ -131,14 +125,14 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `MMU_SOAKTEST_SELECTOR` | Reliability testing to put the selector movement under stress to test for failures. Randomly selects gates and occasionally re-homes | `LOOP=..[100]` Number of times to repeat the test <br>`SERVO=[0\|1]` Whether to include the servo down movement in the test <br> `HOME=[0\|1]` Whether to include randomized homing operations |
   | `MMU_SOAKTEST_LOAD_SEQUENCE` | Soak testing of load sequence. Great for testing reliability and repeatability| `LOOP=..[10]` Number of times to loop while testing <br>`RANDOM=[0\|1]` Whether to randomize tool selection <br>`FULL=[0\|1]` Whether to perform full load to nozzle or short load just past encoder |
   | `MMU_TEST_BUZZ_MOTOR` | Buzz the sepcified MMU motor. If the gear motor is buzzed it will also report if filament is detected | `MOTOR=[gear\|selector\|servo]` |
-  | `MMU_TEST_GRIP` | Test the MMU grip of the currently selected tool by gripping filament but relaxing the gear motor so you can check for good contact | None |
+  | `MMU_TEST_CONFIG` | Dump / Change essential load/unload config options at runtime | Many. Best to run MMU_TEST_CONFIG without options to report all parameters than can be specified |
   | `MMU_TEST_FORM_TIP` : Convenience macro to call to test the standalone tip forming functionality | Any valid `_MMU_FORM_TIP` gcode variable can be supplied as a parameter and will override the defaults in the `mmu_software.cfg` file. overrides will remain active (sticky) until called with `RESET=1` which will cause Happy Hare to revert to starting values (in `mmu_software.cfg`) <br> `SHOW=1` will just list the current macro variable values and not run macro <br> `RUN=0` will set the variable but not run the macro <br> `FORCE_IN_PRINT=1` behave like in print with gear/extruder syncing and current <br> `EJECT=[0\|1]` Force ejection of filament after tip forming, akin to setting `variable_final_eject=1` |
+  | `MMU_TEST_GRIP` | Test the MMU grip of the currently selected tool by gripping filament but relaxing the gear motor so you can check for good contact | None |
   | `MMU_TEST_LOAD` | Test loading filament from park position in the gate. (MMU_EJECT will unload) | `LENGTH=..[100]` Test load the specified length of filament into selected tool <br>`FULL=[0\|1]` If set to one a full bowden move will occur and filament will home to extruder |
-  | `MMU_TEST_TRACKING | Simple visual test to see how encoder tracks with gear motor | `DIRECTION=[-1\|1]` Direction to perform the test (default load direction) <br>`STEP=[0.5 .. 20]` Size of individual steps (default 1mm) <br>`SENSITIVITY=..` (defaults to expected encoder resolution) Sets the scaling for the +/- mismatch visualization |
   | `MMU_TEST_MOVE` | Simple test move the MMU gear stepper | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` (defaults to min accel defined on steppers employed in move) Motor acceleration <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement |
   | `MMU_TEST_HOMING_MOVE` | Testing homing move of filament using multiple stepper combinations specifying endstop and driection of homing move | `MOVE=..[100]` Length of gear move in mm <br>`SPEED=..` (defaults to speed defined to type of motor/homing combination) Stepper move speed <br>`ACCEL=..` Motor accelaration (defaults to min accel defined on steppers employed in homing move) <br>`MOTOR=[gear\|extruder\|gear+extruder\|extruder+gear]` (default: gear) The motor or motor combination to employ. gear+extruder commands the gear stepper and links extruder to movement, extruder+gear commands the extruder stepper and links gear to movement. This is important for homing because the endstop must be on the commanded stepper <br>`ENDSTOP=..` Symbolic name of endstop to home to as defined in mmu_hardware.cfg. Must be defined on the primary stepper <br>`STOP_ON_ENDSTOP=[1\|-1]` (default 1) The direction of homing move. 1 is in the normal direction with endstop firing, -1 is in the reverse direction waiting for endstop to release. Note that virtual (touch) endstops can only be homed in a forward direction |
-  | `MMU_TEST_CONFIG` | Dump / Change essential load/unload config options at runtime | Many. Best to run MMU_TEST_CONFIG without options to report all parameters than can be specified |
   | `MMU_TEST_RUNOUT` | Invoke filament runout handler that will also trigger EndlessSpool if enabled and thus useful to validate your load/unload sequence macros (define in `mmu_sequence.cfg`) | `FORCE_RUNOUT=0` optional parameter (defaults to `1`) that if set to `0` will cause HH to try to determine if a clog vs runout by also running a filament movement test |
+  | `MMU_TEST_TRACKING | Simple visual test to see how encoder tracks with gear motor | `DIRECTION=[-1\|1]` Direction to perform the test (default load direction) <br>`STEP=[0.5 .. 20]` Size of individual steps (default 1mm) <br>`SENSITIVITY=..` (defaults to expected encoder resolution) Sets the scaling for the +/- mismatch visualization |
 
 <br>
 
@@ -151,12 +145,22 @@ Firstly you can get a quick reminder of commands using the `MMU_HELP` command fr
   | `_MMU_POST_UNLOAD` | Called after unload is complete and filament is parked at the gate | |
   | `_MMU_PRE_LOAD` | Called prior to the loading of a new filament | |
   | `_MMU_POST_LOAD` | Called subsequent to loading new filament | |
+
   | `_MMU_FORM_TIP` | Called to create tip on filament (when not under the control of the slicer). You tune this macro by modifying the defaults to the parameters | |
   | `_MMU_CUT_TIP` | Called to create tip by cutting the filament. You tune this macro by modifying the defaults to the parameters | |
+
   | `_MMU_ACTION_CHANGED` | Callback that is called everytime the `printer.ercf.action` is updated. Great for contolling LED lights, etc | |
   | `_MMU_PRINT_STATE_CHANGED` | Callback when the print job state changes and `printer.ercf.print_state` is updated. Great for contolling LED lights, etc | |
+  | `_MMU_GATE_MAP_CHANGED` | Called when gate map is updated. Useful for updating LED lights, etc | |
+
   | `_MMU_LOAD_SEQUENCE` | Advanced: Called when MMU is asked to load filament | `FILAMENT_POS` `LENGTH` `FULL` `HOME_EXTRUDER` `SKIP_EXTRUDER` `EXTRUDER_ONLY` |
   | `_MMU_UNLOAD_SEQUENCE` | Advanced: Called when MMU is asked to unload filament | `FILAMENT_POS` `LENGTH` `EXTRUDER_ONLY` `PARK_POS` |
+
+  | `_MMU_INITIALIZE` | Call when starting print to setup MMU | `INITIAL_TOOL`, `REFERENCED_TOOLS`, `TOOL_COLORS`, `TOOL_TEMPS`, `TOOL_MATERIALS` (see slicer setup guide) |
+  | `_MMU_LOAD_INITIAL_TOOL` | Helper to load initial tool if not paused | |
+  | `_MMU_FINALIZE` | Call when ending print to finalize MMU | `EJECT=[0\|1]` Override the macro setting for final unloading of filament (see slicer setup guide) |
+  | `_MMU_PRINT_START` | Initialize MMU state and ready for print (optionally include in print start macro) | None |
+  | `_MMU_PRINT_END` | Restore MMU idle state after print (optionally include in print end macro) | None |
 
 <br>
 
