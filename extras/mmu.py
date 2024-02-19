@@ -369,6 +369,8 @@ class Mmu:
         self.post_load_macro = config.get('post_load_macro', '_MMU_POST_LOAD_MACRO')
         self.unload_sequence_macro = config.get('unload_sequence_macro', '_MMU_UNLOAD_SEQUENCE')
         self.load_sequence_macro = config.get('load_sequence_macro', '_MMU_LOAD_SEQUENCE')
+        self.error_dialog_macro = config.get('error_dialog_macro', '_MMU_ERROR_DIALOG') # Not currently exposed
+        self.clear_position_macro = config.get('clear_position_macro', '_MMU_CLEAR_POSITION') # Not currently exposed
 
         # User MMU setup
         self.mmu_num_gates = config.getint('mmu_num_gates')
@@ -621,13 +623,13 @@ class Mmu:
         self.gcode.register_command('_MMU_STEP_HOMING_MOVE', self.cmd_MMU_STEP_HOMING_MOVE, desc = self.cmd_MMU_STEP_HOMING_MOVE_help)
         self.gcode.register_command('_MMU_STEP_MOVE', self.cmd_MMU_STEP_MOVE, desc = self.cmd_MMU_STEP_MOVE_help)
         self.gcode.register_command('_MMU_STEP_SET_FILAMENT', self.cmd_MMU_STEP_SET_FILAMENT, desc = self.cmd_MMU_STEP_SET_FILAMENT_help)
+        self.gcode.register_command('_MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
 
         # Internal handlers for Runout & Insertion for all sensor options
         self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
         self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
         self.gcode.register_command('__MMU_GATE_RUNOUT', self.cmd_MMU_GATE_RUNOUT, desc = self.cmd_MMU_GATE_RUNOUT_help)
         self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
-        self.gcode.register_command('__MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
 
         # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP_TASKS', self.cmd_MMU_BOOTUP_TASKS, desc = self.cmd_MMU_BOOTUP_TASKS_help) # Bootup tasks
@@ -2581,14 +2583,14 @@ class Mmu:
     # Displays MMU error/pause as pop-up dialog and/or via console
     def _display_mmu_error(self):
         msg= "Print%s paused" % (" was already" if self._is_printer_paused() else " will be")
-        dialog_macro = self.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG', None)
+        dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.error_dialog_macro, None)
         if self.show_error_dialog and dialog_macro is not None:
-            self._wrap_gcode_command("_MMU_ERROR_DIALOG MSG='%s' REASON='%s'" % (msg, self.reason_for_pause))
+            self._wrap_gcode_command("%s MSG='%s' REASON='%s'" % (self.error_dialog_macro, msg, self.reason_for_pause))
         self._log_error("MMU issue detected. %s\nReason: %s" % (msg, self.reason_for_pause))
         self._log_always("After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
 
     def _clear_mmu_error_dialog(self):
-        dialog_macro = self.printer.lookup_object('gcode_macro _MMU_ERROR_DIALOG', None)
+        dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.error_dialog_macro, None)
         if self.show_error_dialog and dialog_macro is not None:
             self._wrap_gcode_command('RESPOND TYPE=command MSG="action:prompt_end"')
 
@@ -2626,8 +2628,8 @@ class Mmu:
         # Ready to continue printing...
 
     def _clear_macro_state(self):
-        if self.printer.lookup_object('gcode_macro _MMU_CLEAR_POSITION', None) is not None:
-            self._wrap_gcode_command("_MMU_CLEAR_POSITION")
+        if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
+            self._wrap_gcode_command(self.clear_position_macro)
 
     # If this is called automatically it will occur after the user's print ends.
     # Therefore don't do anything that requires operating kinematics

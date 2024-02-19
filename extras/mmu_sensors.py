@@ -71,7 +71,7 @@ class MmuRunoutHelper:
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
         self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1\n__MMU_M400")
+        self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1\n_MMU_M400")
 
     def _exec_gcode(self, command):
         try:

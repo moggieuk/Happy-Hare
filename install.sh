@@ -27,36 +27,36 @@ declare -A PIN 2>/dev/null || {
     exit 1
 }
 
-# Pins for Fysetc Burrows ERB board, Original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
+# Pins for original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
 # Note: uart pin is shared on original EASY-BRD (with different uart addresses)
 #
-PIN[ERB,gear_uart_pin]="gpio20";         PIN[EASY-BRD,gear_uart_pin]="PA8";         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
-PIN[ERB,gear_step_pin]="gpio10";         PIN[EASY-BRD,gear_step_pin]="PA4";         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
-PIN[ERB,gear_dir_pin]="gpio9";           PIN[EASY-BRD,gear_dir_pin]="PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
-PIN[ERB,gear_enable_pin]="gpio8";        PIN[EASY-BRD,gear_enable_pin]="PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
-PIN[ERB,gear_diag_pin]="gpio13";         PIN[EASY-BRD,gear_diag_pin]="";            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
-PIN[ERB,selector_uart_pin]="gpio17";     PIN[EASY-BRD,selector_uart_pin]="PA8";     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
-PIN[ERB,selector_step_pin]="gpio16";     PIN[EASY-BRD,selector_step_pin]="PA9";     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
-PIN[ERB,selector_dir_pin]="gpio15";      PIN[EASY-BRD,selector_dir_pin]="PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
-PIN[ERB,selector_enable_pin]="gpio14";   PIN[EASY-BRD,selector_enable_pin]="PA11";  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
-PIN[ERB,selector_diag_pin]="gpio19";     PIN[EASY-BRD,selector_diag_pin]="PA7";     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
-PIN[ERB,selector_endstop_pin]="gpio24";  PIN[EASY-BRD,selector_endstop_pin]="PB9";  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
-PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
-PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
-PIN[ERB,neopixel_pin]="gpio21";          PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
-PIN[ERB,gate_sensor_pin]="gpio22";       PIN[EASY-BRD,gate_sensor_pin]="PA6";       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
-PIN[ERB,pre_gate_0_pin]="gpio0";         PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
-PIN[ERB,pre_gate_1_pin]="gpio1";         PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
-PIN[ERB,pre_gate_2_pin]="gpio2";         PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
-PIN[ERB,pre_gate_3_pin]="gpio3";         PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
-PIN[ERB,pre_gate_4_pin]="gpio4";         PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
-PIN[ERB,pre_gate_5_pin]="gpio5";         PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
-PIN[ERB,pre_gate_6_pin]="gpio6";         PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
-PIN[ERB,pre_gate_7_pin]="gpio7";         PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
-PIN[ERB,pre_gate_8_pin]="gpio26";        PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
-PIN[ERB,pre_gate_9_pin]="gpio27";        PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
-PIN[ERB,pre_gate_10_pin]="gpio28";       PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
-PIN[ERB,pre_gate_11_pin]="gpio29";       PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
+PIN[EASY-BRD,gear_uart_pin]="PA8";         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
+PIN[EASY-BRD,gear_step_pin]="PA4";         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
+PIN[EASY-BRD,gear_dir_pin]="PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
+PIN[EASY-BRD,gear_enable_pin]="PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
+PIN[EASY-BRD,gear_diag_pin]="";            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
+PIN[EASY-BRD,selector_uart_pin]="PA8";     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
+PIN[EASY-BRD,selector_step_pin]="PA9";     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
+PIN[EASY-BRD,selector_dir_pin]="PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
+PIN[EASY-BRD,selector_enable_pin]="PA11";  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
+PIN[EASY-BRD,selector_diag_pin]="PA7";     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
+PIN[EASY-BRD,selector_endstop_pin]="PB9";  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
+PIN[EASY-BRD,servo_pin]="PA5";             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
+PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
+PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
+PIN[EASY-BRD,gate_sensor_pin]="PA6";       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
+PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
+PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
+PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
+PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
+PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
+PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
+PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
+PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
+PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
+PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
+PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
+PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
 # Pins for Mellow EASY-BRD with CANbus
 #
@@ -87,6 +87,37 @@ PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	# Exp 13
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	# Exp 14
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";
+
+# Pins for Fysetc Burrows ERB board (original v1 and v2)
+#
+PIN[ERB,gear_uart_pin]="gpio20";           PIN[ERBv2,gear_uart_pin]="gpio20";
+PIN[ERB,gear_step_pin]="gpio10";           PIN[ERBv2,gear_step_pin]="gpio10";
+PIN[ERB,gear_dir_pin]="gpio9";             PIN[ERBv2,gear_dir_pin]="gpio9";
+PIN[ERB,gear_enable_pin]="gpio8";          PIN[ERBv2,gear_enable_pin]="gpio8";
+PIN[ERB,gear_diag_pin]="gpio13";           PIN[ERBv2,gear_diag_pin]="gpio13";
+PIN[ERB,selector_uart_pin]="gpio17";       PIN[ERBv2,selector_uart_pin]="gpio17";
+PIN[ERB,selector_step_pin]="gpio16";       PIN[ERBv2,selector_step_pin]="gpio16";
+PIN[ERB,selector_dir_pin]="gpio15";        PIN[ERBv2,selector_dir_pin]="gpio15";
+PIN[ERB,selector_enable_pin]="gpio14";     PIN[ERBv2,selector_enable_pin]="gpio14";
+PIN[ERB,selector_diag_pin]="gpio19";       PIN[ERBv2,selector_diag_pin]="gpio19";
+PIN[ERB,selector_endstop_pin]="gpio24";    PIN[ERBv2,selector_endstop_pin]="gpio24";
+PIN[ERB,servo_pin]="gpio23";               PIN[ERBv2,servo_pin]="gpio23";
+PIN[ERB,encoder_pin]="gpio22";             PIN[ERBv2,encoder_pin]="gpio22";
+PIN[ERB,neopixel_pin]="gpio21";            PIN[ERBv2,neopixel_pin]="gpio21";
+PIN[ERB,gate_sensor_pin]="gpio22";         PIN[ERBv2,gate_sensor_pin]="gpio25";  # Hall Effect
+PIN[ERB,pre_gate_0_pin]="gpio0";           PIN[ERBv2,pre_gate_0_pin]="gpio12";
+PIN[ERB,pre_gate_1_pin]="gpio1";           PIN[ERBv2,pre_gate_1_pin]="gpio18";
+PIN[ERB,pre_gate_2_pin]="gpio2";           PIN[ERBv2,pre_gate_2_pin]="gpio2";
+PIN[ERB,pre_gate_3_pin]="gpio3";           PIN[ERBv2,pre_gate_3_pin]="gpio3";
+PIN[ERB,pre_gate_4_pin]="gpio4";           PIN[ERBv2,pre_gate_4_pin]="gpio4";
+PIN[ERB,pre_gate_5_pin]="gpio5";           PIN[ERBv2,pre_gate_5_pin]="gpio5";
+PIN[ERB,pre_gate_6_pin]="gpio6";           PIN[ERBv2,pre_gate_6_pin]="gpio6";
+PIN[ERB,pre_gate_7_pin]="gpio7";           PIN[ERBv2,pre_gate_7_pin]="gpio7";
+PIN[ERB,pre_gate_8_pin]="gpio26";          PIN[ERBv2,pre_gate_8_pin]="gpio26";
+PIN[ERB,pre_gate_9_pin]="gpio27";          PIN[ERBv2,pre_gate_9_pin]="gpio27";
+PIN[ERB,pre_gate_10_pin]="gpio28";         PIN[ERBv2,pre_gate_10_pin]="gpio28";
+PIN[ERB,pre_gate_11_pin]="gpio29";         PIN[ERBv2,pre_gate_11_pin]="gpio29";
+
 
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
 #
@@ -754,6 +785,7 @@ copy_config_files() {
         mkdir ${mmu_dir}
         mkdir ${mmu_dir}/base
         mkdir ${mmu_dir}/optional
+        mkdir ${mmu_dir}/addons
     else
         echo -e "${DETAIL}Config directory ${mmu_dir} already exists"
         echo -e "${DETAIL}Backing up old config files to ${next_mmu_dir}"
@@ -917,7 +949,7 @@ copy_config_files() {
         dest=${mmu_dir}/base/${file}
         if [ -f "${dest}" ]; then
             echo -e "${WARNING}Removing deprecated config files ${file}"
-            rm -f "${dest}"
+            rm -f ${dest}
         fi
     done
 
@@ -936,6 +968,17 @@ copy_config_files() {
     else
         cp ${src} ${dest}
     fi
+
+    # Addon config files are always copied (and updated) so they can be edited ----------------
+    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg`; do
+        src=${SRCDIR}/config/addons/${file}
+        dest=${KLIPPER_CONFIG_HOME}/mmu/addons/${file}
+        if [ -f "${dest}" ]; then
+            update_copy_file ${src} ${dest} "variable_"
+        else
+            cp ${src} ${dest}
+        fi
+    done
 }
 
 uninstall_config_files() {
