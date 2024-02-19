@@ -619,6 +619,7 @@ read_default_config() {
     parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_leds.cfg" "variable_"
+    parse_file "${SRCDIR}/config/addon/mmu_erec_cutter.cfg" "variable_"
 }
 
 # Pull parameters from previous installation
@@ -974,8 +975,10 @@ copy_config_files() {
         src=${SRCDIR}/config/addons/${file}
         dest=${KLIPPER_CONFIG_HOME}/mmu/addons/${file}
         if [ -f "${dest}" ]; then
+            echo -e "${INFO}Upgrading configuration file ${file}"
             update_copy_file ${src} ${dest} "variable_"
         else
+            echo -e "${INFO}Installing configuration file ${file}"
             cp ${src} ${dest}
         fi
     done
@@ -993,7 +996,7 @@ install_printer_includes() {
     dest=${KLIPPER_CONFIG_HOME}/printer.cfg
     if test -f $dest; then
 
-        klippain_included=$(grep -c "[include config/hardware/mmu.cfg]" ${dest} || true)
+        klippain_included=$(grep -c "\[include config/hardware/mmu.cfg\]" ${dest} || true)
         if [ "${klippain_included}" -eq 1 ]; then
             echo -e "${WARNING}This looks like a Klippain config installation - skipping automatic config install. Please add config includes by hand"
         else
@@ -1021,8 +1024,7 @@ install_printer_includes() {
                     sed -i "1i ${i}" ${dest}
                 fi
             fi
-            for i in \
-                    '\[include mmu/base/\*.cfg\]' ; do
+            for i in '\[include mmu/addons/\*.cfg\]' '\[include mmu/base/\*.cfg\]' ; do
                 already_included=$(grep -c "${i}" ${dest} || true)
                 if [ "${already_included}" -eq 0 ]; then
                     sed -i "1i ${i}" ${dest}
@@ -1054,6 +1056,7 @@ uninstall_printer_includes() {
             /\[include mmu\/mmu_cut_tip.cfg\]/ d; \
             /\[include mmu\/mmu.cfg\]/ d; \
             /\[include mmu\/base\/\*.cfg\]/ d; \
+            /\[include mmu\/addon\/\*.cfg\]/ d; \
 	        " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
     fi
 }
