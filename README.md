@@ -14,17 +14,13 @@ Universal MMU driver for Klipper
   </a>
   -->
   <a aria-label="Stars" href="https://github.com/moggieuk/Happy-Hare/stargazers">
-    <img src="https://img.shields.io/github/stars/moggieuk/Happy-Hare?style=flat-square">
-  </a> &nbsp;
+    <img src="https://img.shields.io/github/stars/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
   <a aria-label="Forks" href="https://github.com/moggieuk/Happy-Hare/network/members">
-    <img src="https://img.shields.io/github/forks/moggieuk/Happy-Hare?style=flat-square">
-  </a> &nbsp;
+    <img src="https://img.shields.io/github/forks/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
   <a aria-label="License" href="https://github.com/moggieuk/Happy-Hare/blob/master/LICENSE">
-    <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square">
-  </a> &nbsp;
+    <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
   <a aria-label="Commits" href="">
-    <img src="https://img.shields.io/github/commit-activity/y/moggieuk/Happy-Hare">
-  </a> &nbsp;
+    <img src="https://img.shields.io/github/commit-activity/y/moggieuk/Happy-Hare"></a> &nbsp;
 </p>
 
 Happy Hare (v2) is the second edition of what started life and as [alternative software control](https://github.com/moggieuk/ERCF-Software-V3) for the ERCF v1.1 ecosystem. Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform. It is best partnered with [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
