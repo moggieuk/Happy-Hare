@@ -1213,7 +1213,7 @@ class Mmu:
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'tool_extrusion_multipliers': list(self.tool_extrusion_multipliers),
                 'tool_speed_multipliers': list(self.tool_speed_multipliers),
-                'slicer_tool_map': list(self.slicer_tool_map),
+                'slicer_tool_map': self.slicer_tool_map,
                 'action': self._get_action_string(),
                 'has_bypass': self.bypass_offset > 0.,
                 'sync_drive': self.mmu_toolhead.is_synced(),
@@ -6069,18 +6069,18 @@ class Mmu:
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
-        tool = gcmd.get_int('TOOL', -1)
+        tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         material = gcmd.get('MATERIAL', "")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
         if reset:
             self.slicer_tool_map.clear()
-        if tool >= 0 and tool < self.mmu_num_gates:
-            self.slicer_tool_map[tool] = {'color': color, 'material': material, 'temp': temp}
+        if tool >= 0:
+            self.slicer_tool_map["T%s" % tool] = {'color': color, 'material': material, 'temp': temp}
         if not quiet and len(self.slicer_tool_map) > 0:
             msg = "Slicer defined tools:\n"
             for t, params in self.slicer_tool_map.items():
-                msg += "T%s (Gate %d, %s, %s, %d\u00B0C)\n" % (t, self.ttg_map[t], params['material'], params['color'], params['temp'])
+                msg += "%s (Gate %d, %s, %s, %d\u00B0C)\n" % (t, self.ttg_map[int(t[1:])], params['material'], params['color'], params['temp'])
             self._log_always(msg)
 
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
