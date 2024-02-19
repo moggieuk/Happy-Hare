@@ -716,12 +716,14 @@ read_previous_config() {
         fi
     fi
 
-    # PAUL remove mmu_variables before releasing
-    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_leds.cfg mmu_variables.cfg mmu_macro_vars.cfg; do
+    # TODO Remove mmu_variables once everybody has upgraded
+    for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_leds.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
         if [ ! -f "${dest_cfg}" ]; then
-            echo -e "${WARNING}No previous ${cfg} found. Will install"
+            if [ "$cfg" != "mmu_variables.cfg" ]; then # TODO remove me with mmu_variables
+                echo -e "${WARNING}No previous ${cfg} found. Will install"
+            fi
         else
             echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
             parse_file "${dest_cfg}" "variable_"
@@ -761,6 +763,19 @@ read_previous_config() {
         fi
     done
 
+    # TODO namespace config in third-party addons separately
+    if [ -d "${KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
+        for cfg in `cd ${KLIPPER_CONFIG_HOME}/mmu/addons ; ls *.cfg`; do
+            dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/addons/${cfg}
+            if [ ! -f "${dest_cfg}" ]; then
+                echo -e "${WARNING}No previous ${cfg} found. Will install"
+            else
+                echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
+                parse_file "${dest_cfg}" "variable_"
+            fi
+        done
+    fi
+
     if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
         mmu_num_gates=$_param_mmu_num_gates
         mmu_num_leds=$(expr $mmu_num_gates + 1)
@@ -792,6 +807,11 @@ copy_config_files() {
         echo -e "${DETAIL}Backing up old config files to ${next_mmu_dir}"
         mkdir ${next_mmu_dir}
         (cd "${mmu_dir}"; cp -r * "${next_mmu_dir}")
+
+        # Ensure all new directories exist
+        mkdir -p ${mmu_dir}/base
+        mkdir -p ${mmu_dir}/optional
+        mkdir -p ${mmu_dir}/addons
     fi
 
     if [ ! "${_param_mmu_num_gates}" == "" ]; then
@@ -957,13 +977,13 @@ copy_config_files() {
     # Optional config are read-only symlinks --------------------------------------------------
     for file in `cd ${SRCDIR}/config/optional ; ls *.cfg`; do
         src=${SRCDIR}/config/optional/${file}
-        dest=${KLIPPER_CONFIG_HOME}/mmu/optional/${file}
+        dest=${mmu_dir}/optional/${file}
         ln -sf ${src} ${dest}
     done
 
     # Don't stompt on existing persisted state ------------------------------------------------
     src=${SRCDIR}/config/mmu_vars.cfg
-    dest=${KLIPPER_CONFIG_HOME}/mmu/mmu_vars.cfg
+    dest=${mmu_dir}/mmu_vars.cfg
     if [ -f "${dest}" ]; then
         echo -e "${WARNING}Skipping copy of mmu_vars.cfg file because already exists"
     else
@@ -973,7 +993,7 @@ copy_config_files() {
     # Addon config files are always copied (and updated) so they can be edited ----------------
     for file in `cd ${SRCDIR}/config/addons ; ls *.cfg`; do
         src=${SRCDIR}/config/addons/${file}
-        dest=${KLIPPER_CONFIG_HOME}/mmu/addons/${file}
+        dest=${mmu_dir}/addons/${file}
         if [ -f "${dest}" ]; then
             echo -e "${INFO}Upgrading configuration file ${file}"
             update_copy_file ${src} ${dest} "variable_"
