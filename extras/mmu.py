@@ -380,6 +380,7 @@ class Mmu:
         self.default_gate_color = list(config.getlist('gate_color', []))
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
         self.default_gate_speed_override = list(config.getintlist('gate_speed_override', []))
+        self.slicer_tool_map = {}
 
         # Configuration for gate loading and unloading
         self.gate_homing_endstop = config.getchoice('gate_homing_endstop', {o: o for o in self.GATE_ENDSTOPS}, self.ENDSTOP_ENCODER)
@@ -607,6 +608,7 @@ class Mmu:
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
         self.gcode.register_command('MMU_CHECK_GATE', self.cmd_MMU_CHECK_GATE, desc = self.cmd_MMU_CHECK_GATE_help)
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
+        self.gcode.register_command('MMU_SLICER_MAP', self.cmd_MMU_SLICER_MAP, desc = self.cmd_MMU_SLICER_MAP_help)
 
         # For use in user controlled load and unload macros
         self.gcode.register_command('_MMU_STEP_LOAD_GATE', self.cmd_MMU_STEP_LOAD_GATE, desc = self.cmd_MMU_STEP_LOAD_GATE_help)
@@ -1211,6 +1213,7 @@ class Mmu:
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'tool_extrusion_multipliers': list(self.tool_extrusion_multipliers),
                 'tool_speed_multipliers': list(self.tool_speed_multipliers),
+                'slicer_tool_map': list(self.slicer_tool_map),
                 'action': self._get_action_string(),
                 'has_bypass': self.bypass_offset > 0.,
                 'sync_drive': self.mmu_toolhead.is_synced(),
@@ -2467,7 +2470,7 @@ class Mmu:
 
         # Capture transition to standby
         if event_type == "idle" and self.print_state != "standby":
-            self._on_print_end("standby")
+            self.reactor.register_callback(self._print_standby_event_handler)
 
     def _exec_gcode(self, command):
         try:
@@ -2486,6 +2489,10 @@ class Mmu:
     def _print_error_event_handler(self, eventtime):
         self._log_trace("_print_error_event_handler()")
         self._exec_gcode("_MMU_PRINT_END STATE=error")
+
+    def _print_standby_event_handler(self, eventtime):
+        self._log_trace("_print_standby_event_handler()")
+        self._exec_gcode("_MMU_PRINT_END STATE=standby")
 
     # MMU job state machine: initialized|ready|started|printing|complete|cancelled|error|pause_locked|paused|standby
     def _set_print_state(self, print_state, call_macro=True):
@@ -6055,6 +6062,26 @@ class Mmu:
             msg_extr += ("| %d  " % tool_extr)[:range_end]
         msg = "|\n".join([msg_tool, msg_sped, msg_extr]) + "|\n"
         self._log_always(msg)
+
+    cmd_MMU_SLICER_MAP_help = "Display or define the tools used in print as specified by slicer"
+    def cmd_MMU_SLICER_MAP(self, gcmd):
+        self._log_to_file(gcmd.get_commandline())
+        if self._check_is_disabled(): return
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        tool = gcmd.get_int('TOOL', -1)
+        material = gcmd.get('MATERIAL', "")
+        color = gcmd.get('COLOR', "").lower()
+        temp = gcmd.get_int('TEMP', 0, minval=0)
+        if reset:
+            self.slicer_tool_map.clear()
+        if tool >= 0 and tool < self.mmu_num_gates:
+            self.slicer_tool_map[tool] = {'color': color, 'material': material, 'temp': temp}
+        if not quiet and len(self.slicer_tool_map) > 0:
+            msg = "Slicer defined tools:\n"
+            for t, params in self.slicer_tool_map.items():
+                msg += "T%s (Gate %d, %s, %s, %d\u00B0C)\n" % (t, self.ttg_map[t], params['material'], params['color'], params['temp'])
+            self._log_always(msg)
 
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
     def cmd_MMU_CHECK_GATE(self, gcmd):
