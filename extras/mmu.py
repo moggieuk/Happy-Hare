@@ -6105,120 +6105,121 @@ class Mmu:
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
 
-        with self._wrap_action(self.ACTION_CHECKING):
-            try:
-                tool_selected = self.tool_selected
-                filament_pos = self.filament_pos
-                self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
-                gates_tools = []
-                if tools != "!":
-                    # Tools used in print (may be empty list)
-                    try:
-                        for tool in tools.split(','):
-                            if not tool == "":
-                                tool = int(tool)
-                                if tool >= 0 and tool < self.mmu_num_gates:
-                                    gate = self.ttg_map[tool]
-                                    gates_tools.append([gate, tool])
-                        if len(gates_tools) == 0:
-                            self._log_debug("No tools to check, assuming default tool is already loaded")
-                            return
-                    except ValueError as ve:
-                        msg = "Invalid TOOLS parameter: %s" % tools
-                        if self._is_printing():
-                            self._mmu_pause(msg)
-                        else:
-                            self._log_always(msg)
-                        return
-                elif gates != "!":
-                    # List of gates
-                    try:
-                        for gate in gates.split(','):
-                            gate = int(gate)
-                            if gate >= 0 and gate < self.mmu_num_gates:
-                                gates_tools.append([gate, -1])
-                    except ValueError as ve:
-                        self._log_always("Invalid GATES parameter: %s" % gates)
-                        return
-                elif tool >= 0:
-                    # Individual tool
-                    gate = self.ttg_map[tool]
-                    gates_tools.append([gate, tool])
-                elif gate >= 0:
-                    # Individual gate
-                    gates_tools.append([gate, -1])
-                else:
-                    # No parameters means all gates
-                    for gate in range(self.mmu_num_gates):
-                        gates_tools.append([gate, -1])
-    
-                # Force initial eject
+        with self._wrap_suspend_runout(): # Don't want runout accidently triggering during gate check
+            with self._wrap_action(self.ACTION_CHECKING):
                 try:
-                    if not filament_pos == self.FILAMENT_POS_UNLOADED:
-                        self._log_info("Unloading current tool prior to checking gates")
-                        self._unload_tool()
-                except MmuError as ee:
-                    self._mmu_pause(str(ee))
-                    return
-    
-                if len(gates_tools) > 1:
-                    self._log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
-                for gate, tool in gates_tools:
-                    try:
-                        self._select_gate(gate)
-                        self._initialize_filament_position() # Encoder 0000
-                        self.calibrating = True # To suppress visual filament position
-                        self._log_info("Checking Gate %d..." % gate)
-                        self._load_gate(allow_retry=False, adjust_servo_on_error=False)
-                        if tool >= 0:
-                            self._log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
-                        else:
-                            self._log_info("Gate %d - Filament detected. Marked available" % gate)
-                        self._set_gate_status(gate, max(self.gate_status[gate], self.GATE_AVAILABLE))
+                    tool_selected = self.tool_selected
+                    filament_pos = self.filament_pos
+                    self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
+                    gates_tools = []
+                    if tools != "!":
+                        # Tools used in print (may be empty list)
                         try:
-                            self._unload_gate()
-                        except MmuError as ee:
-                            msg = "Failure during check Gate %d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
+                            for tool in tools.split(','):
+                                if not tool == "":
+                                    tool = int(tool)
+                                    if tool >= 0 and tool < self.mmu_num_gates:
+                                        gate = self.ttg_map[tool]
+                                        gates_tools.append([gate, tool])
+                            if len(gates_tools) == 0:
+                                self._log_debug("No tools to check, assuming default tool is already loaded")
+                                return
+                        except ValueError as ve:
+                            msg = "Invalid TOOLS parameter: %s" % tools
                             if self._is_printing():
                                 self._mmu_pause(msg)
                             else:
                                 self._log_always(msg)
                             return
-                    except MmuError as ee:
-                        self._set_gate_status(gate, self.GATE_EMPTY)
-                        self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
-                        if tool >= 0:
-                            msg = "Tool T%d on Gate %d marked EMPTY" % (tool, gate)
-                        else:
-                            msg = "Gate %d marked EMPTY" % gate
-                        if self._is_printing():
-                            # Use case of in-print verification of all tools used in print
-                            self._mmu_pause("Required " + msg)
-                            self._log_debug("Reason: %s" % str(ee))
+                    elif gates != "!":
+                        # List of gates
+                        try:
+                            for gate in gates.split(','):
+                                gate = int(gate)
+                                if gate >= 0 and gate < self.mmu_num_gates:
+                                    gates_tools.append([gate, -1])
+                        except ValueError as ve:
+                            self._log_always("Invalid GATES parameter: %s" % gates)
                             return
-                        else:
-                            self._log_info(msg)
-                            self._log_debug("Reason: %s" % str(ee))
-                    finally:
-                        self.calibrating = False
-    
-                # Reselect original tool and load filament if necessary
-                try:
-                    if tool_selected == self.TOOL_GATE_BYPASS:
-                        self._select_bypass()
-                    elif tool_selected != self.TOOL_GATE_UNKNOWN:
-                        if filament_pos == self.FILAMENT_POS_LOADED:
-                            self._log_info("Restoring tool loaded prior to checking gates")
-                            self._select_and_load_tool(tool_selected)
-                        else:
-                            self._select_tool(tool_selected)
-                except MmuError as ee:
-                    self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
-    
-                if not quiet:
-                    self._log_info(self._ttg_map_to_string(summary=True))
-            finally:
-                self._servo_auto()
+                    elif tool >= 0:
+                        # Individual tool
+                        gate = self.ttg_map[tool]
+                        gates_tools.append([gate, tool])
+                    elif gate >= 0:
+                        # Individual gate
+                        gates_tools.append([gate, -1])
+                    else:
+                        # No parameters means all gates
+                        for gate in range(self.mmu_num_gates):
+                            gates_tools.append([gate, -1])
+        
+                    # Force initial eject
+                    try:
+                        if not filament_pos == self.FILAMENT_POS_UNLOADED:
+                            self._log_info("Unloading current tool prior to checking gates")
+                            self._unload_tool()
+                    except MmuError as ee:
+                        self._mmu_pause(str(ee))
+                        return
+        
+                    if len(gates_tools) > 1:
+                        self._log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
+                    for gate, tool in gates_tools:
+                        try:
+                            self._select_gate(gate)
+                            self._initialize_filament_position() # Encoder 0000
+                            self.calibrating = True # To suppress visual filament position
+                            self._log_info("Checking Gate %d..." % gate)
+                            self._load_gate(allow_retry=False, adjust_servo_on_error=False)
+                            if tool >= 0:
+                                self._log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
+                            else:
+                                self._log_info("Gate %d - Filament detected. Marked available" % gate)
+                            self._set_gate_status(gate, max(self.gate_status[gate], self.GATE_AVAILABLE))
+                            try:
+                                self._unload_gate()
+                            except MmuError as ee:
+                                msg = "Failure during check Gate %d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee))
+                                if self._is_printing():
+                                    self._mmu_pause(msg)
+                                else:
+                                    self._log_always(msg)
+                                return
+                        except MmuError as ee:
+                            self._set_gate_status(gate, self.GATE_EMPTY)
+                            self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
+                            if tool >= 0:
+                                msg = "Tool T%d on Gate %d marked EMPTY" % (tool, gate)
+                            else:
+                                msg = "Gate %d marked EMPTY" % gate
+                            if self._is_printing():
+                                # Use case of in-print verification of all tools used in print
+                                self._mmu_pause("Required " + msg)
+                                self._log_debug("Reason: %s" % str(ee))
+                                return
+                            else:
+                                self._log_info(msg)
+                                self._log_debug("Reason: %s" % str(ee))
+                        finally:
+                            self.calibrating = False
+        
+                    # Reselect original tool and load filament if necessary
+                    try:
+                        if tool_selected == self.TOOL_GATE_BYPASS:
+                            self._select_bypass()
+                        elif tool_selected != self.TOOL_GATE_UNKNOWN:
+                            if filament_pos == self.FILAMENT_POS_LOADED:
+                                self._log_info("Restoring tool loaded prior to checking gates")
+                                self._select_and_load_tool(tool_selected)
+                            else:
+                                self._select_tool(tool_selected)
+                    except MmuError as ee:
+                        self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
+        
+                    if not quiet:
+                        self._log_info(self._ttg_map_to_string(summary=True))
+                finally:
+                    self._servo_auto()
 
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
     def cmd_MMU_PRELOAD(self, gcmd):
