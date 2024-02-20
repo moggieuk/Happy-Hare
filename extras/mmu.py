@@ -2585,7 +2585,11 @@ class Mmu:
         msg= "Print%s paused" % (" was already" if self._is_printer_paused() else " will be")
         dialog_macro = self.printer.lookup_object('gcode_macro %s' % self.error_dialog_macro, None)
         if self.show_error_dialog and dialog_macro is not None:
-            self._wrap_gcode_command("%s MSG='%s' REASON='%s'" % (self.error_dialog_macro, msg, self.reason_for_pause))
+            # Klipper doesn't handle string quoting so strip problematic characters
+            reason = self.reason_for_pause.replace("\n", ". ")
+            for c in "#;'":
+                reason = reason.replace(c, "")
+            self._wrap_gcode_command('%s MSG="%s" REASON="%s"' % (self.error_dialog_macro, msg, reason))
         self._log_error("MMU issue detected. %s\nReason: %s" % (msg, self.reason_for_pause))
         self._log_always("After fixing, call RESUME to continue printing (MMU_UNLOCK to restore temperature)")
 
