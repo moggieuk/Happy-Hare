@@ -87,7 +87,9 @@ class MmuRunoutHelper:
 
         # Don't handle too early or if disabled
         if eventtime < self.min_event_systime or not self.sensor_enabled: return
+        self._process_state_change(eventtime, is_filament_present)
 
+    def _process_state_change(self, eventtime, is_filament_present):
         # Let Happy Hare decide what processing is possible based on printing state
         if is_filament_present: # Insert detected
             self.min_event_systime = self.reactor.NEVER
@@ -95,15 +97,15 @@ class MmuRunoutHelper:
             self.reactor.register_callback(self._insert_event_handler)
         else: # Runout detected
             self.min_event_systime = self.reactor.NEVER
-            if self.runout_suspended:
+            if self.runout_suspended: # Just a remove event
                 logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._remove_event_handler)
-            else:
+            else: # True runout
                 logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._runout_event_handler)
 
-    def enable_runout(self, enable):
-        self.runout_suspended = not enable
+    def enable_runout(self, restore):
+        self.runout_suspended = not restore
 
     def get_status(self, eventtime):
         return {
