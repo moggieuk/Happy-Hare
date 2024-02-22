@@ -599,7 +599,6 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_RUNOUT', self.cmd_MMU_TEST_RUNOUT, desc = self.cmd_MMU_TEST_RUNOUT_help)
         self.gcode.register_command('MMU_TEST_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help)
         self.gcode.register_command('_MMU_TEST', self.cmd_MMU_TEST, desc = self.cmd_MMU_TEST_help) # Internal for testing
-#PAUL        self.gcode.register_command('_MMU_LOG_LIST', self.cmd_MMU_LOG_LIST, desc = self.cmd_MMU_LOG_LIST_help)
 
         # Soak Testing
         self.gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
@@ -1382,16 +1381,6 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override))
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
-
-# PAUL: Not needed anymore
-#    cmd_MMU_LOG_LIST_help = "Allow for multi-line logging from macro"
-#    def cmd_MMU_LOG_LIST(self, gcmd):
-#        message = gcmd.get('MSG', [])
-#        try:
-#            msg_lines = ast.literal_eval(message)
-#            self.gcode.respond_info("\n".join(msg_lines))
-#        except Exception as e:
-#            self.gcode.respond_info("Log Exception: %s" % str(e))
 
     def _log_to_file(self, message):
         message = "> %s" % message
@@ -6104,7 +6093,7 @@ class Mmu:
             self.slicer_tool_map = {'tools': {}, 'initial_tool': None}
             quiet = True
         if tool >= 0:
-            self.slicer_tool_map['tools'][tool] = {'color': color, 'material': material, 'temp': temp}
+            self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp}
             quiet = True
         if initial_tool is not None:
             self.slicer_tool_map['initial_tool'] = initial_tool
@@ -6113,7 +6102,7 @@ class Mmu:
             if len(self.slicer_tool_map['tools']) > 0 or self.slicer_tool_map['initial_tool'] is not None:
                 msg = "--------- Slicer MMU Tool Summary ---------\n"
                 for t, params in self.slicer_tool_map['tools'].items():
-                    msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (t, self.ttg_map[t], params['material'], params['color'], params['temp'])
+                    msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'])
                 if self.slicer_tool_map['initial_tool'] is not None:
                     msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
                 msg += "-------------------------------------------"
