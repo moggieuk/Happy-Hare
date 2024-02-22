@@ -383,7 +383,7 @@ class Mmu:
         self.default_gate_color = list(config.getlist('gate_color', []))
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
         self.default_gate_speed_override = list(config.getintlist('gate_speed_override', []))
-        self.slicer_tool_map = {}
+        self.slicer_tool_map = {'tools': {}, 'initial_tool': None}
 
         # Configuration for gate loading and unloading
         self.gate_homing_endstop = config.getchoice('gate_homing_endstop', {o: o for o in self.GATE_ENDSTOPS}, self.ENDSTOP_ENCODER)
@@ -599,7 +599,7 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_RUNOUT', self.cmd_MMU_TEST_RUNOUT, desc = self.cmd_MMU_TEST_RUNOUT_help)
         self.gcode.register_command('MMU_TEST_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help)
         self.gcode.register_command('_MMU_TEST', self.cmd_MMU_TEST, desc = self.cmd_MMU_TEST_help) # Internal for testing
-        self.gcode.register_command('_MMU_LOG_LIST', self.cmd_MMU_LOG_LIST, desc = self.cmd_MMU_LOG_LIST_help)
+#PAUL        self.gcode.register_command('_MMU_LOG_LIST', self.cmd_MMU_LOG_LIST, desc = self.cmd_MMU_LOG_LIST_help)
 
         # Soak Testing
         self.gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
@@ -611,7 +611,7 @@ class Mmu:
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
         self.gcode.register_command('MMU_CHECK_GATE', self.cmd_MMU_CHECK_GATE, desc = self.cmd_MMU_CHECK_GATE_help)
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
-        self.gcode.register_command('MMU_SLICER_MAP', self.cmd_MMU_SLICER_MAP, desc = self.cmd_MMU_SLICER_MAP_help)
+        self.gcode.register_command('MMU_SLICER_TOOL_MAP', self.cmd_MMU_SLICER_TOOL_MAP, desc = self.cmd_MMU_SLICER_TOOL_MAP_help)
 
         # For use in user controlled load and unload macros
         self.gcode.register_command('_MMU_STEP_LOAD_GATE', self.cmd_MMU_STEP_LOAD_GATE, desc = self.cmd_MMU_STEP_LOAD_GATE_help)
@@ -1383,14 +1383,15 @@ class Mmu:
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
-    cmd_MMU_LOG_LIST_help = "Allow for multi-line logging from macro"
-    def cmd_MMU_LOG_LIST(self, gcmd):
-        message = gcmd.get('MSG', [])
-        try:
-            msg_lines = ast.literal_eval(message)
-            self.gcode.respond_info("\n".join(msg_lines))
-        except Exception as e:
-            self.gcode.respond_info("Log Exception: %s" % str(e))
+# PAUL: Not needed anymore
+#    cmd_MMU_LOG_LIST_help = "Allow for multi-line logging from macro"
+#    def cmd_MMU_LOG_LIST(self, gcmd):
+#        message = gcmd.get('MSG', [])
+#        try:
+#            msg_lines = ast.literal_eval(message)
+#            self.gcode.respond_info("\n".join(msg_lines))
+#        except Exception as e:
+#            self.gcode.respond_info("Log Exception: %s" % str(e))
 
     def _log_to_file(self, message):
         message = "> %s" % message
@@ -3079,7 +3080,7 @@ class Mmu:
         macros = gcmd.get_int('MACROS', 0, minval=0, maxval=1)
         testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
         steps = gcmd.get_int('STEPS', 0, minval=0, maxval=1)
-        msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full command set)\n"
+        msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 GCODE=1 for full command set)\n"
         tmsg = "\nCalibration and testing commands:\n"
         mmsg = "\nMacros and callbacks (defined in mmu_software.cfg, mmu_form_tip.cfg, mmu_cut_tip.cfg, mmu_sequence.cfg, mmu_state.cfg, mmu_leds.cfg):\n"
         smsg = "\nIndividual load/unload sequence steps:\n"
@@ -3087,7 +3088,9 @@ class Mmu:
         cmds.sort()
         for c in cmds:
             d = self.gcode.gcode_help.get(c, "n/a")
-            if c.startswith("MMU") and not c.startswith("MMU__"):
+            if c.startswith("MMU_SLICER") and c not in ['MMU_SLICER_TOOL_MAP']:
+                mmsg += "%s : %s\n" % (c.upper(), d)
+            elif c.startswith("MMU") and not c.startswith("MMU__"):
                 if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c:
                     if c not in ["MMU_UNLOAD", "MMU_CHANGE_TOOL_STANDALONE", "MMU_CHECK_GATES", "MMU_REMAP_TTG", "MMU_FORM_TIP"]: # Remove aliases
                         msg += "%s : %s\n" % (c.upper(), d)
@@ -3095,7 +3098,7 @@ class Mmu:
                     tmsg += "%s : %s\n" % (c.upper(), d)
             elif c.startswith("_MMU"):
                 if not c.startswith("_MMU_STEP"):
-                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_CUT_TIP", "_MMU_FORM_TIP", "_MMU_ERROR_DIALOG", "_MMU_LOG_LIST"]: # Remove internal helpers
+                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_CUT_TIP", "_MMU_FORM_TIP", "_MMU_ERROR_DIALOG"]: # Remove internal helpers
                         mmsg += "%s : %s\n" % (c.upper(), d)
                 else:
                     smsg += "%s : %s\n" % (c.upper(), d)
@@ -6085,24 +6088,37 @@ class Mmu:
         msg = "|\n".join([msg_tool, msg_sped, msg_extr]) + "|\n"
         self._log_always(msg)
 
-    cmd_MMU_SLICER_MAP_help = "Display or define the tools used in print as specified by slicer"
-    def cmd_MMU_SLICER_MAP(self, gcmd):
+    cmd_MMU_SLICER_TOOL_MAP_help = "Display or define the tools used in print as specified by slicer"
+    def cmd_MMU_SLICER_TOOL_MAP(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        display = bool(gcmd.get_int('DISPLAY', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
-        material = gcmd.get('MATERIAL', "")
+        material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
+        initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
+        quiet = False
         if reset:
-            self.slicer_tool_map.clear()
+            self.slicer_tool_map = {'tools': {}, 'initial_tool': None}
+            quiet = True
         if tool >= 0:
-            self.slicer_tool_map["T%s" % tool] = {'color': color, 'material': material, 'temp': temp}
-        if not quiet and len(self.slicer_tool_map) > 0:
-            msg = "Slicer defined tools:\n"
-            for t, params in self.slicer_tool_map.items():
-                msg += "%s (Gate %d, %s, %s, %d\u00B0C)\n" % (t, self.ttg_map[int(t[1:])], params['material'], params['color'], params['temp'])
+            self.slicer_tool_map['tools'][tool] = {'color': color, 'material': material, 'temp': temp}
+            quiet = True
+        if initial_tool is not None:
+            self.slicer_tool_map['initial_tool'] = initial_tool
+            quiet = True
+        if display or not quiet:
+            if len(self.slicer_tool_map['tools']) > 0 or self.slicer_tool_map['initial_tool'] is not None:
+                msg = "--------- Slicer MMU Tool Summary ---------\n"
+                for t, params in self.slicer_tool_map['tools'].items():
+                    msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (t, self.ttg_map[t], params['material'], params['color'], params['temp'])
+                if self.slicer_tool_map['initial_tool'] is not None:
+                    msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
+                msg += "-------------------------------------------"
+            else:
+                msg = "No slicer tool map loaded"
             self._log_always(msg)
 
     # TODO default to current gate; MMU_CHECK_GATES default to all gates. Add ALL=1 flag
