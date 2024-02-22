@@ -383,7 +383,6 @@ class Mmu:
         self.default_gate_color = list(config.getlist('gate_color', []))
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
         self.default_gate_speed_override = list(config.getintlist('gate_speed_override', []))
-        self.slicer_tool_map = {'tools': {}, 'initial_tool': None}
 
         # Configuration for gate loading and unloading
         self.gate_homing_endstop = config.getchoice('gate_homing_endstop', {o: o for o in self.GATE_ENDSTOPS}, self.ENDSTOP_ENCODER)
@@ -956,6 +955,10 @@ class Mmu:
         self.print_state = self.resume_to_state = "ready"
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
         self.custom_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
+        self._clear_slicer_tool_map()
+
+    def _clear_slicer_tool_map(self):
+        self.slicer_tool_map = {'tools': {}, 'initial_tool': None, 'initialized': False}
 
     # Helper to infer type for setting gcode macro variables
     def _fix_type(self, s):
@@ -1186,7 +1189,8 @@ class Mmu:
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
-                'is_locked': self._is_mmu_paused(),
+                'is_paused': self._is_mmu_paused(),
+                'is_locked': self._is_mmu_paused(), # Alias for is_paused
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
@@ -2510,6 +2514,7 @@ class Mmu:
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self.is_handling_runout = False
+            self._clear_slicer_tool_map()
             self._enable_runout() # Enable runout/clog detection while printing
             self._initialize_filament_position(dwell=None) # Encoder 0000
             self._set_print_state("started", call_macro=False)
@@ -3077,7 +3082,7 @@ class Mmu:
         cmds.sort()
         for c in cmds:
             d = self.gcode.gcode_help.get(c, "n/a")
-            if c.startswith("MMU_SLICER") and c not in ['MMU_SLICER_TOOL_MAP']:
+            if c.startswith("MMU_START") or c.startswith("MMU_END"):
                 mmsg += "%s : %s\n" % (c.upper(), d)
             elif c.startswith("MMU") and not c.startswith("MMU__"):
                 if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c:
@@ -6090,13 +6095,14 @@ class Mmu:
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
         quiet = False
         if reset:
-            self.slicer_tool_map = {'tools': {}, 'initial_tool': None}
+            self._clear_slicer_tool_map()
             quiet = True
         if tool >= 0:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp}
             quiet = True
         if initial_tool is not None:
             self.slicer_tool_map['initial_tool'] = initial_tool
+            self.slicer_tool_map['initialized'] = True
             quiet = True
         if display or not quiet:
             if len(self.slicer_tool_map['tools']) > 0 or self.slicer_tool_map['initial_tool'] is not None:
