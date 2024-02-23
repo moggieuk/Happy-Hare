@@ -6102,11 +6102,13 @@ class Mmu:
             quiet = True
         if initial_tool is not None:
             self.slicer_tool_map['initial_tool'] = initial_tool
-            self.slicer_tool_map['initialized'] = True
+            self.slicer_tool_map['initialized'] = True # For Klippain
             quiet = True
         if display or not quiet:
-            if len(self.slicer_tool_map['tools']) > 0 or self.slicer_tool_map['initial_tool'] is not None:
+            colors = len(self.slicer_tool_map['tools'])
+            if colors > 0 or self.slicer_tool_map['initial_tool'] is not None:
                 msg = "--------- Slicer MMU Tool Summary ---------\n"
+                msg += "Single color print\n" if colors <= 1 else "%d color print\n" % colors
                 for t, params in self.slicer_tool_map['tools'].items():
                     msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'])
                 if self.slicer_tool_map['initial_tool'] is not None:
