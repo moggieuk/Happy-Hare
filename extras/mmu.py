@@ -6094,7 +6094,7 @@ class Mmu:
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
-        purge_volumes = gcmd.get('PURGE_VOLUMES'.split(","), [])
+        purge_volumes = gcmd.get('PURGE_VOLUMES', "").split(',')
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
         quiet = False
         if reset:
@@ -6107,7 +6107,7 @@ class Mmu:
             self.slicer_tool_map['initial_tool'] = initial_tool
             self.slicer_tool_map['initialized'] = True # For Klippain
             quiet = True
-        if purge_volumes:
+        if len(purge_volumes) > 1:
             n_tools = int(len(purge_volumes) ** 0.5)
             self.slicer_tool_map['purge_volumes'] = [purge_volumes[i * n_tools : (i + 1) * n_tools] for i in range(n_tools)]
         if display or not quiet:
