@@ -237,7 +237,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.gate_color_rgb : {list} of color rbg values from 0.0 - 1.0 in truples (red, green blue), one per gate
     printer.mmu.gate_spool_id : {list} of IDs for Spoolman, one per gate
     printer.mmu.custom_color_rgb : {list} of color rbg values from 0.0 - 1.0 in truples (red, green blue), one per gate
-    printer.mmu.slicer_tool_map : {map} of slicer defined tool attributes (in form slicer_tool_map.Tx.[color|materialtemp])
+    printer.mmu.slicer_tool_map : {map} of slicer defined tool attributes (in form slicer_tool_map.tools.x.[color|material|temp])
     printer.mmu.endless_spool_groups : {list} membership group (int) for each tool
     printer.mmu.tool_extrusion_multipliers : {list} current M221 extrusion multipliers (float), one per tool
     printer.mmu.tool_speed_multipliers : {list} current M220 extrusion multipliers (float), one per tool
