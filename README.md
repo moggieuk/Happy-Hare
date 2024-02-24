@@ -60,6 +60,7 @@ Thank you!
 
 #### Other Docs:
 
+**[Slicer Setup](/doc/slicer.md)** 🆕<br>
 **[Understanding Operation with MMU_STATUS](/doc/operation.md)** 🆕<br>
 **[Command Reference](/doc/command_ref.md)**<br>
 **[Hardware Configuration, Movement and Homing](/doc/hardware_config.md)**<br>
@@ -137,7 +138,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonr
 ```
 
 > [!WARNING]  
-> TCRT 5000 encoders can be problematic. A new backward compatible alternative "Binky" is available is strongly recommended (standard in ERCFv2). If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](/doc/ercf_encoder_v11.md) - the better the encoder the better this software will work for MMU's with encoders.
+> TCRT 5000 encoders on ERCFv1.1 can be problematic. A new backward compatible alternative "Binky" is available is strongly recommended (standard in ERCFv2). If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](/doc/ercf_encoder_v11.md) - the better the encoder the better this software will work for MMU's with encoders.
 > Hall effect toolhead sensors can be problematic in a heated chamber because their characteristics change with temperature. Microswitch versions are preferred.
 
 <br>
@@ -184,11 +185,10 @@ Also Happy Hare exposes a large array of 'printer' variables that are useful in 
     MMU : Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL : Perform a tool swap
     MMU_CHECK_GATE : Automatically inspects gate(s), parks filament and marks availability
-    MMU_STATS : Dump (and optionally reset) the MMU statistics
     MMU_EJECT : aka MMU_UNLOAD Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
     MMU_ENDLESS_SPOOL : Display TTG map or redefine the EndlessSpool groups
-    MMU_FORM_TIP : Convenience macro for calling the standalone tip forming functionality
+    MMU_GATE_MAP : Display or define the type and color of filaments on each gate
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
     MMU_LED : Manage mode of operation of optional MMU LED's
@@ -197,15 +197,18 @@ Also Happy Hare exposes a large array of 'printer' variables that are useful in 
     MMU_PAUSE : Pause the current print and lock the MMU operations
     MMU_PRELOAD : Preloads filament at specified or current gate
     MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
-    MMU_TTG_MAP : aka MMU_REMAP_TTG Display TTG map or remap a tool to a specific gate and set gate availability
     MMU_RESET : Forget persisted state and re-initialize defaults
     MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS : Select the filament bypass
+    MMU_SENSORS : Query state of sensors fitted to mmu
     MMU_SERVO : Move MMU servo to position specified position or angle
+    MMU_SLICER_TOOL_MAP : Display or define the tools used in print as specified by slicer
     MMU_GATE_MAP : Display or define the type and color of filaments on each gate
+    MMU_STATS : Dump (and optionally reset) the MMU statistics
     MMU_STATUS : Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder stepper
     MMU_TOOL_OVERRIDES : Displays, sets or clears tool speed and extrusion factors (M220 & M221)
+    MMU_TTG_MAP : aka MMU_REMAP_TTG Display TTG map or remap a tool to a specific gate and set gate availability
     MMU_UNLOCK : Wakeup the MMU prior to resume to restore temperatures and timeouts
 ```
 
