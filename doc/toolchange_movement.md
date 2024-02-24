@@ -38,9 +38,9 @@ Unless you have a sepcialized purge system (documented later) you will want the 
 
 <img src="/doc/toolchange/print_settings.png" width="500" alt="Slicer print settings">
 
-> [!NOTE]
+> [!NOTE]  
 > If you use SuperSlicer, be sure to turn off Skinnydip:
-> <img src="/doc/toolchange/print_settings.png" width="500" alt="Skinnydip disabling">
+> <br><img src="/doc/toolchange/skinny_dip.png" width="500" alt="Skinnydip disabling"><br>
 > It's probably also a good idea to zero out the distances below.
 > Doing this prevents Superslicer from pushing out a blob of filament before cutting the tip.
 
