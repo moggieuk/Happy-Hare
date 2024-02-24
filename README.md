@@ -60,7 +60,7 @@ Thank you!
 
 #### Other Docs:
 
-**[Slicer Setup](/doc/slicer.md)** 🆕<br>
+**[Slicer Setup](/doc/slicer_setup.md)** 🆕<br>
 **[Understanding Operation with MMU_STATUS](/doc/operation.md)** 🆕<br>
 **[Command Reference](/doc/command_ref.md)**<br>
 **[Hardware Configuration, Movement and Homing](/doc/hardware_config.md)**<br>
