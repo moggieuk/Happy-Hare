@@ -6094,7 +6094,7 @@ class Mmu:
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
-        purge_volumes = gcmd.get('PURGE_VOLUMES', "").split(',')
+        purge_volumes = map(float, gcmd.get('PURGE_VOLUMES', "").split(','))
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
         quiet = False
         if reset:
