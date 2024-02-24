@@ -15,6 +15,7 @@ ARGS=( "$@" )
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"
 KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
+OCTOPRINT_KLIPPER_CONFIG_HOME="${HOME}"
 KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 SENSORS_SECTION="FILAMENT SENSORS"
@@ -248,6 +249,17 @@ check_klipper() {
     fi
 }
 
+check_octoprint() {
+    if [ "$NOSERVICE" -ne 1 ]; then
+        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
+            echo -e "${INFO}OctoPrint service found"
+            OCTOPRINT=1
+        else
+            OCTPRINT=0
+        fi
+    fi
+}
+
 verify_home_dirs() {
     if [ ! -d "${KLIPPER_HOME}" ]; then
         echo -e "${ERROR}Klipper home directory (${KLIPPER_HOME}) not found. Use '-k <dir>' option to override"
@@ -255,16 +267,23 @@ verify_home_dirs() {
     fi
     if [ ! -d "${KLIPPER_CONFIG_HOME}" ]; then
         if [ ! -d "${OLD_KLIPPER_CONFIG_HOME}" ]; then
-            echo -e "${ERROR}Klipper config directory (${KLIPPER_CONFIG_HOME} or ${OLD_KLIPPER_CONFIG_HOME}) not found. Use '-c <dir>' option to override"
-            exit -1
+            if [ ! -f "${OCTOPRINT_KLIPPER_CONFIG_HOME}/printer.cfg" ]; then
+                echo -e "${ERROR}Klipper config directory (${KLIPPER_CONFIG_HOME} or ${OLD_KLIPPER_CONFIG_HOME}) not found. Use '-c <dir>' option to override"
+                exit -1
+            fi
+            KLIPPER_CONFIG_HOME="${OCTOPRINT_KLIPPER_CONFIG_HOME}"
+        else
+            KLIPPER_CONFIG_HOME="${OLD_KLIPPER_CONFIG_HOME}"
         fi
-        KLIPPER_CONFIG_HOME="${OLD_KLIPPER_CONFIG_HOME}"
     fi
     echo -e "${INFO}Klipper config directory (${KLIPPER_CONFIG_HOME}) found"
 
     if [ ! -d "${MOONRAKER_HOME}" ]; then
-        echo -e "${ERROR}Moonraker home directory (${MOONRAKER_HOME}) not found. Use '-m <dir>' option to override"
-        exit -1
+        if [ "${OCTOPRINT}" -eq 0 ]; then
+            echo -e "${ERROR}Moonraker home directory (${MOONRAKER_HOME}) not found. Use '-m <dir>' option to override"
+            exit -1
+        fi
+        echo -e "${WARNING}Moonraker home directory (${MOONRAKER_HOME}) not found. OctoPrint detected, skipping."
     fi
 }
 
@@ -1052,7 +1071,8 @@ restart_moonraker() {
 
 prompt_yn() {
     while true; do
-        read -n1 -p "$@ (y/n)? " yn
+        read -n1 -p "
+$@ (y/n)? " yn
         case "${yn}" in
             Y|y)
                 echo "y" 
@@ -1070,7 +1090,8 @@ prompt_123() {
     prompt=$1
     max=$2
     while true; do
-        read -p "${prompt} (1-${max})? " -n 1 number
+        read -p "
+${prompt} (1-${max})? " -n 1 number
         if [[ "$number" =~ [1-${max}] ]]; then
             echo ${number}
             break
@@ -1532,6 +1553,7 @@ verify_not_root
 [ -z "${SKIP_UPDATE}" ] && {
     self_update # Make sure the repo is up-to-date
 }
+check_octoprint
 verify_home_dirs
 check_klipper
 cleanup_old_ercf
