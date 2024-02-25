@@ -5901,7 +5901,7 @@ class Mmu:
                 self._log_debug("Handling insertion detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
                 self._set_gate_status(gate, self.GATE_UNKNOWN)
                 if not self._is_in_print():
-                    self.gcode.run_script_from_command('MMU_PRELOAD')
+                    self.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
