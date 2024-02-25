@@ -6118,12 +6118,25 @@ class Mmu:
                 volumes = list(map(float, purge_volumes.split(',')))
                 n = len(volumes)
                 num_tools = self.mmu_num_gates
-                if num_tools == n:
-                    self.slicer_tool_map['purge_volumes'] = [[volumes[x] + volumes[y] for y in range(num_tools)] for x in range(num_tools)]
-                elif num_tools ** 2 == n:
+                if num_tools ** 2 == n:
+                    # Full NxN matrix supplied
                     self.slicer_tool_map['purge_volumes'] = [volumes[i * num_tools : (i + 1) * num_tools] for i in range(num_tools)]
                 else:
-                    raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expect %d or %d, got %d" % (num_tools, num_tools ** 2, n))
+                    if n == 1:
+                        calc = lambda x,y: volumes[0] * 2 # Build a single value matrix
+                    elif num_tools == n:
+                        calc = lambda x,y: volumes[x] + volumes[y] # Will build symmetrical purge matrix
+                    elif num_tools * 2 == n:
+                        calc = lambda x,y: volumes[x] + volumes[num_tools + y] # Build matrix with sum of unload and load tools
+                    else:
+                        raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expect 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n))
+                    self.slicer_tool_map['purge_volumes'] = [
+                        [
+                            calc(x,y) if x != y else 0.
+                                for y in range(num_tools)
+                        ]
+                        for x in range(num_tools)
+                    ]
             except ValueError as e:
                 raise gcmd.error("Error parsing PURGE_VOLUMES: %s" % str(e))
             quiet = True
