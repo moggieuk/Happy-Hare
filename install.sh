@@ -1071,8 +1071,7 @@ restart_moonraker() {
 
 prompt_yn() {
     while true; do
-        read -n1 -p "
-$@ (y/n)? " yn
+        read -n1 -p "$@ (y/n)? " yn
         case "${yn}" in
             Y|y)
                 echo "y" 
@@ -1090,8 +1089,7 @@ prompt_123() {
     prompt=$1
     max=$2
     while true; do
-        read -p "
-${prompt} (1-${max})? " -n 1 number
+        read -p "${prompt} (1-${max})? " -n 1 number
         if [[ "$number" =~ [1-${max}] ]]; then
             echo ${number}
             break
