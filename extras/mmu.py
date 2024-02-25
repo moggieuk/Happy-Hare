@@ -2496,7 +2496,7 @@ class Mmu:
     def _set_print_state(self, print_state, call_macro=True):
         if print_state != self.print_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
-            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, z_hop @%.1fmm, pause_resume: %s, Idle timeout: %.2fs)"
+            self._log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, z_height saved: %.2fmm, pause_resume: %s, Idle timeout: %.2fs)"
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_position, self.saved_toolhead_height, self._is_printer_paused(), idle_timeout))
             if call_macro:
@@ -2660,37 +2660,39 @@ class Mmu:
 
             # Save toolhead position
             if 'xyz' in homed:
-                toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
-                self._log_debug("Saving toolhead position (%s) for %s" % (toolhead_pos, operation))
+                gcode_pos = gcode_move.get_status(eventtime)['gcode_position']
+                toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
+                self._log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
                 self.saved_toolhead_position = operation
-                self.saved_toolhead_height = self.toolhead.get_position()[2]
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
                     mmu_state = gcode_move.saved_states['MMU_state']
                     self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
-            else:
-                self._log_debug("Cannot save toolhead position for %s because not homed" % operation)
 
-            # Lift toolhead off print the specified z-hop
-            if self._is_in_print(force_in_print) and z_hop_height is not None and z_hop_height > 0:
-                if 'z' not in homed:
-                    self._log_info("Warning: MMU cannot lift toolhead because not homed!")
-                else:
+                # Lift toolhead off print the specified z-hop
+                if self._is_in_print(force_in_print) and z_hop_height is not None and z_hop_height > 0:
                     self._log_debug("Lifting toolhead %.1fmm" % z_hop_height)
-                    act_z = self.saved_toolhead_height = self.toolhead.get_position()[2]
+                    act_z = self.saved_toolhead_height = gcode_pos.z
                     max_z = self.toolhead.get_status(eventtime)['axis_maximum'].z
                     max_z -= gcode_move.get_status(eventtime)['homing_origin'].z
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
-                    self.toolhead.manual_move([None, None, act_z + safe_z], self.z_hop_speed)
+                    self.gcode.run_script_from_command("G90")
+                    self.gcode.run_script_from_command("G1 Z%.4f F%d" %(act_z + safe_z, self.z_hop_speed * 60))
+            else:
+                self._log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
         elif operation:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
     def _restore_toolhead_position(self, operation):
         if self.saved_toolhead_position:
+            eventtime = self.reactor.monotonic()
+            gcode_move = self.printer.lookup_object("gcode_move")
+            gcode_pos = gcode_move.get_status(eventtime)['gcode_position']
+
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
                 mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
@@ -2698,16 +2700,20 @@ class Mmu:
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
               
             if self.restore_toolhead_xy_position:
+                # Restore pre-pause position and state
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
+                toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
+                self._log_debug("Restored gcode state and position (%s) after %s" % (toolhead_gcode_pos, operation))
             else:
+                # Default: Only undo the z-hop move...
+                if self.saved_toolhead_height >= 0:
+                    self._log_debug("Restoring toolhead height")
+                    self.gcode.run_script_from_command("G90")
+                    self.gcode.run_script_from_command("G1 Z%.4f F%d" % (self.saved_toolhead_height, self.z_hop_speed * 60))
+                # But ensure gcode state...
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state")
+                self._log_debug("Restored gcode state and z-hop position only (Z:%.1f) after %s" % (self.saved_toolhead_height, operation))
 
-        # Handle z-hop separately
-        if self.saved_toolhead_height >= 0:
-            self.toolhead.manual_move([None, None, self.saved_toolhead_height], self.z_hop_speed)
-
-        toolhead_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", self.toolhead.get_position())])
-        self._log_debug("Restoring toolhead position (%s) after %s" % (toolhead_pos, operation))
         self._clear_saved_toolhead_position()
 
     def _clear_saved_toolhead_position(self):
@@ -5184,9 +5190,9 @@ class Mmu:
             return
 
         try:
+            self._clear_mmu_error_dialog()
             if self._is_mmu_pause_locked():
                 self._mmu_unlock()
-            self._clear_mmu_error_dialog()
             if self._is_in_print():
                 self._check_runout() # Can throw MmuError
                 # Convenience of the user in case they forgot to set filament position state
