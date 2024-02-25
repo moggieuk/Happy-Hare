@@ -18,7 +18,7 @@ Enter the following into your "custom start g-code" box:
 <img src="/doc/slicer/start_gcode.png" width="100%" alt="Custom Start G-Code"><br>Your `PRINT_START ...` macro is likely to be different from mine! Here is some cut'n'paste text:
 
 ```yml
-MMU_START_SETUP INITIAL_TOOL={initial_tool} REFERENCED_TOOLS=!referenced_tools! TOOL_COLORS=!colors! TOOL_TEMPS=!temperatures! TOOL_MATERIALS=!materials!
+MMU_START_SETUP INITIAL_TOOL={initial_tool} REFERENCED_TOOLS=!referenced_tools! TOOL_COLORS=!colors! TOOL_TEMPS=!temperatures! TOOL_MATERIALS=!materials! PURGE_VOLUMES=!purge_volumes!
 MMU_START_CHECK
 ; call you existing macro here..
 MMU_START_LOAD_INITIAL_TOOL
