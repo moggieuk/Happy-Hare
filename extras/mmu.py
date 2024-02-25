@@ -6118,9 +6118,12 @@ class Mmu:
                 volumes = list(map(float, purge_volumes.split(',')))
                 n = len(volumes)
                 num_tools = self.mmu_num_gates
-                if num_tools ** 2 != n:
-                    raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expect %d, got %d" % (num_tools ** 2, n))
-                self.slicer_tool_map['purge_volumes'] = [volumes[i * num_tools : (i + 1) * num_tools] for i in range(num_tools)]
+                if num_tools == n:
+                    self.slicer_tool_map['purge_volumes'] = [[volumes[x] + volumes[y] for y in range(num_tools)] for x in range(num_tools)]
+                elif num_tools ** 2 == n:
+                    self.slicer_tool_map['purge_volumes'] = [volumes[i * num_tools : (i + 1) * num_tools] for i in range(num_tools)]
+                else:
+                    raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expect %d or %d, got %d" % (num_tools, num_tools ** 2, n))
             except ValueError as e:
                 raise gcmd.error("Error parsing PURGE_VOLUMES: %s" % str(e))
             quiet = True
