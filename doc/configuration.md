@@ -243,10 +243,11 @@ Consult this illustration of a typical toolhead or table of popular configuratio
   | --------- | -------- | -----------|
   | toolhead_extruder_to_nozzle | 72 | 87.9 |
   | toolhead_sensor_to_nozzle   | 62 | 67.9 |
-  | toolhead_entry_to_extruder  | 8  | 12.9 |
-  | variable_blade_pos<br>(mmu_cut_tip.cfg) | 37.5 | 49.3 |
+  | toolhead_entry_to_extruder  | 13 | 12.9 |
+  | variable_blade_pos<br>(mmu_cut_tip.cfg) | 37.5 | 59.3 |
 
-_(submit your verified setup)_
+_(submit your verified setup)_<br>
+** These settings assume you have turned off all the slicer settings like toolchange retraction!
 
 Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 
