@@ -6095,13 +6095,13 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         display = bool(gcmd.get_int('DISPLAY', 0, minval=0, maxval=1))
+        detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
-        purge_volumes_str = gcmd.get('PURGE_VOLUMES', "")
-        purge_volumes = list(map(float, purge_volumes_str.split(','))) if purge_volumes_str else []
+        purge_volumes = gcmd.get('PURGE_VOLUMES', "")
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
         quiet = False
         if reset:
@@ -6113,9 +6113,17 @@ class Mmu:
         if initial_tool is not None:
             self.slicer_tool_map['initial_tool'] = initial_tool
             quiet = True
-        if len(purge_volumes) > 1:
-            n_tools = int(len(purge_volumes) ** 0.5)
-            self.slicer_tool_map['purge_volumes'] = [purge_volumes[i * n_tools : (i + 1) * n_tools] for i in range(n_tools)]
+        if purge_volumes != "":
+            try:
+                volumes = list(map(float, purge_volumes.split(',')))
+                n = len(volumes)
+                num_tools = self.mmu_num_gates
+                if num_tools ** 2 != n:
+                    raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expect %d, got %d" % (num_tools ** 2, n))
+                self.slicer_tool_map['purge_volumes'] = [volumes[i * num_tools : (i + 1) * num_tools] for i in range(num_tools)]
+            except ValueError as e:
+                raise gcmd.error("Error parsing PURGE_VOLUMES: %s" % str(e))
+            quiet = True
         if display or not quiet:
             colors = len(self.slicer_tool_map['tools'])
             if colors > 0 or self.slicer_tool_map['initial_tool'] is not None:
@@ -6127,6 +6135,9 @@ class Mmu:
                 if self.slicer_tool_map['initial_tool'] is not None:
                     msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
                 msg += "-------------------------------------------"
+                if detail:
+                    msg += "\nPurge Volume Map:\n"
+                    msg += "\n".join([" ".join(map(lambda x: str(round(x)), row)) for row in self.slicer_tool_map['purge_volumes']])
             else:
                 msg = "No slicer tool map loaded"
             self._log_always(msg)

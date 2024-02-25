@@ -31,7 +31,7 @@ class MmuServer:
     MATERIALS_REGEX = r"^; filament_type =(.*)$"
     METADATA_MATERIALS = "!materials!"
 
-    PURGE_VOLUMES_REGEX = r"^; flush_volumes_matrix =(.*)$" # Available in Orca Slicer, other slicers still unknonwn
+    PURGE_VOLUMES_REGEX = r"^; (flush_volumes_matrix|wiping_volumes_matrix) =(.*)$" # flush.. in Orca, wiping... in PS
     METADATA_PURGE_VOLUMES = "!purge_volumes!"
 
     def __init__(self, config):
