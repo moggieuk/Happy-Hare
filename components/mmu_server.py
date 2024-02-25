@@ -31,9 +31,8 @@ class MmuServer:
     MATERIALS_REGEX = r"^; filament_type =(.*)$"
     METADATA_MATERIALS = "!materials!"
 
-    PURGE_VOLUMES_REGEX = r"^; flush_volumes_matrix =(.*)$" #Available in Orca Slicer, other slicers still unknonwn
+    PURGE_VOLUMES_REGEX = r"^; flush_volumes_matrix =(.*)$" # Available in Orca Slicer, other slicers still unknonwn
     METADATA_PURGE_VOLUMES = "!purge_volumes!"
-
 
     def __init__(self, config):
         self.config = config
@@ -157,7 +156,6 @@ class MmuServer:
                         purge_volumes_csv = match.group(1).strip().split(',')
                         purge_volumes.extend(purge_volumes_csv)
                         found_purge_volumes = True
-                        
 
         fcolors = colors[1] if slicer == "orcaslicer" else colors[0]
 

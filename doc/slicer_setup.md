@@ -45,13 +45,14 @@ This macro initializes the MMU, establishes whether the print is single or multi
       tools.3.color: 00e410    ; Color in RRGGBB format for T3
       tools.3.material: ASA    ; Material type for T3
       tools.3.temp: 245        ; Extruder temperature for T3
+      purge_volumes: [[100, 100], [100, 100]] ; NxN matrix of purge volume changing from tool X to tool Y
 ```
 
 The "Slicer Tool Map" can be displayed on the console at any time during the print by running the `MMU_SLICER_TOOL_MAP` command without any parameters:<br>
 > MMU_SLICER_TOOL_MAP<br>
 ```
 --------- Slicer MMU Tool Summary ---------
-2 color print
+2 color print (Purge volume map loaded)
 T0 (Gate 0, ABS, ff0000, 240°C)
 T3 (Gate 3, ASA, 00e410, 245°C)
 Initial Tool: T0

@@ -959,7 +959,7 @@ class Mmu:
         self._clear_slicer_tool_map()
 
     def _clear_slicer_tool_map(self):
-        self.slicer_tool_map = {'tools': {}, 'initial_tool': None, 'initialized': False}
+        self.slicer_tool_map = {'tools': {}, 'initial_tool': None, 'purge_volumes': []}
 
     # Helper to infer type for setting gcode macro variables
     def _fix_type(self, s):
@@ -6100,7 +6100,8 @@ class Mmu:
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
-        purge_volumes = map(float, gcmd.get('PURGE_VOLUMES', "").split(','))
+        purge_volumes_str = gcmd.get('PURGE_VOLUMES', "")
+        purge_volumes = list(map(float, purge_volumes_str.split(','))) if purge_volumes_str else []
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
         quiet = False
         if reset:
@@ -6111,7 +6112,6 @@ class Mmu:
             quiet = True
         if initial_tool is not None:
             self.slicer_tool_map['initial_tool'] = initial_tool
-            self.slicer_tool_map['initialized'] = True # For Klippain
             quiet = True
         if len(purge_volumes) > 1:
             n_tools = int(len(purge_volumes) ** 0.5)
@@ -6120,7 +6120,8 @@ class Mmu:
             colors = len(self.slicer_tool_map['tools'])
             if colors > 0 or self.slicer_tool_map['initial_tool'] is not None:
                 msg = "--------- Slicer MMU Tool Summary ---------\n"
-                msg += "Single color print\n" if colors <= 1 else "%d color print\n" % colors
+                msg += "Single color print" if colors <= 1 else "%d color print" % colors
+                msg += " (Purge volume map loaded)\n" if colors > 1 and len(self.slicer_tool_map['purge_volumes']) > 0 else "\n"
                 for t, params in self.slicer_tool_map['tools'].items():
                     msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'])
                 if self.slicer_tool_map['initial_tool'] is not None:
