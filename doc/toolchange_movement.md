@@ -60,7 +60,7 @@ Firstly, although the default way to form tips is through calculated filament mo
 
 To set this up you need to edit three modular configuraton files: `mmu_parameters.cfg` (the primary setup), `mmu_cut_tip.cfg` (contains the tip cutting macro) and `mmu_sequence.cfg` (contains the default toolhead movement options)
 
-#### Option 1: Cutting tip and parking at the cutter while making the tool change.
+#### Option 1: Cutting tip and parking at the cutter while making the tool change<img src="/doc/cool.png" width="50">
 - Pro: Minimizes movement
 - Con: Possibility of oozing in a undesirable part of the build plate
 <img src="/doc/toolchange/cutter_cutter.png" width="900" alt="Cutting and Parking at Cutter">
