@@ -482,15 +482,27 @@ class Mmu:
         self.log_visual = config.getint('log_visual', 1, minval=0, maxval=2) # TODO reduce max value to 1
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
 
-        # Currently hidden and testing options
-        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
-        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
+        # Currently hidden options or testing options...
+
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on
+        # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
+        # can lead to several mm of error depending on speed.
+        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1)
+
+        # Some CANbus boards are prone to this but it have been seen on regular USB boards where a comms
+        # timeout will kill the print. Since it seems to occur only on homing moves they can be safely
+        # retried to workaround. This has been working well in practice
+        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
+
+        # To expedite my own testing
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
-        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10) # Workaround CANbus communication timeout error
 
-        # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
+        # WIP for type-B MMU support
+        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
+
+        # The following lists are the defaults (used on reset) and will be overriden by values in mmu_vars.cfg...
 
         # Endless spool groups
         self.enable_endless_spool = self.default_enable_endless_spool
@@ -655,7 +667,8 @@ class Mmu:
         self.mmu_kinematics = self.mmu_toolhead.get_kinematics()
         rails = self.mmu_toolhead.get_kinematics().rails
         self.selector_rail = rails[0]
-        self.selector_stepper = self.selector_rail.steppers[0]
+        # PAULself.selector_stepper = self.selector_rail.steppers[0]
+        self.selector_stepper = None # PAUL
         self.gear_rail = rails[1]
         self.gear_stepper = self.gear_rail.steppers[0]
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Available now if `self.homing_extruder` is True
@@ -729,11 +742,11 @@ class Mmu:
         tmc_chips = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
         for chip in tmc_chips:
             if self.selector_tmc is None:
-                self.selector_tmc = self.printer.lookup_object('%s stepper_mmu_selector' % chip, None)
+                self.selector_tmc = self.printer.lookup_object('%s %s' % (chip, self.SELECTOR_STEPPER_CONFIG), None)
                 if self.selector_tmc is not None:
                     self._log_debug("Found %s on selector_stepper. Stallguard 'touch' homing possible." % chip)
             if self.gear_tmc is None:
-                self.gear_tmc = self.printer.lookup_object('%s stepper_mmu_gear' % chip, None)
+                self.gear_tmc = self.printer.lookup_object('%s %s' % (chip, self.GEAR_STEPPER_CONFIG), None)
                 if self.gear_tmc is not None:
                     self._log_debug("Found %s on gear_stepper. Current control enabled. Stallguard 'touch' homing possible." % chip)
             if self.extruder_tmc is None:
@@ -1648,7 +1661,6 @@ class Mmu:
         self._movequeues_wait_moves()
         self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
-            self.gear_buzz_accel = 1000
             for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
                 self._trace_filament_move(None, -0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
@@ -4596,6 +4608,7 @@ class Mmu:
     def _buzz_gear_motor(self):
         with self._require_encoder():
             initial_encoder_position = self._get_encoder_distance()
+            # TODO 2.5 should probably be 2.5 * self.default_encoder_resolution to be generic
             self._trace_filament_move(None, 2.5, accel=self.gear_buzz_accel, encoder_dwell=None)
             self._trace_filament_move(None, -2.5, accel=self.gear_buzz_accel, encoder_dwell=None)
             measured = self._get_encoder_distance() - initial_encoder_position
@@ -4629,13 +4642,13 @@ class Mmu:
     def _adjust_gear_current(self, percent=100, reason=""):
          if self.gear_tmc and percent != self.gear_percentage_run_current and percent > 0 and percent < 200:
              self._log_info("Modifying MMU gear stepper run current to %d%% %s" % (percent, reason))
-             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_gear CURRENT=%.2f" % ((self.gear_default_run_current * percent) / 100.))
+             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.GEAR_STEPPER_CONFIG, (self.gear_default_run_current * percent) / 100.))
              self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
             self._log_info("Restoring MMU gear stepper run current to %d%% configured" % self.gear_restore_percent_run_current)
-            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_gear CURRENT=%.2f" % self.gear_default_run_current)
+            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.GEAR_STEPPER_CONFIG, self.gear_default_run_current))
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
     @contextlib.contextmanager
