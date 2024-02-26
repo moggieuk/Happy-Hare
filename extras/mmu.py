@@ -2633,7 +2633,7 @@ class Mmu:
             self._wrap_gcode_command(self.clear_position_macro)
 
     # If this is called automatically it will occur after the user's print ends.
-    # Therefore don't do anything that requires operating kinematics
+    # Therefore don't do anything that requires operating kinematics or execute gcode
     def _on_print_end(self, state="complete"):
         if not self._is_in_endstate():
             self._log_trace("_on_print_end(%s)" % state)
