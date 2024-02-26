@@ -25,9 +25,14 @@ class MmuServer:
     COLORS1_REGEX = r"^; filament_colour =(.*)$" # Wanted for Orca slicer (but extruder_colour can exist too!)
     METADATA_COLORS = "!colors!"
 
-    TEMPS_REGEX = r"^; temperature =(.*)$"
+    TEMPS_REGEX = r"^; (nozzle_)?temperature =(.*)$" # Orca Slicer has the 'nozzle_' prefix, others might not
     METADATA_TEMPS = "!temperatures!"
 
+    MATERIALS_REGEX = r"^; filament_type =(.*)$"
+    METADATA_MATERIALS = "!materials!"
+
+    PURGE_VOLUMES_REGEX = r"^; (flush_volumes_matrix|wiping_volumes_matrix) =(.*)$" # flush.. in Orca, wiping... in PS
+    METADATA_PURGE_VOLUMES = "!purge_volumes!"
 
     def __init__(self, config):
         self.config = config
@@ -53,7 +58,7 @@ class MmuServer:
 
     def _write_mmu_metadata(self, file_path):
         self._log("Checking for MMU metadata placeholders in file: " + file_path)
-        has_placeholder, tools_used, colors, temps, slicer = self._parse_gcode_file(file_path)
+        has_placeholder, tools_used, colors, temps, materials, purge_volumes, slicer = self._parse_gcode_file(file_path)
         self._log(f"Detected gcode by slicer:{slicer}")
 
         # An edit-in-place is seen by Moonraker as a file change (rightly so),
@@ -61,7 +66,7 @@ class MmuServer:
         # to determine whether there are any changes to make to prevent an infinite loop.
         if has_placeholder:
             self._log("Writing MMU metadata to file: " + file_path)
-            return self._inject_placeholders(file_path, tools_used, colors, temps)
+            return self._inject_placeholders(file_path, tools_used, colors, temps, materials, purge_volumes)
         else:
             self._log("No MMU metadata placeholders found in file: " + file_path)
             return False
@@ -76,14 +81,18 @@ class MmuServer:
         colors1_regex = re.compile(self.COLORS1_REGEX, re.IGNORECASE)
         color_regexes = [colors0_regex, colors1_regex]
         temps_regex = re.compile(self.TEMPS_REGEX, re.IGNORECASE)
+        materials_regex = re.compile(self.MATERIALS_REGEX, re.IGNORECASE)
+        purge_volumes_regex = re.compile(self.PURGE_VOLUMES_REGEX, re.IGNORECASE)
 
-        has_tools_placeholder = has_colors_placeholder = has_temps_placeholder = False
-        found_colors = found_temps = False
+        has_tools_placeholder = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = False
+        found_colors = found_temps = found_materials = found_purge_volumes = False
         slicer = None
 
         tools_used = set()
         colors = [[],[]]
         temps = []
+        materials = []
+        purge_volumes = []
 
         with open(file_path, "r") as f:
             for line in f:
@@ -115,22 +124,44 @@ class MmuServer:
                             found_colors = all(len(c) > 0 for c in colors)
                             break
 
-                # !temps! processing
+                # !temperatures! processing
                 if not has_temps_placeholder and not line.startswith(";") and self.METADATA_TEMPS in line:
                     has_temps_placeholder = True
 
                 if not found_temps:
                     match = temps_regex.match(line)
                     if match:
-                        temps_csv = match.group(1).strip().split(';')
+                        temps_csv = re.split(';|,', match.group(2).strip())
                         temps.extend(temps_csv)
                         found_temps = True
 
+                # !materials! processing
+                if not has_materials_placeholder and not line.startswith(";") and self.METADATA_MATERIALS in line:
+                    has_materials_placeholder = True
+
+                if not found_materials:
+                    match = materials_regex.match(line)
+                    if match:
+                        materials_csv = match.group(1).strip().split(';')
+                        materials.extend(materials_csv)
+                        found_materials = True
+                
+                # !purge_volumes! processing
+                if not has_purge_volumes_placeholder and not line.startswith(";") and self.METADATA_PURGE_VOLUMES in line:
+                    has_purge_volumes_placeholder = True
+                
+                if not found_purge_volumes:
+                    match = purge_volumes_regex.match(line)
+                    if match:
+                        purge_volumes_csv = match.group(1).strip().split(',')
+                        purge_volumes.extend(purge_volumes_csv)
+                        found_purge_volumes = True
+
         fcolors = colors[1] if slicer == "orcaslicer" else colors[0]
 
-        return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder, sorted(tools_used), fcolors, temps, slicer)
+        return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder, sorted(tools_used), fcolors, temps, materials, purge_volumes, slicer)
 
-    def _inject_placeholders(self, file_path, tools_used, colors, temps):
+    def _inject_placeholders(self, file_path, tools_used, colors, temps, materials, purge_volumes):
         with fileinput.FileInput(file_path, inplace=1) as file:
             for line in file:
                 # Ignore comment lines to preserve slicer metadata comments
@@ -141,6 +172,10 @@ class MmuServer:
                         line = line.replace(self.METADATA_COLORS, ",".join(map(str, colors)))
                     if self.METADATA_TEMPS in line:
                         line = line.replace(self.METADATA_TEMPS, ",".join(map(str, temps)))
+                    if self.METADATA_MATERIALS in line:
+                        line = line.replace(self.METADATA_MATERIALS, ",".join(map(str, materials)))
+                    if self.METADATA_PURGE_VOLUMES in line:
+                        line = line.replace(self.METADATA_PURGE_VOLUMES, ",".join(map(str, purge_volumes)))
                 print(line, end="")
         return True
 

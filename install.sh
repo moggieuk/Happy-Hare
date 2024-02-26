@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.42 # Important: Keep synced with mmy.py
+VERSION=2.50 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
@@ -28,36 +28,36 @@ declare -A PIN 2>/dev/null || {
     exit 1
 }
 
-# Pins for Fysetc Burrows ERB board, Original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
+# Pins for original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
 # Note: uart pin is shared on original EASY-BRD (with different uart addresses)
 #
-PIN[ERB,gear_uart_pin]="gpio20";         PIN[EASY-BRD,gear_uart_pin]="PA8";         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
-PIN[ERB,gear_step_pin]="gpio10";         PIN[EASY-BRD,gear_step_pin]="PA4";         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
-PIN[ERB,gear_dir_pin]="gpio9";           PIN[EASY-BRD,gear_dir_pin]="PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
-PIN[ERB,gear_enable_pin]="gpio8";        PIN[EASY-BRD,gear_enable_pin]="PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
-PIN[ERB,gear_diag_pin]="gpio13";         PIN[EASY-BRD,gear_diag_pin]="";            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
-PIN[ERB,selector_uart_pin]="gpio17";     PIN[EASY-BRD,selector_uart_pin]="PA8";     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
-PIN[ERB,selector_step_pin]="gpio16";     PIN[EASY-BRD,selector_step_pin]="PA9";     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
-PIN[ERB,selector_dir_pin]="gpio15";      PIN[EASY-BRD,selector_dir_pin]="PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
-PIN[ERB,selector_enable_pin]="gpio14";   PIN[EASY-BRD,selector_enable_pin]="PA11";  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
-PIN[ERB,selector_diag_pin]="gpio19";     PIN[EASY-BRD,selector_diag_pin]="PA7";     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
-PIN[ERB,selector_endstop_pin]="gpio24";  PIN[EASY-BRD,selector_endstop_pin]="PB9";  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
-PIN[ERB,servo_pin]="gpio23";             PIN[EASY-BRD,servo_pin]="PA5";             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
-PIN[ERB,encoder_pin]="gpio22";           PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
-PIN[ERB,neopixel_pin]="gpio21";          PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
-PIN[ERB,gate_sensor_pin]="gpio22";       PIN[EASY-BRD,gate_sensor_pin]="PA6";       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
-PIN[ERB,pre_gate_0_pin]="gpio0";         PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
-PIN[ERB,pre_gate_1_pin]="gpio1";         PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
-PIN[ERB,pre_gate_2_pin]="gpio2";         PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
-PIN[ERB,pre_gate_3_pin]="gpio3";         PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
-PIN[ERB,pre_gate_4_pin]="gpio4";         PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
-PIN[ERB,pre_gate_5_pin]="gpio5";         PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
-PIN[ERB,pre_gate_6_pin]="gpio6";         PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
-PIN[ERB,pre_gate_7_pin]="gpio7";         PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
-PIN[ERB,pre_gate_8_pin]="gpio26";        PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
-PIN[ERB,pre_gate_9_pin]="gpio27";        PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
-PIN[ERB,pre_gate_10_pin]="gpio28";       PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
-PIN[ERB,pre_gate_11_pin]="gpio29";       PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
+PIN[EASY-BRD,gear_uart_pin]="PA8";         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
+PIN[EASY-BRD,gear_step_pin]="PA4";         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
+PIN[EASY-BRD,gear_dir_pin]="PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
+PIN[EASY-BRD,gear_enable_pin]="PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
+PIN[EASY-BRD,gear_diag_pin]="";            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
+PIN[EASY-BRD,selector_uart_pin]="PA8";     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
+PIN[EASY-BRD,selector_step_pin]="PA9";     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
+PIN[EASY-BRD,selector_dir_pin]="PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
+PIN[EASY-BRD,selector_enable_pin]="PA11";  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
+PIN[EASY-BRD,selector_diag_pin]="PA7";     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
+PIN[EASY-BRD,selector_endstop_pin]="PB9";  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
+PIN[EASY-BRD,servo_pin]="PA5";             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
+PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
+PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
+PIN[EASY-BRD,gate_sensor_pin]="PA6";       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
+PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
+PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
+PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
+PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
+PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
+PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
+PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
+PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
+PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
+PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
+PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
+PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
 # Pins for Mellow EASY-BRD with CANbus
 #
@@ -88,6 +88,37 @@ PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	# Exp 13
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	# Exp 14
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";
+
+# Pins for Fysetc Burrows ERB board (original v1 and v2)
+#
+PIN[ERB,gear_uart_pin]="gpio20";           PIN[ERBv2,gear_uart_pin]="gpio20";
+PIN[ERB,gear_step_pin]="gpio10";           PIN[ERBv2,gear_step_pin]="gpio10";
+PIN[ERB,gear_dir_pin]="gpio9";             PIN[ERBv2,gear_dir_pin]="gpio9";
+PIN[ERB,gear_enable_pin]="gpio8";          PIN[ERBv2,gear_enable_pin]="gpio8";
+PIN[ERB,gear_diag_pin]="gpio13";           PIN[ERBv2,gear_diag_pin]="gpio13";
+PIN[ERB,selector_uart_pin]="gpio17";       PIN[ERBv2,selector_uart_pin]="gpio17";
+PIN[ERB,selector_step_pin]="gpio16";       PIN[ERBv2,selector_step_pin]="gpio16";
+PIN[ERB,selector_dir_pin]="gpio15";        PIN[ERBv2,selector_dir_pin]="gpio15";
+PIN[ERB,selector_enable_pin]="gpio14";     PIN[ERBv2,selector_enable_pin]="gpio14";
+PIN[ERB,selector_diag_pin]="gpio19";       PIN[ERBv2,selector_diag_pin]="gpio19";
+PIN[ERB,selector_endstop_pin]="gpio24";    PIN[ERBv2,selector_endstop_pin]="gpio24";
+PIN[ERB,servo_pin]="gpio23";               PIN[ERBv2,servo_pin]="gpio23";
+PIN[ERB,encoder_pin]="gpio22";             PIN[ERBv2,encoder_pin]="gpio22";
+PIN[ERB,neopixel_pin]="gpio21";            PIN[ERBv2,neopixel_pin]="gpio21";
+PIN[ERB,gate_sensor_pin]="gpio22";         PIN[ERBv2,gate_sensor_pin]="gpio25";  # Hall Effect
+PIN[ERB,pre_gate_0_pin]="gpio0";           PIN[ERBv2,pre_gate_0_pin]="gpio12";
+PIN[ERB,pre_gate_1_pin]="gpio1";           PIN[ERBv2,pre_gate_1_pin]="gpio18";
+PIN[ERB,pre_gate_2_pin]="gpio2";           PIN[ERBv2,pre_gate_2_pin]="gpio2";
+PIN[ERB,pre_gate_3_pin]="gpio3";           PIN[ERBv2,pre_gate_3_pin]="gpio3";
+PIN[ERB,pre_gate_4_pin]="gpio4";           PIN[ERBv2,pre_gate_4_pin]="gpio4";
+PIN[ERB,pre_gate_5_pin]="gpio5";           PIN[ERBv2,pre_gate_5_pin]="gpio5";
+PIN[ERB,pre_gate_6_pin]="gpio6";           PIN[ERBv2,pre_gate_6_pin]="gpio6";
+PIN[ERB,pre_gate_7_pin]="gpio7";           PIN[ERBv2,pre_gate_7_pin]="gpio7";
+PIN[ERB,pre_gate_8_pin]="gpio26";          PIN[ERBv2,pre_gate_8_pin]="gpio26";
+PIN[ERB,pre_gate_9_pin]="gpio27";          PIN[ERBv2,pre_gate_9_pin]="gpio27";
+PIN[ERB,pre_gate_10_pin]="gpio28";         PIN[ERBv2,pre_gate_10_pin]="gpio28";
+PIN[ERB,pre_gate_11_pin]="gpio29";         PIN[ERBv2,pre_gate_11_pin]="gpio29";
+
 
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
 #
@@ -488,6 +519,10 @@ parse_file() {
     prefix_filter="$2"
     namespace="$3"
 
+    if [ ! -f "${filename}" ]; then
+        return
+    fi
+
     # Read old config files
     while IFS= read -r line
     do
@@ -528,14 +563,21 @@ update_copy_file() {
     # Read the file line by line
     while IFS="" read -r line || [ -n "$line" ]
     do
-        if echo "$line" | egrep -q '^#'; then
+        if echo "$line" | egrep -q '^[#;]'; then
             # Just copy simple comments
             echo "$line"
         elif [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
             # Line of interest
             # Split the line into the part before # and the part after #
-            parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | cut -d'#' -f1)
-            comment=$(echo "$line" | cut -s -d'#' -f2-)
+            parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/;/# /' | cut -d'#' -f1)
+
+            if echo "$line" | grep -q "#"; then
+                commentChar="#"
+                comment=$(echo "$line" | sed 's/.*#//')
+            elif echo "$line" | grep -q ";"; then
+                commentChar=";"
+                comment=$(echo "$line" | sed 's/.*;//')
+            fi
             space=`printf "%s" "$parameterAndValueAndSpace" | sed 's/.*[^[:space:]]\(.*\)$/\1/'`
 
             if echo "$parameterAndValueAndSpace" | egrep -q "${prefix_filter}"; then
@@ -560,7 +602,7 @@ update_copy_file() {
                         new_value="{$parameter}"
                     fi
                     if [ -n "$comment" ]; then
-                        echo "${parameter}: ${new_value}${space}#${comment}"
+                        echo "${parameter}: ${new_value}${space}${commentChar}${comment}"
                     else
                         echo "${parameter}: ${new_value}"
                     fi
@@ -590,10 +632,13 @@ set_default_tokens() {
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" "" "_param_"
+    parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_software.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_sequence.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg" "variable_"
     parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg" "variable_"
+    parse_file "${SRCDIR}/config/base/mmu_leds.cfg" "variable_"
+    parse_file "${SRCDIR}/config/addon/mmu_erec_cutter.cfg" "variable_"
 }
 
 # Pull parameters from previous installation
@@ -690,20 +735,79 @@ read_previous_config() {
         fi
     fi
 
-    for cfg in mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg; do
+    # TODO Remove mmu_variables once everybody has upgraded
+    for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_leds.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
         if [ ! -f "${dest_cfg}" ]; then
-            echo -e "${WARNING}No previous ${cfg} found. Will install"
+            if [ "$cfg" != "mmu_variables.cfg" ]; then # TODO remove me with mmu_variables
+                echo -e "${WARNING}No previous ${cfg} found. Will install"
+            fi
         else
             echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
             parse_file "${dest_cfg}" "variable_"
+
+            if [ ! "${variable_enable_park}" == "" ]; then
+                variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
+                variable_enable_park_runout=${variable_enable_park}
+                variable_enable_park_standalone=${variable_enable_park}
+            fi
+            if [ ! "${variable_ramming_volume}" == "" ]; then
+                variable_ramming_volume_standalone=${variable_ramming_volume}
+            fi
+            if [ ! "${variable_auto_home}" == "" ]; then
+                variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
+            fi
+            if [ ! "${variable_park_after_form_tip}" == "" ]; then
+                variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
+            fi
+            if [ ! "${variable_restore_position}" == "" ]; then
+                variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
+            fi
+            if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
+                variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
+            fi
+            if [ ! "${variable_use_skinnydip}" == "" ]; then
+                variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
+            fi
+            if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
+                variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
+            fi
+            if [ ! "${variable_pin_loc_x}" == "" ]; then
+                variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
+            fi
+            if [ ! "${variable_safe_margin_x}" == "" ]; then
+                variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
+            fi
         fi
     done
+
+    # TODO namespace config in third-party addons separately
+    if [ -d "${KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
+        for cfg in `cd ${KLIPPER_CONFIG_HOME}/mmu/addons ; ls *.cfg`; do
+            dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/addons/${cfg}
+            if [ ! -f "${dest_cfg}" ]; then
+                echo -e "${WARNING}No previous ${cfg} found. Will install"
+            else
+                echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
+                parse_file "${dest_cfg}" "variable_"
+            fi
+        done
+    fi
 
     if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
         mmu_num_gates=$_param_mmu_num_gates
         mmu_num_leds=$(expr $mmu_num_gates + 1)
+    fi
+}
+
+convert_to_boolean_string() {
+    if [ "$1" -eq 1 ] 2>/dev/null; then
+        echo "True"
+    elif [ "$1" -eq 0 ] 2>/dev/null; then
+        echo "False"
+    else
+        echo "$1"
     fi
 }
 
@@ -716,10 +820,17 @@ copy_config_files() {
         mkdir ${mmu_dir}
         mkdir ${mmu_dir}/base
         mkdir ${mmu_dir}/optional
+        mkdir ${mmu_dir}/addons
     else
-        echo -e "${DETAIL}Config directory ${mmu_dir} already exists - backing up old config files to ${next_mmu_dir}"
+        echo -e "${DETAIL}Config directory ${mmu_dir} already exists"
+        echo -e "${DETAIL}Backing up old config files to ${next_mmu_dir}"
         mkdir ${next_mmu_dir}
         (cd "${mmu_dir}"; cp -r * "${next_mmu_dir}")
+
+        # Ensure all new directories exist
+        mkdir -p ${mmu_dir}/base
+        mkdir -p ${mmu_dir}/optional
+        mkdir -p ${mmu_dir}/addons
     fi
 
     if [ ! "${_param_mmu_num_gates}" == "" ]; then
@@ -736,7 +847,11 @@ copy_config_files() {
                 echo -e "${WARNING}Skipping copy of hardware config file ${file} because already exists"
                 continue
             else
-                echo -e "${INFO}Installing/Upgrading configuration file ${file}"
+                if [ "${file}" == "mmu_parameters.cfg" ] || [ "${file}" == "mmu_macro_vars.cfg" ]; then
+                    echo -e "${INFO}Upgrading configuration file ${file}"
+                else
+                    echo -e "${INFO}Installing configuration file ${file}"
+                fi
                 mv ${dest} ${next_dest}
             fi
         fi
@@ -841,8 +956,8 @@ copy_config_files() {
                 done
             done >> $dest
 
-        # Software macros --------------------------------------------------------------------
-        elif [ "${file}" == "mmu_software.cfg" ]; then
+        # Variables macro ---------------------------------------------------------------------
+        elif [ "${file}" == "mmu_macro_vars.cfg" ]; then
             tx_macros=""
             for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
             do
@@ -854,51 +969,58 @@ copy_config_files() {
                 cat ${src} | sed -e "\
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
-                    s%{led_enable}%${SETUP_LED}%g; \
                         " > ${dest}
             else
                 cat ${src} | sed -e "\
                     s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
-                    s%{led_enable}%${SETUP_LED}%g; \
                         " > ${dest}.tmp
                 update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
             fi
 
-        elif [ "${file}" == "mmu_form_tip.cfg" -o "${file}" == "mmu_cut_tip.cfg" -o "${file}" == "mmu_sequence.cfg" ]; then
-            if [ "${INSTALL}" -eq 1 ]; then
-                cat ${src} > ${dest}
-            else
-                cat ${src} > ${dest}.tmp
-                update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
-            fi
-
+        # Everything else is read-only symlink ------------------------------------------------
         else
-            cp ${src} ${dest}
+            ln -sf ${src} ${dest}
 	fi
     done
 
-    for file in mmu_filametrix.cfg; do
+    # Handle deprecated files -----------------------------------------------------------------
+    for file in mmu_filametrix.cfg mmu_variables.cfg; do
         dest=${mmu_dir}/base/${file}
         if [ -f "${dest}" ]; then
             echo -e "${WARNING}Removing deprecated config files ${file}"
-            rm -f "${dest}"
+            rm -f ${dest}
         fi
     done
 
+    # Optional config are read-only symlinks --------------------------------------------------
     for file in `cd ${SRCDIR}/config/optional ; ls *.cfg`; do
         src=${SRCDIR}/config/optional/${file}
-        dest=${KLIPPER_CONFIG_HOME}/mmu/optional/${file}
-        cp ${src} ${dest}
+        dest=${mmu_dir}/optional/${file}
+        ln -sf ${src} ${dest}
     done
 
+    # Don't stompt on existing persisted state ------------------------------------------------
     src=${SRCDIR}/config/mmu_vars.cfg
-    dest=${KLIPPER_CONFIG_HOME}/mmu/mmu_vars.cfg
+    dest=${mmu_dir}/mmu_vars.cfg
     if [ -f "${dest}" ]; then
         echo -e "${WARNING}Skipping copy of mmu_vars.cfg file because already exists"
     else
         cp ${src} ${dest}
     fi
+
+    # Addon config files are always copied (and updated) so they can be edited ----------------
+    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg`; do
+        src=${SRCDIR}/config/addons/${file}
+        dest=${mmu_dir}/addons/${file}
+        if [ -f "${dest}" ]; then
+            echo -e "${INFO}Upgrading configuration file ${file}"
+            update_copy_file ${src} ${dest} "variable_"
+        else
+            echo -e "${INFO}Installing configuration file ${file}"
+            cp ${src} ${dest}
+        fi
+    done
 }
 
 uninstall_config_files() {
@@ -913,7 +1035,7 @@ install_printer_includes() {
     dest=${KLIPPER_CONFIG_HOME}/printer.cfg
     if test -f $dest; then
 
-        klippain_included=$(grep -c "[include config/hardware/mmu.cfg]" ${dest} || true)
+        klippain_included=$(grep -c "\[include config/hardware/mmu.cfg\]" ${dest} || true)
         if [ "${klippain_included}" -eq 1 ]; then
             echo -e "${WARNING}This looks like a Klippain config installation - skipping automatic config install. Please add config includes by hand"
         else
@@ -941,8 +1063,7 @@ install_printer_includes() {
                     sed -i "1i ${i}" ${dest}
                 fi
             fi
-            for i in \
-                    '\[include mmu/base/\*.cfg\]' ; do
+            for i in '\[include mmu/addons/\*.cfg\]' '\[include mmu/base/\*.cfg\]' ; do
                 already_included=$(grep -c "${i}" ${dest} || true)
                 if [ "${already_included}" -eq 0 ]; then
                     sed -i "1i ${i}" ${dest}
@@ -974,6 +1095,7 @@ uninstall_printer_includes() {
             /\[include mmu\/mmu_cut_tip.cfg\]/ d; \
             /\[include mmu\/mmu.cfg\]/ d; \
             /\[include mmu\/base\/\*.cfg\]/ d; \
+            /\[include mmu\/addon\/\*.cfg\]/ d; \
 	        " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
     fi
 }
@@ -1512,7 +1634,7 @@ usage() {
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
-    echo "-z skip github check"
+    echo "-z skip github check (nullifies -b <branch>)"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
@@ -1549,7 +1671,7 @@ fi
 
 verify_not_root
 [ -z "${SKIP_UPDATE}" ] && {
-    self_update # Make sure the repo is up-to-date
+    self_update # Make sure the repo is up-to-date on correct branch
 }
 check_octoprint
 verify_home_dirs
@@ -1576,7 +1698,14 @@ if [ "$UNINSTALL" -eq 0 ]; then
     # Important to update version
     FROM_VERSION=${_param_happy_hare_version}
     if [ ! "${FROM_VERSION}" == "" ]; then
-        echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
+        result=$(awk -v n1="$VERSION" -v n2="$FROM_VERSION" 'BEGIN {print (n1<n2) ? "1" : "0"}')
+        if [ "$result" -eq 1 ]; then
+            echo -e "${WARNING}Trying to update from version ${FROM_VERSION} to ${VERSION}"
+            echo -e "${ERROR}Cannot automatically 'upgrade' to earlier version. You must do this by hand"
+            exit 1
+        elif [ ! "${FROM_VERSION}" == "${VERSION}" ]; then
+            echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
+        fi
     fi
     _param_happy_hare_version=${VERSION}
 

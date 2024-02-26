@@ -71,7 +71,7 @@ class MmuRunoutHelper:
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
         self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1\n__MMU_M400")
+        self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1\n_MMU_M400")
 
     def _exec_gcode(self, command):
         try:
@@ -87,7 +87,9 @@ class MmuRunoutHelper:
 
         # Don't handle too early or if disabled
         if eventtime < self.min_event_systime or not self.sensor_enabled: return
+        self._process_state_change(eventtime, is_filament_present)
 
+    def _process_state_change(self, eventtime, is_filament_present):
         # Let Happy Hare decide what processing is possible based on printing state
         if is_filament_present: # Insert detected
             self.min_event_systime = self.reactor.NEVER
@@ -95,15 +97,15 @@ class MmuRunoutHelper:
             self.reactor.register_callback(self._insert_event_handler)
         else: # Runout detected
             self.min_event_systime = self.reactor.NEVER
-            if self.runout_suspended:
+            if self.runout_suspended: # Just a remove event
                 logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._remove_event_handler)
-            else:
+            else: # True runout
                 logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._runout_event_handler)
 
-    def enable_runout(self, enable):
-        self.runout_suspended = not enable
+    def enable_runout(self, restore):
+        self.runout_suspended = not restore
 
     def get_status(self, eventtime):
         return {
@@ -127,10 +129,12 @@ class MmuRunoutHelper:
 
 class MmuSensors:
 
-    ENDSTOP_PRE_GATE  = "mmu_pre_gate"
-    ENDSTOP_GATE      = "mmu_gate"
-    ENDSTOP_EXTRUDER  = "extruder"
-    ENDSTOP_TOOLHEAD  = "toolhead"
+    ENDSTOP_PRE_GATE  = 'mmu_pre_gate'
+    ENDSTOP_GATE      = 'mmu_gate'
+    ENDSTOP_EXTRUDER  = 'extruder'
+    ENDSTOP_TOOLHEAD  = 'toolhead'
+    SWITCH_SYNC_FEEDBACK_TENSION     = 'sync_feedback_tension'
+    SWITCH_SYNC_FEEDBACK_COMPRESSION = 'sync_feedback_compression'
 
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -239,8 +243,8 @@ class MmuSensors:
 
     def get_status(self, eventtime):
         return {
-                'sync_feedback_tension_switch': self.tension_switch_state,
-                'sync_feedback_compression_switch': self.compression_switch_state,
+            self.SWITCH_SYNC_FEEDBACK_TENSION: self.tension_switch_state,
+            self.SWITCH_SYNC_FEEDBACK_COMPRESSION: self.compression_switch_state,
         }
 
 def load_config(config):

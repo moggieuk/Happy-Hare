@@ -102,3 +102,47 @@ New Features:
 - New encoder calibration routine that allows calibration that "remembers" gate homing point and compensates for space between gate sensor and encoder if both are fitted
 - Other bug fixes report in github "Issues"
 
+### v2.4.3
+- Bug fixes reported via github "Issues"
+- Added capability to install to auto-check github to ensure the latest version and to switch branches with `-b <branch name>` option
+
+### v2.5.0 (Recommend Klipperscreen-Happy Hare edition should be updated to get dialog popup fixes)
+This release centralizes macro configuration and extends will a lot more pre-packaged options
+- Macro config moved into a unified `mmu_macro_vars.cfg`.
+- Default macros have become read-only with a formal way to add custom extensions
+- New recommended "print_start" and end integration. See https://github.com/moggieuk/Happy-Hare/blob/variables/doc/slicer_setup.md
+- New `MMU_SLICER_TOOLS_MAP` command that is used by the "print_start" and for easy integration of non-wipetower purge options like the excellent "Blobifier"
+E.g.
+```
+> MMU_SLICER_TOOL_MAP DETAIL=1
+--------- Slicer MMU Tool Summary ---------
+2 color print (Purge volume map loaded)
+T0 (Gate 0, ABS, red, 245°C)
+T2 (Gate 2, ABS+, 00fe05, 240°C)
+Initial Tool: T0
+-------------------------------------------
+Purge Volume Map:
+0 200 200 200 200 200 200 200 200
+200 0 200 200 200 200 200 200 200
+200 200 0 200 200 200 200 200 200
+200 200 200 0 200 200 200 200 200
+200 200 200 200 0 200 200 200 200
+200 200 200 200 200 0 200 200 200
+200 200 200 200 200 200 0 200 200
+200 200 200 200 200 200 200 0 200
+200 200 200 200 200 200 200 200 0
+```
+- New printer variables:
+   - `printer.mmu.slicer_tool_map.initial_tool`
+   - `printer.mmu.slicer_tool_map.tools.<tool_num>.material|color|temp`
+   - `printer.mmu.slicer_tool_map.purge_volumes`
+   - `printer.mmu.runout` which is true during runout toolchange
+- Z-hop mdofications:
+   - By default HH will not return to pre-toolchange position (will only restore z-height).
+   - New `variable_restore_xy_pos: True|False` to control sequence macros return to starting pos or let the slicer do it. This has benefit when printing without a wipe tower so the print is not contaminated at the point of tool-change
+- New "addons" folder for recommended third-party configs
+   - Includes the "EREC" filament cutter logic for cutting at the MMU
+- Enhanced `MMU_SENSORS` command for quick review of all mmu sensors
+- New popup dialog option in Mainsail/KlipperScreen/Fluidd when MMU pauses on error
+- Two new pre-processing placeholders: !materials! and !purge_volumes!
+

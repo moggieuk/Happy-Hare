@@ -144,3 +144,6 @@ Alternatively you can retrieve the RGB colors necessary to directly drive other 
 ### Placeholder: !temperatures!
 This placeholder is substituted with a comma separated list of filament temperatures as defined in the slicer.
 
+### Placeholder: !purge_volumes!
+This placeholder is substituted with a comma separated list of NxN purge volumes used when changing from tool X to tool Y
+

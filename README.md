@@ -14,19 +14,18 @@ Universal MMU driver for Klipper
   </a>
   -->
   <a aria-label="Stars" href="https://github.com/moggieuk/Happy-Hare/stargazers">
-    <img src="https://img.shields.io/github/stars/moggieuk/Happy-Hare?style=flat-square">
-  </a>
+    <img src="https://img.shields.io/github/stars/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
   <a aria-label="Forks" href="https://github.com/moggieuk/Happy-Hare/network/members">
-    <img src="https://img.shields.io/github/forks/moggieuk/Happy-Hare?style=flat-square">
-  </a>
+    <img src="https://img.shields.io/github/forks/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
   <a aria-label="License" href="https://github.com/moggieuk/Happy-Hare/blob/master/LICENSE">
-    <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square">
-  </a>
+    <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
+  <a aria-label="Commits" href="">
+    <img src="https://img.shields.io/github/commit-activity/y/moggieuk/Happy-Hare"></a> &nbsp;
 </p>
 
 Happy Hare (v2) is the second edition of what started life and as [alternative software control](https://github.com/moggieuk/ERCF-Software-V3) for the ERCF v1.1 ecosystem. Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform. It is best partnered with [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
-Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). I'm not doing this for any financial reward but it you feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
+Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). I'm not doing this for any financial reward but if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
 
 Thank you!
 
@@ -61,6 +60,7 @@ Thank you!
 
 #### Other Docs:
 
+**[Slicer Setup](/doc/slicer_setup.md)** 🆕<br>
 **[Understanding Operation with MMU_STATUS](/doc/operation.md)** 🆕<br>
 **[Command Reference](/doc/command_ref.md)**<br>
 **[Hardware Configuration, Movement and Homing](/doc/hardware_config.md)**<br>
@@ -138,7 +138,7 @@ Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonr
 ```
 
 > [!WARNING]  
-> TCRT 5000 encoders can be problematic. A new backward compatible alternative "Binky" is available is strongly recommended (standard in ERCFv2). If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](/doc/ercf_encoder_v11.md) - the better the encoder the better this software will work for MMU's with encoders.
+> TCRT 5000 encoders on ERCFv1.1 can be problematic. A new backward compatible alternative "Binky" is available is strongly recommended (standard in ERCFv2). If you insist on fighting with the original encoder be sure to read my [notes on Encoder problems](/doc/ercf_encoder_v11.md) - the better the encoder the better this software will work for MMU's with encoders.
 > Hall effect toolhead sensors can be problematic in a heated chamber because their characteristics change with temperature. Microswitch versions are preferred.
 
 <br>
@@ -185,11 +185,10 @@ Also Happy Hare exposes a large array of 'printer' variables that are useful in 
     MMU : Enable/Disable functionality and reset state
     MMU_CHANGE_TOOL : Perform a tool swap
     MMU_CHECK_GATE : Automatically inspects gate(s), parks filament and marks availability
-    MMU_STATS : Dump (and optionally reset) the MMU statistics
     MMU_EJECT : aka MMU_UNLOAD Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)
     MMU_ENCODER : Display encoder position or temporarily enable/disable detection logic in encoder
     MMU_ENDLESS_SPOOL : Display TTG map or redefine the EndlessSpool groups
-    MMU_FORM_TIP : Convenience macro for calling the standalone tip forming functionality
+    MMU_GATE_MAP : Display or define the type and color of filaments on each gate
     MMU_HELP : Display the complete set of MMU commands and function
     MMU_HOME : Home the MMU selector
     MMU_LED : Manage mode of operation of optional MMU LED's
@@ -198,15 +197,18 @@ Also Happy Hare exposes a large array of 'printer' variables that are useful in 
     MMU_PAUSE : Pause the current print and lock the MMU operations
     MMU_PRELOAD : Preloads filament at specified or current gate
     MMU_RECOVER : Recover the filament location and set MMU state after manual intervention/movement
-    MMU_TTG_MAP : aka MMU_REMAP_TTG Display TTG map or remap a tool to a specific gate and set gate availability
     MMU_RESET : Forget persisted state and re-initialize defaults
     MMU_SELECT : Select the specified logical tool (following TTG map) or physical gate
     MMU_SELECT_BYPASS : Select the filament bypass
+    MMU_SENSORS : Query state of sensors fitted to mmu
     MMU_SERVO : Move MMU servo to position specified position or angle
+    MMU_SLICER_TOOL_MAP : Display or define the tools used in print as specified by slicer
     MMU_GATE_MAP : Display or define the type and color of filaments on each gate
+    MMU_STATS : Dump (and optionally reset) the MMU statistics
     MMU_STATUS : Complete dump of current MMU state and important configuration
     MMU_SYNC_GEAR_MOTOR : Sync the MMU gear motor to the extruder stepper
     MMU_TOOL_OVERRIDES : Displays, sets or clears tool speed and extrusion factors (M220 & M221)
+    MMU_TTG_MAP : aka MMU_REMAP_TTG Display TTG map or remap a tool to a specific gate and set gate availability
     MMU_UNLOCK : Wakeup the MMU prior to resume to restore temperatures and timeouts
 ```
 
@@ -226,6 +228,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.next_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change)
     printer.mmu.last_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change after unload)
     printer.mmu.last_toolchange : {string} description of last change similar to M117 display
+    printer.mmu.runout : {bool} True while MMU is handling a runout
     printer.mmu.filament : {string} filament state in extruder (Loaded | Unloaded | Unknown)
     printer.mmu.filament_pos : {int} state machine - exact location of filament
     printer.mmu.filament_direction : {int} 1 (load) | -1 (unload)
@@ -237,6 +240,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.gate_color_rgb : {list} of color rbg values from 0.0 - 1.0 in truples (red, green blue), one per gate
     printer.mmu.gate_spool_id : {list} of IDs for Spoolman, one per gate
     printer.mmu.custom_color_rgb : {list} of color rbg values from 0.0 - 1.0 in truples (red, green blue), one per gate
+    printer.mmu.slicer_tool_map : {map} of slicer defined tool attributes (in form slicer_tool_map.tools.x.[color|material|temp])
     printer.mmu.endless_spool_groups : {list} membership group (int) for each tool
     printer.mmu.tool_extrusion_multipliers : {list} current M221 extrusion multipliers (float), one per tool
     printer.mmu.tool_speed_multipliers : {list} current M220 extrusion multipliers (float), one per tool
