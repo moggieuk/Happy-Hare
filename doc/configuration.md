@@ -259,8 +259,8 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 | `toolhead_sensor_to_nozzle`   | 67.9 | | | |
 | `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 59.3 | | | |
 
-_(submit your verified setup)_
-** These settings assume you have turned off all the slicer settings like toolchange retraction!
+** These settings assume you have turned off all the slicer settings like toolchange retraction!<br>
+_(please submit your verified additions to build out this table)_
 
 Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 
