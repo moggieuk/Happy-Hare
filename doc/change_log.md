@@ -144,4 +144,5 @@ Purge Volume Map:
    - Includes the "EREC" filament cutter logic for cutting at the MMU
 - Enhanced `MMU_SENSORS` command for quick review of all mmu sensors
 - New popup dialog option in Mainsail/KlipperScreen/Fluidd when MMU pauses on error
+- Two new pre-processing placeholders: !materials! and !purge_volumes!
 
