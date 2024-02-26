@@ -74,18 +74,24 @@ To set this up you need to edit three modular configuraton files: `mmu_parameter
 - Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
 <img src="/doc/toolchange/cutter_wipe_tower.png" width="900" alt="Cutting and Parking on Wipetower">
 
+#### Option 4: Cutting tip and, custom purge with no wipe tower
+- Pro: You get your full buildplate to work with because wipe tower is disabled
+- Con: You will need to implement your own purging routine.  This could just be a purge into a large bin followed by nozzle cleaning or, more likely, some form of pellet forming and cleaning.
+- Neutral: This is perhaps the coolest option!
+<img src="/doc/toolchange/cutter_custom_purge_hh.png" width="900" alt="Cutting and No Wipetower">
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Tip Forming Options
 
-#### Option 4: Forming tip by Happy Hare and parking in a designated park area (often over purge bucket) while making the tool change.
+#### Option 5: Forming tip by Happy Hare and parking in a designated park area (often over purge bucket) while making the tool change.
 - Pro: Allows of addition of brush cleaning move after the new filament is loaded before returning to wipe tower
 <img src="/doc/toolchange/forming_park_area_hh.png" width="900" alt="Tip Forming by HH at Park Area">
 
-#### Option 5: Forming tip by Happy Hare and parking at the wipetower
+#### Option 6: Forming tip by Happy Hare and parking at the wipetower
 - Pro: Minimizes movement
 - Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
 <img src="/doc/toolchange/forming_wipe_tower_hh.png" width="900" alt="Tip Forming by HH at Wipetower">
 
-#### Option 6: Forming tip by slicer and parking at the wipetower
+#### Option 7: Forming tip by slicer and parking at the wipetower
 - Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
 - Con: You will also need to tune tip forming in the slicer and manage all the settings that were zeroed out above.
 - Con: Movement during a toolchange will also be different in a print verses out of a print
@@ -93,7 +99,7 @@ To set this up you need to edit three modular configuraton files: `mmu_parameter
 
 ### Printing without wipetower
 
-#### Option 7: Forming tip by Happy Hare, custom purge with no wipe tower
+#### Option 8: Forming tip by Happy Hare, custom purge with no wipe tower
 - Pro: You get your full buildplate to work with because wipe tower is disabled
 - Con: You will need to implement your own purging routine.  This could just be a purge into a large bin followed by nozzle cleaning or, more likely, some form of pellet forming and cleaning.
 - Neutral: This is perhaps the coolest option!
