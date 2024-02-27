@@ -60,7 +60,7 @@ Firstly, although the default way to form tips is through calculated filament mo
 
 To set this up you need to edit three modular configuraton files: `mmu_parameters.cfg` (the primary setup), `mmu_cut_tip.cfg` (contains the tip cutting macro) and `mmu_sequence.cfg` (contains the default toolhead movement options)
 
-#### Option 1: Cutting tip and parking at the cutter while making the tool change<img src="/doc/cool.png" width="50">
+#### Option 1: Cutting tip and parking at the cutter while making the tool change
 - Pro: Minimizes movement
 - Con: Possibility of oozing in a undesirable part of the build plate
 <img src="/doc/toolchange/cutter_cutter.png" width="900" alt="Cutting and Parking at Cutter">
@@ -74,7 +74,7 @@ To set this up you need to edit three modular configuraton files: `mmu_parameter
 - Neutral: Possibility of oozing (blobs) on the wipertower. Not really a big problem unless they are large and this is where the slicer designers assume the toolhead will be positioned
 <img src="/doc/toolchange/cutter_wipe_tower.png" width="900" alt="Cutting and Parking on Wipetower">
 
-#### Option 4: Cutting tip and, custom purge with no wipe tower
+#### Option 4: Cutting tip and, custom purge with no wipe tower <img src="/doc/cool.png" width="40">
 - Pro: You get your full buildplate to work with because wipe tower is disabled
 - Con: You will need to implement your own purging routine.  This could just be a purge into a large bin followed by nozzle cleaning or, more likely, some form of pellet forming and cleaning.
 - Neutral: This is perhaps the coolest option!
@@ -99,7 +99,7 @@ To set this up you need to edit three modular configuraton files: `mmu_parameter
 
 ### Printing without wipetower
 
-#### Option 8: Forming tip by Happy Hare, custom purge with no wipe tower
+#### Option 8: Forming tip by Happy Hare, custom purge with no wipe tower <img src="/doc/cool.png" width="40">
 - Pro: You get your full buildplate to work with because wipe tower is disabled
 - Con: You will need to implement your own purging routine.  This could just be a purge into a large bin followed by nozzle cleaning or, more likely, some form of pellet forming and cleaning.
 - Neutral: This is perhaps the coolest option!
