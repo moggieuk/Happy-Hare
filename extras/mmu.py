@@ -1409,21 +1409,21 @@ class Mmu:
             self.gcode.respond_info(message)
 
     def _log_debug(self, message):
-        message = "\u2800 DEBUG: %s" % message
+        message = "\u2007 DEBUG: %s" % message
         if self.mmu_logger and self.log_file_level > 1:
             self.mmu_logger.info(message)
         if self.log_level > 1:
             self.gcode.respond_info(message)
 
     def _log_trace(self, message):
-        message = "\u2800 \u2800 TRACE: %s" % message
+        message = "\u2007 \u2007 TRACE: %s" % message
         if self.mmu_logger and self.log_file_level > 2:
             self.mmu_logger.info(message)
         if self.log_level > 2:
             self.gcode.respond_info(message)
 
     def _log_stepper(self, message):
-        message = "\u2800 \u2800 \u2800 STEPPER: %s" % message
+        message = "\u2007 \u2007 \u2007 STEPPER: %s" % message
         if self.mmu_logger and self.log_file_level > 3:
             self.mmu_logger.info(message)
         if self.log_level > 3:
@@ -5722,7 +5722,7 @@ class Mmu:
         elif gate_status == self.GATE_AVAILABLE:
             return "S" if show_source else "*"
         elif gate_status == self.GATE_EMPTY:
-            return ("." if no_space else " ")
+            return ("\u2007" if no_space else " ")
         else:
             return "?"
 
@@ -5765,7 +5765,7 @@ class Mmu:
             for g in gate_indices:
                 tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
                 multi_tool |= len(tool_str) > 2
-                tool_strings.append(("|%s " % (tool_str if tool_str else " . "))[:4])
+                tool_strings.append(("|%s " % (tool_str if tool_str else " \u2007 "))[:4])
             msg_tools = "Tools: " + "".join(tool_strings) + "|"
             #msg_tools += " Some gates support multiple tools!" if multi_tool else ""
             select_strings = ["|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----" for g in gate_indices]
@@ -6155,8 +6155,8 @@ class Mmu:
                     #msg += "\nPurge Volume Map:\n"
                     #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
-                    msg += "To->" + " ".join("\u2800T{:\u2800<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
-                    msg += '\n'.join(["T{:\u2800<2} {}".format(i, ' '.join(map(lambda x: str(round(x)).rjust(4, '\u2800') if x > 0 else '\u2800\u2800-\u2800', row)))
+                    msg += "To->" + " ".join("\u2007T{:\u2007<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
+                    msg += '\n'.join(["T{:\u2007<2} {}".format(i, ' '.join(map(lambda x: str(round(x)).rjust(4, '\u2007') if x > 0 else '\u2007\u2007-\u2007', row)))
                         for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
             else:
                 msg = "No slicer tool map loaded"
