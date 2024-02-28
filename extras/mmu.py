@@ -4326,6 +4326,7 @@ class Mmu:
         return pos[0], homed
 
     def _set_selector_pos(self, new_pos):
+        return # PAUL
         pos = self.mmu_toolhead.get_position()
         pos[0] = new_pos
         self.mmu_toolhead.set_position(pos, homing_axes=(0,))

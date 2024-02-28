@@ -420,10 +420,12 @@ class MmuKinematics:
         # PAUL ^^^ experiementing
 
         # Setup "axis" rails
-        self.axes = [('x', 'stepper_mmu_selector', True), ('y', 'stepper_mmu_gear', False)]
+#        self.axes = [('x', 'stepper_mmu_selector', True), ('y', 'stepper_mmu_gear', False)]
+#        self.rails = [MmuLookupMultiRail(config.getsection(s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
+        self.axes = [('y', 'stepper_mmu_gear', False)]
         self.rails = [MmuLookupMultiRail(config.getsection(s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
         logging.info("PAUL: rails=%s" % self.rails) # PAUL
-        self.rails = [fake_selector_rail, self.rails[1]] # PAUL
+        self.rails = [fake_selector_rail, self.rails[0]] # PAUL!!
         logging.info("PAUL: rails=%s" % self.rails) # PAUL
         for rail, axis in zip(self.rails, 'xy'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
@@ -668,20 +670,29 @@ class MmuExtruderStepper(ExtruderStepper, object):
 
 
 # PAUL vvv experimenting
-class FakePrinterRail(stepper.PrinterRail, object):
+#class FakePrinterRail(stepper.PrinterRail, object):
+class FakePrinterRail():
     def __init__(self, *args, **kwargs):
         self.steppers = []
         #super(DummyPrinterRail, self).__init__(*args, **kwargs)
         pass
 
+    def get_name(self, *args, **kwargs):
+        logging.info("PAUL: FakeRail.get_name")
+        return "fake_rail"
+
     def add_extra_stepper(self, *args, **kwargs):
+        logging.info("PAUL: FakeRail.add_extra_stepper")
         pass
 
     def setup_itersolve(self, *args, **kwargs):
-        logging.info("PAUL: setup_intersolve")
+        logging.info("PAUL: FakeRail.setup_intersolve")
         pass
 
     def get_steppers(self, *args, **kwargs):
-        logging.info("PAUL: get_steppers")
+        logging.info("PAUL: FakeRail.get_steppers")
         return self.steppers
+
+    def get_extra_endstop_names(self, *args, **kwargs):
+        return []
 
