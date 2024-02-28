@@ -153,7 +153,7 @@ class MmuServer:
                 if not found_purge_volumes:
                     match = purge_volumes_regex.match(line)
                     if match:
-                        purge_volumes_csv = match.group(1).strip().split(',')
+                        purge_volumes_csv = match.group(2).strip().split(',')
                         purge_volumes.extend(purge_volumes_csv)
                         found_purge_volumes = True
 
