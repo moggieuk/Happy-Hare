@@ -6153,7 +6153,7 @@ class Mmu:
                 msg += "-------------------------------------------"
                 if detail:
                     msg += "\nPurge Volume Map:\n"
-                    msg += "\n".join([" ".join(map(lambda x: str(round(x)), row)) for row in self.slicer_tool_map['purge_volumes']])
+                    msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "⠀"), row)) for row in self.slicer_tool_map['purge_volumes']])
             else:
                 msg = "No slicer tool map loaded"
             self._log_always(msg)
