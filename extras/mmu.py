@@ -3016,7 +3016,7 @@ class Mmu:
             self.gcode.run_script_from_command("M104 S%.1f" % new_target_temp)
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
-            if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 1:
+            if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 2:
                 with self._wrap_action(self.ACTION_HEATING):
                     self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f\u00B0C" % (source, new_target_temp))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
@@ -6287,18 +6287,20 @@ class Mmu:
                         finally:
                             self.calibrating = False
         
-                    # Reselect original tool and load filament if necessary
-                    try:
-                        if tool_selected == self.TOOL_GATE_BYPASS:
-                            self._select_bypass()
-                        elif tool_selected != self.TOOL_GATE_UNKNOWN:
-                            if filament_pos == self.FILAMENT_POS_LOADED:
-                                self._log_info("Restoring tool loaded prior to checking gates")
-                                self._select_and_load_tool(tool_selected)
-                            else:
-                                self._select_tool(tool_selected)
-                    except MmuError as ee:
-                        self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
+                    # If not printing select original tool and load filament if necessary
+                    # We don't do this when printing because this is expected to preceed the loading initial tool
+                    if not self._is_printing():
+                        try:
+                            if tool_selected == self.TOOL_GATE_BYPASS:
+                                self._select_bypass()
+                            elif tool_selected != self.TOOL_GATE_UNKNOWN:
+                                if filament_pos == self.FILAMENT_POS_LOADED:
+                                    self._log_info("Restoring tool loaded prior to checking gates")
+                                    self._select_and_load_tool(tool_selected)
+                                else:
+                                    self._select_tool(tool_selected)
+                        except MmuError as ee:
+                            self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
         
                     if not quiet:
                         self._log_info(self._ttg_map_to_string(summary=True))
