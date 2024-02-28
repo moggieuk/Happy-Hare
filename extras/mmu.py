@@ -674,7 +674,7 @@ class Mmu:
                     self.sensors[name].runout_helper.runout_pause = False
                     self.sensors[name].runout_helper.runout_gcode = None
                     self.sensors[name].runout_helper.insert_gcode = None
-    
+
                 # Add sensor pin as an extra endstop for gear rail
                 sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
                 ppins = self.printer.lookup_object('pins')
@@ -682,7 +682,7 @@ class Mmu:
                 share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
                 ppins.allow_multi_use_pin(share_name)
                 mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
- 
+
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 if self.homing_extruder:
                     mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
@@ -1409,21 +1409,21 @@ class Mmu:
             self.gcode.respond_info(message)
 
     def _log_debug(self, message):
-        message = "- DEBUG: %s" % message
+        message = "\u2800 DEBUG: %s" % message
         if self.mmu_logger and self.log_file_level > 1:
             self.mmu_logger.info(message)
         if self.log_level > 1:
             self.gcode.respond_info(message)
 
     def _log_trace(self, message):
-        message = "- - TRACE: %s" % message
+        message = "\u2800 \u2800 TRACE: %s" % message
         if self.mmu_logger and self.log_file_level > 2:
             self.mmu_logger.info(message)
         if self.log_level > 2:
             self.gcode.respond_info(message)
 
     def _log_stepper(self, message):
-        message = "- - - STEPPER: %s" % message
+        message = "\u2800 \u2800 \u2800 STEPPER: %s" % message
         if self.mmu_logger and self.log_file_level > 3:
             self.mmu_logger.info(message)
         if self.log_level > 3:
@@ -1447,7 +1447,7 @@ class Mmu:
         past  = lambda pos: arrow if self.filament_pos >= pos else space
         homed = lambda pos, sensor: (' ',arrow,sensor) if self.filament_pos > pos else (home,space,sensor) if self.filament_pos == pos else (' ',space,sensor)
         trig  = lambda name, sensor: re.sub(r'[a-zA-Z]', '*', name) if self._check_sensor(sensor) else name
-    
+
         t_str   = ("[T%s] " % str(self.tool_selected)) if self.tool_selected >= 0 else "BYPASS " if self.tool_selected == self.TOOL_GATE_BYPASS else "[T?] "
         g_str   = "{}".format(past(self.FILAMENT_POS_UNLOADED))
         gs_str  = "{0}{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_GATE, trig(gs, self.ENDSTOP_GATE))) if self._has_sensor(self.ENDSTOP_GATE) else ""
@@ -1460,7 +1460,7 @@ class Mmu:
         nz_str  = "{} Nz]".format(past(self.FILAMENT_POS_LOADED))
         summary = " LOADED" if self.filament_pos == self.FILAMENT_POS_LOADED else " UNLOADED" if self.filament_pos == self.FILAMENT_POS_UNLOADED else " UNKNOWN" if self.filament_pos == self.FILAMENT_POS_UNKNOWN else ""
         counter = " %.1fmm%s" % (self.mmu_toolhead.get_position()[1], " (e:%.1fmm)" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
-    
+
         visual = "".join((t_str, g_str, gs_str, en_str, bowden1, bowden2, es_str, ex_str, ts_str, nz_str, summary, counter))
         return visual
 
@@ -2358,7 +2358,7 @@ class Mmu:
         self.sync_feedback_operational = True
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
         self._update_sync_multiplier()
-        
+
     def _disable_sync_feedback(self):
         if not self.sync_feedback_operational: return
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
@@ -2698,7 +2698,7 @@ class Mmu:
                 mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
-              
+
             if self.restore_toolhead_xy_position:
                 # Restore pre-pause position and state
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
@@ -4216,7 +4216,7 @@ class Mmu:
                     self._log_info("Selector is blocked by inside filament, trying to recover...")
                     msg = "Resetting selector by a distance of: %.1fmm" % -travel
                     self._trace_selector_move(msg, init_pos) # Realign selector
-    
+
                     # See if we can detect filament in the encoder
                     found = self._check_filament_at_gate()
                     if not found:
@@ -4224,14 +4224,14 @@ class Mmu:
                         _,_,measured,delta = self._trace_filament_move("Trying to re-enguage encoder", 45.)
                         if measured < self.encoder_min:
                             raise MmuError("Selector recovery failed. Path is probably internally blocked and unable to move filament to clear")
-    
+
                     # Now try a full unload sequence
                     try:
                         self._unload_sequence(check_state=True)
                     except MmuError as ee:
                         # Add some more context to the error and re-raise
                         raise MmuError("Selector recovery failed because: %s" % (str(ee)))
-    
+
                     # Ok, now check if selector can now reach proper target
                     self._home_selector()
                     successful, halt_pos = self._attempt_selector_touch_move(target)
@@ -5085,7 +5085,7 @@ class Mmu:
                         self._recover_filament_pos()
             finally:
                 self._next_tool = self.TOOL_GATE_UNKNOWN
-    
+
         # If actively printing then we must restore toolhead position, if paused, mmu_resume will do this
         if self._is_printing():
             try:
@@ -5735,7 +5735,7 @@ class Mmu:
                 gate = self.ttg_map[i]
                 filament_char = self._get_filament_char(self.gate_status[gate], show_source=False)
                 msg += "\n" if i and tool is None else ""
-        
+
                 if self.enable_endless_spool and show_groups:
                     msg += "T%d " % i
                 else:
@@ -5889,7 +5889,7 @@ class Mmu:
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
         except MmuError as ee:
             self._mmu_pause(str(ee))
-        
+
     # This callback is not protected by klipper "is printing" check so be careful
     cmd_MMU_GATE_INSERT_help = "Internal MMU filament detection handler"
     def cmd_MMU_GATE_INSERT(self, gcmd):
@@ -6152,8 +6152,12 @@ class Mmu:
                     msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
                 msg += "-------------------------------------------"
                 if detail:
+                    #msg += "\nPurge Volume Map:\n"
+                    #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
-                    msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "⠀"), row)) for row in self.slicer_tool_map['purge_volumes']])
+                    msg += "To->" + " ".join("\u2800T{:\u2800<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
+                    msg += '\n'.join(["T{:\u2800<2} {}".format(i, ' '.join(map(lambda x: str(round(x)).rjust(4, '\u2800') if x > 0 else '\u2800\u2800-\u2800', row)))
+                        for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
             else:
                 msg = "No slicer tool map loaded"
             self._log_always(msg)
@@ -6222,7 +6226,7 @@ class Mmu:
                         # No parameters means all gates
                         for gate in range(self.mmu_num_gates):
                             gates_tools.append([gate, -1])
-        
+
                     # Force initial eject
                     try:
                         if not filament_pos == self.FILAMENT_POS_UNLOADED:
@@ -6231,7 +6235,7 @@ class Mmu:
                     except MmuError as ee:
                         self._mmu_pause(str(ee))
                         return
-        
+
                     if len(gates_tools) > 1:
                         self._log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
                     for gate, tool in gates_tools:
@@ -6272,7 +6276,7 @@ class Mmu:
                                 self._log_debug("Reason: %s" % str(ee))
                         finally:
                             self.calibrating = False
-        
+
                     # If not printing select original tool and load filament if necessary
                     # We don't do this when printing because this is expected to preceed the loading initial tool
                     if not self._is_printing():
@@ -6287,7 +6291,7 @@ class Mmu:
                                     self._select_tool(tool_selected)
                         except MmuError as ee:
                             self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
-        
+
                     if not quiet:
                         self._log_info(self._ttg_map_to_string(summary=True))
                 finally:
