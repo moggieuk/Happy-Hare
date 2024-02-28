@@ -239,15 +239,28 @@ extruder_force_homing: 0
 
 Consult this illustration of a typical toolhead or table of popular configurations to determine these dimensions. `toolhead_extruder_to_nozzle` must always be set accurately. It is a fixed distance based on your extruder and hotend and should not be tuned (use `toolhead_ooze_reduction` to tune out oozing of filament after the load). If you have a toolhead sensor then you also need to specify `toolhead_sensor_to_nozzle`. In practive this is often best performed by placing a fragment of filament at the extruder gears and "extruding" 1mm at a time until the toolhead sensor triggers. If you have a pre-extruder or "entry" sensor then you must also specify the distance from when this sensor triggers to the extruder (gears) entrance. The `toolhead_homing_max` determines the maximum distance from the extruder entrance to advance filament to home to the toolhead sensor - make sure this is a little larger than actually required to compensation for previous inaccuracies that may have occured. To further increase reliability, when unloading the `toolhead_unload_safety margin` is added to every theoretical move distance. Typically 5mm-10mm is sufficient. The starting value for `toolhead_ooze_reduction` shoud be `0` but as you tune printing you may increase it to reduce total loading distance to reduce blobs on the purge tower.
 
-  | Dimension | CW2/Revo | G2E/Rapido |
-  | --------- | -------- | -----------|
-  | toolhead_extruder_to_nozzle | 72 | 87.9 |
-  | toolhead_sensor_to_nozzle   | 62 | 67.9 |
-  | toolhead_entry_to_extruder  | 13 | 12.9 |
-  | variable_blade_pos<br>(mmu_cut_tip.cfg) | 37.5 | 59.3 |
+| Dimension | CW2 | G2E |
+| --------- | --- | --- |
+| `toolhead_entry_to_extruder` | 13 | 12.9 |
 
-_(submit your verified setup)_<br>
-** These settings assume you have turned off all the slicer settings like toolchange retraction!
+**CW2** dimensions for each hotend:
+
+| Dimension | Rapido | Dragon SF | Dragon HF | Revo |
+| --------- | ------ | --------- | --------- | ---- |
+| `toolhead_extruder_to_nozzle` | | | | 72 | 
+| `toolhead_sensor_to_nozzle`   | | | | 62 | 
+| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | | | | 37.5 |
+
+**G2E** dimensions for each hotend:
+
+| Dimension | Rapido | Dragon SF | Dragon HF | Revo |
+| --------- | ------ | --------- | --------- | ---- |
+| `toolhead_extruder_to_nozzle` | 87.9 | | | |
+| `toolhead_sensor_to_nozzle`   | 67.9 | | | |
+| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 59.3 | | | |
+
+** These settings assume you have turned off all the slicer settings like toolchange retraction!<br>
+_(please submit your verified additions to build out this table)_
 
 Read about the loading and unloading sequences [here](https://github.com/moggieuk/Happy-Hare#---filament-loading-and-unloading-sequences).
 

@@ -2633,7 +2633,7 @@ class Mmu:
             self._wrap_gcode_command(self.clear_position_macro)
 
     # If this is called automatically it will occur after the user's print ends.
-    # Therefore don't do anything that requires operating kinematics
+    # Therefore don't do anything that requires operating kinematics or execute gcode
     def _on_print_end(self, state="complete"):
         if not self._is_in_endstate():
             self._log_trace("_on_print_end(%s)" % state)
@@ -3091,7 +3091,7 @@ class Mmu:
         cmds.sort()
         for c in cmds:
             d = self.gcode.gcode_help.get(c, "n/a")
-            if c.startswith("MMU_START") or c.startswith("MMU_END"):
+            if c.startswith("MMU_START") or (c.startswith("MMU_END") and c not in ["MMU_ENDLESS_SPOOL"]):
                 mmsg += "%s : %s\n" % (c.upper(), d)
             elif c.startswith("MMU") and not c.startswith("MMU__"):
                 if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c:
@@ -3100,8 +3100,8 @@ class Mmu:
                 else:
                     tmsg += "%s : %s\n" % (c.upper(), d)
             elif c.startswith("_MMU"):
-                if not c.startswith("_MMU_STEP"):
-                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_CUT_TIP", "_MMU_FORM_TIP", "_MMU_ERROR_DIALOG"]: # Remove internal helpers
+                if not c.startswith("_MMU_STEP") and c not in ["_MMU_M400"]:
+                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_CUT_TIP", "_MMU_FORM_TIP", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
                         mmsg += "%s : %s\n" % (c.upper(), d)
                 else:
                     smsg += "%s : %s\n" % (c.upper(), d)
