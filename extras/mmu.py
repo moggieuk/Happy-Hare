@@ -6155,9 +6155,11 @@ class Mmu:
                     #msg += "\nPurge Volume Map:\n"
                     #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
-                    msg += "To->" + " ".join("\u2007T{:\u2007<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
+                    msg += "\u21B1\u2007\u2007\u2007\u2007" + " ".join("\u2007T{:\u2007<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
                     msg += '\n'.join(["T{:\u2007<2} {}".format(i, ' '.join(map(lambda x: str(round(x)).rjust(4, '\u2007') if x > 0 else '\u2007\u2007-\u2007', row)))
                         for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
+                else:
+                    msg += "\nDETAIL=1 to see purge map"
             else:
                 msg = "No slicer tool map loaded"
             self._log_always(msg)
