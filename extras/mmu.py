@@ -6142,26 +6142,26 @@ class Mmu:
             quiet = True
         if display or not quiet:
             colors = len(self.slicer_tool_map['tools'])
+            have_purge_map = len(self.slicer_tool_map['purge_volumes']) > 0
+            msg = "No slicer tool map loaded"
             if colors > 0 or self.slicer_tool_map['initial_tool'] is not None:
                 msg = "--------- Slicer MMU Tool Summary ---------\n"
                 msg += "Single color print" if colors <= 1 else "%d color print" % colors
-                msg += " (Purge volume map loaded)\n" if colors > 1 and len(self.slicer_tool_map['purge_volumes']) > 0 else "\n"
+                msg += " (Purge volume map loaded)\n" if colors > 1 and have_purge_map else "\n"
                 for t, params in self.slicer_tool_map['tools'].items():
                     msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'])
                 if self.slicer_tool_map['initial_tool'] is not None:
                     msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
                 msg += "-------------------------------------------"
-                if detail:
-                    #msg += "\nPurge Volume Map:\n"
+            if detail:
+                if have_purge_map:
                     #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
                     msg += "To ->" + " ".join("\u2007T{:\u2007<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
                     msg += '\n'.join(["T{:\u2007<2} {}".format(i, ' '.join(map(lambda x: str(round(x)).rjust(4, '\u2007') if x > 0 else '\u2007\u2007-\u2007', row)))
                         for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
-                else:
-                    msg += "\nDETAIL=1 to see purge map"
-            else:
-                msg = "No slicer tool map loaded"
+            elif have_purge_map:
+                msg += "\nDETAIL=1 to see purge volumes"
             self._log_always(msg)
 
     # TODO default to current gate; MMU_CHECK_GATES default to all gates. Add ALL=1 flag
