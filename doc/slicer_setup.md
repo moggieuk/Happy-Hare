@@ -134,3 +134,10 @@ variable_dump_stats                         : True      ; True/False, Whether to
 When Happy Hare detects an error, even during print start it will pause the print allowing you to fix and then resume. If the option `show_error_dialog: 1` is set in `mmu_parameters.cfg` a pop-up dialog will be displayed on Mailsail/Fluidd/KlipperScreen providing you options through the UI. If it is occurs during these startup macros there will also be an option to abort the print. The abort option will disappear during the print. To disable the popup, set `show_error_dialog: 0`
 
 <img src="/doc/slicer/error_dialog_during_start.png" width="400" alt="Error Dialog">
+
+<br>
+
+### More slicer setup help:
+[Toolchange Movement](/doc/toolchange_movement.md)<br>
+[Tip Forming and Purging](/doc/tip_forming_and_purgin.md)<br>
+

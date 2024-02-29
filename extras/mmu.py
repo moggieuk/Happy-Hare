@@ -413,7 +413,7 @@ class Mmu:
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
-        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=0.) # For reduction of load length
+        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=20.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
 

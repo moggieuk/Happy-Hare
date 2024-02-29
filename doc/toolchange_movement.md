@@ -112,3 +112,10 @@ It's worth noting that there are three possible origins for z-hop moves during a
 - Finally, the movement macro defined in `mmu_sequence.cfg` can optionally define a Z-hop move. This lifting move, if configured (`variable_enable_park` and `variable_park_z_hop`) will always happen both in and out of a print. Out of a print and for convenience it will be automatically skipped if the z-axis has not been homed.
 
 Personally I find it useful to set z-hop to 0.8mm in Happy Hare and 0mm in the parking (`mmu_sequence.cfg`) macro since out of a print I'm not worried about hitting objects or possible blobs.
+
+<br>
+
+### More slicer setup help:
+[Slicer Setup](/doc/slicer_setup.md)<br>
+[Tip Forming and Purging](/doc/tip_forming_and_purgin.md)<br>
+
