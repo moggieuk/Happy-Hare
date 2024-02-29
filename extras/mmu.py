@@ -1233,20 +1233,51 @@ class Mmu:
         }
 
     def _reset_statistics(self):
-        self.statistics = dict.fromkeys(['total_swaps', 'time_spent_loading', 'time_spent_unloading', 'total_pauses', 'time_spent_paused'], 0)
+        self.statistics = dict.fromkeys([
+            'total_swaps', 
+            'time_spent_loading', 
+            'time_spent_unloading', 
+            'time_spent_blobbing', 
+            'total_time_spent_swapping',
+            'total_pauses', 
+            'time_spent_paused'
+            ], 0)
         self.gate_statistics = []
         for gate in range(self.mmu_num_gates):
             self.gate_statistics.append(self.EMPTY_GATE_STATS_ENTRY.copy())
         self._reset_job_statistics()
 
     def _reset_job_statistics(self):
-        self.job_statistics = dict.fromkeys(['total_swaps', 'time_spent_loading', 'time_spent_unloading', 'total_pauses', 'time_spent_paused'], 0)
+        self.job_statistics = dict.fromkeys([
+            'total_swaps', 
+            'time_spent_loading', 
+            'time_spent_unloading', 
+            'time_spent_blobbing', 
+            'total_time_spent_swapping',
+            'total_pauses', 
+            'time_spent_paused'], 0)
         self.tracked_start_time = 0
         self.pause_start_time = 0
 
     def _track_swap_completed(self):
         self.statistics['total_swaps'] += 1
         self.job_statistics['total_swaps'] += 1
+
+    def _track_swap_start(self):
+        self.tracked_swap_time = time.time()
+
+    def _track_swap_end(self):
+        elapsed = time.time() - self.tracked_swap_time
+        self.statistics['total_time_spent_swapping'] += elapsed
+        self.job_statistics['total_time_spent_swapping'] += elapsed
+        
+    def _track_blob_start(self):
+        self.tracked_blob_time = time.time()
+
+    def _track_blob_end(self):
+        elapsed = time.time() - self.tracked_blob_time
+        self.statistics['time_spent_blobbing'] += elapsed
+        self.job_statistics['time_spent_blobbing'] += elapsed
 
     def _track_load_start(self):
         self.tracked_start_time = time.time()
@@ -1288,6 +1319,15 @@ class Mmu:
         except Exception as e:
             self._log_debug("Exception whilst tracking gate stats: %s" % str(e))
 
+    def _seconds_to_short_string(self, seconds):
+        seconds = int(seconds)
+        if seconds >= 3600:
+            return "{hour}:{min:0>2}:{sec:0>2}".format(hour=seconds // 3600, min=(seconds // 60) % 60, sec=seconds % 60)
+        if seconds >= 60:
+            return "{min:0>2}:{sec:0>2}".format(min=(seconds // 60) % 60, sec=seconds % 60)
+        return "0:{sec:0>2}".format(sec=seconds % 60)
+        
+
     def _seconds_to_string(self, seconds):
         result = ""
         hours = int(math.floor(seconds / 3600.))
@@ -1299,16 +1339,50 @@ class Mmu:
         result += "%d seconds" % int((math.floor(seconds) % 60))
         return result
 
+    # def _swap_statistics_to_string(self, total=True):
+    #     (msg, stats) = ("MMU Total Statistics:", self.statistics) if total == True else ("MMU Last Print Statistics:", self.job_statistics)
+    #     msg += "\n%d swaps completed" % stats['total_swaps']
+    #     msg += "\n%s spent loading (average: %s)" % (self._seconds_to_string(stats['time_spent_loading']),
+    #                                                  self._seconds_to_string(stats['time_spent_loading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
+    #     msg += "\n%s spent unloading (average: %s)" % (self._seconds_to_string(stats['time_spent_unloading']),
+    #                                                    self._seconds_to_string(stats['time_spent_unloading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
+    #     msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats['time_spent_paused']), stats['total_pauses'])
+    #     msg += "\n%s total time spent swapping (avarage: %s)" % (self._seconds_to_string(stats['total_time_spent_swapping']),
+    #                                                              self._seconds_to_string(stats['total_time_spent_swapping'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
+    #     return msg
+    
     def _swap_statistics_to_string(self, total=True):
-        (msg, stats) = ("MMU Total Statistics:", self.statistics) if total == True else ("MMU Last Print Statistics:", self.job_statistics)
-        msg += "\n%d swaps completed" % stats['total_swaps']
-        msg += "\n%s spent loading (average: %s)" % (self._seconds_to_string(stats['time_spent_loading']),
-                                                     self._seconds_to_string(stats['time_spent_loading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-        msg += "\n%s spent unloading (average: %s)" % (self._seconds_to_string(stats['time_spent_unloading']),
-                                                       self._seconds_to_string(stats['time_spent_unloading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-        msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats['time_spent_paused']), stats['total_pauses'])
-        return msg
+        (msg, stats) = ("MMU Total Statistics:\n", self.statistics) if total == True else ("MMU Last Print Statistics:\n", self.job_statistics)
+        table = []
+        table.append(["Time spent:", "loading", "unloading", "blobbing", "total"])
+        table.append([
+            "total", 
+            self._seconds_to_short_string(stats['time_spent_loading']),
+            self._seconds_to_short_string(stats['time_spent_unloading']),
+            self._seconds_to_short_string(stats['time_spent_blobbing']),
+            self._seconds_to_short_string(stats['total_time_spent_swapping'])
+            ])
+        table.append([
+            "average", 
+            self._seconds_to_short_string(stats['time_spent_loading']         / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats['time_spent_unloading']       / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats['time_spent_blobbing']        / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats['total_time_spent_swapping']  / stats['total_swaps']) if stats['total_swaps'] > 0 else "0"
+            ])
 
+        columns = [ max(len(table[r][c]) for r in range(len(table))) for c in range(len(table[0])) ]
+
+        msg += "+" +   "+".join(["–" * (width + 2) for width in columns])                                                     + "+\n"
+        msg += "|" +   "|".join([' {0: >{width}} '.format(table[0][i], width=columns[i]) for i in range(len(columns))])   + "|\n"
+        msg += "+" +   "+".join(["–" * (width + 2) for width in columns])                                                     + "+\n"
+        msg += "|" +   "|".join([' {0: >{width}} '.format(table[1][i], width=columns[i]) for i in range(len(columns))])   + "|\n"
+        msg += "|" +   "|".join([' {0: >{width}} '.format(table[2][i], width=columns[i]) for i in range(len(columns))])   + "|\n"
+        msg += "+" +   "+".join(["–" * (width + 2) for width in columns])                                                     + "+\n"
+
+        msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats['time_spent_paused']), stats['total_pauses'])
+        
+        return msg
+ 
     def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False):
         if self.log_statistics or force_log:
             msg = ""
@@ -4823,6 +4897,7 @@ class Mmu:
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True):
         self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
+        self._track_swap_start()
         skip_unload = False
         initial_tool_string = self._selected_tool_string()
         if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -4863,6 +4938,10 @@ class Mmu:
             self._unload_tool(skip_tip=skip_tip)
 
         self._select_and_load_tool(tool)
+        self._track_blob_start()
+        self.gcode.run_script_from_command("BLOBIFIER") #TODO: Make this dynamically callable based on the usage of blobifier
+        self._track_blob_end()
+        self._track_swap_end()
         self._track_swap_completed()
 
         self.gcode.run_script_from_command("M117 T%s" % tool)
