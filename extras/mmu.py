@@ -1233,67 +1233,38 @@ class Mmu:
         }
 
     def _reset_statistics(self):
-        self.statistics = dict.fromkeys([
-            'total_swaps', 
-            'time_spent_loading', 
-            'time_spent_unloading', 
-            'time_spent_blobbing', 
-            'total_time_spent_swapping',
-            'total_pauses', 
-            'time_spent_paused'
-            ], 0)
+        self.statistics = {'total_swaps':0}
+        self.track = {}
         self.gate_statistics = []
         for gate in range(self.mmu_num_gates):
             self.gate_statistics.append(self.EMPTY_GATE_STATS_ENTRY.copy())
         self._reset_job_statistics()
 
     def _reset_job_statistics(self):
-        self.job_statistics = dict.fromkeys([
-            'total_swaps', 
-            'time_spent_loading', 
-            'time_spent_unloading', 
-            'time_spent_blobbing', 
-            'total_time_spent_swapping',
-            'total_pauses', 
-            'time_spent_paused'], 0)
+        self.job_statistics = {'total_swaps':0}
         self.tracked_start_time = 0
         self.pause_start_time = 0
+    
+    def _track_time_start(self, name):
+        self.track[name] = time.time()
+        self._log_debug("track times: " + str(self.track))
+    
+    def _track_time_end(self, name):
+        if name not in self.track:
+            return #timer not initialized
+        if name not in self.statistics:
+            self.statistics[name] = 0
+        if name not in self.job_statistics:
+            self.job_statistics[name] = 0
+        
+        self._log_debug("statistics: " + str(self.statistics))
+        elapsed = time.time() - self.track[name]
+        self.statistics[name] += elapsed
+        self.job_statistics[name] += elapsed
 
     def _track_swap_completed(self):
         self.statistics['total_swaps'] += 1
         self.job_statistics['total_swaps'] += 1
-
-    def _track_swap_start(self):
-        self.tracked_swap_time = time.time()
-
-    def _track_swap_end(self):
-        elapsed = time.time() - self.tracked_swap_time
-        self.statistics['total_time_spent_swapping'] += elapsed
-        self.job_statistics['total_time_spent_swapping'] += elapsed
-        
-    def _track_blob_start(self):
-        self.tracked_blob_time = time.time()
-
-    def _track_blob_end(self):
-        elapsed = time.time() - self.tracked_blob_time
-        self.statistics['time_spent_blobbing'] += elapsed
-        self.job_statistics['time_spent_blobbing'] += elapsed
-
-    def _track_load_start(self):
-        self.tracked_start_time = time.time()
-
-    def _track_load_end(self):
-        elapsed = time.time() - self.tracked_start_time
-        self.statistics['time_spent_loading'] += elapsed
-        self.job_statistics['time_spent_loading'] += elapsed
-
-    def _track_unload_start(self):
-        self.tracked_start_time = time.time()
-
-    def _track_unload_end(self):
-        elapsed = time.time() - self.tracked_start_time
-        self.statistics['time_spent_unloading'] += elapsed
-        self.job_statistics['time_spent_unloading'] += elapsed
 
     def _track_pause_start(self):
         self.statistics['total_pauses'] += 1
@@ -1324,10 +1295,9 @@ class Mmu:
         if seconds >= 3600:
             return "{hour}:{min:0>2}:{sec:0>2}".format(hour=seconds // 3600, min=(seconds // 60) % 60, sec=seconds % 60)
         if seconds >= 60:
-            return "{min:0>2}:{sec:0>2}".format(min=(seconds // 60) % 60, sec=seconds % 60)
+            return "{min}:{sec:0>2}".format(min=(seconds // 60) % 60, sec=seconds % 60)
         return "0:{sec:0>2}".format(sec=seconds % 60)
         
-
     def _seconds_to_string(self, seconds):
         result = ""
         hours = int(math.floor(seconds / 3600.))
@@ -1338,48 +1308,74 @@ class Mmu:
             result += "%d minutes " % minutes
         result += "%d seconds" % int((math.floor(seconds) % 60))
         return result
-
-    # def _swap_statistics_to_string(self, total=True):
-    #     (msg, stats) = ("MMU Total Statistics:", self.statistics) if total == True else ("MMU Last Print Statistics:", self.job_statistics)
-    #     msg += "\n%d swaps completed" % stats['total_swaps']
-    #     msg += "\n%s spent loading (average: %s)" % (self._seconds_to_string(stats['time_spent_loading']),
-    #                                                  self._seconds_to_string(stats['time_spent_loading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-    #     msg += "\n%s spent unloading (average: %s)" % (self._seconds_to_string(stats['time_spent_unloading']),
-    #                                                    self._seconds_to_string(stats['time_spent_unloading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-    #     msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats['time_spent_paused']), stats['total_pauses'])
-    #     msg += "\n%s total time spent swapping (avarage: %s)" % (self._seconds_to_string(stats['total_time_spent_swapping']),
-    #                                                              self._seconds_to_string(stats['total_time_spent_swapping'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-    #     return msg
     
     def _swap_statistics_to_string(self, total=True):
+        #
+        # +–––––––––+––––––––––––––––––––––––+––––––––––––––––––––––––+––––––––––+
+        # |   130   |        unloading       |         loading        |          |
+        # |  swaps  |  pre  |   -    |  post |   pre  |   -   |  post |   swap   |
+        # +–––––––––+–––––––+––––––––+–––––––+––––––––+–––––––+–––––––+––––––––––+
+        # | total   |       |        |       |        |       |       |          |
+        # | avarage |       |        |       |        |       |       |          |
+        # +–––––––––+–––––––+––––––––+–––––––+––––––––+–––––––+–––––––+––––––––––+
+        # Time spent paused: ...
+        #
         (msg, stats) = ("MMU Total Statistics:\n", self.statistics) if total == True else ("MMU Last Print Statistics:\n", self.job_statistics)
         table = []
-        table.append(["Time spent:", "loading", "unloading", "blobbing", "total"])
         table.append([
-            "total", 
-            self._seconds_to_short_string(stats['time_spent_loading']),
-            self._seconds_to_short_string(stats['time_spent_unloading']),
-            self._seconds_to_short_string(stats['time_spent_blobbing']),
-            self._seconds_to_short_string(stats['total_time_spent_swapping'])
-            ])
+            "swap" if stats.get('total_swaps', 0) == 1 else "swaps", 
+            "pre", 
+            "-", 
+            "post", 
+            "pre", 
+            "-", 
+            "post", 
+            "  swap  " # spaces surround it for a dirty width hack
+        ])
         table.append([
-            "average", 
-            self._seconds_to_short_string(stats['time_spent_loading']         / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats['time_spent_unloading']       / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats['time_spent_blobbing']        / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats['total_time_spent_swapping']  / stats['total_swaps']) if stats['total_swaps'] > 0 else "0"
-            ])
+            "total",
+            self._seconds_to_short_string(stats.get('pre_unload', 0)),
+            self._seconds_to_short_string(stats.get('unload', 0)),
+            self._seconds_to_short_string(stats.get('post_unload', 0)),
+            self._seconds_to_short_string(stats.get('pre_load', 0)),
+            self._seconds_to_short_string(stats.get('load', 0)),
+            self._seconds_to_short_string(stats.get('post_load', 0)),
+            self._seconds_to_short_string(stats.get('total', 0))
+        ])
+        table.append([
+            "average",
+            self._seconds_to_short_string(stats.get('pre_unload', 0)   / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats.get('unload', 0)       / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats.get('post_unload', 0)  / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats.get('pre_load', 0)     / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats.get('load', 0)         / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats.get('post_load', 0)    / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(stats.get('total', 0)        / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+        ])
+        headers = [
+            stats.get('total_swaps', 0),
+            'unloading',
+            'loading',
+            'complete'
+        ]
 
-        columns = [ max(len(table[r][c]) for r in range(len(table))) for c in range(len(table[0])) ]
+        column_widths = [ max(len(table[r][c]) for r in range(len(table))) for c in range(len(table[0])) ]
+        header_widths = [
+            column_widths[0],
+            sum(column_widths[1:4]) + 6,
+            sum(column_widths[4:7]) + 6,
+            column_widths[7]
+        ]
 
-        msg += "+" +   "+".join(["–" * (width + 2) for width in columns])                                                     + "+\n"
-        msg += "|" +   "|".join([' {0: >{width}} '.format(table[0][i], width=columns[i]) for i in range(len(columns))])   + "|\n"
-        msg += "+" +   "+".join(["–" * (width + 2) for width in columns])                                                     + "+\n"
-        msg += "|" +   "|".join([' {0: >{width}} '.format(table[1][i], width=columns[i]) for i in range(len(columns))])   + "|\n"
-        msg += "|" +   "|".join([' {0: >{width}} '.format(table[2][i], width=columns[i]) for i in range(len(columns))])   + "|\n"
-        msg += "+" +   "+".join(["–" * (width + 2) for width in columns])                                                     + "+\n"
+        msg += "+" +   "+".join(["–" * (width + 2) for width in header_widths])                                                     + "+\n"
+        msg += "|" +   "|".join([' {0: ^{width}} '.format(headers[i], width=header_widths[i]) for i in range(len(header_widths))])   + "|\n"
+        msg += "|" +   "|".join([' {0: ^{width}} '.format(table[0][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
+        msg += "+" +   "+".join(["–" * (width + 2) for width in column_widths])                                                     + "+\n"
+        msg += "|" +   "|".join([' {0: >{width}} '.format(table[1][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
+        msg += "|" +   "|".join([' {0: >{width}} '.format(table[2][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
+        msg += "+" +   "+".join(["–" * (width + 2) for width in column_widths])                                                     + "+\n"
 
-        msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats['time_spent_paused']), stats['total_pauses'])
+        msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats.get('time_spent_paused', 0)), stats.get('total_pauses', 0))
         
         return msg
  
@@ -3915,7 +3911,7 @@ class Mmu:
                     length = self.calibrated_bowden_length
                     self._log_info("Restricting load length to extruder calibration reference of %.1fmm" % length)
                 full = True
-                self._track_load_start()
+                self._track_time_start('load')
                 home = self._must_home_to_extruder()
             else:
                 skip_extruder = True
@@ -3963,7 +3959,7 @@ class Mmu:
             raise MmuError("Load sequence failed: %s" % (str(ee)))
         finally:
             if full:
-                self._track_load_end()
+                self._track_time_end('load')
             if not extruder_only:
                 self._set_action(current_action)
             if not self._is_printing():
@@ -3989,7 +3985,7 @@ class Mmu:
             self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
-                self._track_unload_start()
+                self._track_time_start('unload')
                 self._display_visual_state()
 
             park_pos = 0.
@@ -4074,7 +4070,7 @@ class Mmu:
 
         finally:
             if not extruder_only:
-                self._track_unload_end()
+                self._track_time_end('unload')
                 self._set_action(current_action)
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
@@ -4868,8 +4864,10 @@ class Mmu:
                 gate = self._remap_tool(tool, next_gate)
             else:
                 raise MmuError("Gate %d is empty! Use 'MMU_CHECK_GATE GATE=%d' to reset" % (gate, gate))
-
+        
+        self._track_time_start('pre_load')
         self._wrap_gcode_command(self.pre_load_macro, exception=True)
+        self._track_time_end('pre_load')
 
         self._select_tool(tool, move_servo=False)
         self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
@@ -4877,7 +4875,11 @@ class Mmu:
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
+        self._track_time_start('post_load')
         self._wrap_gcode_command(self.post_load_macro, exception=True)
+        self._track_time_end('post_load')
+        
+        
 
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
@@ -4886,18 +4888,22 @@ class Mmu:
             return
 
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
+        self._track_time_start('pre_unload')
         self._wrap_gcode_command(self.pre_unload_macro, exception=True)
+        self._track_time_end('pre_unload')
 
         self._record_tool_override() # Remember M220 and M221 overrides
         self._unload_sequence(skip_tip=skip_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
 
+        self._track_time_start('post_unload')
         self._wrap_gcode_command(self.post_unload_macro, exception=True)
+        self._track_time_end('post_unload')
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True):
         self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
-        self._track_swap_start()
+        self._track_time_start('total')
         skip_unload = False
         initial_tool_string = self._selected_tool_string()
         if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -4938,11 +4944,9 @@ class Mmu:
             self._unload_tool(skip_tip=skip_tip)
 
         self._select_and_load_tool(tool)
-        self._track_blob_start()
-        self.gcode.run_script_from_command("BLOBIFIER") #TODO: Make this dynamically callable based on the usage of blobifier
-        self._track_blob_end()
-        self._track_swap_end()
         self._track_swap_completed()
+        
+        self._track_time_end('total')
 
         self.gcode.run_script_from_command("M117 T%s" % tool)
         return True
