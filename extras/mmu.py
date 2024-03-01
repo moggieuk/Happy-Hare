@@ -1233,7 +1233,8 @@ class Mmu:
         }
 
     def _reset_statistics(self):
-        self.statistics = {'total_swaps':0}
+        self.statistics = {}
+        self.last_statistics = {}
         self.track = {}
         self.gate_statistics = []
         for gate in range(self.mmu_num_gates):
@@ -1241,7 +1242,7 @@ class Mmu:
         self._reset_job_statistics()
 
     def _reset_job_statistics(self):
-        self.job_statistics = {'total_swaps':0}
+        self.job_statistics = {}
         self.tracked_start_time = 0
         self.pause_start_time = 0
     
@@ -1261,21 +1262,29 @@ class Mmu:
         elapsed = time.time() - self.track[name]
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
+        self.last_statistics[name] = elapsed
 
     def _track_swap_completed(self):
+        if 'total_swaps' not in self.statistics:
+            self.statistics['total_swaps'] = 0
+        if 'total_swaps' not in self.job_statistics:
+            self.job_statistics['total_swaps'] = 0
         self.statistics['total_swaps'] += 1
         self.job_statistics['total_swaps'] += 1
 
     def _track_pause_start(self):
+        if 'total_pauses' not in self.statistics:
+            self.statistics['total_pauses'] = 0
+        if 'total_pauses' not in self.job_statistics:
+            self.job_statistics['total_pauses'] = 0
         self.statistics['total_pauses'] += 1
         self.job_statistics['total_pauses'] += 1
+        self._track_time_start('pause')
         self.pause_start_time = time.time()
         self._track_gate_statistics('pauses', self.gate_selected)
 
     def _track_pause_end(self):
-        elapsed = time.time() - self.pause_start_time
-        self.statistics['time_spent_paused'] += elapsed
-        self.job_statistics['time_spent_paused'] += elapsed
+        self._track_time_end('pause')
 
     # Per gate tracking
     def _track_gate_statistics(self, key, gate, count=1):
@@ -1291,12 +1300,14 @@ class Mmu:
             self._log_debug("Exception whilst tracking gate stats: %s" % str(e))
 
     def _seconds_to_short_string(self, seconds):
-        seconds = int(seconds)
-        if seconds >= 3600:
-            return "{hour}:{min:0>2}:{sec:0>2}".format(hour=seconds // 3600, min=(seconds // 60) % 60, sec=seconds % 60)
-        if seconds >= 60:
-            return "{min}:{sec:0>2}".format(min=(seconds // 60) % 60, sec=seconds % 60)
-        return "0:{sec:0>2}".format(sec=seconds % 60)
+        if isinstance(seconds, float) or isinstance(seconds, int) or seconds.isnumeric():
+            seconds = int(seconds)
+            if seconds >= 3600:
+                return "{hour}:{min:0>2}:{sec:0>2}".format(hour=seconds // 3600, min=(seconds // 60) % 60, sec=seconds % 60)
+            if seconds >= 60:
+                return "{min}:{sec:0>2}".format(min=(seconds // 60) % 60, sec=seconds % 60)
+            return "0:{sec:0>2}".format(sec=seconds % 60)
+        return seconds
         
     def _seconds_to_string(self, seconds):
         result = ""
@@ -1320,10 +1331,13 @@ class Mmu:
         # +–––––––––+–––––––+––––––––+–––––––+––––––––+–––––––+–––––––+––––––––––+
         # Time spent paused: ...
         #
-        (msg, stats) = ("MMU Total Statistics:\n", self.statistics) if total == True else ("MMU Last Print Statistics:\n", self.job_statistics)
+        msg = "MMU Statistics:\n"
+        total = self.statistics
+        job = self.job_statistics
+        last = self.last_statistics
         table = []
         table.append([
-            "swap" if stats.get('total_swaps', 0) == 1 else "swaps", 
+            "swaps", 
             "pre", 
             "-", 
             "post", 
@@ -1333,27 +1347,58 @@ class Mmu:
             "  swap  " # spaces surround it for a dirty width hack
         ])
         table.append([
-            "total",
-            self._seconds_to_short_string(stats.get('pre_unload', 0)),
-            self._seconds_to_short_string(stats.get('unload', 0)),
-            self._seconds_to_short_string(stats.get('post_unload', 0)),
-            self._seconds_to_short_string(stats.get('pre_load', 0)),
-            self._seconds_to_short_string(stats.get('load', 0)),
-            self._seconds_to_short_string(stats.get('post_load', 0)),
-            self._seconds_to_short_string(stats.get('total', 0))
+            "all time",
+            self._seconds_to_short_string(total.get('pre_unload', 0)),
+            self._seconds_to_short_string(total.get('unload', 0)),
+            self._seconds_to_short_string(total.get('post_unload', 0)),
+            self._seconds_to_short_string(total.get('pre_load', 0)),
+            self._seconds_to_short_string(total.get('load', 0)),
+            self._seconds_to_short_string(total.get('post_load', 0)),
+            self._seconds_to_short_string(total.get('total', 0))
         ])
         table.append([
-            "average",
-            self._seconds_to_short_string(stats.get('pre_unload', 0)   / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats.get('unload', 0)       / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats.get('post_unload', 0)  / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats.get('pre_load', 0)     / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats.get('load', 0)         / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats.get('post_load', 0)    / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(stats.get('total', 0)        / stats['total_swaps']) if stats['total_swaps'] > 0 else "0",
+            "└ avg",
+            self._seconds_to_short_string(total.get('pre_unload', 0)   / total['total_swaps']) if total['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(total.get('unload', 0)       / total['total_swaps']) if total['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(total.get('post_unload', 0)  / total['total_swaps']) if total['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(total.get('pre_load', 0)     / total['total_swaps']) if total['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(total.get('load', 0)         / total['total_swaps']) if total['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(total.get('post_load', 0)    / total['total_swaps']) if total['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(total.get('total', 0)        / total['total_swaps']) if total['total_swaps'] > 0 else "0",
+            
+        ])
+        table.append([
+            "this print",
+            self._seconds_to_short_string(job.get('pre_unload', 0)),
+            self._seconds_to_short_string(job.get('unload', 0)),
+            self._seconds_to_short_string(job.get('post_unload', 0)),
+            self._seconds_to_short_string(job.get('pre_load', 0)),
+            self._seconds_to_short_string(job.get('load', 0)),
+            self._seconds_to_short_string(job.get('post_load', 0)),
+            self._seconds_to_short_string(job.get('total', 0))
+        ])
+        table.append([
+            "└ avg",
+            self._seconds_to_short_string(job.get('pre_unload', 0)   / job['total_swaps']) if job['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(job.get('unload', 0)       / job['total_swaps']) if job['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(job.get('post_unload', 0)  / job['total_swaps']) if job['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(job.get('pre_load', 0)     / job['total_swaps']) if job['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(job.get('load', 0)         / job['total_swaps']) if job['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(job.get('post_load', 0)    / job['total_swaps']) if job['total_swaps'] > 0 else "0",
+            self._seconds_to_short_string(job.get('total', 0)        / job['total_swaps']) if job['total_swaps'] > 0 else "0",
+        ])
+        table.append([
+            "last",
+            self._seconds_to_short_string(last.get('pre_unload', '-')),
+            self._seconds_to_short_string(last.get('unload', '-')),
+            self._seconds_to_short_string(last.get('post_unload', '-')),
+            self._seconds_to_short_string(last.get('pre_load', '-')),
+            self._seconds_to_short_string(last.get('load', '-')),
+            self._seconds_to_short_string(last.get('post_load', '-')),
+            self._seconds_to_short_string(last.get('total', '-')),
         ])
         headers = [
-            stats.get('total_swaps', 0),
+            "%s(%s)" % (total.get('total_swaps', 0), job.get('total_swaps', 0)),
             'unloading',
             'loading',
             'complete'
@@ -1371,11 +1416,13 @@ class Mmu:
         msg += "|" +   "|".join([' {0: ^{width}} '.format(headers[i], width=header_widths[i]) for i in range(len(header_widths))])   + "|\n"
         msg += "|" +   "|".join([' {0: ^{width}} '.format(table[0][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
         msg += "+" +   "+".join(["–" * (width + 2) for width in column_widths])                                                     + "+\n"
-        msg += "|" +   "|".join([' {0: >{width}} '.format(table[1][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
-        msg += "|" +   "|".join([' {0: >{width}} '.format(table[2][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
+
+        for j in range(1, len(table)):
+            msg += "|" +   "|".join([' {0: >{width}} '.format(table[j][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
+        
         msg += "+" +   "+".join(["–" * (width + 2) for width in column_widths])                                                     + "+\n"
 
-        msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats.get('time_spent_paused', 0)), stats.get('total_pauses', 0))
+        # msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats.get('pause', 0)), stats.get('total_pauses', 0))
         
         return msg
  
@@ -1443,9 +1490,12 @@ class Mmu:
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, self.encoder_sensor.get_clog_detection_length()))
 
     def _persist_swap_statistics(self):
-        self.statistics['time_spent_loading'] = round(self.statistics['time_spent_loading'], 2)
-        self.statistics['time_spent_unloading'] = round(self.statistics['time_spent_unloading'], 2)
-        self.statistics['time_spent_paused'] = round(self.statistics['time_spent_paused'], 2)
+        # self.statistics['time_spent_loading'] = round(self.statistics['time_spent_loading'], 2)
+        # self.statistics['time_spent_unloading'] = round(self.statistics['time_spent_unloading'], 2)
+        # self.statistics['time_spent_paused'] = round(self.statistics['time_spent_paused'], 2)
+        for key in self.statistics:
+            if isinstance(self.statistics[key], float):
+                self.statistics[key] = round(self.statistics[key], 2)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SWAP_STATISTICS, self.statistics))
 
     def _persist_gate_map(self):
@@ -5127,6 +5177,7 @@ class Mmu:
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(): return
+        self.last_statistics = {}
         self._fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
