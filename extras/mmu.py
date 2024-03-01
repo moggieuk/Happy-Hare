@@ -1586,7 +1586,7 @@ class Mmu:
         msg += "\n\n%s" % self._state_to_string()
 
         if detail:
-            msg += "\n\n%s" % self._ttg_map_to_string(title="EndlessSpool Groups")
+            msg += "\n\n%s" % self._ttg_map_to_string(title="TTG Map & EndlessSpool Groups")
             msg += "\n\n%s" % self._gate_map_to_string()
 
         self._log_always(msg)
@@ -5729,6 +5729,16 @@ class Mmu:
     def _ttg_map_to_string(self, title=None, summary=False, tool=None, show_groups=True):
         msg = "%s:\n" % title if title else "TTG Map:\n" # String used to filter in KS-HH
         if not summary:
+            # TTG Map:
+            # T0 -> Gate 0(*) > 4(?) > 5( ) [SELECTED]
+            # T1 -> Gate 4(?) > 5( ) > 0(*)
+            # T2 -> Gate 2(?)
+            # T3 -> Gate 3( ) > 8( ) > 1(*)
+            # T4 -> Gate 4(?) > 5( ) > 0(*)
+            # T5 -> Gate 5( ) > 0(*) > 4(?)
+            # T6 -> Gate 6(*)
+            # T7 -> Gate 7( )
+            # T8 -> Gate 8( ) > 1(*) > 3( )
             num_tools = self.mmu_num_gates
             tools = range(num_tools) if tool is None else [tool]
             for i in tools:
@@ -5737,25 +5747,31 @@ class Mmu:
                 msg += "\n" if i and tool is None else ""
 
                 if self.enable_endless_spool and show_groups:
-                    msg += "T%d " % i
+                    msg += "T{:<2}".format(i)
                 else:
-                    msg += "T%d-> Gate %d(%s)" % (i, gate, filament_char)
+                    msg += "T{:<2}-> Gate{:>2}({})".format(i, gate, filament_char)
 
                 if self.enable_endless_spool:
                     group = self.endless_spool_groups[gate]
+                    es = ""
                     if show_groups:
-                        es = " in EndlessSpool Group %s: " % chr(ord('A') + group)
+                        msg += " in EndlessSpool Group %s :" % chr(ord('A') + group)
                         gates_in_group = [(j + gate) % num_tools for j in range(num_tools)]
                     else:
-                        es = " "
+                        es = " >"
                         gates_in_group = [(j + gate + 1) % num_tools for j in range(num_tools - 1)]
 
-                    es += " > ".join("%d(%s)" % (g, self._get_filament_char(self.gate_status[g], show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
-                    msg += es
+                    gs = " >".join("{:>2}({})".format(g, self._get_filament_char(self.gate_status[g], show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
+                    if gs:
+                        msg += (es + gs)
 
                 if i == self.tool_selected:
                     msg += " [SELECTED]"
         else:
+            # Gates: | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+            # Tools: |T0 |   |T2 |T3 |T1+|T5 |T6 |T7 |T8 |
+            # Avail: | S | S | ? |   | ? |   | S |   |   |
+            # Selct: | * |-------------------------------- T0
             multi_tool = False
             num_gates = self.mmu_num_gates
             gate_indices = range(num_gates)
