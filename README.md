@@ -984,16 +984,16 @@ Happy Hare keeps track of the current print state in a similar way to the klippe
 
 ```mermaid
 stateDiagram-v2
-    initialized --> started: <i>(print_start)</i>
+    initialized --> started: (print_start)
     note left of initialized: reset
-    standby --> started: <i>(print_start)</i>
+    standby --> started: (print_start)
     note left of standby: idle_timeout
-    ready --> started: <i>(print_start)</i>
+    ready --> started: (print_start)
     started --> printing
     printing --> complete: (print_complete))
     printing --> error: (print_error)
     printing --> cancelled: CANCEL_PRINT
-    printing --> PAUSE: <center><i>mmu error</i><br>or MMU_PAUSE</center>
+    printing --> PAUSE: mmu error or MMU_PAUSE
     state PAUSE {
         direction LR
         pause_locked --> paused: (MMU_UNLOCK)
