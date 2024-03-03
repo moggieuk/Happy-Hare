@@ -25,7 +25,7 @@ Universal MMU driver for Klipper
 
 Happy Hare (v2) is the second edition of what started life and as [alternative software control](https://github.com/moggieuk/ERCF-Software-V3) for the ERCF v1.1 ecosystem. Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform. It is best partnered with [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
-Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). I'm not doing this for any financial reward but if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
+Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). Although I'm not doing this for any financial reward I have put hundreds of hours into this project and if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
 
 Thank you!
 
@@ -68,6 +68,7 @@ Thank you!
 **[Configuation Reference](/doc/configuration.md)** 🆕<br>
 **[Toochange Movement and Slicer Setup](/doc/toolchange_movement.md)** 🆕<br>
 **[Happy Hare Macro Customization](/doc/macro_customization.md)** 🆕<br>
+**[Tip Forming and Purging](/doc/tip_forming_and_purging.md)** 🆕<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)** 🆕<br>
 **[LED Support](/doc/leds.md)**<br>
 **[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
@@ -983,16 +984,16 @@ Happy Hare keeps track of the current print state in a similar way to the klippe
 
 ```mermaid
 stateDiagram-v2
-    initialized --> started: <i>(print_start)</i>
+    initialized --> started: (print_start)
     note left of initialized: reset
-    standby --> started: <i>(print_start)</i>
+    standby --> started: (print_start)
     note left of standby: idle_timeout
-    ready --> started: <i>(print_start)</i>
+    ready --> started: (print_start)
     started --> printing
     printing --> complete: (print_complete))
     printing --> error: (print_error)
     printing --> cancelled: CANCEL_PRINT
-    printing --> PAUSE: <center><i>mmu error</i><br>or MMU_PAUSE</center>
+    printing --> PAUSE: mmu error or MMU_PAUSE
     state PAUSE {
         direction LR
         pause_locked --> paused: (MMU_UNLOCK)
