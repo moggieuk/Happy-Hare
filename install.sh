@@ -571,6 +571,7 @@ update_copy_file() {
             # Split the line into the part before # and the part after #
             parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/;/# /' | cut -d'#' -f1)
 
+            comment=""
             if echo "$line" | grep -q "#"; then
                 commentChar="#"
                 comment=$(echo "$line" | sed 's/.*#//')
