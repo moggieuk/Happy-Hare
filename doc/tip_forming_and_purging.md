@@ -41,8 +41,7 @@ Happy Hare has a default macro to form tips. It uses a similar approach to Super
 MMU_LOAD EXTRUDER_ONLY=1
 ```
 (assuming the rest of the MMU setup is complete this will load the filament to the nozzle)
-- Extrude a few more mm of filament (via console or your favorate UI like Mainsail) to esure the extruder is primed
-- Now run:
+- Extrude a few more mm of filament (via console or your favorate UI like Mainsail) to esure the extruder is primed. then:
 ```yml
 MMU_TEST_FORM_TIP
 ```
@@ -53,7 +52,11 @@ MMU_TEST_FORM_TIP cooling_moves=5 unloading_speed=15
 ```
 (although shown chaning two parameters at once it is ofter better to do one at a time so you understand the effect)
 - After each test, reinsert the filament and run the `MMU_LOAD EXTRUDER_ONLY=1` command again.
+
 It might take 40-50 attempts until you start to home in on the optimum values for your particular extruder.
+
+> [!IMPORTANT]  
+> The parameters your just set will only be valid until klipper is restarted. To make this persistent, make sure you edit `mmu_marco_vars.cfg` and your chosen settings.
 
 <br>
 
