@@ -135,6 +135,9 @@ T7   140  140  140  140  140  140  140   -   140
 T8   140  140  140  140  140  140  140  140   -
 ```
 
+> [!NOTE]
+> The CNC world and Happy Hare use tool names that are zero-based. Thus T0 is the first tool. Some slicers prefer to start with tool T1(!) Unfortunately this can lead to confusion but since the actual gcode will always contain `T0` that is the preferred numbering convention. Sorry Prusa.
+
 <br>
 
 ### More slicer setup help:
