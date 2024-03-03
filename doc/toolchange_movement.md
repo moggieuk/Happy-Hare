@@ -117,5 +117,5 @@ Personally I find it useful to set z-hop to 0.8mm in Happy Hare and 0mm in the p
 
 ### More slicer setup help:
 [Slicer Setup](/doc/slicer_setup.md)<br>
-[Tip Forming and Purging](/doc/tip_forming_and_purgin.md)<br>
+[Tip Forming and Purging](/doc/tip_forming_and_purging.md)<br>
 
