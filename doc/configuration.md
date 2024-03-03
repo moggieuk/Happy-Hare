@@ -245,7 +245,7 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 
 **CW2** dimensions for each hotend:
 
-| Dimension | Rapido | Dragon SF | Dragon HF | Revo |
+| Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
 | `toolhead_extruder_to_nozzle` | | | | 72 | 
 | `toolhead_sensor_to_nozzle`   | | | | 62 | 
@@ -253,7 +253,7 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 
 **G2E** dimensions for each hotend:
 
-| Dimension | Rapido | Dragon SF | Dragon HF | Revo |
+| Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
 | `toolhead_extruder_to_nozzle` | 87.9 | | | |
 | `toolhead_sensor_to_nozzle`   | 67.9 | | | |

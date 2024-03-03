@@ -413,7 +413,7 @@ class Mmu:
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
-        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=20.) # +ve value = reduction of load length
+        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=25.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
 
@@ -1061,11 +1061,9 @@ class Mmu:
                             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                     self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
                     self._set_selector_pos(self.selector_offsets[self.gate_selected])
-                    self.is_homed = True
                 elif self.gate_selected == self.TOOL_GATE_BYPASS:
                     self._set_tool_selected(self.TOOL_GATE_BYPASS)
                     self._set_selector_pos(self.bypass_offset)
-                    self.is_homed = True
                 else: # TOOL_GATE_UNKNOWN
                     self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                     self.is_homed = False
@@ -4317,6 +4315,7 @@ class Mmu:
         pos = self.mmu_toolhead.get_position()
         pos[0] = new_pos
         self.mmu_toolhead.set_position(pos, homing_axes=(0,))
+        self.is_homed = True
         stepper_enable = self.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
         se.motor_enable(self.mmu_toolhead.get_last_move_time())
