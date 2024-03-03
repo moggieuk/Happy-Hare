@@ -2,6 +2,7 @@
 - [Tuning Filament Tips](#---tuning-filament-tips)<br>
   - [Tuning Happy Hare Cut Tip Macro](#tuning-happy-hare-_mmu_cut_tip-macro)<br>
 - [Purge Volumes](#---purge-volumes)<br>
+  - [Tuning `toolhead_ooze_reduction`](#tuning-toolhead_ooze_reduction)<br>
 - [No Wipe Tower Option](#---no-wipe-tower-option)<br>
 - [More Slicer Setup Help](#more-slicer-setup-help)<br>
 
@@ -93,7 +94,9 @@ Normally the purging logic is performed by the slicer and written into the g-cod
 
 Even with purge volumes setup correctly the configuration of your toolhead parameters also come into play.  Let's assume that you have correctly defined your toolhead geometry [here](/doc/configuration.md#---toolhead-loading--unloading) noting that these settings are based on the CAD of your toolhead and are not designed to be tunables. Ok, with that said it is still necessary to fine tune the purging process and altough the toolhead dimensions will effect this, the correct parameter to tune is `toolhead_ooze_reduction` defined in `mmu_parameters.cfg`. This controls a "delta" in the theoretical loading distance. Typically this would be 0 or a small positive value to reduce the load distance so that the extruder doesn't prematurely extrude plastic. 
 
-#### Tuning `toolhead_ooze_reduction`
+<br>
+
+### Tuning `toolhead_ooze_reduction`
 Once you are printing your first multi filament print, check the purge tower to verify that the `toolhead_ooze_reduction` value is well tuned (at that your dimensional settings are correct).  If you notice over extrusion during loads (i.e., plastic blobs on the purge tower after a load) you need to increase the `toolhead_ooze_reduction` value.
 If you notice big gaps on the purge tower after a load, you need to decrease the `toolhead_ooze_reduction` value. Note that although small negative values are allowed, going negative almost certainly means that the `toolhead_extruder_to_nozzle` or `toolhead_sensor_to_nozzle` are too long. Here is an example purge tower here, with values for the `toolhead_ooze_reduction` from -5 to +7 mm. In this example, the proper value seems to be around 1 mm. Note that because there is some uncertainty in this process (because of the filament tip shape), there will be some slight differences even when the value is the same, as shown in the green to grey and white to orange transitions.
 
@@ -108,6 +111,29 @@ Just don't forget to persist the final result in `mmu_parameters.cfg` when the p
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) No Wipe Tower Option
+
+The wipe tower is a great solution for handling the purge necessary when changing tools (Prusa Slicer also has an experiemental "purge to infil" to minimize waste) but it has the downside of taking up a large portion of the build plate. To avoid this an add-on purging system can be used during the toolchange allowing the wipe tower to be disabled! A great example of such a system is [Blobifier](https://github.com/Dendrowen/Blobifier/blob/main/Config/blobifier.cfg). In fact the additional macro to drive Blobifier is supplied in the Happy Hare "config/mmu/addons/" directory. It can be added to Happy Hare with a single line addition in `mmu_macros_vars.cfg`.
+
+Setting up a purge system is beyond the scope of this page but such a system will require purging volumes discussed above. These purge volumes can be automatically [pre-processed](/doc/gcode_preprocessing.md) from the g-code and stored by Happy Hare for the duration of the print. This information is made available to your macros through printer variables, e.g. `printer.mmu.slicer_tool_map`.  The other way to setup purge volumes is via the `MMU_SLICER_TOOL_MAP` command. All three of these commands would estabish the simple 9-tool matrix shown in the illustration above from Prusa Slicer. Read more about this command [here](/doc/slicer_setup.md) and [here](/doc/command_reference.md)
+```yml
+MMU_SLICER_TOOL_MAP PURGE_VOLUMES=70
+MMU_SLICER_TOOL_MAP PURGE_VOLUMES=70,70,70,70,70,70,70,70,70 "list of 9 elements"
+MMU_SLICER_TOOL_MAP PURGE_VOLUMES=70,70,70,70,70,70,70,70,70,70,... "list of 18 or 81 elements"
+```
+```
+> MMU_SLICER_TOOL_MAP DETAIL=1
+Purge Volume Map:
+To -> T0   T1   T2   T3   T4   T5   T6   T7   T8
+T0    -   140  140  140  140  140  140  140  140
+T1   140   -   140  140  140  140  140  140  140
+T2   140  140   -   140  140  140  140  140  140
+T3   140  140  140   -   140  140  140  140  140
+T4   140  140  140  140   -   140  140  140  140
+T5   140  140  140  140  140   -   140  140  140
+T6   140  140  140  140  140  140   -   140  140
+T7   140  140  140  140  140  140  140   -   140
+T8   140  140  140  140  140  140  140  140   -
+```
 
 <br>
 
