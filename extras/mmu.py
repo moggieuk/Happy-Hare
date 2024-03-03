@@ -1407,21 +1407,21 @@ class Mmu:
             self.gcode.respond_info(message)
 
     def _log_debug(self, message):
-        message = "\u2007 DEBUG: %s" % message
+        message = u"\u2007 DEBUG: %s" % message
         if self.mmu_logger and self.log_file_level > 1:
             self.mmu_logger.info(message)
         if self.log_level > 1:
             self.gcode.respond_info(message)
 
     def _log_trace(self, message):
-        message = "\u2007 \u2007 TRACE: %s" % message
+        message = u"\u2007 \u2007 TRACE: %s" % message
         if self.mmu_logger and self.log_file_level > 2:
             self.mmu_logger.info(message)
         if self.log_level > 2:
             self.gcode.respond_info(message)
 
     def _log_stepper(self, message):
-        message = "\u2007 \u2007 \u2007 STEPPER: %s" % message
+        message = u"\u2007 \u2007 \u2007 STEPPER: %s" % message
         if self.mmu_logger and self.log_file_level > 3:
             self.mmu_logger.info(message)
         if self.log_level > 3:
@@ -2546,7 +2546,7 @@ class Mmu:
                 self.reason_for_pause = reason
                 self._display_mmu_error()
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
-                self._log_trace("Saved desired extruder temperature: %.1f\u00B0C" % self.paused_extruder_temp)
+                self._log_trace(u"Saved desired extruder temperature: %.1f\u00B0C" % self.paused_extruder_temp)
                 self._track_pause_start()
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
@@ -2993,9 +2993,9 @@ class Mmu:
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
                 # We use error channel to aviod heating surprise. This will also cause popup in Klipperscreen
-                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
+                self._log_error(u"Warning: Automatically heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
             else:
-                self._log_info("Heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
+                self._log_info(u"Heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
@@ -3004,7 +3004,7 @@ class Mmu:
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 2:
                 with self._wrap_action(self.ACTION_HEATING):
-                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f\u00B0C" % (source, new_target_temp))
+                    self._log_info(u"Waiting for extruder to reach target (%s) temperature: %.1f\u00B0C" % (source, new_target_temp))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _selected_tool_string(self):
@@ -5721,7 +5721,7 @@ class Mmu:
         elif gate_status == self.GATE_AVAILABLE:
             return "S" if show_source else "*"
         elif gate_status == self.GATE_EMPTY:
-            return ("\u2007" if no_space else " ")
+            return (u"\u2007" if no_space else " ")
         else:
             return "?"
 
@@ -5766,7 +5766,7 @@ class Mmu:
             for g in gate_indices:
                 tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
                 multi_tool |= len(tool_str) > 2
-                tool_strings.append(("|%s " % (tool_str if tool_str else " \u2007 "))[:4])
+                tool_strings.append(("|%s " % (tool_str if tool_str else u" \u2007 "))[:4])
             msg_tools = "Tools: " + "".join(tool_strings) + "|"
             #msg_tools += " Some gates support multiple tools!" if multi_tool else ""
             select_strings = ["|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----" for g in gate_indices]
@@ -6150,7 +6150,7 @@ class Mmu:
                 msg += "Single color print" if colors <= 1 else "%d color print" % colors
                 msg += " (Purge volume map loaded)\n" if colors > 1 and have_purge_map else "\n"
                 for t, params in self.slicer_tool_map['tools'].items():
-                    msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'])
+                    msg += u"T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'])
                 if self.slicer_tool_map['initial_tool'] is not None:
                     msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
                 msg += "-------------------------------------------"
@@ -6158,8 +6158,8 @@ class Mmu:
                 if have_purge_map:
                     #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
-                    msg += "To ->" + " ".join("\u2007T{:\u2007<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
-                    msg += '\n'.join(["T{:\u2007<2} {}".format(i, ' '.join(map(lambda x: str(round(x)).rjust(4, '\u2007') if x > 0 else '\u2007\u2007-\u2007', row)))
+                    msg += "To ->" + " ".join(u"\u2007T{:\u2007<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
+                    msg += '\n'.join([u"T{:\u2007<2} {}".format(i, ' '.join(map(lambda x: str(round(x)).rjust(4, u"\u2007") if x > 0 else u"\u2007\u2007-\u2007", row)))
                         for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volumes"

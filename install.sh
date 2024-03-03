@@ -545,6 +545,8 @@ parse_file() {
                 if [ "${value}" != "" ]; then
                     if echo "$value" | grep -q '^{.*}$'; then
                         eval "${namespace}${parameter}=\$${value}"
+                    elif [ "${value%"${value#?}"}" = "'" ]; then
+                        eval "${namespace}${parameter}=\'${value}\'"
                     else
                         eval "${namespace}${parameter}='${value}'"
                     fi
@@ -574,10 +576,10 @@ update_copy_file() {
             comment=""
             if echo "$line" | grep -q "#"; then
                 commentChar="#"
-                comment=$(echo "$line" | sed 's/.*#//')
+                comment=$(echo "$line" | sed 's/[^#]*#//')
             elif echo "$line" | grep -q ";"; then
                 commentChar=";"
-                comment=$(echo "$line" | sed 's/.*;//')
+                comment=$(echo "$line" | sed 's/[^;]*;//')
             fi
             space=`printf "%s" "$parameterAndValueAndSpace" | sed 's/.*[^[:space:]]\(.*\)$/\1/'`
 
@@ -601,6 +603,9 @@ update_copy_file() {
                     else
                         # If 'parameter' is unset or empty leave as token
                         new_value="{$parameter}"
+                    fi
+                    if [ -z "$new_value" ]; then
+                        new_value="''"
                     fi
                     if [ -n "$comment" ]; then
                         echo "${parameter}: ${new_value}${space}${commentChar}${comment}"
