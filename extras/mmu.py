@@ -5728,16 +5728,6 @@ class Mmu:
     def _ttg_map_to_string(self, title=None, summary=False, tool=None, show_groups=True):
         msg = "%s:\n" % title if title else "TTG Map:\n" # String used to filter in KS-HH
         if not summary:
-            # TTG Map:
-            # T0 -> Gate 0(*) > 4(?) > 5( ) [SELECTED]
-            # T1 -> Gate 4(?) > 5( ) > 0(*)
-            # T2 -> Gate 2(?)
-            # T3 -> Gate 3( ) > 8( ) > 1(*)
-            # T4 -> Gate 4(?) > 5( ) > 0(*)
-            # T5 -> Gate 5( ) > 0(*) > 4(?)
-            # T6 -> Gate 6(*)
-            # T7 -> Gate 7( )
-            # T8 -> Gate 8( ) > 1(*) > 3( )
             num_tools = self.mmu_num_gates
             tools = range(num_tools) if tool is None else [tool]
             for i in tools:
@@ -5767,10 +5757,6 @@ class Mmu:
                 if i == self.tool_selected:
                     msg += " [SELECTED]"
         else:
-            # Gates: | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-            # Tools: |T0 |   |T2 |T3 |T1+|T5 |T6 |T7 |T8 |
-            # Avail: | S | S | ? |   | ? |   | S |   |   |
-            # Selct: | * |-------------------------------- T0
             multi_tool = False
             num_gates = self.mmu_num_gates
             gate_indices = range(num_gates)
