@@ -1,5 +1,6 @@
 # Tip Forming and Purging
 - [Tuning Filament Tips](#---tuning-filament-tips)<br>
+  - [Tuning Happy Hare Cut Tip Macro](#tuning-happy-hare-_mmu_cut_tip-macro)<br>
 - [Purge Volumes](#---purge-volumes)<br>
 - [No Wipe Tower Option](#---no-wipe-tower-option)<br>
 - [More Slicer Setup Help](#more-slicer-setup-help)<br>
@@ -10,21 +11,49 @@ There are two parts to an MMU toolchange that are critical to get set up correct
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Tuning Filament Tips
 
+<img align="right" src="/doc/tip_forming_and_purging/good_tips.png" width="150" alt="Good Tips">
 The shape of filament tips is of crucial importance for a reliable system. The filament tips need to look like tiny spears, free of any blobs or long hairs. Here are some proper tips that won’t cause any issue:
-
-<p align="center">
-  <img src="/doc/tip_forming_and_purging/good_tips.png" width="150" alt="Good Tips">
-</p>
-
+  
+### Prusa Defaults
 A very solid base for filament profile multimaterial section is to use the default filament Prusa MMU profiles. To do that, add an Prusa printer + MMU from the system presets printers, and then select the MMU printer (NOT the Single one). From there, you’ll be able to access the list of filament system presets built for MultiMaterial (they have the @MMU tag in their name, only use those).
 
-<img src="/doc/tip_forming_and_purging/prusa_starting_point.png" width="80%" alt="Good Starting Point"><br>
+<p align="left">
+  <img src="/doc/tip_forming_and_purging/prusa_starting_point.png" width="60%" alt="Good Starting Point">
+</p>
 
 Use the filament type of your choice (ABS, PETG, PLA etc.) and use their Multimaterial section settings (Filament Settings) as the basi for your own filaments profiles.
 
-<img src="/doc/tip_forming_and_purging/prusa_tip_params.png" width="50%" alt="Example Tip Params"><br>
+<p align="center">
+  <img src="/doc/tip_forming_and_purging/prusa_tip_params.png" width="40%" alt="Example Tip Params">
+</p>
 
 Also, even if not using the slicer tip forming and ONLY using Happy Hare tip forming, you might still want to consult the Prusa Slicer / Super Slicer  reference as a starting point for `_MMU_FORM_TIP` macro variables since they mimick the behavior of these slicers.
+
+<br>
+
+### Tuning Happy Hare `_MMU_CUT_TIP` Macro
+Happy Hare has a default macro to form tips. It uses a similar approach to Super Slicer / Prusa Slicer and thus the leanings from one can be applied to the other. The macro is defined in `mmu_form_tip.cfg` but the configuration variables are in `mmu_macro_vars.cfg` under the "_MMU_FORM_TIP_VARS" section. Tuning tips is a pain (hence the advent of filament cutting) but it can be made easier by following this procedure:
+- Remove the bowden tube from your toolhead so you can freely pass in filament
+- Cut a 400mm piece of filament you are trying to tune
+- Set you extruder temperature
+- Hold the fragment of filament up to the extruder gears and type:
+```yml
+MMU_LOAD EXTRUDER_ONLY=1
+```
+(assuming the rest of the MMU setup is complete this will load the filament to the nozzle)
+- Extrude a few more mm of filament (via console or your favorate UI like Mainsail) to esure the extruder is primed
+- Now run:
+```yml
+MMU_TEST_FORM_TIP
+```
+(this will run the tip forming macro and eject the filament for inspection)
+- To make adjustments you can specify any of the marco variables on the command line. They are sticky so you don't have to set each one each time. E.g.
+```yml
+MMU_TEST_FORM_TIP cooling_moves=5 unloading_speed=15
+```
+(although shown chaning two parameters at once it is ofter better to do one at a time so you understand the effect)
+- After each test, reinsert the filament and run the `MMU_LOAD EXTRUDER_ONLY=1` command again.
+It might take 40-50 attempts until you start to home in on the optimum values for your particular extruder.
 
 <br>
 
@@ -42,12 +71,16 @@ Although we are initially talking about how the slicer can create the purge volu
 ### Manual Purging Volume Definition
 This option allows you to define the total purge volume for each tool by defining the unloaded and loaded values. For instance, swapping from Tool 0 to Tool 1, the purge volume used will be the sum of the Tool 0 unloaded and the Tool 1 loaded.
 
-<img src="/doc/tip_forming_and_purging/manual_purging_volumes.png" width="60%" alt="Manual Purging Volumes"><br>
+<p align="center">
+  <img src="/doc/tip_forming_and_purging/manual_purging_volumes.png" width="50%" alt="Manual Purging Volumes">
+</p>
 
 ### Matrix Purging Volume Definition
 Clicking on the Show advanced settings in the manual purging volume panel will pop the purging matrix. With this, you can define every single transition precisely, from whatever tool to whatever tool you have. As you can see, when you have a lot of tools you’ll have to track a lot of transitions, which can be painful.
 
-<img src="/doc/tip_forming_and_purging/matrix_purging_volumes.png" width="60%" alt="Matrix Purging Volumes"><br>
+<p align="center">
+  <img src="/doc/tip_forming_and_purging/matrix_purging_volumes.png" width="50%" alt="Matrix Purging Volumes">
+</p>
 
 ### Advanced Purge Volume Algorithm
 If you enable the Advanced wiping volume option in the Printer settings, Single Extruder MM setup section, the slicer will use the Pigment percentage, ranging from 0 to 1, to define the purge volume for each swap. You can adjust the different values of this option to finely tune the final purging volume. Note that if you have the same profile for filaments of different colors, you’ll need to duplicate those filament profiles and adjust, for each, the pigment percentage value. Don’t forget to select the proper filament profile for each tool.
