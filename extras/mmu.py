@@ -12,6 +12,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+import sys # To detect python2 or python3
 import logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
 from random import randint
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
@@ -1385,22 +1386,33 @@ class Mmu:
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
+    def _filter_unicode(self, s):
+        # Unicode is too much of a pain on Python2
+        if int(sys.version_info[0]) < 3:
+            return s.replace('\u2007', '.').replace('\u00B0', '^')
+        else:
+            return s
+
     def _log_to_file(self, message):
         message = "> %s" % message
+        message = self._filter_unicode(message)
         if self.mmu_logger:
             self.mmu_logger.info(message)
 
     def _log_error(self, message):
+        message = self._filter_unicode(message)
         if self.mmu_logger:
             self.mmu_logger.info(message)
         self.gcode.respond_raw("!! %s" % message)
 
     def _log_always(self, message):
+        message = self._filter_unicode(message)
         if self.mmu_logger:
             self.mmu_logger.info(message)
         self.gcode.respond_info(message)
 
     def _log_info(self, message):
+        message = self._filter_unicode(message)
         if self.mmu_logger and self.log_file_level > 0:
             self.mmu_logger.info(message)
         if self.log_level > 0:
@@ -1408,6 +1420,7 @@ class Mmu:
 
     def _log_debug(self, message):
         message = "\u2007 DEBUG: %s" % message
+        message = self._filter_unicode(message)
         if self.mmu_logger and self.log_file_level > 1:
             self.mmu_logger.info(message)
         if self.log_level > 1:
@@ -1415,6 +1428,7 @@ class Mmu:
 
     def _log_trace(self, message):
         message = "\u2007 \u2007 TRACE: %s" % message
+        message = self._filter_unicode(message)
         if self.mmu_logger and self.log_file_level > 2:
             self.mmu_logger.info(message)
         if self.log_level > 2:
@@ -1422,6 +1436,7 @@ class Mmu:
 
     def _log_stepper(self, message):
         message = "\u2007 \u2007 \u2007 STEPPER: %s" % message
+        message = self._filter_unicode(message)
         if self.mmu_logger and self.log_file_level > 3:
             self.mmu_logger.info(message)
         if self.log_level > 3:
