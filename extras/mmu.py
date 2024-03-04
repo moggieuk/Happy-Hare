@@ -482,6 +482,12 @@ class Mmu:
         self.log_visual = config.getint('log_visual', 1, minval=0, maxval=2) # TODO reduce max value to 1
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
 
+        # Cosmetic console stuff
+        self.console_stat_columns = list(config.getstringlist('console_stat_columns', ['unload', 'load', 'total']))
+        self.console_stat_rows = list(config.getstringlist('console_stat_rows', ['total', 'job', 'job_average']))
+        self.console_gate_statistics_type = config.getstring('console_gate_statistics_type', 'string')
+        self.console_always_output_full = config.getint('console_always_output_full', 1)
+
         # Currently hidden and testing options
         self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
         self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
@@ -1253,32 +1259,35 @@ class Mmu:
     def _track_time_end(self, name):
         if name not in self.track:
             return #timer not initialized
-        if name not in self.statistics:
-            self.statistics[name] = 0
-        if name not in self.job_statistics:
-            self.job_statistics[name] = 0
+        self.statistics.setdefault(name, 0)
+        self.job_statistics.setdefault(name, 0)
         
         self._log_debug("statistics: " + str(self.statistics))
+
         elapsed = time.time() - self.track[name]
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
         self.last_statistics[name] = elapsed
 
     def _track_swap_completed(self):
-        if 'total_swaps' not in self.statistics:
-            self.statistics['total_swaps'] = 0
-        if 'total_swaps' not in self.job_statistics:
-            self.job_statistics['total_swaps'] = 0
+        self.statistics.setdefault('total_swaps', 0)
+        self.job_statistics.setdefault('total_swaps', 0)
+        self.statistics.setdefault('swaps_since_pause', 0)
+        self.statistics.setdefault('swaps_since_pause_record', 0)
+        
+        self.statistics['swaps_since_pause'] += 1
+        self.statistics['swaps_since_pause_record'] = max(self.statistics['swaps_since_pause_record'], self.statistics['swaps_since_pause'])
         self.statistics['total_swaps'] += 1
         self.job_statistics['total_swaps'] += 1
 
     def _track_pause_start(self):
-        if 'total_pauses' not in self.statistics:
-            self.statistics['total_pauses'] = 0
-        if 'total_pauses' not in self.job_statistics:
-            self.job_statistics['total_pauses'] = 0
+        self.statistics.setdefault('total_pauses', 0)
+        self.job_statistics.setdefault('total_pauses', 0)
+
         self.statistics['total_pauses'] += 1
         self.job_statistics['total_pauses'] += 1
+        self.statistics['swaps_since_pause'] = 0
+
         self._track_time_start('pause')
         self.pause_start_time = time.time()
         self._track_gate_statistics('pauses', self.gate_selected)
@@ -1322,107 +1331,109 @@ class Mmu:
     
     def _swap_statistics_to_string(self, total=True):
         #
-        # +–––––––––+––––––––––––––––––––––––+––––––––––––––––––––––––+––––––––––+
-        # |   130   |        unloading       |         loading        |          |
-        # |  swaps  |  pre  |   -    |  post |   pre  |   -   |  post |   swap   |
-        # +–––––––––+–––––––+––––––––+–––––––+––––––––+–––––––+–––––––+––––––––––+
-        # | total   |       |        |       |        |       |       |          |
-        # | avarage |       |        |       |        |       |       |          |
-        # +–––––––––+–––––––+––––––––+–––––––+––––––––+–––––––+–––––––+––––––––––+
+        # +–––––––––––+–––––––––––––––––––––+––––––––––––––––––––––+––––––––––+
+        # |  114(46)  |      unloading      |       loading        | complete |
+        # |   swaps   | pre  |   -   | post | pre  |   -   | post  |   swap   |
+        # +–––––––––––+––––––+–––––––+––––––+––––––+–––––––+–––––––+––––––––––+
+        # | all time  | 0:07 | 47:19 | 0:00 | 0:01 | 37:11 | 33:39 |  2:00:38 |
+        # |     └ avg | 0:00 |  0:24 | 0:00 | 0:00 |  0:19 |  0:17 |     1:03 |
+        # | this job  | 0:00 | 10:27 | 0:00 | 0:00 |  8:29 |  8:30 |    28:02 |
+        # |     └ avg | 0:00 |  0:13 | 0:00 | 0:00 |  0:11 |  0:11 |     0:36 |
+        # |      last | 0:00 |  0:12 | 0:00 | 0:00 |  0:10 |  0:14 |     0:39 |
+        # +–––––––––––+––––––+–––––––+––––––+––––––+–––––––+–––––––+––––––––––+
         # Time spent paused: ...
         #
         msg = "MMU Statistics:\n"
         total = self.statistics
         job = self.job_statistics
         last = self.last_statistics
-        table = []
-        table.append([
-            "swaps", 
-            "pre", 
-            "-", 
-            "post", 
-            "pre", 
-            "-", 
-            "post", 
-            "  swap  " # spaces surround it for a dirty width hack
-        ])
-        table.append([
-            "all time",
-            self._seconds_to_short_string(total.get('pre_unload', 0)),
-            self._seconds_to_short_string(total.get('unload', 0)),
-            self._seconds_to_short_string(total.get('post_unload', 0)),
-            self._seconds_to_short_string(total.get('pre_load', 0)),
-            self._seconds_to_short_string(total.get('load', 0)),
-            self._seconds_to_short_string(total.get('post_load', 0)),
-            self._seconds_to_short_string(total.get('total', 0))
-        ])
-        table.append([
-            "└ avg",
-            self._seconds_to_short_string(total.get('pre_unload', 0)   / total['total_swaps']) if total['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(total.get('unload', 0)       / total['total_swaps']) if total['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(total.get('post_unload', 0)  / total['total_swaps']) if total['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(total.get('pre_load', 0)     / total['total_swaps']) if total['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(total.get('load', 0)         / total['total_swaps']) if total['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(total.get('post_load', 0)    / total['total_swaps']) if total['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(total.get('total', 0)        / total['total_swaps']) if total['total_swaps'] > 0 else "0",
-            
-        ])
-        table.append([
-            "this print",
-            self._seconds_to_short_string(job.get('pre_unload', 0)),
-            self._seconds_to_short_string(job.get('unload', 0)),
-            self._seconds_to_short_string(job.get('post_unload', 0)),
-            self._seconds_to_short_string(job.get('pre_load', 0)),
-            self._seconds_to_short_string(job.get('load', 0)),
-            self._seconds_to_short_string(job.get('post_load', 0)),
-            self._seconds_to_short_string(job.get('total', 0))
-        ])
-        table.append([
-            "└ avg",
-            self._seconds_to_short_string(job.get('pre_unload', 0)   / job['total_swaps']) if job['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(job.get('unload', 0)       / job['total_swaps']) if job['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(job.get('post_unload', 0)  / job['total_swaps']) if job['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(job.get('pre_load', 0)     / job['total_swaps']) if job['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(job.get('load', 0)         / job['total_swaps']) if job['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(job.get('post_load', 0)    / job['total_swaps']) if job['total_swaps'] > 0 else "0",
-            self._seconds_to_short_string(job.get('total', 0)        / job['total_swaps']) if job['total_swaps'] > 0 else "0",
-        ])
-        table.append([
-            "last",
-            self._seconds_to_short_string(last.get('pre_unload', '-')),
-            self._seconds_to_short_string(last.get('unload', '-')),
-            self._seconds_to_short_string(last.get('post_unload', '-')),
-            self._seconds_to_short_string(last.get('pre_load', '-')),
-            self._seconds_to_short_string(last.get('load', '-')),
-            self._seconds_to_short_string(last.get('post_load', '-')),
-            self._seconds_to_short_string(last.get('total', '-')),
-        ])
-        headers = [
-            "%s(%s)" % (total.get('total_swaps', 0), job.get('total_swaps', 0)),
-            'unloading',
-            'loading',
-            'complete'
-        ]
+        SPACE = u' '
+        DASH = u'–'
 
-        column_widths = [ max(len(table[r][c]) for r in range(len(table))) for c in range(len(table[0])) ]
-        header_widths = [
-            column_widths[0],
-            sum(column_widths[1:4]) + 6,
-            sum(column_widths[4:7]) + 6,
-            column_widths[7]
-        ]
+        table_column_order = ['pre_unload', 'unload', 'post_unload', 'pre_load', 'load', 'post_load', 'total']
+        # Options: total, total_average, job, job_average, last
+        table_include_columns = list(set(table_column_order).intersection(self.console_stat_columns)) # To maintain the correct order
+        if not self.console_always_output_full:
+            if 'total'          in table_include_columns: table_include_columns.remove('total')
+            if 'total_average'  in table_include_columns: table_include_columns.remove('total_average')
+        table_include_rows = self.console_stat_rows
 
-        msg += "+" +   "+".join(["–" * (width + 2) for width in header_widths])                                                     + "+\n"
-        msg += "|" +   "|".join([' {0: ^{width}} '.format(headers[i], width=header_widths[i]) for i in range(len(header_widths))])   + "|\n"
-        msg += "|" +   "|".join([' {0: ^{width}} '.format(table[0][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
-        msg += "+" +   "+".join(["–" * (width + 2) for width in column_widths])                                                     + "+\n"
-
-        for j in range(1, len(table)):
-            msg += "|" +   "|".join([' {0: >{width}} '.format(table[j][i], width=column_widths[i]) for i in range(len(column_widths))])   + "|\n"
+        # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
+        table_rows_map = {
+            'total':            {'stats': total, 'name': 'total '},
+            'total_average':    {'stats': total, 'name': '└ avg', 'devide': total.get('total_swaps', 1)}, 
+            'job':              {'stats': job,   'name': 'this job '},
+            'job_average':      {'stats': job,   'name': '└ avg', 'devide': job.get('total_swaps', 1)},
+            'last':             {'stats': last,  'name': 'last'}
+        }
+        # Map the saved timing values to proper column titles
+        table_headers_map = {
+            'pre_unload': 'pre',
+            'unload': '-',
+            'post_unload': 'post',
+            'pre_load': 'pre',
+            'load': '-',
+            'post_load': 'post',
+            'total': 'swap'
+        }
+        # Group the top headers map. Omit the first column, because that'll be filled with the nr. of swaps
+        table_extra_headers_map = {
+            'unloading': ['pre_unload', 'unload', 'post_unload'],
+            'loading': ['pre_load', 'load', 'post_load'],
+            'complete': ['total']
+        }
+        # Extract the table headers that will be used
+        table_headers = [table_headers_map[key] for key in table_include_columns]
+        # Insert the first column. This is normally empty but will sit below the number of swaps
+        table_headers.insert(0, 'swaps')
         
-        msg += "+" +   "+".join(["–" * (width + 2) for width in column_widths])                                                     + "+\n"
+        # Filter out the top (group) headers
+        table_extra_headers = [key for key in table_extra_headers_map if len(list(set(table_extra_headers_map[key]).intersection(set(table_include_columns)))) > 0]
+        # Include the number of swaps in the top-left corner of the table
+        table_extra_headers.insert(0, '%d(%d)' % (total.get('total_swaps', 0), job.get('total_swaps', 0)))
 
-        # msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats.get('pause', 0)), stats.get('total_pauses', 0))
+        table = []
+
+        # Build the table with times
+        for row in table_include_rows:
+            name = table_rows_map[row].get('name', row)
+            stats = table_rows_map[row]['stats']
+            devide = max(1, table_rows_map[row].get('devide', 1))
+            table.append([name])
+            table[-1].extend([self._seconds_to_short_string(stats.get(key, 0) / devide) for key in table_include_columns])
+
+        # Calculate the needed column widths (The +2 is for a margin on both ends)
+        column_extra_header_widths = [len(table_extra_header) + 2 for table_extra_header in table_extra_headers]
+        column_widths =              [max(len(table_headers[c]), max(len(row[c]) for row in table)) + 2 for c in range(len(table_include_columns) + 1) ]
+        
+        # If an 'extra_header' is wider then the sum of the columns beneath it, widen up those columns
+        for i in range(len(column_extra_header_widths)):
+            w = column_extra_header_widths[i]
+
+            start = sum(len(table_extra_headers_map.get(table_extra_header, [''])) for table_extra_header in table_extra_headers[0:i])
+            end = start + len(table_extra_headers_map.get(table_extra_headers[i], ['']))
+            while (sum(column_widths[start:end]) + (end - start - 1)) < w:
+                for c in range(start, end):
+                    column_widths[c] += 1
+            column_extra_header_widths[i] = sum(column_widths[start:end]) + (end - start - 1)
+
+        # Build the table header
+        msg += "+" +   "+".join([DASH * width for width in column_extra_header_widths])                                                                 + "+\n"
+        msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], SPACE) for i in range(len(column_extra_header_widths))])  + "|\n"
+        msg += "|" +   "|".join([table_headers[i].center(column_widths[i], SPACE) for i in range(len(column_widths))])                                  + "|\n"
+        msg += "+" +   "+".join([DASH * (width) for width in column_widths])                                                                            + "+\n"
+
+        # Build the table body
+        for row in table:
+            msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, SPACE) + SPACE for i in range(len(column_widths))]) + "|\n"
+        
+        # Table footer
+        msg += "+" + "+".join([DASH * width for width in column_widths]) + "+\n"
+
+        # Pause data
+        msg += "\n%s spent paused over %d pauses (All time)" % (self._seconds_to_short_string(total.get('pause', 0)), total.get('total_pauses', 0))
+        msg += "\n%s spent paused over %d pauses (This job)" % (self._seconds_to_short_string(job.get('pause', 0)), job.get('total_pauses', 0))
+        msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (total.get('swaps_since_pause', '-'), total.get('swaps_since_pause_record', 0))
         
         return msg
  
@@ -1450,6 +1461,7 @@ class Mmu:
     def _gate_statistics_to_string(self):
         msg = "Gate Statistics:\n"
         dbg = ""
+        t = self.console_gate_statistics_type
         for gate in range(self.mmu_num_gates):
             #rounded = {k:round(v,1) if isinstance(v,float) else v for k,v in self.gate_statistics[gate].items()}
             rounded = self.gate_statistics[gate]
@@ -1457,22 +1469,24 @@ class Mmu:
             unload_slip_percent = (rounded['unload_delta'] / rounded['unload_distance']) * 100 if rounded['unload_distance'] != 0. else 0.
             quality = rounded['quality']
             # Give the gate a reliability grading based on "quality" which is based on slippage
-            if quality < 0:
-                status = "n/a"
+            if t == 'percentage':
+                status = '%s%' % round(quality * 100, 1)
+            elif quality < 0:
+                status = "🫥" if t == 'emoticon' else "n/a"
             elif quality >= 0.985:
-                status = "Perfect"
+                status = "🤗" if t == 'emoticon' else "Perfect"
             elif quality >= 0.965:
-                status = "Great"
+                status = "😀" if t == 'emoticon' else "Great"
             elif quality >= 0.95:
-                status = "Good"
+                status = "🙂" if t == 'emoticon' else "Good"
             elif quality >= 0.925:
-                status = "Marginal"
+                status = "😐" if t == 'emoticon' else "Marginal"
             elif quality >= 0.90:
-                status = "Degraded"
+                status = "😑" if t == 'emoticon' else "Degraded"
             elif quality >= 0.85:
-                status = "Poor"
+                status = "😔" if t == 'emoticon' else "Poor"
             else:
-                status = "Terrible"
+                status = "💀" if t == 'emoticon' else "Terrible"
             msg += "#%d: %s" % (gate, status)
             msg += ", " if gate < (self.mmu_num_gates - 1) else ""
             dbg += "\nGate %d: " % gate
@@ -4927,9 +4941,7 @@ class Mmu:
 
         self._track_time_start('post_load')
         self._wrap_gcode_command(self.post_load_macro, exception=True)
-        self._track_time_end('post_load')
-        
-        
+        self._track_time_end('post_load') 
 
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
@@ -5105,7 +5117,6 @@ class Mmu:
                 webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids)
             except Exception as e:
                 self._log_error("Error while retrieving spoolman info: %s" % str(e))
-
 
 ### CORE GCODE COMMANDS ##########################################################
 
