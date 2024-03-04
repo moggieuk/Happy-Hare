@@ -271,10 +271,10 @@ verify_not_root() {
 
 check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
-        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper.service")" ]; then
-            echo -e "${INFO}Klipper service found"
+        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
+            echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
         else
-            echo -e "${ERROR}Klipper service not found! Please install Klipper first"
+            echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
             exit -1
         fi
     fi
@@ -298,7 +298,7 @@ verify_home_dirs() {
     fi
     if [ ! -d "${KLIPPER_CONFIG_HOME}" ]; then
         if [ ! -d "${OLD_KLIPPER_CONFIG_HOME}" ]; then
-            if [ ! -f "${OCTOPRINT_KLIPPER_CONFIG_HOME}/printer.cfg" ]; then
+            if [ ! -f "${OCTOPRINT_KLIPPER_CONFIG_HOME}/${PRINTER_CONFIG}" ]; then
                 echo -e "${ERROR}Klipper config directory (${KLIPPER_CONFIG_HOME} or ${OLD_KLIPPER_CONFIG_HOME}) not found. Use '-c <dir>' option to override"
                 exit -1
             fi
@@ -357,7 +357,7 @@ cleanup_old_ercf() {
     fi
 
     # printer.cfg includes...
-    dest=${KLIPPER_CONFIG_HOME}/printer.cfg
+    dest=${KLIPPER_CONFIG_HOME}/${PRINTER_CONFIG}
     if test -f $dest; then
         next_dest="$(nextfilename "$dest")"
         v1_includes=$(grep -c '\[include ercf_parameters.cfg\]' ${dest} || true)
@@ -545,6 +545,8 @@ parse_file() {
                 if [ "${value}" != "" ]; then
                     if echo "$value" | grep -q '^{.*}$'; then
                         eval "${namespace}${parameter}=\$${value}"
+                    elif [ "${value%"${value#?}"}" = "'" ]; then
+                        eval "${namespace}${parameter}=\'${value}\'"
                     else
                         eval "${namespace}${parameter}='${value}'"
                     fi
@@ -571,12 +573,13 @@ update_copy_file() {
             # Split the line into the part before # and the part after #
             parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/;/# /' | cut -d'#' -f1)
 
+            comment=""
             if echo "$line" | grep -q "#"; then
                 commentChar="#"
-                comment=$(echo "$line" | sed 's/.*#//')
+                comment=$(echo "$line" | sed 's/[^#]*#//')
             elif echo "$line" | grep -q ";"; then
                 commentChar=";"
-                comment=$(echo "$line" | sed 's/.*;//')
+                comment=$(echo "$line" | sed 's/[^;]*;//')
             fi
             space=`printf "%s" "$parameterAndValueAndSpace" | sed 's/.*[^[:space:]]\(.*\)$/\1/'`
 
@@ -600,6 +603,9 @@ update_copy_file() {
                     else
                         # If 'parameter' is unset or empty leave as token
                         new_value="{$parameter}"
+                    fi
+                    if [ -z "$new_value" ]; then
+                        new_value="''"
                     fi
                     if [ -n "$comment" ]; then
                         echo "${parameter}: ${new_value}${space}${commentChar}${comment}"
@@ -1032,7 +1038,7 @@ uninstall_config_files() {
 
 install_printer_includes() {
     # Link in all includes if not already present
-    dest=${KLIPPER_CONFIG_HOME}/printer.cfg
+    dest=${KLIPPER_CONFIG_HOME}/${PRINTER_CONFIG}
     if test -f $dest; then
 
         klippain_included=$(grep -c "\[include config/hardware/mmu.cfg\]" ${dest} || true)
@@ -1040,7 +1046,7 @@ install_printer_includes() {
             echo -e "${WARNING}This looks like a Klippain config installation - skipping automatic config install. Please add config includes by hand"
         else
             next_dest="$(nextfilename "$dest")"
-            echo -e "${INFO}Copying original printer.cfg file to ${next_dest}"
+            echo -e "${INFO}Copying original ${PRINTER_CONFIG} file to ${next_dest}"
             cp ${dest} ${next_dest}
             if [ ${MENU_12864} -eq 1 ]; then
                 i='\[include mmu/optional/mmu_menu.cfg\]'
@@ -1071,16 +1077,16 @@ install_printer_includes() {
             done
         fi
     else
-        echo -e "${WARNING}File printer.cfg file not found! Cannot include MMU configuration files"
+        echo -e "${WARNING}File ${PRINTER_CONFIG} file not found! Cannot include MMU configuration files"
     fi
 }
 
 uninstall_printer_includes() {
-    echo -e "${INFO}Cleaning MMU references from printer.cfg"
-    dest=${KLIPPER_CONFIG_HOME}/printer.cfg
+    echo -e "${INFO}Cleaning MMU references from ${PRINTER_CONFIG}"
+    dest=${KLIPPER_CONFIG_HOME}/${PRINTER_CONFIG}
     if test -f $dest; then
         next_dest="$(nextfilename "$dest")"
-        echo -e "${INFO}Copying original printer.cfg file to ${next_dest} before cleaning"
+        echo -e "${INFO}Copying original ${PRINTER_CONFIG} file to ${next_dest} before cleaning"
         cp ${dest} ${next_dest}
         cat "${dest}" | sed -e " \
             /\[include mmu\/optional\/client_macros.cfg\]/ d; \
@@ -1176,9 +1182,9 @@ uninstall_update_manager() {
 restart_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Klipper..."
-        sudo systemctl restart klipper
+        sudo systemctl restart ${KLIPPER_SERVICE}
     else
-        echo -e "${WARNING}Klipper restart suppressed - Please restart by hand"
+        echo -e "${WARNING}Klipper restart suppressed - Please restart ${KLIPPER_SERVICE} by hand"
     fi
 }
 
@@ -1547,7 +1553,7 @@ questionaire() {
     echo
     MENU_12864=0
     ERCF_COMPAT=0
-    echo -e "${PROMPT}${SECTION}Finally, would you like me to include all the MMU config files into your printer.cfg file${INPUT}"
+    echo -e "${PROMPT}${SECTION}Finally, would you like me to include all the MMU config files into your ${PRINTER_CONFIG} file${INPUT}"
     yn=$(prompt_yn "Add include?")
     echo
     case $yn in
@@ -1630,11 +1636,12 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-i] [-d] [-z]"
+    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]"
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
     echo "-z skip github check (nullifies -b <branch>)"
+    echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
@@ -1650,12 +1657,19 @@ INSTALL=0
 UNINSTALL=0
 NOSERVICE=0
 INSTALL_KLIPPER_SCREEN_ONLY=0
-while getopts "b:k:c:m:idsz" arg; do
+PRINTER_CONFIG=printer.cfg
+KLIPPER_SERVICE=klipper.service
+
+while getopts "b:k:c:m:r:idsz" arg; do
     case $arg in
         b) N_BRANCH=${OPTARG};;
         k) KLIPPER_HOME=${OPTARG};;
         m) MOONRAKER_HOME=${OPTARG};;
         c) KLIPPER_CONFIG_HOME=${OPTARG};;
+        r) PRINTER_CONFIG=${OPTARG}.cfg
+	   KLIPPER_SERVICE=klipper_${OPTARG}.service
+           echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
+	   ;;
         i) INSTALL=1;;
         d) UNINSTALL=1;;
         s) NOSERVICE=1;;

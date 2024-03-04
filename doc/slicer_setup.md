@@ -48,16 +48,28 @@ This macro initializes the MMU, establishes whether the print is single or multi
       purge_volumes: [[100, 100], [100, 100]] ; NxN matrix of purge volume changing from tool X to tool Y
 ```
 
-The "Slicer Tool Map" can be displayed on the console at any time during the print by running the `MMU_SLICER_TOOL_MAP` command without any parameters:<br>
-> MMU_SLICER_TOOL_MAP<br>
+The "Slicer Tool Map" can be displayed on the console at any time during the print by running the `MMU_SLICER_TOOL_MAP` command without any set parameters (optional `DETAIL=1` to see purge matrix):<br>
+> MMU_SLICER_TOOL_MAP DETAIL=1<br>
 ```
---------- Slicer MMU Tool Summary ---------
+-------- Slicer MMU Tool Summary ---------
 2 color print (Purge volume map loaded)
 T0 (Gate 0, ABS, ff0000, 240°C)
 T3 (Gate 3, ASA, 00e410, 245°C)
 Initial Tool: T0
 -------------------------------------------
+Purge Volume Map:
+To -> T0   T1   T2   T3   T4   T5   T6   T7   T8
+T0    -   200  200  200  200  200  200  200  200
+T1   200   -   200  200  200  200  200  200  200
+T2   200  200   -   200  200  200  200  200  200
+T3   200  200  200   -   200  200  200  200  200
+T4   200  200  200  200   -   200  200  200  200
+T5   200  200  200  200  200   -   200  200  200
+T6   200  200  200  200  200  200   -   200  200
+T7   200  200  200  200  200  200  200   -   200
+T8   200  200  200  200  200  200  200  200   -
 ```
+
 #### `2. MMU_START_CHECK`
 This macro uses the "Slicer Tool Map" and performs checks to ensure the MMU is fully ready to print. Currently checks are limited to confirming that filament is available in all the required tools, but in the future it might check that the filaments types the sliced g-code expects match those actually loaded in the MMU (think how the Spoolman integration could be used...)
 If this macro fails, the print will pause but not abort or skip the rest of the startup sequence. 
@@ -134,3 +146,10 @@ variable_dump_stats                         : True      ; True/False, Whether to
 When Happy Hare detects an error, even during print start it will pause the print allowing you to fix and then resume. If the option `show_error_dialog: 1` is set in `mmu_parameters.cfg` a pop-up dialog will be displayed on Mailsail/Fluidd/KlipperScreen providing you options through the UI. If it is occurs during these startup macros there will also be an option to abort the print. The abort option will disappear during the print. To disable the popup, set `show_error_dialog: 0`
 
 <img src="/doc/slicer/error_dialog_during_start.png" width="400" alt="Error Dialog">
+
+<br>
+
+### More slicer setup help:
+[Toolchange Movement](/doc/toolchange_movement.md)<br>
+[Tip Forming and Purging](/doc/tip_forming_and_purging.md)<br>
+
