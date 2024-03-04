@@ -5835,7 +5835,7 @@ class Mmu:
 
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
-        self.ttg_map = self.default_ttg_map
+        self.ttg_map = list(self.default_ttg_map)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
         self._unselect_tool()
 
