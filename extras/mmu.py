@@ -157,11 +157,11 @@ class Mmu:
     GATE_ENDSTOPS     = [ENDSTOP_GATE, ENDSTOP_ENCODER]
 
     # Statistics output types
-    GATE_STATISTICS_STRING     = "string"
-    GATE_STATISTICS_PERCENTAGE = "percentage"
-    GATE_STATISTICS_EMOTICON   = "emoticon"
+    GATE_STATS_STRING     = "string"
+    GATE_STATS_PERCENTAGE = "percentage"
+    GATE_STATS_EMOTICON   = "emoticon"
 
-    GATE_STATISTICS_TYPES = [GATE_STATISTICS_STRING, GATE_STATISTICS_PERCENTAGE, GATE_STATISTICS_EMOTICON]
+    GATE_STATS_TYPES = [GATE_STATS_STRING, GATE_STATS_PERCENTAGE, GATE_STATS_EMOTICON]
 
     # Stepper config sections
     SELECTOR_STEPPER_CONFIG    = "stepper_mmu_selector"
@@ -509,7 +509,7 @@ class Mmu:
         # Cosmetic console stuff
         self.console_stat_columns = list(config.getlist('console_stat_columns', ['unload', 'load', 'total']))
         self.console_stat_rows = list(config.getlist('console_stat_rows', ['total', 'job', 'job_average']))
-        self.console_gate_statistics_type = config.get('console_gate_statistics_type', {o: o for o in self.GATE_STATISTICS_TYPES}, self.GATE_STATISTICS_STRING)
+        self.console_gate_stat = config.get('console_gate_stat', {o: o for o in self.GATE_STATS_TYPES}, self.GATE_STATS_STRING)
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
         # Currently hidden and testing options
@@ -1501,7 +1501,7 @@ class Mmu:
     def _gate_statistics_to_string(self):
         msg = "Gate Statistics:\n"
         dbg = ""
-        t = self.console_gate_statistics_type
+        t = self.console_gate_stat
         for gate in range(self.mmu_num_gates):
             #rounded = {k:round(v,1) if isinstance(v,float) else v for k,v in self.gate_statistics[gate].items()}
             rounded = self.gate_statistics[gate]
@@ -5703,9 +5703,9 @@ class Mmu:
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
-        self.console_gate_statistics_type = gcmd.get('CONSOLE_GATE_STATISTICS_TYPE', self.console_gate_statistics_type)
-        if self.console_gate_statistics_type not in self.GATE_STATISTICS_TYPES:
-            raise gcmd.error("console_gate_statistics_type is invalid. Options are: %s" % self.GATE_STATISTICS_TYPES)
+        self.console_gate_stat = gcmd.get('CONSOLE_GATE_STAT', self.console_gate_stat)
+        if self.console_gate_stat not in self.GATE_STATS_TYPES:
+            raise gcmd.error("console_gate_stat is invalid. Options are: %s" % self.GATE_STATS_TYPES)
         self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.slicer_tip_park_pos, minval=0.)
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
@@ -5816,7 +5816,7 @@ class Mmu:
         if self.mmu_logger:
             msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
-        msg += "\nconsole_gate_statistics_type = %s" % self.console_gate_statistics_type
+        msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
