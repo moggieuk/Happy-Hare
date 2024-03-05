@@ -1352,6 +1352,7 @@ class Mmu:
         lifetime = self.statistics
         job = self.job_statistics
         last = self.last_statistics
+        total = self.console_always_output_full or total or not self._is_in_print()
         SPACE = u' '
         DASH = u'–'
 
@@ -1405,7 +1406,13 @@ class Mmu:
             # Dictionary keys have no predefined order, so re-order them (Lucky the columns are alphabetical)
             table_extra_headers.sort(reverse=True)
             # Include the number of swaps in the top-left corner of the table
-            table_extra_headers.insert(0, '%d(%d)' % (lifetime.get('total_swaps', 0), job.get('total_swaps', 0)))
+            if self._is_in_print():
+                if total:
+                    table_extra_headers.insert(0, '%d(%d)' % (lifetime.get('total_swaps', 0), job.get('total_swaps', 0)))
+                else:
+                    table_extra_headers.insert(0, '%d' % (job.get('total_swaps', 0)))
+            else:
+                table_extra_headers.insert(0, '%d' % (lifetime.get('total_swaps', 0)))
 
             # Build the table and populate with times
             table = []
@@ -1414,7 +1421,7 @@ class Mmu:
                 stats = table_rows_map[row]['stats']
                 devide = max(1, table_rows_map[row].get('devide', 1))
                 table.append([name])
-                table[-1].extend([self._seconds_to_short_string(stats.get(key, 0) / devide) for key in table_include_columns])
+                table[-1].extend(["-" if key not in stats else self._seconds_to_short_string(stats.get(key, 0) / devide) for key in table_include_columns])
 
             # Calculate the needed column widths (The +2 is for a margin on both ends)
             column_extra_header_widths = [len(table_extra_header) + 2 for table_extra_header in table_extra_headers]
@@ -1445,7 +1452,8 @@ class Mmu:
             msg += "+" + "+".join([DASH * width for width in column_widths]) + "+\n"
 
         # Pause data
-        msg += "\n%s spent paused over %d pauses (All time)" % (self._seconds_to_short_string(lifetime.get('pause', 0)), lifetime.get('total_pauses', 0))
+        if total:
+            msg += "\n%s spent paused over %d pauses (All time)" % (self._seconds_to_short_string(lifetime.get('pause', 0)), lifetime.get('total_pauses', 0))
         if self._is_in_print():
             msg += "\n%s spent paused over %d pauses (This job)" % (self._seconds_to_short_string(job.get('pause', 0)), job.get('total_pauses', 0))
         msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (lifetime.get('swaps_since_pause', '-'), lifetime.get('swaps_since_pause_record', 0))
