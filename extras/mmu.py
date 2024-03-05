@@ -1452,13 +1452,13 @@ class Mmu:
 
             # Build the table header
             msg += "+" +   "+".join([UI_DASH * width for width in column_extra_header_widths])                                                                 + "+\n"
-            msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPERATOR) for i in range(len(column_extra_header_widths))])  + "|\n"
-            msg += "|" +   "|".join([table_headers[i].center(column_widths[i], UI_SEPERATOR) for i in range(len(column_widths))])                                  + "|\n"
+            msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPARATOR) for i in range(len(column_extra_header_widths))])  + "|\n"
+            msg += "|" +   "|".join([table_headers[i].center(column_widths[i], UI_SEPARATOR) for i in range(len(column_widths))])                                  + "|\n"
             msg += "+" +   "+".join([UI_DASH * (width) for width in column_widths])                                                                            + "+\n"
 
             # Build the table body
             for row in table:
-                msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, UI_SEPERATOR) + UI_SEPERATOR for i in range(len(column_widths))]) + "|\n"
+                msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, UI_SEPARATOR) + UI_SEPARATOR for i in range(len(column_widths))]) + "|\n"
             
             # Table footer
             msg += "+" + "+".join([UI_DASH * width for width in column_widths]) + "+\n"
