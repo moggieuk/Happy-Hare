@@ -1370,7 +1370,7 @@ class Mmu:
         table_include_columns = self._list_intersection(table_column_order, self.console_stat_columns) # To maintain the correct order and filter incorrect ones
 
         table_row_options = ['total', 'total_average', 'job', 'job_average', 'last']
-        table_include_rows = self._list_intersection(self.console_stat_rows, table_row_options) # keep the user provided order
+        table_include_rows = self._list_intersection(self.console_stat_rows, table_row_options) # Keep the user provided order
 
         # Remove totals from table if not in print and not forcing total
         if not self.console_always_output_full and not total:
@@ -1489,7 +1489,7 @@ class Mmu:
                     msg += "\n" if msg != "" else ""
                     msg += d
             self._log_always(msg)
-
+    
         # This is good place to update the persisted stats...
         self._persist_swap_statistics()
         self._persist_gate_statistics()
