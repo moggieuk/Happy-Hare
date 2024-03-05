@@ -5313,6 +5313,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         if self._check_is_calibrated(): return
+        self.last_statistics = {}
         self._fix_started_state()
 
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
