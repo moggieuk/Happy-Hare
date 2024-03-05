@@ -1269,17 +1269,16 @@ class Mmu:
         self.job_statistics = {}
         self.tracked_start_time = 0
         self.pause_start_time = 0
-    
+
     def _track_time_start(self, name):
         self.track[name] = time.time()
         self._log_trace("track times: " + str(self.track))
-    
+
     def _track_time_end(self, name):
         if name not in self.track:
             return #timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        
         self._log_trace("statistics: " + str(self.statistics))
 
         elapsed = time.time() - self.track[name]
@@ -1292,7 +1291,7 @@ class Mmu:
         self.job_statistics.setdefault('total_swaps', 0)
         self.statistics.setdefault('swaps_since_pause', 0)
         self.statistics.setdefault('swaps_since_pause_record', 0)
-        
+
         self.statistics['swaps_since_pause'] += 1
         self.statistics['swaps_since_pause_record'] = max(self.statistics['swaps_since_pause_record'], self.statistics['swaps_since_pause'])
         self.statistics['total_swaps'] += 1
@@ -1335,7 +1334,7 @@ class Mmu:
                 return "{min}:{sec:0>2}".format(min=(seconds // 60) % 60, sec=seconds % 60)
             return "0:{sec:0>2}".format(sec=seconds % 60)
         return seconds
-        
+
     def _seconds_to_string(self, seconds):
         result = ""
         hours = int(math.floor(seconds / 3600.))
@@ -1346,7 +1345,7 @@ class Mmu:
             result += "%d minutes " % minutes
         result += "%d seconds" % int((math.floor(seconds) % 60))
         return result
-    
+
     def _swap_statistics_to_string(self, total=True):
         #
         # +-----------+---------------------+----------------------+----------+
@@ -1369,11 +1368,11 @@ class Mmu:
 
         table_column_order = ['pre_unload', 'unload', 'post_unload', 'pre_load', 'load', 'post_load', 'total']
         table_include_columns = self._list_intersection(table_column_order, self.console_stat_columns) # To maintain the correct order and filter incorrect ones
-        
+
         table_row_options = ['total', 'total_average', 'job', 'job_average', 'last']
         table_include_rows = self._list_intersection(self.console_stat_rows, table_row_options) # keep the user provided order
 
-        # Remove totals from table if not in print and not in
+        # Remove totals from table if not in print and not forcing total
         if not self.console_always_output_full and not total:
             if 'total'          in table_include_rows: table_include_rows.remove('total')
             if 'total_average'  in table_include_rows: table_include_rows.remove('total_average')
@@ -1382,7 +1381,6 @@ class Mmu:
             if 'job_average'    in table_include_rows: table_include_rows.remove('job_average')
 
         if len(table_include_rows) > 0:
-
             # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
             table_rows_map = {
                 'total':            {'stats': lifetime, 'name': 'total '},
@@ -1411,7 +1409,7 @@ class Mmu:
             table_headers = [table_headers_map[key] for key in table_include_columns]
             # Insert the first column. This is normally empty but will sit below the number of swaps
             table_headers.insert(0, 'swaps')
-            
+
             # Filter out the top (group) headers ( If none of the unload columns are present, unloading can be removed)
             table_extra_headers = [key for key in table_extra_headers_map if len(self._list_intersection(table_extra_headers_map[key], table_include_columns)) > 0]
             # Dictionary keys have no predefined order, so re-order them (Lucky the columns are alphabetical)
@@ -1437,11 +1435,11 @@ class Mmu:
             # Calculate the needed column widths (The +2 is for a margin on both ends)
             column_extra_header_widths = [len(table_extra_header) + 2 for table_extra_header in table_extra_headers]
             column_widths =              [max(len(table_headers[c]), max(len(row[c]) for row in table)) + 2 for c in range(len(table_include_columns) + 1) ]
-            
+
             # If an 'extra_header' is wider then the sum of the columns beneath it, widen up those columns
             for i in range(len(column_extra_header_widths)):
                 w = column_extra_header_widths[i]
-                
+
                 start = sum(max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_header, ['']), table_include_columns))) for table_extra_header in table_extra_headers[0:i])
                 end = start + max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_headers[i], ['']), table_include_columns)))
                 while (sum(column_widths[start:end]) + (end - start - 1)) < w:
@@ -1458,7 +1456,7 @@ class Mmu:
             # Build the table body
             for row in table:
                 msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, UI_SEPARATOR) + UI_SEPARATOR for i in range(len(column_widths))]) + "|\n"
-            
+
             # Table footer
             msg += "+" + "+".join([UI_DASH * width for width in column_widths]) + "+\n"
 
@@ -1468,17 +1466,17 @@ class Mmu:
         if self._is_in_print():
             msg += "\n%s spent paused over %d pauses (This job)" % (self._seconds_to_short_string(job.get('pause', 0)), job.get('total_pauses', 0))
         msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (lifetime.get('swaps_since_pause', 0), lifetime.get('swaps_since_pause_record', 0))
-        
+
         return msg
-    
+
     def _list_intersection(self, list1, list2):
         result = []
         for item in list1:
             if item in list2:
                 result.append(item)
         return result
-    
-    
+
+
     def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False):
         if self.log_statistics or force_log:
             msg = ""
