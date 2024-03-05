@@ -20,6 +20,20 @@ from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
 import chelper, ast
 
+if sys.version_info[0] < 4:
+    UI_SPACE = ' '
+    UI_SEPARATOR = '.'
+    UI_DASH = '-'
+    UI_DEGREE = '^'
+    UI_BOX_BL = '+'
+else:
+    # Use unicode for improved formatting and klipper layout
+    UI_SPACE = '\u2002'
+    UI_SEPARATOR = '\u2002'
+    UI_DASH = '\u2014'
+    UI_DEGREE = '\u00B0'
+    UI_BOX_BL = '\u2514'
+
 # Forward all messages through a queue (polled by background thread)
 class QueueHandler(logging.Handler):
     def __init__(self, queue):
@@ -958,6 +972,7 @@ class Mmu:
         self.tool_selected = self._next_tool = self._last_tool = self.TOOL_GATE_UNKNOWN
         self._last_toolchange = "Unknown"
         self.gate_selected = self.TOOL_GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
+        self.active_gate = {}
         self.servo_state = self.servo_angle = self.SERVO_UNKNOWN_STATE
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.DIRECTION_UNKNOWN
@@ -1059,8 +1074,8 @@ class Mmu:
             tool_selected = self.variables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
             gate_selected = self.variables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
             if gate_selected < self.mmu_num_gates and tool_selected < self.mmu_num_gates:
-                self.tool_selected = tool_selected
-                self.gate_selected = gate_selected
+                self._set_tool_selected(tool_selected)
+                self._set_gate_selected(gate_selected)
 
                 if self.gate_selected >= 0:
                     if self.tool_selected < 0 or self.ttg_map[self.tool_selected] != self.gate_selected:
@@ -1072,7 +1087,6 @@ class Mmu:
                         else:
                             errors.append("Reset persisted tool - does not map to gate")
                             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
-                    self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
                     self._set_selector_pos(self.selector_offsets[self.gate_selected])
                 elif self.gate_selected == self.TOOL_GATE_BYPASS:
                     self._set_tool_selected(self.TOOL_GATE_BYPASS)
@@ -1206,7 +1220,7 @@ class Mmu:
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
-                'material': self.gate_material[self.gate_selected] if self.gate_selected >= 0 else '', # Deprecate or add temp?
+                'active_gate': self.active_gate,
                 'next_tool': self._next_tool,
                 'last_tool': self._last_tool,
                 'last_toolchange': self._last_toolchange,
@@ -1552,57 +1566,43 @@ class Mmu:
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
-    def _filter_unicode(self, s):
-        # Unicode is too much of a pain on Python2
-        if int(sys.version_info[0]) < 3:
-            return s.replace('\u2007', '.').replace('\u00B0', '^')
-        else:
-            return s
-
     def _log_to_file(self, message):
         message = "> %s" % message
-        message = self._filter_unicode(message)
         if self.mmu_logger:
             self.mmu_logger.info(message)
 
     def _log_error(self, message):
-        message = self._filter_unicode(message)
         if self.mmu_logger:
             self.mmu_logger.info(message)
         self.gcode.respond_raw("!! %s" % message)
 
     def _log_always(self, message):
-        message = self._filter_unicode(message)
         if self.mmu_logger:
             self.mmu_logger.info(message)
         self.gcode.respond_info(message)
 
     def _log_info(self, message):
-        message = self._filter_unicode(message)
         if self.mmu_logger and self.log_file_level > 0:
             self.mmu_logger.info(message)
         if self.log_level > 0:
             self.gcode.respond_info(message)
 
     def _log_debug(self, message):
-        message = "\u2007 DEBUG: %s" % message
-        message = self._filter_unicode(message)
+        message = "%s DEBUG: %s" % (UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 1:
             self.mmu_logger.info(message)
         if self.log_level > 1:
             self.gcode.respond_info(message)
 
     def _log_trace(self, message):
-        message = "\u2007 \u2007 TRACE: %s" % message
-        message = self._filter_unicode(message)
+        message = "%s %s TRACE: %s" % (UI_SEPARATOR, UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 2:
             self.mmu_logger.info(message)
         if self.log_level > 2:
             self.gcode.respond_info(message)
 
     def _log_stepper(self, message):
-        message = "\u2007 \u2007 \u2007 STEPPER: %s" % message
-        message = self._filter_unicode(message)
+        message = "%s %s %s STEPPER: %s" % (UI_SEPARATOR, UI_SEPARATOR, UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 3:
             self.mmu_logger.info(message)
         if self.log_level > 3:
@@ -2727,7 +2727,7 @@ class Mmu:
                 self.reason_for_pause = reason
                 self._display_mmu_error()
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
-                self._log_trace("Saved desired extruder temperature: %.1f\u00B0C" % self.paused_extruder_temp)
+                self._log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
                 self._track_pause_start()
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
@@ -3174,9 +3174,9 @@ class Mmu:
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
                 # We use error channel to aviod heating surprise. This will also cause popup in Klipperscreen
-                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
+                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             else:
-                self._log_info("Heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
+                self._log_info("Heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
@@ -3185,7 +3185,7 @@ class Mmu:
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 2:
                 with self._wrap_action(self.ACTION_HEATING):
-                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f\u00B0C" % (source, new_target_temp))
+                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _selected_tool_string(self):
@@ -5111,6 +5111,10 @@ class Mmu:
         self.gate_selected = gate
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
         self._set_gate_ratio(self._get_gate_ratio(gate) if gate >= 0 else 1.)
+        if gate >= 0:
+            self.active_gate = {'material': self.gate_material[gate], 'color': self.gate_color[gate], 'spool_id': self.gate_spool_id[gate]}
+        else:
+            self.active_gate = {}
 
     def _set_tool_selected(self, tool):
         self.tool_selected = tool
@@ -5913,7 +5917,7 @@ class Mmu:
         elif gate_status == self.GATE_AVAILABLE:
             return "S" if show_source else "*"
         elif gate_status == self.GATE_EMPTY:
-            return ("\u2007" if no_space else " ")
+            return (UI_SEPARATOR if no_space else " ")
         else:
             return "?"
 
@@ -5958,7 +5962,7 @@ class Mmu:
             for g in gate_indices:
                 tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
                 multi_tool |= len(tool_str) > 2
-                tool_strings.append(("|%s " % (tool_str if tool_str else " \u2007 "))[:4])
+                tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
             msg_tools = "Tools: " + "".join(tool_strings) + "|"
             #msg_tools += " Some gates support multiple tools!" if multi_tool else ""
             select_strings = ["|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----" for g in gate_indices]
@@ -6012,7 +6016,7 @@ class Mmu:
 
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
-        self.ttg_map = self.default_ttg_map
+        self.ttg_map = list(self.default_ttg_map)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
         self._unselect_tool()
 
@@ -6290,12 +6294,13 @@ class Mmu:
         display = bool(gcmd.get_int('DISPLAY', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
         purge_volumes = gcmd.get('PURGE_VOLUMES', "")
-        initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
+
         quiet = False
         if reset:
             self._clear_slicer_tool_map()
@@ -6325,7 +6330,7 @@ class Mmu:
                         raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expect 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n))
                     self.slicer_tool_map['purge_volumes'] = [
                         [
-                            calc(x,y) if x != y else 0.
+                            calc(x,y) if x != y else 0
                                 for y in range(num_tools)
                         ]
                         for x in range(num_tools)
@@ -6342,7 +6347,7 @@ class Mmu:
                 msg += "Single color print" if colors <= 1 else "%d color print" % colors
                 msg += " (Purge volume map loaded)\n" if colors > 1 and have_purge_map else "\n"
                 for t, params in self.slicer_tool_map['tools'].items():
-                    msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'])
+                    msg += "T%d (Gate %d, %s, %s, %d%sC)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'], UI_DEGREE)
                 if self.slicer_tool_map['initial_tool'] is not None:
                     msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
                 msg += "-------------------------------------------"
@@ -6350,9 +6355,8 @@ class Mmu:
                 if have_purge_map:
                     #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
-                    msg += "To ->" + " ".join("\u2007T{:\u2007<2}".format(i) for i in range(self.mmu_num_gates)) + "\n"
-                    msg += '\n'.join(["T{:\u2007<2} {}".format(i, ' '.join(map(lambda x: str(round(x)).rjust(4, "\u2007") if x > 0 else "\u2007\u2007-\u2007", row)))
-                        for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
+                    msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(self.mmu_num_gates)) + "\n"
+                    msg += '\n'.join(["T{: <2}{}{}".format(i, UI_SEPARATOR, ' '.join(map(lambda x: str(round(x)).rjust(4, UI_SPACE) if x > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row))) for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volumes"
             self._log_always(msg)
