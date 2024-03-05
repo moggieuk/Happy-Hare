@@ -140,6 +140,12 @@ class Mmu:
     EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER, ENDSTOP_EXTRUDER_NONE]
     GATE_ENDSTOPS     = [ENDSTOP_GATE, ENDSTOP_ENCODER]
 
+    # Statistics output types
+    GATE_STATISTICS_STRING     = "string"
+    GATE_STATISTICS_EMOTICON   = "emoticon"
+    GATE_STATISTICS_PERCENTAGE = "percentage"
+    GATE_STATISTICS_DISPLAY = [GATE_STATISTICS_STRING, GATE_STATISTICS_EMOTICON, GATE_STATISTICS_PERCENTAGE]
+
     # Stepper config sections
     SELECTOR_STEPPER_CONFIG    = "stepper_mmu_selector"
     GEAR_STEPPER_CONFIG        = "stepper_mmu_gear"
@@ -484,10 +490,10 @@ class Mmu:
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
 
         # Cosmetic console stuff
-        self.console_stat_columns = list(config.getstringlist('console_stat_columns', ['unload', 'load', 'total']))
-        self.console_stat_rows = list(config.getstringlist('console_stat_rows', ['total', 'job', 'job_average']))
-        self.console_gate_statistics_type = config.getstring('console_gate_statistics_type', 'string')
-        self.console_always_output_full = config.getint('console_always_output_full', 1)
+        self.console_stat_columns = list(config.getlist('console_stat_columns', ['unload', 'load', 'total']))
+        self.console_stat_rows = list(config.getlist('console_stat_rows', ['total', 'job', 'job_average']))
+        self.console_gate_statistics_type = config.get('console_gate_statistics_type', {o: o for o in self.GATE_STATISTICS_DISPLAY}, self.GATE_STATISTICS_STRING)
+        self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
         # Currently hidden and testing options
         self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
@@ -1343,99 +1349,117 @@ class Mmu:
         # Time spent paused: ...
         #
         msg = "MMU Statistics:\n"
-        total = self.statistics
+        lifetime = self.statistics
         job = self.job_statistics
         last = self.last_statistics
         SPACE = u' '
         DASH = u'–'
 
         table_column_order = ['pre_unload', 'unload', 'post_unload', 'pre_load', 'load', 'post_load', 'total']
-        # Options: total, total_average, job, job_average, last
-        table_include_columns = list(set(table_column_order).intersection(self.console_stat_columns)) # To maintain the correct order
-        if not self.console_always_output_full:
-            if 'total'          in table_include_columns: table_include_columns.remove('total')
-            if 'total_average'  in table_include_columns: table_include_columns.remove('total_average')
-        table_include_rows = self.console_stat_rows
-
-        # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
-        table_rows_map = {
-            'total':            {'stats': total, 'name': 'total '},
-            'total_average':    {'stats': total, 'name': '└ avg', 'devide': total.get('total_swaps', 1)}, 
-            'job':              {'stats': job,   'name': 'this job '},
-            'job_average':      {'stats': job,   'name': '└ avg', 'devide': job.get('total_swaps', 1)},
-            'last':             {'stats': last,  'name': 'last'}
-        }
-        # Map the saved timing values to proper column titles
-        table_headers_map = {
-            'pre_unload': 'pre',
-            'unload': '-',
-            'post_unload': 'post',
-            'pre_load': 'pre',
-            'load': '-',
-            'post_load': 'post',
-            'total': 'swap'
-        }
-        # Group the top headers map. Omit the first column, because that'll be filled with the nr. of swaps
-        table_extra_headers_map = {
-            'unloading': ['pre_unload', 'unload', 'post_unload'],
-            'loading': ['pre_load', 'load', 'post_load'],
-            'complete': ['total']
-        }
-        # Extract the table headers that will be used
-        table_headers = [table_headers_map[key] for key in table_include_columns]
-        # Insert the first column. This is normally empty but will sit below the number of swaps
-        table_headers.insert(0, 'swaps')
+        table_include_columns = self._list_intersection(table_column_order, self.console_stat_columns) # To maintain the correct order and filter incorrect ones
         
-        # Filter out the top (group) headers
-        table_extra_headers = [key for key in table_extra_headers_map if len(list(set(table_extra_headers_map[key]).intersection(set(table_include_columns)))) > 0]
-        # Include the number of swaps in the top-left corner of the table
-        table_extra_headers.insert(0, '%d(%d)' % (total.get('total_swaps', 0), job.get('total_swaps', 0)))
+        table_row_options = ['total', 'total_average', 'job', 'job_average', 'last']
+        table_include_rows = self._list_intersection(self.console_stat_rows, table_row_options) # keep the user provided order
 
-        table = []
+        # Remove totals from table if not in print and not in
+        if not self.console_always_output_full and not total:
+            if 'total'          in table_include_rows: table_include_rows.remove('total')
+            if 'total_average'  in table_include_rows: table_include_rows.remove('total_average')
+        if not self._is_in_print():
+            if 'job'            in table_include_rows: table_include_rows.remove('job')
+            if 'job_average'    in table_include_rows: table_include_rows.remove('job_average')
 
-        # Build the table with times
-        for row in table_include_rows:
-            name = table_rows_map[row].get('name', row)
-            stats = table_rows_map[row]['stats']
-            devide = max(1, table_rows_map[row].get('devide', 1))
-            table.append([name])
-            table[-1].extend([self._seconds_to_short_string(stats.get(key, 0) / devide) for key in table_include_columns])
+        if len(table_include_rows) > 0:
 
-        # Calculate the needed column widths (The +2 is for a margin on both ends)
-        column_extra_header_widths = [len(table_extra_header) + 2 for table_extra_header in table_extra_headers]
-        column_widths =              [max(len(table_headers[c]), max(len(row[c]) for row in table)) + 2 for c in range(len(table_include_columns) + 1) ]
-        
-        # If an 'extra_header' is wider then the sum of the columns beneath it, widen up those columns
-        for i in range(len(column_extra_header_widths)):
-            w = column_extra_header_widths[i]
+            # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
+            table_rows_map = {
+                'total':            {'stats': lifetime, 'name': 'total '},
+                'total_average':    {'stats': lifetime, 'name': '└ avg', 'devide': lifetime.get('total_swaps', 1)}, 
+                'job':              {'stats': job,   'name': 'this job '},
+                'job_average':      {'stats': job,   'name': '└ avg', 'devide': job.get('total_swaps', 1)},
+                'last':             {'stats': last,  'name': 'last'}
+            }
+            # Map the saved timing values to proper column titles
+            table_headers_map = {
+                'pre_unload': 'pre',
+                'unload': '-',
+                'post_unload': 'post',
+                'pre_load': 'pre',
+                'load': '-',
+                'post_load': 'post',
+                'total': 'swap'
+            }
+            # Group the top headers map. Omit the first column, because that'll be filled with the nr. of swaps
+            table_extra_headers_map = {
+                'unloading': ['pre_unload', 'unload', 'post_unload'],
+                'loading': ['pre_load', 'load', 'post_load'],
+                'complete': ['total']
+            }
+            # Extract the table headers that will be used
+            table_headers = [table_headers_map[key] for key in table_include_columns]
+            # Insert the first column. This is normally empty but will sit below the number of swaps
+            table_headers.insert(0, 'swaps')
+            
+            # Filter out the top (group) headers ( If none of the unload columns are present, unloading can be removed)
+            table_extra_headers = [key for key in table_extra_headers_map if len(self._list_intersection(table_extra_headers_map[key], table_include_columns)) > 0]
+            # Dictionary keys have no predefined order, so re-order them (Lucky the columns are alphabetical)
+            table_extra_headers.sort(reverse=True)
+            # Include the number of swaps in the top-left corner of the table
+            table_extra_headers.insert(0, '%d(%d)' % (lifetime.get('total_swaps', 0), job.get('total_swaps', 0)))
 
-            start = sum(len(table_extra_headers_map.get(table_extra_header, [''])) for table_extra_header in table_extra_headers[0:i])
-            end = start + len(table_extra_headers_map.get(table_extra_headers[i], ['']))
-            while (sum(column_widths[start:end]) + (end - start - 1)) < w:
-                for c in range(start, end):
-                    column_widths[c] += 1
-            column_extra_header_widths[i] = sum(column_widths[start:end]) + (end - start - 1)
+            # Build the table and populate with times
+            table = []
+            for row in table_include_rows:
+                name = table_rows_map[row].get('name', row)
+                stats = table_rows_map[row]['stats']
+                devide = max(1, table_rows_map[row].get('devide', 1))
+                table.append([name])
+                table[-1].extend([self._seconds_to_short_string(stats.get(key, 0) / devide) for key in table_include_columns])
 
-        # Build the table header
-        msg += "+" +   "+".join([DASH * width for width in column_extra_header_widths])                                                                 + "+\n"
-        msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], SPACE) for i in range(len(column_extra_header_widths))])  + "|\n"
-        msg += "|" +   "|".join([table_headers[i].center(column_widths[i], SPACE) for i in range(len(column_widths))])                                  + "|\n"
-        msg += "+" +   "+".join([DASH * (width) for width in column_widths])                                                                            + "+\n"
+            # Calculate the needed column widths (The +2 is for a margin on both ends)
+            column_extra_header_widths = [len(table_extra_header) + 2 for table_extra_header in table_extra_headers]
+            column_widths =              [max(len(table_headers[c]), max(len(row[c]) for row in table)) + 2 for c in range(len(table_include_columns) + 1) ]
+            
+            # If an 'extra_header' is wider then the sum of the columns beneath it, widen up those columns
+            for i in range(len(column_extra_header_widths)):
+                w = column_extra_header_widths[i]
+                
+                start = sum(max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_header, ['']), table_include_columns))) for table_extra_header in table_extra_headers[0:i])
+                end = start + max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_headers[i], ['']), table_include_columns)))
+                while (sum(column_widths[start:end]) + (end - start - 1)) < w:
+                    for c in range(start, end):
+                        column_widths[c] += 1
+                column_extra_header_widths[i] = sum(column_widths[start:end]) + (end - start - 1)
 
-        # Build the table body
-        for row in table:
-            msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, SPACE) + SPACE for i in range(len(column_widths))]) + "|\n"
-        
-        # Table footer
-        msg += "+" + "+".join([DASH * width for width in column_widths]) + "+\n"
+            # Build the table header
+            msg += "+" +   "+".join([DASH * width for width in column_extra_header_widths])                                                                 + "+\n"
+            msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], SPACE) for i in range(len(column_extra_header_widths))])  + "|\n"
+            msg += "|" +   "|".join([table_headers[i].center(column_widths[i], SPACE) for i in range(len(column_widths))])                                  + "|\n"
+            msg += "+" +   "+".join([DASH * (width) for width in column_widths])                                                                            + "+\n"
+
+            # Build the table body
+            for row in table:
+                msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, SPACE) + SPACE for i in range(len(column_widths))]) + "|\n"
+            
+            # Table footer
+            msg += "+" + "+".join([DASH * width for width in column_widths]) + "+\n"
 
         # Pause data
-        msg += "\n%s spent paused over %d pauses (All time)" % (self._seconds_to_short_string(total.get('pause', 0)), total.get('total_pauses', 0))
-        msg += "\n%s spent paused over %d pauses (This job)" % (self._seconds_to_short_string(job.get('pause', 0)), job.get('total_pauses', 0))
-        msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (total.get('swaps_since_pause', '-'), total.get('swaps_since_pause_record', 0))
+        msg += "\n%s spent paused over %d pauses (All time)" % (self._seconds_to_short_string(lifetime.get('pause', 0)), lifetime.get('total_pauses', 0))
+        if self._is_in_print():
+            msg += "\n%s spent paused over %d pauses (This job)" % (self._seconds_to_short_string(job.get('pause', 0)), job.get('total_pauses', 0))
+        msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (lifetime.get('swaps_since_pause', '-'), lifetime.get('swaps_since_pause_record', 0))
         
         return msg
- 
+    
+    def _list_intersection(self, list1, list2):
+        result = []
+        for item in list1:
+            if item in list2:
+                result.append(item)
+        return result
+    
+    
     def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False):
         if self.log_statistics or force_log:
             msg = ""
@@ -1469,7 +1493,7 @@ class Mmu:
             quality = rounded['quality']
             # Give the gate a reliability grading based on "quality" which is based on slippage
             if t == 'percentage':
-                status = '%s%' % round(quality * 100, 1)
+                status = '%s%%' % min(100, round(quality * 100, 1))
             elif quality < 0:
                 status = "🫥" if t == 'emoticon' else "n/a"
             elif quality >= 0.985:
