@@ -1272,15 +1272,14 @@ class Mmu:
     
     def _track_time_start(self, name):
         self.track[name] = time.time()
-        self._log_debug("track times: " + str(self.track))
+        self._log_trace("track times: " + str(self.track))
     
     def _track_time_end(self, name):
         if name not in self.track:
             return #timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        
-        self._log_debug("statistics: " + str(self.statistics))
+        self._log_trace("statistics: " + str(self.statistics))
 
         elapsed = time.time() - self.track[name]
         self.statistics[name] += elapsed
@@ -1371,7 +1370,7 @@ class Mmu:
         table_include_columns = self._list_intersection(table_column_order, self.console_stat_columns) # To maintain the correct order and filter incorrect ones
         
         table_row_options = ['total', 'total_average', 'job', 'job_average', 'last']
-        table_include_rows = self._list_intersection(self.console_stat_rows, table_row_options) # keep the user provided order
+        table_include_rows = self._list_intersection(self.console_stat_rows, table_row_options) # Keep the user provided order
 
         # Remove totals from table if not in print and not in
         if not self.console_always_output_full and not total:
@@ -1437,7 +1436,7 @@ class Mmu:
             # Calculate the needed column widths (The +2 is for a margin on both ends)
             column_extra_header_widths = [len(table_extra_header) + 2 for table_extra_header in table_extra_headers]
             column_widths =              [max(len(table_headers[c]), max(len(row[c]) for row in table)) + 2 for c in range(len(table_include_columns) + 1) ]
-            
+
             # If an 'extra_header' is wider then the sum of the columns beneath it, widen up those columns
             for i in range(len(column_extra_header_widths)):
                 w = column_extra_header_widths[i]
@@ -1470,23 +1469,19 @@ class Mmu:
         msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (lifetime.get('swaps_since_pause', 0), lifetime.get('swaps_since_pause_record', 0))
         
         return msg
-    
+
     def _list_intersection(self, list1, list2):
         result = []
         for item in list1:
             if item in list2:
                 result.append(item)
         return result
-    
-    
+
     def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False):
         if self.log_statistics or force_log:
             msg = ""
-            if job:
-                msg += self._swap_statistics_to_string(total=False)
-            if total:
-                msg += "\n\n" if msg != "" else ""
-                msg += self._swap_statistics_to_string(total=True)
+            if job or total:
+                msg += self._swap_statistics_to_string(total=total)
             if self._can_use_encoder() and gate:
                 m,d = self._gate_statistics_to_string()
                 msg += "\n\n" if msg != "" else ""
@@ -1495,10 +1490,10 @@ class Mmu:
                     msg += "\n" if msg != "" else ""
                     msg += d
             self._log_always(msg)
-
-        # This is good place to update the persisted stats...
-        self._persist_swap_statistics()
-        self._persist_gate_statistics()
+    
+            # This is good place to update the persisted stats...
+            self._persist_swap_statistics()
+            self._persist_gate_statistics()
 
     def _gate_statistics_to_string(self):
         msg = "Gate Statistics:\n"
