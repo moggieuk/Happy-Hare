@@ -1272,7 +1272,7 @@ class Mmu:
     
     def _track_time_start(self, name):
         self.track[name] = time.time()
-        self._log_debug("track times: " + str(self.track))
+        self._log_trace("track times: " + str(self.track))
     
     def _track_time_end(self, name):
         if name not in self.track:
@@ -1280,7 +1280,7 @@ class Mmu:
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
         
-        self._log_debug("statistics: " + str(self.statistics))
+        self._log_trace("statistics: " + str(self.statistics))
 
         elapsed = time.time() - self.track[name]
         self.statistics[name] += elapsed
