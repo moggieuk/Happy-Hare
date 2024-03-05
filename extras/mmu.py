@@ -1367,8 +1367,6 @@ class Mmu:
         job = self.job_statistics
         last = self.last_statistics
         total = self.console_always_output_full or total or not self._is_in_print()
-        SPACE = u' '
-        DASH = u'–'
 
         table_column_order = ['pre_unload', 'unload', 'post_unload', 'pre_load', 'load', 'post_load', 'total']
         table_include_columns = self._list_intersection(table_column_order, self.console_stat_columns) # To maintain the correct order and filter incorrect ones
@@ -1389,9 +1387,9 @@ class Mmu:
             # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
             table_rows_map = {
                 'total':            {'stats': lifetime, 'name': 'total '},
-                'total_average':    {'stats': lifetime, 'name': '└ avg', 'devide': lifetime.get('total_swaps', 1)}, 
+                'total_average':    {'stats': lifetime, 'name': UI_BOX_BL + ' avg', 'devide': lifetime.get('total_swaps', 1)}, 
                 'job':              {'stats': job,   'name': 'this job '},
-                'job_average':      {'stats': job,   'name': '└ avg', 'devide': job.get('total_swaps', 1)},
+                'job_average':      {'stats': job,   'name': UI_BOX_BL + ' avg', 'devide': job.get('total_swaps', 1)},
                 'last':             {'stats': last,  'name': 'last'}
             }
             # Map the saved timing values to proper column titles
@@ -1453,17 +1451,17 @@ class Mmu:
                 column_extra_header_widths[i] = sum(column_widths[start:end]) + (end - start - 1)
 
             # Build the table header
-            msg += "+" +   "+".join([DASH * width for width in column_extra_header_widths])                                                                 + "+\n"
-            msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], SPACE) for i in range(len(column_extra_header_widths))])  + "|\n"
-            msg += "|" +   "|".join([table_headers[i].center(column_widths[i], SPACE) for i in range(len(column_widths))])                                  + "|\n"
-            msg += "+" +   "+".join([DASH * (width) for width in column_widths])                                                                            + "+\n"
+            msg += "+" +   "+".join([UI_DASH * width for width in column_extra_header_widths])                                                                 + "+\n"
+            msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPERATOR) for i in range(len(column_extra_header_widths))])  + "|\n"
+            msg += "|" +   "|".join([table_headers[i].center(column_widths[i], UI_SEPERATOR) for i in range(len(column_widths))])                                  + "|\n"
+            msg += "+" +   "+".join([UI_DASH * (width) for width in column_widths])                                                                            + "+\n"
 
             # Build the table body
             for row in table:
-                msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, SPACE) + SPACE for i in range(len(column_widths))]) + "|\n"
+                msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, UI_SEPERATOR) + UI_SEPERATOR for i in range(len(column_widths))]) + "|\n"
             
             # Table footer
-            msg += "+" + "+".join([DASH * width for width in column_widths]) + "+\n"
+            msg += "+" + "+".join([UI_DASH * width for width in column_widths]) + "+\n"
 
         # Pause data
         if total:
