@@ -10,3 +10,4 @@ https://github.com/Dendrowen/Blobifier
 ### Config
 1. Add `[include mmu/addons/blobifier.cfg]` to your `printer.cfg`
 1. Set `variable_user_post_load_extension` to `"BLOBIFIER"` in `mmu_macro_vars.cfg`
+1. Optionally set `variable_user_pre_unload_extension` to `"BLOBIFIER_PARK"` in `mmu_macro_vars.cfg` to park the nozzle on the tray during a swap
