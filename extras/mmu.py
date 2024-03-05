@@ -156,9 +156,8 @@ class Mmu:
 
     # Statistics output types
     GATE_STATISTICS_STRING     = "string"
-    GATE_STATISTICS_EMOTICON   = "emoticon"
     GATE_STATISTICS_PERCENTAGE = "percentage"
-    GATE_STATISTICS_DISPLAY = [GATE_STATISTICS_STRING, GATE_STATISTICS_EMOTICON, GATE_STATISTICS_PERCENTAGE]
+    GATE_STATISTICS_DISPLAY = [GATE_STATISTICS_STRING, GATE_STATISTICS_PERCENTAGE]
 
     # Stepper config sections
     SELECTOR_STEPPER_CONFIG    = "stepper_mmu_selector"
@@ -1350,16 +1349,16 @@ class Mmu:
     
     def _swap_statistics_to_string(self, total=True):
         #
-        # +-----------+---------------------+----------------------+----------+
+        # +–––––––––––+–––––––––––––––––––––+––––––––––––––––––––––+––––––––––+
         # |  114(46)  |      unloading      |       loading        | complete |
         # |   swaps   | pre  |   -   | post | pre  |   -   | post  |   swap   |
-        # +-----------+------+-------+------+------+-------+-------+----------+
+        # +–––––––––––+––––––+–––––––+––––––+––––––+–––––––+–––––––+––––––––––+
         # | all time  | 0:07 | 47:19 | 0:00 | 0:01 | 37:11 | 33:39 |  2:00:38 |
-        # |     - avg | 0:00 |  0:24 | 0:00 | 0:00 |  0:19 |  0:17 |     1:03 |
+        # |     └ avg | 0:00 |  0:24 | 0:00 | 0:00 |  0:19 |  0:17 |     1:03 |
         # | this job  | 0:00 | 10:27 | 0:00 | 0:00 |  8:29 |  8:30 |    28:02 |
-        # |     - avg | 0:00 |  0:13 | 0:00 | 0:00 |  0:11 |  0:11 |     0:36 |
+        # |     └ avg | 0:00 |  0:13 | 0:00 | 0:00 |  0:11 |  0:11 |     0:36 |
         # |      last | 0:00 |  0:12 | 0:00 | 0:00 |  0:10 |  0:14 |     0:39 |
-        # +-----------+------+-------+------+------+-------+-------+----------+
+        # +–––––––––––+––––––+–––––––+––––––+––––––+–––––––+–––––––+––––––––––+
         # Time spent paused: ...
         #
         msg = "MMU Statistics:\n"
@@ -1515,21 +1514,21 @@ class Mmu:
             if t == 'percentage':
                 status = '%s%%' % min(100, round(quality * 100, 1))
             elif quality < 0:
-                status = "🫥" if t == 'emoticon' else "n/a"
+                status = "n/a"
             elif quality >= 0.985:
-                status = "🤗" if t == 'emoticon' else "Perfect"
+                status = "Perfect"
             elif quality >= 0.965:
-                status = "😀" if t == 'emoticon' else "Great"
+                status = "Great"
             elif quality >= 0.95:
-                status = "🙂" if t == 'emoticon' else "Good"
+                status = "Good"
             elif quality >= 0.925:
-                status = "😐" if t == 'emoticon' else "Marginal"
+                status = "Marginal"
             elif quality >= 0.90:
-                status = "😑" if t == 'emoticon' else "Degraded"
+                status = "Degraded"
             elif quality >= 0.85:
-                status = "😔" if t == 'emoticon' else "Poor"
+                status = "Poor"
             else:
-                status = "💀" if t == 'emoticon' else "Terrible"
+                status = "Terrible"
             msg += "#%d: %s" % (gate, status)
             msg += ", " if gate < (self.mmu_num_gates - 1) else ""
             dbg += "\nGate %d: " % gate
