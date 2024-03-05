@@ -1476,15 +1476,11 @@ class Mmu:
                 result.append(item)
         return result
 
-
     def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False):
         if self.log_statistics or force_log:
             msg = ""
-            if job:
-                msg += self._swap_statistics_to_string(total=False)
-            if total:
-                msg += "\n\n" if msg != "" else ""
-                msg += self._swap_statistics_to_string(total=True)
+            if job or total:
+                msg += self._swap_statistics_to_string(total=total)
             if self._can_use_encoder() and gate:
                 m,d = self._gate_statistics_to_string()
                 msg += "\n\n" if msg != "" else ""
