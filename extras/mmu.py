@@ -26,13 +26,15 @@ if sys.version_info[0] < 3:
     UI_DASH = '-'
     UI_DEGREE = '^'
     UI_BOX_BL = '+'
+    UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
 else:
     # Use unicode for improved formatting and klipper layout
-    UI_SPACE = '\u2002'
-    UI_SEPARATOR = '\u2002'
+    UI_SPACE = '\u00A0'
+    UI_SEPARATOR = '\u00A0'
     UI_DASH = '\u2014'
     UI_DEGREE = '\u00B0'
     UI_BOX_BL = '\u2514'
+    UI_EMOTICONS = ['\u2753', '\U0001F60E', '\U0001F603', '\U0001F610', '\U0001F633', '\U0001F62C', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
 class QueueHandler(logging.Handler):
@@ -157,7 +159,9 @@ class Mmu:
     # Statistics output types
     GATE_STATISTICS_STRING     = "string"
     GATE_STATISTICS_PERCENTAGE = "percentage"
-    GATE_STATISTICS_DISPLAY = [GATE_STATISTICS_STRING, GATE_STATISTICS_PERCENTAGE]
+    GATE_STATISTICS_EMOTICON   = "emoticon"
+
+    GATE_STATISTICS_TYPES = [GATE_STATISTICS_STRING, GATE_STATISTICS_PERCENTAGE, GATE_STATISTICS_EMOTICON]
 
     # Stepper config sections
     SELECTOR_STEPPER_CONFIG    = "stepper_mmu_selector"
@@ -505,7 +509,7 @@ class Mmu:
         # Cosmetic console stuff
         self.console_stat_columns = list(config.getlist('console_stat_columns', ['unload', 'load', 'total']))
         self.console_stat_rows = list(config.getlist('console_stat_rows', ['total', 'job', 'job_average']))
-        self.console_gate_statistics_type = config.get('console_gate_statistics_type', {o: o for o in self.GATE_STATISTICS_DISPLAY}, self.GATE_STATISTICS_STRING)
+        self.console_gate_statistics_type = config.get('console_gate_statistics_type', {o: o for o in self.GATE_STATISTICS_TYPES}, self.GATE_STATISTICS_STRING)
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
         # Currently hidden and testing options
@@ -1506,23 +1510,23 @@ class Mmu:
             quality = rounded['quality']
             # Give the gate a reliability grading based on "quality" which is based on slippage
             if t == 'percentage':
-                status = '%s%%' % min(100, round(quality * 100, 1))
+                status = '%s%%' % min(100, round(quality * 100, 1)) if quality >= 0 else "n/a"
             elif quality < 0:
-                status = "n/a"
+                status = UI_EMOTICONS[0] if t == 'emoticon' else "n/a"
             elif quality >= 0.985:
-                status = "Perfect"
+                status = UI_EMOTICONS[1] if t == 'emoticon' else "Perfect"
             elif quality >= 0.965:
-                status = "Great"
+                status = UI_EMOTICONS[2] if t == 'emoticon' else "Great"
             elif quality >= 0.95:
-                status = "Good"
+                status = UI_EMOTICONS[3] if t == 'emoticon' else "Good"
             elif quality >= 0.925:
-                status = "Marginal"
+                status = UI_EMOTICONS[4] if t == 'emoticon' else "Marginal"
             elif quality >= 0.90:
-                status = "Degraded"
+                status = UI_EMOTICONS[5] if t == 'emoticon' else "Degraded"
             elif quality >= 0.85:
-                status = "Poor"
+                status = UI_EMOTICONS[6] if t == 'emoticon' else "Poor"
             else:
-                status = "Terrible"
+                status = UI_EMOTICONS[7] if t == 'emoticon' else "Terrible"
             msg += "#%d: %s" % (gate, status)
             msg += ", " if gate < (self.mmu_num_gates - 1) else ""
             dbg += "\nGate %d: " % gate
@@ -1540,6 +1544,7 @@ class Mmu:
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, self.encoder_sensor.get_clog_detection_length()))
 
     def _persist_swap_statistics(self):
+# PAUL
         # self.statistics['time_spent_loading'] = round(self.statistics['time_spent_loading'], 2)
         # self.statistics['time_spent_unloading'] = round(self.statistics['time_spent_unloading'], 2)
         # self.statistics['time_spent_paused'] = round(self.statistics['time_spent_paused'], 2)
@@ -5698,6 +5703,9 @@ class Mmu:
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
+        self.console_gate_statistics_type = gcmd.get('CONSOLE_GATE_STATISTICS_TYPE', self.console_gate_statistics_type)
+        if self.console_gate_statistics_type not in self.GATE_STATISTICS_TYPES:
+            raise gcmd.error("console_gate_statistics_type is invalid. Options are: %s" % self.GATE_STATISTICS_TYPES)
         self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.slicer_tip_park_pos, minval=0.)
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
@@ -5808,6 +5816,7 @@ class Mmu:
         if self.mmu_logger:
             msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
+        msg += "\nconsole_gate_statistics_type = %s" % self.console_gate_statistics_type
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
