@@ -4,7 +4,7 @@ Scratch pad TODO list
 3. DONE - Pass params to RESUME
 4. Compression pin homing feedback for extruder (same as collision)
 5. DONE - Record the gate homing point with calibration so dead space can be added/subtracted for quick change
-6. Check that entry_to_extruder amount is added / subtracted too
+6. DONE - Check that entry_to_extruder amount is added / subtracted too
 7. Virtual selector
 8. Switching drive gear
 9. Virtual servo (force sync KMS case)
@@ -20,13 +20,25 @@ Scratch pad TODO list
      {% set z_park = [[(act.z + park_dz), z_min]|max, (max.z - origin.z)]|min %}
 18. Add 'filament_temp' to gate_map.  Also, pull from spoolman. Edit `mmu_gate_map` command
 19. Centralize macro variables .. need to update mmu.my for MMU_TEST_FORM_TIP
-20. Deprecate printer.mmu.material ..
+20. DONE Deprecate printer.mmu.material .. Replaced with active_gate.material, active_gate.color, ...
+21.
+# TODO For advanced calculated purge volumes
+# Not sure where I'm going with this.  It could be a calculated matrix based on all the referenced tools
+# assuming they have a pigment percentage (defaulting to 50%). Need to add a PIGMENT=[0-100] param. Or this
+# could be an orthogonal purge matrix available for filaments on mmu_gate_map. Need to add pigment. Hmmm.
+# Every update of pigment to gate map would recalc matrix and present as printer variable
+#        nozzle_volume = gcmd.get_int('NOZZLE_VOLUME', -1, above=0)
+#        multiplier = gcmd.get_int('MULTIPLIER', 100, above=0)
+#        algorithm = gcmd.get('ALGORITHM', 'linear')
+#        algorithms = ['linear', 'quadratic', 'hyperbolic']
+#        if algorithm not in algorithms:
+#            raise gcmd.error("ALGORITHM is invalid. Options are: %s" % algorithms]
+
 
 --
 Idea: DONE - If EndlessSpool enabled and initial tool is empty, auto map to next gate
 
-USER FEEDBACK:
-Check comments on tool_tip_macro.  Example:
+DONE - Check comments on tool_tip_macro.  Example:
 variable_cooling_tube_position should have the comment: Measured from Nozzle to Top of Heater Block
 variable_cooling_tube_length should have the comment: Measured from Top of Heater Block to Top of Heatsink
 
