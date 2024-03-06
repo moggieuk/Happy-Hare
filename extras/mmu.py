@@ -1106,9 +1106,7 @@ class Mmu:
             self._log_info("Warning: Some persisted state was ignored because it contained errors:\n%s" % ''.join(errors))
 
         swap_stats = self.variables.get(self.VARS_MMU_SWAP_STATISTICS, {})
-        #swap_stats = {new if old in {"time_spent_loading", "time_spent_unloading", "time_spent_paused", "total_swaps", "total_pauses"} else old: swap_stats[old] for old in swap_stats}
-        #swap_stats = {new: swap_stats.get(old, None) for old, new in {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause", "total_swaps": "total_swaps", "total_pauses": "total_pauses"}.items() if old in swap_stats}
-        swap_stats = {**swap_stats, **{new: swap_stats.pop(old) for old, new in {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause", "total_swaps": "total_swaps", "total_pauses": "total_pauses"}.items() if old in swap_stats}}
+        swap_stats = {new: swap_stats.get(old, None) for old, new in {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause", "total_swaps": "total_swaps", "total_pauses": "total_pauses"}.items() if old in swap_stats} # Auto update from old format
 
         self.statistics.update(swap_stats)
         for gate in range(self.mmu_num_gates):
