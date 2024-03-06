@@ -34,7 +34,7 @@ else:
     UI_DASH = '\u2014'
     UI_DEGREE = '\u00B0'
     UI_BOX_BL = '\u2514'
-    UI_EMOTICONS = ['\u2753', '\U0001F60E', '\U0001F603', '\U0001F610', '\U0001F633', '\U0001F62C', '\U0001F622', '\U0001F631']
+    UI_EMOTICONS = ['\u2753', '\U0001F60E', '\U0001F603', '\U0001F642', '\U0001F610', '\U0001F641', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
 class QueueHandler(logging.Handler):
