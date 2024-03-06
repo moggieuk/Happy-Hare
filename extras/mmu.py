@@ -34,7 +34,7 @@ else:
     UI_DASH = '\u2014'
     UI_DEGREE = '\u00B0'
     UI_BOX_BL = '\u2514'
-    UI_EMOTICONS = ['\u2753', '\U0001F60E', '\U0001F603', '\U0001F642', '\U0001F610', '\U0001F641', '\U0001F622', '\U0001F631']
+    UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
 class QueueHandler(logging.Handler):
@@ -1146,8 +1146,15 @@ class Mmu:
     def cmd_MMU_TEST(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        feedback = gcmd.get_float('SYNC_EVENT', minval=-1., maxval=1.)
-        self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
+
+        feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
+        if feedback is not None:
+            self._log_info("Sending 'mmu:sync_feedback %.2f' event" % feedback)
+            self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
+
+        if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
+            self._log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BOX_BL=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BOX_BL))
+            self._log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
@@ -1380,20 +1387,20 @@ class Mmu:
 
         # Remove totals from table if not in print and not forcing total
         if not self.console_always_output_full and not total:
-            if 'total'          in table_include_rows: table_include_rows.remove('total')
-            if 'total_average'  in table_include_rows: table_include_rows.remove('total_average')
+            if 'total'         in table_include_rows: table_include_rows.remove('total')
+            if 'total_average' in table_include_rows: table_include_rows.remove('total_average')
         if not self._is_in_print():
-            if 'job'            in table_include_rows: table_include_rows.remove('job')
-            if 'job_average'    in table_include_rows: table_include_rows.remove('job_average')
+            if 'job'           in table_include_rows: table_include_rows.remove('job')
+            if 'job_average'   in table_include_rows: table_include_rows.remove('job_average')
 
         if len(table_include_rows) > 0:
             # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
             table_rows_map = {
-                'total':            {'stats': lifetime, 'name': 'total '},
-                'total_average':    {'stats': lifetime, 'name': UI_BOX_BL + ' avg', 'devide': lifetime.get('total_swaps', 1)}, 
-                'job':              {'stats': job,   'name': 'this job '},
-                'job_average':      {'stats': job,   'name': UI_BOX_BL + ' avg', 'devide': job.get('total_swaps', 1)},
-                'last':             {'stats': last,  'name': 'last'}
+                'total':         {'stats': lifetime, 'name': 'total '},
+                'total_average': {'stats': lifetime, 'name': UI_BOX_BL + ' avg', 'devide': lifetime.get('total_swaps', 1)}, 
+                'job':           {'stats': job,      'name': 'this job '},
+                'job_average':   {'stats': job,      'name': UI_BOX_BL + ' avg', 'devide': job.get('total_swaps', 1)},
+                'last':          {'stats': last,     'name': 'last'}
             }
             # Map the saved timing values to proper column titles
             table_headers_map = {
@@ -6337,6 +6344,7 @@ class Mmu:
             except ValueError as e:
                 raise gcmd.error("Error parsing PURGE_VOLUMES: %s" % str(e))
             quiet = True
+
         if display or not quiet:
             colors = len(self.slicer_tool_map['tools'])
             have_purge_map = len(self.slicer_tool_map['purge_volumes']) > 0
