@@ -21,6 +21,7 @@ from extras.mmu_leds import MmuLeds
 import chelper, ast
 
 if sys.version_info[0] < 3:
+    # No unicode. Not worth the hassle!
     UI_SPACE = ' '
     UI_SEPARATOR = '.'
     UI_DASH = '-'
@@ -6354,7 +6355,7 @@ class Mmu:
                     #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
                     msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(self.mmu_num_gates)) + "\n"
-                    msg += '\n'.join(["T{: <2}{}{}".format(i, UI_SEPARATOR, ' '.join(map(lambda x: str(round(x)).rjust(4, UI_SPACE) if x > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row))) for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
+                    msg += '\n'.join(["T{: <2}{}{}".format(i, UI_SEPARATOR, ' '.join(map(lambda x: str(round(x)).rjust(4, UI_SEPARATOR) if x > 0 else "{}{}-{}".format(UI_SEPARATOR, UI_SPACE, UI_SEPARATOR), row))) for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volumes"
             self._log_always(msg)
