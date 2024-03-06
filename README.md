@@ -73,6 +73,8 @@ Thank you!
 **[LED Support](/doc/leds.md)**<br>
 **[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
 
+**[Third Party Addons](/config/addons/README.md)** 🆕<br>
+
 <br>
  
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Major features:
