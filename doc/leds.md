@@ -5,7 +5,7 @@ Happy Hare now can drive LEDs (NeoPixel/WS2812) on your MMU to provide both func
 
 <p align=center><img src="/doc/leds/led_connection.jpg" alt='LED Connection' width='80%'></p>
 
-LED strips can be formed but soldering together individual neopixels or using pre-made strips.  You can also mix the two but if the "RGBW" order is different you must specify `color_order` as a list with the correct spec for each LED.  There is a lot of flexibility in how the LEDs are connected - segments can even be joined in parallel to drive two LED's for the same index number.  The only important concept is that each segment in the strip that represents the MMU gates must be contiguous, but the order is unimportant (see config examples below)
+LED strips can be formed but soldering together individual neopixels or using pre-made strips.  You can also mix the two but if the "RGBW" order is different you must specify `color_order` as a list with the correct spec for each LED.  There is a lot of flexibility in how the LEDs are connected - segments can even be joined in parallel to drive two LED's for the same index number.  The only important concept is that each segment in the strip that represents the MMU gates must be contiguous (ascending or decending), but the order of segments is unimportant (see config examples below)
 
 <br>
 
@@ -13,21 +13,13 @@ LED strips can be formed but soldering together individual neopixels or using pr
   If you have run the Happy Hare installer it should have added a section to the end of your `mmu_hardware.cfg` that starts like this:
 
 ```yml
-# MMU OPTIONAL NEOPIXEL LED SUPPORT ----------------------------------------------------------------------------------------
+# MMU OPTIONAL NEOPIXEL LED SUPPORT ------------------------------------------------------------------------------------
+# Define the led connection, type and length
 #
-# Define neopixel LEDs for your MMU. The chain_count should match or be greater than your number of gates.
-# Requires the installation of Julian Schill's awesome LED effect module: https://github.com/julianschill/klipper-led_effect
-# LED index 1..N should be connected from gate #0 to gate #N
-# LED index N+1 can optionally be connected to exit from MMU (like encoder in ERCF design)
-#
-[neopixel mmu_leds]        # Cabinet neopixels (2x18)
+[neopixel mmu_leds]
 pin: mmu:MMU_NEOPIXEL
-chain_count: 10            # Number of gates + 1
+chain_count: 17            # Number gates x1 or x2 + 1 (if you want status)
 color_order: GRBW          # Set based on your particular neopixel specification
-
-#
-# Define LED effects for MMU gate. 'mmu_led_effect' is a wrapper for led_effect
-...
 ```
 This section may be all commented out, if so and you wish to configure LEDS, uncomment the entire section and ensure that the `MMU_NEOPIXEL` pin is correctly set in the aliases in `mmu.py` and that the `color_order` matches your particular LED (don't mix type or if you do, set to a comma separated list of the type of each led in the chain).  Note that you must also install "Klipper LED Effects" plugin.
 
@@ -74,7 +66,7 @@ Some examples of how to set these values can be seen in this illustration of the
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) LED Effects
-Happy Hare LED effects are 100% implemented in `mmu_software.cfg` as macros so you can tweak if you desire.  I would caution that you make sure you understand the logic before doing so, and in most cases you may just want to tweak the effects defined in `mmu_hardware.cfg` to customize.  The macros work by intercepting changes of the Happy Hare's print state machine, changes in actions it is performing and changes to the gate_map containing gate status and filament color.
+Happy Hare LED effects are 100% implemented in `mmu_software.cfg` as macros so you can review if you want to tweak and create your own modifications.  I would caution that you make sure you understand the logic before doing so, and in most cases you may just want to tweak the effects defined in `mmu_macro_vars.cfg` to customize.  The macros work by intercepting changes of the Happy Hare's print state machine, changes in actions it is performing and changes to the "gate_map" containing gate status and filament color.
 
 The default effects which are both functional as well as adding a little color are summerized here:
 
@@ -97,7 +89,7 @@ The default effects which are both functional as well as adding a little color a
   | Action State "Checking" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | Fast Pulsing White |
   | Action State "Idle" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
 
-> [!NOTE]
+> [!NOTE]  
 > - MMU Print State is the same as the printer variable `printer.mmu.print_state`
 > - Action State is the same as the printer variable `printer.mmu.action`
 > - These are built-in functional "effects":
@@ -108,7 +100,7 @@ To change the default effect for the per-gate LEDs you edit `default_gate_effect
 
 Happy Hare also has an empirical command to control LEDs:
 
-```yaml
+```yml
 > MMU_LED
   LEDs are enabled
   Default exit effect: 'filament_color'
@@ -117,9 +109,33 @@ Happy Hare also has an empirical command to control LEDs:
   ENABLE=[0|1] EXIT_EFFECT=[off|gate_status|filament_color|custom_color] ENTRY_EFFECT=[off|gate_status|filament_color|custom_color] STATUS_EFFECT=[off|on|filament_color|custom_color]
 ```
 
-You can change default effect or enable/disable. E.g. `MMU_LED ENABLE=0` will turn off and disable the LED operation.  Please note that similar to `MMU_TEST_CONFIG` changes made like this don't persist on a restart.  Update the macro variables in `mmu_software.cfg` to make changes persistent.
+You can change default effect or enable/disable in `mmu_macro_vars.cfg` under the `_MMU_LED_VARS` macro:
+```yml
+# LED CONTROL -------------------------------------------------------------
+# Only configure if you have LEDs installed
+#   (base/mmu_led.cfg)
+#
+[gcode_macro _MMU_LED_VARS]
+description: Happy Hare led macro configuration variables
+gcode: # Leave empty
+
+# Default effects for LED segments when not providing action status
+# This can be any effect name, 'r,g,b' color, or built-in functional effects:
+#   'off'             - LED's off
+#   'on'              - LED's white
+#   'gate_status'     - indicate gate availability
+#   'filament_color'  - indicate filament color
+#   'custom_color'    - display custom set color for each gate (printer.mmu.custom_color_rgb)
+variable_led_enable             : True                  ; Whether LEDs are enabled at startup (MMU_LED can control)
+variable_default_exit_effect    : "gate_status"         ;    off|gate_status|filament_color|custom_color
+variable_default_entry_effect   : "filament_color"      ;    off|gate_status|filament_color|custom_color
+variable_default_status_effect  : "filament_color"      ; on|off|gate_status|filament_color|custom_color
+```
+
+You can also change the effect at runtime, E.g. `MMU_LED ENABLE=0` will turn off and disable the LED operation.  Please note that similar to `MMU_TEST_CONFIG` changes made like this don't persist on a restart.  Update the macro variables in `mmu_macro_vars.cfg` to make changes persistent.
 
 The `custom_color` is not persisted and can be set with the command `MMU_LED GATE=.. COLOR=..`. The color can be a w3c color name or `RRGGBB` value.  One interesting use case is to set these colors to those defined in the gcode but the slicer using the example "placeholder" logic described in the [gcode preprocessing section](gcode_preprocessing.md)
 
-The Happy Hare version of Klipperscreen has buttons to quickly "toggle" between `gate_status` and `filament_color` for the default gate effect...
+> [!TIP]
+> The strongly recommended Happy Hare version of Klipperscreen has buttons to quickly "toggle" between `gate_status` and `filament_color` for the default gate effect...
 
