@@ -976,7 +976,7 @@ class Mmu:
         self.tool_selected = self._next_tool = self._last_tool = self.TOOL_GATE_UNKNOWN
         self._last_toolchange = "Unknown"
         self.gate_selected = self.TOOL_GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
-        self.active_gate = {}
+        self.active_filament = {}
         self.servo_state = self.servo_angle = self.SERVO_UNKNOWN_STATE
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.DIRECTION_UNKNOWN
@@ -1236,7 +1236,7 @@ class Mmu:
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
-                'active_gate': self.active_gate,
+                'active_filament': self.active_filament,
                 'next_tool': self._next_tool,
                 'last_tool': self._last_tool,
                 'last_toolchange': self._last_toolchange,
@@ -5117,9 +5117,9 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
         self._set_gate_ratio(self._get_gate_ratio(gate) if gate >= 0 else 1.)
         if gate >= 0:
-            self.active_gate = {'material': self.gate_material[gate], 'color': self.gate_color[gate], 'spool_id': self.gate_spool_id[gate]}
+            self.active_filament = {'material': self.gate_material[gate], 'color': self.gate_color[gate], 'spool_id': self.gate_spool_id[gate]}
         else:
-            self.active_gate = {}
+            self.active_filament = {}
 
     def _set_tool_selected(self, tool):
         self.tool_selected = tool

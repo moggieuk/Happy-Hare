@@ -233,7 +233,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.is_homed : {bool} True if MMU has been homed
     printer.mmu.tool : {int} 0..n | -1 for unknown | -2 for bypass
     printer.mmu.gate : {int} 0..n | -1 for unknown
-    printer.mmu.active_gate : {dict} of active filament attributes (from gate_map, e.g. active_gate.material, active_gate.color)
+    printer.mmu.active_filament : {dict} of active filament attributes (from gate_map, e.g. active_filament.material, active_filament.color)
     printer.mmu.next_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change)
     printer.mmu.last_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change after unload)
     printer.mmu.last_toolchange : {string} description of last change similar to M117 display
