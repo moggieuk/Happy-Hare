@@ -21,6 +21,7 @@ from extras.mmu_leds import MmuLeds
 import chelper, ast
 
 if sys.version_info[0] < 3:
+    # No unicode. Not worth the hassle!
     UI_SPACE = ' '
     UI_SEPARATOR = '.'
     UI_DASH = '-'
