@@ -165,8 +165,9 @@ MMU Statistics:
 |   last |   - |       - |    - |   - |       - |    - |        - |
 +————————+—————+—————————+——————+—————+—————————+——————+——————————+
 
-43:56 spent paused over 61 pauses (All time)
-Number of swaps since last incident: 0 (Record: 0)
+3:27:49 spent paused over 7 pauses (All time)
+0:00 spent paused over 0 pauses (This job)
+Number of swaps since last incident: 560 (Record: 560)
 
 Gate Statistics:
 #0: 😎, #1: 😎, #2: —, #3: —, #4: —, #5: —, #6: 😎, #7: —, #8: —
