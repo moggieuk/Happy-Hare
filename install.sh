@@ -1077,7 +1077,7 @@ install_printer_includes() {
                     sed -i "1i ${i}" ${dest}
                 fi
             fi
-            for i in '\[include mmu/addons/\*.cfg\]' '\[include mmu/base/\*.cfg\]' ; do
+            for i in '\[include mmu/base/\*.cfg\]' ; do
                 already_included=$(grep -c "${i}" ${dest} || true)
                 if [ "${already_included}" -eq 0 ]; then
                     sed -i "1i ${i}" ${dest}
