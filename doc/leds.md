@@ -1,7 +1,7 @@
 # Happy Hare - LED ("bling") Support
 Happy Hare now can drive LEDs (NeoPixel/WS2812) on your MMU to provide both functional feedback as well as to add a little bling to your machine.  Typically you would connect a string of neopixels (either descrete components or an LED strip, or combination of both if compatible contollers) to the neopixel output on the MCU that drives your MMU although this can be changed.
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Wiring
 
 <p align=center><img src="/doc/leds/led_connection.jpg" alt='LED Connection' width='80%'></p>
 
@@ -21,9 +21,9 @@ pin: mmu:MMU_NEOPIXEL
 chain_count: 17            # Number gates x1 or x2 + 1 (if you want status)
 color_order: GRBW          # Set based on your particular neopixel specification
 ```
-This section may be all commented out, if so and you wish to configure LEDS, uncomment the entire section and ensure that the `MMU_NEOPIXEL` pin is correctly set in the aliases in `mmu.py` and that the `color_order` matches your particular LED (don't mix type or if you do, set to a comma separated list of the type of each led in the chain).  Note that you must also install "Klipper LED Effects" plugin.
+This section may be all commented out, if so and you wish to configure LEDS, uncomment the entire section and ensure that the `MMU_NEOPIXEL` pin is correctly set in the aliases in `mmu.py` and that the `color_order` matches your particular LED (don't mix type or if you do, set to a comma separated list of the type of each led in the chain. e.g. "GRB, GRB, GRB, RGBW, RGBW, RGBW").  Note that you must also install "Klipper LED Effects" plugin.
 
-The wiring of LED's is very flexible but must be controlled by the same pin.  Happy Hare defined three led segments: entry, exit and status as described in the config file:
+The wiring of LED's is very flexible but must be controlled by the same pin.  Happy Hare defines three led segments: "entry", "exit" and "status" as described in the config file:
 ```yml
 # MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
 # (Note it is harmless to leave this section - it is inactive until "mmu_leds" is defined by defining above)
@@ -50,14 +50,14 @@ The wiring of LED's is very flexible but must be controlled by the same pin.  Ha
 # [mmu_leds] specified segments but also each individual LED for atomic control. See mmu_leds.cfg for examples
 #
 [mmu_leds]
-num_gates: 
+num_gates:                      # Number of gates on your MMU
 led_strip: neopixel:mmu_leds
 exit_range: 
 entry_range: 
 status_index: 
 frame_rate: 24
 ```
-Some examples of how to set these values can be seen in this illustration of the ERCFv2 MMU:
+Some examples of how to set these values can be seen in this illustration (ERCFv2 MMU example):
 <p align=center><img src="/doc/leds/led_configuration.png" alt='LED Configuration' width='100%'></p>
 
 > [!NOTE]  
@@ -65,37 +65,8 @@ Some examples of how to set these values can be seen in this illustration of the
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) LED Effects
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Controlling LED Effects
 Happy Hare LED effects are 100% implemented in `mmu_leds.cfg` as macros so you can review if you want to tweak and create your own modifications.  I would caution that you make sure you understand the logic before doing so, and in most cases you may just want to tweak the effects defined in `mmu_macro_vars.cfg` to customize.  The macros work by intercepting changes of the Happy Hare's print state machine, changes in actions it is performing and changes to the "gate_map" containing gate status and filament color.
-
-The default effects, which are both functional as well as adding a little color, are summerized here:
-
-  | State | LED at each Gate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Filament Exit (E.g. Bowden tube) |
-  | ----- | ------------ | ----------------------------------- |
-  | MMU Disabled | OFF | OFF |
-  | MMU Print State "initialization" | Bling - shooting stars <br>(for 3 seconds) | OFF |
-  | MMU Print State "ready" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
-  | MMU Print State "printing" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
-  | MMU Print State "pause_locked"<br>(mmu pause) | Strobe | Strobe |
-  | MMU Print State "paused"<br>(after unlock) | OFF except current gate<br>Strobe | Strobe |
-  | MMU Print State "completed" | Sparkle <br>(for 20 seconds) | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
-  | MMU Print State "cancelled" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
-  | MMU Print State "error" | Strobe <br>(for 20 seconds) | Strobe <br>(for 20 seconds) |
-  | MMU Print State "standby" | OFF | OFF |
-  | Action State "Loading"<br>(whole sequence) | OFF except current gate:<br>Slow Pulsing White | Slow Pulsing White |
-  | Action State "Unloading"<br>(whole sequence) | OFF except current gate:<br>Slow Pulsing White | Slow Pulsing White |
-  | Action State "Heating" | OFF except current gate:<br>Pulsing Red | Pulsing Red |
-  | Action State "Selecting" | Fast Pulsing White | OFF |
-  | Action State "Checking" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | Fast Pulsing White |
-  | Action State "Idle" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
-
-> [!NOTE]  
-> - MMU Print State is the same as the printer variable `printer.mmu.print_state`
-> - Action State is the same as the printer variable `printer.mmu.action`
-> - These are built-in functional "effects":
->   - **filament_color** - displays the static color of the filament defined for the gate from MMU_GATE_MAP (specifically `printer.mmu.gate_color_rgb`). Requires you to setup color either directly or via Spoolman.
->   - **gate_status** - dispays the status for the gate (printer.mmu.get_status): **red** if empty, **green** if loaded, **orange** if unknown
-
 
 You can change default effect or enable/disable in `mmu_macro_vars.cfg` under the `_MMU_LED_VARS` macro:
 ```yml
@@ -137,4 +108,36 @@ The `custom_color` is not persisted and can be set with the command `MMU_LED GAT
 
 > [!TIP]
 > The strongly recommended Happy Hare version of Klipperscreen has buttons to quickly "toggle" between `gate_status` and `filament_color` for the default gate effect...
+
+<br>
+
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) LED Effect Meaning
+The default effects, which are both functional as well as adding a little color, are summerized here:
+
+  | State | LED at each Gate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Filament Exit (E.g. Bowden tube) |
+  | ----- | ------------ | ----------------------------------- |
+  | MMU Disabled | OFF | OFF |
+  | MMU Print State "initialization" | Bling - shooting stars <br>(for 3 seconds) | OFF |
+  | MMU Print State "ready" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
+  | MMU Print State "printing" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
+  | MMU Print State "pause_locked"<br>(mmu pause) | Strobe | Strobe |
+  | MMU Print State "paused"<br>(after unlock) | OFF except current gate<br>Strobe | Strobe |
+  | MMU Print State "completed" | Sparkle <br>(for 20 seconds) | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
+  | MMU Print State "cancelled" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
+  | MMU Print State "error" | Strobe <br>(for 20 seconds) | Strobe <br>(for 20 seconds) |
+  | MMU Print State "standby" | OFF | OFF |
+  | Action State "Loading"<br>(whole sequence) | OFF except current gate:<br>Slow Pulsing White | Slow Pulsing White |
+  | Action State "Unloading"<br>(whole sequence) | OFF except current gate:<br>Slow Pulsing White | Slow Pulsing White |
+  | Action State "Heating" | OFF except current gate:<br>Pulsing Red | Pulsing Red |
+  | Action State "Selecting" | Fast Pulsing White | OFF |
+  | Action State "Checking" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | Fast Pulsing White |
+  | Action State "Idle" | **default_gate_effect**:<br>- gate_status<br>- filament_color<br>- off | **default_exit_effect**:<br>- filament_color<br>- on (white)<br>- off |
+
+> [!NOTE]  
+> - MMU Print State is the same as the printer variable `printer.mmu.print_state`
+> - Action State is the same as the printer variable `printer.mmu.action`
+> - These are built-in functional "effects":
+>   - **filament_color** - displays the static color of the filament defined for the gate from MMU_GATE_MAP (specifically `printer.mmu.gate_color_rgb`). Requires you to setup color either directly or via Spoolman.
+>   - **gate_status** - dispays the status for the gate (printer.mmu.get_status): **red** if empty, **green** if loaded, **orange** if unknown
+
 
