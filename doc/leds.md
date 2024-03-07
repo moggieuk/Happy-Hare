@@ -66,7 +66,7 @@ status_index:
 frame_rate: 24
 ```
 Some examples of how to set these values can be seen in this illustration of the ERCFv2 MMU:
-<p align=center><img src="/doc/leds/led_configuration.png" alt='LED Configuration' width='80%'></p>
+<p align=center><img src="/doc/leds/led_configuration.png" alt='LED Configuration' width='100%'></p>
 
 > [!NOTE]  
 > All the default LED effects are defined in the read-only `mmu_leds.cfg`.  You can create your woen but be careful to note the `[mmu_led_effect]` definition - this is a wrapper around `[led_effect]` that will create the effect on the specified LED range (typically 1-N; N=number of gates) but also duplicate on each LED individually.  This is especially useful on the MMU where you want per-gate effect.
