@@ -61,14 +61,14 @@ Some examples of how to set these values can be seen in this illustration of the
 <p align=center><img src="/doc/leds/led_configuration.png" alt='LED Configuration' width='100%'></p>
 
 > [!NOTE]  
-> All the default LED effects are defined in the read-only `mmu_leds.cfg`.  You can create your woen but be careful to note the `[mmu_led_effect]` definition - this is a wrapper around `[led_effect]` that will create the effect on the specified LED range (typically 1-N; N=number of gates) but also duplicate on each LED individually.  This is especially useful on the MMU where you want per-gate effect.
+> All the default LED effects are defined in the read-only `mmu_leds.cfg`.  You can create your own but be careful and note the `[mmu_led_effect]` definition - this is a wrapper around `[led_effect]` that will create the effect on the specified LED range (segment) but also duplicate the effect on each LED individually.  This is especially useful on the MMU where you want per-gate effects.
 
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) LED Effects
-Happy Hare LED effects are 100% implemented in `mmu_software.cfg` as macros so you can review if you want to tweak and create your own modifications.  I would caution that you make sure you understand the logic before doing so, and in most cases you may just want to tweak the effects defined in `mmu_macro_vars.cfg` to customize.  The macros work by intercepting changes of the Happy Hare's print state machine, changes in actions it is performing and changes to the "gate_map" containing gate status and filament color.
+Happy Hare LED effects are 100% implemented in `mmu_leds.cfg` as macros so you can review if you want to tweak and create your own modifications.  I would caution that you make sure you understand the logic before doing so, and in most cases you may just want to tweak the effects defined in `mmu_macro_vars.cfg` to customize.  The macros work by intercepting changes of the Happy Hare's print state machine, changes in actions it is performing and changes to the "gate_map" containing gate status and filament color.
 
-The default effects which are both functional as well as adding a little color are summerized here:
+The default effects, which are both functional as well as adding a little color, are summerized here:
 
   | State | LED at each Gate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Filament Exit (E.g. Bowden tube) |
   | ----- | ------------ | ----------------------------------- |
@@ -96,18 +96,6 @@ The default effects which are both functional as well as adding a little color a
 >   - **filament_color** - displays the static color of the filament defined for the gate from MMU_GATE_MAP (specifically `printer.mmu.gate_color_rgb`). Requires you to setup color either directly or via Spoolman.
 >   - **gate_status** - dispays the status for the gate (printer.mmu.get_status): **red** if empty, **green** if loaded, **orange** if unknown
 
-To change the default effect for the per-gate LEDs you edit `default_gate_effect` in the macro variables in `mmu_software.cfg` and for the default exit LED, you can edit `default_exit_effect`.  These effects can be any named effect you define, the built-in functional defaults, "on", "off", or even an RGB color specification in the form `red,green,blue` e.g. `0.5,0,0.5` would be 50% intensity red and blue with no green.
-
-Happy Hare also has an empirical command to control LEDs:
-
-```yml
-> MMU_LED
-  LEDs are enabled
-  Default exit effect: 'filament_color'
-  Default entry effect: 'gate_status'
-  Default status effect: 'filament_color'
-  ENABLE=[0|1] EXIT_EFFECT=[off|gate_status|filament_color|custom_color] ENTRY_EFFECT=[off|gate_status|filament_color|custom_color] STATUS_EFFECT=[off|on|filament_color|custom_color]
-```
 
 You can change default effect or enable/disable in `mmu_macro_vars.cfg` under the `_MMU_LED_VARS` macro:
 ```yml
@@ -131,8 +119,19 @@ variable_default_exit_effect    : "gate_status"         ;    off|gate_status|fil
 variable_default_entry_effect   : "filament_color"      ;    off|gate_status|filament_color|custom_color
 variable_default_status_effect  : "filament_color"      ; on|off|gate_status|filament_color|custom_color
 ```
+To change the default effect for a segment change the appropriate line. These effects can be any named effect you define, the built-in functional defaults, "on", "off", or even an RGB color specification in the form `red,green,blue` e.g. `0.5,0,0.5` would be 50% intensity red and blue with no green.
 
-You can also change the effect at runtime, E.g. `MMU_LED ENABLE=0` will turn off and disable the LED operation.  Please note that similar to `MMU_TEST_CONFIG` changes made like this don't persist on a restart.  Update the macro variables in `mmu_macro_vars.cfg` to make changes persistent.
+Happy Hare also has an empirical command to control LEDs:
+
+```yml
+> MMU_LED
+  LEDs are enabled
+  Default exit effect: 'filament_color'
+  Default entry effect: 'gate_status'
+  Default status effect: 'filament_color'
+  ENABLE=[0|1] EXIT_EFFECT=[off|gate_status|filament_color|custom_color] ENTRY_EFFECT=[off|gate_status|filament_color|custom_color] STATUS_EFFECT=[off|on|filament_color|custom_color]
+```
+You can change the effect at runtime, e.g. `MMU_LED ENTRY_EFFECT=gate_status` or `MMU_LED ENABLE=0` to turn off and disable the LED operation.  Please note that similar to `MMU_TEST_CONFIG` changes made like this don't persist on a restart.  Update the macro variables in `mmu_macro_vars.cfg` to make changes persistent.
 
 The `custom_color` is not persisted and can be set with the command `MMU_LED GATE=.. COLOR=..`. The color can be a w3c color name or `RRGGBB` value.  One interesting use case is to set these colors to those defined in the gcode but the slicer using the example "placeholder" logic described in the [gcode preprocessing section](gcode_preprocessing.md)
 
