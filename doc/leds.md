@@ -1,9 +1,9 @@
 # Happy Hare - LED ("bling") Support
-Happy Hare now can drive LEDs (NeoPixel/WS2812) on your MMU to provide both functional feedback as well as to add a little bling to your machine.  Typically you would connect a string of neopixels (either descrete components or an LED strip, or combination of both if compatible contollers) to the neopixel output on the MCU that drives your MMU although this can be changed.  What is important is that the first N LEDs of the chain must relate to the N gates of you MMU.
+Happy Hare now can drive LEDs (NeoPixel/WS2812) on your MMU to provide both functional feedback as well as to add a little bling to your machine.  Typically you would connect a string of neopixels (either descrete components or an LED strip, or combination of both if compatible contollers) to the neopixel output on the MCU that drives your MMU although this can be changed.
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware
 
-<p align=center><img src="Led_Connection.jpg" alt='LED Connection' width='80%'></p>
+<p align=center><img src="led_connection.jpg" alt='LED Connection' width='80%'></p>
 
 Typically the first LED would be for gate 0 but the order can be reversed by setting `reverse_gate_order:1` in `mmu_software.cfg`.  The optional N+1 LED is designed to drive an "exit" light.  I.e. an indicator on or near the bowden output from your MMU. You can also add additional LED's after N+1 because they will be ignored by Happy Hare, but if you do, make sure you restrict your effects to that segment of the chain - don't try to control the first N+1 LEDs.
 
@@ -12,7 +12,7 @@ Typically the first LED would be for gate 0 but the order can be reversed by set
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware Config
   If you have run the Happy Hare installer it should have added a section to the end of your `mmu_hardware.cfg` that starts like this:
 
-```yaml
+```yml
 # MMU OPTIONAL NEOPIXEL LED SUPPORT ----------------------------------------------------------------------------------------
 #
 # Define neopixel LEDs for your MMU. The chain_count should match or be greater than your number of gates.
@@ -29,11 +29,47 @@ color_order: GRBW          # Set based on your particular neopixel specification
 # Define LED effects for MMU gate. 'mmu_led_effect' is a wrapper for led_effect
 ...
 ```
+This section may be all commented out, if so and you wish to configure LEDS, uncomment the entire section and ensure that the `MMU_NEOPIXEL` pin is correctly set in the aliases in `mmu.py` and that the `color_order` matches your particular LED (don't mix type or if you do, set to a comma separated list of the type of each led in the chain).  Note that you must also install "Klipper LED Effects" plugin.
 
-This section may be all commented out, if so and you wish to configure LEDS, uncomment the entire section and ensure that the `MMU_NEOPIXEL` pin is correctly set in the aliases in `mmu.py` and that the `color_order` matches your particular LED (don't mix type).  Note that you must also install "Klipper LED Effects" plugin.
+The wiring of LED's is very flexible but must be controlled by the same pin.  Happy Hare defined three led segments
+```yml
+# MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
+# (Note it is harmless to leave this section - it is inactive until "mmu_leds" is defined by defining above)
+#
+# Define neopixel LEDs for your MMU. The chain_count must be large enough for your desired ranges:
+#   exit   .. this set of LEDs, one for every gate, usually would be mounted at the exit point of the gate
+#   entry  .. this set of LEDs, one for every gate, could be mounted at the entry point of filament into the MMU/buffer
+#   status .. this single LED represents the status of the currently selected filament
+#
+# Note that all sets are optional. You can opt simple to have just the 'exit' set for example. The advantage to having
+# both entry and exit LEDs is, for example, so that 'entry' can display gate status while 'exit' displays the color
+# 
+# The effects requires the installation of Julian Schill's awesome LED effect module:
+#   https://github.com/julianschill/klipper-led_effect
+# LED's are indexed in the chain from 1..N. Thus to set up LED's on 'exit' and a single 'status' LED on a 4 gate MMU:
+#   exit_range:   1-4
+#   status_index: 5
+# In this example no 'entry' set is configured.
+#
+# Note the range order is important and depends on your wiring. Thus 1-4 and 4-1 both represent the same LED range
+# but mapped to increasing or decreasing gates respectively
+#
+# Note that Happy Hare provides a convenience wrapper [mmu_led_effect] that not only creates an effect on each of the
+# [mmu_leds] specified segments but also each individual LED for atomic control. See mmu_leds.cfg for examples
+#
+[mmu_leds]
+num_gates: 
+led_strip: neopixel:mmu_leds
+exit_range: 
+entry_range: 
+status_index: 
+frame_rate: 24
+```
+Some examples of how to set these values can be seen in this illustration of the ERCFv2 MMU:
+<p align=center><img src="led_configuration.jpg" alt='LED Configuration' width='80%'></p>
 
 > [!NOTE]  
-> Careful to note the `[mmu_led_effect]` definition.  This is a simple wrapper around `[led_effect]` that will create the effect on the specified LED range (typically 1-N; N=number of gates) but also duplicate on each LED individually.  This is especially useful on the MMU where you want per-gate effect.
+> All the default LED effects are defined in the read-only `mmu_leds.cfg`.  You can create your woen but be careful to note the `[mmu_led_effect]` definition - this is a wrapper around `[led_effect]` that will create the effect on the specified LED range (typically 1-N; N=number of gates) but also duplicate on each LED individually.  This is especially useful on the MMU where you want per-gate effect.
 
 <br>
 
