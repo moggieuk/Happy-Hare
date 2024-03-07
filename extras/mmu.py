@@ -12,12 +12,30 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+import sys # To detect python2 or python3
 import logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
 from random import randint
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
 import chelper, ast
+
+if sys.version_info[0] < 3:
+    # No unicode. Not worth the hassle!
+    UI_SPACE = ' '
+    UI_SEPARATOR = '.'
+    UI_DASH = '-'
+    UI_DEGREE = '^'
+    UI_BOX_BL = '+'
+    UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
+else:
+    # Use unicode for improved formatting and klipper layout
+    UI_SPACE = '\u00A0'
+    UI_SEPARATOR = '\u00A0'
+    UI_DASH = '\u2014'
+    UI_DEGREE = '\u00B0'
+    UI_BOX_BL = '\u2514'
+    UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
 class QueueHandler(logging.Handler):
@@ -138,6 +156,13 @@ class Mmu:
 
     EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER, ENDSTOP_EXTRUDER_NONE]
     GATE_ENDSTOPS     = [ENDSTOP_GATE, ENDSTOP_ENCODER]
+
+    # Statistics output types
+    GATE_STATS_STRING     = "string"
+    GATE_STATS_PERCENTAGE = "percentage"
+    GATE_STATS_EMOTICON   = "emoticon"
+
+    GATE_STATS_TYPES = [GATE_STATS_STRING, GATE_STATS_PERCENTAGE, GATE_STATS_EMOTICON]
 
     # Stepper config sections
     SELECTOR_STEPPER_CONFIG    = "stepper_mmu_selector"
@@ -413,7 +438,7 @@ class Mmu:
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
-        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=0.) # For reduction of load length
+        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=25.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
 
@@ -482,19 +507,26 @@ class Mmu:
         self.log_visual = config.getint('log_visual', 1, minval=0, maxval=2) # TODO reduce max value to 1
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
 
-        # Currently hidden options or testing options...
+        # Cosmetic console stuff
+        self.console_stat_columns = list(config.getlist('console_stat_columns', ['unload', 'load', 'total']))
+        self.console_stat_rows = list(config.getlist('console_stat_rows', ['total', 'job', 'job_average']))
+        self.console_gate_stat = config.get('console_gate_stat', {o: o for o in self.GATE_STATS_TYPES}, self.GATE_STATS_STRING)
+        self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on
-        # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
-        # can lead to several mm of error depending on speed.
-        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1)
+        # Currently hidden options or testing options...
 
         # Some CANbus boards are prone to this but it have been seen on regular USB boards where a comms
         # timeout will kill the print. Since it seems to occur only on homing moves they can be safely
         # retried to workaround. This has been working well in practice
         self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
 
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on
+        # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
+        # can lead to several mm of error depending on speed.
+        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1)
+
         # To expedite my own testing
+        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
@@ -687,7 +719,7 @@ class Mmu:
                     self.sensors[name].runout_helper.runout_pause = False
                     self.sensors[name].runout_helper.runout_gcode = None
                     self.sensors[name].runout_helper.insert_gcode = None
-    
+
                 # Add sensor pin as an extra endstop for gear rail
                 sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
                 ppins = self.printer.lookup_object('pins')
@@ -695,7 +727,7 @@ class Mmu:
                 share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
                 ppins.allow_multi_use_pin(share_name)
                 mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
- 
+
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 if self.homing_extruder:
                     mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
@@ -958,6 +990,7 @@ class Mmu:
         self.tool_selected = self._next_tool = self._last_tool = self.TOOL_GATE_UNKNOWN
         self._last_toolchange = "Unknown"
         self.gate_selected = self.TOOL_GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
+        self.active_filament = {}
         self.servo_state = self.servo_angle = self.SERVO_UNKNOWN_STATE
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.DIRECTION_UNKNOWN
@@ -1059,8 +1092,8 @@ class Mmu:
             tool_selected = self.variables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
             gate_selected = self.variables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
             if gate_selected < self.mmu_num_gates and tool_selected < self.mmu_num_gates:
-                self.tool_selected = tool_selected
-                self.gate_selected = gate_selected
+                self._set_tool_selected(tool_selected)
+                self._set_gate_selected(gate_selected)
 
                 if self.gate_selected >= 0:
                     if self.tool_selected < 0 or self.ttg_map[self.tool_selected] != self.gate_selected:
@@ -1072,13 +1105,10 @@ class Mmu:
                         else:
                             errors.append("Reset persisted tool - does not map to gate")
                             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
-                    self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
                     self._set_selector_pos(self.selector_offsets[self.gate_selected])
-                    self.is_homed = True
                 elif self.gate_selected == self.TOOL_GATE_BYPASS:
                     self._set_tool_selected(self.TOOL_GATE_BYPASS)
                     self._set_selector_pos(self.bypass_offset)
-                    self.is_homed = True
                 else: # TOOL_GATE_UNKNOWN
                     self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                     self.is_homed = False
@@ -1091,6 +1121,11 @@ class Mmu:
             self._log_info("Warning: Some persisted state was ignored because it contained errors:\n%s" % ''.join(errors))
 
         swap_stats = self.variables.get(self.VARS_MMU_SWAP_STATISTICS, {})
+
+        # Auto upgrade old names
+        key_map = {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause"}
+        swap_stats = {key_map.get(key, key): swap_stats[key] for key in swap_stats}
+
         self.statistics.update(swap_stats)
         for gate in range(self.mmu_num_gates):
             self.gate_statistics[gate] = self.EMPTY_GATE_STATS_ENTRY.copy()
@@ -1129,8 +1164,15 @@ class Mmu:
     def cmd_MMU_TEST(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        feedback = gcmd.get_float('SYNC_EVENT', minval=-1., maxval=1.)
-        self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
+
+        feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
+        if feedback is not None:
+            self._log_info("Sending 'mmu:sync_feedback %.2f' event" % feedback)
+            self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
+
+        if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
+            self._log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BOX_BL=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BOX_BL))
+            self._log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
@@ -1208,7 +1250,7 @@ class Mmu:
                 'is_homed': self.is_homed,
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
-                'material': self.gate_material[self.gate_selected] if self.gate_selected >= 0 else '', # Deprecate or add temp?
+                'active_filament': self.active_filament,
                 'next_tool': self._next_tool,
                 'last_tool': self._last_tool,
                 'last_toolchange': self._last_toolchange,
@@ -1246,47 +1288,60 @@ class Mmu:
         }
 
     def _reset_statistics(self):
-        self.statistics = dict.fromkeys(['total_swaps', 'time_spent_loading', 'time_spent_unloading', 'total_pauses', 'time_spent_paused'], 0)
+        self.statistics = {}
+        self.last_statistics = {}
+        self.track = {}
         self.gate_statistics = []
         for gate in range(self.mmu_num_gates):
             self.gate_statistics.append(self.EMPTY_GATE_STATS_ENTRY.copy())
         self._reset_job_statistics()
 
     def _reset_job_statistics(self):
-        self.job_statistics = dict.fromkeys(['total_swaps', 'time_spent_loading', 'time_spent_unloading', 'total_pauses', 'time_spent_paused'], 0)
+        self.job_statistics = {}
         self.tracked_start_time = 0
         self.pause_start_time = 0
 
+    def _track_time_start(self, name):
+        self.track[name] = time.time()
+        self._log_trace("track times: " + str(self.track))
+
+    def _track_time_end(self, name):
+        if name not in self.track:
+            return #timer not initialized
+        self.statistics.setdefault(name, 0)
+        self.job_statistics.setdefault(name, 0)
+        self._log_trace("statistics: " + str(self.statistics))
+
+        elapsed = time.time() - self.track[name]
+        self.statistics[name] += elapsed
+        self.job_statistics[name] += elapsed
+        self.last_statistics[name] = elapsed
+
     def _track_swap_completed(self):
+        self.statistics.setdefault('total_swaps', 0)
+        self.job_statistics.setdefault('total_swaps', 0)
+        self.statistics.setdefault('swaps_since_pause', 0)
+        self.statistics.setdefault('swaps_since_pause_record', 0)
+
+        self.statistics['swaps_since_pause'] += 1
+        self.statistics['swaps_since_pause_record'] = max(self.statistics['swaps_since_pause_record'], self.statistics['swaps_since_pause'])
         self.statistics['total_swaps'] += 1
         self.job_statistics['total_swaps'] += 1
 
-    def _track_load_start(self):
-        self.tracked_start_time = time.time()
-
-    def _track_load_end(self):
-        elapsed = time.time() - self.tracked_start_time
-        self.statistics['time_spent_loading'] += elapsed
-        self.job_statistics['time_spent_loading'] += elapsed
-
-    def _track_unload_start(self):
-        self.tracked_start_time = time.time()
-
-    def _track_unload_end(self):
-        elapsed = time.time() - self.tracked_start_time
-        self.statistics['time_spent_unloading'] += elapsed
-        self.job_statistics['time_spent_unloading'] += elapsed
-
     def _track_pause_start(self):
+        self.statistics.setdefault('total_pauses', 0)
+        self.job_statistics.setdefault('total_pauses', 0)
+
         self.statistics['total_pauses'] += 1
         self.job_statistics['total_pauses'] += 1
+        self.statistics['swaps_since_pause'] = 0
+
+        self._track_time_start('pause')
         self.pause_start_time = time.time()
         self._track_gate_statistics('pauses', self.gate_selected)
 
     def _track_pause_end(self):
-        elapsed = time.time() - self.pause_start_time
-        self.statistics['time_spent_paused'] += elapsed
-        self.job_statistics['time_spent_paused'] += elapsed
+        self._track_time_end('pause')
 
     # Per gate tracking
     def _track_gate_statistics(self, key, gate, count=1):
@@ -1301,6 +1356,16 @@ class Mmu:
         except Exception as e:
             self._log_debug("Exception whilst tracking gate stats: %s" % str(e))
 
+    def _seconds_to_short_string(self, seconds):
+        if isinstance(seconds, float) or isinstance(seconds, int) or seconds.isnumeric():
+            seconds = int(seconds)
+            if seconds >= 3600:
+                return "{hour}:{min:0>2}:{sec:0>2}".format(hour=seconds // 3600, min=(seconds // 60) % 60, sec=seconds % 60)
+            if seconds >= 60:
+                return "{min}:{sec:0>2}".format(min=(seconds // 60) % 60, sec=seconds % 60)
+            return "0:{sec:0>2}".format(sec=seconds % 60)
+        return seconds
+
     def _seconds_to_string(self, seconds):
         result = ""
         hours = int(math.floor(seconds / 3600.))
@@ -1313,23 +1378,140 @@ class Mmu:
         return result
 
     def _swap_statistics_to_string(self, total=True):
-        (msg, stats) = ("MMU Total Statistics:", self.statistics) if total == True else ("MMU Last Print Statistics:", self.job_statistics)
-        msg += "\n%d swaps completed" % stats['total_swaps']
-        msg += "\n%s spent loading (average: %s)" % (self._seconds_to_string(stats['time_spent_loading']),
-                                                     self._seconds_to_string(stats['time_spent_loading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-        msg += "\n%s spent unloading (average: %s)" % (self._seconds_to_string(stats['time_spent_unloading']),
-                                                       self._seconds_to_string(stats['time_spent_unloading'] / stats['total_swaps']) if stats['total_swaps'] > 0 else "0")
-        msg += "\n%s spent paused (total pauses: %d)" % (self._seconds_to_string(stats['time_spent_paused']), stats['total_pauses'])
+        #
+        # +-----------+---------------------+----------------------+----------+
+        # |  114(46)  |      unloading      |       loading        | complete |
+        # |   swaps   | pre  |   -   | post | pre  |   -   | post  |   swap   |
+        # +-----------+------+-------+------+------+-------+-------+----------+
+        # | all time  | 0:07 | 47:19 | 0:00 | 0:01 | 37:11 | 33:39 |  2:00:38 |
+        # |     - avg | 0:00 |  0:24 | 0:00 | 0:00 |  0:19 |  0:17 |     1:03 |
+        # | this job  | 0:00 | 10:27 | 0:00 | 0:00 |  8:29 |  8:30 |    28:02 |
+        # |     - avg | 0:00 |  0:13 | 0:00 | 0:00 |  0:11 |  0:11 |     0:36 |
+        # |      last | 0:00 |  0:12 | 0:00 | 0:00 |  0:10 |  0:14 |     0:39 |
+        # +-----------+------+-------+------+------+-------+-------+----------+
+        # Time spent paused: ...
+        #
+        msg = "MMU Statistics:\n"
+        lifetime = self.statistics
+        job = self.job_statistics
+        last = self.last_statistics
+        total = self.console_always_output_full or total or not self._is_in_print()
+
+        table_column_order = ['pre_unload', 'unload', 'post_unload', 'pre_load', 'load', 'post_load', 'total']
+        table_include_columns = self._list_intersection(table_column_order, self.console_stat_columns) # To maintain the correct order and filter incorrect ones
+
+        table_row_options = ['total', 'total_average', 'job', 'job_average', 'last']
+        table_include_rows = self._list_intersection(self.console_stat_rows, table_row_options) # Keep the user provided order
+
+        # Remove totals from table if not in print and not forcing total
+        if not self.console_always_output_full and not total:
+            if 'total'         in table_include_rows: table_include_rows.remove('total')
+            if 'total_average' in table_include_rows: table_include_rows.remove('total_average')
+        if not self._is_in_print():
+            if 'job'           in table_include_rows: table_include_rows.remove('job')
+            if 'job_average'   in table_include_rows: table_include_rows.remove('job_average')
+
+        if len(table_include_rows) > 0:
+            # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
+            table_rows_map = {
+                'total':         {'stats': lifetime, 'name': 'total '},
+                'total_average': {'stats': lifetime, 'name': UI_BOX_BL + ' avg', 'devide': lifetime.get('total_swaps', 1)}, 
+                'job':           {'stats': job,      'name': 'this job '},
+                'job_average':   {'stats': job,      'name': UI_BOX_BL + ' avg', 'devide': job.get('total_swaps', 1)},
+                'last':          {'stats': last,     'name': 'last'}
+            }
+            # Map the saved timing values to proper column titles
+            table_headers_map = {
+                'pre_unload': 'pre',
+                'unload': '-',
+                'post_unload': 'post',
+                'pre_load': 'pre',
+                'load': '-',
+                'post_load': 'post',
+                'total': 'swap'
+            }
+            # Group the top headers map. Omit the first column, because that'll be filled with the nr. of swaps
+            table_extra_headers_map = {
+                'unloading': ['pre_unload', 'unload', 'post_unload'],
+                'loading': ['pre_load', 'load', 'post_load'],
+                'complete': ['total']
+            }
+            # Extract the table headers that will be used
+            table_headers = [table_headers_map[key] for key in table_include_columns]
+            # Insert the first column. This is normally empty but will sit below the number of swaps
+            table_headers.insert(0, 'swaps')
+
+            # Filter out the top (group) headers ( If none of the unload columns are present, unloading can be removed)
+            table_extra_headers = [key for key in table_extra_headers_map if len(self._list_intersection(table_extra_headers_map[key], table_include_columns)) > 0]
+            # Dictionary keys have no predefined order, so re-order them (Lucky the columns are alphabetical)
+            table_extra_headers.sort(reverse=True)
+            # Include the number of swaps in the top-left corner of the table
+            if self._is_in_print():
+                if total:
+                    table_extra_headers.insert(0, '%d(%d)' % (lifetime.get('total_swaps', 0), job.get('total_swaps', 0)))
+                else:
+                    table_extra_headers.insert(0, '%d' % (job.get('total_swaps', 0)))
+            else:
+                table_extra_headers.insert(0, '%d' % (lifetime.get('total_swaps', 0)))
+
+            # Build the table and populate with times
+            table = []
+            for row in table_include_rows:
+                name = table_rows_map[row].get('name', row)
+                stats = table_rows_map[row]['stats']
+                devide = max(1, table_rows_map[row].get('devide', 1))
+                table.append([name])
+                table[-1].extend(["-" if key not in stats else self._seconds_to_short_string(stats.get(key, 0) / devide) for key in table_include_columns])
+
+            # Calculate the needed column widths (The +2 is for a margin on both ends)
+            column_extra_header_widths = [len(table_extra_header) + 2 for table_extra_header in table_extra_headers]
+            column_widths =              [max(len(table_headers[c]), max(len(row[c]) for row in table)) + 2 for c in range(len(table_include_columns) + 1) ]
+
+            # If an 'extra_header' is wider then the sum of the columns beneath it, widen up those columns
+            for i in range(len(column_extra_header_widths)):
+                w = column_extra_header_widths[i]
+
+                start = sum(max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_header, ['']), table_include_columns))) for table_extra_header in table_extra_headers[0:i])
+                end = start + max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_headers[i], ['']), table_include_columns)))
+                while (sum(column_widths[start:end]) + (end - start - 1)) < w:
+                    for c in range(start, end):
+                        column_widths[c] += 1
+                column_extra_header_widths[i] = sum(column_widths[start:end]) + (end - start - 1)
+
+            # Build the table header
+            msg += "+" +   "+".join([UI_DASH * width for width in column_extra_header_widths])                                                                 + "+\n"
+            msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPARATOR) for i in range(len(column_extra_header_widths))])  + "|\n"
+            msg += "|" +   "|".join([table_headers[i].center(column_widths[i], UI_SEPARATOR) for i in range(len(column_widths))])                                  + "|\n"
+            msg += "+" +   "+".join([UI_DASH * (width) for width in column_widths])                                                                            + "+\n"
+
+            # Build the table body
+            for row in table:
+                msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, UI_SEPARATOR) + UI_SEPARATOR for i in range(len(column_widths))]) + "|\n"
+
+            # Table footer
+            msg += "+" + "+".join([UI_DASH * width for width in column_widths]) + "+\n"
+
+        # Pause data
+        if total:
+            msg += "\n%s spent paused over %d pauses (All time)" % (self._seconds_to_short_string(lifetime.get('pause', 0)), lifetime.get('total_pauses', 0))
+        if self._is_in_print():
+            msg += "\n%s spent paused over %d pauses (This job)" % (self._seconds_to_short_string(job.get('pause', 0)), job.get('total_pauses', 0))
+        msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (lifetime.get('swaps_since_pause', 0), lifetime.get('swaps_since_pause_record', 0))
+
         return msg
+
+    def _list_intersection(self, list1, list2):
+        result = []
+        for item in list1:
+            if item in list2:
+                result.append(item)
+        return result
 
     def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False):
         if self.log_statistics or force_log:
             msg = ""
-            if job:
-                msg += self._swap_statistics_to_string(total=False)
-            if total:
-                msg += "\n\n" if msg != "" else ""
-                msg += self._swap_statistics_to_string(total=True)
+            if job or total:
+                msg += self._swap_statistics_to_string(total=total)
             if self._can_use_encoder() and gate:
                 m,d = self._gate_statistics_to_string()
                 msg += "\n\n" if msg != "" else ""
@@ -1338,7 +1520,7 @@ class Mmu:
                     msg += "\n" if msg != "" else ""
                     msg += d
             self._log_always(msg)
-
+    
         # This is good place to update the persisted stats...
         self._persist_swap_statistics()
         self._persist_gate_statistics()
@@ -1346,6 +1528,7 @@ class Mmu:
     def _gate_statistics_to_string(self):
         msg = "Gate Statistics:\n"
         dbg = ""
+        t = self.console_gate_stat
         for gate in range(self.mmu_num_gates):
             #rounded = {k:round(v,1) if isinstance(v,float) else v for k,v in self.gate_statistics[gate].items()}
             rounded = self.gate_statistics[gate]
@@ -1353,22 +1536,24 @@ class Mmu:
             unload_slip_percent = (rounded['unload_delta'] / rounded['unload_distance']) * 100 if rounded['unload_distance'] != 0. else 0.
             quality = rounded['quality']
             # Give the gate a reliability grading based on "quality" which is based on slippage
-            if quality < 0:
-                status = "n/a"
+            if t == 'percentage':
+                status = '%s%%' % min(100, round(quality * 100, 1)) if quality >= 0 else "n/a"
+            elif quality < 0:
+                status = UI_EMOTICONS[0] if t == 'emoticon' else "n/a"
             elif quality >= 0.985:
-                status = "Perfect"
+                status = UI_EMOTICONS[1] if t == 'emoticon' else "Perfect"
             elif quality >= 0.965:
-                status = "Great"
+                status = UI_EMOTICONS[2] if t == 'emoticon' else "Great"
             elif quality >= 0.95:
-                status = "Good"
+                status = UI_EMOTICONS[3] if t == 'emoticon' else "Good"
             elif quality >= 0.925:
-                status = "Marginal"
+                status = UI_EMOTICONS[4] if t == 'emoticon' else "Marginal"
             elif quality >= 0.90:
-                status = "Degraded"
+                status = UI_EMOTICONS[5] if t == 'emoticon' else "Degraded"
             elif quality >= 0.85:
-                status = "Poor"
+                status = UI_EMOTICONS[6] if t == 'emoticon' else "Poor"
             else:
-                status = "Terrible"
+                status = UI_EMOTICONS[7] if t == 'emoticon' else "Terrible"
             msg += "#%d: %s" % (gate, status)
             msg += ", " if gate < (self.mmu_num_gates - 1) else ""
             dbg += "\nGate %d: " % gate
@@ -1386,9 +1571,9 @@ class Mmu:
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, self.encoder_sensor.get_clog_detection_length()))
 
     def _persist_swap_statistics(self):
-        self.statistics['time_spent_loading'] = round(self.statistics['time_spent_loading'], 2)
-        self.statistics['time_spent_unloading'] = round(self.statistics['time_spent_unloading'], 2)
-        self.statistics['time_spent_paused'] = round(self.statistics['time_spent_paused'], 2)
+        for key in self.statistics:
+            if isinstance(self.statistics[key], float):
+                self.statistics[key] = round(self.statistics[key], 2)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SWAP_STATISTICS, self.statistics))
 
     def _persist_gate_map(self):
@@ -1422,21 +1607,21 @@ class Mmu:
             self.gcode.respond_info(message)
 
     def _log_debug(self, message):
-        message = "- DEBUG: %s" % message
+        message = "%s DEBUG: %s" % (UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 1:
             self.mmu_logger.info(message)
         if self.log_level > 1:
             self.gcode.respond_info(message)
 
     def _log_trace(self, message):
-        message = "- - TRACE: %s" % message
+        message = "%s %s TRACE: %s" % (UI_SEPARATOR, UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 2:
             self.mmu_logger.info(message)
         if self.log_level > 2:
             self.gcode.respond_info(message)
 
     def _log_stepper(self, message):
-        message = "- - - STEPPER: %s" % message
+        message = "%s %s %s STEPPER: %s" % (UI_SEPARATOR, UI_SEPARATOR, UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 3:
             self.mmu_logger.info(message)
         if self.log_level > 3:
@@ -1460,7 +1645,7 @@ class Mmu:
         past  = lambda pos: arrow if self.filament_pos >= pos else space
         homed = lambda pos, sensor: (' ',arrow,sensor) if self.filament_pos > pos else (home,space,sensor) if self.filament_pos == pos else (' ',space,sensor)
         trig  = lambda name, sensor: re.sub(r'[a-zA-Z]', '*', name) if self._check_sensor(sensor) else name
-    
+
         t_str   = ("[T%s] " % str(self.tool_selected)) if self.tool_selected >= 0 else "BYPASS " if self.tool_selected == self.TOOL_GATE_BYPASS else "[T?] "
         g_str   = "{}".format(past(self.FILAMENT_POS_UNLOADED))
         gs_str  = "{0}{2} {1}{1}".format(*homed(self.FILAMENT_POS_HOMED_GATE, trig(gs, self.ENDSTOP_GATE))) if self._has_sensor(self.ENDSTOP_GATE) else ""
@@ -1473,7 +1658,7 @@ class Mmu:
         nz_str  = "{} Nz]".format(past(self.FILAMENT_POS_LOADED))
         summary = " LOADED" if self.filament_pos == self.FILAMENT_POS_LOADED else " UNLOADED" if self.filament_pos == self.FILAMENT_POS_UNLOADED else " UNKNOWN" if self.filament_pos == self.FILAMENT_POS_UNKNOWN else ""
         counter = " %.1fmm%s" % (self.mmu_toolhead.get_position()[1], " (e:%.1fmm)" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
-    
+
         visual = "".join((t_str, g_str, gs_str, en_str, bowden1, bowden2, es_str, ex_str, ts_str, nz_str, summary, counter))
         return visual
 
@@ -1599,7 +1784,7 @@ class Mmu:
         msg += "\n\n%s" % self._state_to_string()
 
         if detail:
-            msg += "\n\n%s" % self._ttg_map_to_string(title="EndlessSpool Groups")
+            msg += "\n\n%s" % self._ttg_map_to_string(title="TTG Map & EndlessSpool Groups")
             msg += "\n\n%s" % self._gate_map_to_string()
 
         self._log_always(msg)
@@ -2370,7 +2555,7 @@ class Mmu:
         self.sync_feedback_operational = True
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
         self._update_sync_multiplier()
-        
+
     def _disable_sync_feedback(self):
         if not self.sync_feedback_operational: return
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
@@ -2560,7 +2745,7 @@ class Mmu:
                 self.reason_for_pause = reason
                 self._display_mmu_error()
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
-                self._log_trace("Saved desired extruder temperature: %.1f\u00B0C" % self.paused_extruder_temp)
+                self._log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
                 self._track_pause_start()
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
@@ -2710,7 +2895,7 @@ class Mmu:
                 mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
-              
+
             if self.restore_toolhead_xy_position:
                 # Restore pre-pause position and state
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
@@ -3007,9 +3192,9 @@ class Mmu:
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
                 # We use error channel to aviod heating surprise. This will also cause popup in Klipperscreen
-                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
+                self._log_error("Warning: Automatically heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             else:
-                self._log_info("Heating extruder to %s temp (%.1f\u00B0C)" % (source, new_target_temp))
+                self._log_info("Heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             wait = True # Always wait to warm up
 
         if new_target_temp > 0:
@@ -3018,7 +3203,7 @@ class Mmu:
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 2:
                 with self._wrap_action(self.ACTION_HEATING):
-                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f\u00B0C" % (source, new_target_temp))
+                    self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
 
     def _selected_tool_string(self):
@@ -3853,7 +4038,7 @@ class Mmu:
                     length = self.calibrated_bowden_length
                     self._log_info("Restricting load length to extruder calibration reference of %.1fmm" % length)
                 full = True
-                self._track_load_start()
+                self._track_time_start('load')
                 home = self._must_home_to_extruder()
             else:
                 skip_extruder = True
@@ -3901,7 +4086,7 @@ class Mmu:
             raise MmuError("Load sequence failed: %s" % (str(ee)))
         finally:
             if full:
-                self._track_load_end()
+                self._track_time_end('load')
             if not extruder_only:
                 self._set_action(current_action)
             if not self._is_printing():
@@ -3927,7 +4112,7 @@ class Mmu:
             self._log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
-                self._track_unload_start()
+                self._track_time_start('unload')
                 self._display_visual_state()
 
             park_pos = 0.
@@ -4012,7 +4197,7 @@ class Mmu:
 
         finally:
             if not extruder_only:
-                self._track_unload_end()
+                self._track_time_end('unload')
                 self._set_action(current_action)
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
@@ -4228,7 +4413,7 @@ class Mmu:
                     self._log_info("Selector is blocked by inside filament, trying to recover...")
                     msg = "Resetting selector by a distance of: %.1fmm" % -travel
                     self._trace_selector_move(msg, init_pos) # Realign selector
-    
+
                     # See if we can detect filament in the encoder
                     found = self._check_filament_at_gate()
                     if not found:
@@ -4236,14 +4421,14 @@ class Mmu:
                         _,_,measured,delta = self._trace_filament_move("Trying to re-enguage encoder", 45.)
                         if measured < self.encoder_min:
                             raise MmuError("Selector recovery failed. Path is probably internally blocked and unable to move filament to clear")
-    
+
                     # Now try a full unload sequence
                     try:
                         self._unload_sequence(check_state=True)
                     except MmuError as ee:
                         # Add some more context to the error and re-raise
                         raise MmuError("Selector recovery failed because: %s" % (str(ee)))
-    
+
                     # Ok, now check if selector can now reach proper target
                     self._home_selector()
                     successful, halt_pos = self._attempt_selector_touch_move(target)
@@ -4330,6 +4515,7 @@ class Mmu:
         pos = self.mmu_toolhead.get_position()
         pos[0] = new_pos
         self.mmu_toolhead.set_position(pos, homing_axes=(0,))
+        self.is_homed = True
         stepper_enable = self.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
         se.motor_enable(self.mmu_toolhead.get_last_move_time())
@@ -4808,8 +4994,10 @@ class Mmu:
                 gate = self._remap_tool(tool, next_gate)
             else:
                 raise MmuError("Gate %d is empty! Use 'MMU_CHECK_GATE GATE=%d' to reset" % (gate, gate))
-
+        
+        self._track_time_start('pre_load')
         self._wrap_gcode_command(self.pre_load_macro, exception=True)
+        self._track_time_end('pre_load')
 
         self._select_tool(tool, move_servo=False)
         self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
@@ -4817,7 +5005,9 @@ class Mmu:
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
+        self._track_time_start('post_load')
         self._wrap_gcode_command(self.post_load_macro, exception=True)
+        self._track_time_end('post_load') 
 
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
@@ -4826,17 +5016,22 @@ class Mmu:
             return
 
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
+        self._track_time_start('pre_unload')
         self._wrap_gcode_command(self.pre_unload_macro, exception=True)
+        self._track_time_end('pre_unload')
 
         self._record_tool_override() # Remember M220 and M221 overrides
         self._unload_sequence(skip_tip=skip_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
 
+        self._track_time_start('post_unload')
         self._wrap_gcode_command(self.post_unload_macro, exception=True)
+        self._track_time_end('post_unload')
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True):
         self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
+        self._track_time_start('total')
         skip_unload = False
         initial_tool_string = self._selected_tool_string()
         if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
@@ -4878,6 +5073,8 @@ class Mmu:
 
         self._select_and_load_tool(tool)
         self._track_swap_completed()
+        
+        self._track_time_end('total')
 
         self.gcode.run_script_from_command("M117 T%s" % tool)
         return True
@@ -4934,6 +5131,10 @@ class Mmu:
         self.gate_selected = gate
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
         self._set_gate_ratio(self._get_gate_ratio(gate) if gate >= 0 else 1.)
+        if gate >= 0:
+            self.active_filament = {'material': self.gate_material[gate], 'color': self.gate_color[gate], 'spool_id': self.gate_spool_id[gate]}
+        else:
+            self.active_filament = {}
 
     def _set_tool_selected(self, tool):
         self.tool_selected = tool
@@ -4986,7 +5187,6 @@ class Mmu:
                 webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids)
             except Exception as e:
                 self._log_error("Error while retrieving spoolman info: %s" % str(e))
-
 
 ### CORE GCODE COMMANDS ##########################################################
 
@@ -5058,6 +5258,7 @@ class Mmu:
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(): return
+        self.last_statistics = {}
         self._fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
@@ -5099,7 +5300,7 @@ class Mmu:
                         self._recover_filament_pos()
             finally:
                 self._next_tool = self.TOOL_GATE_UNKNOWN
-    
+
         # If actively printing then we must restore toolhead position, if paused, mmu_resume will do this
         if self._is_printing():
             try:
@@ -5135,6 +5336,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         if self._check_is_calibrated(): return
+        self.last_statistics = {}
         self._fix_started_state()
 
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
@@ -5525,6 +5727,9 @@ class Mmu:
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
+        self.console_gate_stat = gcmd.get('CONSOLE_GATE_STAT', self.console_gate_stat)
+        if self.console_gate_stat not in self.GATE_STATS_TYPES:
+            raise gcmd.error("console_gate_stat is invalid. Options are: %s" % self.GATE_STATS_TYPES)
         self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.slicer_tip_park_pos, minval=0.)
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
@@ -5635,6 +5840,7 @@ class Mmu:
         if self.mmu_logger:
             msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
+        msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
@@ -5736,7 +5942,7 @@ class Mmu:
         elif gate_status == self.GATE_AVAILABLE:
             return "S" if show_source else "*"
         elif gate_status == self.GATE_EMPTY:
-            return ("." if no_space else " ")
+            return (UI_SEPARATOR if no_space else " ")
         else:
             return "?"
 
@@ -5749,23 +5955,25 @@ class Mmu:
                 gate = self.ttg_map[i]
                 filament_char = self._get_filament_char(self.gate_status[gate], show_source=False)
                 msg += "\n" if i and tool is None else ""
-        
+
                 if self.enable_endless_spool and show_groups:
-                    msg += "T%d " % i
+                    msg += "T{:<2}".format(i)
                 else:
-                    msg += "T%d-> Gate %d(%s)" % (i, gate, filament_char)
+                    msg += "T{:<2}-> Gate{:>2}({})".format(i, gate, filament_char)
 
                 if self.enable_endless_spool:
                     group = self.endless_spool_groups[gate]
+                    es = ""
                     if show_groups:
-                        es = " in EndlessSpool Group %s: " % chr(ord('A') + group)
+                        msg += " in EndlessSpool Group %s :" % chr(ord('A') + group)
                         gates_in_group = [(j + gate) % num_tools for j in range(num_tools)]
                     else:
-                        es = " "
+                        es = " >"
                         gates_in_group = [(j + gate + 1) % num_tools for j in range(num_tools - 1)]
 
-                    es += " > ".join("%d(%s)" % (g, self._get_filament_char(self.gate_status[g], show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
-                    msg += es
+                    gs = " >".join("{:>2}({})".format(g, self._get_filament_char(self.gate_status[g], show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
+                    if gs:
+                        msg += (es + gs)
 
                 if i == self.tool_selected:
                     msg += " [SELECTED]"
@@ -5779,7 +5987,7 @@ class Mmu:
             for g in gate_indices:
                 tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
                 multi_tool |= len(tool_str) > 2
-                tool_strings.append(("|%s " % (tool_str if tool_str else " . "))[:4])
+                tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
             msg_tools = "Tools: " + "".join(tool_strings) + "|"
             #msg_tools += " Some gates support multiple tools!" if multi_tool else ""
             select_strings = ["|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----" for g in gate_indices]
@@ -5833,7 +6041,7 @@ class Mmu:
 
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
-        self.ttg_map = self.default_ttg_map
+        self.ttg_map = list(self.default_ttg_map)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
         self._unselect_tool()
 
@@ -5903,7 +6111,7 @@ class Mmu:
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
         except MmuError as ee:
             self._mmu_pause(str(ee))
-        
+
     # This callback is not protected by klipper "is printing" check so be careful
     cmd_MMU_GATE_INSERT_help = "Internal MMU filament detection handler"
     def cmd_MMU_GATE_INSERT(self, gcmd):
@@ -6111,12 +6319,13 @@ class Mmu:
         display = bool(gcmd.get_int('DISPLAY', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
         purge_volumes = gcmd.get('PURGE_VOLUMES', "")
-        initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
+
         quiet = False
         if reset:
             self._clear_slicer_tool_map()
@@ -6146,7 +6355,7 @@ class Mmu:
                         raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expect 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n))
                     self.slicer_tool_map['purge_volumes'] = [
                         [
-                            calc(x,y) if x != y else 0.
+                            calc(x,y) if x != y else 0
                                 for y in range(num_tools)
                         ]
                         for x in range(num_tools)
@@ -6154,22 +6363,28 @@ class Mmu:
             except ValueError as e:
                 raise gcmd.error("Error parsing PURGE_VOLUMES: %s" % str(e))
             quiet = True
+
         if display or not quiet:
             colors = len(self.slicer_tool_map['tools'])
+            have_purge_map = len(self.slicer_tool_map['purge_volumes']) > 0
+            msg = "No slicer tool map loaded"
             if colors > 0 or self.slicer_tool_map['initial_tool'] is not None:
                 msg = "--------- Slicer MMU Tool Summary ---------\n"
                 msg += "Single color print" if colors <= 1 else "%d color print" % colors
-                msg += " (Purge volume map loaded)\n" if colors > 1 and len(self.slicer_tool_map['purge_volumes']) > 0 else "\n"
+                msg += " (Purge volume map loaded)\n" if colors > 1 and have_purge_map else "\n"
                 for t, params in self.slicer_tool_map['tools'].items():
-                    msg += "T%d (Gate %d, %s, %s, %d\u00B0C)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'])
+                    msg += "T%d (Gate %d, %s, %s, %d%sC)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'], UI_DEGREE)
                 if self.slicer_tool_map['initial_tool'] is not None:
                     msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
                 msg += "-------------------------------------------"
-                if detail:
+            if detail:
+                if have_purge_map:
+                    #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
-                    msg += "\n".join([" ".join(map(lambda x: str(round(x)), row)) for row in self.slicer_tool_map['purge_volumes']])
-            else:
-                msg = "No slicer tool map loaded"
+                    msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(self.mmu_num_gates)) + "\n"
+                    msg += '\n'.join(["T{: <2}{}{}".format(i, UI_SEPARATOR, ' '.join(map(lambda x: str(round(x)).rjust(4, UI_SPACE) if x > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row))) for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
+            elif have_purge_map:
+                msg += "\nDETAIL=1 to see purge volumes"
             self._log_always(msg)
 
     # TODO default to current gate; MMU_CHECK_GATES default to all gates. Add ALL=1 flag
@@ -6236,7 +6451,7 @@ class Mmu:
                         # No parameters means all gates
                         for gate in range(self.mmu_num_gates):
                             gates_tools.append([gate, -1])
-        
+
                     # Force initial eject
                     try:
                         if not filament_pos == self.FILAMENT_POS_UNLOADED:
@@ -6245,7 +6460,7 @@ class Mmu:
                     except MmuError as ee:
                         self._mmu_pause(str(ee))
                         return
-        
+
                     if len(gates_tools) > 1:
                         self._log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
                     for gate, tool in gates_tools:
@@ -6286,7 +6501,7 @@ class Mmu:
                                 self._log_debug("Reason: %s" % str(ee))
                         finally:
                             self.calibrating = False
-        
+
                     # If not printing select original tool and load filament if necessary
                     # We don't do this when printing because this is expected to preceed the loading initial tool
                     if not self._is_printing():
@@ -6301,7 +6516,7 @@ class Mmu:
                                     self._select_tool(tool_selected)
                         except MmuError as ee:
                             self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
-        
+
                     if not quiet:
                         self._log_info(self._ttg_map_to_string(summary=True))
                 finally:

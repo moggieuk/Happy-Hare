@@ -25,7 +25,7 @@ Universal MMU driver for Klipper
 
 Happy Hare (v2) is the second edition of what started life and as [alternative software control](https://github.com/moggieuk/ERCF-Software-V3) for the ERCF v1.1 ecosystem. Now in its second incarnation it has been re-architected to support any type of MMU (ERCF, Tradrack, Prusa) in a consistent manner on the Klipper platform. It is best partnered with [KlipperScreen for Happy Hare](#---klipperscreen-happy-hare-edition) until the Mainsail integration is complete :-)
 
-Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). I'm not doing this for any financial reward but if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
+Also, some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). Although I'm not doing this for any financial reward I have put hundreds of hours into this project and if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable.
 
 Thank you!
 
@@ -68,9 +68,12 @@ Thank you!
 **[Configuation Reference](/doc/configuration.md)** 🆕<br>
 **[Toochange Movement and Slicer Setup](/doc/toolchange_movement.md)** 🆕<br>
 **[Happy Hare Macro Customization](/doc/macro_customization.md)** 🆕<br>
+**[Tip Forming and Purging](/doc/tip_forming_and_purging.md)** 🆕<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)** 🆕<br>
 **[LED Support](/doc/leds.md)**<br>
 **[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
+
+**[Third Party Addons](/config/addons/README.md)** 🆕<br>
 
 <br>
  
@@ -120,21 +123,27 @@ cd Happy-Hare
 The `-i` option will bring up an interactive installer to aid setting some confusing parameters. For popular external mcu boards it will also configure all the pins for you. If not run with the `-i` flag it defaults to update current installation which is sometimes necessary on significant version updates (see [here](doc/update.md)). Note that if existing install it found it will never be overwritten, it will be moved to numbered backups with a `<file>.<date>` extension and read for current configuration defaults. If you still choose not to install the new `mmu*.cfg` files automatically you can copy the templates an fill in all the tokens and blanks by hand. Frankly it is easier to run through an initial install and use the generated config files as a starting point.
 <br>
 
-Note that the installer will look for Klipper install and config in standard locations. If you have customized locations or multiple Klipper instances on the same rpi, or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively.
+Note that the installer will look for Klipper install and config in standard locations. If you have customized locations or multiple Klipper instances on the same rpi, or the installer fails to find Klipper you can use the `-k` and `-c` flags to override the klipper home directory and klipper config directory respectively. Also, if installing on Repetier-Servo add the `-r` option. E.g.
+```
+./install.sh -k /opt/klipper/LK5_Pro_ERCF -c /var/lib/Repetier-Server/database/klipper -m /opt/klipper/LK5_Pro_ERCF/moonraker -r LK5_Pro_ERCF -i
+```
 <br>
 
 > [!IMPORTANT]  
-> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_software.cfg` & `mmu_parameters.cfg` (and other base config files) must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the recommended way to achieve this is simply with `[include mmu/base/*.cfg]`). `client_macros.cfg` should also explicitly be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these optional config files for you.
+> `mmu.cfg`, `mmu_hardware.cfg`, `mmu_macro_vars.cfg` & `mmu_parameters.cfg` (and other base config files) must all be referenced by your `printer.cfg` master config file with `mmu.cfg` and `mmu_hardware.cfg` listed first (the recommended way to achieve this is simply with `[include mmu/base/*.cfg]`). `mmu/optional/client_macros.cfg` should also explicitly be referenced if you don't already have working PAUSE / RESUME / CANCEL_PRINT macros (but be sure to read the section before on macro expectations and review the default macros). The install script can also include these optional config files for you.
 <br>
 
 > [!TIP]  
 > If you are concerned about running `install.sh -i` then run like this: `install.sh -i -c /tmp -k /tmp` This will build the `*.cfg` files for you but put then in /tmp. You can then read them, pull out the bits your want to augment existing install or simply see what the answers to the various questions will do...
 
 ```
-Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-i] [-u]
-     -i for interactive or install install
-     -u for uninstall
-(no flags for safe refresh / upgrade)
+Usage: ./install.sh [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]
+
+-i for interactive install
+-d for uninstall
+-z skip github check (nullifies -b <branch>)
+-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names
+(no flags for safe re-install / upgrade)
 ```
 
 > [!WARNING]  
@@ -224,7 +233,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.is_homed : {bool} True if MMU has been homed
     printer.mmu.tool : {int} 0..n | -1 for unknown | -2 for bypass
     printer.mmu.gate : {int} 0..n | -1 for unknown
-    printer.mmu.material : {string} material type for current gate (useful for print_start macro)
+    printer.mmu.active_filament : {dict} of active filament attributes (from gate_map, e.g. active_filament.material, active_filament.color)
     printer.mmu.next_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change)
     printer.mmu.last_tool : {int} 0..n | -1 for unknown | -2 for bypass (during a tool change after unload)
     printer.mmu.last_toolchange : {string} description of last change similar to M117 display
@@ -240,7 +249,7 @@ Happy Hare exposes a large array of 'printer' variables that are useful in your 
     printer.mmu.gate_color_rgb : {list} of color rbg values from 0.0 - 1.0 in truples (red, green blue), one per gate
     printer.mmu.gate_spool_id : {list} of IDs for Spoolman, one per gate
     printer.mmu.custom_color_rgb : {list} of color rbg values from 0.0 - 1.0 in truples (red, green blue), one per gate
-    printer.mmu.slicer_tool_map : {map} of slicer defined tool attributes (in form slicer_tool_map.tools.x.[color|material|temp])
+    printer.mmu.slicer_tool_map : {dict} of slicer defined tool attributes (in form slicer_tool_map.tools.x.[color|material|temp])
     printer.mmu.endless_spool_groups : {list} membership group (int) for each tool
     printer.mmu.tool_extrusion_multipliers : {list} current M221 extrusion multipliers (float), one per tool
     printer.mmu.tool_speed_multipliers : {list} current M220 extrusion multipliers (float), one per tool
@@ -977,16 +986,16 @@ Happy Hare keeps track of the current print state in a similar way to the klippe
 
 ```mermaid
 stateDiagram-v2
-    initialized --> started: <i>(print_start)</i>
+    initialized --> started: (print_start)
     note left of initialized: reset
-    standby --> started: <i>(print_start)</i>
+    standby --> started: (print_start)
     note left of standby: idle_timeout
-    ready --> started: <i>(print_start)</i>
+    ready --> started: (print_start)
     started --> printing
     printing --> complete: (print_complete))
     printing --> error: (print_error)
     printing --> cancelled: CANCEL_PRINT
-    printing --> PAUSE: <center><i>mmu error</i><br>or MMU_PAUSE</center>
+    printing --> PAUSE: mmu error or MMU_PAUSE
     state PAUSE {
         direction LR
         pause_locked --> paused: (MMU_UNLOCK)

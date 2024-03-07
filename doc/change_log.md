@@ -93,8 +93,8 @@ New Features:
 - CUT_TIP macro now has option to control whether movement goes back to wipetower or not after cut
 - Faster pausing on runout
 - Fix for not automatically engaging the sync/servo after fixing error and resuming.
-- New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/toolchange_movement.md) on how to setup your slicer to disable tip forming
-- New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/toolchange_movement.md) on how to setup toolhead movement during toolchange or error
+  - New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/slicer_setup.md) on how to setup your slicer to disable tip forming
+  - New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/toolchange_movement.md) on how to setup toolhead movement during toolchange or error
 - Couple of new states to filament movement.  These are to enable and display of various other sensors such as a gate sensor (option to encoder) and pre-entry extruder sensor.
 - New rendering of filament position in console (and KlipperScreen-HH) showing all sensor options if fitted
 - Imporved use of miscellaneous sensors to detect errors or non-errors
@@ -110,39 +110,66 @@ New Features:
 This release centralizes macro configuration and extends will a lot more pre-packaged options
 - Macro config moved into a unified `mmu_macro_vars.cfg`.
 - Default macros have become read-only with a formal way to add custom extensions
-- New recommended "print_start" and end integration. See https://github.com/moggieuk/Happy-Hare/blob/variables/doc/slicer_setup.md
+- New recommended "print_start" and end integration
+  - See https://github.com/moggieuk/Happy-Hare/blob/main/doc/slicer_setup.md
 - New `MMU_SLICER_TOOLS_MAP` command that is used by the "print_start" and for easy integration of non-wipetower purge options like the excellent "Blobifier"
 E.g.
 ```
 > MMU_SLICER_TOOL_MAP DETAIL=1
 --------- Slicer MMU Tool Summary ---------
 2 color print (Purge volume map loaded)
-T0 (Gate 0, ABS, red, 245°C)
-T2 (Gate 2, ABS+, 00fe05, 240°C)
+T0 (Gate 0, ASA, ff0000, 245°C)
+T1 (Gate 1, ABS+, 00fe02, 240°C)
+T6 (Gate 6, ABS, 0310fe, 240°C)
 Initial Tool: T0
 -------------------------------------------
 Purge Volume Map:
-0 200 200 200 200 200 200 200 200
-200 0 200 200 200 200 200 200 200
-200 200 0 200 200 200 200 200 200
-200 200 200 0 200 200 200 200 200
-200 200 200 200 0 200 200 200 200
-200 200 200 200 200 0 200 200 200
-200 200 200 200 200 200 0 200 200
-200 200 200 200 200 200 200 0 200
-200 200 200 200 200 200 200 200 0
+To -> T0   T1   T2   T3   T4   T5   T6   T7   T8
+T0    -   200  210  210  200  200  200  210  210
+T1   200   -   210  210  200  200  200  210  210
+T2   210  210   -   220  210  210  210  220  220
+T3   210  210  220   -   210  210  210  220  220
+T4   200  200  210  210   -   200  200  210  210
+T5   200  200  210  210  200   -   200  210  210
+T6   200  200  210  210  200  200   -   210  210
+T7   210  210  220  220  210  210  210   -   220
+T8   210  210  220  220  210  210  210  220   -
 ```
+- New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/doc/tip_forming_and_purging.md) on tip forming and purging
 - New printer variables:
    - `printer.mmu.slicer_tool_map.initial_tool`
    - `printer.mmu.slicer_tool_map.tools.<tool_num>.material|color|temp`
    - `printer.mmu.slicer_tool_map.purge_volumes`
    - `printer.mmu.runout` which is true during runout toolchange
-- Z-hop mdofications:
+   - `printer.mmu.active_gate` map of a attributes of current filament (like color, material, temp,..)
+- Z-hop modfications:
    - By default HH will not return to pre-toolchange position (will only restore z-height).
    - New `variable_restore_xy_pos: True|False` to control sequence macros return to starting pos or let the slicer do it. This has benefit when printing without a wipe tower so the print is not contaminated at the point of tool-change
-- New "addons" folder for recommended third-party configs
-   - Includes the "EREC" filament cutter logic for cutting at the MMU
+- New "addons" folder for recommended third-party extensions with ready-to-use configs
+   - Includes @kevinakasam's "EREC" filament cutter logic for cutting at the MMU (ERCF specific)
+   - Includes @dendrowen's excellent "Blobifier" - intelligent purging that doesn't require a wipe tower!! (Any MMU)
 - Enhanced `MMU_SENSORS` command for quick review of all mmu sensors
-- New popup dialog option in Mainsail/KlipperScreen/Fluidd when MMU pauses on error
+- New (optional) popup dialog option in Mainsail/KlipperScreen/Fluidd when MMU pauses on error
 - Two new pre-processing placeholders: !materials! and !purge_volumes!
+- Also, thanks to the Blobifer author, @dendrowen, the "MMU Statistics" has been given some love with new layout and some new customization. For both total stats and current job status. See `console_stat_*` options in `mmu_parameters.cfg`). Note advanced formatting on Python3 only.
+```
+MMU Statistics:
++————————+——————————————————————+——————————————————————+——————————+
+|  171   |      unloading       |       loading        | complete |
+| swaps  | pre |    -    | post | pre |    -    | post |   swap   |
++————————+—————+—————————+——————+—————+—————————+——————+——————————+
+| total  |   - | 1:03:47 |    - |   - | 1:02:09 |    - |        - |
+|  └ avg |   - |    0:22 |    - |   - |    0:21 |    - |        - |
+| print  |   - | 1:03:47 |    - |   - | 1:02:09 |    - |        - |
+|  └ avg |   - |    0:22 |    - |   - |    0:21 |    - |        - |
+|   last |   - |       - |    - |   - |       - |    - |        - |
++————————+—————+—————————+——————+—————+—————————+——————+——————————+
+
+43:56 spent paused over 61 pauses (All time)
+Number of swaps since last incident: 0 (Record: 0)
+
+Gate Statistics:
+#0: 😎, #1: 😎, #2: —, #3: —, #4: —, #5: —, #6: 😎, #7: —, #8: —
+```
+(TODO: need better illustration - from my test system and not realistic!)
 
