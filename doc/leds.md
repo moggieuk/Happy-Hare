@@ -3,9 +3,9 @@ Happy Hare now can drive LEDs (NeoPixel/WS2812) on your MMU to provide both func
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware
 
-<p align=center><img src="led_connection.jpg" alt='LED Connection' width='80%'></p>
+<p align=center><img src="/doc/leds/led_connection.jpg" alt='LED Connection' width='80%'></p>
 
-Typically the first LED would be for gate 0 but the order can be reversed by setting `reverse_gate_order:1` in `mmu_software.cfg`.  The optional N+1 LED is designed to drive an "exit" light.  I.e. an indicator on or near the bowden output from your MMU. You can also add additional LED's after N+1 because they will be ignored by Happy Hare, but if you do, make sure you restrict your effects to that segment of the chain - don't try to control the first N+1 LEDs.
+LED strips can be formed but soldering together individual neopixels or using pre-made strips.  You can also mix the two but if the "RGBW" order is different you must specify `color_order` as a list with the correct spec for each LED.  There is a lot of flexibility in how the LEDs are connected - segments can even be joined in parallel to drive two LED's for the same index number.  The only important concept is that each segment in the strip that represents the MMU gates must be contiguous, but the order is unimportant (see config examples below)
 
 <br>
 
@@ -31,7 +31,7 @@ color_order: GRBW          # Set based on your particular neopixel specification
 ```
 This section may be all commented out, if so and you wish to configure LEDS, uncomment the entire section and ensure that the `MMU_NEOPIXEL` pin is correctly set in the aliases in `mmu.py` and that the `color_order` matches your particular LED (don't mix type or if you do, set to a comma separated list of the type of each led in the chain).  Note that you must also install "Klipper LED Effects" plugin.
 
-The wiring of LED's is very flexible but must be controlled by the same pin.  Happy Hare defined three led segments
+The wiring of LED's is very flexible but must be controlled by the same pin.  Happy Hare defined three led segments: entry, exit and status as described in the config file:
 ```yml
 # MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
 # (Note it is harmless to leave this section - it is inactive until "mmu_leds" is defined by defining above)
@@ -66,7 +66,7 @@ status_index:
 frame_rate: 24
 ```
 Some examples of how to set these values can be seen in this illustration of the ERCFv2 MMU:
-<p align=center><img src="led_configuration.jpg" alt='LED Configuration' width='80%'></p>
+<p align=center><img src="/doc/leds/led_configuration.png" alt='LED Configuration' width='80%'></p>
 
 > [!NOTE]  
 > All the default LED effects are defined in the read-only `mmu_leds.cfg`.  You can create your woen but be careful to note the `[mmu_led_effect]` definition - this is a wrapper around `[led_effect]` that will create the effect on the specified LED range (typically 1-N; N=number of gates) but also duplicate on each LED individually.  This is especially useful on the MMU where you want per-gate effect.
