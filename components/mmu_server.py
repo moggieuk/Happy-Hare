@@ -21,8 +21,9 @@ class MmuServer:
     TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<tool>\d{1,2})"
     METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 
-    COLORS0_REGEX = r"^; extruder_colour =(.*)$" # Wanted for PS/SS
-    COLORS1_REGEX = r"^; filament_colour =(.*)$" # Wanted for Orca slicer (but extruder_colour can exist too!)
+    # COLORS0_REGEX = r"^; extruder_colour =(.*)$" # Wanted for PS/SS
+    # COLORS1_REGEX = r"^; filament_colour =(.*)$" # Wanted for Orca slicer (but extruder_colour can exist too!)
+    COLORS_REGEX = r"^; (?:extruder_colour|filament_colour) = #(.*)"
     METADATA_COLORS = "!colors!"
 
     TEMPS_REGEX = r"^; (nozzle_)?temperature =(.*)$" # Orca Slicer has the 'nozzle_' prefix, others might not
@@ -77,9 +78,13 @@ class MmuServer:
     def _parse_gcode_file(self, file_path):
         slicer_regex = re.compile(self.SLICER_REGEX, re.IGNORECASE)
         tools_regex = re.compile(self.TOOL_DISCOVERY_REGEX, re.IGNORECASE)
-        colors0_regex = re.compile(self.COLORS0_REGEX, re.IGNORECASE)
-        colors1_regex = re.compile(self.COLORS1_REGEX, re.IGNORECASE)
-        color_regexes = [colors0_regex, colors1_regex]
+        # ======== OLD COLOR REGEX CODES ==============================
+        # colors0_regex = re.compile(self.COLORS0_REGEX, re.IGNORECASE)
+        # colors1_regex = re.compile(self.COLORS1_REGEX, re.IGNORECASE)
+        # color_regexes = [colors0_regex, colors1_regex]
+        # ======== NEW COLOR REGEX CODES ==============================
+        colors_regex = re.compile(self.COLORS_REGEX, re.IGNORECASE)
+        # ======== END COLOR REGEX CODES ==============================
         temps_regex = re.compile(self.TEMPS_REGEX, re.IGNORECASE)
         materials_regex = re.compile(self.MATERIALS_REGEX, re.IGNORECASE)
         purge_volumes_regex = re.compile(self.PURGE_VOLUMES_REGEX, re.IGNORECASE)
@@ -116,13 +121,22 @@ class MmuServer:
                     has_colors_placeholder = True
 
                 if not found_colors:
-                    for i, regex in enumerate(color_regexes):
-                        match = regex.match(line)
-                        if match:
-                            colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
-                            colors[i].extend(colors_csv)
-                            found_colors = all(len(c) > 0 for c in colors)
-                            break
+                    # ======== OLD COLOR ENUMERATOR ===============================
+                    # for i, regex in enumerate(color_regexes):
+                        # match = regex.match(line)
+                        # if match:
+                        #     colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
+                        #     colors[i].extend(colors_csv)
+                        #     found_colors = all(len(c) > 0 for c in colors)
+                        #     break
+                    # ======== NEW COLOR REGEX MATCHING ===========================
+                    match = colors_regex.match(line)
+                    # ======== END COLOR REGEX MATCHING ===========================
+                    if match:
+                        colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
+                        colors[i].extend(colors_csv)
+                        found_colors = all(len(c) > 0 for c in colors)
+                        break
 
                 # !temperatures! processing
                 if not has_temps_placeholder and not line.startswith(";") and self.METADATA_TEMPS in line:
