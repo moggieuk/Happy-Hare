@@ -23,7 +23,7 @@ class MmuServer:
 
     # COLORS0_REGEX = r"^; extruder_colour =(.*)$" # Wanted for PS/SS
     # COLORS1_REGEX = r"^; filament_colour =(.*)$" # Wanted for Orca slicer (but extruder_colour can exist too!)
-    COLORS_REGEX = r"^; (?:extruder_colour|filament_colour) = #(.*)"
+    COLORS_REGEX = r"^; (?:extruder_colour|filament_colour) = (#.*;.*)$"
     METADATA_COLORS = "!colors!"
 
     TEMPS_REGEX = r"^; (nozzle_)?temperature =(.*)$" # Orca Slicer has the 'nozzle_' prefix, others might not
@@ -94,7 +94,7 @@ class MmuServer:
         slicer = None
 
         tools_used = set()
-        colors = [[],[]]
+        colors = []
         temps = []
         materials = []
         purge_volumes = []
@@ -134,9 +134,8 @@ class MmuServer:
                     # ======== END COLOR REGEX MATCHING ===========================
                     if match:
                         colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
-                        colors[i].extend(colors_csv)
+                        colors.extend(colors_csv)
                         found_colors = all(len(c) > 0 for c in colors)
-                        break
 
                 # !temperatures! processing
                 if not has_temps_placeholder and not line.startswith(";") and self.METADATA_TEMPS in line:
@@ -171,9 +170,9 @@ class MmuServer:
                         purge_volumes.extend(purge_volumes_csv)
                         found_purge_volumes = True
 
-        fcolors = colors[1] if slicer == "orcaslicer" else colors[0]
+        # fcolors = colors[1] if slicer == "orcaslicer" else colors[0]
 
-        return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder, sorted(tools_used), fcolors, temps, materials, purge_volumes, slicer)
+        return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder, sorted(tools_used), colors, temps, materials, purge_volumes, slicer)
 
     def _inject_placeholders(self, file_path, tools_used, colors, temps, materials, purge_volumes):
         with fileinput.FileInput(file_path, inplace=1) as file:
