@@ -1,4 +1,9 @@
 # Happy Hare - LED ("bling") Support
+- [Wiring](#---wiring)<br>
+- [Hardware Config](#---hardware-config)<br>
+- [Controlling LED Effects](#---controlling-led-effects)<br>
+- [Summary of Default Effects](#---summary-of-default-effects)<br>
+
 Happy Hare now can drive LEDs (NeoPixel/WS2812) on your MMU to provide both functional feedback as well as to add a little bling to your machine.  Typically you would connect a string of neopixels (either descrete components or an LED strip, or combination of both if compatible contollers) to the neopixel output on the MCU that drives your MMU although this can be changed.
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Wiring
@@ -111,7 +116,7 @@ The `custom_color` is not persisted and can be set with the command `MMU_LED GAT
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) LED Effect Meaning
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Summary of Default Effects
 The default effects, which are both functional as well as adding a little color, are summerized here:
 
   | State | LED at each Gate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Filament Exit (E.g. Bowden tube) |
