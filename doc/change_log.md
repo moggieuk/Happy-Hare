@@ -135,7 +135,7 @@ T6   200  200  210  210  200  200   -   210  210
 T7   210  210  220  220  210  210  210   -   220
 T8   210  210  220  220  210  210  210  220   -
 ```
-- New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/doc/tip_forming_and_purging.md) on tip forming and purging
+- New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/tip_forming_and_purging.md) on tip forming and purging
 - New printer variables:
    - `printer.mmu.slicer_tool_map.initial_tool`
    - `printer.mmu.slicer_tool_map.tools.<tool_num>.material|color|temp`
