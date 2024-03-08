@@ -1686,6 +1686,7 @@ usage() {
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
+    echo "-b to switch to specified feature branch (sticky)"
     echo "-z skip github check (nullifies -b <branch>)"
     echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "(no flags for safe re-install / upgrade)"
