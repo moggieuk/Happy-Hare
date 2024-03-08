@@ -15,14 +15,14 @@ Make sure the `Expert Options` of your slicer are enabled and go to the Printer 
 
 Enter the following into your "custom start g-code" box:
 
-<img src="/doc/slicer/start_gcode.png" width="100%" alt="Custom Start G-Code"><br>Your `PRINT_START ...` macro is likely to be different from mine! Here is some cut'n'paste text:
+<img src="/doc/slicer/start_gcode.png" width="100%" alt="Custom Start G-Code"><br>Your `START_PRINT ...` macro is likely to be different from mine! Here is some cut'n'paste text:
 
 ```yml
 MMU_START_SETUP INITIAL_TOOL={initial_tool} REFERENCED_TOOLS=!referenced_tools! TOOL_COLORS=!colors! TOOL_TEMPS=!temperatures! TOOL_MATERIALS=!materials! PURGE_VOLUMES=!purge_volumes!
 MMU_START_CHECK
-; call you existing macro here..
+; Enter YOUR start macro call here
 MMU_START_LOAD_INITIAL_TOOL
-; purge logic here...
+; Optionally add YOUR additional start logic to run just prior to start
 ```
 
 > [!NOTE]  
@@ -77,7 +77,7 @@ If this macro fails, the print will pause but not abort or skip the rest of the 
 > [!TIP]  
 > On failure while in a paused state, you can run this macro by hand to repeat the checks. Simply run `MMU_START_CHECK` without any parameters
 
-#### `3.` PRINT_START...
+#### `3.`START_PRINT...
 This is where you put your normal print start macro passing additional slicer placeholders. This macro doesn't need anything added for MMU support, but note that it should not assume the extruder is loaded with filament. Activities like purging should be separated out and included later.
 
 #### `4. MMU_START_LOAD_INITIAL_TOOL`
@@ -97,11 +97,16 @@ Ensure this is added in your slicer's "custom end g-code" box:
 
 <img src="/doc/slicer/end_gcode.png" width="320" alt="End G-Code">
 
+```yml
+MMU_END
+; Enter YOUR print end macro call here
+```
+
 #### `1. MMU_END`
 This is a macro (defined in `mmu_software.cfg`) that finalizes MMU, can print stats, reset any TTG map and eject filament. It is recommended to run this before your existing print end macro which is likely to disable heaters and turn motors off.
 
-#### `2.` PRINT_END...
-This is where you existing print end macro would be placed
+#### `2.` END_PRINT
+This is where your existing print end macro would be placed
 
 <br>
 
