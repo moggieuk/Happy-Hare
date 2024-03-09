@@ -4792,6 +4792,12 @@ class Mmu:
     # servo: True=move, False=don't mess
     # current: True=optionally reduce, False=restore to current default
     def _sync_gear_to_extruder(self, sync, servo=False, current=False):
+
+        # Safety in case somehow called with bypass selected
+        if self.gate_selected == self.TOOL_GATE_BYPASS:
+            sync = current = False
+            servo = True
+
         prev_sync_state = self.mmu_toolhead.is_gear_synced_to_extruder()
         if servo:
             if sync:

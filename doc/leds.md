@@ -21,6 +21,7 @@ LED strips can be formed but soldering together individual neopixels or using pr
 # MMU OPTIONAL NEOPIXEL LED SUPPORT ------------------------------------------------------------------------------------
 # Define the led connection, type and length
 #
+# (comment out this section if you don't have leds)
 [neopixel mmu_leds]
 pin: mmu:MMU_NEOPIXEL
 chain_count: 17            # Number gates x1 or x2 + 1 (if you want status)
@@ -31,8 +32,6 @@ This section may be all commented out, if so and you wish to configure LEDS, unc
 The wiring of LED's is very flexible but must be controlled by the same pin.  Happy Hare defines three led segments: "entry", "exit" and "status" as described in the config file:
 ```yml
 # MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
-# (Note it is harmless to leave this section - it is inactive until "mmu_leds" is defined by defining above)
-#
 # Define neopixel LEDs for your MMU. The chain_count must be large enough for your desired ranges:
 #   exit   .. this set of LEDs, one for every gate, usually would be mounted at the exit point of the gate
 #   entry  .. this set of LEDs, one for every gate, could be mounted at the entry point of filament into the MMU/buffer
@@ -54,6 +53,7 @@ The wiring of LED's is very flexible but must be controlled by the same pin.  Ha
 # Note that Happy Hare provides a convenience wrapper [mmu_led_effect] that not only creates an effect on each of the
 # [mmu_leds] specified segments but also each individual LED for atomic control. See mmu_leds.cfg for examples
 #
+# (comment out this section if you don't have leds)
 [mmu_leds]
 num_gates:                      # Number of gates on your MMU
 led_strip: neopixel:mmu_leds
