@@ -24,7 +24,7 @@ class MmuServer:
         # Spoolman filament info retrieval functionality and update reporting
         self.server.register_remote_method("spoolman_get_filaments", self.get_filaments)
 
-        self._setup_metadata_processor(config) # Replaces file_manager/metadata with this file
+        self.setup_placeholder_processor(config) # Replaces file_manager/metadata with this file
 
     # Logic to provide spoolman integration.
     # Leverage configuration from Spoolman component
@@ -55,15 +55,15 @@ class MmuServer:
 
         return gate_dict
 
-    def _setup_metadata_processor(self, config):
-        enable_mmu_file_preprocessor = config.getboolean("enable_file_preprocessor", True)
-
+    def setup_placeholder_processor(self, config):
         # Switch out the metadata processor with this module with handles placeholders
+        args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
         from .file_manager import file_manager
-        file_manager.METADATA_SCRIPT = os.path.abspath(__file__)
+        file_manager.METADATA_SCRIPT = os.path.abspath(__file__) + args
 
 def load_component(config):
     return MmuServer(config)
+
 
 
 #
@@ -87,8 +87,6 @@ METADATA_MATERIALS = "!materials!"
 
 PURGE_VOLUMES_REGEX = r"^; (flush_volumes_matrix|wiping_volumes_matrix) =(.*)$" # flush.. in Orca, wiping... in PS
 METADATA_PURGE_VOLUMES = "!purge_volumes!"
-
-enable_mmu_file_preprocessor = False
 
 def parse_gcode_file(file_path):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
@@ -175,7 +173,7 @@ def parse_gcode_file(file_path):
 def inject_placeholders(file_path, tmp_file, tools_used, colors, temps, materials, purge_volumes):
     with open(file_path, 'r') as in_file:
         with open(tmp_file, 'w') as out_file:
-            for line in file:
+            for line in in_file:
                 # Ignore comment lines to preserve slicer metadata comments
                 if not line.startswith(";"):
                     if METADATA_TOOL_DISCOVERY in line:
@@ -240,6 +238,7 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--path", default=os.path.abspath(os.path.dirname(__file__)), metavar='<path>', help="optional absolute path for file")
     parser.add_argument("-u", "--ufp", metavar="<ufp file>", default=None, help="optional path of ufp file to extract")
     parser.add_argument("-o", "--check-objects", dest='check_objects', action='store_true', help="process gcode file for exclude opbject functionality")
+    parser.add_argument("-m", "--placeholders", dest='placeholders', action='store_true', help="process happy hare mmu placeholders")
     args = parser.parse_args()
     check_objects = args.check_objects
     enabled_msg = "enabled" if check_objects else "disabled"
@@ -249,6 +248,6 @@ if __name__ == "__main__":
     metadata.main(args.path, args.filename, args.ufp, check_objects)
 
     # Second parsing for mmu placeholders
-    if enable_mmu_file_preprocessor:
+    if args.placeholders:
         main(args.path, args.filename)
 
