@@ -196,6 +196,7 @@ class Mmu:
     VARS_MMU_GATE_SELECTED          = "mmu_state_gate_selected"
     VARS_MMU_TOOL_SELECTED          = "mmu_state_tool_selected"
     VARS_MMU_FILAMENT_POS           = "mmu_state_filament_pos"
+    VARS_MMU_FILAMENT_REMAINING     = "mmu_state_filament_remaining"
     VARS_MMU_CALIB_BOWDEN_LENGTH    = "mmu_calibration_bowden_length"
     VARS_MMU_CALIB_BOWDEN_HOME      = "mmu_calibration_bowden_home"
     VARS_MMU_CALIB_PREFIX           = "mmu_calibration_"
@@ -254,6 +255,7 @@ class Mmu:
         self.sync_feedback_last_direction = 0 # Extruder not moving
         self.sync_feedback_operational = False
         self.w3c_colors = dict(self.W3C_COLORS)
+        self.filament_remaining = 0.
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
@@ -980,7 +982,6 @@ class Mmu:
         self.servo_state = self.servo_angle = self.SERVO_UNKNOWN_STATE
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.DIRECTION_UNKNOWN
-        self.filament_remaining = 0. # Tracker of filament left in extruder by cutter
         self.action = self.ACTION_IDLE
         self._clear_saved_toolhead_position()
         self._servo_reset_state()
@@ -1044,6 +1045,9 @@ class Mmu:
         self._log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
         errors = []
 
+        # Always load length of filament remaining in extruder (after cut)
+        self.filament_remaining = self.variables.get(self.VARS_MMU_FILAMENT_REMAINING, self.filament_remaining)
+
         if self.persistence_level >= 1:
             # Load EndlessSpool config
             self.enable_endless_spool = self.variables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
@@ -1100,6 +1104,8 @@ class Mmu:
                     self.is_homed = False
             else:
                 errors.append("Incorrect number of gates specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
+
+            # Previous filament position
             if gate_selected != self.TOOL_GATE_UNKNOWN and tool_selected != self.TOOL_GATE_UNKNOWN:
                 self.filament_pos = self.variables.get(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
 
@@ -3027,6 +3033,10 @@ class Mmu:
         self.mmu_toolhead.set_position(pos)
         return position
 
+    def _set_filament_remaining(self, length):
+        self.filament_remaining = length
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_FILAMENT_REMAINING, length))
+
     def _set_filament_pos_state(self, state, silent=False):
         self.filament_pos = state
         if self.gate_selected != self.TOOL_GATE_BYPASS or state == self.FILAMENT_POS_UNLOADED or state == self.FILAMENT_POS_LOADED:
@@ -3888,7 +3898,7 @@ class Mmu:
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
             d = self.toolhead_sensor_to_nozzle if self._has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
             length = max(d - self.filament_remaining - self.toolhead_ooze_reduction, 0)
-            self.filament_remaining = 0.
+            self._set_filament_remaining(0.)
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self._trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
 
@@ -4265,8 +4275,9 @@ class Mmu:
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self._get_encoder_distance()
-            park_pos, self.filament_remaining, reported = self._do_form_tip()
+            park_pos, remaining, reported = self._do_form_tip()
             measured = self._get_encoder_distance(dwell=None) - initial_encoder_position
+            self._set_filament_remaining(remaining)
 
             # Encoder based validation test
             detected = True # Start with assumption that filament was present
