@@ -53,14 +53,24 @@ To set the `SpoolID` use the command like this to set the ID to 5 on gate #0:
 ```yml
 MMU_GATE_MAP GATE=0 SPOOLID=5
 ```
-A `SpoolID` of `-1` can be used to unset the spool ID and other attributes can be set manually as in `MMU_GATE_MAP GATE=0 SPOOLID=-1 COLOR=red MATERIAL=PLA`
+A `SpoolID` of `-1` can be used to unset the spool ID and other attributes can be set manually as in<br>
+`MMU_GATE_MAP GATE=0 SPOOLID=-1 COLOR=red MATERIAL=PLA`
 
 > [!NOTE]  
 > If you see a command similar to this appear on the console during boot, don't worry. It is the startup sync of gate map with spoolman at work. It doesn't always appears because the sync can occur before the console is ready but seeing it occassionaly is confirmation that everything is connected
-> ```yml
-> MMU_GATE_MAP MAP="{0: {'spool_id': 3, 'material': 'TPU', 'color': 'DC6834'}, 1: {'spool_id': 2, 'material': 'PTEG', 'color': 'DCDA34'}, 2: {'spool_id': 1, 'material': 'PLA', 'color': '8CDFAC'}, 3: {'spool_id': 4, 'material': 'ASA', 'color': '95DC34'}, 4: {'spool_id': 5, 'material': 'ABS', 'color': ''}, 5: {'spool_id': 6, 'material': 'ABS', 'color': ''}, 6: {'spool_id': 7, 'material': 'ABS+', 'color': '34DCAD'}}" QUIET=1
-> ```
+> 
+> <img src="/doc/spoolman_support/spoolman_update.png" width="70%">
 
 See the [command reference](/doc/command_reference.md) for a complete list of command arguments.
 
-### TODO
+<br>
+
+### Changing SpoolID on Toolchange
+Once configured Happy Hare will, on a change of tool, let spoolman know (via moonraker) to deactivate the previous spool and activate the new one. You will see this occur in a UI like mainsail:
+
+<img src="/doc/spoolman_support/spoolman_mainsail.png" width="50%">
+
+If you use my enhanced [KlipperScreen-Happy Hare Edition](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) there are also screens to visualize the gate map with spoolman setup as well as to edit the spoolID:
+
+<img src="/doc/spoolman_support/spoolman_ks.png" width="50%">
+
