@@ -2233,7 +2233,7 @@ class Mmu:
 
             # Warn and don't save if the measurement is unexpected
             if traveled > max_movement:
-                self._log_always("Selector move measured %.1fmm. More than the anticipated maximum of %.1fmm. Save disabled" % (traveled, max_movement))
+                self._log_always("Selector move measured %.1fmm. More than the anticipated maximum of %.1fmm. Save disabled\nIt is likely that your basic MMU dimensions are incorrect in mmu_parameters.cfg. Check vendor/version and optional 'cad_*' parameters" % (traveled, max_movement))
                 save = 0
             else:
                 self._log_always("Selector move measured %.1fmm" % traveled)
@@ -4793,8 +4793,8 @@ class Mmu:
     # current: True=optionally reduce, False=restore to current default
     def _sync_gear_to_extruder(self, sync, servo=False, current=False):
 
-        # Safety in case somehow called with bypass selected
-        if self.gate_selected == self.TOOL_GATE_BYPASS:
+        # Safety in case somehow called with bypass/unknown selected
+        if self.gate_selected < 0:
             sync = current = False
             servo = True
 

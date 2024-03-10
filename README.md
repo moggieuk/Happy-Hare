@@ -64,14 +64,14 @@ Also, some folks have asked about making a donation to cover the cost of the all
 **[Command Reference](/doc/command_ref.md)**<br>
 **[Hardware Configuration, Movement and Homing](/doc/hardware_config.md)**<br>
 **[Calibration Guide](/doc/calibration.md)**<br>
-**[Configuation Reference](/doc/configuration.md)** 🆕<br>
+**[Configuation Reference](/doc/configuration.md)**<br>
 **[Toochange Movement and Slicer Setup](/doc/toolchange_movement.md)** 🆕<br>
 **[Happy Hare Macro Customization](/doc/macro_customization.md)** 🆕<br>
 **[Tip Forming and Purging](/doc/tip_forming_and_purging.md)** 🆕<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)** 🆕<br>
 **[LED Support](/doc/leds.md)**<br>
+**[Spoolman Support](/doc/spoolman_support.md)** 🆕<br>
 **[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
-
 **[Third Party Addons](/config/addons/README.md)** 🆕<br>
 
 <br>
@@ -1229,7 +1229,7 @@ This new v2 Happy Hare software is largely rewritten and so, despite best effort
 
 ### My Setup:
 
-<img src="doc/My Voron 2.4 and ERCF.jpg" width="400" alt="My Setup">
+<img src="doc/my_voron_and_ercf.jpg" width="400" alt="My Setup">
 
 ### Some setup notes based on my learnings with different MMUs
 

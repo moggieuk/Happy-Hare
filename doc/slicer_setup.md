@@ -20,18 +20,18 @@ Enter the following into your "custom start g-code" box:
 ```yml
 MMU_START_SETUP INITIAL_TOOL={initial_tool} REFERENCED_TOOLS=!referenced_tools! TOOL_COLORS=!colors! TOOL_TEMPS=!temperatures! TOOL_MATERIALS=!materials! PURGE_VOLUMES=!purge_volumes!
 MMU_START_CHECK
-; Enter YOUR start macro call here
+; Enter YOUR start_print macro call here
 MMU_START_LOAD_INITIAL_TOOL
 ; Optionally add YOUR additional start logic to run just prior to start
 ```
 
 > [!NOTE]  
-> The reason that it is recommended to add these 4 or 5 lines to your slicer is to keep them as separate gcode macros to enable the print to pause in the case of an error.  If you bundle everything into a single print start macro then the first opportunity to pause will be at the end of that, potentially long running, macro!
+> The reason that it is recommended to add these 4-5 lines in your slicer is to keep them as separate gcode macros to enable the print to pause and then continue in the case of an error.  If you bundle everything into a single print start macro then the first opportunity to pause will be at the end of that, potentially long running, macro! (This is particularly accute if using the new klipper pop-up dialogs -- these frustratingly will not be able to be closed until the current macro is complete)
 
 ### Sequence Explained:
 
 #### `1. MMU_START_SETUP`
-This is a macro (defined in `mmu_software.cfg`) that is passed information either through slicer "placeholder" variables delimited by `{}` like `{initial_tool}` or though a similar mechanism implemented by Happy Hare moonraker extension which pre-processes the g-code file when it is uploaded and substitutes placeholders that are useful for MMU printing but, unfortunately, are absent in all popular slicer programs. These placeholders are variables delimied by `!!` like `!referenced_tools!`. Happy Hare's g-code pre-processing is explained in [detail here](/doc/gcode_preprocessing.md)
+This is a macro (defined in `mmu_software.cfg`) that is passed information either through slicer "placeholder" variables delimited by `{}` like `{initial_tool}` or though a similar mechanism implemented by Happy Hare moonraker extension which pre-processes the g-code file when it is uploaded and substitutes placeholders that are useful for MMU printing. Unfortunately, are absent in all popular slicer programs hence the pre-processor extension. These placeholders are variables delimied by `!!` like `!referenced_tools!`. Happy Hare's g-code pre-processing is explained in [detail here](/doc/gcode_preprocessing.md)
 
 This macro initializes the MMU, establishes whether the print is single or multi-color, detects when the intent is to print bypassing the MMU and then stores this infomation in Happy Hare for the duration of the print in the "Slicer Tool Map". This can be accessed in your own macros through the `printer.mmu.slicer_tool_map` printer variable. E.g.
 
