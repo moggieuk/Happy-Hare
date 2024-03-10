@@ -6507,6 +6507,9 @@ class Mmu:
                                     self._select_tool(tool_selected)
                         except MmuError as ee:
                             self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
+                    else:
+                        # At least restore the selected tool, but don't re-load filament
+                        self._select_tool(tool_selected)
 
                     if not quiet:
                         self._log_info(self._ttg_map_to_string(summary=True))
