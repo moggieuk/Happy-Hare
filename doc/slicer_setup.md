@@ -15,23 +15,23 @@ Make sure the `Expert Options` of your slicer are enabled and go to the Printer 
 
 Enter the following into your "custom start g-code" box:
 
-<img src="/doc/slicer/start_gcode.png" width="100%" alt="Custom Start G-Code"><br>Your `PRINT_START ...` macro is likely to be different from mine! Here is some cut'n'paste text:
+<img src="/doc/slicer/start_gcode.png" width="100%" alt="Custom Start G-Code"><br>Your `START_PRINT ...` macro is likely to be different from mine! Here is some cut'n'paste text:
 
 ```yml
 MMU_START_SETUP INITIAL_TOOL={initial_tool} REFERENCED_TOOLS=!referenced_tools! TOOL_COLORS=!colors! TOOL_TEMPS=!temperatures! TOOL_MATERIALS=!materials! PURGE_VOLUMES=!purge_volumes!
 MMU_START_CHECK
-; call you existing macro here..
+; Enter YOUR start_print macro call here
 MMU_START_LOAD_INITIAL_TOOL
-; purge logic here...
+; Optionally add YOUR additional start logic to run just prior to start
 ```
 
 > [!NOTE]  
-> The reason that it is recommended to add these 4 or 5 lines to your slicer is to keep them as separate gcode macros to enable the print to pause in the case of an error.  If you bundle everything into a single print start macro then the first opportunity to pause will be at the end of that, potentially long running, macro!
+> The reason that it is recommended to add these 4-5 lines in your slicer is to keep them as separate gcode macros to enable the print to pause and then continue in the case of an error.  If you bundle everything into a single print start macro then the first opportunity to pause will be at the end of that, potentially long running, macro! (This is particularly accute if using the new klipper pop-up dialogs -- these frustratingly will not be able to be closed until the current macro is complete)
 
 ### Sequence Explained:
 
 #### `1. MMU_START_SETUP`
-This is a macro (defined in `mmu_software.cfg`) that is passed information either through slicer "placeholder" variables delimited by `{}` like `{initial_tool}` or though a similar mechanism implemented by Happy Hare moonraker extension which pre-processes the g-code file when it is uploaded and substitutes placeholders that are useful for MMU printing but, unfortunately, are absent in all popular slicer programs. These placeholders are variables delimied by `!!` like `!referenced_tools!`. Happy Hare's g-code pre-processing is explained in [detail here](/doc/gcode_preprocessing.md)
+This is a macro (defined in `mmu_software.cfg`) that is passed information either through slicer "placeholder" variables delimited by `{}` like `{initial_tool}` or though a similar mechanism implemented by Happy Hare moonraker extension which pre-processes the g-code file when it is uploaded and substitutes placeholders that are useful for MMU printing. Unfortunately, are absent in all popular slicer programs hence the pre-processor extension. These placeholders are variables delimied by `!!` like `!referenced_tools!`. Happy Hare's g-code pre-processing is explained in [detail here](/doc/gcode_preprocessing.md)
 
 This macro initializes the MMU, establishes whether the print is single or multi-color, detects when the intent is to print bypassing the MMU and then stores this infomation in Happy Hare for the duration of the print in the "Slicer Tool Map". This can be accessed in your own macros through the `printer.mmu.slicer_tool_map` printer variable. E.g.
 
@@ -77,7 +77,7 @@ If this macro fails, the print will pause but not abort or skip the rest of the 
 > [!TIP]  
 > On failure while in a paused state, you can run this macro by hand to repeat the checks. Simply run `MMU_START_CHECK` without any parameters
 
-#### `3.` PRINT_START...
+#### `3.`START_PRINT...
 This is where you put your normal print start macro passing additional slicer placeholders. This macro doesn't need anything added for MMU support, but note that it should not assume the extruder is loaded with filament. Activities like purging should be separated out and included later.
 
 #### `4. MMU_START_LOAD_INITIAL_TOOL`
@@ -97,11 +97,16 @@ Ensure this is added in your slicer's "custom end g-code" box:
 
 <img src="/doc/slicer/end_gcode.png" width="320" alt="End G-Code">
 
+```yml
+MMU_END
+; Enter YOUR print end macro call here
+```
+
 #### `1. MMU_END`
 This is a macro (defined in `mmu_software.cfg`) that finalizes MMU, can print stats, reset any TTG map and eject filament. It is recommended to run this before your existing print end macro which is likely to disable heaters and turn motors off.
 
-#### `2.` PRINT_END...
-This is where you existing print end macro would be placed
+#### `2.` END_PRINT
+This is where your existing print end macro would be placed
 
 <br>
 
@@ -146,6 +151,9 @@ variable_dump_stats                         : True      ; True/False, Whether to
 When Happy Hare detects an error, even during print start it will pause the print allowing you to fix and then resume. If the option `show_error_dialog: 1` is set in `mmu_parameters.cfg` a pop-up dialog will be displayed on Mailsail/Fluidd/KlipperScreen providing you options through the UI. If it is occurs during these startup macros there will also be an option to abort the print. The abort option will disappear during the print. To disable the popup, set `show_error_dialog: 0`
 
 <img src="/doc/slicer/error_dialog_during_start.png" width="400" alt="Error Dialog">
+
+> [!IMPORTANT]  
+> If you are writing your own startup macros beware of the earlier note because the use of a popup dialog can make it seem as though your printer is locked up for long running macros
 
 <br>
 

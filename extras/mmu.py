@@ -2246,7 +2246,7 @@ class Mmu:
 
             # Warn and don't save if the measurement is unexpected
             if traveled > max_movement:
-                self._log_always("Selector move measured %.1fmm. More than the anticipated maximum of %.1fmm. Save disabled" % (traveled, max_movement))
+                self._log_always("Selector move measured %.1fmm. More than the anticipated maximum of %.1fmm. Save disabled\nIt is likely that your basic MMU dimensions are incorrect in mmu_parameters.cfg. Check vendor/version and optional 'cad_*' parameters" % (traveled, max_movement))
                 save = 0
             else:
                 self._log_always("Selector move measured %.1fmm" % traveled)
@@ -4807,6 +4807,12 @@ class Mmu:
     # servo: True=move, False=don't mess
     # current: True=optionally reduce, False=restore to current default
     def _sync_gear_to_extruder(self, sync, servo=False, current=False):
+
+        # Safety in case somehow called with bypass/unknown selected
+        if self.gate_selected < 0:
+            sync = current = False
+            servo = True
+
         prev_sync_state = self.mmu_toolhead.is_gear_synced_to_extruder()
         if servo:
             if sync:
@@ -5854,6 +5860,8 @@ class Mmu:
 ###########################################
 
     def _runout(self, force_runout=False):
+        self.is_handling_runout = force_runout # Best starting assumption
+
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
@@ -5862,7 +5870,7 @@ class Mmu:
 
         self._log_info("Issue on tool T%d" % self.tool_selected)
         self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
-        self._wrap_gcode_command("PAUSE", exception=True) # Should be after toolhead position is saved
+        # PAUL self._wrap_gcode_command("PAUSE", exception=True) # Should be after toolhead position is saved
 
         # Check for clog by looking for filament at the gate (or in the encoder)
         if not force_runout:
@@ -5870,6 +5878,7 @@ class Mmu:
             if self._check_filament_at_gate():
                 if self._has_encoder():
                     self.encoder_sensor.update_clog_detection_length()
+                self.is_handling_runout = False
                 raise MmuError("A clog has been detected and requires manual intervention")
 
         # We have a filament runout
@@ -5893,7 +5902,7 @@ class Mmu:
                 raise MmuError("EndlessSpool mode is off - manual intervention is required")
 
         self._check_runout() # Can throw MmuError
-        self._wrap_gcode_command("RESUME", exception=True)
+        # PAUL self._wrap_gcode_command("RESUME", exception=True)
         self._continue_printing("endless_spool") # Continue printing...
 
     def _get_next_endless_spool_gate(self, tool, gate):
@@ -6516,6 +6525,9 @@ class Mmu:
                                     self._select_tool(tool_selected)
                         except MmuError as ee:
                             self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
+                    else:
+                        # At least restore the selected tool, but don't re-load filament
+                        self._select_tool(tool_selected)
 
                     if not quiet:
                         self._log_info(self._ttg_map_to_string(summary=True))

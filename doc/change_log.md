@@ -135,7 +135,7 @@ T6   200  200  210  210  200  200   -   210  210
 T7   210  210  220  220  210  210  210   -   220
 T8   210  210  220  220  210  210  210  220   -
 ```
-- New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/doc/tip_forming_and_purging.md) on tip forming and purging
+- New [doc](https://github.com/moggieuk/Happy-Hare/blob/main/doc/tip_forming_and_purging.md) on tip forming and purging
 - New printer variables:
    - `printer.mmu.slicer_tool_map.initial_tool`
    - `printer.mmu.slicer_tool_map.tools.<tool_num>.material|color|temp`
@@ -165,11 +165,10 @@ MMU Statistics:
 |   last |   - |       - |    - |   - |       - |    - |        - |
 +————————+—————+—————————+——————+—————+—————————+——————+——————————+
 
-43:56 spent paused over 61 pauses (All time)
-Number of swaps since last incident: 0 (Record: 0)
+3:27:49 spent paused over 7 pauses (All time)
+0:00 spent paused over 0 pauses (This job)
+Number of swaps since last incident: 560 (Record: 560)
 
 Gate Statistics:
 #0: 😎, #1: 😎, #2: —, #3: —, #4: —, #5: —, #6: 😎, #7: —, #8: —
 ```
-(TODO: need better illustration - from my test system and not realistic!)
-

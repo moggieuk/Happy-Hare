@@ -1077,7 +1077,21 @@ install_printer_includes() {
                     sed -i "1i ${i}" ${dest}
                 fi
             fi
-            for i in '\[include mmu/addons/\*.cfg\]' '\[include mmu/base/\*.cfg\]' ; do
+            if [ ${ADDONS_EREC} -eq 1 ]; then
+                i='\[include mmu/addons/mmu_erec_cutter.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
+            if [ ${ADDONS_BLOBIFIER} -eq 1 ]; then
+                i='\[include mmu/addons/blobifier.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
+            for i in '\[include mmu/base/\*.cfg\]' ; do
                 already_included=$(grep -c "${i}" ${dest} || true)
                 if [ "${already_included}" -eq 0 ]; then
                     sed -i "1i ${i}" ${dest}
@@ -1602,6 +1616,30 @@ questionaire() {
                     CLIENT_MACROS=0
                     ;;
             esac
+
+            echo -e "${PROMPT}    Addons: Would you like to include the EREC filament cutter macro (requires EREC servo installation)${INPUT}"
+            yn=$(prompt_yn "    Include mmu_erec_cutter.cfg")
+            echo
+            case $yn in
+                y)
+                    ADDONS_EREC=1
+                    ;;
+                n)
+                    ADDONS_EREC=0
+                    ;;
+            esac
+
+            echo -e "${PROMPT}    Addons: Would you like to include the Blobifier purge system (requires Blobifier servo installation)${INPUT}"
+            yn=$(prompt_yn "    Include blobifier.cfg")
+            echo
+            case $yn in
+                y)
+                    ADDONS_BLOBIFIER=1
+                    ;;
+                n)
+                    ADDONS_BLOBIFIER=0
+                    ;;
+            esac
 	    ;;
         n)
             INSTALL_PRINTER_INCLUDES=0
@@ -1648,6 +1686,7 @@ usage() {
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
+    echo "-b to switch to specified feature branch (sticky)"
     echo "-z skip github check (nullifies -b <branch>)"
     echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "(no flags for safe re-install / upgrade)"
