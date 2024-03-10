@@ -152,6 +152,9 @@ When Happy Hare detects an error, even during print start it will pause the prin
 
 <img src="/doc/slicer/error_dialog_during_start.png" width="400" alt="Error Dialog">
 
+> [!IMPORTANT]  
+> If you are writing your own startup macros beware of the earlier note because the use of a popup dialog can make it seem as though your printer is locked up for long running macros
+
 <br>
 
 ### More slicer setup help:
