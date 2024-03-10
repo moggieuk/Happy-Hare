@@ -53,15 +53,14 @@ To set the `SpoolID` use the command like this to set the ID to 5 on gate #0:
 ```yml
 MMU_GATE_MAP GATE=0 SPOOLID=5
 ```
-A `SpoolID` of `-1` can be used to unset the spool ID and other attributes can be set manually as in<br>
-`MMU_GATE_MAP GATE=0 SPOOLID=-1 COLOR=red MATERIAL=PLA`
+A `SpoolID` of `-1` can be used to unset the spool ID and other attributes can be set manually as in `MMU_GATE_MAP GATE=0 SPOOLID=-1 COLOR=red MATERIAL=PLA`
+
+See the [command reference](/doc/command_reference.md) for a complete list of command arguments.
 
 > [!NOTE]  
 > If you see a command similar to this appear on the console during boot, don't worry. It is the startup sync of gate map with spoolman at work. It doesn't always appears because the sync can occur before the console is ready but seeing it occassionaly is confirmation that everything is connected
 > 
 > <img src="/doc/spoolman_support/spoolman_update.png" width="70%">
-
-See the [command reference](/doc/command_reference.md) for a complete list of command arguments.
 
 <br>
 
