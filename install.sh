@@ -1682,8 +1682,9 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]"
+    echo "Usage: $0 [-a <kiauh-alternate-klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]"
     echo
+    echo "-a to specify alternative klipper-service-name when installed with Kiauh."
     echo "-i for interactive install"
     echo "-d for uninstall"
     echo "-b to switch to specified feature branch (sticky)"
@@ -1707,8 +1708,9 @@ INSTALL_KLIPPER_SCREEN_ONLY=0
 PRINTER_CONFIG=printer.cfg
 KLIPPER_SERVICE=klipper.service
 
-while getopts "b:k:c:m:r:idsz" arg; do
+while getopts "a:b:k:c:m:r:idsz" arg; do
     case $arg in
+        a) KLIPPER_SERVICE=${OPTARG}.service;;
         b) N_BRANCH=${OPTARG};;
         k) KLIPPER_HOME=${OPTARG};;
         m) MOONRAKER_HOME=${OPTARG};;
