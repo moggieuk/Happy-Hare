@@ -195,7 +195,9 @@ class Mmu:
     VARS_MMU_GATE_SPEED_OVERRIDE    = "mmu_state_gate_speed_override"
     VARS_MMU_GATE_SELECTED          = "mmu_state_gate_selected"
     VARS_MMU_TOOL_SELECTED          = "mmu_state_tool_selected"
+    VARS_MMU_LAST_TOOL              = "mmu_state_last_tool"
     VARS_MMU_FILAMENT_POS           = "mmu_state_filament_pos"
+    VARS_MMU_FILAMENT_REMAINING     = "mmu_state_filament_remaining"
     VARS_MMU_CALIB_BOWDEN_LENGTH    = "mmu_calibration_bowden_length"
     VARS_MMU_CALIB_BOWDEN_HOME      = "mmu_calibration_bowden_home"
     VARS_MMU_CALIB_PREFIX           = "mmu_calibration_"
@@ -254,6 +256,8 @@ class Mmu:
         self.sync_feedback_last_direction = 0 # Extruder not moving
         self.sync_feedback_operational = False
         self.w3c_colors = dict(self.W3C_COLORS)
+        self.filament_remaining = 0.
+        self._last_tool = self.TOOL_GATE_UNKNOWN
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
@@ -973,14 +977,13 @@ class Mmu:
         self.is_enabled = self.runout_enabled = True
         self.is_homed = self.is_handling_runout = self.calibrating = False
         self.last_print_stats = self.paused_extruder_temp = self.reason_for_pause = None
-        self.tool_selected = self._next_tool = self._last_tool = self.TOOL_GATE_UNKNOWN
+        self.tool_selected = self._next_tool = self.TOOL_GATE_UNKNOWN
         self._last_toolchange = "Unknown"
         self.gate_selected = self.TOOL_GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
         self.active_filament = {}
         self.servo_state = self.servo_angle = self.SERVO_UNKNOWN_STATE
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.DIRECTION_UNKNOWN
-        self.filament_remaining = 0. # Tracker of filament left in extruder by cutter
         self.action = self.ACTION_IDLE
         self._clear_saved_toolhead_position()
         self._servo_reset_state()
@@ -1044,6 +1047,10 @@ class Mmu:
         self._log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
         errors = []
 
+        # Always load length of filament remaining in extruder (after cut) and last tool loaded
+        self.filament_remaining = self.variables.get(self.VARS_MMU_FILAMENT_REMAINING, self.filament_remaining)
+        self._last_tool = self.variables.get(self.VARS_MMU_LAST_TOOL, self._last_tool)
+
         if self.persistence_level >= 1:
             # Load EndlessSpool config
             self.enable_endless_spool = self.variables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
@@ -1100,6 +1107,8 @@ class Mmu:
                     self.is_homed = False
             else:
                 errors.append("Incorrect number of gates specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
+
+            # Previous filament position
             if gate_selected != self.TOOL_GATE_UNKNOWN and tool_selected != self.TOOL_GATE_UNKNOWN:
                 self.filament_pos = self.variables.get(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
 
@@ -1289,19 +1298,26 @@ class Mmu:
 
     def _track_time_start(self, name):
         self.track[name] = time.time()
-        self._log_trace("track times: " + str(self.track))
+        #self._log_trace("Track times: %s" % self.track)
 
     def _track_time_end(self, name):
         if name not in self.track:
-            return #timer not initialized
+            return # Timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        self._log_trace("statistics: " + str(self.statistics))
+        #self._log_trace("Statistics: %s" % self.statistics)
 
         elapsed = time.time() - self.track[name]
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
         self.last_statistics[name] = elapsed
+
+    def _wrap_track_time(self, name, function):
+        try:
+            self._track_time_start(name)
+            function
+        finally:
+            self._track_time_end(name)
 
     def _track_swap_completed(self):
         self.statistics.setdefault('total_swaps', 0)
@@ -3027,6 +3043,14 @@ class Mmu:
         self.mmu_toolhead.set_position(pos)
         return position
 
+    def _set_filament_remaining(self, length):
+        self.filament_remaining = length
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_FILAMENT_REMAINING, length))
+
+    def _set_last_tool(self, tool):
+        self._last_tool = tool
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_LAST_TOOL, tool))
+
     def _set_filament_pos_state(self, state, silent=False):
         self.filament_pos = state
         if self.gate_selected != self.TOOL_GATE_BYPASS or state == self.FILAMENT_POS_UNLOADED or state == self.FILAMENT_POS_LOADED:
@@ -3888,7 +3912,7 @@ class Mmu:
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
             d = self.toolhead_sensor_to_nozzle if self._has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
             length = max(d - self.filament_remaining - self.toolhead_ooze_reduction, 0)
-            self.filament_remaining = 0.
+            self._set_filament_remaining(0.)
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self._trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
 
@@ -4265,8 +4289,9 @@ class Mmu:
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self._get_encoder_distance()
-            park_pos, self.filament_remaining, reported = self._do_form_tip()
+            park_pos, remaining, reported = self._do_form_tip()
             measured = self._get_encoder_distance(dwell=None) - initial_encoder_position
+            self._set_filament_remaining(remaining)
 
             # Encoder based validation test
             detected = True # Start with assumption that filament was present
@@ -4984,21 +5009,15 @@ class Mmu:
                 self._log_info("Remapping T%d to Gate %d" % (tool, next_gate))
                 gate = self._remap_tool(tool, next_gate)
             else:
-                raise MmuError("Gate %d is empty! Use 'MMU_CHECK_GATE GATE=%d' to reset" % (gate, gate))
-        
-        self._track_time_start('pre_load')
-        self._wrap_gcode_command(self.pre_load_macro, exception=True)
-        self._track_time_end('pre_load')
+                raise MmuError("Gate %d is empty!\nUse 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % (gate, gate, gate))
 
+        self._wrap_track_time('pre_load', self._wrap_gcode_command(self.pre_load_macro, exception=True))
         self._select_tool(tool, move_servo=False)
         self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
-
-        self._track_time_start('post_load')
-        self._wrap_gcode_command(self.post_load_macro, exception=True)
-        self._track_time_end('post_load') 
+        self._wrap_track_time('post_load', self._wrap_gcode_command(self.post_load_macro, exception=True))
 
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
@@ -5007,17 +5026,12 @@ class Mmu:
             return
 
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
-        self._track_time_start('pre_unload')
-        self._wrap_gcode_command(self.pre_unload_macro, exception=True)
-        self._track_time_end('pre_unload')
-
+        self._set_last_tool(self.tool_selected)
+        self._wrap_track_time('pre_unload', self._wrap_gcode_command(self.pre_unload_macro, exception=True))
         self._record_tool_override() # Remember M220 and M221 overrides
         self._unload_sequence(skip_tip=skip_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
-
-        self._track_time_start('post_unload')
-        self._wrap_gcode_command(self.post_unload_macro, exception=True)
-        self._track_time_end('post_unload')
+        self._wrap_track_time('post_unload', self._wrap_gcode_command(self.post_unload_macro, exception=True))
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True):
@@ -5272,9 +5286,7 @@ class Mmu:
             self.encoder_sensor.update_clog_detection_length()
 
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
-            self._last_tool = self.tool_selected
             self._next_tool = tool
-
             attempts = 2 if self.retry_tool_change_on_error and (self._is_printing() or standalone) else 1 # TODO: replace with inattention timer
             try:
                 for i in range(attempts):
