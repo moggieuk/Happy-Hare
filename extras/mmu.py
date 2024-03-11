@@ -257,7 +257,7 @@ class Mmu:
         self.sync_feedback_operational = False
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
-        self.last_tool = self.TOOL_GATE_UNKNOWN
+        self._last_tool = self.TOOL_GATE_UNKNOWN
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
@@ -1049,7 +1049,7 @@ class Mmu:
 
         # Always load length of filament remaining in extruder (after cut) and last tool loaded
         self.filament_remaining = self.variables.get(self.VARS_MMU_FILAMENT_REMAINING, self.filament_remaining)
-        self.last_tool = self.variables.get(self.VARS_MMU_LAST_TOOL, self.last_tool)
+        self._last_tool = self.variables.get(self.VARS_MMU_LAST_TOOL, self._last_tool)
 
         if self.persistence_level >= 1:
             # Load EndlessSpool config
@@ -3048,7 +3048,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_FILAMENT_REMAINING, length))
 
     def _set_last_tool(self, tool):
-        self.last_tool = tool
+        self._last_tool = tool
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_LAST_TOOL, tool))
 
     def _set_filament_pos_state(self, state, silent=False):
@@ -5009,24 +5009,14 @@ class Mmu:
                 self._log_info("Remapping T%d to Gate %d" % (tool, next_gate))
                 gate = self._remap_tool(tool, next_gate)
             else:
-                raise MmuError("Gate %d is empty! Use 'MMU_CHECK_GATE GATE=%d' to reset" % (gate, gate))
-        
-# PAUL
-#        self._track_time_start('pre_load')
-#        self._wrap_gcode_command(self.pre_load_macro, exception=True)
-#        self._track_time_end('pre_load')
-        self._wrap_track_time('pre_load', self._wrap_gcode_command(self.pre_load_macro, exception=True))
+                raise MmuError("Gate %d is empty!\nUse 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % (gate, gate, gate))
 
+        self._wrap_track_time('pre_load', self._wrap_gcode_command(self.pre_load_macro, exception=True))
         self._select_tool(tool, move_servo=False)
         self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
-
-# PAUL
-#        self._track_time_start('post_load')
-#        self._wrap_gcode_command(self.post_load_macro, exception=True)
-#        self._track_time_end('post_load') 
         self._wrap_track_time('post_load', self._wrap_gcode_command(self.post_load_macro, exception=True))
 
     # Primary method to unload current tool but retains selection
@@ -5037,21 +5027,10 @@ class Mmu:
 
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
-
-# PAUL
-#        self._track_time_start('pre_unload')
-#        self._wrap_gcode_command(self.pre_unload_macro, exception=True)
-#        self._track_time_end('pre_unload')
         self._wrap_track_time('pre_unload', self._wrap_gcode_command(self.pre_unload_macro, exception=True))
-
         self._record_tool_override() # Remember M220 and M221 overrides
         self._unload_sequence(skip_tip=skip_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
-
-# PAUL
-#        self._track_time_start('post_unload')
-#        self._wrap_gcode_command(self.post_unload_macro, exception=True)
-#        self._track_time_end('post_unload')
         self._wrap_track_time('post_unload', self._wrap_gcode_command(self.post_unload_macro, exception=True))
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
@@ -5307,9 +5286,7 @@ class Mmu:
             self.encoder_sensor.update_clog_detection_length()
 
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
-# PAUL            self._last_tool = self.tool_selected
             self._next_tool = tool
-
             attempts = 2 if self.retry_tool_change_on_error and (self._is_printing() or standalone) else 1 # TODO: replace with inattention timer
             try:
                 for i in range(attempts):
