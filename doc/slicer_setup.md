@@ -13,7 +13,7 @@ Make sure the `Expert Options` of your slicer are enabled and go to the Printer 
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Start G-Code
 
-Enter the following into your "custom start g-code" box:
+Enter the following (using your own print start macro call) into your "custom start g-code" box:
 
 <img src="/doc/slicer/start_gcode.png" width="100%" alt="Custom Start G-Code"><br>Your `START_PRINT ...` macro is likely to be different from mine! Here is some cut'n'paste text:
 
