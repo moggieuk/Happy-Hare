@@ -650,7 +650,7 @@ read_default_config() {
     parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg"   "variable_" ""        "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg"    "variable_" ""        "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_leds.cfg"       "variable_" ""        "checkdup"
-    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg`; do
+    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw"`; do
         parse_file "${SRCDIR}/config/addons/${file}"      "variable_" ""        "checkdup"
     done
 }
@@ -798,7 +798,7 @@ read_previous_config() {
 
     # TODO namespace config in third-party addons separately
     if [ -d "${KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
-        for cfg in `cd ${KLIPPER_CONFIG_HOME}/mmu/addons ; ls *.cfg`; do
+        for cfg in `cd ${KLIPPER_CONFIG_HOME}/mmu/addons ; ls *.cfg | grep -v "_hw"`; do
             dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/addons/${cfg}
             if [ ! -f "${dest_cfg}" ]; then
                 echo -e "${WARNING}No previous ${cfg} found. Will install"
@@ -1028,8 +1028,12 @@ copy_config_files() {
         src=${SRCDIR}/config/addons/${file}
         dest=${mmu_dir}/addons/${file}
         if [ -f "${dest}" ]; then
-            echo -e "${INFO}Upgrading configuration file ${file}"
-            update_copy_file ${src} ${dest} "variable_"
+            if ! echo "$file" | egrep -q ".*_hw\.cfg.*"; then
+                echo -e "${INFO}Upgrading configuration file ${file}"
+                update_copy_file ${src} ${dest} "variable_"
+            else
+                echo -e "${WARNING}Skipping copy of ${file} file because already exists"
+            fi
         else
             echo -e "${INFO}Installing configuration file ${file}"
             cp ${src} ${dest}
@@ -1682,8 +1686,9 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]"
+    echo "Usage: $0 [-a <kiauh-alternate-klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]"
     echo
+    echo "-a to specify alternative klipper-service-name when installed with Kiauh."
     echo "-i for interactive install"
     echo "-d for uninstall"
     echo "-b to switch to specified feature branch (sticky)"
@@ -1707,8 +1712,9 @@ INSTALL_KLIPPER_SCREEN_ONLY=0
 PRINTER_CONFIG=printer.cfg
 KLIPPER_SERVICE=klipper.service
 
-while getopts "b:k:c:m:r:idsz" arg; do
+while getopts "a:b:k:c:m:r:idsz" arg; do
     case $arg in
+        a) KLIPPER_SERVICE=${OPTARG}.service;;
         b) N_BRANCH=${OPTARG};;
         k) KLIPPER_HOME=${OPTARG};;
         m) MOONRAKER_HOME=${OPTARG};;

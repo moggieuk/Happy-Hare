@@ -126,6 +126,12 @@ Note that the installer will look for Klipper install and config in standard loc
 ```
 ./install.sh -k /opt/klipper/LK5_Pro_ERCF -c /var/lib/Repetier-Server/database/klipper -m /opt/klipper/LK5_Pro_ERCF/moonraker -r LK5_Pro_ERCF -i
 ```
+
+If you have multiple Klipper instances installed with for example Kiauh. You can use the `-a` flag to specify the service name. E.g.
+```
+./install-sh -a klipper-two -k <klipper_home_dir> -c <klipper_config_dir>
+```
+
 <br>
 
 > [!IMPORTANT]  
