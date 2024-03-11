@@ -188,6 +188,15 @@ def inject_placeholders(file_path, tmp_file, tools_used, colors, temps, material
                         line = line.replace(METADATA_PURGE_VOLUMES, ",".join(map(str, purge_volumes)))
                 out_file.write(line)
 
+def copy_next_position_to_toolhange_param(file_path, tmp_file):
+    with open(file_path, 'r') as in_file:
+        in_content = in_file.read()
+        out_content = re.sub(r'(^T\d{1,3})([\s\S]+?)(G1.*[XY].*$)', r'\1 NEXT="\3"\2\3', in_content, flags = re.MULTILINE)
+        with open(tmp_file, 'w') as out_file:
+            out_file.write(out_content)
+            out_file.close()
+        in_file.close()
+
 def main(path: str, filename: str) -> None:
     file_path = os.path.join(path, filename)
     if not os.path.isfile(file_path):
@@ -213,6 +222,16 @@ def main(path: str, filename: str) -> None:
                     shutil.move(tmp_file, file_path)
                 else:
                     metadata.logger.info(f"No MMU metadata placeholders found in file: {file_path}")
+                
+                
+                # TODO: Make a user parameter/variable to enable or disable this section
+                metadata.logger.info(f"Writing next gcode positions as toolchange parameters on file: {file_path}")
+                copy_next_position_to_toolhange_param(file_path, tmp_file)
+
+                # Move temporary file back in place
+                if os.path.islink(file_path):
+                    file_path = os.path.realpath(file_path)
+                shutil.move(tmp_file, file_path)
 
     except Exception:
         metadata.logger.info(traceback.format_exc())
