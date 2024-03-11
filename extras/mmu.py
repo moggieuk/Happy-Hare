@@ -5845,6 +5845,9 @@ class Mmu:
 ###########################################
 
     def _runout(self, force_runout=False):
+        self.is_handling_runout = force_runout # Best starting assumption
+        self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
+
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
 
@@ -5852,8 +5855,7 @@ class Mmu:
             raise MmuError("Filament runout or clog occured but filament is not fully loaded! - manual intervention is required")
 
         self._log_info("Issue on tool T%d" % self.tool_selected)
-        self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
-        self._wrap_gcode_command("PAUSE", exception=True) # Should be after toolhead position is saved
+        #PAUL self._wrap_gcode_command("PAUSE", exception=True) # Should be after toolhead position is saved
 
         # Check for clog by looking for filament at the gate (or in the encoder)
         if not force_runout:
@@ -5861,9 +5863,10 @@ class Mmu:
             if self._check_filament_at_gate():
                 if self._has_encoder():
                     self.encoder_sensor.update_clog_detection_length()
+                self.is_handling_runout = False
                 raise MmuError("A clog has been detected and requires manual intervention")
 
-        # We have a filament runout
+        # We definitely have a filament runout
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during swap
             self._log_error("A runout has been detected")
             self.is_handling_runout = True # Will remain true until complete and continue or resume after error
@@ -5876,7 +5879,7 @@ class Mmu:
                     raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
                 self._log_info("Remapping T%d to Gate %d" % (self.tool_selected, next_gate))
 
-                # TODO perhaps figure out how to call _change_tool() here for better user feeback
+                # TODO perhaps figure out how to call _change_tool() here for consistent user feeback
                 self._unload_tool(runout=True)
                 self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
@@ -5884,7 +5887,7 @@ class Mmu:
                 raise MmuError("EndlessSpool mode is off - manual intervention is required")
 
         self._check_runout() # Can throw MmuError
-        self._wrap_gcode_command("RESUME", exception=True)
+        #PAUL self._wrap_gcode_command("RESUME", exception=True)
         self._continue_printing("endless_spool") # Continue printing...
 
     def _get_next_endless_spool_gate(self, tool, gate):
