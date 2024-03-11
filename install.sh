@@ -976,7 +976,7 @@ copy_config_files() {
             for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
             do
                 tx_macros+="[gcode_macro T${i}]\n"
-                tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i} {rawparams}\n"
+                tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
             done
 
             if [ "${INSTALL}" -eq 1 ]; then

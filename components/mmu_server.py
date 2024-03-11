@@ -191,7 +191,14 @@ def inject_placeholders(file_path, tmp_file, tools_used, colors, temps, material
 def copy_next_position_to_toolhange_param(file_path, tmp_file):
     with open(file_path, 'r') as in_file:
         in_content = in_file.read()
-        out_content = re.sub(r'(^T\d{1,3})([\s\S]+?)(G1.*[XY].*$)', r'\1 NEXT="\3"\2\3', in_content, flags = re.MULTILINE)
+        # Look for tool changes (Tx) and the next move command (G0/1) and fetch the XYZ locations. Then place a new command
+        # above the toolchange (_MMU_POS_AFTER_NEXT_TOOLCHANGE POS="xx.xx,yy.yy,zz.zz")
+        out_content = re.sub(
+            r'(?P<tool>^T\d{1,3})(?P<other>[\s\S]+?)(?P<cmd>G[01](?:\s+X(?P<X>[\d.]*)|\s+Y(?P<Y>[\d.]*)|\s+Z(?P<Z>[\d.]*))+.*)', 
+            r'_MMU_POS_AFTER_NEXT_TOOLCHANGE POS="\g<X>,\g<Y>,\g<Z>"\n\g<tool>\g<other>\g<cmd>', 
+            in_content, 
+            flags=re.MULTILINE
+        )
         with open(tmp_file, 'w') as out_file:
             out_file.write(out_content)
             out_file.close()
