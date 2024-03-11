@@ -650,7 +650,7 @@ read_default_config() {
     parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg"   "variable_" ""        "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg"    "variable_" ""        "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_leds.cfg"       "variable_" ""        "checkdup"
-    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg`; do
+    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw"`; do
         parse_file "${SRCDIR}/config/addons/${file}"      "variable_" ""        "checkdup"
     done
 }
@@ -798,7 +798,7 @@ read_previous_config() {
 
     # TODO namespace config in third-party addons separately
     if [ -d "${KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
-        for cfg in `cd ${KLIPPER_CONFIG_HOME}/mmu/addons ; ls *.cfg`; do
+        for cfg in `cd ${KLIPPER_CONFIG_HOME}/mmu/addons ; ls *.cfg | grep -v "_hw"`; do
             dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/addons/${cfg}
             if [ ! -f "${dest_cfg}" ]; then
                 echo -e "${WARNING}No previous ${cfg} found. Will install"
@@ -1028,8 +1028,12 @@ copy_config_files() {
         src=${SRCDIR}/config/addons/${file}
         dest=${mmu_dir}/addons/${file}
         if [ -f "${dest}" ]; then
-            echo -e "${INFO}Upgrading configuration file ${file}"
-            update_copy_file ${src} ${dest} "variable_"
+            if ! echo "$file" | egrep -q ".*_hw\.cfg.*"; then
+                echo -e "${INFO}Upgrading configuration file ${file}"
+                update_copy_file ${src} ${dest} "variable_"
+            else
+                echo -e "${WARNING}Skipping copy of ${file} file because already exists"
+            fi
         else
             echo -e "${INFO}Installing configuration file ${file}"
             cp ${src} ${dest}
