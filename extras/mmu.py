@@ -26,15 +26,37 @@ if sys.version_info[0] < 3:
     UI_SEPARATOR = '.'
     UI_DASH = '-'
     UI_DEGREE = '^'
+    UI_BLOCK = '*'
+    UI_BOX_TL = '+'
     UI_BOX_BL = '+'
+    UI_BOX_TR = '+'
+    UI_BOX_BR = '+'
+    UI_BOX_L = '+'
+    UI_BOX_R = '+'
+    UI_BOX_T = '+'
+    UI_BOX_B = '+'
+    UI_BOX_M = '+'
+    UI_BOX_H = '-'
+    UI_BOX_V = '|'
     UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
 else:
-    # Use unicode for improved formatting and klipper layout
+    # Use (common) unicode for improved formatting and klipper layout
     UI_SPACE = '\u00A0'
     UI_SEPARATOR = '\u00A0'
     UI_DASH = '\u2014'
     UI_DEGREE = '\u00B0'
+    UI_BOX_TL = '\u250C'
     UI_BOX_BL = '\u2514'
+    UI_BOX_TR = '\u2510'
+    UI_BOX_BR = '\u2518'
+    UI_BOX_L = '\u251C'
+    UI_BOX_R = '\u2524'
+    UI_BOX_T = '\u252C'
+    UI_BOX_B = '\u2534'
+    UI_BOX_M = '\u253C'
+    UI_BOX_H = '\u2500'
+    UI_BOX_V = '\u2502'
+    UI_BLOCK = '\u2588'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
@@ -182,6 +204,15 @@ class Mmu:
     VENDOR_OTHER    = "Other"
 
     VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_OTHER]
+
+    # Levels of logging
+    LOG_ESSENTIAL = 0
+    LOG_INFO      = 1
+    LOG_DEBUG     = 2
+    LOG_TRACE     = 3
+    LOG_STEPPER   = 4
+
+    LOG_LEVELS = ['ESSENTAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
 
     # mmu_vars.cfg variables
     VARS_MMU_CALIB_CLOG_LENGTH      = "mmu_calibration_clog_length"
@@ -1166,7 +1197,11 @@ class Mmu:
             self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
 
         if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
-            self._log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BOX_BL=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BOX_BL))
+            self._log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK))
+            self._log_info("{}{}{}{}".format(UI_BOX_TL, UI_BOX_T, UI_BOX_H, UI_BOX_TR))
+            self._log_info("{}{}{}{}".format(UI_BOX_L,  UI_BOX_M, UI_BOX_H, UI_BOX_R))
+            self._log_info("{}{}{}{}".format(UI_BOX_V,  UI_BOX_V, UI_SPACE, UI_BOX_V))
+            self._log_info("{}{}{}{}".format(UI_BOX_BL, UI_BOX_B, UI_BOX_H, UI_BOX_BR))
             self._log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
@@ -1473,7 +1508,8 @@ class Mmu:
             for i in range(len(column_extra_header_widths)):
                 w = column_extra_header_widths[i]
 
-                start = sum(max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_header, ['']), table_include_columns))) for table_extra_header in table_extra_headers[0:i])
+                start = sum(max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_header, ['']), table_include_columns)))
+                    for table_extra_header in table_extra_headers[0:i])
                 end = start + max(1, len(self._list_intersection(table_extra_headers_map.get(table_extra_headers[i], ['']), table_include_columns)))
                 while (sum(column_widths[start:end]) + (end - start - 1)) < w:
                     for c in range(start, end):
@@ -1481,17 +1517,20 @@ class Mmu:
                 column_extra_header_widths[i] = sum(column_widths[start:end]) + (end - start - 1)
 
             # Build the table header
-            msg += "+" +   "+".join([UI_DASH * width for width in column_extra_header_widths])                                                                 + "+\n"
-            msg += "|" +   "|".join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPARATOR) for i in range(len(column_extra_header_widths))])  + "|\n"
-            msg += "|" +   "|".join([table_headers[i].center(column_widths[i], UI_SEPARATOR) for i in range(len(column_widths))])                                  + "|\n"
-            msg += "+" +   "+".join([UI_DASH * (width) for width in column_widths])                                                                            + "+\n"
+            msg += UI_BOX_TL    + UI_BOX_T.join([UI_BOX_H * width for width in column_extra_header_widths]) + UI_BOX_TR + "\n"
+            msg += UI_BOX_V     + UI_BOX_V.join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPARATOR)
+                for i in range(len(column_extra_header_widths))]) + UI_BOX_V + "\n"
+            msg += UI_BOX_V     + UI_BOX_V.join([table_headers[i].center(column_widths[i], UI_SEPARATOR)
+                for i in range(len(column_widths))]) + UI_BOX_V + "\n"
+            msg += UI_BOX_L     + UI_BOX_M.join([UI_BOX_H * (width) for width in column_widths]) + UI_BOX_R + "\n"
 
             # Build the table body
             for row in table:
-                msg += "|" +   "|".join([row[i].rjust(column_widths[i] - 1, UI_SEPARATOR) + UI_SEPARATOR for i in range(len(column_widths))]) + "|\n"
+                msg += UI_BOX_V + UI_BOX_V.join([row[i].rjust(column_widths[i] - 1, UI_SEPARATOR) + UI_SEPARATOR
+                    for i in range(len(column_widths))]) + UI_BOX_V + "\n"
 
             # Table footer
-            msg += "+" + "+".join([UI_DASH * width for width in column_widths]) + "+\n"
+            msg += UI_BOX_BL    + UI_BOX_B.join([UI_BOX_H * width for width in column_widths]) + UI_BOX_BR + "\n"
 
         # Pause data
         if total:
@@ -1629,6 +1668,9 @@ class Mmu:
         if self.log_level > 3:
             self.gcode.respond_info(message)
 
+    def _log_enabled(self, level):
+        return (self.mmu_logger and self.log_file_level >= level) or self.log_level >= level
+
     # Fun visual display of MMU state
     def _display_visual_state(self, direction=None, silent=False):
         if direction is not None:
@@ -1663,15 +1705,6 @@ class Mmu:
 
         visual = "".join((t_str, g_str, gs_str, en_str, bowden1, bowden2, es_str, ex_str, ts_str, nz_str, summary, counter))
         return visual
-
-    def _log_level_to_string(self, level):
-        log = "OFF"
-        if level > 3: log = "STEPPER"
-        elif level > 2: log = "TRACE"
-        elif level > 1: log = "DEBUG"
-        elif level > 0: log = "INFO"
-        elif level > -1: log = "ESSENTIAL MESSAGES"
-        return log
 
 ### LOGGING AND STATISTICS FUNCTIONS GCODE FUNCTIONS
 
@@ -1771,9 +1804,9 @@ class Mmu:
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
                 msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state == True else "Empty"))
-            msg += "\nLogging: Console %d(%s)" % (self.log_level, self._log_level_to_string(self.log_level))
+            msg += "\nLogging: Console %d(%s)" % (self.log_level, self.LOG_LEVELS[self.log_level])
 
-            msg += ", Logfile %d(%s)" % (self.log_file_level, self._log_level_to_string(self.log_file_level))
+            msg += ", Logfile %d(%s)" % (self.log_file_level, self.LOG_LEVELS[self.log_file_level])
             msg += ", Visual %d(%s)" % (self.log_visual, on_off(self.log_visual))
             msg += ", Statistics %d(%s)" % (self.log_statistics, on_off(self.log_statistics))
 
@@ -4475,7 +4508,8 @@ class Mmu:
         homed = False
 
         if homing_move != 0:
-            self._log_stepper("SELECTOR: position=%.1f, speed=%.1f, accel=%.1f homing_move=%d, endstop_name=%s" % (new_pos, speed, accel, homing_move, endstop_name))
+            if self._log_enabled(self.LOG_STEPPER):
+                self._log_stepper("SELECTOR: position=%.1f, speed=%.1f, accel=%.1f homing_move=%d, endstop_name=%s" % (new_pos, speed, accel, homing_move, endstop_name))
 
             # Klipper generates TTC errors for tiny homing moves!
             if abs(new_pos - pos[0]) < 0.01: # Workaround for Timer Too Close error with short homing moves
@@ -4510,10 +4544,12 @@ class Mmu:
                 homed = False
             finally:
                 pos = self.mmu_toolhead.get_position()
-                self._log_stepper("SELECTOR: halt_pos=%.1f, homed=%s, trig_pos=%.1f" % (pos[0], homed, trig_pos[0]))
+                if self._log_enabled(self.LOG_STEPPER):
+                    self._log_stepper("SELECTOR: halt_pos=%.1f, homed=%s, trig_pos=%.1f" % (pos[0], homed, trig_pos[0]))
 
         else:
-            self._log_stepper("SELECTOR: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
+            if self._log_enabled(self.LOG_STEPPER):
+                self._log_stepper("SELECTOR: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
             pos[0] = new_pos
             self.mmu_toolhead.move(pos, speed)
             if wait:
@@ -4646,7 +4682,8 @@ class Mmu:
         if motor in ["gear", "gear+extruder", "extruder"]:
             with self._wrap_sync_extruder_to_gear(motor in ["gear+extruder", "extruder"], extruder_only=(motor == "extruder")):
                 if homing_move != 0:
-                    self._log_stepper("%s HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, sync=%s, wait=%s"% (motor.upper(), dist, speed, accel, endstop_name, sync, wait))
+                    if self._log_enabled(self.LOG_STEPPER):
+                        self._log_stepper("%s HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, sync=%s, wait=%s"% (motor.upper(), dist, speed, accel, endstop_name, sync, wait))
                     trig_pos = [0., 0., 0., 0.]
                     hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
                     init_pos = pos[1]
@@ -4671,7 +4708,8 @@ class Mmu:
                                     got_comms_timeout = True
                                 self._log_error("Did not complete homing move: %s" % str(e))
                             else:
-                                self._log_stepper("Did not home: %s" % str(e))
+                                if self._log_enabled(self.LOG_STEPPER):
+                                    self._log_stepper("Did not home: %s" % str(e))
                             homed = False
                         finally:
                             halt_pos = self.mmu_toolhead.get_position()
@@ -4683,7 +4721,8 @@ class Mmu:
                         if not got_comms_timeout:
                             break
                 else:
-                    self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
+                    if self._log_enabled(self.LOG_STEPPER):
+                        self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
                     pos[1] += dist
                     with self._wrap_accel(accel):
                         self.mmu_toolhead.move(pos, speed)
@@ -4695,7 +4734,8 @@ class Mmu:
                 if homing_move != 0:
                     self._log_error("Not possible to perform homing move while synced")
                 else:
-                    self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
+                    if self._log_enabled(self.LOG_STEPPER):
+                        self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
                     ext_pos[3] += dist
                     self.toolhead.move(ext_pos, speed)
 
@@ -4705,7 +4745,8 @@ class Mmu:
                 self._log_error("Not possible to perform homing move on two independent steppers")
             else:
                 self._ensure_safe_extruder_temperature(wait=False)
-                self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
+                if self._log_enabled(self.LOG_STEPPER):
+                    self._log_stepper("%s: dist=%.1f, speed=%.1f, accel=%.1f, sync=%s, wait=%s" % (motor.upper(), dist, speed, accel, sync, wait))
                 pos[1] += dist
                 with self._wrap_accel(accel):
                     self.mmu_toolhead.move(pos, speed)
