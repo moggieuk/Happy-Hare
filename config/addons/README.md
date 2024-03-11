@@ -11,6 +11,7 @@ An addon used to control filament cutting at the MMU rather than the toolhead
 https://github.com/kevinakasam/ERCF_Filament_Cutter
 ### Config
 1. Add `[include mmu/addons/mmu_erec_cutter.cfg]` to your `printer.cfg`
+1. Edit `mmu_erec_cutter.cfg` and `mmu_erec_cutter_hw.cfg` to work with your setup
 1. In `mmu_macro_vars.cfg` set `variable_user_post_unload_extension : "EREC_CUTTER_ACTION"`
 1. Optionally in `mmu_macro_vars.cfg` set `variable_user_pre_unload_extension : "BLOBIFIER_PARK"` to park the nozzle on the tray during a swap
 
@@ -26,6 +27,7 @@ An addon used to create purge blobs instead of using a wipe tower
 https://github.com/Dendrowen/Blobifier
 ### Config
 1. Add `[include mmu/addons/blobifier.cfg]` to your `printer.cfg`
+1. Edit `blobifier.cfg` and `blobifier_hw.cfg` to work with your setup
 1. Set `variable_user_post_load_extension : "BLOBIFIER"` in `mmu_macro_vars.cfg`
 1. Optionally set `variable_user_pre_unload_extension : "BLOBIFIER_PARK"` in `mmu_macro_vars.cfg` to park the nozzle on the tray during a swap
 
