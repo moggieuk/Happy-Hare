@@ -6443,7 +6443,7 @@ class Mmu:
         if pos[0] and pos[1]:
             x = pos[0]
             y = pos[1]
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xyz VALUE=\"{x}, {y}\"")
+            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=\"{x}, {y}\"")
             self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={True}")
         else:
             self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={False}")
