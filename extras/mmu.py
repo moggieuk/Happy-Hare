@@ -1193,6 +1193,10 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
 
+        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+            self._log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
+            self._log_info("DUMP_UNICODE=1 : Display special characters used in display")
+
         feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
         if feedback is not None:
             self._log_info("Sending 'mmu:sync_feedback %.2f' event" % feedback)
