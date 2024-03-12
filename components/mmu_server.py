@@ -13,7 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-import logging, os, sys, re
+import logging, os, sys, re, time
 import runpy, argparse, shutil, traceback, tempfile
 
 class MmuServer:
@@ -170,25 +170,60 @@ def parse_gcode_file(file_path):
     return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder,
             sorted(tools_used), colors, temps, materials, purge_volumes, slicer)
 
-def inject_placeholders(file_path, tmp_file, tools_used, colors, temps, materials, purge_volumes):
-    with open(file_path, 'r') as in_file:
-        with open(tmp_file, 'w') as out_file:
-            for line in in_file:
-                # Ignore comment lines to preserve slicer metadata comments
-                if not line.startswith(";"):
-                    if METADATA_TOOL_DISCOVERY in line:
-                        line = line.replace(METADATA_TOOL_DISCOVERY, ",".join(map(str, tools_used)))
-                    if METADATA_COLORS in line:
-                        line = line.replace(METADATA_COLORS, ",".join(map(str, colors)))
-                    if METADATA_TEMPS in line:
-                        line = line.replace(METADATA_TEMPS, ",".join(map(str, temps)))
-                    if METADATA_MATERIALS in line:
-                        line = line.replace(METADATA_MATERIALS, ",".join(map(str, materials)))
-                    if METADATA_PURGE_VOLUMES in line:
-                        line = line.replace(METADATA_PURGE_VOLUMES, ",".join(map(str, purge_volumes)))
-                out_file.write(line)
+def process_file(input_filename, output_filename, insert_nextpos, tools_used, colors, temps, materials, purge_volumes)
+    t_pattern = re.compile(r'^T(\d+)$')
+    g1_pattern = re.compile(r'^G[01](?:\s+X([\d.]*)|\s+Y([\d.]*))+.*$')
 
-def main(path: str, filename: str) -> None:
+    with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
+        buffer = []  # Buffer lines between a "T" line and the next matching "G1" line
+        tool = None  # Store the tool number from a "T" line
+
+        for line in infile:
+            line = add_placeholder(line, tools_used, colors, temps, materials, purge_volumes)
+            if tool is not None:
+                # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
+                buffer.append(line)
+                g1_match = g1_pattern.match(line)
+                if g1_match:
+                    x, y = g1_match.groups()
+
+                    # Now replace "T" line and write buffered lines, including the current "G1" line
+                    outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
+                    for buffered_line in buffer:
+                        outfile.write(buffered_line)
+                    buffer.clear()
+                    tool = None
+                continue
+
+            t_match = t_pattern.match(line)
+            if t_match:
+                tool = t_match.group(1)
+            else:
+                outfile.write(line)
+
+        # If there is anything left in buffer it means there wasn't a final "G1" line
+        if buffer:
+            outfile.write(f"T{tool}\n")
+            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
+            for line in buffer:
+                outfile.write(line)
+
+def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes):
+    # Ignore comment lines to preserve slicer metadata comments
+    if not line.startswith(";"):
+        if METADATA_TOOL_DISCOVERY in line:
+            line = line.replace(METADATA_TOOL_DISCOVERY, ",".join(map(str, tools_used)))
+        if METADATA_COLORS in line:
+            line = line.replace(METADATA_COLORS, ",".join(map(str, colors)))
+        if METADATA_TEMPS in line:
+            line = line.replace(METADATA_TEMPS, ",".join(map(str, temps)))
+        if METADATA_MATERIALS in line:
+            line = line.replace(METADATA_MATERIALS, ",".join(map(str, materials)))
+        if METADATA_PURGE_VOLUMES in line:
+            line = line.replace(METADATA_PURGE_VOLUMES, ",".join(map(str, purge_volumes)))
+    return line
+
+def main(path, filename, insert_placeholders=False, insert_nextpos=False):
     file_path = os.path.join(path, filename)
     if not os.path.isfile(file_path):
         metadata.logger.info(f"File Not Found: {file_path}")
@@ -199,13 +234,23 @@ def main(path: str, filename: str) -> None:
             with tempfile.TemporaryDirectory() as tmp_dir_name:
                 tmp_file = os.path.join(tmp_dir_name, fname)
 
-                metadata.logger.info(f"mmu_server: Performing placeholder pre-processing on file: {fname}")
-                has_placeholder, tools_used, colors, temps, materials, purge_volumes, slicer = parse_gcode_file(file_path)
-                metadata.logger.info(f"Detected gcode by slicer: {slicer}")
+                if insert_placeholders:
+                    metadata.logger.info(f"mmu_server: Performing placeholder pre-processing on file: {fname}")
+                    has_placeholder, tools_used, colors, temps, materials, purge_volumes, slicer = parse_gcode_file(file_path)
+                    metadata.logger.info(f"Detected gcode by slicer: {slicer}")
+                else:
+                    tools_used = colors = temps = materials = purge_volumes = slicer = None
+                    has_placeholder = False
 
-                if has_placeholder:
-                    metadata.logger.info(f"Writing MMU placeholders to file: {file_path}")
-                    inject_placeholders(file_path, tmp_file, tools_used, colors, temps, materials, purge_volumes)
+                if insert_nextpos or has_placeholder:
+                    msg = ""
+                    if has_placeholder:
+                        msg += "Writing MMU placeholders, "
+                    if insert_nextpos:
+                        msg += "Inserting next position to tool changes, "
+                    msg = f"Inserting next position to tool changes, ")
+                    metadata.logger.info(f"{msg} File: {file_path}")
+                    process_file(file_path, tmp_file, insert_nextpos, tools_used, colors, temps, materials, purge_volumes)
 
                     # Move temporary file back in place
                     if os.path.islink(file_path):
@@ -239,6 +284,7 @@ if __name__ == "__main__":
     parser.add_argument("-u", "--ufp", metavar="<ufp file>", default=None, help="optional path of ufp file to extract")
     parser.add_argument("-o", "--check-objects", dest='check_objects', action='store_true', help="process gcode file for exclude opbject functionality")
     parser.add_argument("-m", "--placeholders", dest='placeholders', action='store_true', help="process happy hare mmu placeholders")
+    parser.add_argument("-n", "--nextpos", dest='nextpos', action='store_true', help="add next position to tool change")
     args = parser.parse_args()
     check_objects = args.check_objects
     enabled_msg = "enabled" if check_objects else "disabled"
@@ -247,7 +293,6 @@ if __name__ == "__main__":
     # Original metadata parser
     metadata.main(args.path, args.filename, args.ufp, check_objects)
 
-    # Second parsing for mmu placeholders
-    if args.placeholders:
-        main(args.path, args.filename)
+    # Second parsing for mmu placeholders and next pos insertion
+    main(args.path, args.filename, args.placeholders, args.nextpos)
 
