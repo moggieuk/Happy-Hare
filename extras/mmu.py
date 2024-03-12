@@ -4865,7 +4865,6 @@ class Mmu:
         # Safety in case somehow called with bypass/unknown selected
         if self.gate_selected < 0:
             sync = current = False
-            servo = True
 
         prev_sync_state = self.mmu_toolhead.is_gear_synced_to_extruder()
         if servo:
