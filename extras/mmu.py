@@ -109,7 +109,7 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
-    VERSION = 2.50 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 2.51 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.0 # Delay before running bootup tasks
 
