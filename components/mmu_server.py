@@ -170,7 +170,7 @@ def parse_gcode_file(file_path):
     return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder,
             sorted(tools_used), colors, temps, materials, purge_volumes, slicer)
 
-def process_file(input_filename, output_filename, insert_nextpos, tools_used, colors, temps, materials, purge_volumes)
+def process_file(input_filename, output_filename, insert_nextpos, tools_used, colors, temps, materials, purge_volumes):
     t_pattern = re.compile(r'^T(\d+)$')
     g1_pattern = re.compile(r'^G[01](?:\s+X([\d.]*)|\s+Y([\d.]*))+.*$')
 
@@ -245,10 +245,10 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                 if insert_nextpos or has_placeholder:
                     msg = ""
                     if has_placeholder:
-                        msg += "Writing MMU placeholders, "
+                        msg += "Writing MMU placeholders,"
                     if insert_nextpos:
-                        msg += "Inserting next position to tool changes, "
-                    msg = f"Inserting next position to tool changes, ")
+                        msg += "Inserting next position to tool changes,"
+                    msg = f"Inserting next position to tool changes, "
                     metadata.logger.info(f"{msg} File: {file_path}")
                     process_file(file_path, tmp_file, insert_nextpos, tools_used, colors, temps, materials, purge_volumes)
 
