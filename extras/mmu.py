@@ -678,8 +678,6 @@ class Mmu:
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
         self.gcode.register_command('MMU_SLICER_TOOL_MAP', self.cmd_MMU_SLICER_TOOL_MAP, desc = self.cmd_MMU_SLICER_TOOL_MAP_help)
 
-        self.gcode.register_command('_MMU_POS_AFTER_NEXT_TOOLCHANGE', self.cmd_MMU_POS_AFTER_NEXT_TOOLCHANGE, desc = self.cmd_MMU_POS_AFTER_NEXT_TOOLCHANGE_help)
-
         # For use in user controlled load and unload macros
         self.gcode.register_command('_MMU_STEP_LOAD_GATE', self.cmd_MMU_STEP_LOAD_GATE, desc = self.cmd_MMU_STEP_LOAD_GATE_help)
         self.gcode.register_command('_MMU_STEP_UNLOAD_GATE', self.cmd_MMU_STEP_UNLOAD_GATE, desc = self.cmd_MMU_STEP_UNLOAD_GATE_help)
@@ -5077,7 +5075,7 @@ class Mmu:
         self._wrap_track_time('post_unload', self._wrap_gcode_command(self.post_unload_macro, exception=True))
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
-    def _change_tool(self, tool, skip_tip=True):
+    def _change_tool(self, tool, skip_tip=True, next_pos=''):
         self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
         self._track_time_start('total')
         skip_unload = False
@@ -5118,6 +5116,9 @@ class Mmu:
 
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
+
+        if next_pos:
+            self._set_next_position(next_pos)
 
         self._select_and_load_tool(tool)
         self._track_swap_completed()
@@ -5311,6 +5312,7 @@ class Mmu:
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
+        next_pos = gcmd.get('NEXT_POS', '')
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)
         if match:
@@ -5334,7 +5336,7 @@ class Mmu:
             try:
                 for i in range(attempts):
                     try:
-                        if self._change_tool(tool, skip_tip):
+                        if self._change_tool(tool, skip_tip, next_pos):
                             self._dump_statistics(job=not quiet, gate=not quiet)
                         continue
                     except MmuError as ee:
@@ -6436,14 +6438,12 @@ class Mmu:
                 msg += "\nDETAIL=1 to see purge volumes"
             self._log_always(msg)
 
-    cmd_MMU_POS_AFTER_NEXT_TOOLCHANGE_help = "Set the next location after the next toolchange. The toolhead can then travel to that location instead of the old one"
-    def cmd_MMU_POS_AFTER_NEXT_TOOLCHANGE(self, gcmd):
-        pos = gcmd.get('POS', '').split(',')
+    def _set_next_position(self, next_pos):
+        pos = next_pos.split(',')
         if pos[0] and pos[1]:
             x = pos[0]
             y = pos[1]
-            z = pos[2] or -1
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xyz VALUE=\"{x}, {y}, {z}\"")
+            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xyz VALUE=\"{x}, {y}\"")
             self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={True}")
         else:
             self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={False}")

@@ -192,10 +192,10 @@ def copy_next_position_to_toolhange_param(file_path, tmp_file):
     with open(file_path, 'r') as in_file:
         in_content = in_file.read()
         # Look for tool changes (Tx) and the next move command (G0/1) and fetch the XYZ locations. Then place a new command
-        # above the toolchange (_MMU_POS_AFTER_NEXT_TOOLCHANGE POS="xx.xx,yy.yy,zz.zz")
+        # above the toolchange (MMU_CHANGE_TOOL TOOL=x NEXT_POS="xx.xx,yy.yy")
         out_content = re.sub(
-            r'(?P<tool>^T\d{1,3})(?P<other>[\s\S]+?)(?P<cmd>G[01](?:\s+X(?P<X>[\d.]*)|\s+Y(?P<Y>[\d.]*)|\s+Z(?P<Z>[\d.]*))+.*)', 
-            r'_MMU_POS_AFTER_NEXT_TOOLCHANGE POS="\g<X>,\g<Y>,\g<Z>"\n\g<tool>\g<other>\g<cmd>', 
+            r'^T(?P<tool>\d{1,3})(?P<other>[\s\S]+?)(?P<cmd>G[01](?:\s+X(?P<X>[\d.]*)|\s+Y(?P<Y>[\d.]*)|\s+F(?P<F>[\d]*))+.*)', 
+            r'MMU_CHANGE_TOOL TOOL=\g<tool> NEXT_POS="\g<X>,\g<Y>" ; T\g<tool>\n\g<other>\g<cmd>', 
             in_content, 
             flags=re.MULTILINE
         )
