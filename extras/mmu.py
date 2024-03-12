@@ -20,43 +20,45 @@ from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
 import chelper, ast
 
-if sys.version_info[0] < 3:
-    # No unicode. Not worth the hassle!
-    UI_SPACE = ' '
-    UI_SEPARATOR = '.'
-    UI_DASH = '-'
-    UI_DEGREE = '^'
-    UI_BLOCK = '*'
-    UI_BOX_TL = '+'
-    UI_BOX_BL = '+'
-    UI_BOX_TR = '+'
-    UI_BOX_BR = '+'
-    UI_BOX_L = '+'
-    UI_BOX_R = '+'
-    UI_BOX_T = '+'
-    UI_BOX_B = '+'
-    UI_BOX_M = '+'
-    UI_BOX_H = '-'
-    UI_BOX_V = '|'
-    UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
-else:
+# Default to no unicode on Python2. Not worth the hassle!
+UI_SPACE = ' '
+UI_SEPARATOR = '.'
+UI_DASH = '-'
+UI_DEGREE = '^'
+UI_BLOCK = '*'
+UI_CASCADE = '-'
+UI_BOX_TL = '+'
+UI_BOX_BL = '+'
+UI_BOX_TR = '+'
+UI_BOX_BR = '+'
+UI_BOX_L = '+'
+UI_BOX_R = '+'
+UI_BOX_T = '+'
+UI_BOX_B = '+'
+UI_BOX_M = '+'
+UI_BOX_H = '-'
+UI_BOX_V = '|'
+UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
+
+if sys.version_info[0] >= 3:
     # Use (common) unicode for improved formatting and klipper layout
     UI_SPACE = '\u00A0'
     UI_SEPARATOR = '\u00A0'
     UI_DASH = '\u2014'
     UI_DEGREE = '\u00B0'
-    UI_BOX_TL = '\u250C'
-    UI_BOX_BL = '\u2514'
-    UI_BOX_TR = '\u2510'
-    UI_BOX_BR = '\u2518'
-    UI_BOX_L = '\u251C'
-    UI_BOX_R = '\u2524'
-    UI_BOX_T = '\u252C'
-    UI_BOX_B = '\u2534'
-    UI_BOX_M = '\u253C'
-    UI_BOX_H = '\u2500'
-    UI_BOX_V = '\u2502'
     UI_BLOCK = '\u2588'
+    UI_CASCADE = '\u2514'
+#    UI_BOX_TL = '\u250C'
+#    UI_BOX_BL = '\u2514'
+#    UI_BOX_TR = '\u2510'
+#    UI_BOX_BR = '\u2518'
+#    UI_BOX_L = '\u251C'
+#    UI_BOX_R = '\u2524'
+#    UI_BOX_T = '\u252C'
+#    UI_BOX_B = '\u2534'
+#    UI_BOX_M = '\u253C'
+#    UI_BOX_H = '\u2500'
+#    UI_BOX_V = '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
@@ -1197,7 +1199,7 @@ class Mmu:
             self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
 
         if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
-            self._log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK))
+            self._log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s, UI_CASCADE=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE))
             self._log_info("{}{}{}{}".format(UI_BOX_TL, UI_BOX_T, UI_BOX_H, UI_BOX_TR))
             self._log_info("{}{}{}{}".format(UI_BOX_L,  UI_BOX_M, UI_BOX_H, UI_BOX_R))
             self._log_info("{}{}{}{}".format(UI_BOX_V,  UI_BOX_V, UI_SPACE, UI_BOX_V))
@@ -1272,6 +1274,7 @@ class Mmu:
             return 'compressed' if self.sync_feedback_last_state > 0.1 else 'expanded' if self.sync_feedback_last_state < -0.1 else 'neutral'
         return "disabled"
 
+    # Returning new list() is so that clients like KlipperScreen sees the change
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
@@ -1301,10 +1304,10 @@ class Mmu:
                 'gate_color': list(self.gate_color),
                 'gate_color_rgb': self.gate_color_rgb,
                 'gate_spool_id': list(self.gate_spool_id),
-                'custom_color_rgb': list(self.custom_color_rgb),
+                'custom_color_rgb': self.custom_color_rgb,
                 'endless_spool_groups': list(self.endless_spool_groups),
-                'tool_extrusion_multipliers': list(self.tool_extrusion_multipliers),
-                'tool_speed_multipliers': list(self.tool_speed_multipliers),
+                'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
+                'tool_speed_multipliers': self.tool_speed_multipliers,
                 'slicer_tool_map': self.slicer_tool_map,
                 'action': self._get_action_string(),
                 'has_bypass': self.bypass_offset > 0.,
@@ -1452,9 +1455,9 @@ class Mmu:
             # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
             table_rows_map = {
                 'total':         {'stats': lifetime, 'name': 'total '},
-                'total_average': {'stats': lifetime, 'name': UI_BOX_BL + ' avg', 'devide': lifetime.get('total_swaps', 1)}, 
+                'total_average': {'stats': lifetime, 'name': UI_CASCADE + ' avg', 'devide': lifetime.get('total_swaps', 1)}, 
                 'job':           {'stats': job,      'name': 'this job '},
-                'job_average':   {'stats': job,      'name': UI_BOX_BL + ' avg', 'devide': job.get('total_swaps', 1)},
+                'job_average':   {'stats': job,      'name': UI_CASCADE + ' avg', 'devide': job.get('total_swaps', 1)},
                 'last':          {'stats': last,     'name': 'last'}
             }
             # Map the saved timing values to proper column titles
