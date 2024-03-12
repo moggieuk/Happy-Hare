@@ -794,9 +794,9 @@ read_previous_config() {
                 variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
             fi
             if [ "${variable_restore_xy_pos}" == "True" ]; then
-                variable_restore_xy_pos = "last"
+                variable_restore_xy_pos="last"
             elif [ "${variable_restore_xy_pos}" == "False" ]; then
-                variable_restore_xy_pos = "none"
+                variable_restore_xy_pos="none"
             fi
         fi
     done
