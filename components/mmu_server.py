@@ -229,28 +229,29 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
         metadata.logger.info(f"File Not Found: {file_path}")
         sys.exit(-1)
     try:
+        metadata.logger.info(f"mmu_server: Pre-processing file: {file_path}")
         fname = os.path.basename(file_path)
         if fname.endswith(".gcode"):
             with tempfile.TemporaryDirectory() as tmp_dir_name:
                 tmp_file = os.path.join(tmp_dir_name, fname)
 
                 if insert_placeholders:
-                    metadata.logger.info(f"mmu_server: Performing placeholder pre-processing on file: {fname}")
+                    start = time.time()
                     has_placeholder, tools_used, colors, temps, materials, purge_volumes, slicer = parse_gcode_file(file_path)
-                    metadata.logger.info(f"Detected gcode by slicer: {slicer}")
+                    metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
                 else:
                     tools_used = colors = temps = materials = purge_volumes = slicer = None
                     has_placeholder = False
 
                 if insert_nextpos or has_placeholder:
-                    msg = ""
+                    start = time.time()
+                    msg = []
                     if has_placeholder:
-                        msg += "Writing MMU placeholders,"
+                        msg.append("Writing MMU placeholders")
                     if insert_nextpos:
-                        msg += "Inserting next position to tool changes,"
-                    msg = f"Inserting next position to tool changes, "
-                    metadata.logger.info(f"{msg} File: {file_path}")
+                        msg.append("Inserting next position to tool changes")
                     process_file(file_path, tmp_file, insert_nextpos, tools_used, colors, temps, materials, purge_volumes)
+                    metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
                     if os.path.islink(file_path):
