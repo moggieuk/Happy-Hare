@@ -88,6 +88,10 @@ METADATA_MATERIALS = "!materials!"
 PURGE_VOLUMES_REGEX = r"^; (flush_volumes_matrix|wiping_volumes_matrix) =(.*)$" # flush.. in Orca, wiping... in PS
 METADATA_PURGE_VOLUMES = "!purge_volumes!"
 
+# Detection for next pos processing
+T_PATTERN  = r'^T(\d+)$'
+G1_PATTERN = r'^G[01](?:\s+X([\d.]*)|\s+Y([\d.]*))+.*$'
+
 def parse_gcode_file(file_path):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
     tools_regex = re.compile(TOOL_DISCOVERY_REGEX, re.IGNORECASE)
@@ -108,75 +112,77 @@ def parse_gcode_file(file_path):
 
     with open(file_path, 'r') as in_file:
         for line in in_file:
-            # Discover slicer
-            if not slicer and line.startswith(";"):
-                match = slicer_regex.match(line)
+            if line.startswith(";"):
+                # Discover slicer
+                if not slicer:
+                    match = slicer_regex.match(line)
+                    if match:
+                        slicer = match.group(1).lower()
+            else:
+                # !referenced_tools! processing
+                if not has_tools_placeholder and METADATA_TOOL_DISCOVERY in line:
+                    has_tools_placeholder = True
+    
+                match = tools_regex.match(line)
                 if match:
-                    slicer = match.group(1).lower()
-
-            # !referenced_tools! processing
-            if not has_tools_placeholder and not line.startswith(";") and METADATA_TOOL_DISCOVERY in line:
-                has_tools_placeholder = True
-
-            match = tools_regex.match(line)
-            if match:
-                tool = match.group("tool")
-                tools_used.add(int(tool))
-
-            # !colors! processing
-            if not has_colors_placeholder and not line.startswith(";") and METADATA_COLORS in line:
-                has_colors_placeholder = True
-
-            if not found_colors:
-                match = colors_regex.match(line)
-                if match:
-                    colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
-                    colors.extend(colors_csv)
-                    found_colors = all(len(c) > 0 for c in colors)
-
-            # !temperatures! processing
-            if not has_temps_placeholder and not line.startswith(";") and METADATA_TEMPS in line:
-                has_temps_placeholder = True
-
-            if not found_temps:
-                match = temps_regex.match(line)
-                if match:
-                    temps_csv = re.split(';|,', match.group(2).strip())
-                    temps.extend(temps_csv)
-                    found_temps = True
-
-            # !materials! processing
-            if not has_materials_placeholder and not line.startswith(";") and METADATA_MATERIALS in line:
-                has_materials_placeholder = True
-
-            if not found_materials:
-                match = materials_regex.match(line)
-                if match:
-                    materials_csv = match.group(1).strip().split(';')
-                    materials.extend(materials_csv)
-                    found_materials = True
-            
-            # !purge_volumes! processing
-            if not has_purge_volumes_placeholder and not line.startswith(";") and METADATA_PURGE_VOLUMES in line:
-                has_purge_volumes_placeholder = True
-            
-            if not found_purge_volumes:
-                match = purge_volumes_regex.match(line)
-                if match:
-                    purge_volumes_csv = match.group(2).strip().split(',')
-                    purge_volumes.extend(purge_volumes_csv)
-                    found_purge_volumes = True
+                    tool = match.group("tool")
+                    tools_used.add(int(tool))
+    
+                # !colors! processing
+                if not has_colors_placeholder and METADATA_COLORS in line:
+                    has_colors_placeholder = True
+    
+                if not found_colors:
+                    match = colors_regex.match(line)
+                    if match:
+                        colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
+                        colors.extend(colors_csv)
+                        found_colors = all(len(c) > 0 for c in colors)
+    
+                # !temperatures! processing
+                if not has_temps_placeholder and METADATA_TEMPS in line:
+                    has_temps_placeholder = True
+    
+                if not found_temps:
+                    match = temps_regex.match(line)
+                    if match:
+                        temps_csv = re.split(';|,', match.group(2).strip())
+                        temps.extend(temps_csv)
+                        found_temps = True
+    
+                # !materials! processing
+                if not has_materials_placeholder and METADATA_MATERIALS in line:
+                    has_materials_placeholder = True
+    
+                if not found_materials:
+                    match = materials_regex.match(line)
+                    if match:
+                        materials_csv = match.group(1).strip().split(';')
+                        materials.extend(materials_csv)
+                        found_materials = True
+                
+                # !purge_volumes! processing
+                if not has_purge_volumes_placeholder and METADATA_PURGE_VOLUMES in line:
+                    has_purge_volumes_placeholder = True
+                
+                if not found_purge_volumes:
+                    match = purge_volumes_regex.match(line)
+                    if match:
+                        purge_volumes_csv = match.group(2).strip().split(',')
+                        purge_volumes.extend(purge_volumes_csv)
+                        found_purge_volumes = True
 
     return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder,
             sorted(tools_used), colors, temps, materials, purge_volumes, slicer)
 
 def process_file(input_filename, output_filename, insert_nextpos, tools_used, colors, temps, materials, purge_volumes):
-    t_pattern = re.compile(r'^T(\d+)$')
-    g1_pattern = re.compile(r'^G[01](?:\s+X([\d.]*)|\s+Y([\d.]*))+.*$')
+
+    t_pattern = re.compile(T_PATTERN)
+    g1_pattern = re.compile(G1_PATTERN)
 
     with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
-        buffer = []  # Buffer lines between a "T" line and the next matching "G1" line
-        tool = None  # Store the tool number from a "T" line
+        buffer = [] # Buffer lines between a "T" line and the next matching "G1" line
+        tool = None # Store the tool number from a "T" line
 
         for line in infile:
             line = add_placeholder(line, tools_used, colors, temps, materials, purge_volumes)
