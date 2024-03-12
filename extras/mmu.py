@@ -5082,7 +5082,7 @@ class Mmu:
         self._wrap_track_time('post_unload', self._wrap_gcode_command(self.post_unload_macro, exception=True))
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
-    def _change_tool(self, tool, skip_tip=True, next_pos=''):
+    def _change_tool(self, tool, skip_tip=True, next_pos=None):
         self._log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming"))
         self._track_time_start('total')
         skip_unload = False
@@ -5134,6 +5134,14 @@ class Mmu:
 
         self.gcode.run_script_from_command("M117 T%s" % tool)
         return True
+
+    def _set_next_position(self, next_pos):
+        x, y = (next_pos.split(',') + [None, None])[:2]
+        if x and y:
+            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=\"{x}, {y}\"")
+            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={True}")
+        else:
+            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={False}")
 
     def _unselect_tool(self):
         self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
@@ -5319,7 +5327,7 @@ class Mmu:
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
-        next_pos = gcmd.get('NEXT_POS', '')
+        next_pos = gcmd.get('NEXT_POS', None)
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)
         if match:
@@ -6444,16 +6452,6 @@ class Mmu:
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volumes"
             self._log_always(msg)
-
-    def _set_next_position(self, next_pos):
-        pos = next_pos.split(',')
-        if pos[0] and pos[1]:
-            x = pos[0]
-            y = pos[1]
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=\"{x}, {y}\"")
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={True}")
-        else:
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={False}")
 
     # TODO default to current gate; MMU_CHECK_GATES default to all gates. Add ALL=1 flag
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
