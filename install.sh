@@ -1168,6 +1168,14 @@ install_update_manager() {
             echo -e "${WARNING}[mmu_server] already exists in moonraker.conf - skipping install"
         fi
 
+        # Quick "catch-up" update for new toolchange_next_pos pre-processing
+        update_section=$(grep -c 'enable_toolchange_next_pos' ${file} || true)
+        if [ "${update_section}" -eq 0 ]; then
+            awk '/^enable_file_preprocessor/ {print $0 "\nenable_toolchange_next_pos: True\n"; next} {print}' ${file} > ${file}.tmp && mv ${file}.tmp ${file}
+            restart=1
+            echo -e "${WARNING}Added new 'enable_toolchange_next_pos' to moonraker.conf"
+        fi
+
         if [ "$restart" -eq 1 ]; then
             restart_moonraker
         fi

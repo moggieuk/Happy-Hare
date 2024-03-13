@@ -58,6 +58,7 @@ class MmuServer:
     def setup_placeholder_processor(self, config):
         # Switch out the metadata processor with this module with handles placeholders
         args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
+        args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
         from .file_manager import file_manager
         file_manager.METADATA_SCRIPT = os.path.abspath(__file__) + args
 
