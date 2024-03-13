@@ -241,7 +241,7 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 
 | Dimension | CW2 | G2E |
 | --------- | --- | --- |
-| `toolhead_entry_to_extruder` | 13 | 12.9 |
+| `toolhead_entry_to_extruder` | 13 | 13.29 |
 
 **CW2** dimensions for each hotend:
 
@@ -255,9 +255,9 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 
 | Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
-| `toolhead_extruder_to_nozzle` | 87.9 | | | |
-| `toolhead_sensor_to_nozzle`   | 67.9 | | | |
-| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 59.3 | | | |
+| `toolhead_extruder_to_nozzle` | 99.38 | | | |
+| `toolhead_sensor_to_nozzle`   | 79.78 | | | |
+| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 61.22 | | | |
 
 ** These settings assume you have turned off all the slicer settings like toolchange retraction!<br>
 _(please submit your verified additions to build out this table)_
