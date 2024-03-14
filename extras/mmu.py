@@ -1433,7 +1433,7 @@ class Mmu:
                 return "{min}:{sec:0>2}".format(min=m, sec=s)
             if s >= 10:
                 return "{sec}.{tenths}".format(sec=s, tenths=int(round(ms / 100, 0)))
-            return "{sec}.{hundreds}".format(sec=s, hundreds=int(round(ms / 10, 0)))
+            return "{sec}.{hundreds:0>2}".format(sec=s, hundreds=int(round(ms / 10, 0)))
         return seconds
 
     def _seconds_to_string(self, seconds):
