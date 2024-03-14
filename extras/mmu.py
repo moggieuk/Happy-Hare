@@ -236,6 +236,7 @@ class Mmu:
     VARS_MMU_CALIB_PREFIX           = "mmu_calibration_"
     VARS_MMU_GATE_STATISTICS_PREFIX = "mmu_statistics_gate_"
     VARS_MMU_SWAP_STATISTICS        = "mmu_statistics_swaps"
+    VARS_MMU_COUNTERS               = "mmu_statistics_counters"
     VARS_MMU_SELECTOR_OFFSETS       = "mmu_selector_offsets"
     VARS_MMU_SELECTOR_BYPASS        = "mmu_selector_bypass"
     VARS_MMU_ENCODER_RESOLUTION     = "mmu_encoder_resolution"
@@ -604,6 +605,7 @@ class Mmu:
         # Initialize state and statistics variables
         self._initialize_state()
         self._reset_statistics()
+        self.counters = {}
 
         # Logging
         self.queue_listener = None
@@ -1149,6 +1151,8 @@ class Mmu:
             self._log_info("Warning: Some persisted state was ignored because it contained errors:\n%s" % ''.join(errors))
 
         swap_stats = self.variables.get(self.VARS_MMU_SWAP_STATISTICS, {})
+        counters = self.variables.get(self.VARS_MMU_COUNTERS, {})
+        self.counters.update(counters)
 
         # Auto upgrade old names
         key_map = {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause"}
@@ -1639,6 +1643,9 @@ class Mmu:
                 self.statistics[key] = round(self.statistics[key], 2)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SWAP_STATISTICS, self.statistics))
 
+    def _persist_counters(self):
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_COUNTERS, self.counters))
+
     def _persist_gate_map(self):
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ('%s' %x), self.gate_material))))
@@ -1734,16 +1741,52 @@ class Mmu:
     def cmd_MMU_STATS(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
-        total = gcmd.get_int('TOTAL', 0, minval=0, maxval=1)
-        detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
-        if reset:
+        counter = gcmd.get('COUNTER', None)
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        total = bool(gcmd.get_int('TOTAL', 0, minval=0, maxval=1))
+        detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
+        showcounts = bool(gcmd.get_int('SHOWCOUNTS', 0, minval=0, maxval=1))
+
+        if reset and counter is None:
             self._reset_statistics()
             self._persist_swap_statistics()
             self._persist_gate_statistics()
             self._dump_statistics(force_log=True, total=True)
         else:
             self._dump_statistics(force_log=True, total=total or detail, job=True, gate=True, detail=detail)
+
+        if counter:
+            counter = counter.strip()
+            delete = bool(gcmd.get_int('DELETE', 0, minval=0, maxval=1))
+            limit = gcmd.get_int('LIMIT', 0, minval=1)
+            incr = gcmd.get_int('INCR', 0, minval=1)
+            if delete:
+                _ = self.counters.pop(counter, None)
+            elif reset:
+                if counter in self.counters:
+                    self.counters[counter]['count'] = 0
+            elif limit:
+                warning = gcmd.get('WARNING', "")
+                if counter not in self.counters:
+                    self.counters[counter] = {'count': 0}
+                self.counters[counter].update({'limit': limit, 'warning': warning})
+            elif incr:
+                if counter in self.counters:
+                    metric = self.counters[counter]
+                    metric['count'] += incr
+                    if metric['count'] > metric['limit']:
+                        msg = "Warning: Count %s (%d) above limit %d : %s" % (counter, metric['count'], metric['limit'], metric['warning'])
+                        self._log_always(msg)
+            self._persist_counters()
+
+        if showcounts:
+            msg = "Consumption counters:\n"
+            for counter, metric in self.counters.items():
+                if metric['count'] > metric['limit']:
+                    msg = "Warning: Count %s (%d) above limit %d : %s" % (counter, metric['count'], metric['limit'], metric['warning'])
+                else:
+                    msg += "Count %s: %d (limit %d)\n" % (counter, metric['count'], metric['limit'])
+            self._log_always(msg)
 
     cmd_MMU_STATUS_help = "Complete dump of current MMU state and important configuration"
     def cmd_MMU_STATUS(self, gcmd):
