@@ -1291,7 +1291,7 @@ questionaire() {
     echo
     echo -e "${PROMPT}${SECTION}What type of MMU are you running?${INPUT}"
     echo -e "1) ERCF v1.1 (inc TripleDecky, Springy, Binky mods)"
-    echo -e "2) ERCF v2.0 (inc ThumperBlocks mod)"
+    echo -e "2) ERCF v2.0"
     echo -e "3) Tradrack v1.0"
     echo -e "4) Other (or just want starter config files)"
     num=$(prompt_123 "MMU Type?" 4)
@@ -1334,22 +1334,12 @@ questionaire() {
             HAS_ENCODER=yes
             mmu_vendor="ERCF"
             mmu_version="2.0"
-            gate_parking_distance=13.0
+            gate_parking_distance=13.0 # ThumperBlocks is 11.0
             servo_buzz_gear_on_down=3
 
             maximum_servo_angle=180
             minimum_pulse_width=0.00085
             maximum_pulse_width=0.00215
-            echo
-            echo -e "${PROMPT}Some popular upgrade options for ERCF v2.0 can automatically be setup. Let me ask you about them...${INPUT}"
-            yn=$(prompt_yn "Are you using 'ThumperBlocks' filament block option")
-            echo
-            case $yn in
-            y)
-                mmu_version+="h"
-                gate_parking_distance=11.0
-                ;;
-            esac
             ;;
         3)
             HAS_ENCODER=no

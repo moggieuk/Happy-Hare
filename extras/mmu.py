@@ -350,11 +350,6 @@ class Mmu:
 
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
-                # Modifications:
-                #  h = ThumperBlocks filament blocks
-                if "h" in self.mmu_version_string:
-                    self.cad_gate_width = 21.
-
             else: # V1.1 original
                 # Modifications:
                 #  t = TripleDecky filament blocks
@@ -2336,7 +2331,6 @@ class Mmu:
                 max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
             else:
                 max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
-
         else:
             # Everything else
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
