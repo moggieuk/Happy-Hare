@@ -1581,9 +1581,9 @@ class Mmu:
                 result.append(item)
         return result
 
-    def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False):
+    def _dump_statistics(self, force_log=False, total=False, job=False, gate=False, detail=False, showcounts=False):
+        msg = ""
         if self.log_statistics or force_log:
-            msg = ""
             if job or total:
                 msg += self._swap_statistics_to_string(total=total)
             if self._can_use_encoder() and gate:
@@ -1593,6 +1593,18 @@ class Mmu:
                 if detail:
                     msg += "\n" if msg != "" else ""
                     msg += d
+
+        if showcounts and self.counters:
+            if msg:
+                msg += "\n\n"
+            msg += "Consumption counters:\n"
+            for counter, metric in self.counters.items():
+                if metric['count'] > metric['limit']:
+                    msg += "Warning: Count %s (%d) above limit %d : %s" % (counter, metric['count'], metric['limit'], metric['warning'])
+                else:
+                    msg += "Count %s: %d (limit %d%s)\n" % (counter, metric['count'], metric['limit'], ", will pause" if metric['pause'] else "")
+
+        if msg:
             self._log_always(msg)
     
         # This is good place to update the persisted stats...
@@ -1754,14 +1766,6 @@ class Mmu:
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         showcounts = bool(gcmd.get_int('SHOWCOUNTS', 0, minval=0, maxval=1))
 
-        if reset and counter is None:
-            self._reset_statistics()
-            self._persist_swap_statistics()
-            self._persist_gate_statistics()
-            self._dump_statistics(force_log=True, total=True)
-        else:
-            self._dump_statistics(force_log=True, total=total or detail, job=True, gate=True, detail=detail)
-
         if counter:
             counter = counter.strip()
             delete = bool(gcmd.get_int('DELETE', 0, minval=0, maxval=1))
@@ -1774,26 +1778,30 @@ class Mmu:
                     self.counters[counter]['count'] = 0
             elif limit:
                 warning = gcmd.get('WARNING', "")
+                pause = bool(gcmd.get_int('PAUSE', 0, minval=0, maxval=1))
                 if counter not in self.counters:
                     self.counters[counter] = {'count': 0}
-                self.counters[counter].update({'limit': limit, 'warning': warning})
+                self.counters[counter].update({'limit': limit, 'warning': warning, 'pause': pause})
             elif incr:
-                if counter in self.counters:
-                    metric = self.counters[counter]
+                if name in self.counters:
+                    metric = self.counters[name]
                     metric['count'] += incr
                     if metric['count'] > metric['limit']:
-                        msg = "Warning: Count %s (%d) above limit %d : %s" % (counter, metric['count'], metric['limit'], metric['warning'])
-                        self._log_always(msg)
+                        msg = "Count %s (%d) above limit %d : %s" % (name, metric['count'], metric['limit'], metric['warning'])
+                        msg += "\nUse 'MMU_STATS COUNTER=%s RESET=1' to reset" % name
+                        if metric['pause']:
+                            self._mmu_pause(msg)
+                        else:
+                            self._log_always("Warning: " + msg)
             self._persist_counters()
-
-        if showcounts:
-            msg = "Consumption counters:\n"
-            for counter, metric in self.counters.items():
-                if metric['count'] > metric['limit']:
-                    msg = "Warning: Count %s (%d) above limit %d : %s" % (counter, metric['count'], metric['limit'], metric['warning'])
-                else:
-                    msg += "Count %s: %d (limit %d)\n" % (counter, metric['count'], metric['limit'])
-            self._log_always(msg)
+        elif reset:
+            self._reset_statistics()
+            self._persist_swap_statistics()
+            self._persist_gate_statistics()
+            self._dump_statistics(force_log=True, total=True)
+            return
+ 
+        self._dump_statistics(force_log=True, total=total or detail, job=True, gate=True, detail=detail, showcounts=showcounts)
 
     cmd_MMU_STATUS_help = "Complete dump of current MMU state and important configuration"
     def cmd_MMU_STATUS(self, gcmd):
