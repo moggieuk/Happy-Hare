@@ -113,65 +113,63 @@ def parse_gcode_file(file_path):
 
     with open(file_path, 'r') as in_file:
         for line in in_file:
-            if line.startswith(";"):
-                # Discover slicer
-                if not slicer:
-                    match = slicer_regex.match(line)
-                    if match:
-                        slicer = match.group(1).lower()
-            else:
-                # !referenced_tools! processing
-                if not has_tools_placeholder and METADATA_TOOL_DISCOVERY in line:
-                    has_tools_placeholder = True
-    
-                match = tools_regex.match(line)
+            # Discover slicer
+            if not slicer and line.startswith(";"):
+                match = slicer_regex.match(line)
                 if match:
-                    tool = match.group("tool")
-                    tools_used.add(int(tool))
-    
-                # !colors! processing
-                if not has_colors_placeholder and METADATA_COLORS in line:
-                    has_colors_placeholder = True
-    
-                if not found_colors:
-                    match = colors_regex.match(line)
-                    if match:
-                        colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
-                        colors.extend(colors_csv)
-                        found_colors = all(len(c) > 0 for c in colors)
-    
-                # !temperatures! processing
-                if not has_temps_placeholder and METADATA_TEMPS in line:
-                    has_temps_placeholder = True
-    
-                if not found_temps:
-                    match = temps_regex.match(line)
-                    if match:
-                        temps_csv = re.split(';|,', match.group(2).strip())
-                        temps.extend(temps_csv)
-                        found_temps = True
-    
-                # !materials! processing
-                if not has_materials_placeholder and METADATA_MATERIALS in line:
-                    has_materials_placeholder = True
-    
-                if not found_materials:
-                    match = materials_regex.match(line)
-                    if match:
-                        materials_csv = match.group(1).strip().split(';')
-                        materials.extend(materials_csv)
-                        found_materials = True
-                
-                # !purge_volumes! processing
-                if not has_purge_volumes_placeholder and METADATA_PURGE_VOLUMES in line:
-                    has_purge_volumes_placeholder = True
-                
-                if not found_purge_volumes:
-                    match = purge_volumes_regex.match(line)
-                    if match:
-                        purge_volumes_csv = match.group(2).strip().split(',')
-                        purge_volumes.extend(purge_volumes_csv)
-                        found_purge_volumes = True
+                    slicer = match.group(1).lower()
+            # !referenced_tools! processing
+            if not has_tools_placeholder and METADATA_TOOL_DISCOVERY in line:
+                has_tools_placeholder = True
+
+            match = tools_regex.match(line)
+            if match:
+                tool = match.group("tool")
+                tools_used.add(int(tool))
+
+            # !colors! processing
+            if not has_colors_placeholder and METADATA_COLORS in line:
+                has_colors_placeholder = True
+
+            if not found_colors:
+                match = colors_regex.match(line)
+                if match:
+                    colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
+                    colors.extend(colors_csv)
+                    found_colors = all(len(c) > 0 for c in colors)
+
+            # !temperatures! processing
+            if not has_temps_placeholder and METADATA_TEMPS in line:
+                has_temps_placeholder = True
+
+            if not found_temps:
+                match = temps_regex.match(line)
+                if match:
+                    temps_csv = re.split(';|,', match.group(2).strip())
+                    temps.extend(temps_csv)
+                    found_temps = True
+
+            # !materials! processing
+            if not has_materials_placeholder and METADATA_MATERIALS in line:
+                has_materials_placeholder = True
+
+            if not found_materials:
+                match = materials_regex.match(line)
+                if match:
+                    materials_csv = match.group(1).strip().split(';')
+                    materials.extend(materials_csv)
+                    found_materials = True
+            
+            # !purge_volumes! processing
+            if not has_purge_volumes_placeholder and METADATA_PURGE_VOLUMES in line:
+                has_purge_volumes_placeholder = True
+            
+            if not found_purge_volumes:
+                match = purge_volumes_regex.match(line)
+                if match:
+                    purge_volumes_csv = match.group(2).strip().split(',')
+                    purge_volumes.extend(purge_volumes_csv)
+                    found_purge_volumes = True
 
     return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder,
             sorted(tools_used), colors, temps, materials, purge_volumes, slicer)
