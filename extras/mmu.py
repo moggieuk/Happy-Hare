@@ -1350,22 +1350,11 @@ class Mmu:
 
     def _reset_job_statistics(self):
         self.job_statistics = {}
-        self.tracked_start_time = 0
-        self.pause_start_time = 0
 
     def _track_time_start(self, name):
-# PAUL        self.track[name] = time.time()
-        self.track[name] = self.toolhead.get_last_move_time() # PAUL
+        #self.track[name] = time.time()
+        self.track[name] = self.toolhead.get_last_move_time()
         #self._log_trace("Track times: %s" % self.track)
-        # PAUL vvv
-        t = time.time()
-        lmt = self.toolhead.get_last_move_time()
-        if self.toolhead.lookahead.get_last():
-            lat = self.toolhead.lookahead.get_last().min_move_t
-        else:
-            lat = 0
-        self._log_info("PAUL: time(%s) t=%s , lmt=%s , lat=%s" % (name, self.track[name], lmt, lat))
-        # PAUL ^^^
 
     def _track_time_end(self, name):
         if name not in self.track:
@@ -1374,9 +1363,8 @@ class Mmu:
         self.job_statistics.setdefault(name, 0)
         #self._log_trace("Statistics: %s" % self.statistics)
 
-# PAUL        elapsed = time.time() - self.track[name]
-        elapsed = self.toolhead.get_last_move_time() - self.track[name] # PAUL
-        self._log_info("PAUL: elapsed(%s) %s" % (name, elapsed))
+        #elapsed = time.time() - self.track[name]
+        elapsed = self.toolhead.get_last_move_time() - self.track[name]
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
         self.last_statistics[name] = elapsed
@@ -1409,7 +1397,6 @@ class Mmu:
         self.statistics['swaps_since_pause'] = 0
 
         self._track_time_start('pause')
-        self.pause_start_time = time.time()
         self._track_gate_statistics('pauses', self.gate_selected)
 
     def _track_pause_end(self):
