@@ -1196,6 +1196,7 @@ class Mmu:
         if gcmd.get_int('HELP', 0, minval=0, maxval=1):
             self._log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
             self._log_info("DUMP_UNICODE=1 : Display special characters used in display")
+            self._log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
 
         feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
         if feedback is not None:
@@ -1209,6 +1210,20 @@ class Mmu:
             self._log_info("{}{}{}{}".format(UI_BOX_V,  UI_BOX_V, UI_SPACE, UI_BOX_V))
             self._log_info("{}{}{}{}".format(UI_BOX_BL, UI_BOX_B, UI_BOX_H, UI_BOX_BR))
             self._log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
+
+        if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
+            with self._wrap_track_time('total'):
+                with self._wrap_track_time('unload'):
+                    with self._wrap_track_time('pre_unload'):
+                        self._wrap_gcode_command(self.pre_unload_macro, exception=True)
+                    self._wrap_gcode_command(self.post_form_tip_macro, exception=True)
+                    with self._wrap_track_time('post_unload'):
+                        self._wrap_gcode_command(self.post_unload_macro, exception=True)
+                with self._wrap_track_time('load'):
+                    with self._wrap_track_time('pre_load'):
+                        self._wrap_gcode_command(self.pre_load_macro, exception=True)
+                    with self._wrap_track_time('post_load'):
+                        self._wrap_gcode_command(self.post_load_macro, exception=True)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
@@ -1350,14 +1365,16 @@ class Mmu:
         #self._log_trace("Statistics: %s" % self.statistics)
 
         elapsed = time.time() - self.track[name]
+        self._log_trace("PAUL: elapsed= %s" % elapsed)
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
         self.last_statistics[name] = elapsed
 
-    def _wrap_track_time(self, name, function):
+    @contextlib.contextmanager
+    def _wrap_track_time(self, name):
+        self._track_time_start(name)
         try:
-            self._track_time_start(name)
-            function
+            yield self
         finally:
             self._track_time_end(name)
 
@@ -1427,7 +1444,7 @@ class Mmu:
         # |  114(46)  |      unloading      |       loading        | complete |
         # |   swaps   | pre  |   -   | post | pre  |   -   | post  |   swap   |
         # +-----------+------+-------+------+------+-------+-------+----------+
-        # | all time  | 0:07 | 47:19 | 0:00 | 0:01 | 37:11 | 33:39 |  2:00:38 |
+        # |   total   | 0:07 | 47:19 | 0:00 | 0:01 | 37:11 | 33:39 |  2:00:38 |
         # |     - avg | 0:00 |  0:24 | 0:00 | 0:00 |  0:19 |  0:17 |     1:03 |
         # | this job  | 0:00 | 10:27 | 0:00 | 0:00 |  8:29 |  8:30 |    28:02 |
         # |     - avg | 0:00 |  0:13 | 0:00 | 0:00 |  0:11 |  0:11 |     0:36 |
@@ -5058,13 +5075,15 @@ class Mmu:
             else:
                 raise MmuError("Gate %d is empty!\nUse 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % (gate, gate, gate))
 
-        self._wrap_track_time('pre_load', self._wrap_gcode_command(self.pre_load_macro, exception=True))
+        with self._wrap_track_time('pre_load'):
+            self._wrap_gcode_command(self.pre_load_macro, exception=True)
         self._select_tool(tool, move_servo=False)
         self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
-        self._wrap_track_time('post_load', self._wrap_gcode_command(self.post_load_macro, exception=True))
+        with self._wrap_track_time('post_load'):
+            self._wrap_gcode_command(self.post_load_macro, exception=True)
 
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
@@ -5074,11 +5093,13 @@ class Mmu:
 
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
-        self._wrap_track_time('pre_unload', self._wrap_gcode_command(self.pre_unload_macro, exception=True))
+        with self._wrap_track_time('pre_unload'):
+            self._wrap_gcode_command(self.pre_unload_macro, exception=True)
         self._record_tool_override() # Remember M220 and M221 overrides
         self._unload_sequence(skip_tip=skip_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
-        self._wrap_track_time('post_unload', self._wrap_gcode_command(self.post_unload_macro, exception=True))
+        with self._wrap_track_time('post_unload'):
+            self._wrap_gcode_command(self.post_unload_macro, exception=True)
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True, next_pos=None):
