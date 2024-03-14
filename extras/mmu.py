@@ -1421,7 +1421,7 @@ class Mmu:
 
     def _seconds_to_short_string(self, seconds):
         if isinstance(seconds, float) or isinstance(seconds, int) or seconds.isnumeric():
-            s = int(round(seconds, 0))
+            s = int(seconds)
             h = s // 3600
             m = (s // 60) % 60
             ms = int(round((seconds * 1000) % 1000, 0))
