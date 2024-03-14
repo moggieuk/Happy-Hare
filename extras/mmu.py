@@ -1421,12 +1421,19 @@ class Mmu:
 
     def _seconds_to_short_string(self, seconds):
         if isinstance(seconds, float) or isinstance(seconds, int) or seconds.isnumeric():
-            seconds = int(seconds)
-            if seconds >= 3600:
-                return "{hour}:{min:0>2}:{sec:0>2}".format(hour=seconds // 3600, min=(seconds // 60) % 60, sec=seconds % 60)
-            if seconds >= 60:
-                return "{min}:{sec:0>2}".format(min=(seconds // 60) % 60, sec=seconds % 60)
-            return "0:{sec:0>2}".format(sec=seconds % 60)
+            s = int(seconds)
+            h = s // 3600
+            m = (s // 60) % 60
+            ms = int(round((seconds * 1000) % 1000, 0))
+            s = s % 60
+            
+            if h > 0:
+                return "{hour}:{min:0>2}:{sec:0>2}".format(hour=h, min=m, sec=s)
+            if m > 0:
+                return "{min}:{sec:0>2}".format(min=m, sec=s)
+            if s >= 10:
+                return "{sec}.{tenths}".format(sec=s, tenths=int(round(ms / 100, 0)))
+            return "{sec}.{hundreds:0>2}".format(sec=s, hundreds=int(round(ms / 10, 0)))
         return seconds
 
     def _seconds_to_string(self, seconds):
