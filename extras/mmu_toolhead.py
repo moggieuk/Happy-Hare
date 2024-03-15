@@ -59,6 +59,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             if req_accel_to_decel is not None:
                 config.deprecate('max_accel_to_decel')
                 self.min_cruise_ratio = 1. - min(1., (req_accel_to_decel / self.max_accel))
+        self.requested_accel_to_decel = self.min_cruise_ratio * self.max_accel # TODO TEMP to support older klipper 03/14/24
         self.square_corner_velocity = config.getfloat('square_corner_velocity', 5., minval=0.)
         self.junction_deviation = self.max_accel_to_decel = 0.
         self._calc_junction_deviation()
