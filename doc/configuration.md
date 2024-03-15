@@ -247,17 +247,21 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 
 | Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
-| `toolhead_extruder_to_nozzle` | | | | 72 | 
-| `toolhead_sensor_to_nozzle`   | | | | 62 | 
+| `toolhead_extruder_to_nozzle`<br>(in mmu_parameters.cfg) | | | | 72 | 
+| `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | | | | 62 | 
 | `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | | | | 37.5 |
+| `variable_retract_length`<br>(in mmu_macro_vars.cfg) | | | | |
+| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | | | | |
 
 **G2E** dimensions for each hotend:
 
 | Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
-| `toolhead_extruder_to_nozzle` | 99.38 | | | |
-| `toolhead_sensor_to_nozzle`   | 79.78 | | | |
+| `toolhead_extruder_to_nozzle`<br>(in mmu_parameters.cfg) | 99.38 | | | |
+| `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | 79.78 | | | |
 | `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 61.22 | | | |
+| `variable_retract_length`<br>(in mmu_macro_vars.cfg) | 32.22 | | | |
+| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | 31.22 | | | |
 
 ** These settings assume you have turned off all the slicer settings like toolchange retraction!<br>
 _(please submit your verified additions to build out this table)_
@@ -542,4 +546,3 @@ When `mmu_vendor` and `mmu_version` are set, Happy Hare will use the correct CAD
 #
 #encoder_default_resolution: 0.676	# Approximate resolution(mm) of a single encoder "count". Not used for measurement
 ```
-
