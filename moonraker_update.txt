@@ -8,3 +8,4 @@ managed_services: klipper
 
 [mmu_server]
 enable_file_preprocessor: True
+enable_toolchange_next_pos: True

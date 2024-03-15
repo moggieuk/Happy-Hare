@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.50 # Important: Keep synced with mmy.py
+VERSION=2.51 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
@@ -793,6 +793,11 @@ read_previous_config() {
             if [ ! "${variable_safe_margin_x}" == "" ]; then
                 variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
             fi
+            if [ "${variable_restore_xy_pos}" == "True" ]; then
+                variable_restore_xy_pos="\"last\""
+            elif [ "${variable_restore_xy_pos}" == "False" ]; then
+                variable_restore_xy_pos="\"none\""
+            fi
         fi
     done
 
@@ -1163,6 +1168,14 @@ install_update_manager() {
             echo -e "${WARNING}[mmu_server] already exists in moonraker.conf - skipping install"
         fi
 
+        # Quick "catch-up" update for new toolchange_next_pos pre-processing
+        update_section=$(grep -c 'enable_toolchange_next_pos' ${file} || true)
+        if [ "${update_section}" -eq 0 ]; then
+            awk '/^enable_file_preprocessor/ {print $0 "\nenable_toolchange_next_pos: True\n"; next} {print}' ${file} > ${file}.tmp && mv ${file}.tmp ${file}
+            restart=1
+            echo -e "${WARNING}Added new 'enable_toolchange_next_pos' to moonraker.conf"
+        fi
+
         if [ "$restart" -eq 1 ]; then
             restart_moonraker
         fi
@@ -1278,7 +1291,7 @@ questionaire() {
     echo
     echo -e "${PROMPT}${SECTION}What type of MMU are you running?${INPUT}"
     echo -e "1) ERCF v1.1 (inc TripleDecky, Springy, Binky mods)"
-    echo -e "2) ERCF v2.0 (inc ThumperBlocks mod)"
+    echo -e "2) ERCF v2.0"
     echo -e "3) Tradrack v1.0"
     echo -e "4) Other (or just want starter config files)"
     num=$(prompt_123 "MMU Type?" 4)
@@ -1321,22 +1334,12 @@ questionaire() {
             HAS_ENCODER=yes
             mmu_vendor="ERCF"
             mmu_version="2.0"
-            gate_parking_distance=13.0
+            gate_parking_distance=13.0 # ThumperBlocks is 11.0
             servo_buzz_gear_on_down=3
 
             maximum_servo_angle=180
             minimum_pulse_width=0.00085
             maximum_pulse_width=0.00215
-            echo
-            echo -e "${PROMPT}Some popular upgrade options for ERCF v2.0 can automatically be setup. Let me ask you about them...${INPUT}"
-            yn=$(prompt_yn "Are you using 'ThumperBlocks' filament block option")
-            echo
-            case $yn in
-            y)
-                mmu_version+="h"
-                gate_parking_distance=11.0
-                ;;
-            esac
             ;;
         3)
             HAS_ENCODER=no

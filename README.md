@@ -306,7 +306,7 @@ Happy Hare functionality will vary with MMU vendor. After running the installer 
 # 1.1 original design, add "s" suffix for Sprigy, "b" for Binky, "t" for Triple-Decky
 #     e.g. "1.1sb" for v1.1 with Springy mod and Binky encoder
 #
-# 2.0 new community ERCFv2, add "h" suffix for ThumperBlocks
+# 2.0 new community ERCFv2
 #
 # Tradrack
 # 1.0 add "e" if using encoder is fitted
