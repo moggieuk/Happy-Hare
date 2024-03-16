@@ -1,16 +1,13 @@
 # MMU Print Statistics and Consumption Counting
-- [Statistics](#---wiring)<br>
- - [Swap Timings](#---wiring)<br>
- - [Gate Statistics](#---wiring)<br>
-- [Consumption Counts](#---hardware-config)<br>
+- [Swap Timings](#---swap-timings)<br>
+- [Gate Statistics](#---gate-statistics)<br>
+- [Consumption Counters](#---consumption-counters)<br>
 
 Happy Hare records tool change statistics including things like the number of swaps, the number of errors/pauses as well as detailed timing for each step of the process. These statistics are independently recorded for the current print as well as all time totals (since last reset). In addition there is a simple "consumption counting" framework that can be used to remind you to change consumables like filament cutting blade or servo arm. It can even pause the print if critical counts are hit.
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Statistics
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Swap Timings
 
-### Swap Timings
-
-#### Viewing Statistics
+### Viewing Statistics
 Statics can be viewed at anytime with the `MMU_STATS` command:
 ```
 +------------+-----------------------+--------------------------+----------+
@@ -45,28 +42,30 @@ console_stat_rows: total, total_average, job, job_average, last
 # Always display the full statistics table
 console_always_output_full: 1   # 1 = Show full table, 0 = Only show totals out of print
 ```
-
-`MMU_STATS TOTAL=1` will display the totals but you can also force the totals to always be displayed by setting `console_always_output_full: 1`
-
-As well as on demand display `mmu_parameters.cfg` has an option which, if enabled, will dump a table of statistics after each tool change. This defaults to enabled but can be disabled by setting to `0`:
+`MMU_STATS TOTAL=1` will display the totals but you can also force the totals to always be displayed by this setting in `mmu_parameters.cfg`
+```
+console_always_output_full: 1
+```
+As well as on demand display there is an option which, if enabled, will dump a table of statistics after each tool change. This defaults to enabled but can be disabled by setting to `0`:
 ```yml
 log_statistics: 1      # 1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
 ```
 
-#### Statistics Storage
+### Statistics Storage
 Happy Hare stores all statics in the defined `[save_variables]` file, typically `mmu_vars.cfg` so that they are persisted on roboot/restart.
 
 > [!CAUTION]  
-> Although `mmu_vars.cfg` can be edited directly be careful you don't corrupt it because then Happy Hare may not be able to startup
+> Although `mmu_vars.cfg` can be edited directly be careful you don't corrupt it because then Happy Hare may fail to start
 
+<br>
 
-### Gate Statistics
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Gate Statistics
 Happy Hare also records information about the quality of operation of each gate. If an encoder is fitted this includes a measurement of filament slippage, or times the servo failed to catch/grip the filament. To see the raw details run:
 ```
 MMU_STATS DETAIL=1
 ```
 Because that is a lot of information, it is heuristically summarised as an assement with fun ways to visualize:
-<img src="/doc/stats/gate_statistics.png" width="60%">
+<img src="/doc/stats/gate_statistics.png" width="60%"><br>
 Visualization is controlled by this setting in `mmu_parameters.cfg`:
 ```yml
 # How you'd want to see the state of the gates and how they're performing
@@ -78,23 +77,23 @@ console_gate_stat: emoticon
 
 > [!NOTE]  
 > - The purpose of this this is to draw your attention to a gate that might be misbehaving. This might be due to poor calibration, slippage caused but too much friction to moving too fast. You will have to deep dive to find the source but the comparison with other gates is useful
-> - Don't be obsessed with always wanting a perfect score. The summary will slowly trend back to good after a problem is addressed - you don't need to reset.
+> - Don't be obsessed with always wanting a perfect score. The summary will slowly trend back to good after a problem is addressed - you don't need to reset
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Consumption Counts
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Consumption Counters
 
-The `MMU_STATS` command has a dual purpose of providing a mechanism for simple counting and warning. The purpose is to track consumables on your particular MMU and warning you (optionally pause) when the count is reached. This is best illustrated with an example:
+The `MMU_STATS` command has a dual purpose of providing a mechanism for simple counting and warning. The purpose is to track consumables on your particular MMU and warning (optionally pause) when the count is reached. This is best illustrated with an example:
 
 Suppose you have fitted a filament cutter that has a blade that dulls (and ideally needs replacing) after 4000 cuts.
 
-**To Setup:**
+### To Setup:
 ```
 MMU_STATS COUNTER=cutter_blade LIMIT=4000 WARNING="You may need to replace your cutting blade"
 ```
 It is harmless for this to be specified multiple times because it doesn't reset so you could include in a macro if you wanted
 
-**Counting:**
+### Counting:
 ```
 MMU_STATS COUNTER=cutter_blade INCR=1
 ```
@@ -103,21 +102,21 @@ Typically you would add this into a macro that is called when the consumable is 
 Warning: Count cutter_blade (4001) above limit 4000 : You may need to replace your cutting blade
 ```
 
-**Resetting:**
+### Resetting:
 ```
 MMU_STATS COUNTER=cutter_blade RESET=1
 ```
 Will only reset just the "cutter_blade" count to 0.
 
-**Viewing Stats:**
+### Viewing Stats:
 ```
->MMU_STATS SHOWCOUNTS=1
+> MMU_STATS SHOWCOUNTS=1
 
 Consumption counters:
 Count cutter_blade: 568 (limit 4000)
 ```
 
-**Delete Counter:**
+### Deleting Counters:
 Counters are persisted until explicitly deleted. To delete:
 ```
 MMU_STATS COUNTER=cutter_blade DELETE=1
