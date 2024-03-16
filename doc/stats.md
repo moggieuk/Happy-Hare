@@ -123,5 +123,5 @@ Counters are persisted until explicitly deleted. To delete:
 > MMU_STATS COUNTER=cutter_blade DELETE=1
 
 > [!NOTE]  
-> Happy Hare will likely be adding preset counters depending MMU type and options in the future
+> Happy Hare will likely be adding preset counters (depending MMU type and options) in the future
 
