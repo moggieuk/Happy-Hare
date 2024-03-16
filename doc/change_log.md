@@ -175,12 +175,11 @@ Gate Statistics:
 
 ### v2.5.1
 The release provides more flexibilty in tool change movement, introduces consumption counters, optimizes statistics output
-- New (moonraker) pre-processing option to lookahead for next print location to allow for option to move to the NEXT print position on completion of tool change. Requires addition to `moonraker.conf`:
-> [mmu_server]
-> enable_toolchange_next_pos: True
+- New (moonraker) pre-processing option to lookahead for next print location to allow for option to move to the NEXT print position on completion of tool change. Requires addition to `[mmu_server]` section of `moonraker.conf`:
+  - `enable_toolchange_next_pos: True`
 - `variable_restore_xy_pos` can now be "none", "last" or "next" (next being new functionality)
 - Augmented `MMU_STATS` functionality to provide "consumption counters" that can warn or even pause your print when threshold is exceeded
-- New doc page to explain statistics and consumption counters: /doc/stats.md
+- New doc page to explain statistics and consumption counters: [/doc/stats.md](/doc/stats.md)
 - Elimination of "h" option to ERCFv2 MMU - ThumperBlock are not a compatible 23mm wide so no longer required
 - More accurate timing of tool change phases
 - Defaults for "white" and "black" filament can not be configured in `mmu_macro_vars.cfg`
