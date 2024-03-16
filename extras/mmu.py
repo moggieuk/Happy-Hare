@@ -1778,8 +1778,8 @@ class Mmu:
                     self.counters[counter] = {'count': 0}
                 self.counters[counter].update({'limit': limit, 'warning': warning, 'pause': pause})
             elif incr:
-                if name in self.counters:
-                    metric = self.counters[name]
+                if counter in self.counters:
+                    metric = self.counters[counter]
                     metric['count'] += incr
                     if metric['count'] > metric['limit']:
                         msg = "Count %s (%d) above limit %d : %s" % (name, metric['count'], metric['limit'], metric['warning'])
