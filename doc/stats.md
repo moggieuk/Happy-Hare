@@ -43,7 +43,7 @@ console_stat_rows: total, total_average, job, job_average, last
 console_always_output_full: 1   # 1 = Show full table, 0 = Only show totals out of print
 ```
 `MMU_STATS TOTAL=1` will display the totals but you can also force the totals to always be displayed by this setting in `mmu_parameters.cfg`
-```
+```yml
 console_always_output_full: 1
 ```
 As well as on demand display there is an option which, if enabled, will dump a table of statistics after each tool change. This defaults to enabled but can be disabled by setting to `0`:
@@ -61,11 +61,11 @@ Happy Hare stores all statics in the defined `[save_variables]` file, typically 
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Gate Statistics
 Happy Hare also records information about the quality of operation of each gate. If an encoder is fitted this includes a measurement of filament slippage, or times the servo failed to catch/grip the filament. To see the raw details run:
-```
-MMU_STATS DETAIL=1
-```
+
+> MMU_STATS DETAIL=1
+
 Because that is a lot of information, it is heuristically summarised as an assement with fun ways to visualize:
-<img src="/doc/stats/gate_statistics.png" width="60%"><br>
+<img src="/doc/stats/gate_statistics.png" width="70%"><br>
 Visualization is controlled by this setting in `mmu_parameters.cfg`:
 ```yml
 # How you'd want to see the state of the gates and how they're performing
@@ -88,39 +88,39 @@ The `MMU_STATS` command has a dual purpose of providing a mechanism for simple c
 Suppose you have fitted a filament cutter that has a blade that dulls (and ideally needs replacing) after 4000 cuts.
 
 ### To Setup:
-```
-MMU_STATS COUNTER=cutter_blade LIMIT=4000 WARNING="You may need to replace your cutting blade"
-```
-It is harmless for this to be specified multiple times because it doesn't reset so you could include in a macro if you wanted
+
+> MMU_STATS COUNTER=cutter_blade LIMIT=4000 WARNING="You may need to replace your cutting blade" PAUSE=0
+
+It is harmless for this to be specified multiple times because it doesn't reset so you could include in a macro if you wanted. You can also optionally specify `PAUSE=1` to the setup command. This will turn the warning into an MMU pause/error. Whilst this is not the default it could be useful if you need to take proactive action such as emptying a purge tray for example.
 
 ### Counting:
-```
-MMU_STATS COUNTER=cutter_blade INCR=1
-```
+
+> MMU_STATS COUNTER=cutter_blade INCR=1
+
 Typically you would add this into a macro that is called when the consumable is use. Can be any increment not just 1. When the LIMIT is exceeded this would generate a message:
 ```yml
 Warning: Count cutter_blade (4001) above limit 4000 : You may need to replace your cutting blade
 ```
 
 ### Resetting:
-```
-MMU_STATS COUNTER=cutter_blade RESET=1
-```
+
+> MMU_STATS COUNTER=cutter_blade RESET=1
+
 Will only reset just the "cutter_blade" count to 0.
 
 ### Viewing Stats:
-```
+
 > MMU_STATS SHOWCOUNTS=1
 
+```yml
 Consumption counters:
 Count cutter_blade: 568 (limit 4000)
 ```
 
 ### Deleting Counters:
 Counters are persisted until explicitly deleted. To delete:
-```
-MMU_STATS COUNTER=cutter_blade DELETE=1
-```
+
+> MMU_STATS COUNTER=cutter_blade DELETE=1
 
 > [!NOTE]  
 > Happy Hare will likely be adding preset counters depending MMU type and options in the future
