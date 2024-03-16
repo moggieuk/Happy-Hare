@@ -97,7 +97,7 @@ It is harmless for this to be specified multiple times because it doesn't reset 
 
 > MMU_STATS COUNTER=cutter_blade INCR=1
 
-Typically you would add this into a macro that is called when the consumable is use. Can be any increment not just 1. When the LIMIT is exceeded this would generate a message:
+Typically you would add this into a macro that is called when the consumable is used. Can be any increment not just 1. When the LIMIT is exceeded this would generate a message:
 ```yml
 Warning: Count cutter_blade (4001) above limit 4000 : You may need to replace your cutting blade
 ```
