@@ -133,7 +133,6 @@ gcode: # Leave empty
 # These variables control the behavor of the optional _MMU_INITIALIZE and _MMU_LOAD_INITIAL_TOOL macros
 variable_user_pre_initialize_extension      : "G28"     ; Executed at start of _MMU_INITIALIZE. Commonly G28 to home
 variable_octoprint_compat                   : True      ; True to force compatibility with Octoprint print job streaming
-variable_set_custom_colors                  : True      ; True to set the gate custom_colors according to slicer
 variable_home_mmu                           : False     ; True/False, Whether to home mmu before print starts
 variable_check_gates                        : True      ; True/False, Whether to check filament is loaded in all gates used
 variable_load_initial_tool                  : True      ; True/False, Whether to automatically load initial tool

@@ -21,44 +21,18 @@ from extras.mmu_leds import MmuLeds
 import chelper, ast
 
 # Default to no unicode on Python2. Not worth the hassle!
-UI_SPACE = ' '
-UI_SEPARATOR = '.'
-UI_DASH = '-'
-UI_DEGREE = '^'
-UI_BLOCK = '*'
-UI_CASCADE = '-'
-UI_BOX_TL = '+'
-UI_BOX_BL = '+'
-UI_BOX_TR = '+'
-UI_BOX_BR = '+'
-UI_BOX_L = '+'
-UI_BOX_R = '+'
-UI_BOX_T = '+'
-UI_BOX_B = '+'
-UI_BOX_M = '+'
-UI_BOX_H = '-'
-UI_BOX_V = '|'
+UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = ' ', '.', '-', '^', '*', '-'
+UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '+', '+', '+', '+'
+UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '+', '+', '+', '+'
+UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '+', '-', '|'
 UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
 
 if sys.version_info[0] >= 3:
     # Use (common) unicode for improved formatting and klipper layout
-    UI_SPACE = '\u00A0'
-    UI_SEPARATOR = '\u00A0'
-    UI_DASH = '\u2014'
-    UI_DEGREE = '\u00B0'
-    UI_BLOCK = '\u2588'
-    UI_CASCADE = '\u2514'
-#    UI_BOX_TL = '\u250C'
-#    UI_BOX_BL = '\u2514'
-#    UI_BOX_TR = '\u2510'
-#    UI_BOX_BR = '\u2518'
-#    UI_BOX_L = '\u251C'
-#    UI_BOX_R = '\u2524'
-#    UI_BOX_T = '\u252C'
-#    UI_BOX_B = '\u2534'
-#    UI_BOX_M = '\u253C'
-#    UI_BOX_H = '\u2500'
-#    UI_BOX_V = '\u2502'
+    UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = '\u00A0', '\u00A0', '\u2014', '\u00B0', '\u2588', '\u2514'
+#    UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '\u250C', '\u2514', '\u2510', '\u2518'
+#    UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
+#    UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
@@ -1020,11 +994,11 @@ class Mmu:
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "ready"
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
-        self.custom_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
         self._clear_slicer_tool_map()
 
     def _clear_slicer_tool_map(self):
         self.slicer_tool_map = {'tools': {}, 'initial_tool': None, 'purge_volumes': []}
+        self.slicer_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
 
     # Helper to infer type for setting gcode macro variables
     def _fix_type(self, s):
@@ -1072,6 +1046,14 @@ class Mmu:
 
         # Recalculate RGB map for easy LED support
         self.gate_color_rgb = [self._color_to_rgb(i) for i in self.gate_color]
+
+    # Helper to keep parallel RGB color map updated when slicer color or TTG changes
+    def _update_slicer_color(self):
+        self.slicer_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
+        for tool_key, tool_value in self.slicer_tool_map['tools'].items():
+            tool = int(tool_key)
+            gate = self.ttg_map[tool]
+            self.slicer_color_rgb[gate] = self._color_to_rgb(tool_value['color'])
 
     def _load_persisted_state(self):
         self._log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
@@ -1322,7 +1304,7 @@ class Mmu:
                 'gate_color': list(self.gate_color),
                 'gate_color_rgb': self.gate_color_rgb,
                 'gate_spool_id': list(self.gate_spool_id),
-                'custom_color_rgb': self.custom_color_rgb,
+                'slicer_color_rgb': self.slicer_color_rgb,
                 'endless_spool_groups': list(self.endless_spool_groups),
                 'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
                 'tool_speed_multipliers': self.tool_speed_multipliers,
@@ -3458,15 +3440,7 @@ class Mmu:
         if self._check_has_leds(): return
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_num_gates - 1)
-
-        if reset:
-            self.custom_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
-
-        if gate is not None:
-            self.custom_color_rgb[gate] = self._color_to_rgb(gcmd.get('COLOR', '000000'))
-            quiet = True
 
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
         gcode_vars = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", gcode_macro)
@@ -3499,7 +3473,7 @@ class Mmu:
                     msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, macro_variables['exit_first_led_index'])
                     msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, macro_variables['entry_first_led_index'])
                     msg += "Default status effect: %s\n" % effect_string(default_status_effect, macro_variables['status_led_index'])
-                    msg += "\nOptions:\nENABLE=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|custom_color]\nENTRY_EFFECT=[off|gate_status|filament_color|custom_color]\nSTATUS_EFFECT=[off|on|filament_color|custom_color]"
+                    msg += "\nOptions:\nENABLE=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|slicer_color]\nENTRY_EFFECT=[off|gate_status|filament_color|slicer_color]\nSTATUS_EFFECT=[off|on|filament_color|slicer_color]"
                     self._log_always(msg)
             except Exception as e:
                 # Probably/hopefully just means the macro is missing or been messed with
@@ -6046,10 +6020,6 @@ class Mmu:
                     break
         return next_gate, checked_gates
 
-    def _set_tool_to_gate(self, tool, gate):
-        self.ttg_map[tool] = gate
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
-
     def _set_gate_status(self, gate, state):
         if gate >= 0:
             if state != self.gate_status[gate]:
@@ -6170,7 +6140,9 @@ class Mmu:
         return msg
 
     def _remap_tool(self, tool, gate, available=None):
-        self._set_tool_to_gate(tool, gate)
+        self.ttg_map[tool] = gate
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
+        self._update_slicer_color() # Indexed by gate
         if available is not None:
             self._set_gate_status(gate, available)
         return gate
@@ -6180,6 +6152,7 @@ class Mmu:
         self.ttg_map = list(self.default_ttg_map)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
         self._unselect_tool()
+        self._update_slicer_color() # Indexed by gate
 
     def _reset_gate_map(self):
         self._log_debug("Resetting gate map")
@@ -6468,6 +6441,8 @@ class Mmu:
             quiet = True
         if tool >= 0:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp}
+            if color:
+                self._update_slicer_color()
             quiet = True
         if initial_tool is not None:
             self.slicer_tool_map['initial_tool'] = initial_tool
@@ -6515,7 +6490,6 @@ class Mmu:
                 msg += "-------------------------------------------"
             if detail:
                 if have_purge_map:
-                    #msg += "\n".join([" ".join(map(lambda x: str(round(x)).rjust(4, "\u2800"), row)) for row in self.slicer_tool_map['purge_volumes']])
                     msg += "\nPurge Volume Map:\n"
                     msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(self.mmu_num_gates)) + "\n"
                     msg += '\n'.join(["T{: <2}{}{}".format(i, UI_SEPARATOR, ' '.join(map(lambda x: str(round(x)).rjust(4, UI_SPACE) if x > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row))) for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
