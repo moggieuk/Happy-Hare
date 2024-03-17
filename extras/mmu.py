@@ -1054,6 +1054,8 @@ class Mmu:
             tool = int(tool_key)
             gate = self.ttg_map[tool]
             self.slicer_color_rgb[gate] = self._color_to_rgb(tool_value['color'])
+        if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
+            self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro) # Cheat to force LED update
 
     def _load_persisted_state(self):
         self._log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
