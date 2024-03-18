@@ -264,7 +264,7 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 | `variable_retract_length`<br>(in mmu_macro_vars.cfg) | 32.22 | | | 32.03<sup>2</sup> |
 | `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | 31.22 | | | 31.03<sup>2</sup> |  
 
-*<sup>1</sup> Taken directly from CAD - <ins>NOT</ins> tested.*
+*<sup>1</sup> Taken directly from CAD - <ins>NOT</ins> tested.*  
 *<sup>2</sup> Estimated based on Rapido*  
 
 ** These settings assume you have turned off all the slicer settings like toolchange retraction!<br>
