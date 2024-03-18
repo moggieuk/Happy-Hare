@@ -262,7 +262,8 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 | `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | 79.78 | | | 79.58<sup>1</sup> |
 | `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 61.22 | | | 61.03<sup>1</sup> |
 | `variable_retract_length`<br>(in mmu_macro_vars.cfg) | 32.22 | | | 32.03<sup>2</sup> |
-| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | 31.22 | | | 31.03<sup>2</sup> |
+| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | 31.22 | | | 31.03<sup>2</sup> |  
+
 *<sup>1</sup> Taken directly from CAD - <ins>NOT</ins> tested.*
 *<sup>2</sup> Estimated based on Rapido*  
 
