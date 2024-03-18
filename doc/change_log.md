@@ -154,21 +154,40 @@ T8   210  210  220  220  210  210  210  220   -
 - Also, thanks to the Blobifer author, @dendrowen, the "MMU Statistics" has been given some love with new layout and some new customization. For both total stats and current job status. See `console_stat_*` options in `mmu_parameters.cfg`). Note advanced formatting on Python3 only.
 ```
 MMU Statistics:
-+————————+——————————————————————+——————————————————————+——————————+
-|  171   |      unloading       |       loading        | complete |
-| swaps  | pre |    -    | post | pre |    -    | post |   swap   |
-+————————+—————+—————————+——————+—————+—————————+——————+——————————+
-| total  |   - | 1:03:47 |    - |   - | 1:02:09 |    - |        - |
-|  └ avg |   - |    0:22 |    - |   - |    0:21 |    - |        - |
-| print  |   - | 1:03:47 |    - |   - | 1:02:09 |    - |        - |
-|  └ avg |   - |    0:22 |    - |   - |    0:21 |    - |        - |
-|   last |   - |       - |    - |   - |       - |    - |        - |
-+————————+—————+—————————+——————+—————+—————————+——————+——————————+
++------------+-----------------------+--------------------------+----------+
+| 1895(1230) |       unloading       |         loading          | complete |
+|   swaps    | pre  |    -    | post | pre  |    -    |   post  |   swap   |
++------------+------+---------+------+------+---------+---------+----------+
+|     total  | 0:47 | 6:54:24 | 0:02 | 0:02 | 5:35:31 | 6:40:30 | 20:05:52 |
+|      └ avg | 0:00 |    0:13 | 0:00 | 0:00 |    0:10 |    0:12 |     0:35 |
+|  this job  | 0:36 | 4:26:51 | 0:01 | 0:01 | 3:34:34 | 4:34:54 | 13:22:01 |
+|      └ avg | 0:00 |    0:12 | 0:00 | 0:00 |    0:10 |    0:13 |     0:38 |
+|       last | 0:00 |    0:12 | 0:00 | 0:00 |    0:10 |    0:17 |     0:42 |
++------------+------+---------+------+------+---------+---------+----------+
 
-3:27:49 spent paused over 7 pauses (All time)
-0:00 spent paused over 0 pauses (This job)
-Number of swaps since last incident: 560 (Record: 560)
+11:43:27 spent paused over 10 pauses (All time)
+8:15:38 spent paused over 3 pauses (This job)
+Number of swaps since last incident: 105 (Record: 1111)
 
 Gate Statistics:
 #0: 😎, #1: 😎, #2: —, #3: —, #4: —, #5: —, #6: 😎, #7: —, #8: —
 ```
+
+### v2.5.1
+The release provides more flexibilty in tool change movement, introduces consumption counters, optimizes statistics output
+- New (moonraker) pre-processing option to lookahead for next print location to allow for option to move to the NEXT print position on completion of tool change. Requires addition to `[mmu_server]` section of `moonraker.conf`:
+  - `enable_toolchange_next_pos: True`
+- `variable_restore_xy_pos` can now be "none", "last" or "next" (next being new functionality)
+- Augmented `MMU_STATS` functionality to provide "consumption counters" that can warn or even pause your print when threshold is exceeded
+- New doc page to explain statistics and consumption counters: [/doc/stats.md](/doc/stats.md)
+- New doc page to explain spoolman config and use: [/doc/spoolman_support.md](/doc/spoolman_support.md)
+- Elimination of "h" option to ERCFv2 MMU - ThumperBlock are not a compatible 23mm wide so no longer required
+- More accurate timing of tool change phases
+- Defaults for "white" and "black" filament can not be configured in `mmu_macro_vars.cfg`
+- Fixes to `printer.mmu.runout` and `printer.mmu.last_tool` for better accuracy at all possible times
+- Filament remaining in toolhead is now tracked accross reboots / restarts to prevent over extruding initial load
+- `custom_color` is now a more intuitive `slicer_color` and set with the `MMU_SLICER_TOOL_MAP` command (MMU_START_SETUP does this for you)
+- New config parameter `extruder_temp_variance` to specify the +/- delta allowable when waiting for extruder temperature
+- Updates and to bloblifier macro (needs latest klipper)
+- Allow specifying spool_id in advance for supporting RFID readers. You can read more about it [here](/doc/spoolman_support.md)
+

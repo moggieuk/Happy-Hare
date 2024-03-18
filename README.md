@@ -69,6 +69,7 @@ Some folks have asked about making a donation to cover the cost of the all the c
 **[Happy Hare Macro Customization](/doc/macro_customization.md)** 🆕<br>
 **[Tip Forming and Purging](/doc/tip_forming_and_purging.md)** 🆕<br>
 **[Gcode Preprocessing](/doc/gcode_preprocessing.md)** 🆕<br>
+**[Statistics and Counters](/doc/stats.md)** 🆕<br>
 **[LED Support](/doc/leds.md)**<br>
 **[Spoolman Support](/doc/spoolman_support.md)** 🆕<br>
 **[Conceptual MMU Design](/doc/conceptual_mmu.md)**<br>
@@ -879,7 +880,7 @@ MMU_RECOVER TOOL=1 GATE=2 LOADED=0 - tell Happy Hare that T1 is being serviced b
 
 ### 9. Gate statistics
 
-Happy Hare keeps triack of per-gate statistics that aggregate servo/load/unload failures (and slippage if your MMU has an encoder) and are recorded throughout a session and can be logged at each toolchange.
+Happy Hare keeps track of per-gate statistics that aggregate servo/load/unload failures (and slippage if your MMU has an encoder) and are recorded throughout a session and can be logged at each toolchange.
 
 <details>
 <summary><sub>🔹 Read more how to recover MMU state...</sub></summary><br>

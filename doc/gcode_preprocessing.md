@@ -101,45 +101,10 @@ To see the colors displayed you need to enable LED support and use the `filament
 MMU_LED EXIT_EFFECT=filament_color STATUS_EFFECT=filament_color
 ```
 
-Another, perhaps more useful idea, is to set the `custom_colors` array and combine with referenced tools to light up the colors of just the filaments used and defined in your slicer for the current print. That way you can visually check that the colors loaded in your MMU match the print design. Here is the complete code of how to accomplish that:
+Note that this is used as an example only because the default [recommended](/doc/slicer_setup.md) `MMU_START_SETUP` macro will store the slicer colors in the "slicer tool map" and the slicer defined colors can simply be displayed by setting the led effect to `slicer_color` :-)  But using the above as a guide you can do other creative things with slicer defined colors.
 
-```yml
-[gcode_macro START_PRINT]
-description: Called when starting print
-gcode:
-    {% set REFERENCED_TOOLS = params.REFERENCED_TOOLS|default("")|string %}
-    {% set INITIAL_TOOL = params.INITIAL_TOOL|default(0)|int %}
-    {% set COLORS = params.COLORS|default("")|string %}
-    {% set referenced_tools = REFERENCED_TOOLS.split(",") %}
-    {% set colors = COLORS.split(",") %}
-    {% set ttg_map = printer.mmu.ttg_map %}
-
-    {% if REFERENCED_TOOLS == "!referenced_tools!" %}
-        RESPOND MSG="Happy Hare gcode pre-processor is diabled"
-        {% set REFERENCED_TOOLS = INITIAL_TOOL %}
-    {% elif REFERENCED_TOOLS == "" %}
-        RESPOND MSG="Happy Hare single color print"
-        {% set REFERENCED_TOOLS = INITIAL_TOOL %}
-    {% endif %}
-
-    {% for _ in ttg_map %}                              # Reset custom colors for all gates to black
-        MMU_LED GATE={loop.index0} COLOR=black
-    {% endfor %}
-
-    {% for color in colors %}
-        {% set gate = ttg_map[loop.index0] %}           # Map to the correct gate in case of TTG map
-        {% if loop.index0|string in referenced_tools %}
-            MMU_LED GATE={gate} COLOR={color}           # Register the filament color against the correct gate
-        {% endif %}
-    {% endfor %}
-
-    MMU_LED EXIT_EFFECT=custom_color QUIET=1            # Turn on the custom color effect on gate exit
-    MMU_CHECK_GATE TOOLS={REFERENCED_TOOLS}             # Verify all necessary tools are loaded
-
-    MMU_CHANGE_TOOL STANDALONE=1 TOOL={INITIAL_TOOL}    # Optional: load initial tool
-```
-
-Alternatively you can retrieve the RGB colors necessary to directly drive other leds by accessing the printer variable `printer.mmu.gate_color_rbg` which contains a list of truples contains the 0-1.0 value for each of the R,G,B pixels.  See led doc for more details.
+> [!NOTE]  
+> Filament colors are available in RGB float from to directly drive other leds by accessing the printer variables: `printer.mmu.gate_color_rbg` (filament colors in the gate map) and `printer.mmu.slicer_color_rgb` (filament colors defined by slicer).  These contains a list of truples contains the 0-1.0 value for each of the R,G,B pixels.  See led doc for more details.
 
 ### Placeholder: !temperatures!
 This placeholder is substituted with a comma separated list of filament temperatures as defined in the slicer.
