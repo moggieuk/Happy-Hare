@@ -180,6 +180,7 @@ The release provides more flexibilty in tool change movement, introduces consump
 - `variable_restore_xy_pos` can now be "none", "last" or "next" (next being new functionality)
 - Augmented `MMU_STATS` functionality to provide "consumption counters" that can warn or even pause your print when threshold is exceeded
 - New doc page to explain statistics and consumption counters: [/doc/stats.md](/doc/stats.md)
+- New doc page to explain spoolman config and use: [/doc/spoolman_support.md](/doc/spoolman_support.md)
 - Elimination of "h" option to ERCFv2 MMU - ThumperBlock are not a compatible 23mm wide so no longer required
 - More accurate timing of tool change phases
 - Defaults for "white" and "black" filament can not be configured in `mmu_macro_vars.cfg`
@@ -188,4 +189,5 @@ The release provides more flexibilty in tool change movement, introduces consump
 - `custom_color` is now a more intuitive `slicer_color` and set with the `MMU_SLICER_TOOL_MAP` command (MMU_START_SETUP does this for you)
 - New config parameter `extruder_temp_variance` to specify the +/- delta allowable when waiting for extruder temperature
 - Updates and to bloblifier macro (needs latest klipper)
+- Allow specifying spool_id in advance for supporting RFID readers. You can read more about it [here](/doc/spoolman_support.md)
 
