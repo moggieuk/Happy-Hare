@@ -1,3 +1,4 @@
+
 # Detailed Configuration Guide (mmu_parameters.cfg)
 
 This is a sequential walkthrough of the main configuration files for Happy Hare. You should have tertiary understanding and awareness of all the settings but some are essential.  Those are labeled with "IMPORTANT" and you must setup for your MMU setup.
@@ -257,11 +258,13 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 
 | Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
-| `toolhead_extruder_to_nozzle`<br>(in mmu_parameters.cfg) | 99.38 | | | |
-| `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | 79.78 | | | |
-| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 61.22 | | | |
-| `variable_retract_length`<br>(in mmu_macro_vars.cfg) | 32.22 | | | |
-| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | 31.22 | | | |
+| `toolhead_extruder_to_nozzle`<br>(in mmu_parameters.cfg) | 99.38 | | | 99.18<sup>1</sup> |
+| `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | 79.78 | | | 79.58<sup>1</sup> |
+| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 61.22 | | | 61.03<sup>1</sup> |
+| `variable_retract_length`<br>(in mmu_macro_vars.cfg) | 32.22 | | | 32.03<sup>2</sup> |
+| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | 31.22 | | | 31.03<sup>2</sup> |
+*<sup>1</sup> Taken directly from CAD - <ins>NOT</ins> tested.*
+*<sup>2</sup> Estimated based on Rapido*  
 
 ** These settings assume you have turned off all the slicer settings like toolchange retraction!<br>
 _(please submit your verified additions to build out this table)_
