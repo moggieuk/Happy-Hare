@@ -186,4 +186,6 @@ The release provides more flexibilty in tool change movement, introduces consump
 - Fixes to `printer.mmu.runout` and `printer.mmu.last_tool` for better accuracy at all possible times
 - Filament remaining in toolhead is now tracked accross reboots / restarts to prevent over extruding initial load
 - `custom_color` is now a more intuitive `slicer_color` and set with the `MMU_SLICER_TOOL_MAP` command (MMU_START_SETUP does this for you)
+- New config parameter `extruder_temp_variance` to specify the +/- delta allowable when waiting for extruder temperature
+- Updates and to bloblifier macro (needs latest klipper)
 

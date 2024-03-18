@@ -374,6 +374,7 @@ class Mmu:
         self.default_idle_timeout = config.getint('default_idle_timeout', -1, minval=120)
         self.disable_heater = config.getint('disable_heater', 600, minval=60)
         self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
+        self.extruder_temp_variance = config.getfloat('extruder_temp_variance', 2., minval=1.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.2, minval=0.)
@@ -3292,10 +3293,10 @@ class Mmu:
             self.gcode.run_script_from_command("M104 S%.1f" % new_target_temp)
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
-            if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > 2:
+            if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > self.extruder_temp_variance:
                 with self._wrap_action(self.ACTION_HEATING):
                     self._log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
-                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - 1, new_target_temp + 1))
+                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - self.extruder_temp_variance, new_target_temp + self.extruder_temp_variance))
 
     def _selected_tool_string(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS:
@@ -5815,6 +5816,7 @@ class Mmu:
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
 
         # Software behavior options
+        self.extruder_temp_variance = gcmd.get_float('EXTRUDER_TEMP_VARIANCE', self.extruder_temp_variance, minval=1.)
         self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
         self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
@@ -5921,6 +5923,7 @@ class Mmu:
         msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
         msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
+        msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
         if self._has_encoder():
             msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
