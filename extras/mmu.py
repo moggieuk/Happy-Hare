@@ -1101,23 +1101,12 @@ class Mmu:
             if gate_selected < self.mmu_num_gates and tool_selected < self.mmu_num_gates:
                 self._set_tool_selected(tool_selected)
                 self._set_gate_selected(gate_selected)
-
+                self._ensure_ttg_match() # Ensure tool/gate consistency
                 if self.gate_selected >= 0:
-                    if self.tool_selected < 0 or self.ttg_map[self.tool_selected] != self.gate_selected:
-                        # Find a tool that maps to gate
-                        for tool in range(self.mmu_num_gates):
-                            if self.ttg_map[tool] == self.gate_selected:
-                                self._set_tool_selected(tool)
-                                break
-                        else:
-                            errors.append("Reset persisted tool - does not map to gate")
-                            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                     self._set_selector_pos(self.selector_offsets[self.gate_selected])
                 elif self.gate_selected == self.TOOL_GATE_BYPASS:
-                    self._set_tool_selected(self.TOOL_GATE_BYPASS)
                     self._set_selector_pos(self.bypass_offset)
-                else: # TOOL_GATE_UNKNOWN
-                    self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
+                elif self.gate_selected == self.TOOL_GATE_UNKNOWN:
                     self.is_homed = False
             else:
                 errors.append("Incorrect number of gates specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
@@ -5247,8 +5236,9 @@ class Mmu:
             self.active_filament = {}
 
     def _set_tool_selected(self, tool):
-        self.tool_selected = tool
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
+        if tool != self.tool_selected:
+            self.tool_selected = tool
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
 
     def _set_gate_ratio(self, ratio=1.):
         new_rotation_distance = ratio * self.ref_gear_rotation_distance
@@ -6144,16 +6134,31 @@ class Mmu:
     def _remap_tool(self, tool, gate, available=None):
         self.ttg_map[tool] = gate
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
+        self._ensure_ttg_match()
         self._update_slicer_color() # Indexed by gate
         if available is not None:
             self._set_gate_status(gate, available)
         return gate
 
+    # Find a tool that maps to gate (for recovery)
+    def _ensure_ttg_match(self):
+        if self.gate_selected in [self.TOOL_GATE_UNKNOWN, self.TOOL_GATE_BYPASS]:
+            self._set_tool_selected(gate)
+        elif not self._is_in_print():
+            possible_tools = [tool for tool in range(self.mmu_num_gates) if self.ttg_map[tool] == self.gate_selected]
+            if possible_tools:
+                if self.tool_selected not in possible_tools:
+                    self._log_info("Resetting tool selected to match current gate")
+                    self._set_tool_selected(possible_tools[0])
+            else:
+                self._log_info("Resetting tool selected to unknown because current gate isn't associated with tool")
+                self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
+
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
         self.ttg_map = list(self.default_ttg_map)
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
-        self._unselect_tool()
+        self._ensure_ttg_match()
         self._update_slicer_color() # Indexed by gate
 
     def _reset_gate_map(self):
