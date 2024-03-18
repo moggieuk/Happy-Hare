@@ -1,6 +1,7 @@
 # Spoolman Support
 - [Configuration](#---configuration)<br>
 - [Gate Map and Spool ID](#---gate-map-and-spool-id)<br>
+  - [Auto-setting with RFID reader](#auto-setting-with-rfid-reader)<br>
 
 Spoolman has become a popular way to manage a large collection of print spools. It is a database that you host somewhere (commonly on same rpi as your printer) that can be accessed through a web UI and web based remote procedure calls. Other than providing spool management it does two additional things:
 - Tracks filament usage
@@ -72,4 +73,24 @@ Once configured Happy Hare will, on a change of tool, let spoolman know (via moo
 If you use my enhanced [KlipperScreen-Happy Hare Edition](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) there are also screens to visualize the gate map with spoolman setup as well as to edit the spoolID:
 
 <img src="/doc/spoolman_support/spoolman_ks.png" width="50%">
+
+<br>
+
+### Auto-setting with RFID reader
+So you have fitted all you spools with a fancy RIFD tags and built a nifty RFID onto your printer or MMU, perhaps are already using [nfc2klipper](https://github.com/bofh69/nfc2klipper) to be able to read that info into klipper. How do you automatically use that with Happy Hare?  Here is how...
+
+Because it isn't practical to build a RFID into every gate, the workflow supported by Happy Hare is this:
+- Offer up spool to reader
+- Read the spool_id you have programmed onto the RFID tag
+- In this reader macro, call: `MMU_GATE_MAP NEXT_SPOOLID=..` with the read spool_id
+  - Insert filament into gate and run MMU_PRELOAD` to load and park the filament, or
+  - If you have pre-gate sensors then simply insert the filament into the back of the gate (this can even be done in print although obviously the filament cannot be preloaded in that case
+
+The gate map entry for this gate will automatically be updated with the spool_id and the rest of the gate map parameters (material/color/temp) will be retrieved from spoolman and, if configured, LEDs updated.
+
+> [!TIP]  
+> If the captured "NEXT_SPOOLID" is not used within the configurable `pending_spool_id_timeout` (`mmu_parameters.cfg`) then it will be forgotten and the RFID would need to be read again. Set this to a little longer than the time it takes you to load a spool into your MMU.
+
+> [!NOTE]  
+> In the future Happy Hare may include direct RFID reader support but at present you need to program the calling of `MMU_GATE_MAP NEXT_SPOOLID=..`
 

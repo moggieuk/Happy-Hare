@@ -372,6 +372,7 @@ class Mmu:
         self.extruder_name = config.get('extruder', 'extruder')
         self.timeout_pause = config.getint('timeout_pause', 72000, minval=120)
         self.default_idle_timeout = config.getint('default_idle_timeout', -1, minval=120)
+        self.pending_spool_id_timeout = config.getint('pending_spool_id_timeout', default=20, minval=-1) # Not currently exposed
         self.disable_heater = config.getint('disable_heater', 600, minval=60)
         self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
         self.extruder_temp_variance = config.getfloat('extruder_temp_variance', 2., minval=1.)
@@ -912,7 +913,8 @@ class Mmu:
         self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
         self._setup_sync_feedback()
 
-        self._setup_heater_off_reactor()
+        self._setup_heater_off_timer()
+        self._setup_pending_spool_id_timer()
         self._clear_saved_toolhead_position()
 
         # This is a bit naughty to register commands here but I need to make sure we are the outermost wrapper
@@ -996,6 +998,7 @@ class Mmu:
         self.print_state = self.resume_to_state = "ready"
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
         self._clear_slicer_tool_map()
+        self.pending_spool_id = None # For automatic assignment of spool_id if set perhaps by rfid reader
 
     def _clear_slicer_tool_map(self):
         self.slicer_tool_map = {'tools': {}, 'initial_tool': None, 'purge_volumes': []}
@@ -2605,13 +2608,27 @@ class Mmu:
 # MMU STATE FUNCTIONS #
 #######################
 
-    def _setup_heater_off_reactor(self):
-        self.heater_off_handler = self.reactor.register_timer(self._handle_pause_timeout, self.reactor.NEVER)
+    def _setup_heater_off_timer(self):
+        self.heater_off_timer = self.reactor.register_timer(self._heater_off_handler, self.reactor.NEVER)
 
-    def _handle_pause_timeout(self, eventtime):
+    def _heater_off_handler(self, eventtime):
         self._log_info("Disabled extruder heater")
         self.gcode.run_script_from_command("M104 S0")
         return self.reactor.NEVER
+
+    def _setup_pending_spool_id_timer(self):
+        self.pending_spool_id_timer = self.reactor.register_timer(self._pending_spool_id_handler, self.reactor.NEVER)
+
+    def _pending_spool_id_handler(self, eventtime):
+        self.pending_spool_id = None
+        return self.reactor.NEVER
+
+    def _check_pending_spool_id(self, gate):
+        if self.pending_spool_id is not None:
+            self._log_info("Spool ID: %s automatically applied to Gate %d" % (self.pending_spool_id, gate))
+            self.gate_spool_id[gate] = self.pending_spool_id
+            self._pending_spool_id_handler(0) # Prevent resue
+            self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
 
     def _handle_idle_timeout_printing(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "printing")
@@ -2794,7 +2811,7 @@ class Mmu:
             self._clear_saved_toolhead_position()
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
-            self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self.is_handling_runout = False
             self._clear_slicer_tool_map()
             self._enable_runout() # Enable runout/clog detection while printing
@@ -2832,7 +2849,7 @@ class Mmu:
                 self._log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
                 self._track_pause_start()
                 self._log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
-                self.reactor.update_timer(self.heater_off_handler, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
+                self.reactor.update_timer(self.heater_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_error, force_in_print=force_in_print)
@@ -2879,7 +2896,7 @@ class Mmu:
     def _mmu_unlock(self):
         if self._is_mmu_paused():
             self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
-            self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
+            self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER)
 
             # Important to wait for stable temperature to resume exactly how we paused
             if self.paused_extruder_temp:
@@ -2922,7 +2939,7 @@ class Mmu:
             self._clear_saved_toolhead_position()
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
-            self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._disable_runout() # Disable runout/clog detection after print
 
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
@@ -3343,7 +3360,7 @@ class Mmu:
     def _disable_mmu(self):
         if not self.is_enabled: return
         self._initialize_state()
-        self.reactor.update_timer(self.heater_off_handler, self.reactor.NEVER)
+        self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.is_enabled = False
         self.printer.send_event("mmu:disabled")
@@ -6241,6 +6258,7 @@ class Mmu:
             if gate is not None:
                 self._log_debug("Handling insertion detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
                 self._set_gate_status(gate, self.GATE_UNKNOWN)
+                self._check_pending_spool_id(gate) # Have spool_id ready?
                 if not self._is_in_print():
                     self.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
         except MmuError as ee:
@@ -6299,6 +6317,7 @@ class Mmu:
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}") # Hidden option for bulk update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
+        next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
 
         try:
             gate_map = ast.literal_eval(gmapstr)
@@ -6308,11 +6327,15 @@ class Mmu:
         if reset:
             self._reset_gate_map()
 
-        elif refresh:
+        if refresh:
             self._update_filaments_from_spoolman()
             quiet = True
 
-        elif not gate_map == {}:
+        if next_spool_id:
+            self.pending_spool_id = next_spool_id
+            self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.monotonic() + self.pending_spool_id_timeout)
+
+        if not gate_map == {}:
             self._log_debug("Received gate map update from Spoolman: %s" % gmapstr)
             for gate, fil in gate_map.items():
                 if self.gate_spool_id[gate] == fil['spool_id']:
@@ -6669,7 +6692,7 @@ class Mmu:
                     self._log_always("Loading...")
                     try:
                         self._load_gate(allow_retry=False, adjust_servo_on_error=False)
-                        # Caught the filament, so now park it in the gate
+                        self._check_pending_spool_id(gate) # Have spool_id ready?
                         self._log_always("Parking...")
                         self._unload_gate()
                         self._log_always("Filament detected and parked in Gate %d" % gate)
