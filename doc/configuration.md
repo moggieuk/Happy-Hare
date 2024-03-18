@@ -1,3 +1,4 @@
+
 # Detailed Configuration Guide (mmu_parameters.cfg)
 
 This is a sequential walkthrough of the main configuration files for Happy Hare. You should have tertiary understanding and awareness of all the settings but some are essential.  Those are labeled with "IMPORTANT" and you must setup for your MMU setup.
@@ -241,23 +242,30 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 
 | Dimension | CW2 | G2E |
 | --------- | --- | --- |
-| `toolhead_entry_to_extruder` | 13 | 12.9 |
+| `toolhead_entry_to_extruder` | 13 | 13.29 |
 
 **CW2** dimensions for each hotend:
 
 | Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
-| `toolhead_extruder_to_nozzle` | | | | 72 | 
-| `toolhead_sensor_to_nozzle`   | | | | 62 | 
+| `toolhead_extruder_to_nozzle`<br>(in mmu_parameters.cfg) | | | | 72 | 
+| `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | | | | 62 | 
 | `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | | | | 37.5 |
+| `variable_retract_length`<br>(in mmu_macro_vars.cfg) | | | | |
+| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | | | | |
 
 **G2E** dimensions for each hotend:
 
 | Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
-| `toolhead_extruder_to_nozzle` | 87.9 | | | |
-| `toolhead_sensor_to_nozzle`   | 67.9 | | | |
-| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 59.3 | | | |
+| `toolhead_extruder_to_nozzle`<br>(in mmu_parameters.cfg) | 99.38 | | | 99.18<sup>1</sup> |
+| `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | 79.78 | | | 79.58<sup>1</sup> |
+| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 61.22 | | | 61.03<sup>1</sup> |
+| `variable_retract_length`<br>(in mmu_macro_vars.cfg) | 32.22 | | | 32.03<sup>2</sup> |
+| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | 31.22 | | | 31.03<sup>2</sup> |  
+
+*<sup>1</sup> Taken directly from CAD - <ins>NOT</ins> tested.*  
+*<sup>2</sup> Estimated based on Rapido*  
 
 ** These settings assume you have turned off all the slicer settings like toolchange retraction!<br>
 _(please submit your verified additions to build out this table)_
@@ -542,4 +550,3 @@ When `mmu_vendor` and `mmu_version` are set, Happy Hare will use the correct CAD
 #
 #encoder_default_resolution: 0.676	# Approximate resolution(mm) of a single encoder "count". Not used for measurement
 ```
-
