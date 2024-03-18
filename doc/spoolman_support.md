@@ -86,10 +86,15 @@ Because it isn't practical to build a RFID into every gate, the workflow support
   - Insert filament into gate and run MMU_PRELOAD` to load and park the filament, or
   - If you have pre-gate sensors then simply insert the filament into the back of the gate (this can even be done in print although obviously the filament cannot be preloaded in that case
 
-The gate map entry for this gate will automatically be updated with the spool_id and the rest of the gate map parameters (material/color/temp) will be retrieved from spoolman and, if configured, LEDs updated.
+The gate map entry for this gate will automatically be updated with the spool_id and the rest of the gate map parameters (material/color/temp) will be retrieved from spoolman and, if configured, LEDs updated. The length of time that "NEXT_SPOOLID" remains valid is configured in `mmu_parameters.cfg`:
+```yml
+pending_spool_id_timeout: 20            # Seconds after which this pending spool_id (set with rfid) is voided
+```
 
 > [!TIP]  
-> If the captured "NEXT_SPOOLID" is not used within the configurable `pending_spool_id_timeout` (`mmu_parameters.cfg`) then it will be forgotten and the RFID would need to be read again. Set this to a little longer than the time it takes you to load a spool into your MMU.
+> If the `pending_spool_id_timeout` is exceed the spool_id will be forgotten and the RFID would need to be read again. Set this to a little longer than the time it takes you to load a spool into your MMU but not too long that it never expires
+
+<br>
 
 > [!NOTE]  
 > In the future Happy Hare may include direct RFID reader support but at present you need to program the calling of `MMU_GATE_MAP NEXT_SPOOLID=..`
