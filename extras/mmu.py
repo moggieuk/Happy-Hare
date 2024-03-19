@@ -523,12 +523,14 @@ class Mmu:
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
         # Currently hidden and testing options
-        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
-        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
         self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10) # Workaround CANbus communication timeout error
+
+        # Hidden feature development
+        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
+        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
 
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
 
