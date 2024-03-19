@@ -5191,10 +5191,10 @@ class Mmu:
     def _set_next_position(self, next_pos):
         x, y = (next_pos.split(',') + [None, None])[:2]
         if x and y:
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=\"{x}, {y}\"")
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={True}")
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=%s,%s" % (x, y))
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=True")
         else:
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={False}")
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=False")
 
     def _unselect_tool(self):
         self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
