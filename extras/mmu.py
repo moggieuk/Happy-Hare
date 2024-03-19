@@ -283,7 +283,11 @@ class Mmu:
 
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in self.VENDORS}, self.VENDOR_ERCF)
         self.mmu_version_string = config.get('mmu_version', "1.1")
-        self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
+        version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
+        try:
+            self.mmu_version = float(version)
+        except ValueError:
+            raise self.config.error("Invalid mmu_version parameter")
 
         # To simplfy config some parameters, mostly CAD related but a few exceptions
         # like default encoder resolution are set based on vendor and version setting
@@ -6165,7 +6169,7 @@ class Mmu:
     # Find a tool that maps to gate (for recovery)
     def _ensure_ttg_match(self):
         if self.gate_selected in [self.TOOL_GATE_UNKNOWN, self.TOOL_GATE_BYPASS]:
-            self._set_tool_selected(gate)
+            self._set_tool_selected(self.gate_selected)
         elif not self._is_in_print():
             possible_tools = [tool for tool in range(self.mmu_num_gates) if self.ttg_map[tool] == self.gate_selected]
             if possible_tools:
