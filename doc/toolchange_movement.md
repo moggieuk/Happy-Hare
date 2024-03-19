@@ -149,7 +149,13 @@ It's worth noting and to aid debugging that there are three possible origins for
 - The second is by Happy Hare: during a print, HH will immediately lift the toolhead away from the print on toolchange and on error if `z_hop_height_toolchange` is non-zero in `mmu_parameters.cfg`. This move only occurs when in a print and is designed to prevent any chance of a blob forming on your part.  The z-hop move is the first move and occurs before any movement in the horizontal plane.
 - Finally, the movement macro defined in `mmu_sequence.cfg` can optionally define a Z-hop move. This lifting move, if configured (`variable_enable_park` and `variable_park_z_hop`) will always happen both in and out of a print. Out of a print and for convenience it will be automatically skipped if the z-axis has not been homed.
 
-Personally I find it useful to set z-hop to 0.8mm in Happy Hare and 0mm in the parking (`mmu_sequence.cfg`) macro since out of a print I'm not worried about hitting objects or possible blobs.
+These illustrations visualize and explain the toolhead movements in the vertical plane:
+<img src="/doc/toolchange/toolchange_z_hop.png" width="100%" alt="Toolchange Z-hop">
+<br>
+<img src="/doc/toolchange/toolchange_z_hop_config.png" width="100%" alt="Toolchange Z-hop Config">
+<br>
+
+Personally I find it useful to set z-hop to 0.8mm in Happy Hare, disable in the slicer and 0mm in the parking (`mmu_sequence.cfg`) macro since out of a print I'm not worried about hitting objects or possible blobs.
 
 <br>
 
