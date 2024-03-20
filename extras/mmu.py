@@ -283,7 +283,11 @@ class Mmu:
 
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in self.VENDORS}, self.VENDOR_ERCF)
         self.mmu_version_string = config.get('mmu_version', "1.1")
-        self.mmu_version = float(re.sub("[^0-9.]", "", self.mmu_version_string))
+        version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
+        try:
+            self.mmu_version = float(version)
+        except ValueError:
+            raise self.config.error("Invalid mmu_version parameter")
 
         # To simplfy config some parameters, mostly CAD related but a few exceptions
         # like default encoder resolution are set based on vendor and version setting
@@ -534,8 +538,7 @@ class Mmu:
         # can lead to several mm of error depending on speed.
         self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1)
 
-        # To expedite my own testing
-        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
+        # Currently hidden and testing options
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
@@ -543,7 +546,7 @@ class Mmu:
         # WIP for type-B MMU support
         self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
 
-        # The following lists are the defaults (used on reset) and will be overriden by values in mmu_vars.cfg...
+        # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
 
         # Endless spool groups
         self.enable_endless_spool = self.default_enable_endless_spool
@@ -3851,7 +3854,8 @@ class Mmu:
                 for i in range(2):
                     if delta >= tolerance:
                         msg = "Correction load move #%d into bowden" % (i+1)
-                        _,_,_,delta = self._trace_filament_move(msg, delta, track=True)
+                        _,_,_,d = self._trace_filament_move(msg, delta, track=True)
+                        delta -= d
                         self._log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self._get_encoder_distance())
                     else:
                         break
@@ -5206,10 +5210,10 @@ class Mmu:
     def _set_next_position(self, next_pos):
         x, y = (next_pos.split(',') + [None, None])[:2]
         if x and y:
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=\"{x}, {y}\"")
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={True}")
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=%s,%s" % (x, y))
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=True")
         else:
-            self._wrap_gcode_command(f"SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={False}")
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=False")
 
     def _unselect_tool(self):
         self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
@@ -6178,7 +6182,7 @@ class Mmu:
     # Find a tool that maps to gate (for recovery)
     def _ensure_ttg_match(self):
         if self.gate_selected in [self.TOOL_GATE_UNKNOWN, self.TOOL_GATE_BYPASS]:
-            self._set_tool_selected(gate)
+            self._set_tool_selected(self.gate_selected)
         elif not self._is_in_print():
             possible_tools = [tool for tool in range(self.mmu_num_gates) if self.ttg_map[tool] == self.gate_selected]
             if possible_tools:
