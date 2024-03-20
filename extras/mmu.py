@@ -3844,7 +3844,8 @@ class Mmu:
                 for i in range(2):
                     if delta >= tolerance:
                         msg = "Correction load move #%d into bowden" % (i+1)
-                        _,_,_,delta = self._trace_filament_move(msg, delta, track=True)
+                        _,_,_,d = self._trace_filament_move(msg, delta, track=True)
+                        delta -= d
                         self._log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self._get_encoder_distance())
                     else:
                         break
