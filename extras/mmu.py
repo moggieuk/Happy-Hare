@@ -1197,15 +1197,15 @@ class Mmu:
             with self._wrap_track_time('total'):
                 with self._wrap_track_time('unload'):
                     with self._wrap_track_time('pre_unload'):
-                        self._wrap_gcode_command(self.pre_unload_macro, exception=True)
-                    self._wrap_gcode_command(self.post_form_tip_macro, exception=True)
+                        self._wrap_gcode_command(self.pre_unload_macro, exception=False)
+                    self._wrap_gcode_command(self.post_form_tip_macro, exception=False)
                     with self._wrap_track_time('post_unload'):
-                        self._wrap_gcode_command(self.post_unload_macro, exception=True)
+                        self._wrap_gcode_command(self.post_unload_macro, exception=False)
                 with self._wrap_track_time('load'):
                     with self._wrap_track_time('pre_load'):
-                        self._wrap_gcode_command(self.pre_load_macro, exception=True)
+                        self._wrap_gcode_command(self.pre_load_macro, exception=False)
                     with self._wrap_track_time('post_load'):
-                        self._wrap_gcode_command(self.post_load_macro, exception=True)
+                        self._wrap_gcode_command(self.post_load_macro, exception=False)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
