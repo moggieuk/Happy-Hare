@@ -1,11 +1,14 @@
 # Tool Changing
 - [Turning off slicer tip forming](#turning-off-slicer-tip-forming)<br>
 - [Turning off slicer wipetower](#turning-off-slicer-wipetower)<br>
-  - [Tip Cutting Options](#---tip-cutting-options)<br>
-  - [Tip Forming Options](#---tip-forming-options)<br>
+  - [Tip cutting options](#---tip-cutting-options)<br>
+  - [Tip forming options](#---tip-forming-options)<br>
   - [Printing without wipetower](#printing-without-wipetower)<br>
 - [Returning to print movement](#---return-to-print-movement)<br>
 - [Z-hop moves](#---z-hop-moves)<br>
+  - [Sequential printing](#sequential-printing)
+
+<br>
 
 The tool change movement options in the guide assume you have configured key toolhead locations (if applicable to your setup) by editing the `mmu_macro_vars.cfg` file:
 
@@ -154,12 +157,24 @@ It's worth noting and to aid debugging that there are three possible origins for
 - Finally, the movement macro defined in `mmu_sequence.cfg` can optionally define a Z-hop move. This lifting move, if configured (`variable_enable_park` and `variable_park_z_hop`) will always happen both in and out of a print. Out of a print and for convenience it will be automatically skipped if the z-axis has not been homed.
 
 This illustrations visualize and explain the toolhead movements in the vertical plane:
-<img src="/doc/toolchange/toolchange_z_hop.png" width="900" alt="Toolchange Z-hop">
+<img src="/doc/toolchange/toolchange_z_hop.png" width="100%" alt="Toolchange Z-hop">
 
 The primary configuration options that effect z-height are described here:
 <img src="/doc/toolchange/toolchange_z_hop_config.png" width="100%" alt="Toolchange Z-hop Config">
 
 Personally I find it useful to set z-hop to 0.8mm in Happy Hare, disable in the slicer and 0mm in the parking (`mmu_macro_vars.cfg`) macro since out of a print I'm not worried about hitting objects or possible blobs.
+
+<br>
+
+## Sequential Printing
+Sequential printing is possible but some additional setup is important because the likely movement path during a toolchange may not be able to avoid completed objects. Therefore it is important to ensure that the z-lifted plane is at least as high as the tallest object. Happy Hare provides a mechanism to make this easy. In you slicer add the following to your POST layer change custom gcode:
+```
+_MMU_UPDATE_HEIGHT
+```
+That's it.  This is harmless with normal printing but when printing sequentially it will cause the minimum "z-lifted" plane to be at the height of the highest object.  The z-hop defined in the sequence macros will work relative to this position (rather than current toolhead position) and so will always be the desired height above any printed object thus preventing collisions.
+
+> [!NOTE]  
+> If you really want to or have to include in your PRE layer change custom gcode then you must pass the height in like this: `_MMU_UPDATE_HEIGHT HEIGHT=[layer_z]` (or whatever your slicers placeholder variable is that holds the next layer height). The post-layer change is easier because it doesn't need any parameters.
 
 <br>
 

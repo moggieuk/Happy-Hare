@@ -110,6 +110,18 @@ This is where your existing print end macro would be placed
 
 <br>
 
+## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) After Layer Change G-Code
+
+The reason for this is to support sequential printing and explained [here](/doc/toolchange_movement.md#---z-hop-moves)
+
+<img src="/doc/slicer/after_layer_change_gcode.png" width="320" alt="After Layer Change G-Code">
+
+```yml
+_MMU_UPDATE_HEIGHT
+```
+
+<br>
+
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Tool Change G-Code
 
 This is likely to be the slicer default, but it is worth checking that the custom tool change g-code is set to this:
