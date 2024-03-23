@@ -80,7 +80,7 @@ Some folks have asked about making a donation to cover the cost of the all the c
  
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Major features:
 <ul>
-  <li>Support any brand of MMU and user defined monsters. (Caveat: ERCF 1.1, 2,0 and Tradrack so far. Prusa coming very soon)</li>
+  <li>Support any brand of MMU and user defined monsters. (Caveat: ERCF 1.1, 2.0 and Tradrack so far. Prusa coming very soon)</li>
   <li>Companion <a href="#---klipperscreen-happy-hare-edition">KlipperScreen for Happy Hare</a> for very simple graphical interaction</li>
   <li>Synchronized movement of extruder and gear motors during any part of the loading or unloading operations or homing so it can overcome friction and even work with FLEX materials!</li>
   <li>Sophisticated multi-homing options including extruder!</li>
