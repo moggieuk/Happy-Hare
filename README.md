@@ -346,7 +346,7 @@ All other configuration parameters are made available and documented in `mmu_par
 
 ### 2\. Validate your mmu_hardware.cfg configuration and basic operation
 
-Generally the typical "Type-A" MMU will consist of selector motor to position at the desired gate, a gear motor to drive the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [hardware configuration doc](/doc/hardware_config.md) for detailed instructions and consult [MMU comceptual model](/doc/conceptual.md) for details of less common MMU types.
+Generally the typical "Type-A" MMU will consist of selector motor to position at the desired gate, a gear motor to drive the filament to the extruder and a servo to grip and release the filament. In addition there may be a one or more sensors (endstops) to aid filament positioning. See [hardware configuration doc](/doc/hardware_config.md) for detailed instructions and consult [MMU conceptual model](/doc/conceptual_mmu.md) for details of less common MMU types.
 
 <details>
 <summary><sub>🔹 Details on optional hardware...</sub></summary>
