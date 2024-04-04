@@ -2701,7 +2701,7 @@ class Mmu:
         self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) / multiplier)
 
     def _is_printer_printing(self):
-        return self.print_stats.state == "printing"
+        return self.print_stats and self.print_stats.state == "printing"
 
     def _is_printer_paused(self):
         return self.pause_resume.is_paused
