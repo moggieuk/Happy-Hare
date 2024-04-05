@@ -6529,7 +6529,7 @@ class Mmu:
                     msg += "T%d (Gate %d, %s, %s, %d%sC)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'], UI_DEGREE)
                 if self.slicer_tool_map['initial_tool'] is not None:
                     msg += "Initial Tool: T%d" % self.slicer_tool_map['initial_tool']
-                    msg += " (will use bypass)\n" if colors <= 1 and self.tool_selected == self.TOOL_GATE_BYPASS else "\n" # PAUL NEW check this
+                    msg += " (will use bypass)\n" if colors <= 1 and self.tool_selected == self.TOOL_GATE_BYPASS else "\n"
                 msg += "-------------------------------------------"
             if detail:
                 if have_purge_map:
