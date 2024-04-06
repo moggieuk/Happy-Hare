@@ -1831,6 +1831,6 @@ else
     echo -e "${INFO}"
     echo '(\_/)'
     echo '( v,v)'
-    echo '(")^(") Very Unappy Hare'
+    echo '(")^(") Very Unhappy Hare'
     echo
 fi
