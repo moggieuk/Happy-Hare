@@ -6496,6 +6496,7 @@ class Mmu:
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         temp = gcmd.get_int('TEMP', 0, minval=0)
+        used = bool(gcmd.get_int('USED', 1, minval=0, maxval=1))
         purge_volumes = gcmd.get('PURGE_VOLUMES', "")
 
         quiet = False
@@ -6503,7 +6504,7 @@ class Mmu:
             self._clear_slicer_tool_map()
             quiet = True
         if tool >= 0:
-            self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp}
+            self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'in_use': used}
             if color:
                 self._update_slicer_color()
             quiet = True
@@ -6539,7 +6540,8 @@ class Mmu:
             quiet = True
 
         if display or not quiet:
-            colors = len(self.slicer_tool_map['tools'])
+            colors = sum(1 for tool in self.slicer_tool_map['tools'] if self.slicer_tool_map['tools'][tool]['in_use'])
+
             have_purge_map = len(self.slicer_tool_map['purge_volumes']) > 0
             msg = "No slicer tool map loaded"
             if colors > 0 or self.slicer_tool_map['initial_tool'] is not None:
@@ -6547,7 +6549,9 @@ class Mmu:
                 msg += "Single color print" if colors <= 1 else "%d color print" % colors
                 msg += " (Purge volume map loaded)\n" if colors > 1 and have_purge_map else "\n"
                 for t, params in self.slicer_tool_map['tools'].items():
-                    msg += "T%d (Gate %d, %s, %s, %d%sC)\n" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'], UI_DEGREE)
+                    if params['in_use'] or detail:
+                        msg += "T%d (Gate %d, %s, %s, %d%sC)" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'], UI_DEGREE)
+                        msg += " Not used\n" if detail and not params['in_use'] else "\n"
                 if self.slicer_tool_map['initial_tool'] is not None:
                     msg += "Initial Tool: T%d" % self.slicer_tool_map['initial_tool']
                     msg += " (will use bypass)\n" if colors <= 1 and self.tool_selected == self.TOOL_GATE_BYPASS else "\n"

@@ -42,9 +42,11 @@ This macro initializes the MMU, establishes whether the print is single or multi
       tools.0.color: ff0000    ; Color in RRGGBB format for T0
       tools.0.material: ABS    ; Material type for T0
       tools.0.temp: 240        ; Extruder temperature for T0
+      tools.0.in_use: 1        ; Tool used in print
       tools.3.color: 00e410    ; Color in RRGGBB format for T3
       tools.3.material: ASA    ; Material type for T3
       tools.3.temp: 245        ; Extruder temperature for T3
+      tools.3.in_use: 1        ; Tool used in print
       purge_volumes: [[100, 100], [100, 100]] ; NxN matrix of purge volume changing from tool X to tool Y
 ```
 
@@ -69,6 +71,7 @@ T6   200  200  200  200  200  200   -   200  200
 T7   200  200  200  200  200  200  200   -   200
 T8   200  200  200  200  200  200  200  200   -
 ```
+The `DETAIL=1` flag will also report on tools that are defined in slicer but not defined for current print
 
 #### `2. MMU_START_CHECK`
 This macro uses the "Slicer Tool Map" and performs checks to ensure the MMU is fully ready to print. Currently checks are limited to confirming that filament is available in all the required tools, but in the future it might check that the filaments types the sliced g-code expects match those actually loaded in the MMU (think how the Spoolman integration could be used...)
