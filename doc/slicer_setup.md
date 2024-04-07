@@ -94,7 +94,7 @@ Optionally you can put the parts of your original print start macro that you sep
 
 > [!TIP]  
 > The slicer defined extruder colors will be displayed on Mainsail / Fluidd UI next to the Extruder "Tx" buttons (see below). Note that the UI's do not currently automatically update when colors change so you will need to refresh your browser window to see the colors.
-> <img src="/doc/slicer/mainsail_colors.png" width="320" alt="Mailsail Extruder Colors">
+> <img src="/doc/slicer/mainsail_colors.png" width="450" alt="Mailsail Extruder Colors">
 
 
 <br>
