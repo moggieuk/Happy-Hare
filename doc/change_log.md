@@ -191,3 +191,9 @@ The release provides more flexibilty in tool change movement, introduces consump
 - Updates and to bloblifier macro (needs latest klipper)
 - Allow specifying spool_id in advance for supporting RFID readers. You can read more about it [here](/doc/spoolman_support.md)
 
+#### v2.5.1 (patches)
+- Fixed incorrect doc in `mmu_macro_vars`
+- Bug: Fixed user defined load/unload_sequence macro names (previously would always look for default names)
+- Add all slicer tools to the "slicer_tool_map" (unused tools only visible with DETAIL=1 flag).
+- Set color on Tx macros so color can be seen in Mainsail / Fluidd UI's. Requires refresh of Mainsail screen because it doesn't update dynamically :-(
+
