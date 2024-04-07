@@ -92,6 +92,11 @@ Optionally you can put the parts of your original print start macro that you sep
 > [!IMPORTANT]  
 > The Happy Hare moonraker g-code pre-processor plugin (that's quite a mouthful) takes only a few seconds to process even with large g-code files, however, because of the way moonraker works it is important that your workflow is "Upload" and then "Print" rather than the combined "Upload and Print". The latter will result in the !placeholders! not being expanded in time.
 
+> [!TIP]  
+> The slicer defined extruder colors will be displayed on Mainsail / Fluidd UI next to the Extruder "Tx" buttons (see below). Note that the UI's do not currently automatically update when colors change so you will need to refresh your browser window to see the colors.
+> <img src="/doc/slicer/mainsail_colors.png" width="320" alt="Mailsail Extruder Colors">
+
+
 <br>
 
 ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) End G-Code
