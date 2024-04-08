@@ -1007,7 +1007,7 @@ class Mmu:
         self.pending_spool_id = None # For automatic assignment of spool_id if set perhaps by rfid reader
 
     def _clear_slicer_tool_map(self):
-        self.slicer_tool_map = {'tools': {}, 'initial_tool': None, 'purge_volumes': []}
+        self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': []}
         self.slicer_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
 
         # Clear 'color' on Tx macros
@@ -6505,6 +6505,8 @@ class Mmu:
             quiet = True
         if tool >= 0:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'in_use': used}
+            if used:
+                self.slicer_tool_map['referenced_tools'] = sorted(set(self.slicer_tool_map['referenced_tools'] + [tool]))
             if color:
                 self._update_slicer_color()
             quiet = True
