@@ -385,7 +385,7 @@ cleanup_manual_stepper_version() {
 
     # Upgrade mmu_hardware.cfg...
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_manual_stepper=$(egrep -c "\[mmu_config_setup\]|\[manual_extruder_stepper extruder\]" ${hardware_cfg} || true)
+    found_manual_stepper=$(grep -E -c "\[mmu_config_setup\]|\[manual_extruder_stepper extruder\]" ${hardware_cfg} || true)
     if [ "${found_manual_stepper}" -ne 0 ]; then
         cat "${hardware_cfg}" | sed -e " \
             /\[mmu_config_setup\]/ d; \
@@ -420,7 +420,7 @@ cleanup_manual_stepper_version() {
 # TEMPORARY: Upgrade mmu sensors part of mmu_hardware.cfg
 upgrade_mmu_sensors() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_mmu_sensors=$(egrep -c "${SENSORS_SECTION}" ${hardware_cfg} || true)
+    found_mmu_sensors=$(grep -E -c "${SENSORS_SECTION}" ${hardware_cfg} || true)
 
     if [ "${found_mmu_sensors}" -eq 0 ]; then
         # Form new section ready for insertion at end of existing mmu_hardware.cfg
@@ -437,8 +437,8 @@ upgrade_mmu_sensors() {
 # TEMPORARY: Upgrade led effects part of mmu_hardware.cfg (assumed last part of file)
 upgrade_led_effects() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_led_effects=$(egrep -c "${LED_SECTION}" ${hardware_cfg} || true)
-    led_effects_enabled=$(egrep -c "^\[mmu_led_effect" ${hardware_cfg} || true)
+    found_led_effects=$(grep -E -c "${LED_SECTION}" ${hardware_cfg} || true)
+    led_effects_enabled=$(grep -E -c "^\[mmu_led_effect" ${hardware_cfg} || true)
 
     # Form new section ready for insertion at end of existing mmu_hardware.cfg
     if [ "${led_effects_enabled}" -ne 0 ]; then
@@ -543,7 +543,7 @@ parse_file() {
             value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
 	    # If parameter is one of interest and it has a value remember it
-            if echo "$parameter" | egrep -q "${prefix_filter}"; then
+            if echo "$parameter" | grep -E -q "${prefix_filter}"; then
                 if [ "${value}" != "" ]; then
                     combined="${namespace}${parameter}"
                     if [ -n "${checkdup}" ] && [ ! -z "${!combined+x}" ]; then
@@ -571,7 +571,7 @@ update_copy_file() {
     # Read the file line by line
     while IFS="" read -r line || [ -n "$line" ]
     do
-        if echo "$line" | egrep -q '^[#;]'; then
+        if echo "$line" | grep -E -q '^[#;]'; then
             # Just copy simple comments
             echo "$line"
         elif [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
@@ -589,9 +589,9 @@ update_copy_file() {
             fi
             space=`printf "%s" "$parameterAndValueAndSpace" | sed 's/.*[^[:space:]]\(.*\)$/\1/'`
 
-            if echo "$parameterAndValueAndSpace" | egrep -q "${prefix_filter}"; then
+            if echo "$parameterAndValueAndSpace" | grep -E -q "${prefix_filter}"; then
                 # If parameter and value exist, substitute the value with the in memory variable of the same name
-                if echo "$parameterAndValueAndSpace" | egrep -q '^\['; then
+                if echo "$parameterAndValueAndSpace" | grep -E -q '^\['; then
                     echo "$line"
                 elif [ -n "$parameterAndValueAndSpace" ]; then
                     parameter=$(echo "$parameterAndValueAndSpace" | cut -d':' -f1)
@@ -1033,7 +1033,7 @@ copy_config_files() {
         src=${SRCDIR}/config/addons/${file}
         dest=${mmu_dir}/addons/${file}
         if [ -f "${dest}" ]; then
-            if ! echo "$file" | egrep -q ".*_hw\.cfg.*"; then
+            if ! echo "$file" | grep -E -q ".*_hw\.cfg.*"; then
                 echo -e "${INFO}Upgrading configuration file ${file}"
                 update_copy_file ${src} ${dest} "variable_"
             else
@@ -1432,7 +1432,7 @@ questionaire() {
 
     serial=""
     echo
-    for line in `ls /dev/serial/by-id 2>/dev/null | egrep "Klipper_"`; do
+    for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
         if echo ${line} | grep --quiet "${pattern}"; then
             echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
             yn=$(prompt_yn "/dev/serial/by-id/${line}")
