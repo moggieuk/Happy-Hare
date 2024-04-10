@@ -1291,5 +1291,3 @@ Detail change log can be found [here](/doc/change_log.md)
 
 <br>
 
-![image](https://github.com/moggieuk/Happy-Hare/assets/36124687/2d025eac-868a-487a-85e4-5f7a053c1f95)
-![image](https://github.com/ningpj/Happy-Hare/assets/36124687/c981eb89-71ab-4c24-8918-ee7c248ae6ff)
