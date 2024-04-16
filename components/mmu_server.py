@@ -14,7 +14,7 @@
 #
 
 import logging, os, sys, re, time
-import runpy, argparse, shutil, traceback, tempfile
+import runpy, argparse, shutil, traceback, tempfile, filecmp
 
 class MmuServer:
     def __init__(self, config):
@@ -193,7 +193,10 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, co
                     x, y = g1_match.groups()
 
                     # Now replace "T" line and write buffered lines, including the current "G1" line
-                    outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
+                    if insert_nextpos:
+                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
+                    else:
+                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}" ; T{tool}\n')
                     for buffered_line in buffer:
                         outfile.write(buffered_line)
                     buffer.clear()
@@ -261,7 +264,10 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                     # Move temporary file back in place
                     if os.path.islink(file_path):
                         file_path = os.path.realpath(file_path)
-                    shutil.move(tmp_file, file_path)
+                    if not filecmp.cmp(tmp_file, file_path):
+                        shutil.move(tmp_file, file_path)
+                    else:
+                        metadata.logger.info(f"Files are the same, skipping replacement of: {file_path} by {tmp_file}")
                 else:
                     metadata.logger.info(f"No MMU metadata placeholders found in file: {file_path}")
 
@@ -301,4 +307,3 @@ if __name__ == "__main__":
 
     # Second parsing for mmu placeholders and next pos insertion
     main(args.path, args.filename, args.placeholders, args.nextpos)
-
