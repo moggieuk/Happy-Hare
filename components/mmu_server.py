@@ -261,7 +261,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                     tools_used = colors = temps = materials = purge_volumes = slicer = None
                     has_placeholder = False
 
-                if insert_nextpos or has_placeholder:
+                if (insert_nextpos and len(tools_used) > 0) or has_placeholder:
                     start = time.time()
                     msg = []
                     if has_placeholder:
