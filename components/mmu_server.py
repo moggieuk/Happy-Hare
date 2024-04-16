@@ -201,10 +201,9 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, co
                 buffer.append(line)
                 g1_match = g1_pattern.match(line)
                 if g1_match:
-                    x, y = g1_match.groups()
-
                     # Now replace "T" line and write buffered lines, including the current "G1" line
                     if insert_nextpos:
+                        x, y = g1_match.groups()
                         outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
                     else:
                         outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}" ; T{tool}\n')
