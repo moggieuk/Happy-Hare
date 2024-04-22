@@ -206,7 +206,7 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, co
                         x, y = g1_match.groups()
                         outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
                     else:
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}" ; T{tool}\n')
+                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
                     for buffered_line in buffer:
                         outfile.write(buffered_line)
                     buffer.clear()
