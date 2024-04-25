@@ -2847,6 +2847,7 @@ class Mmu:
 
         if not pre_start_only and self.print_state not in ["printing"]:
             self._log_trace("_on_print_start(->printing)")
+            self._initialize_sync_feedback()
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=min_lifted_z VALUE=0")
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=False")
@@ -2859,6 +2860,17 @@ class Mmu:
                 msg += "\nWarning: Non default TTG map in effect"
             self._log_info(msg)
             self._set_print_state("printing")
+
+    # Ensure the starting state for the sync feedback based on what sensor(s) are fitted
+    def _initialize_sync_feedback(self):
+        eventtime = self.reactor.monotonic()
+        if self.mmu_sensors:
+            if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
+                self._handle_sync_feedback(eventtime, 1.) # Assume compressed
+            elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
+                self._handle_sync_feedback(eventtime, -1.) # Assume compressed
+            else:
+                self._handle_sync_feedback(eventtime, 0.) # Assume neutral
 
     # Force state transistion to printing for any early moves
     def _fix_started_state(self):
