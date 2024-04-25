@@ -1404,7 +1404,7 @@ questionaire() {
     echo -e " 5) EASY-BRD with RP2040"
     echo -e " 6) Mellow EASY-BRD with CANbus"
     echo -e " 7) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 6)
+    num=$(prompt_123 "MCU type?" 7)
     echo
     case $num in
         1)
