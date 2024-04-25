@@ -2681,7 +2681,7 @@ class Mmu:
     def _enable_sync_feedback(self):
         if self.sync_feedback_operational: return
         self.sync_feedback_operational = True
-        self.sync_feedback_last_state = 1.0
+        self.sync_feedback_last_state = -1.0
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
         self._update_sync_multiplier()
 
