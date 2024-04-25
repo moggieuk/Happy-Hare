@@ -5558,11 +5558,14 @@ class Mmu:
                 self._mmu_unlock()
             if self._is_in_print():
                 self._check_runout() # Can throw MmuError
-                # Convenience of the user in case they forgot to set filament position state
+
+                # Convenience in case user forgot to set filament position state
                 if self.filament_pos != self.FILAMENT_POS_LOADED:
                     if self._check_sensor(self.ENDSTOP_TOOLHEAD) is True:
                         self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
                         self._log_always("Automatically set filament state to LOADED based on toolhead sensor")
+                # TODO: We should always be in a deterministic state here: unloaded or loaded... not in between...
+
             self._wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())))
             if self._is_mmu_paused():
                 self._mmu_resume() # Continue printing...
