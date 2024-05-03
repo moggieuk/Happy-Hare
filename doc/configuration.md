@@ -248,11 +248,11 @@ Consult this illustration of a typical toolhead or table of popular configuratio
 
 | Dimension | Rapido/R2 | Dragon SF | Dragon HF | Revo |
 | --------- | ------ | --------- | --------- | ---- |
-| `toolhead_extruder_to_nozzle`<br>(in mmu_parameters.cfg) | | | | 72 | 
-| `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | | | | 62 | 
-| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | | | | 37.5 |
-| `variable_retract_length`<br>(in mmu_macro_vars.cfg) | | | | |
-| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | | | | |
+| `toolhead_extruder_to_nozzle`<br>(in mmu_parameters.cfg) | 85.71 | | | 72 | 
+| `toolhead_sensor_to_nozzle`<br>(in mmu_parameters.cfg) | 75.56 | | | 62 | 
+| `variable_blade_pos`<br>(in mmu_macro_vars.cfg) | 61.40 | | | 37.5 |
+| `variable_retract_length`<br>(in mmu_macro_vars.cfg) | 32.50 | | | |
+| `variable_pushback_length`<br>(in mmu_macro_vars.cfg) | 31.00 | | | |
 
 **G2E** dimensions for each hotend:
 
