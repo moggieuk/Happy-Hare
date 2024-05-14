@@ -115,27 +115,93 @@ sequenceDiagram
       D---Views:::black-->F["echo CIMC_JS('randomcaptcha');\n echo CIMC_HTML(['captcha_name'=>'randomcaptcha']);"]:::black; 
       D---Controller:::black-->T["CIMC_RULE('archaptcha,recaptcha,bibot');"]:::black;
 ```
-<details class="details-reset" open>
-  <summary>
-   <span data-view-component="true" class="Truncate">
-    <a href="/moggieuk/Happy-Hare/wiki" data-view-component="true" class="Truncate-text text-bold py-1">Home</a>
-   </span>
-  </summary>
-  <ul class="list-style-none mx-4 px-1">
-    <li class="my-2" style="padding-left: 12px;">
-      <a class="Link--primary" data-analytics-event="{&quot;category&quot;:&quot;Wiki&quot;,&quot;action&quot;:&quot;toc_click&quot;,&quot;label&quot;:null}" href="/moggieuk/Happy-Hare/wiki#wiki-is-work-in-progress">WIKI IS WORK IN PROGRESS</a>
+# My menu
+* [Home][home]
+* [Technical documentation][techdocs]
+  * [User manual][usermanual]
+</details>
+
+[home]: https://github.com/myproject/wiki/Home
+[techdocs]: https://github.com/myproject/wiki/Technical-documentation
+[usermanual]: https://github.com/myproject/wiki/User-manual
+
+<details open><summary><b>&nbsp;1. Introduction</b></summary>
+  <ul>
+    <li><a href="/doc/introduction.md#how-to-get-help"><b>How to get help</b></a></li>
+    <li><a href="/doc/introduction.md#organization"><b>Organization</b></a></li>
+    <li><a href="/doc/introduction.md#common-terms"><b>Common-Terms</b></a></li>
+    <li>
+      <details><summary><a href="/doc/conceptual.md"><b>Conceptual MMU</b></a></summary>
+      <ul>
+        <li><a href="/doc/conceptual.md#supported-mmu-types">Supported MMU Types</a></li>
+        <li><a href="/doc/conceptual.md#sensors">Sensors Explained</a></li>
+        <li><a href="/doc/conceptual.md#encoder">Encoder</a></li>
+      </ul>
+      </details>
     </li>
   </ul>
 </details>
+
+
+- [Tuning Filament Tips](#---tuning-filament-tips)<br>
+  - [Tuning Happy Hare Cut Tip Macro](#tuning-happy-hare-_mmu_cut_tip-macro)<br>
+- [Purge Volumes](#---purge-volumes)<br>
+  - [Tuning `toolhead_ooze_reduction`](#tuning-toolhead_ooze_reduction)<br>
+- [No Wipe Tower Option](#---no-wipe-tower-option)<br>
+- [More Slicer Setup Help](#more-slicer-setup-help)<br>
 
 <details open>
-  <summary>
-    <a href="/moggieuk/Happy-Hare/wiki" data-view-component="true" class="Truncate-text text-bold py-1">Home</a>
-  </summary>
-  <ul class="list-style-none mx-4 px-1">
-    <li class="my-2" style="padding-left: 12px;">
-      <a class="Link--primary" data-analytics-event="{&quot;category&quot;:&quot;Wiki&quot;,&quot;action&quot;:&quot;toc_click&quot;,&quot;label&quot;:null}" href="/moggieuk/Happy-Hare/wiki#wiki-is-work-in-progress">WIKI IS WORK IN PROGRESS</a>
+  <summary><b>Introduction</b></summary>
+  <ol>
+    <li>
+      <details>
+        <summary><a href="/doc/introduction.md">Documentation</a></summary>
+        <ol>
+          <li><a href="/doc/introduction.md#how-to-get-help">How to get help</a></li>
+          <li><a href="/doc/introduction.md#organization">Organization</a></li>
+          <li><a href="/doc/introduction.md#common-terms">Common-Terms</a></li>
+        </ol>
+      </details>
     </li>
-  </ul>
+    <li>
+      <details>
+        <summary><a href="/doc/conceptual.md">Conceptual MMU</a></summary>
+        <ol>
+          <li><a href="/doc/conceptual.md#supported-mmu-types">Supported MMU Types</a></li>
+          <li><a href="/doc/conceptual.md#sensors">Sensors Explained</a></li>
+          <li><a href="/doc/conceptual.md#encoder">Encoder</a></li>
+        </ol>
+      </details>
+    </li>
+  </ol>
 </details>
+</li>
 
+<li>
+<details open>
+  <summary><b>Installation</b></summary>
+  <ol>
+    <li>
+      <details>
+        <summary><a href="/doc/installation.md">Software Installation</a></summary>
+        <ol>
+          <li><a href="/doc/installation.md#creating-base-klipper-config">Creating a base Klipper config</a></li>
+          <li><a href="/doc/installation.md#config-overview">Config Overview</a></li>
+          <li><a href="/doc/installation.md#upgrading">Upgrading Happy Hare</a></li>
+        </ol>
+      </details>
+    </li>
+    <li><a href="/doc/installation.md#optional-macros">Optional pause/resume/cancel macros</a></li>
+    <li>
+      <details>
+        <summary><a href="/doc/installation.md#vendors">Supported MMUs</a></summary>
+        <ol>
+          <li><a href="/doc/installation.md#ercf-v11">ERCF v1.1</a></li>
+          <li><a href="/doc/installation.md#ercf-v20">ERCF v2.0</a></li>
+          <li><a href="/doc/installation.md#tradrack">Tradrack</a></li>
+          <li><a href="/doc/installation.md#other">Other</a></li>
+        </ol>
+      </details>
+    </li>
+  </ol>
+</details>
