@@ -1,6 +1,6 @@
 # Happy Hare - Detailed Revision History
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Imperfect Log Changes since V2 launch
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Imperfect Log Changes since V2 launch
 
 ### v2.0.1
 - Initial Release (forked from my ERCF-Software-V3 project which is now deprecated).

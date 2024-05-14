@@ -36,7 +36,7 @@ Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full comma
 ```
 
 
-  ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Basic MMU functionality
+  ## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Basic MMU functionality
 
   | Command | Description | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Parameters&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; |
   | ------- | ----------- | ---------- |
@@ -86,7 +86,7 @@ Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full comma
   
   <br>
 
-  ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Calibration
+  ## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Calibration
 
 ```yml
     MMU_CALIBRATE_BOWDEN : Calibration of reference bowden length for gate 0
@@ -106,7 +106,7 @@ Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full comma
 
 <br>
 
-  ## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Testing
+  ## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Testing
 
 ```yml
     MMU_SOAKTEST_LOAD_SEQUENCE : Soak test tool load/unload sequence
@@ -138,7 +138,7 @@ Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full comma
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) User defined/configurable macros (defined in mmu_software.cfg)
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) User defined/configurable macros (defined in mmu_software.cfg)
 
   | Macro | Description | Supplied Parameters |
   | ----- | ----------- | ------------------- |
@@ -166,7 +166,7 @@ Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 for full comma
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Internal macros for custom composition of load/unload sequences
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Internal macros for custom composition of load/unload sequences
 
   | Macro | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Description&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Parameters |
   | ----- | ----------- | ---------- |

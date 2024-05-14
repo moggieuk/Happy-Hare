@@ -6,7 +6,7 @@
 
 Happy Hare now can drive LEDs (NeoPixel/WS2812) on your MMU to provide both functional feedback as well as to add a little bling to your machine.  Typically you would connect a string of neopixels (either descrete components or an LED strip, or combination of both if compatible contollers) to the neopixel output on the MCU that drives your MMU although this can be changed.
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Wiring
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Wiring
 
 <p align=center><img src="/doc/leds/led_connection.jpg" alt='LED Connection' width='80%'></p>
 
@@ -14,7 +14,7 @@ LED strips can be formed but soldering together individual neopixels or using pr
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware Config
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Hardware Config
   If you have run the Happy Hare installer it should have added a section to the end of your `mmu_hardware.cfg` that starts like this:
 
 ```yml
@@ -70,7 +70,7 @@ Some examples of how to set these values can be seen in this illustration (ERCFv
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Controlling LED Effects
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Controlling LED Effects
 Happy Hare LED effects are 100% implemented in `mmu_leds.cfg` as macros so you can review if you want to tweak and create your own modifications.  I would caution that you make sure you understand the logic before doing so, and in most cases you may just want to tweak the effects defined in `mmu_macro_vars.cfg` to customize.  The macros work by intercepting changes of the Happy Hare's print state machine, changes in actions it is performing and changes to the "gate_map" containing gate status and filament color.
 
 You can change default effect or enable/disable in `mmu_macro_vars.cfg` under the `_MMU_LED_VARS` macro:
@@ -116,7 +116,7 @@ The `slicer_color` is not persisted and can be set with the command `MMU_SLICER_
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Summary of Default Effects
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Summary of Default Effects
 The default effects, which are both functional as well as adding a little color, are summerized here:
 
   | State | LED at each Gate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Filament Exit (E.g. Bowden tube) |

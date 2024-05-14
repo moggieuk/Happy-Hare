@@ -5,7 +5,7 @@
 
 Happy Hare records tool change statistics including things like the number of swaps, the number of errors/pauses as well as detailed timing for each step of the process. These statistics are independently recorded for the current print as well as all time totals (since last reset). In addition there is a simple "consumption counting" framework that can be used to remind you to change consumables like filament cutting blade or servo arm. It can even pause the print if critical counts are hit.
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Swap Timings
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Swap Timings
 
 ### Viewing Statistics
 Statics can be viewed at anytime with the `MMU_STATS` command:
@@ -59,7 +59,7 @@ Happy Hare stores all statics in the defined `[save_variables]` file, typically 
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Gate Statistics
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Gate Statistics
 Happy Hare also records information about the quality of operation of each gate. If an encoder is fitted this includes a measurement of filament slippage, or times the servo failed to catch/grip the filament. To see the raw details run:
 
 > MMU_STATS DETAIL=1
@@ -81,7 +81,7 @@ console_gate_stat: emoticon
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Consumption Counters
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Consumption Counters
 
 The `MMU_STATS` command has a dual purpose of providing a mechanism for simple counting and warning. The purpose is to track consumables on your particular MMU and warning (optionally pause) when the count is reached. This is best illustrated with an example:
 

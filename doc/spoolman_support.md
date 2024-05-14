@@ -13,7 +13,7 @@ To use spoolman with Happy Hare you need to configure and understand the roll of
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Configuration
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Configuration
 
 Firstly, Happy Hare's moonraker extension should be installed. It will be by default but check that you have the following in your `moonraker.conf`:
 ```yml
@@ -31,7 +31,7 @@ If you made changes, restart klipper and moonraker services and you are done.
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Gate Map and Spool ID
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Gate Map and Spool ID
 
 Each gate can have configured information about what is loaded (technically it can have information even if the gate is currently empty). This information used in various features and UI visualization but also is available to you via `printer.mmu.*` printer variables for use in your custom gocde.
 

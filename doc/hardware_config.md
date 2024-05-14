@@ -1,6 +1,6 @@
 # Hardware configuration, Movement and Homing
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Hardware configuration (mmu_hardware.cfg explained)
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Hardware configuration (mmu_hardware.cfg explained)
 
 This will vary slightly depending on your particular brand of MMU but the steps are essentially the same with some being dependent on hardware configuration.
 
@@ -207,7 +207,7 @@ MMU_SERVO POS=up
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Endstops and MMU Movement
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Endstops and MMU Movement
 Happy Hare implements the MMU control as a "second toolhead" known as the MMU toolhead. The X-axis represents the selector movement and the Y-axis the filament movement until Klipper takes over the control of the extruder as normal. It offers some sophisticated stepper synching and homing options which add additional parameters to the regular klipper stepper definition.
 
 ### Multiple Endstops on MMU Steppers

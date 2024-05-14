@@ -11,11 +11,11 @@ Make sure the `Expert Options` of your slicer are enabled and go to the Printer 
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Start G-Code
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Start G-Code
 
 Enter the following (using your own print start macro call) into your "custom start g-code" box:
 
-<img src="/doc/slicer/start_gcode.png" width="100%" alt="Custom Start G-Code"><br>Your `START_PRINT ...` macro is likely to be different from mine! Here is some cut'n'paste text:
+<img src="/doc/slicer_setup/start_gcode.png" width="100%" alt="Custom Start G-Code"><br>Your `START_PRINT ...` macro is likely to be different from mine! Here is some cut'n'paste text:
 
 ```yml
 MMU_START_SETUP INITIAL_TOOL={initial_tool} REFERENCED_TOOLS=!referenced_tools! TOOL_COLORS=!colors! TOOL_TEMPS=!temperatures! TOOL_MATERIALS=!materials! PURGE_VOLUMES=!purge_volumes!
@@ -94,11 +94,11 @@ Optionally you can put the parts of your original print start macro that you sep
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) End G-Code
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) End G-Code
 
 Ensure this is added in your slicer's "custom end g-code" box:
 
-<img src="/doc/slicer/end_gcode.png" width="320" alt="End G-Code">
+<img src="/doc/slicer_setup/end_gcode.png" width="320" alt="End G-Code">
 
 ```yml
 MMU_END
@@ -113,11 +113,11 @@ This is where your existing print end macro would be placed
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) After Layer Change G-Code
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) After Layer Change G-Code
 
 The reason for this is to support sequential printing and explained [here](/doc/toolchange_movement.md#---z-hop-moves)
 
-<img src="/doc/slicer/after_layer_change_gcode.png" width="320" alt="After Layer Change G-Code">
+<img src="/doc/slicer_setup/after_layer_change_gcode.png" width="320" alt="After Layer Change G-Code">
 
 ```yml
 _MMU_UPDATE_HEIGHT
@@ -125,15 +125,15 @@ _MMU_UPDATE_HEIGHT
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Tool Change G-Code
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Tool Change G-Code
 
 This is likely to be the slicer default, but it is worth checking that the custom tool change g-code is set to this:
 
-<img src="/doc/slicer/tool_change_gcode.png" width="280" alt="Tool Change G-Code">
+<img src="/doc/slicer_setup/tool_change_gcode.png" width="280" alt="Tool Change G-Code">
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Customing MMU Start/End Macros
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) Customing MMU Start/End Macros
 
 The recommended macro described here can be customized in `mmu_macro_vars.cfg`. Look for the `_MMU_SOFTWARE_VARS` section (corresponding to `mmu_software.cfg` where the macros are defined) 
 
@@ -160,11 +160,11 @@ variable_dump_stats                         : True      ; True/False, Whether to
 
 <br>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) MMU Error Dialog
+## ![#f03c15](/doc/resources/f03c15.png) ![#c5f015](/doc/resources/c5f015.png) ![#1589F0](/doc/resources/1589F0.png) MMU Error Dialog
 
 When Happy Hare detects an error, even during print start it will pause the print allowing you to fix and then resume. If the option `show_error_dialog: 1` is set in `mmu_parameters.cfg` a pop-up dialog will be displayed on Mailsail/Fluidd/KlipperScreen providing you options through the UI. If it is occurs during these startup macros there will also be an option to abort the print. The abort option will disappear during the print. To disable the popup, set `show_error_dialog: 0`
 
-<img src="/doc/slicer/error_dialog_during_start.png" width="400" alt="Error Dialog">
+<img src="/doc/slicer_setup/error_dialog_during_start.png" width="400" alt="Error Dialog">
 
 > [!IMPORTANT]  
 > If you are writing your own startup macros beware of the earlier note because the use of a popup dialog can make it seem as though your printer is locked up for long running macros
