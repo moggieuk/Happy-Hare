@@ -2907,6 +2907,9 @@ class Mmu:
         # Be deliberate about order of these tasks
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
+            if self.saved_toolhead_position == 'change_tool':
+                gcode_move = self.printer.lookup_object("gcode_move")
+                gcode_move.saved_states['PAUSE_STATE'] = gcode_move.saved_states['MMU_state']
 
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
