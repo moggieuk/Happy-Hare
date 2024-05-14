@@ -115,3 +115,27 @@ sequenceDiagram
       D---Views:::black-->F["echo CIMC_JS('randomcaptcha');\n echo CIMC_HTML(['captcha_name'=>'randomcaptcha']);"]:::black; 
       D---Controller:::black-->T["CIMC_RULE('archaptcha,recaptcha,bibot');"]:::black;
 ```
+<details class="details-reset" open>
+  <summary>
+   <span data-view-component="true" class="Truncate">
+    <a href="/moggieuk/Happy-Hare/wiki" data-view-component="true" class="Truncate-text text-bold py-1">Home</a>
+   </span>
+  </summary>
+  <ul class="list-style-none mx-4 px-1">
+    <li class="my-2" style="padding-left: 12px;">
+      <a class="Link--primary" data-analytics-event="{&quot;category&quot;:&quot;Wiki&quot;,&quot;action&quot;:&quot;toc_click&quot;,&quot;label&quot;:null}" href="/moggieuk/Happy-Hare/wiki#wiki-is-work-in-progress">WIKI IS WORK IN PROGRESS</a>
+    </li>
+  </ul>
+</details>
+
+<details open>
+  <summary>
+    <a href="/moggieuk/Happy-Hare/wiki" data-view-component="true" class="Truncate-text text-bold py-1">Home</a>
+  </summary>
+  <ul class="list-style-none mx-4 px-1">
+    <li class="my-2" style="padding-left: 12px;">
+      <a class="Link--primary" data-analytics-event="{&quot;category&quot;:&quot;Wiki&quot;,&quot;action&quot;:&quot;toc_click&quot;,&quot;label&quot;:null}" href="/moggieuk/Happy-Hare/wiki#wiki-is-work-in-progress">WIKI IS WORK IN PROGRESS</a>
+    </li>
+  </ul>
+</details>
+
