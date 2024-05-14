@@ -250,6 +250,8 @@ class Mmu:
 
     UPGRADE_REMINDER = "Sorry but Happy Hare requires you to re-run\n'./install.sh' to complete the update.\nMore details: https://github.com/moggieuk/Happy-Hare/blob/main/doc/upgrade.md"
 
+    TOOLHEAD_POSITION_STATE = 'MMU_state'
+
     def __init__(self, config):
         self.config = config
         self.printer = config.get_printer()
@@ -2909,7 +2911,8 @@ class Mmu:
             self._wrap_gcode_command(self.pause_macro)
             if self.saved_toolhead_position == 'change_tool':
                 gcode_move = self.printer.lookup_object("gcode_move")
-                gcode_move.saved_states['PAUSE_STATE'] = gcode_move.saved_states['MMU_state']
+                if self.TOOLHEAD_POSITION_STATE in gcode_move.saved_states:
+                    gcode_move.saved_states['PAUSE_STATE'] = gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
 
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
@@ -3005,12 +3008,12 @@ class Mmu:
                 gcode_pos = gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self._log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
-                self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
+                self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
                 self.saved_toolhead_position = operation
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
-                    mmu_state = gcode_move.saved_states['MMU_state']
+                    mmu_state = gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
                     self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
@@ -3037,13 +3040,13 @@ class Mmu:
 
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
-                mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
+                mmu_state = self.printer.lookup_object("gcode_move").saved_states[self.TOOLHEAD_POSITION_STATE]
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
             if self.restore_toolhead_xy_position:
                 # Restore pre-pause position and state
-                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
+                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.z_hop_speed))
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self._log_debug("Restored gcode state and position (%s) after %s" % (toolhead_gcode_pos, operation))
             else:
@@ -3053,7 +3056,7 @@ class Mmu:
                     self.gcode.run_script_from_command("G90")
                     self.gcode.run_script_from_command("G1 Z%.4f F%d" % (self.saved_toolhead_height, self.z_hop_speed * 60))
                 # But ensure gcode state...
-                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state")
+                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
                 self._log_debug("Restored gcode state and z-hop position only (Z:%.1f) after %s" % (self.saved_toolhead_height, operation))
 
         self._clear_saved_toolhead_position()
