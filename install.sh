@@ -1696,7 +1696,7 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-a <kiauh-alternate-klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]"
+    echo "Usage: $0 [-a <kiauh_alternate_klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <repetier_server stub>] [-i] [-d] [-z]"
     echo
     echo "-i for interactive install"
     echo "-d for uninstall"
