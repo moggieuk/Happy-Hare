@@ -1698,12 +1698,14 @@ usage() {
     echo -e "${EMPHASIZE}"
     echo "Usage: $0 [-a <kiauh-alternate-klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]"
     echo
-    echo "-a to specify alternative klipper-service-name when installed with Kiauh."
     echo "-i for interactive install"
     echo "-d for uninstall"
     echo "-b to switch to specified feature branch (sticky)"
     echo "-z skip github check (nullifies -b <branch>)"
     echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
+    echo "-a <name> to specify alternative klipper-service-name when installed with Kiauh"
+    echo "-c <dir> to specify location of non-default klipper config directory"
+    echo "-k <dir> to specify location of non-default klipper home directory"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
