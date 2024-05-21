@@ -248,7 +248,7 @@ class Mmu:
                   ('tan','#D2B48C'), ('teal','#008080'), ('thistle','#D8BFD8'), ('tomato','#FF6347'), ('turquoise','#40E0D0'), ('violet','#EE82EE'),
                   ('wheat','#F5DEB3'), ('white','#FFFFFF'), ('whitesmoke','#F5F5F5'), ('yellow','#FFFF00'), ('yellowgreen','#9ACD32')]
 
-    UPGRADE_REMINDER = "Sorry but Happy Hare requires you to re-run\n'./install.sh' to complete the update.\nMore details: https://github.com/moggieuk/Happy-Hare/blob/main/doc/upgrade.md"
+    UPGRADE_REMINDER = "Sorry but Happy Hare requires you to re-run\n'./install.sh' to complete the update.\nMore details: https://github.com/moggieuk/Happy-Hare/wiki/Upgrade-Notice"
 
     def __init__(self, config):
         self.config = config
