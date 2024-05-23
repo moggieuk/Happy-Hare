@@ -145,7 +145,10 @@ def parse_gcode_file(file_path):
                 match = colors_regex.match(line)
                 if match:
                     colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
-                    colors.extend(colors_csv)
+                    if not colors:
+                        colors.extend(colors_csv)
+                    else:
+                        colors = [n if o == '' else o for o,n in zip(colors,colors_csv)]
                     found_colors = all(len(c) > 0 for c in colors)
 
             # !temperatures! processing
