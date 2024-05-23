@@ -148,7 +148,7 @@ def parse_gcode_file(file_path):
                     if not colors:
                         colors.extend(colors_csv)
                     else:
-                        colors = [n if o is '' else o for o,n in zip(colors,colors_csv)]
+                        colors = [n if o == '' else o for o,n in zip(colors,colors_csv)]
                     found_colors = all(len(c) > 0 for c in colors)
 
             # !temperatures! processing
