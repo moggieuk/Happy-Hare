@@ -12,7 +12,7 @@ Universal MMU driver for Klipper
   <a aria-label="Downloads" href="https://github.com/moggieuk/Happy-Hare/releases">
     <img src="https://img.shields.io/github/release/moggieuk/Happy-Hare?display_name=tag&style=flat-square">
   </a>
-  -->
+-->
   <a aria-label="Stars" href="https://github.com/moggieuk/Happy-Hare/stargazers">
     <img src="https://img.shields.io/github/stars/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
   <a aria-label="Forks" href="https://github.com/moggieuk/Happy-Hare/network/members">
