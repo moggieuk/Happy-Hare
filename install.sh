@@ -121,34 +121,36 @@ PIN[ERB,pre_gate_11_pin]="gpio29";         PIN[ERBv2,pre_gate_11_pin]="gpio29";
 
 
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
+# Note BTT MMB v1.1 Board switched gear_enable and pre_gate_1 pins
 #
-PIN[MMB,gear_uart_pin]="PA10";       # M1
-PIN[MMB,gear_step_pin]="PB15";
-PIN[MMB,gear_dir_pin]="PB14";
-PIN[MMB,gear_enable_pin]="PA8";
-PIN[MMB,gear_diag_pin]="PA3";	     # Aka STP1
-PIN[MMB,selector_uart_pin]="PC7";    # M2
-PIN[MMB,selector_step_pin]="PD2";
-PIN[MMB,selector_dir_pin]="PB13";
-PIN[MMB,selector_enable_pin]="PD1";
-PIN[MMB,selector_diag_pin]="PA4";    # Aka STP2
-PIN[MMB,selector_endstop_pin]="PB2"; # STP11
-PIN[MMB,servo_pin]="PA0";
-PIN[MMB,encoder_pin]="PA1";
-PIN[MMB,neopixel_pin]="PA2";
-PIN[MMB,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
-PIN[MMB,pre_gate_0_pin]="PB9";       # STP3
-PIN[MMB,pre_gate_1_pin]="PB8";       # STP4
-PIN[MMB,pre_gate_2_pin]="PC15";      # STP5
-PIN[MMB,pre_gate_3_pin]="PC13";      # STP6
-PIN[MMB,pre_gate_4_pin]="PC14";      # STP7
-PIN[MMB,pre_gate_5_pin]="PB12";      # STP8
-PIN[MMB,pre_gate_6_pin]="PB11";      # STP9
-PIN[MMB,pre_gate_7_pin]="PB10";      # STP10
-PIN[MMB,pre_gate_8_pin]="";
-PIN[MMB,pre_gate_9_pin]="";
-PIN[MMB,pre_gate_10_pin]="";
-PIN[MMB,pre_gate_11_pin]="";
+PIN[MMB10,gear_uart_pin]="PA10";           PIN[MMB11,gear_uart_pin]="PA10";       # M1
+PIN[MMB10,gear_step_pin]="PB15";           PIN[MMB11,gear_step_pin]="PB15";
+PIN[MMB10,gear_dir_pin]="PB14";            PIN[MMB11,gear_dir_pin]="PB14";
+PIN[MMB10,gear_enable_pin]="PA8";          PIN[MMB11,gear_enable_pin]="PB8";
+PIN[MMB10,gear_diag_pin]="PA3";            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1
+PIN[MMB10,selector_uart_pin]="PC7";        PIN[MMB11,selector_uart_pin]="PC7";    # M2
+PIN[MMB10,selector_step_pin]="PD2";        PIN[MMB11,selector_step_pin]="PD2";
+PIN[MMB10,selector_dir_pin]="PB13";        PIN[MMB11,selector_dir_pin]="PB13";
+PIN[MMB10,selector_enable_pin]="PD1";      PIN[MMB11,selector_enable_pin]="PD1";
+PIN[MMB10,selector_diag_pin]="PA4";        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2
+PIN[MMB10,selector_endstop_pin]="PB2";     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
+PIN[MMB10,servo_pin]="PA0";                PIN[MMB11,servo_pin]="PA0";
+PIN[MMB10,encoder_pin]="PA1";              PIN[MMB11,encoder_pin]="PA1";
+PIN[MMB10,neopixel_pin]="PA2";             PIN[MMB11,neopixel_pin]="PA2";
+PIN[MMB10,gate_sensor_pin]="PA3";          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
+PIN[MMB10,pre_gate_0_pin]="PB9";           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3
+PIN[MMB10,pre_gate_1_pin]="PB8";           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4
+PIN[MMB10,pre_gate_2_pin]="PC15";          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5
+PIN[MMB10,pre_gate_3_pin]="PC13";          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6
+PIN[MMB10,pre_gate_4_pin]="PC14";          PIN[MMB11,pre_gate_4_pin]="PC14";      # STP7
+PIN[MMB10,pre_gate_5_pin]="PB12";          PIN[MMB11,pre_gate_5_pin]="PB12";      # STP8
+PIN[MMB10,pre_gate_6_pin]="PB11";          PIN[MMB11,pre_gate_6_pin]="PB11";      # STP9
+PIN[MMB10,pre_gate_7_pin]="PB10";          PIN[MMB11,pre_gate_7_pin]="PB10";      # STP10
+PIN[MMB10,pre_gate_8_pin]="";              PIN[MMB11,pre_gate_8_pin]="";
+PIN[MMB10,pre_gate_9_pin]="";              PIN[MMB11,pre_gate_9_pin]="";
+PIN[MMB10,pre_gate_10_pin]="";             PIN[MMB11,pre_gate_10_pin]="";
+PIN[MMB10,pre_gate_11_pin]="";             PIN[MMB11,pre_gate_11_pin]="";
+
 
 # These pins will usually be on main mcu for wiring simplification
 #
@@ -1395,36 +1397,41 @@ questionaire() {
     brd_type="unknown"
     echo
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
-    echo -e " 1) BTT MMB"
-    echo -e " 2) Fysetc Burrows ERB"
-    echo -e " 3) Standard EASY-BRD (with SAMD21)"
-    echo -e " 4) EASY-BRD with RP2040"
-    echo -e " 5) Mellow EASY-BRD with CANbus"
-    echo -e " 6) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 6)
+    echo -e " 1) BTT MMB v1.0"
+    echo -e " 2) BTT MMB v1.1"
+    echo -e " 3) Fysetc Burrows ERB"
+    echo -e " 4) Standard EASY-BRD (with SAMD21)"
+    echo -e " 5) EASY-BRD with RP2040"
+    echo -e " 6) Mellow EASY-BRD with CANbus"
+    echo -e " 7) Not in list / Unknown"
+    num=$(prompt_123 "MCU type?" 7)
     echo
     case $num in
         1)
-            brd_type="MMB"
+            brd_type="MMB10"
             pattern="Klipper_stm32"
             ;;
         2)
+            brd_type="MMB11"
+            pattern="Klipper_stm32"
+            ;;
+        3)
             brd_type="ERB"
             pattern="Klipper_rp2040"
             ;;
-        3)
+        4)
             brd_type="EASY-BRD"
             pattern="Klipper_samd21"
             ;;
-        4)
+        5)
             brd_type="EASY-BRD-RP2040"
             pattern="Klipper_rp2040"
             ;;
-        5)
+        6)
             brd_type="MELLOW-EASY-BRD-CAN"
             pattern="Klipper_rp2040"
             ;;
-        6)
+        7)
             brd_type="unknown"
             pattern="Klipper_"
             ;;
@@ -1689,14 +1696,16 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-a <kiauh-alternate-klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <Repetier-Server stub>] [-i] [-d] [-z]"
+    echo "Usage: $0 [-a <kiauh_alternate_klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <repetier_server stub>] [-i] [-d] [-z]"
     echo
-    echo "-a to specify alternative klipper-service-name when installed with Kiauh."
     echo "-i for interactive install"
     echo "-d for uninstall"
     echo "-b to switch to specified feature branch (sticky)"
     echo "-z skip github check (nullifies -b <branch>)"
     echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
+    echo "-a <name> to specify alternative klipper-service-name when installed with Kiauh"
+    echo "-c <dir> to specify location of non-default klipper config directory"
+    echo "-k <dir> to specify location of non-default klipper home directory"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
