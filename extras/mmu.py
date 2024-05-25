@@ -6698,8 +6698,8 @@ class Mmu:
 
                     # If not printing select original tool and load filament if necessary
                     # We don't do this when printing because this is expected to preceed the loading initial tool
-                    if not self._is_printing():
-                        try:
+                    try:
+                        if not self._is_printing():
                             if tool_selected == self.TOOL_GATE_BYPASS:
                                 self._select_bypass()
                             elif tool_selected != self.TOOL_GATE_UNKNOWN:
@@ -6708,11 +6708,11 @@ class Mmu:
                                     self._select_and_load_tool(tool_selected)
                                 else:
                                     self._select_tool(tool_selected)
-                        except MmuError as ee:
-                            self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
-                    else:
-                        # At least restore the selected tool, but don't re-load filament
-                        self._select_tool(tool_selected)
+                        else:
+                            # At least restore the selected tool, but don't re-load filament
+                            self._select_tool(tool_selected)
+                    except MmuError as ee:
+                        self._log_always("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
 
                     if not quiet:
                         self._log_info(self._ttg_map_to_string(summary=True))
