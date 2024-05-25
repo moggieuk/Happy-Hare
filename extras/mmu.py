@@ -2996,7 +2996,7 @@ class Mmu:
         if state == "standby" and not self._is_in_standby():
             self._set_print_state(state)
 
-    def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None, force_in_print=False):
+    def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None, force_in_print=False, next_pos=None):
         if operation and not self.saved_toolhead_position:
             self._movequeues_wait_moves()
             eventtime = self.reactor.monotonic()
@@ -3010,6 +3010,9 @@ class Mmu:
                 self._log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
                 self.saved_toolhead_position = operation
+                if operation == 'tool_change' and next_pos:
+                    next_pos_parsed = list(map(float, next_pos.split(',')))
+                    gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = next_pos_parsed[:2]
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
@@ -5442,7 +5445,7 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
             self._recover_filament_pos(message=True)
 
-        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange, next_pos=next_pos)
 
         if self._has_encoder():
             self.encoder_sensor.update_clog_detection_length()
