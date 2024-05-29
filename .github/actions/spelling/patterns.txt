@@ -78,3 +78,4 @@
 # base64 encoded content
 ([`'"])[-a-zA-Z=;:/0-9+]+=\g{-1}
 
+(?:^|/)__init__\.py$
