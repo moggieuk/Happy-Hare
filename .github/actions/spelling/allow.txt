@@ -22,3 +22,14 @@ klippain
 klipper
 Klipperscreen
 klippy
+tradrack
+touchscreen
+Superslicer
+spreadcycle
+startpos
+Stealthburner
+stealthchop
+toolchange
+toolchanging
+toolmap
+commandline
