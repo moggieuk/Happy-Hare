@@ -112,6 +112,11 @@ jobs:
           cspell:css/dict/css.txt
           cspell:html/dict/html.txt
           cspell:php/dict/php.txt
+          cspell:aws/aws.txt
+          cspell:shell/dict/shell-all-words.txt
+          cspell:fullstack/dict/fullstack.txt
+          cspell:filetypes/filetypes.txt
+          cspell:npm/dict/npm.txt
 
   comment-push:
     name: Report (Push)
