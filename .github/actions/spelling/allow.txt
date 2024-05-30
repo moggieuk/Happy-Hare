@@ -34,6 +34,7 @@ klipper
 Klipperscreen
 klippy
 koconnor
+mcu
 microsteps
 minval
 mmb
@@ -46,13 +47,16 @@ nextfilename
 nextpos
 nextsuffix
 noservice
+octoprint
 ppins
+pwm
 spreadcycle
 ssh
 startpos
 stealthburner
 stealthchop
 superslicer
+tmc
 toolchange
 toolchanging
 toolmap
@@ -60,8 +64,6 @@ touchscreen
 tradrack
 trapq
 ttg
+uart
 ubuntu
 workarounds
-octoprint
-tmc
-
