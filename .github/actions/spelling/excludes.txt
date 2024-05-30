@@ -82,3 +82,4 @@ ignore$
 ^\.github/actions/spelling/
 ^\Q.github/workflows/spelling.yml\E$
 (?:^|/)__init__\.py$
+^\.github/action/spelling/patterns.txt
