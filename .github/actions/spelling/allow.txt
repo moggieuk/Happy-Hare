@@ -1,4 +1,5 @@
 
+
 arksine
 blobifier
 bmg
@@ -20,6 +21,8 @@ endstop
 endstops
 ercf
 erec
+ffi
+gcmd
 gcode
 github
 hotmail
@@ -31,15 +34,18 @@ Klipperscreen
 klippy
 koconnor
 microsteps
+minval
 mmb
 mmu
 moggieuk
+movepos
 neopixel
 newpos
 nextfilename
 nextpos
 nextsuffix
 noservice
+ppins
 spreadcycle
 ssh
 startpos
@@ -51,6 +57,6 @@ toolchanging
 toolmap
 touchscreen
 tradrack
+trapq
 ubuntu
 workarounds
-
