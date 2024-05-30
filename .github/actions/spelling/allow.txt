@@ -62,3 +62,6 @@ trapq
 ttg
 ubuntu
 workarounds
+octoprint
+tmc
+
