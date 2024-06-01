@@ -1400,10 +1400,11 @@ questionaire() {
     echo -e " 1) BTT MMB v1.0"
     echo -e " 2) BTT MMB v1.1"
     echo -e " 3) Fysetc Burrows ERB"
-    echo -e " 4) Standard EASY-BRD (with SAMD21)"
-    echo -e " 5) EASY-BRD with RP2040"
-    echo -e " 6) Mellow EASY-BRD with CANbus"
-    echo -e " 7) Not in list / Unknown"
+    echo -e " 4) Fysetc Burrows ERB V2"
+    echo -e " 5) Standard EASY-BRD (with SAMD21)"
+    echo -e " 6) EASY-BRD with RP2040"
+    echo -e " 7) Mellow EASY-BRD with CANbus"
+    echo -e " 8) Not in list / Unknown"
     num=$(prompt_123 "MCU type?" 7)
     echo
     case $num in
@@ -1420,18 +1421,22 @@ questionaire() {
             pattern="Klipper_rp2040"
             ;;
         4)
+            brd_type="ERBv2"
+            pattern="Klipper_rp2040"
+            ;;
+        5)
             brd_type="EASY-BRD"
             pattern="Klipper_samd21"
             ;;
-        5)
+        6)
             brd_type="EASY-BRD-RP2040"
             pattern="Klipper_rp2040"
             ;;
-        6)
+        7)
             brd_type="MELLOW-EASY-BRD-CAN"
             pattern="Klipper_rp2040"
             ;;
-        7)
+        8)
             brd_type="unknown"
             pattern="Klipper_"
             ;;
@@ -1464,7 +1469,9 @@ questionaire() {
     if [ "${HAS_ENCODER}" == "yes" ]; then
         eval PIN[${brd_type},gate_sensor_pin]=""
     else
-        eval PIN[${brd_type},encoder_pin]=""
+        if [ "${brd_type}" != "ERBv2" ]; then
+            eval PIN[${brd_type},encoder_pin]=""
+	fi
     fi
 
     echo
