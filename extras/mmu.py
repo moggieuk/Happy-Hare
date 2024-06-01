@@ -396,11 +396,11 @@ class Mmu:
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.4, minval=0.)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
-        self.z_hop_ramp = config.getfloat('z_hop_ramp', 15., minval=0.) # PAUL
-        self.toolchange_retract = config.getfloat('toolchange_retract', 0., minval=0.) # PAUL
-        self.toolchange_retract_speed = config.getfloat('toochange_retract_speed', 1., minval=1.) # PAUL
-        self.toolchange_unretract = config.getfloat('toolchange_unretract', 0., minval=0.) # PAUL
-        self.toolchange_unretract_speed = config.getfloat('toochange_unretract_speed', 1., minval=1.) # PAUL
+        self.z_hop_ramp = config.getfloat('z_hop_ramp', 15., minval=0.) # WIP For each 1mm hop, move this horizontal
+        self.toolchange_retract = config.getfloat('toolchange_retract', 0., minval=0.) # WIP
+        self.toolchange_retract_speed = config.getfloat('toochange_retract_speed', 1., minval=1.) # WIP
+        self.toolchange_unretract = config.getfloat('toolchange_unretract', 0., minval=0.) # WIP
+        self.toolchange_unretract_speed = config.getfloat('toochange_unretract_speed', 1., minval=1.) # WIP
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
@@ -991,6 +991,16 @@ class Mmu:
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
+
+        # Important to ensure correct sync_feedback starting assumption by generating a fake event
+        if self.mmu_sensors:
+            eventtime = self.reactor.monotonic()
+            if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
+                self._handle_sync_feedback(eventtime, 1) # Assume compressed starting state
+            elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
+                self._handle_sync_feedback(eventtime, -1) # Assume expanded starting state
+
+        # Runout bootup tasks
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
     def _initialize_state(self):
@@ -2715,7 +2725,7 @@ class Mmu:
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
     def _update_sync_multiplier(self):
-        if not self.sync_feedback_enable: return
+        if not self.sync_feedback_enable or not self.sync_feedback_operational: return
         if self.sync_feedback_last_direction == 0:
             multiplier = 1.
         else:
@@ -2855,7 +2865,6 @@ class Mmu:
 
         if not pre_start_only and self.print_state not in ["printing"]:
             self._log_trace("_on_print_start(->printing)")
-            self._initialize_sync_feedback()
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=min_lifted_z VALUE=0")
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=False")
@@ -2868,17 +2877,6 @@ class Mmu:
                 msg += "\nWarning: Non default TTG map in effect"
             self._log_info(msg)
             self._set_print_state("printing")
-
-    # Ensure the starting state for the sync feedback based on what sensor(s) are fitted
-    def _initialize_sync_feedback(self):
-        eventtime = self.reactor.monotonic()
-        if self.mmu_sensors:
-            if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
-                self._handle_sync_feedback(eventtime, 1.) # Assume compressed
-            elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
-                self._handle_sync_feedback(eventtime, -1.) # Assume compressed
-            else:
-                self._handle_sync_feedback(eventtime, 0.) # Assume neutral
 
     # Force state transistion to printing for any early moves
     def _fix_started_state(self):
@@ -3344,8 +3342,9 @@ class Mmu:
                 new_target_temp = self.default_extruder_temp
                 source = "minimum"
 
-        if current_temp < new_target_temp:
-            wait = True
+# TODO deleted (issue #292) but I'm not sure why it was necessary previously
+#        if current_temp < new_target_temp:
+#            wait = True
 
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
@@ -5298,6 +5297,7 @@ class Mmu:
         self.gate_selected = gate
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
         self._set_gate_ratio(self._get_gate_ratio(gate) if gate >= 0 else 1.)
+        self._update_sync_multiplier()
         if gate >= 0:
             self.active_filament = {'material': self.gate_material[gate], 'color': self.gate_color[gate], 'spool_id': self.gate_spool_id[gate]}
         else:

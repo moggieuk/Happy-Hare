@@ -288,7 +288,7 @@ check_octoprint() {
             echo -e "${INFO}OctoPrint service found"
             OCTOPRINT=1
         else
-            OCTPRINT=0
+            OCTOPRINT=0
         fi
     fi
 }
