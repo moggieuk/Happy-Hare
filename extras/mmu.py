@@ -1245,6 +1245,55 @@ class Mmu:
                     with self._wrap_track_time('post_load'):
                         self._wrap_gcode_command(self.post_load_macro, exception=False)
 
+# PAUL vvv
+        if gcmd.get_int('CALIBRATE_EXTRUDER', 0, minval=0, maxval=1):
+            with self._wrap_suspend_runout(): # Don't want runout accidently triggering during calibration
+                self._initialize_filament_position(dwell=True) # Encoder 0000
+                self._load_gate(allow_retry=False)
+                self._load_bowden(self.calibrated_bowden_length)
+                extruder_homing_max = 10. # Temp
+                self._home_to_extruder(extruder_homing_max) # TODO ensure that collision is used or just move gear and allow for grinding / missed steps. This would also work if use already homes to extruder sensor..
+                # [Filament is now tight against extruder entrance]
+                # Ensure extruder is COLD
+                # Move 5-10mm synced to ensure clean transition into extruder
+                # Move 100mm extruder only, missed steps ok
+                # [Now at nozzle!]
+                #
+                # If TS:
+                    # Reverse home to TS with synced movement
+                    # --> Movement distance is `toolhead_sensor_to_nozzle`
+                    # Move a large distance under extruder only to get to extruder entrance again
+                    # Sync home to TS with synced movement
+                    # --> `toolhead_extruder_to_nozzle` = `toolhead_sensor_to_nozzle` + movement distance
+                    # IF "extruder" sensor fitted:
+                        # Retract filament say 100mm with synced movement
+                        # Home to "extruder" sensor with synced movement.
+                        # [Filament is now homed to "extruder" sensor but under compression]
+                        # Home to TS with synced movement (this will be accurate!) and record movement
+                        # --> `toolhead_entry_to_extruder` = Movement - (`toolhead_extruder_to_nozzle` - `toolhead_sensor_to_nozzle`)
+                    # DONE!!!!
+                #
+                # Else: # NO TS
+                    # IF "extruder" sensor:
+                        # Reverse home to "extruder" sensor with synced movement
+                        # --> Movement is `toolhead_entry_to_extruder` + `toolhead_extruder_to_nozzle`
+                        # Remember this
+                        # Home to extruder entrance using collision (not important to be accurate)
+                        # [Filament is now tight against extruder and under compression]
+                        # Reverse home to extruder sensor
+                        # Distance moved is approximately `toolhead_entry_to_extruder`
+                        # --> `toolhead_extruder_to_nozzle` = Early recorded movement - ``toolhead_entry_to_extruder`
+                        # NOTE: the above is flawed because filament cannot be retracted evenly -- it tends to spring and jerk
+                        #       But it could be compared with calibrated length - "a homing move to the extruder sensor"
+                    # Else: # NO "extruder" sensor (or TS):
+                        # Ideas:
+                        # 1. to use gate as homing point .. almost certainly too far away to be accurate
+                        # 2. Use stallguard on extruder stepper to sense the nozzle .. will work IF stallguard set well
+                        #    Move 5-10mm synced to ensure clean transition into extruder
+                        #    Move 100mm extruder only, "touch" homing move
+                        #    Measured distance is `toolhead_entry_to_extruder`
+# PAUL ^^^
+
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
             macro = command.split()[0]
