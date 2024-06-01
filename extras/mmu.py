@@ -382,10 +382,6 @@ class Mmu:
         self.extruder_temp_variance = config.getfloat('extruder_temp_variance', 2., minval=1.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
-        self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.2, minval=0.)
-        self.z_hop_height_error = config.getfloat('z_hop_height_error', 1., minval=0.)
-        self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
-        self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
         self.force_form_tip_standalone = config.getint('force_form_tip_standalone', 0, minval=0, maxval=1)
         self.persistence_level = config.getint('persistence_level', 0, minval=0, maxval=4)
@@ -395,6 +391,17 @@ class Mmu:
         self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
         self.print_start_detection = config.getint('print_start_detection', 1, minval=0, maxval=1)
         self.show_error_dialog = config.getint('show_error_dialog', 1, minval=0, maxval=1)
+
+        # Toolchange blob and stringing control
+        self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.4, minval=0.)
+        self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
+        self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
+        self.z_hop_ramp = config.getfloat('z_hop_ramp', 15., minval=0.) # WIP For each 1mm hop, move this horizontal
+        self.toolchange_retract = config.getfloat('toolchange_retract', 0., minval=0.) # WIP
+        self.toolchange_retract_speed = config.getfloat('toochange_retract_speed', 1., minval=1.) # WIP
+        self.toolchange_unretract = config.getfloat('toolchange_unretract', 0., minval=0.) # WIP
+        self.toolchange_unretract_speed = config.getfloat('toochange_unretract_speed', 1., minval=1.) # WIP
+        self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
@@ -984,6 +991,16 @@ class Mmu:
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self.last_selector_move_time = self.estimated_print_time(self.reactor.monotonic())
+
+        # Important to ensure correct sync_feedback starting assumption by generating a fake event
+        if self.mmu_sensors:
+            eventtime = self.reactor.monotonic()
+            if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
+                self._handle_sync_feedback(eventtime, 1) # Assume compressed starting state
+            elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
+                self._handle_sync_feedback(eventtime, -1) # Assume expanded starting state
+
+        # Runout bootup tasks
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
     def _initialize_state(self):
@@ -1907,26 +1924,27 @@ class Mmu:
     def cmd_MMU_SENSORS(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         eventtime = self.reactor.monotonic()
         if self.mmu_sensors:
 
             # Sync feedback sensors
-            trg_string = lambda s : 'TRIGGERED' if s == 1 else 'open' if s == 0 else 'not available'
+            trg_string = lambda s : 'TRIGGERED' if s == 1 else 'open' if s == 0 else '(disabled)'
             for sensor in [self.SWITCH_SYNC_FEEDBACK_TENSION, self.SWITCH_SYNC_FEEDBACK_COMPRESSION]:
                 state = self.mmu_sensors.get_status(eventtime)[sensor]
-                if state != -1:
+                if state != -1 or detail:
                     self._log_always("%s: %s" % (sensor, trg_string(state)))
 
             # Endstop sensors
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
-                if state is not None:
+                if state is not None or detail:
                     self._log_always("%s: %s" % (name, trg_string(state)))
 
             # Pre-gate sensors
             for gate in range(self.mmu_num_gates):
                 name, state = "%s_%d" % (self.PRE_GATE_SENSOR_PREFIX, gate), self._check_pre_gate_sensor(gate)
-                if state is not None:
+                if state is not None or detail:
                     self._log_always("%s: %s" % (name, trg_string(state)))
         else:
             self._log_always("No MMU sensors configured")
@@ -2707,7 +2725,7 @@ class Mmu:
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
     def _update_sync_multiplier(self):
-        if not self.sync_feedback_enable: return
+        if not self.sync_feedback_enable or not self.sync_feedback_operational: return
         if self.sync_feedback_last_direction == 0:
             multiplier = 1.
         else:
@@ -2847,7 +2865,6 @@ class Mmu:
 
         if not pre_start_only and self.print_state not in ["printing"]:
             self._log_trace("_on_print_start(->printing)")
-            self._initialize_sync_feedback()
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=min_lifted_z VALUE=0")
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=False")
@@ -2860,17 +2877,6 @@ class Mmu:
                 msg += "\nWarning: Non default TTG map in effect"
             self._log_info(msg)
             self._set_print_state("printing")
-
-    # Ensure the starting state for the sync feedback based on what sensor(s) are fitted
-    def _initialize_sync_feedback(self):
-        eventtime = self.reactor.monotonic()
-        if self.mmu_sensors:
-            if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
-                self._handle_sync_feedback(eventtime, 1.) # Assume compressed
-            elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
-                self._handle_sync_feedback(eventtime, -1.) # Assume compressed
-            else:
-                self._handle_sync_feedback(eventtime, 0.) # Assume neutral
 
     # Force state transistion to printing for any early moves
     def _fix_started_state(self):
@@ -3336,8 +3342,9 @@ class Mmu:
                 new_target_temp = self.default_extruder_temp
                 source = "minimum"
 
-        if current_temp < new_target_temp:
-            wait = True
+# TODO deleted (issue #292) but I'm not sure why it was necessary previously
+#        if current_temp < new_target_temp:
+#            wait = True
 
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
@@ -3448,7 +3455,7 @@ class Mmu:
                     tmsg += "%s : %s\n" % (c.upper(), d)
             elif c.startswith("_MMU"):
                 if not c.startswith("_MMU_STEP") and c not in ["_MMU_M400"]:
-                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_CUT_TIP", "_MMU_FORM_TIP", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
+                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_CUT_TIP", "_MMU_FORM_TIP", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS", "_MMU_UPDATE_HEIGHT"]: # Remove internal helpers
                         mmsg += "%s : %s\n" % (c.upper(), d)
                 else:
                     smsg += "%s : %s\n" % (c.upper(), d)
@@ -5290,6 +5297,7 @@ class Mmu:
         self.gate_selected = gate
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
         self._set_gate_ratio(self._get_gate_ratio(gate) if gate >= 0 else 1.)
+        self._update_sync_multiplier()
         if gate >= 0:
             self.active_filament = {'material': self.gate_material[gate], 'color': self.gate_color[gate], 'spool_id': self.gate_spool_id[gate]}
         else:
@@ -6570,7 +6578,8 @@ class Mmu:
                         msg += "T%d (Gate %d, %s, %s, %d%sC)" % (int(t), self.ttg_map[int(t)], params['material'], params['color'], params['temp'], UI_DEGREE)
                         msg += " Not used\n" if detail and not params['in_use'] else "\n"
                 if self.slicer_tool_map['initial_tool'] is not None:
-                    msg += "Initial Tool: T%d\n" % self.slicer_tool_map['initial_tool']
+                    msg += "Initial Tool: T%d" % self.slicer_tool_map['initial_tool']
+                    msg += " (will use bypass)\n" if colors <= 1 and self.tool_selected == self.TOOL_GATE_BYPASS else "\n"
                 msg += "-------------------------------------------"
             if detail:
                 if have_purge_map:

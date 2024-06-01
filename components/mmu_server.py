@@ -56,7 +56,7 @@ class MmuServer:
         return gate_dict
 
     def setup_placeholder_processor(self, config):
-        # Switch out the metadata processor with this module with handles placeholders
+        # Switch out the metadata processor with this module which handles placeholders
         args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
         args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
         from .file_manager import file_manager
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--filename", metavar='<filename>', help="name gcode file to parse")
     parser.add_argument("-p", "--path", default=os.path.abspath(os.path.dirname(__file__)), metavar='<path>', help="optional absolute path for file")
     parser.add_argument("-u", "--ufp", metavar="<ufp file>", default=None, help="optional path of ufp file to extract")
-    parser.add_argument("-o", "--check-objects", dest='check_objects', action='store_true', help="process gcode file for exclude opbject functionality")
+    parser.add_argument("-o", "--check-objects", dest='check_objects', action='store_true', help="process gcode file for exclude object functionality")
     parser.add_argument("-m", "--placeholders", dest='placeholders', action='store_true', help="process happy hare mmu placeholders")
     parser.add_argument("-n", "--nextpos", dest='nextpos', action='store_true', help="add next position to tool change")
     args = parser.parse_args()
