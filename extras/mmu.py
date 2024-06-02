@@ -1322,10 +1322,10 @@ class Mmu:
 
             # Report
             msg = "Extruder Calibration Results\n"
-            msg += "> toolhead_extruder_to_nozzle: %.1f (Current: %.1f)\n" % (toolhead_extruder_to_nozzle, self.toolhead_extruder_to_nozzle)
-            msg += "> toolhead_sensor_to_nozzle: %.1f (Current: %.1f)\n" % (toolhead_sensor_to_nozzle, self.toolhead_sensor_to_nozzle)
+            msg += "> toolhead_extruder_to_nozzle: %.1f (Currently: %.1f)\n" % (toolhead_extruder_to_nozzle, self.toolhead_extruder_to_nozzle)
+            msg += "> toolhead_sensor_to_nozzle: %.1f (Currently: %.1f)\n" % (toolhead_sensor_to_nozzle, self.toolhead_sensor_to_nozzle)
             if self._has_sensor(self.ENDSTOP_EXTRUDER):
-                msg += "> toolhead_entry_to_extruder: %.1f (Current: %.1f)\n" % (toolhead_entry_to_extruder, self.toolhead_entry_to_extruder)
+                msg += "> toolhead_entry_to_extruder: %.1f (Currently: %.1f)\n" % (toolhead_entry_to_extruder, self.toolhead_entry_to_extruder)
             msg += "(don't forget to update mmu_parameters.cfg)"
             self._log_always(msg)
 
