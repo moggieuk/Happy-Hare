@@ -29,7 +29,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
-        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=25.)
         
         self.mcu = self.all_mcus[0]
         if hasattr(toolhead, 'LookAheadQueue'):
