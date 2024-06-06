@@ -4532,6 +4532,7 @@ class Mmu:
             self._ensure_safe_extruder_temperature(wait=False)
 
             # Perform the tip forming move and establish park_pos
+            toolhead_ooze_reduction = self.toolhead_ooze_reduction()
             initial_encoder_position = self._get_encoder_distance()
             park_pos, remaining, reported = self._do_form_tip()
             measured = self._get_encoder_distance(dwell=None) - initial_encoder_position
@@ -4571,12 +4572,13 @@ class Mmu:
         with self._wrap_extruder_current(self.extruder_form_tip_current, "for tip forming move"):
             initial_extruder_position = self.mmu_extruder_stepper.stepper.get_commanded_position()
             initial_encoder_position = self._get_encoder_distance()
+            toolhead_ooze_reduction = self.toolhead_ooze_reduction
 
             gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
             try:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
-                self._wrap_gcode_command("%s %.2f %s" % (self.form_tip_macro, self.toolhead_ooze_reduction, "FINAL_EJECT=1" if test else ""), exception=True)
+                self._wrap_gcode_command("%s%s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
