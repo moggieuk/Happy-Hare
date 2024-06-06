@@ -4576,7 +4576,7 @@ class Mmu:
             try:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
-                self._wrap_gcode_command("%s TOOLHEAD_OOZE_REDUCTION=%.4f%s" % (self.form_tip_macro, " FINAL_EJECT=1" if test else ""), exception=True)
+                self._wrap_gcode_command("%s TOOLHEAD_OOZE_REDUCTION= %.4f %s" % (self.form_tip_macro, self.toolhead_ooze_reduction, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
