@@ -397,7 +397,7 @@ class Mmu:
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.z_hop_ramp = config.getfloat('z_hop_ramp', 2., minval=0.) # TODO For each 1mm hop, move this horizontal
-        self.toolchange_retract = config.getfloat('toolchange_retract', 0., minval=0.) # PAUL
+        self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
@@ -1966,7 +1966,7 @@ class Mmu:
                 msg += "\n- Extruder (synced) loads by moving %.1fmm ('toolhead_extruder_to_nozzle - toolhead_ooze_reduction - self.toolchange_retract') to the nozzle" % (self.toolhead_extruder_to_nozzle - self.toolhead_ooze_reduction - self.toolchange_retract) # PAUL
 
             msg += "\n\nUnload Sequence:"
-            msg += "\n- Tip is %s formed by %s" % (("sometimes", "SLICER") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro)))
+            msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), (" after initial retraction of %.1fmm ('toolchange_retract')" % self.toolchange_retract))) # PAUL
             msg += " and tip forming extruder current is %d%%" % self.extruder_form_tip_current
 
             if self._has_sensor(self.ENDSTOP_EXTRUDER):
@@ -1983,10 +1983,13 @@ class Mmu:
                 msg += "\n- Bowden is unloaded with a fast %.1fmm ('calibration_bowden_length - gate_unload_buffer') move" % (self.calibrated_bowden_length - self.gate_unload_buffer)
             msg += "\n- Filament is stored by homing a maximum of %.1fmm ('gate_homing_max') to %s and parking %.1fmm ('gate_parking_distance') in the gate" % (self.gate_homing_max, self._gate_homing_string(), self.gate_parking_distance)
 
+            msg += "\n\n`toolchange_retract` is always 0 when not in print"
+
             if self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
                 msg += ("Print (at %d%% current)" % self.sync_gear_current) if self.sync_to_extruder else ""
                 msg += " and tip forming" if self.sync_form_tip else ""
+
 
             msg += "\n\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector_touch else ("DISABLED", "is not"))
             p = self.persistence_level
@@ -3080,7 +3083,7 @@ class Mmu:
         self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
         if self._is_in_print():
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
-        self._restore_toolhead_position(operation) # PAUL restore_toolhead_position and un-retract
+        self._restore_toolhead_position(operation)
         self._initialize_filament_position() # Encoder 0000
         # Ready to continue printing...
 
@@ -3143,7 +3146,7 @@ class Mmu:
         elif operation:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
-    def _restore_toolhead_position(self, operation): # PAUL restore_toolhead_position and un-retract
+    def _restore_toolhead_position(self, operation):
         if self.saved_toolhead_position:
             eventtime = self.reactor.monotonic()
             gcode_move = self.printer.lookup_object("gcode_move")
@@ -3154,6 +3157,11 @@ class Mmu:
                 mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
+
+            # Un-retract if in print
+            if self._is_in_print():
+                pass # PAUL TODO add unretract logic here if
+                # PAUL or combine with G1 move below..
 
             if self.restore_toolhead_xy_position:
                 # Restore pre-pause position and state
@@ -4161,8 +4169,8 @@ class Mmu:
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
             d = self.toolhead_sensor_to_nozzle if self._has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
-            length = max(d - self.filament_remaining - self.toolhead_ooze_reduction, 0) # PAUL update with retract
-# PAUL: load_extruder: If in_print reduce length by toolchange_retract
+            # PAUL length = max(d - self.filament_remaining - self.toolhead_ooze_reduction, 0)
+            length = max(d - self.filament_remaining - self.toolhead_ooze_reduction - (self.toolchange_retract if self._is_in_print() else 0), 0) # PAUL
             self._set_filament_remaining(0.)
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self._trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
@@ -4584,7 +4592,7 @@ class Mmu:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
                 self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolhead_ooze_reduction VALUE=%.1f" % (self.form_tip_macro, self.toolhead_ooze_reduction), exception=True)
-                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolchange_retract VALUE=%.1f" % (self.form_tip_macro, self.toolchange_retract), exception=True) # PAUL
+                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolchange_retract VALUE=%.1f" % (self.form_tip_macro, self.toolchange_retract if self._is_in_print() else 0), exception=True) # PAUL
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
@@ -5999,11 +6007,15 @@ class Mmu:
         self.gcode_load_sequence = gcmd.get_int('GCODE_LOAD_SEQUENCE', self.gcode_load_sequence, minval=0, maxval=1)
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
 
-        # Software behavior options
-        self.extruder_temp_variance = gcmd.get_float('EXTRUDER_TEMP_VARIANCE', self.extruder_temp_variance, minval=1.)
+        # Blobbing control
         self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
         self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
+        self.z_hop_ramp = gcmd.get_float('Z_HOP_RAMP', self.z_hop_ramp, minval=0.)
+        self.toolchange_retract = gcmd.get_float('Z_TOOLCHANGE_RETRACT', self.toolchange_retract, minval=0., maxval=5.)
+
+        # Software behavior options
+        self.extruder_temp_variance = gcmd.get_float('EXTRUDER_TEMP_VARIANCE', self.extruder_temp_variance, minval=1.)
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
@@ -6103,10 +6115,14 @@ class Mmu:
         msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
         msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
 
-        msg += "\n\nOTHER:"
+        msg += "\n\nBLOB/STRINGING:"
         msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
         msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
+        #msg += "\nz_hop_ramp = %.1f" % self.z_hop_ramp # TODO WIP
+        msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
+
+        msg += "\n\nOTHER:"
         msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
         if self._has_encoder():
             msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
