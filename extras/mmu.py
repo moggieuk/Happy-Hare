@@ -116,10 +116,10 @@ class Mmu:
     FILAMENT_POS_END_BOWDEN = 4
     FILAMENT_POS_HOMED_ENTRY = 5
     FILAMENT_POS_HOMED_EXTRUDER = 6
-    FILAMENT_POS_EXTRUDER_ENTRY = 7
+    FILAMENT_POS_EXTRUDER_ENTRY = 7 # Past extruder entry
     FILAMENT_POS_HOMED_TS = 8
-    FILAMENT_POS_IN_EXTRUDER = 9 # AKA FILAMENT_POS_PAST_TS
-    FILAMENT_POS_LOADED = 10     # AKA FILAMENT_POS_HOMED_NOZZLE
+    FILAMENT_POS_IN_EXTRUDER = 9    # AKA FILAMENT_POS_PAST_TS
+    FILAMENT_POS_LOADED = 10        # AKA FILAMENT_POS_HOMED_NOZZLE
 
     DIRECTION_LOAD = 1
     DIRECTION_UNKNOWN = 0
@@ -458,7 +458,7 @@ class Mmu:
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
-        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=25.) # +ve value = reduction of load length
+        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=35.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
 
@@ -1218,6 +1218,7 @@ class Mmu:
             self._log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
             self._log_info("DUMP_UNICODE=1 : Display special characters used in display")
             self._log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
+            self._log_info("CALIBRATE_EXTRUDER=1 : Experimental extruder dimension calibration")
 
         feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
         if feedback is not None:
@@ -1245,6 +1246,110 @@ class Mmu:
                         self._wrap_gcode_command(self.pre_load_macro, exception=False)
                     with self._wrap_track_time('post_load'):
                         self._wrap_gcode_command(self.post_load_macro, exception=False)
+
+# PAUL vvv
+        if gcmd.get_int('CALIBRATE_EXTRUDER', 0, minval=0, maxval=1):
+            if not self._has_sensor(self.ENDSTOP_TOOLHEAD):
+                self._log_error("This feature requires toolhead sensor")
+                return
+
+            self._log_always("Note: For accuracy, the extruder must be cool, empty of all filament (no cut tips) and MMU unloaded")
+            self._initialize_filament_position(dwell=True) # Encoder 0000
+            self._load_gate(allow_retry=False)
+            self._load_bowden(self.calibrated_bowden_length)
+
+            # Push filament tight against extruder entrance
+            self._home_to_extruder_collision_detection(self.extruder_homing_max)
+
+            # Ensure extruder is COLD
+            self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0")
+            current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
+            if current_temp > 80:
+                self._log_always("Waiting for extruder to cool")
+                self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=0 MAXIMUM=80")
+
+            # Enable the extruder stepper
+            stepper_enable = self.printer.lookup_object('stepper_enable')
+            ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
+            ge.motor_enable(self.toolhead.get_last_move_time())
+
+            # Reliably force filament to the nozzle
+            self._servo_down()
+            actual,_,measured,delta = self._trace_filament_move("Extruder entrance transistion move", 10, speed=self.extruder_sync_load_speed, motor="gear+extruder")
+            self._servo_up()
+            actual,_,measured,delta = self._trace_filament_move("Moving to nozzle", 90, speed=self.extruder_load_speed, motor="extruder")
+
+            # Measure `toolhead_sensor_to_nozzle`
+            self._servo_down()
+            actual,fhomed,_,_ = self._trace_filament_move("Reverse homing to toolhead sensor", -100, motor="gear+extruder", homing_move=-1, endstop_name=self.ENDSTOP_TOOLHEAD)
+            if fhomed:
+                toolhead_sensor_to_nozzle = -actual
+                self._log_always("Measured toolhead_sensor_to_nozzle: %.1f" % toolhead_sensor_to_nozzle)
+            else:
+                pass # TODO handle error case
+
+            # Move to extruder extrance again
+            self._servo_up()
+            actual,_,measured,delta = self._trace_filament_move("Moving to extruder entrance", -50, speed=self.extruder_unload_speed, motor="extruder")
+
+            # Measure `toolhead_extruder_to_nozzle`
+            self._servo_down()
+            actual,fhomed,_,_ = self._trace_filament_move("Homing to toolhead sensor", 50, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_TOOLHEAD)
+            if fhomed:
+                toolhead_extruder_to_nozzle = actual + toolhead_sensor_to_nozzle
+                self._log_always("Measured toolhead_extruder_to_nozzle: %.1f" % toolhead_extruder_to_nozzle)
+            else:
+                pass # TODO handle error case
+
+            if self._has_sensor(self.ENDSTOP_EXTRUDER):
+                # Retract clear of extruder sensor and then home in "extrude" direction
+                actual,_,measured,delta = self._trace_filament_move("Moving to nozzle", -100, speed=self.extruder_load_speed, motor="gear+extruder")
+                actual,fhomed,_,_ = self._trace_filament_move("Homing to extruder sensor", 100, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_EXTRUDER)
+
+                # Measure to toolhead sensor and thus `toolhead_entry_to_extruder`
+                if fhomed:
+                    actual,fhomed,_,_ = self._trace_filament_move("Homing to toolhead sensor", 100, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_TOOLHEAD)
+                    if fhomed:
+                        toolhead_entry_to_extruder = actual - (toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle)
+                        self._log_always("Measured toolhead_entry_to_extruder: %.1f" % toolhead_entry_to_extruder)
+                else:
+                    pass # TODO handle error case
+
+            # Unload and re-park filament
+            self._servo_up()
+            actual,_,measured,delta = self._trace_filament_move("Moving to extruder entrance", -50, speed=self.extruder_unload_speed, motor="extruder")
+            self._unload_bowden(self.calibrated_bowden_length)
+            self._unload_gate()
+
+            # Report
+            msg = "Extruder Calibration Results\n"
+            msg += "> toolhead_extruder_to_nozzle: %.1f (Currently: %.1f)\n" % (toolhead_extruder_to_nozzle, self.toolhead_extruder_to_nozzle)
+            msg += "> toolhead_sensor_to_nozzle: %.1f (Currently: %.1f)\n" % (toolhead_sensor_to_nozzle, self.toolhead_sensor_to_nozzle)
+            if self._has_sensor(self.ENDSTOP_EXTRUDER):
+                msg += "> toolhead_entry_to_extruder: %.1f (Currently: %.1f)\n" % (toolhead_entry_to_extruder, self.toolhead_entry_to_extruder)
+            msg += "(don't forget to update mmu_parameters.cfg)"
+            self._log_always(msg)
+
+            # IF NO TS (currently not supported)
+                # IF "extruder" sensor:
+                    # Reverse home to "extruder" sensor with synced movement
+                    # --> Movement is `toolhead_entry_to_extruder` + `toolhead_extruder_to_nozzle`
+                    # Remember this
+                    # Home to extruder entrance using collision (not important to be accurate)
+                    # [Filament is now tight against extruder and under compression]
+                    # Reverse home to extruder sensor
+                    # Distance moved is approximately `toolhead_entry_to_extruder`
+                    # --> `toolhead_extruder_to_nozzle` = Early recorded movement - ``toolhead_entry_to_extruder`
+                    # NOTE: the above is flawed because filament cannot be retracted evenly -- it tends to spring and jerk
+                    #       But it could be compared with calibrated length - "a homing move to the extruder sensor"
+                # Else: # NO "extruder" sensor (or TS):
+                    # Ideas:
+                    # 1. to use gate as homing point .. almost certainly too far away to be accurate
+                    # 2. Use stallguard on extruder stepper to sense the nozzle .. will work IF stallguard set well
+                    #    Move 5-10mm synced to ensure clean transition into extruder
+                    #    Move 100mm extruder only, "touch" homing move
+                    #    Measured distance is `toolhead_entry_to_extruder`
+# PAUL ^^^
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
@@ -2255,7 +2360,7 @@ class Mmu:
                 self._initialize_filament_position(True) # Encoder 0000
                 self._unload_bowden(reference)
                 self._unload_gate()
-                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED) # PAUL not necessary - done in _unload_gate()
 
             if successes > 0:
                 average_reference = reference_sum / successes
@@ -4480,7 +4585,8 @@ class Mmu:
             try:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
-                self._wrap_gcode_command("%s%s" % (self.form_tip_macro, " FINAL_EJECT=1" if test else ""), exception=True)
+                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolhead_ooze_reduction VALUE=%.1f" % (self.form_tip_macro, self.toolhead_ooze_reduction), exception=True)
+                self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
                 self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
