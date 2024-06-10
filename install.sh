@@ -980,11 +980,20 @@ copy_config_files() {
         # Variables macro ---------------------------------------------------------------------
         elif [ "${file}" == "mmu_macro_vars.cfg" ]; then
             tx_macros=""
-            for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
-            do
-                tx_macros+="[gcode_macro T${i}]\n"
-                tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
-            done
+            if [ "$mmu_num_gates" -eq "$mmu_num_gates" ] 2>/dev/null; then
+                for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
+                do
+                    tx_macros+="[gcode_macro T${i}]\n"
+                    tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
+                done
+            else
+                # Skeleton config file case
+                for (( i=0; i<=11; i++ ))
+                do
+                    tx_macros+="#[gcode_macro T${i}]\n"
+                    tx_macros+="#gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
+                done
+            fi
 
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} | sed -e "\
@@ -1275,6 +1284,7 @@ questionaire() {
     gate_parking_distance=23.0
     gate_endstop_to_encoder=0
     servo_buzz_gear_on_down=0
+    servo_active=0
 
     # mmu_hardware.cfg only...
     gear_gear_ratio="80:20"
@@ -1283,8 +1293,8 @@ questionaire() {
     sel_run_current=0.4
     sel_hold_current=0.2
     maximum_servo_angle=180
-    minimum_pulse_width=0.00075
-    maximum_pulse_width=0.00225
+    minimum_pulse_width=0.001
+    maximum_pulse_width=0.002
 
     echo
     echo -e "${INFO}Let me see if I can get you started with initial configuration"
@@ -1305,9 +1315,6 @@ questionaire() {
             mmu_version="1.1"
             servo_buzz_gear_on_down=3
 
-            maximum_servo_angle=180
-            minimum_pulse_width=0.00085
-            maximum_pulse_width=0.00215
             echo
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
@@ -1338,10 +1345,6 @@ questionaire() {
             mmu_version="2.0"
             gate_parking_distance=13.0 # ThumperBlocks is 11.0
             servo_buzz_gear_on_down=3
-
-            maximum_servo_angle=180
-            minimum_pulse_width=0.00085
-            maximum_pulse_width=0.00215
             ;;
         3)
             HAS_ENCODER=no
@@ -1357,9 +1360,6 @@ questionaire() {
             gear_hold_current=0.2
             sel_run_current=0.63
             sel_hold_current=0.2
-            maximum_servo_angle=131
-            minimum_pulse_width=0.00070
-            maximum_pulse_width=0.00220
             echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
             echo
@@ -1503,15 +1503,21 @@ questionaire() {
     esac
 
     if [ "${mmu_vendor}" == "ERCF" ]; then
+        maximum_servo_angle=180
+        minimum_pulse_width=0.00085
+        maximum_pulse_width=0.00215
+
         echo
         echo -e "${PROMPT}${SECTION}Which servo are you using?"
-        echo -e "1) MG-90S (ERCF)"
-        echo -e "2) Savox SH0255MG (ERCF)"
-        echo -e "3) Not listed / Other${INPUT}"
-        num=$(prompt_123 "Servo?" 3)
+        echo -e "1) MG-90S"
+        echo -e "2) Savox SH0255MG"
+        echo -e "3) GDW DS041MG"
+        echo -e "4) Not listed / Other${INPUT}"
+        num=$(prompt_123 "Servo?" 4)
         echo
         case $num in
             1)
+                # MG-90S
                 servo_up_angle=30
                 if [ "${mmu_version}" == "2.0" ]; then
                     servo_move_angle=61
@@ -1521,6 +1527,7 @@ questionaire() {
                 servo_down_angle=140
                 ;;
             2)
+                # Savox SH0255MG
                 servo_up_angle=140
                 if [ "${mmu_version}" == "2.0" ]; then
                     servo_move_angle=109
@@ -1529,8 +1536,26 @@ questionaire() {
                 fi
                 servo_down_angle=30
                 ;;
+            3)
+                # GDW DS041MG
+                servo_active=1
+                maximum_servo_angle=180
+                minimum_pulse_width=0.00050
+                maximum_pulse_width=0.00250
+                servo_up_angle=30
+                if [ "${mmu_version}" == "2.0" ]; then
+                    servo_move_angle=50
+                else
+                    servo_move_angle=${servo_up_angle}
+                fi
+                servo_down_angle=100
         esac
+
     elif [ "${mmu_vendor}" == "Tradrack" ]; then
+        maximum_servo_angle=131
+        minimum_pulse_width=0.00070
+        maximum_pulse_width=0.00220
+
         echo
         echo -e "${PROMPT}${SECTION}Which servo are you using?"
         echo -e "1) PS-1171MG or FT1117M (Tradrack)"
@@ -1544,6 +1569,7 @@ questionaire() {
                 servo_down_angle=1
                 ;;
         esac
+
     else
         servo_up_angle=0
         servo_move_angle=0

@@ -475,6 +475,7 @@ class Mmu:
         self.servo_angles['up'] = config.getint('servo_up_angle', 90)
         self.servo_angles['move'] = config.getint('servo_move_angle', self.servo_angles['up'])
         self.servo_duration = config.getfloat('servo_duration', 0.2, minval=0.1)
+        self.servo_active = config.getint('servo_active', 0, minval=0, maxval=1)
         self.servo_active_down = config.getint('servo_active_down', 0, minval=0, maxval=1)
         self.servo_dwell = config.getfloat('servo_dwell', 0.4, minval=0.1)
         self.servo_buzz_gear_on_down = config.getint('servo_buzz_gear_on_down', 3, minval=0, maxval=10)
@@ -524,7 +525,7 @@ class Mmu:
         self.log_level = config.getint('log_level', 1, minval=0, maxval=4)
         self.log_file_level = config.getint('log_file_level', 3, minval=-1, maxval=4)
         self.log_statistics = config.getint('log_statistics', 0, minval=0, maxval=1)
-        self.log_visual = config.getint('log_visual', 1, minval=0, maxval=2) # TODO reduce max value to 1
+        self.log_visual = config.getint('log_visual', 1, minval=0, maxval=1)
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
 
         # Cosmetic console stuff
@@ -1959,7 +1960,7 @@ class Mmu:
         self.servo_angle = self.SERVO_UNKNOWN_STATE
 
     def _servo_set_angle(self, angle):
-        self.servo.set_value(angle=angle, duration=self.servo_duration)
+        self.servo.set_value(angle=angle, duration=None if self.servo_active else self.servo_duration)
         self.servo_angle = angle
         self.servo_state = self.SERVO_UNKNOWN_STATE
 
@@ -1976,7 +1977,7 @@ class Mmu:
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
         self._movequeues_wait_moves()
-        self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down else self.servo_duration)
+        self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             self.gear_buzz_accel = 1000
             for i in range(self.servo_buzz_gear_on_down):
@@ -1991,7 +1992,7 @@ class Mmu:
         self._log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self._movequeues_wait_moves()
-            self.servo.set_value(angle=self.servo_angles['move'], duration=self.servo_duration)
+            self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = self.SERVO_MOVE_STATE
@@ -2004,7 +2005,7 @@ class Mmu:
             self._movequeues_wait_moves()
             if measure:
                 initial_encoder_position = self._get_encoder_distance(dwell=None)
-            self.servo.set_value(angle=self.servo_angles['up'], duration=self.servo_duration)
+            self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter
@@ -2021,6 +2022,10 @@ class Mmu:
             self._servo_move()
         else:
             self._servo_up()
+
+    # De-energize servo if 'servo_active' or 'servo_active_down' are being used
+    def _servo_off(self):
+        self.servo.set_value(width=0, duration=None)
 
     def _motors_off(self, motor="all"):
         stepper_enable = self.printer.lookup_object('stepper_enable')
@@ -2044,7 +2049,9 @@ class Mmu:
         if self._check_is_disabled(): return
         save = gcmd.get_int('SAVE', 0)
         pos = gcmd.get('POS', "").lower()
-        if pos == "up":
+        if pos == "off":
+            self._servo_off() # For 'servo_active' case
+        elif pos == "up":
             if save:
                 self._servo_save_pos(pos)
             else:
@@ -2080,6 +2087,7 @@ class Mmu:
         if self._check_is_disabled(): return
         self._motors_off()
         self._servo_move()
+        self._servo_off()
         self._servo_reset_state()
 
     cmd_MMU_TEST_BUZZ_MOTOR_help = "Simple buzz the selected motor (default gear) for setup testing"
@@ -2101,11 +2109,12 @@ class Mmu:
             small=min(self.servo_angles['down'], self.servo_angles['up'])
             large=max(self.servo_angles['down'], self.servo_angles['up'])
             mid=(self.servo_angles['down'] + self.servo_angles['up'])/2
-            self.servo.set_value(angle=mid, duration=self.servo_duration)
+            duration=None if self.servo_active else self.servo_duration
+            self.servo.set_value(angle=mid, duration=duration)
             self._movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-            self.servo.set_value(angle=abs(mid+small)/2, duration=self.servo_duration)
+            self.servo.set_value(angle=abs(mid+small)/2, duration=duration)
             self._movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-            self.servo.set_value(angle=abs(mid+large)/2, duration=self.servo_duration)
+            self.servo.set_value(angle=abs(mid+large)/2, duration=duration)
             self._movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
             self._movequeues_wait_moves()
             if old_state == self.SERVO_DOWN_STATE:
@@ -5896,7 +5905,7 @@ class Mmu:
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=1)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
-        self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
+        self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=1)
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
         self.console_gate_stat = gcmd.get('CONSOLE_GATE_STAT', self.console_gate_stat)
         if self.console_gate_stat not in self.GATE_STATS_TYPES:
