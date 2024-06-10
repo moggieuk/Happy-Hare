@@ -720,6 +720,9 @@ read_previous_config() {
         if [ ! "${_param_z_hop_height_error}" == "" ]; then
             unset _param_z_hop_heigth_error
         fi
+        if [ ! "${_param_servo_always_active}" == "" ]; then
+            _param_servo_always_active=0
+        fi
     fi
 
     cfg="mmu_filametrix.cfg"
@@ -1284,7 +1287,8 @@ questionaire() {
     gate_parking_distance=23.0
     gate_endstop_to_encoder=0
     servo_buzz_gear_on_down=0
-    servo_active=0
+    servo_always_active=0
+    servo_duration=0.2
 
     # mmu_hardware.cfg only...
     gear_gear_ratio="80:20"
@@ -1538,7 +1542,7 @@ questionaire() {
                 ;;
             3)
                 # GDW DS041MG
-                servo_active=1
+                servo_always_active=1
                 maximum_servo_angle=180
                 minimum_pulse_width=0.00050
                 maximum_pulse_width=0.00250

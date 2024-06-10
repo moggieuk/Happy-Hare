@@ -475,7 +475,7 @@ class Mmu:
         self.servo_angles['up'] = config.getint('servo_up_angle', 90)
         self.servo_angles['move'] = config.getint('servo_move_angle', self.servo_angles['up'])
         self.servo_duration = config.getfloat('servo_duration', 0.2, minval=0.1)
-        self.servo_active = config.getint('servo_active', 0, minval=0, maxval=1)
+        self.servo_always_active = config.getint('servo_always_active', 0, minval=0, maxval=1)
         self.servo_active_down = config.getint('servo_active_down', 0, minval=0, maxval=1)
         self.servo_dwell = config.getfloat('servo_dwell', 0.4, minval=0.1)
         self.servo_buzz_gear_on_down = config.getint('servo_buzz_gear_on_down', 3, minval=0, maxval=10)
@@ -1960,7 +1960,7 @@ class Mmu:
         self.servo_angle = self.SERVO_UNKNOWN_STATE
 
     def _servo_set_angle(self, angle):
-        self.servo.set_value(angle=angle, duration=None if self.servo_active else self.servo_duration)
+        self.servo.set_value(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
         self.servo_angle = angle
         self.servo_state = self.SERVO_UNKNOWN_STATE
 
@@ -1977,7 +1977,7 @@ class Mmu:
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
         self._movequeues_wait_moves()
-        self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_active else self.servo_duration)
+        self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             self.gear_buzz_accel = 1000
             for i in range(self.servo_buzz_gear_on_down):
@@ -1992,7 +1992,7 @@ class Mmu:
         self._log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self._movequeues_wait_moves()
-            self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_active else self.servo_duration)
+            self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = self.SERVO_MOVE_STATE
@@ -2005,7 +2005,7 @@ class Mmu:
             self._movequeues_wait_moves()
             if measure:
                 initial_encoder_position = self._get_encoder_distance(dwell=None)
-            self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_active else self.servo_duration)
+            self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter
@@ -2023,7 +2023,7 @@ class Mmu:
         else:
             self._servo_up()
 
-    # De-energize servo if 'servo_active' or 'servo_active_down' are being used
+    # De-energize servo if 'servo_always_active' or 'servo_active_down' are being used
     def _servo_off(self):
         self.servo.set_value(width=0, duration=None)
 
@@ -2050,7 +2050,7 @@ class Mmu:
         save = gcmd.get_int('SAVE', 0)
         pos = gcmd.get('POS', "").lower()
         if pos == "off":
-            self._servo_off() # For 'servo_active' case
+            self._servo_off() # For 'servo_always_active' case
         elif pos == "up":
             if save:
                 self._servo_save_pos(pos)
@@ -2109,7 +2109,7 @@ class Mmu:
             small=min(self.servo_angles['down'], self.servo_angles['up'])
             large=max(self.servo_angles['down'], self.servo_angles['up'])
             mid=(self.servo_angles['down'] + self.servo_angles['up'])/2
-            duration=None if self.servo_active else self.servo_duration
+            duration=None if self.servo_always_active else self.servo_duration
             self.servo.set_value(angle=mid, duration=duration)
             self._movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
             self.servo.set_value(angle=abs(mid+small)/2, duration=duration)
