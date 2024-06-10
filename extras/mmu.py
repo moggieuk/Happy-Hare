@@ -396,11 +396,8 @@ class Mmu:
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.4, minval=0.)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
-        self.z_hop_ramp = config.getfloat('z_hop_ramp', 15., minval=0.) # WIP For each 1mm hop, move this horizontal
-        self.toolchange_retract = config.getfloat('toolchange_retract', 0., minval=0.) # WIP
-        self.toolchange_retract_speed = config.getfloat('toochange_retract_speed', 1., minval=1.) # WIP
-        self.toolchange_unretract = config.getfloat('toolchange_unretract', 0., minval=0.) # WIP
-        self.toolchange_unretract_speed = config.getfloat('toochange_unretract_speed', 1., minval=1.) # WIP
+        self.z_hop_ramp = config.getfloat('z_hop_ramp', 2., minval=0.) # TODO For each 1mm hop, move this horizontal
+        self.toolchange_retract = config.getfloat('toolchange_retract', 0., minval=0.) # PAUL
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
@@ -1964,9 +1961,9 @@ class Mmu:
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
                         msg += " and then moves %.1fmm ('toolhead_entry_to_entruder') to extruder extrance" % self.toolhead_entry_to_extruder
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
-                msg += "\n- Extruder (synced) loads by homing a maximum of %.1fmm ('toolhead_homing_max') to TOOLHEAD SENSOR before moving the last %.1fmm ('toolhead_sensor_to_nozzle - toolhead_ooze_reduction') to the nozzle" % (self.toolhead_homing_max, self.toolhead_sensor_to_nozzle - self.toolhead_ooze_reduction)
+                msg += "\n- Extruder (synced) loads by homing a maximum of %.1fmm ('toolhead_homing_max') to TOOLHEAD SENSOR before moving the last %.1fmm ('toolhead_sensor_to_nozzle - toolhead_ooze_reduction - toolchange_retract') to the nozzle" % (self.toolhead_homing_max, self.toolhead_sensor_to_nozzle - self.toolhead_ooze_reduction - self.toolchange_retract) # PAUL
             else:
-                msg += "\n- Extruder (synced) loads by moving %.1fmm ('toolhead_extruder_to_nozzle - toolhead_ooze_reduction') to the nozzle" % (self.toolhead_extruder_to_nozzle - self.toolhead_ooze_reduction)
+                msg += "\n- Extruder (synced) loads by moving %.1fmm ('toolhead_extruder_to_nozzle - toolhead_ooze_reduction - self.toolchange_retract') to the nozzle" % (self.toolhead_extruder_to_nozzle - self.toolhead_ooze_reduction - self.toolchange_retract) # PAUL
 
             msg += "\n\nUnload Sequence:"
             msg += "\n- Tip is %s formed by %s" % (("sometimes", "SLICER") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro)))
@@ -2360,7 +2357,7 @@ class Mmu:
                 self._initialize_filament_position(True) # Encoder 0000
                 self._unload_bowden(reference)
                 self._unload_gate()
-                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED) # PAUL not necessary - done in _unload_gate()
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED) # PAUL not necessary - done in _unload_gate(), unless did not home
 
             if successes > 0:
                 average_reference = reference_sum / successes
@@ -3013,7 +3010,7 @@ class Mmu:
                 self.reactor.update_timer(self.heater_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
-                self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_error, force_in_print=force_in_print)
+                self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_error, force_in_print=force_in_print) # PAUL retract?
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
@@ -3083,7 +3080,7 @@ class Mmu:
         self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
         if self._is_in_print():
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
-        self._restore_toolhead_position(operation)
+        self._restore_toolhead_position(operation) # PAUL restore_toolhead_position and un-retract
         self._initialize_filament_position() # Encoder 0000
         # Ready to continue printing...
 
@@ -3146,7 +3143,7 @@ class Mmu:
         elif operation:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
-    def _restore_toolhead_position(self, operation):
+    def _restore_toolhead_position(self, operation): # PAUL restore_toolhead_position and un-retract
         if self.saved_toolhead_position:
             eventtime = self.reactor.monotonic()
             gcode_move = self.printer.lookup_object("gcode_move")
@@ -4164,7 +4161,8 @@ class Mmu:
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
             d = self.toolhead_sensor_to_nozzle if self._has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
-            length = max(d - self.filament_remaining - self.toolhead_ooze_reduction, 0)
+            length = max(d - self.filament_remaining - self.toolhead_ooze_reduction, 0) # PAUL update with retract
+# PAUL: load_extruder: If in_print reduce length by toolchange_retract
             self._set_filament_remaining(0.)
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self._trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
@@ -4586,6 +4584,7 @@ class Mmu:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
                 self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolhead_ooze_reduction VALUE=%.1f" % (self.form_tip_macro, self.toolhead_ooze_reduction), exception=True)
+                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolchange_retract VALUE=%.1f" % (self.form_tip_macro, self.toolchange_retract), exception=True) # PAUL
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
@@ -5559,7 +5558,7 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
             self._recover_filament_pos(message=True)
 
-        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange) # PAUL add retract
 
         if self._has_encoder():
             self.encoder_sensor.update_clog_detection_length()
@@ -6142,7 +6141,7 @@ class Mmu:
 
     def _runout(self, force_runout=False):
         self.is_handling_runout = force_runout # Best starting assumption
-        self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange) # PAUL add retract
 
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")

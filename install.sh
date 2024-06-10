@@ -60,35 +60,34 @@ PIN[EASY-BRD,pre_gate_10_pin]="";                          PIN[EASY-BRD-RP2040,p
 PIN[EASY-BRD,pre_gate_11_pin]="";                          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
 # Pins for Mellow EASY-BRD with CANbus (original v1.x and v2)
-# TODO: v2 is incorrect and just a placeholder
 #
 PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="gpio9";            PIN[MELLOW-EASY-BRD-CANv2,gear_uart_pin]="gpio9";
 PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="gpio7";            PIN[MELLOW-EASY-BRD-CANv2,gear_step_pin]="gpio7";
 PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="gpio8";             PIN[MELLOW-EASY-BRD-CANv2,gear_dir_pin]="gpio8";
 PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="gpio6";          PIN[MELLOW-EASY-BRD-CANv2,gear_enable_pin]="gpio6";
-PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="gpio23";           PIN[MELLOW-EASY-BRD-CANv2,gear_diag_pin]="gpio23";
-PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="gpio0";        PIN[MELLOW-EASY-BRD-CANv2,selector_uart_pin]="gpio0";
-PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";        PIN[MELLOW-EASY-BRD-CANv2,selector_step_pin]="gpio2";
-PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";         PIN[MELLOW-EASY-BRD-CANv2,selector_dir_pin]="gpio1";
-PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";      PIN[MELLOW-EASY-BRD-CANv2,selector_enable_pin]="gpio3";
-PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";       PIN[MELLOW-EASY-BRD-CANv2,selector_diag_pin]="gpio22";
+PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="gpio23";           PIN[MELLOW-EASY-BRD-CANv2,gear_diag_pin]="";               # v2: Dup with encoder (gpio15)
+PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="gpio0";        PIN[MELLOW-EASY-BRD-CANv2,selector_uart_pin]="gpio2";
+PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";        PIN[MELLOW-EASY-BRD-CANv2,selector_step_pin]="gpio4";
+PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";         PIN[MELLOW-EASY-BRD-CANv2,selector_dir_pin]="gpio3";
+PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";      PIN[MELLOW-EASY-BRD-CANv2,selector_enable_pin]="gpio5";
+PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";       PIN[MELLOW-EASY-BRD-CANv2,selector_diag_pin]="gpio20";     # v2: Dup with endstop (gpio20)
 PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";	   PIN[MELLOW-EASY-BRD-CANv2,selector_endstop_pin]="gpio20";  # Endstop
 PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";		   PIN[MELLOW-EASY-BRD-CANv2,servo_pin]="gpio21";             # Servo
 PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";		   PIN[MELLOW-EASY-BRD-CANv2,encoder_pin]="gpio15";           # Encoder
-PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		   PIN[MELLOW-EASY-BRD-CANv2,neopixel_pin]="gpio14";          # Extra
+PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		   PIN[MELLOW-EASY-BRD-CANv2,neopixel_pin]="gpio14";          # v1: Extra  / v2: RGB
 PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";	   PIN[MELLOW-EASY-BRD-CANv2,gate_sensor_pin]="gpio15";       # Encoder (Alt)
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_0_pin]="gpio10";        # Exp 5
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_1_pin]="gpio26";        # Exp 6
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_2_pin]="gpio11";        # Exp 7
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_3_pin]="gpio27";        # Exp 8
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_4_pin]="gpio12";        # Exp 9
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_5_pin]="gpio28";        # Exp 10
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_6_pin]="gpio24";        # Exp 11
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_7_pin]="gpio29";        # Exp 12
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_8_pin]="gpio13";        # Exp 13
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_9_pin]="gpio25";        # Exp 14
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_10_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_11_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_0_pin]="gpio22";        # v1: Exp 5  / v2: Exp 3
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_1_pin]="gpio24";        # v1: Exp 6  / v2: Exp 4
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_2_pin]="gpio23";        # v1: Exp 7  / v2: Exp 5
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_3_pin]="gpio25";        # v1: Exp 8  / v2: Exp 6
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_4_pin]="gpio26";        # v1: Exp 9  / v2: Exp 7
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_5_pin]="gpio13";        # v1: Exp 10 / v2: Exp 8
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_6_pin]="gpio27";        # v1: Exp 11 / v2: Exp 9
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_7_pin]="gpio12";        # v1: Exp 12 / v2: Exp 10
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_8_pin]="gpio28";        # v1: Exp 13 / v2: Exp 11
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_9_pin]="gpio11";        # v1: Exp 14 / v2: Exp 12
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_10_pin]="gpio29";       #              v2: Exp 13
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_11_pin]="gpio10";       #              v2: Exp 14
 
 # Pins for Fysetc Burrows ERB board (original v1 and v2)
 #
@@ -1400,13 +1399,13 @@ questionaire() {
     echo -e " 1) BTT MMB v1.0"
     echo -e " 2) BTT MMB v1.1"
     echo -e " 3) Fysetc Burrows ERB v1"
-    #echo -e " x) Fysetc Burrows ERB v2" # TODO when verified
-    echo -e " 4) Standard EASY-BRD (with SAMD21)"
-    echo -e " 5) EASY-BRD with RP2040"
-    echo -e " 6) Mellow EASY-BRD with CANbus v1.x"
-    #echo -e " x) Mellow EASY-BRD with CANbus v2.x" # TODO when verified
-    echo -e " 7) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 7)
+    echo -e " 4) Fysetc Burrows ERB v2"
+    echo -e " 5) Standard EASY-BRD (with SAMD21)"
+    echo -e " 6) EASY-BRD with RP2040"
+    echo -e " 7) Mellow EASY-BRD with CANbus v1.x"
+    echo -e " 8) Mellow EASY-BRD with CANbus v2"
+    echo -e " 9) Not in list / Unknown"
+    num=$(prompt_123 "MCU type?" 9)
     echo
     case $num in
         1)
@@ -1422,18 +1421,26 @@ questionaire() {
             pattern="Klipper_rp2040"
             ;;
         4)
+            brd_type="ERBv2"
+            pattern="Klipper_rp2040"
+            ;;
+        5)
             brd_type="EASY-BRD"
             pattern="Klipper_samd21"
             ;;
-        5)
+        6)
             brd_type="EASY-BRD-RP2040"
             pattern="Klipper_rp2040"
             ;;
-        6)
+        7)
             brd_type="MELLOW-EASY-BRD-CAN"
             pattern="Klipper_rp2040"
             ;;
-        7)
+        8)
+            brd_type="MELLOW-EASY-BRD-CANv2"
+            pattern="Klipper_rp2040"
+            ;;
+        9)
             brd_type="unknown"
             pattern="Klipper_"
             ;;
