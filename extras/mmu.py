@@ -1948,8 +1948,8 @@ class Mmu:
 
         if config:
             msg += "\n\nLoad Sequence:"
-            msg += "\n- Filament loads into gate by homing a maximum of %.1fmm ('gate_homing_max') to %s" % (self.gate_homing_max, self._gate_homing_string())
-            msg += "\n- Bowden is loaded with a fast%s %.1fmm ('calibration_bowden_length') move" % (" CORRECTED" if self.bowden_apply_correction else "", self.calibrated_bowden_length)
+            msg += "\n- Filament loads into gate by homing a maximum of %s to %s" % (self._f_calc("gate_homing_max"), self._gate_homing_string())
+            msg += "\n- Bowden is loaded with a fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length"))
             if self._must_home_to_extruder():
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
                     msg += ", then homes to extruder using COLLISION detection (at %d%% current)" % self.extruder_homing_current
@@ -1959,37 +1959,35 @@ class Mmu:
                     else:
                         msg += ", then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER:
-                        msg += " and then moves %.1fmm ('toolhead_entry_to_entruder') to extruder extrance" % self.toolhead_entry_to_extruder
+                        msg += " and then moves %s to extruder extrance" % self._f_calc("toolhead_entry_to_extruder")
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
-                msg += "\n- Extruder (synced) loads by homing a maximum of %.1fmm ('toolhead_homing_max') to TOOLHEAD SENSOR before moving the last %.1fmm ('toolhead_sensor_to_nozzle - toolhead_ooze_reduction - toolchange_retract') to the nozzle" % (self.toolhead_homing_max, self.toolhead_sensor_to_nozzle - self.toolhead_ooze_reduction - self.toolchange_retract) # PAUL
+                msg += "\n- Extruder (synced) loads by homing a maximum of %s to TOOLHEAD SENSOR before moving the last %s to the nozzle" % (self._f_calc("toolhead_homing_max"), self._f_calc("toolhead_sensor_to_nozzle - toolhead_ooze_reduction - toolchange_retract"))
             else:
-                msg += "\n- Extruder (synced) loads by moving %.1fmm ('toolhead_extruder_to_nozzle - toolhead_ooze_reduction - self.toolchange_retract') to the nozzle" % (self.toolhead_extruder_to_nozzle - self.toolhead_ooze_reduction - self.toolchange_retract) # PAUL
+                msg += "\n- Extruder (synced) loads by moving %s to the nozzle" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_ooze_reduction - toolchange_retract")
 
             msg += "\n\nUnload Sequence:"
-            msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), (" after initial retraction of %.1fmm ('toolchange_retract')" % self.toolchange_retract))) # PAUL
+            msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), " after initial retraction of %s" % self._f_calc("toolchange_retract")))
             msg += " and tip forming extruder current is %d%%" % self.extruder_form_tip_current
 
             if self._has_sensor(self.ENDSTOP_EXTRUDER):
-                msg += "\n- Extruder (synced) unloads by reverse homing a maximum of %.1fmm ('toolhead_entry_to_extruder + toolhead_extruder_to_nozzle + toolhead_unload_safety_margin') to EXTRUDER SENSOR" % (self.toolhead_entry_to_extruder + self.toolhead_extruder_to_nozzle + self.toolhead_unload_safety_margin)
+                msg += "\n- Extruder (synced) unloads by reverse homing a maximum of %s to EXTRUDER SENSOR" % self._f_calc("toolhead_entry_to_extruder + toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
             elif self._has_sensor(self.ENDSTOP_TOOLHEAD):
-                msg += "\n- Extruder (optionally synced) unloads by reverse homing a maximum %.1fmm ('toolhead_sensor_to_nozzle + toolhead_unload_safety_margin') to TOOLHEAD SENSOR" % (self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin)
-                msg += ", then unloads by moving %.1fmm ('toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle + toolhead_unload_safety_margin') to exit extruder" % (self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin)
+                msg += "\n- Extruder (optionally synced) unloads by reverse homing a maximum %s to TOOLHEAD SENSOR" % self._f_calc("toolhead_sensor_to_nozzle + toolhead_unload_safety_margin")
+                msg += ", then unloads by moving %s to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle + toolhead_unload_safety_margin")
             else:
-                msg += "\n- Extruder (optionally synced) unloads by moving %.1fmm ('toolhead_extruder_to_nozzle + toolhead_unload_safety_margin') less reported park position to exit extruder" % (self.toolhead_extruder_to_nozzle + self.toolhead_unload_safety_margin)
+                msg += "\n- Extruder (optionally synced) unloads by moving %s less tip-forming reported park position to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
 
             if self._has_encoder() and self.bowden_pre_unload_test and not self._has_sensor(self.ENDSTOP_EXTRUDER):
-                msg += "\n- Bowden is unloaded with a short %.1fmm ('encoder_move_step_size') validation move before %.1fmm ('calibration_bowden_length - gate_unload_buffer - encoder_move_step_size') fast move" % (self.encoder_move_step_size, self.calibrated_bowden_length - self.gate_unload_buffer - self.encoder_move_step_size)
+                msg += "\n- Bowden is unloaded with a short %s validation move before %s fast move" % (self._f_calc("encoder_move_step_size"), self._f_calc("calibrated_bowden_length - gate_unload_buffer - encoder_move_step_size"))
             else:
-                msg += "\n- Bowden is unloaded with a fast %.1fmm ('calibration_bowden_length - gate_unload_buffer') move" % (self.calibrated_bowden_length - self.gate_unload_buffer)
-            msg += "\n- Filament is stored by homing a maximum of %.1fmm ('gate_homing_max') to %s and parking %.1fmm ('gate_parking_distance') in the gate" % (self.gate_homing_max, self._gate_homing_string(), self.gate_parking_distance)
+                msg += "\n- Bowden is unloaded with a fast %s move" % self._f_calc("calibrated_bowden_length - gate_unload_buffer")
+            msg += "\n- Filament is stored by homing a maximum of %s to %s and parking %s in the gate" % (self._f_calc("gate_homing_max"), self._gate_homing_string(), self._f_calc("gate_parking_distance"))
 
-            msg += "\n\n`toolchange_retract` is always 0 when not in print"
-
+            msg += "\n\nNote that toolchange_retract is always 0 when not in print"
             if self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
                 msg += ("Print (at %d%% current)" % self.sync_gear_current) if self.sync_to_extruder else ""
                 msg += " and tip forming" if self.sync_form_tip else ""
-
 
             msg += "\n\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector_touch else ("DISABLED", "is not"))
             p = self.persistence_level
@@ -2025,6 +2023,22 @@ class Mmu:
             msg += "\n\n%s" % self._gate_map_to_string()
 
         self._log_always(msg)
+
+    def _f_calc(self, formula):
+        format_var = lambda p: p + ':' + "%.1f" % vars(self).get(p.lower())
+        terms = re.split(r'(\+|\-)', formula)
+        result = eval(formula, {}, vars(self))
+        formatted_formula = "%.1fmm (" % result
+        for term in terms:
+            term = term.strip()
+            if term in ('+', '-'):
+                formatted_formula += " " + term + " "
+            elif len(terms) > 1:
+                formatted_formula += format_var(term)
+            else:
+                formatted_formula += term
+        formatted_formula += ")"
+        return formatted_formula
 
     cmd_MMU_SENSORS_help = "Query state of sensors fitted to mmu"
     def cmd_MMU_SENSORS(self, gcmd):
