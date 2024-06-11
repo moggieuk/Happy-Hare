@@ -83,7 +83,7 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
-    VERSION = 2.51 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 2.52 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.0 # Delay before running bootup tasks
 
@@ -2270,7 +2270,6 @@ class Mmu:
                 self._initialize_filament_position(True) # Encoder 0000
                 self._unload_bowden(reference)
                 self._unload_gate()
-                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED) # PAUL not necessary - done in _unload_gate(), unless did not home
 
             if successes > 0:
                 average_reference = reference_sum / successes
@@ -2672,10 +2671,9 @@ class Mmu:
         finally:
             self.calibrating = False
 
-# PAUL WIP vvv
     # Start: Test gate should already be selected
     # End: Filament will unload
-    cmd_MMU_CALIBRATE_TOOLHEAD = "Automated measurement of key toolhead parameters"
+    cmd_MMU_CALIBRATE_TOOLHEAD_help = "Automated measurement of key toolhead parameters"
     def cmd_MMU_CALIBRATE_TOOLHEAD(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
@@ -2764,31 +2762,10 @@ class Mmu:
                 msg += "> toolhead_entry_to_extruder: %.1f (Currently: %.1f)\n" % (toolhead_entry_to_extruder, self.toolhead_entry_to_extruder)
             msg += "(don't forget to update mmu_parameters.cfg)"
             self._log_always(msg)
-        
-            # IF NO TS (currently not supported)
-                # IF "extruder" sensor:
-                    # Reverse home to "extruder" sensor with synced movement
-                    # --> Movement is `toolhead_entry_to_extruder` + `toolhead_extruder_to_nozzle`
-                    # Remember this
-                    # Home to extruder entrance using collision (not important to be accurate)
-                    # [Filament is now tight against extruder and under compression]
-                    # Reverse home to extruder sensor
-                    # Distance moved is approximately `toolhead_entry_to_extruder`
-                    # --> `toolhead_extruder_to_nozzle` = Early recorded movement - ``toolhead_entry_to_extruder`
-                    # NOTE: the above is flawed because filament cannot be retracted evenly -- it tends to spring and jerk
-                    #       But it could be compared with calibrated length - "a homing move to the extruder sensor"
-                # Else: # NO "extruder" sensor (or TS):
-                    # Ideas:
-                    # 1. to use gate as homing point .. almost certainly too far away to be accurate
-                    # 2. Use stallguard on extruder stepper to sense the nozzle .. will work IF stallguard set well
-                    #    Move 5-10mm synced to ensure clean transition into extruder
-                    #    Move 100mm extruder only, "touch" homing move
-                    #    Measured distance is `toolhead_entry_to_extruder`
         except MmuError as ee:
             self._mmu_pause(str(ee))
         finally:
             self.calibrating = False
-# PAUL WIP ^^^
 
 
 #######################
@@ -3093,7 +3070,7 @@ class Mmu:
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self._set_print_state("paused")
 
-    def _mmu_resume(self):
+    def _mmu_resume(self, force_in_print=False):
         if self._is_mmu_paused():
             self.reason_for_pause = None
             self._ensure_safe_extruder_temperature("pause", wait=True)
@@ -3103,15 +3080,15 @@ class Mmu:
             self._set_print_state(self.resume_to_state)
             sync = self.resume_to_state == "printing"
             self.resume_to_state = "ready"
-            self._continue_printing("resume", sync=sync)
+            self._continue_printing("resume", sync=sync, force_in_print=force_in_print)
             self.printer.send_event("mmu:mmu_resumed") # Notify MMU resumed event
 
-    def _continue_printing(self, operation, sync=True):
+    def _continue_printing(self, operation, sync=True, force_in_print=False):
         self._clear_macro_state()
         self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
-        if self._is_in_print():
+        if self._is_in_print(force_in_print):
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
-        self._restore_toolhead_position(operation)
+        self._restore_toolhead_position(operation, force_in_print=force_in_print)
         self._initialize_filament_position() # Encoder 0000
         # Ready to continue printing...
 
@@ -3145,6 +3122,8 @@ class Mmu:
             homed = self.toolhead.get_status(eventtime)['homed_axes']
             gcode_move = self.printer.lookup_object("gcode_move")
 
+            self._retract(force_in_print)
+
             # Save toolhead position
             if 'xyz' in homed:
                 gcode_pos = gcode_move.get_status(eventtime)['gcode_position']
@@ -3159,9 +3138,8 @@ class Mmu:
                     self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
-                # PAUL add retract if in print
-
                 # Lift toolhead off print the specified z-hop
+                # TODO augment with 'z_hop_ramp' setting
                 if self._is_in_print(force_in_print) and z_hop_height is not None and z_hop_height > 0:
                     self._log_debug("Lifting toolhead %.1fmm" % z_hop_height)
                     act_z = self.saved_toolhead_height = gcode_pos.z
@@ -3169,14 +3147,14 @@ class Mmu:
                     max_z -= gcode_move.get_status(eventtime)['homing_origin'].z
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
                     self.gcode.run_script_from_command("G90")
-                    self.gcode.run_script_from_command("G1 Z%.4f F%d" %(act_z + safe_z, self.z_hop_speed * 60))
+                    self.gcode.run_script_from_command("G1 Z%.4f F%d" % (act_z + safe_z, self.z_hop_speed * 60))
             else:
                 self._log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
         elif operation:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
 
-    def _restore_toolhead_position(self, operation):
+    def _restore_toolhead_position(self, operation, force_in_print=False):
         if self.saved_toolhead_position:
             eventtime = self.reactor.monotonic()
             gcode_move = self.printer.lookup_object("gcode_move")
@@ -3188,10 +3166,7 @@ class Mmu:
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
-            # Un-retract if in print
-            if self._is_in_print():
-                pass # PAUL TODO add unretract logic here if
-                # PAUL or combine with G1 move below..
+            self._unretract(force_in_print)
 
             if self.restore_toolhead_xy_position:
                 # Restore pre-pause position and state
@@ -3209,6 +3184,20 @@ class Mmu:
                 self._log_debug("Restored gcode state and z-hop position only (Z:%.1f) after %s" % (self.saved_toolhead_height, operation))
 
         self._clear_saved_toolhead_position()
+
+    def _retract(self, force_in_print=False):
+        # Retract to prevent blob
+        if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude:
+            self._log_debug("Retracting %.1fmm" % self.toolchange_retract)
+            self.gcode.run_script_from_command("M83")
+            self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.toolchange_retract, self.extruder_unload_speed * 60))
+
+    def _unretract(self, force_in_print=False):
+        # Un-retract if in print
+        if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude:
+            self._log_debug("Un-retracting %.1fmm" % self.toolchange_retract)
+            self.gcode.run_script_from_command("M83")
+            self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.extruder_load_speed * 60))
 
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_position = None
@@ -4199,8 +4188,7 @@ class Mmu:
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
             d = self.toolhead_sensor_to_nozzle if self._has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
-            # PAUL length = max(d - self.filament_remaining - self.toolhead_ooze_reduction, 0)
-            length = max(d - self.filament_remaining - self.toolhead_ooze_reduction - (self.toolchange_retract if self._is_in_print() else 0), 0) # PAUL
+            length = max(d - self.filament_remaining - self.toolhead_ooze_reduction - (self.toolchange_retract if self._is_in_print() else 0), 0)
             self._set_filament_remaining(0.)
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self._trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
@@ -4252,7 +4240,7 @@ class Mmu:
                     self._log_info("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload")
                     fhomed = True # Assumption
                 else:
-                    hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin
+                    hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin # TODO - self.toohead_ooze_reduction # PAUL
                     self._log_debug("Reverse homing up to %.1fmm to extruder sensor (synced) to exit extruder" % hlength)
                     _,fhomed,_,_ = self._trace_filament_move("Reverse homing to extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.ENDSTOP_EXTRUDER)
 
@@ -4275,7 +4263,7 @@ class Mmu:
                         self._log_info("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload")
                         fhomed = True # Assumption
                     else:
-                        hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin
+                        hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin # TODO - self.toohead_ooze_reduction # PAUL
                         self._log_debug("Reverse homing up to %.1fmm to toolhead sensor%s" % (hlength, (" (synced)" if synced else "")))
                         _,fhomed,_,_ = self._trace_filament_move("Reverse homing to toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.ENDSTOP_TOOLHEAD)
                     if not fhomed:
@@ -4287,7 +4275,7 @@ class Mmu:
                         self._set_filament_position(-self.toolhead_sensor_to_nozzle)
 
                 # Finish up with regular extruder exit movement. Optionally synced
-                length = max(0, self.toolhead_extruder_to_nozzle + self._get_filament_position()) + self.toolhead_unload_safety_margin
+                length = max(0, self.toolhead_extruder_to_nozzle + self._get_filament_position()) + self.toolhead_unload_safety_margin # PAUL?
                 self._log_debug("Unloading last %.1fmm to exit the extruder%s" % (length, " (synced)" if synced else ""))
                 _,_,measured,delta = self._trace_filament_move("Unloading extruder", -length, speed=speed, motor=motor, wait=True)
 
@@ -4622,7 +4610,7 @@ class Mmu:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
                 self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolhead_ooze_reduction VALUE=%.1f" % (self.form_tip_macro, self.toolhead_ooze_reduction), exception=True)
-                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolchange_retract VALUE=%.1f" % (self.form_tip_macro, self.toolchange_retract if self._is_in_print() else 0), exception=True) # PAUL
+                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolchange_retract VALUE=%.1f" % (self.form_tip_macro, self.toolchange_retract if self._is_in_print() else 0), exception=True)
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
@@ -5724,11 +5712,12 @@ class Mmu:
             self._log_always("Print is not paused. Resume ignored.")
             return
 
+        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
         try:
             self._clear_mmu_error_dialog()
             if self._is_mmu_pause_locked():
                 self._mmu_unlock()
-            if self._is_in_print():
+            if self._is_in_print(force_in_print):
                 self._check_runout() # Can throw MmuError
 
                 # Convenience in case user forgot to set filament position state
@@ -5740,9 +5729,9 @@ class Mmu:
 
             self._wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())))
             if self._is_mmu_paused():
-                self._mmu_resume() # Continue printing...
+                self._mmu_resume(force_in_print=force_in_print) # Continue printing...
             else:
-                self._continue_printing("resume") # Continue printing...
+                self._continue_printing("resume", force_in_print=force_in_print) # Continue printing...
         except MmuError as ee:
             self._mmu_pause(str(ee))
 
@@ -6003,7 +5992,7 @@ class Mmu:
 
         # TMC current control
         self.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.sync_gear_current, minval=10, maxval=100)
-        self.extruder_homing_current = gcmd.get_int('EXTRUDER_HOMING_CURRENT', self.extruder_homing_current, minval=10, maxval=100) # TODO rename extruder_collision_homing_current
+        self.extruder_homing_current = gcmd.get_int('EXTRUDER_HOMING_CURRENT', self.extruder_homing_current, minval=10, maxval=100) # TODO PAUL rename extruder_collision_homing_current
         self.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.extruder_form_tip_current, minval=100, maxval=150)
 
         # Homing, loading and unloading controls
