@@ -76,18 +76,18 @@ PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";		   PIN[MELLOW-EASY-BRD-CANv2,servo
 PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";		   PIN[MELLOW-EASY-BRD-CANv2,encoder_pin]="gpio15";           # Encoder
 PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		   PIN[MELLOW-EASY-BRD-CANv2,neopixel_pin]="gpio14";          # v1: Extra  / v2: RGB
 PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";	   PIN[MELLOW-EASY-BRD-CANv2,gate_sensor_pin]="gpio15";       # Encoder (Alt)
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_0_pin]="gpio22";        # v1: Exp 5  / v2: Exp 3
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_1_pin]="gpio24";        # v1: Exp 6  / v2: Exp 4
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_2_pin]="gpio23";        # v1: Exp 7  / v2: Exp 5
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_3_pin]="gpio25";        # v1: Exp 8  / v2: Exp 6
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_4_pin]="gpio26";        # v1: Exp 9  / v2: Exp 7
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_5_pin]="gpio13";        # v1: Exp 10 / v2: Exp 8
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_6_pin]="gpio27";        # v1: Exp 11 / v2: Exp 9
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_7_pin]="gpio12";        # v1: Exp 12 / v2: Exp 10
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_8_pin]="gpio28";        # v1: Exp 13 / v2: Exp 11
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_9_pin]="gpio11";        # v1: Exp 14 / v2: Exp 12
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_10_pin]="gpio29";       #              v2: Exp 13
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_11_pin]="gpio10";       #              v2: Exp 14
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_0_pin]="gpio24";        # v1: Exp 5  / v2: Exp 3
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_1_pin]="gpio22";        # v1: Exp 6  / v2: Exp 4
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_2_pin]="gpio25";        # v1: Exp 7  / v2: Exp 5
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_3_pin]="gpio23";        # v1: Exp 8  / v2: Exp 6
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_4_pin]="gpio13";        # v1: Exp 9  / v2: Exp 7
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_5_pin]="gpio26";        # v1: Exp 10 / v2: Exp 8
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_6_pin]="gpio12";        # v1: Exp 11 / v2: Exp 9
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_7_pin]="gpio27";        # v1: Exp 12 / v2: Exp 10
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_8_pin]="gpio11";        # v1: Exp 13 / v2: Exp 11
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_9_pin]="gpio28";        # v1: Exp 14 / v2: Exp 12
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_10_pin]="gpio10";       #              v2: Exp 13
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_11_pin]="gpio29";       #              v2: Exp 14
 
 # Pins for Fysetc Burrows ERB board (original v1 and v2)
 #
