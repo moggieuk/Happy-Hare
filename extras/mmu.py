@@ -1886,7 +1886,7 @@ class Mmu:
             msg += "\n\nNote that toolchange_retract is always 0 when not in print"
             if self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
-                msg += ("Print (at %d%% current)" % self.sync_gear_current) if self.sync_to_extruder else ""
+                msg += ("Print (at %d%% current %s sync feedback)" % (self.sync_gear_current, "with" if self.sync_feedback_enable else "without")) if self.sync_to_extruder else ""
                 msg += " and tip forming" if self.sync_form_tip else ""
 
             msg += "\n\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector_touch else ("DISABLED", "is not"))
