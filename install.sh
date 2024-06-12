@@ -685,6 +685,9 @@ read_previous_config() {
         if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
             _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
         fi
+        if [ ! "${_param_extruder_homing_current}" == "" ]; then
+            _param_extruder_collision_homing_current=${_param_extruder_homing_current}
+        fi
         if [ ! "${_param_log_visual}" == "2" ]; then
             _param_log_visual=1
         fi
@@ -1396,14 +1399,14 @@ questionaire() {
     brd_type="unknown"
     echo
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
-    echo -e " 1) BTT MMB v1.0"
-    echo -e " 2) BTT MMB v1.1"
+    echo -e " 1) BTT MMB v1.0 (with CANbus)"
+    echo -e " 2) BTT MMB v1.1 (with CANbus)"
     echo -e " 3) Fysetc Burrows ERB v1"
     echo -e " 4) Fysetc Burrows ERB v2"
     echo -e " 5) Standard EASY-BRD (with SAMD21)"
     echo -e " 6) EASY-BRD with RP2040"
-    echo -e " 7) Mellow EASY-BRD with CANbus v1.x"
-    echo -e " 8) Mellow EASY-BRD with CANbus v2"
+    echo -e " 7) Mellow EASY-BRD v1.x (with CANbus)"
+    echo -e " 8) Mellow EASY-BRD v2.x (with CANbus)"
     echo -e " 9) Not in list / Unknown"
     num=$(prompt_123 "MCU type?" 9)
     echo

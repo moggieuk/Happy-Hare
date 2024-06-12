@@ -396,7 +396,7 @@ class Mmu:
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.4, minval=0.)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
-        self.z_hop_ramp = config.getfloat('z_hop_ramp', 2., minval=0.) # TODO For each 1mm hop, move this horizontal
+        self.z_hop_ramp = config.getfloat('z_hop_ramp', 2., minval=0.) # FUTURE TODO For each 1mm hop, move this horizontal
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
@@ -434,6 +434,7 @@ class Mmu:
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
         self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
+        self.gate_autoload = config.getint('gate_autoload', 1, minval=0, maxval=1)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.) # Not exposed
         self.encoder_dwell = config.getfloat('encoder_dwell', 0.1, minval=0., maxval=2.) # Not exposed
         self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
@@ -478,7 +479,7 @@ class Mmu:
         self.servo_buzz_gear_on_down = config.getint('servo_buzz_gear_on_down', 3, minval=0, maxval=10)
 
         # TMC current control
-        self.extruder_homing_current = config.getint('extruder_homing_current', 50, minval=10, maxval=100)
+        self.extruder_collision_homing_current = config.getint('extruder_collision_homing_current', 50, minval=10, maxval=100)
         self.extruder_form_tip_current = config.getint('extruder_form_tip_current', 100, minval=100, maxval=150)
         self.sync_gear_current = config.getint('sync_gear_current', 50, minval=10, maxval=100)
 
@@ -514,6 +515,7 @@ class Mmu:
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
         self.endless_spool_on_load = config.getint('endless_spool_on_load', 0, minval=0, maxval=1)
+        self.endless_spool_eject_gate = config.getint('endless_spool_eject_gate', -1, minval=-1, maxval=self.mmu_num_gates - 1) # FUTURE TODO
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
         self.tool_extrusion_multipliers = []
         self.tool_speed_multipliers = []
@@ -1848,7 +1850,7 @@ class Mmu:
             msg += "\n- Bowden is loaded with a fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length"))
             if self._must_home_to_extruder():
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
-                    msg += ", then homes to extruder using COLLISION detection (at %d%% current)" % self.extruder_homing_current
+                    msg += ", then homes to extruder using COLLISION detection (at %d%% current)" % self.extruder_collision_homing_current
                 else:
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_NONE:
                         msg += ", no extruder homing is performed!"
@@ -1865,13 +1867,15 @@ class Mmu:
             msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), " after initial retraction of %s" % self._f_calc("toolchange_retract")))
             msg += " and tip forming extruder current is %d%%" % self.extruder_form_tip_current
 
+            msg += "\n- An estimated %s of filament is left in the hotend plus any tip-cutting reported fragment" % self._f_calc("toolhead_ooze_reduction")
+
             if self._has_sensor(self.ENDSTOP_EXTRUDER):
-                msg += "\n- Extruder (synced) unloads by reverse homing a maximum of %s to EXTRUDER SENSOR" % self._f_calc("toolhead_entry_to_extruder + toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
+                msg += "\n- Extruder (synced) unloads by reverse homing a maximum of %s to EXTRUDER SENSOR" % self._f_calc("toolhead_entry_to_extruder + toolhead_extruder_to_nozzle - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
             elif self._has_sensor(self.ENDSTOP_TOOLHEAD):
-                msg += "\n- Extruder (optionally synced) unloads by reverse homing a maximum %s to TOOLHEAD SENSOR" % self._f_calc("toolhead_sensor_to_nozzle + toolhead_unload_safety_margin")
+                msg += "\n- Extruder (optionally synced) unloads by reverse homing a maximum %s to TOOLHEAD SENSOR" % self._f_calc("toolhead_sensor_to_nozzle - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
                 msg += ", then unloads by moving %s to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle + toolhead_unload_safety_margin")
             else:
-                msg += "\n- Extruder (optionally synced) unloads by moving %s less tip-forming reported park position to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
+                msg += "\n- Extruder (optionally synced) unloads by moving %s less tip-cutting reported park position to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
 
             if self._has_encoder() and self.bowden_pre_unload_test and not self._has_sensor(self.ENDSTOP_EXTRUDER):
                 msg += "\n- Bowden is unloaded with a short %s validation move before %s fast move" % (self._f_calc("encoder_move_step_size"), self._f_calc("calibrated_bowden_length - gate_unload_buffer - encoder_move_step_size"))
@@ -4132,7 +4136,7 @@ class Mmu:
         step = self.extruder_collision_homing_step * math.ceil(self.encoder_resolution * 10) / 10
         self._log_debug("Homing to extruder gear, up to %.1fmm in %.1fmm steps" % (max_length, step))
 
-        with self._wrap_gear_current(self.extruder_homing_current, "for collision detection"):
+        with self._wrap_gear_current(self.extruder_collision_homing_current, "for collision detection"):
             homed = False
             measured = delta = 0.
             for i in range(int(max_length / step)):
@@ -4148,7 +4152,7 @@ class Mmu:
                     % (" not" if not homed else "", step*(i+1), i+1, measured, delta))
 
         if delta > 5.0:
-            self._log_info("Warning: A lot of slippage was detected whilst homing to extruder, you may want to reduce 'extruder_homing_current' and/or ensure a good grip on filament by gear drive")
+            self._log_info("Warning: A lot of slippage was detected whilst homing to extruder, you may want to reduce 'extruder_collision_homing_current' and/or ensure a good grip on filament by gear drive")
 
         self._set_filament_position(self._get_filament_position() - step) # Ignore last step movement
         return step*i, homed, measured, delta
@@ -4240,7 +4244,7 @@ class Mmu:
                     self._log_info("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload")
                     fhomed = True # Assumption
                 else:
-                    hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin # TODO - self.toohead_ooze_reduction # PAUL
+                    hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin - self.toolhead_ooze_reduction - (self.toolchange_retract if self._is_in_print() else 0)
                     self._log_debug("Reverse homing up to %.1fmm to extruder sensor (synced) to exit extruder" % hlength)
                     _,fhomed,_,_ = self._trace_filament_move("Reverse homing to extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.ENDSTOP_EXTRUDER)
 
@@ -4263,7 +4267,7 @@ class Mmu:
                         self._log_info("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload")
                         fhomed = True # Assumption
                     else:
-                        hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin # TODO - self.toohead_ooze_reduction # PAUL
+                        hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin - self.toolhead_ooze_reduction - (self.toolchange_retract if self._is_in_print() else 0)
                         self._log_debug("Reverse homing up to %.1fmm to toolhead sensor%s" % (hlength, (" (synced)" if synced else "")))
                         _,fhomed,_,_ = self._trace_filament_move("Reverse homing to toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.ENDSTOP_TOOLHEAD)
                     if not fhomed:
@@ -4275,7 +4279,7 @@ class Mmu:
                         self._set_filament_position(-self.toolhead_sensor_to_nozzle)
 
                 # Finish up with regular extruder exit movement. Optionally synced
-                length = max(0, self.toolhead_extruder_to_nozzle + self._get_filament_position()) + self.toolhead_unload_safety_margin # PAUL?
+                length = max(0, self.toolhead_extruder_to_nozzle + self._get_filament_position()) + self.toolhead_unload_safety_margin
                 self._log_debug("Unloading last %.1fmm to exit the extruder%s" % (length, " (synced)" if synced else ""))
                 _,_,measured,delta = self._trace_filament_move("Unloading extruder", -length, speed=speed, motor=motor, wait=True)
 
@@ -5992,7 +5996,7 @@ class Mmu:
 
         # TMC current control
         self.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.sync_gear_current, minval=10, maxval=100)
-        self.extruder_homing_current = gcmd.get_int('EXTRUDER_HOMING_CURRENT', self.extruder_homing_current, minval=10, maxval=100) # TODO PAUL rename extruder_collision_homing_current
+        self.extruder_collision_homing_current = gcmd.get_int('EXTRUDER_COLLISION_HOMING_CURRENT', self.extruder_collision_homing_current, minval=10, maxval=100)
         self.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.extruder_form_tip_current, minval=100, maxval=150)
 
         # Homing, loading and unloading controls
@@ -6104,7 +6108,7 @@ class Mmu:
         msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
         msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
         msg += "\nsync_gear_current = %d" % self.sync_gear_current
-        msg += "\nextruder_homing_current = %d" % self.extruder_homing_current
+        msg += "\nextruder_collision_homing_current = %d" % self.extruder_collision_homing_current
         msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
 
         msg += "\n\nLOADING/UNLOADING:"
@@ -6461,7 +6465,7 @@ class Mmu:
                 self._log_debug("Handling insertion detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
                 self._set_gate_status(gate, self.GATE_UNKNOWN)
                 self._check_pending_spool_id(gate) # Have spool_id ready?
-                if not self._is_in_print():
+                if not self._is_in_print() and self.gate_autoload:
                     self.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
         except MmuError as ee:
             self._mmu_pause(str(ee))
