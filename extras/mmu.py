@@ -396,7 +396,7 @@ class Mmu:
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.4, minval=0.)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
-        self.z_hop_ramp = config.getfloat('z_hop_ramp', 2., minval=0.) # FUTURE TODO For each 1mm hop, move this horizontal
+        self.z_hop_ramp = config.getfloat('z_hop_ramp', 0., minval=0.)
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
@@ -6743,7 +6743,7 @@ class Mmu:
                 msg += "\nDETAIL=1 to see purge volumes"
             self._log_always(msg)
 
-    # TODO default to current gate; MMU_CHECK_GATES default to all gates. Add ALL=1 flag
+    # TODO default to current gate; MMU_CHECK_GATE default to all gates. Add ALL=1 flag
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
     def cmd_MMU_CHECK_GATE(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
@@ -6759,6 +6759,7 @@ class Mmu:
         gates = gcmd.get('GATES', "!")
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
+        all_gates = gcmd.get_int('ALL', 0, minval=0, maxval=1)
 
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during gate check
             with self._wrap_action(self.ACTION_CHECKING):
@@ -6803,10 +6804,15 @@ class Mmu:
                     elif gate >= 0:
                         # Individual gate
                         gates_tools.append([gate, -1])
-                    else:
-                        # No parameters means all gates
+                    elif all_gates:
                         for gate in range(self.mmu_num_gates):
                             gates_tools.append([gate, -1])
+                    elif self.gate_selected >= 0:
+                        # No parameters means current gate
+                        gates_tools.append([self.gate_selected, -1])
+                    else:
+                        self._log_always("Current gate is invalid")
+                        return
 
                     # Force initial eject
                     try:
