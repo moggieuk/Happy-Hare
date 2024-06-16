@@ -515,7 +515,7 @@ class Mmu:
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
         self.endless_spool_on_load = config.getint('endless_spool_on_load', 0, minval=0, maxval=1)
-        self.endless_spool_eject_gate = config.getint('endless_spool_eject_gate', -1, minval=-1, maxval=self.mmu_num_gates - 1) # FUTURE TODO
+        self.endless_spool_eject_gate = config.getint('endless_spool_eject_gate', -1, minval=-1, maxval=self.mmu_num_gates - 1)
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
         self.tool_extrusion_multipliers = []
         self.tool_speed_multipliers = []
@@ -3119,8 +3119,8 @@ class Mmu:
         if state == "standby" and not self._is_in_standby():
             self._set_print_state(state)
 
-    def _save_toolhead_position_and_lift(self, operation=None, z_hop_height=None, force_in_print=False):
-        if operation and not self.saved_toolhead_position:
+    def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False):
+        if not self.saved_toolhead_position:
             self._movequeues_wait_moves()
             eventtime = self.reactor.monotonic()
             homed = self.toolhead.get_status(eventtime)['homed_axes']
@@ -3143,20 +3143,34 @@ class Mmu:
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
                 # Lift toolhead off print the specified z-hop
-                # TODO augment with 'z_hop_ramp' setting
                 if self._is_in_print(force_in_print) and z_hop_height is not None and z_hop_height > 0:
-                    self._log_debug("Lifting toolhead %.1fmm" % z_hop_height)
+                    axis_maximum = self.toolhead.get_status(eventtime)['axis_maximum']
+                    self._log_debug("Lifting toolhead %.1fmm with %.1fmm ramp" % (z_hop_height, self.z_hop_ramp))
                     act_z = self.saved_toolhead_height = gcode_pos.z
-                    max_z = self.toolhead.get_status(eventtime)['axis_maximum'].z
+                    max_z = axis_maximum.z
                     max_z -= gcode_move.get_status(eventtime)['homing_origin'].z
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
+
+                    # Factor z_hop_ramp
+                    current_x, current_y = gcode_pos.x, gcode_pos.y
+                    new_x, new_y = self.move_towards_center(current_x, current_y, axis_maximum.x, axis_maximum.y, self.z_hop_ramp)
+
                     self.gcode.run_script_from_command("G90")
-                    self.gcode.run_script_from_command("G1 Z%.4f F%d" % (act_z + safe_z, self.z_hop_speed * 60))
+                    self.gcode.run_script_from_command("G1 X%.4f Y%.4f Z%.4f F%d" % (new_x, new_y, act_z + safe_z, self.z_hop_speed * 60)) # Ramp
+                    self.gcode.run_script_from_command("G1 X%.4f Y%.4f F%d" % (current_x, current_y, self.z_hop_speed * 60)) # Restore x,y
             else:
                 self._log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
-        elif operation:
+        else:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
+    # For z_hop_ramp. Return new position along move vector
+    # (towards center unless at center then towards origin)
+    def move_towards_center(self, x, y, w, h, d):
+        cx, cy = w / 2.0, h / 2.0
+        target_x, target_y = (0, 0) if (x, y) == (cx, cy) else (cx, cy)
+        dx, dy = target_x - x, target_y - y
+        length = math.hypot(dx, dy)
+        return x + d * dx / length, y + d * dy / length
 
     def _restore_toolhead_position(self, operation, force_in_print=False):
         if self.saved_toolhead_position:
@@ -3173,12 +3187,12 @@ class Mmu:
             self._unretract(force_in_print)
 
             if self.restore_toolhead_xy_position:
-                # Restore pre-pause position and state
+                # Restore pre-pause position and state. Currently not used because we allow sequence macro to control x,y movement
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self._log_debug("Restored gcode state and position (%s) after %s" % (toolhead_gcode_pos, operation))
             else:
-                # Default: Only undo the z-hop move...
+                # Default: Only undo the z-hop move so sequence macros choose what to do with x,y ('last', 'next', 'none')...
                 if self.saved_toolhead_height >= 0:
                     self._log_debug("Restoring toolhead height")
                     self.gcode.run_script_from_command("G90")
@@ -4423,7 +4437,7 @@ class Mmu:
                 park_pos = self._get_filament_position()
 
                 if runout:
-                    if self._check_pre_gate_sensor(self.gate_selected) is False or self._check_sensor(self.ENDSTOP_GATE) is False or (self._has_encoder() and self._get_encoder_distance() == 0):
+                    if not(self._check_pre_gate_sensor(self.gate_selected) is True or self._check_sensor(self.ENDSTOP_GATE) is True or (self._has_encoder() and self._get_encoder_distance() > 0)):
                         self._log_info("Warning: Filament not seen at MMU after after tip forming move. Unload may not be possible")
 
                 self._wrap_gcode_command(self.post_form_tip_macro, exception=True)
@@ -5766,7 +5780,6 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self.is_enabled:
             self._log_debug("MMU_CANCEL_PRINT wrapper called")
-            self._save_toolhead_position_and_lift(z_hop_height=self.z_hop_height_error) # Lift Z but don't save
             self._clear_mmu_error_dialog()
             self._wrap_gcode_command("__CANCEL_PRINT", None)
             self._on_print_end("cancelled")
@@ -6042,6 +6055,7 @@ class Mmu:
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
+        self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.mmu_num_gates - 1)
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=1)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
@@ -6142,7 +6156,7 @@ class Mmu:
         msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
         msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
-        #msg += "\nz_hop_ramp = %.1f" % self.z_hop_ramp # TODO WIP
+        msg += "\nz_hop_ramp = %.1f" % self.z_hop_ramp
         msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
 
         msg += "\n\nOTHER:"
@@ -6151,6 +6165,7 @@ class Mmu:
             msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
+        msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
         if self._has_encoder():
             msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
@@ -6212,8 +6227,11 @@ class Mmu:
                     raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
                 self._log_info("Remapping T%d to Gate %d" % (self.tool_selected, next_gate))
 
-                # TODO perhaps figure out how to call _change_tool() here for consistent user feeback
+                if self.endless_spool_eject_gate > 0:
+                    self._log_info("Ejecting filament to designated waste gate %d" % self.endless_spool_eject_gate)
+                    self._select_gate(self.endless_spool_eject_gate)
                 self._unload_tool(runout=True)
+                self._select_gate(next_gate) # Necessary if unloaded to waste gate
                 self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
             else:
@@ -6260,8 +6278,11 @@ class Mmu:
                 updated = True
         return gate_status
 
-    def _get_filament_char(self, gate_status, no_space=False, show_source=False):
-        if gate_status == self.GATE_AVAILABLE_FROM_BUFFER:
+    def _get_filament_char(self, gate, no_space=False, show_source=False):
+        gate_status = self.gate_status[gate]
+        if self.enable_endless_spool and gate == self.endless_spool_eject_gate:
+            return "W"
+        elif gate_status == self.GATE_AVAILABLE_FROM_BUFFER:
             return "B" if show_source else "*"
         elif gate_status == self.GATE_AVAILABLE:
             return "S" if show_source else "*"
@@ -6277,7 +6298,7 @@ class Mmu:
             tools = range(num_tools) if tool is None else [tool]
             for i in tools:
                 gate = self.ttg_map[i]
-                filament_char = self._get_filament_char(self.gate_status[gate], show_source=False)
+                filament_char = self._get_filament_char(gate, show_source=False)
                 msg += "\n" if i and tool is None else ""
 
                 if self.enable_endless_spool and show_groups:
@@ -6295,7 +6316,7 @@ class Mmu:
                         es = " >"
                         gates_in_group = [(j + gate + 1) % num_tools for j in range(num_tools - 1)]
 
-                    gs = " >".join("{:>2}({})".format(g, self._get_filament_char(self.gate_status[g], show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
+                    gs = " >".join("{:>2}({})".format(g, self._get_filament_char(g, show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
                     if gs:
                         msg += (es + gs)
 
@@ -6306,7 +6327,7 @@ class Mmu:
             num_gates = self.mmu_num_gates
             gate_indices = range(num_gates)
             msg_gates = "Gates: " + "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g) for g in gate_indices) + "|"
-            msg_avail = "Avail: " + "".join("| %s " % self._get_filament_char(self.gate_status[g], no_space=True, show_source=True) for g in gate_indices) + "|"
+            msg_avail = "Avail: " + "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True) for g in gate_indices) + "|"
             tool_strings = []
             for g in gate_indices:
                 tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
@@ -6317,7 +6338,7 @@ class Mmu:
             select_strings = ["|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----" for g in gate_indices]
             for i, g in enumerate(gate_indices):
                 if self.gate_selected == g:
-                    select_strings[i] = "| %s " % self._get_filament_char(self.gate_status[g], no_space=True)
+                    select_strings[i] = "| %s " % self._get_filament_char(g, no_space=True)
             msg_selct = "Selct: " + "".join(select_strings) + ("|" if self.gate_selected == num_gates - 1 else "-")
             msg = "\n".join([msg_gates, msg_tools, msg_avail, msg_selct])
             if self.is_homed:
@@ -6342,12 +6363,11 @@ class Mmu:
 
             gate_detail = ""
             if detail:
-                filament_char = self._get_filament_char(self.gate_status[g], show_source=False)
+                filament_char = self._get_filament_char(g, show_source=False)
                 tools_supported = ", ".join("T{}".format(t) for t in range(self.mmu_num_gates) if self.ttg_map[t] == g)
-                tools_str = " supporting {}".format(tools_supported) if tools_supported else "?, "
-                gate_detail = "\nGate {}({}){}".format(g, filament_char, tools_str)
-                if g == self.gate_selected:
-                    gate_detail += " [SELECTED]"
+                tools_str = " supporting {}; ".format(tools_supported) if tools_supported else " "
+                selected = "[SELECTED]" if g == self.gate_selected else ""
+                gate_detail = "\nGate {}({}){}{}".format(g, filament_char, selected, tools_str)
             else:
                 gate_detail = "\nGate {}: ".format(g)
 
@@ -6441,7 +6461,12 @@ class Mmu:
         try:
             gate = gcmd.get_int('GATE', None)
             do_runout = gcmd.get_int('DO_RUNOUT', 0)
+
             if gate is not None:
+                # Ignore pre-gate runout if endless_spool_eject_gate feature is active
+                if self.enable_endless_spool and self.endless_spool_eject_gate > 0:
+                    self._log_trace("Ignoring pre-gate sensor runout on gate %d because endless_spool_eject_gate is active" % gate)
+                    return
                 self._set_gate_status(gate, self.GATE_EMPTY)
 
             if do_runout:
@@ -6518,6 +6543,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
@@ -6589,7 +6615,7 @@ class Mmu:
             quiet = False # Display current map
 
         if not quiet:
-            self._log_info(self._gate_map_to_string())
+            self._log_info(self._gate_map_to_string(detail))
 
     cmd_MMU_ENDLESS_SPOOL_help = "Diplay or Manage EndlessSpool functionality and groups"
     def cmd_MMU_ENDLESS_SPOOL(self, gcmd):
