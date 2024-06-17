@@ -6769,7 +6769,6 @@ class Mmu:
                 msg += "\nDETAIL=1 to see purge volumes"
             self._log_always(msg)
 
-    # TODO default to current gate; MMU_CHECK_GATE default to all gates. Add ALL=1 flag
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
     def cmd_MMU_CHECK_GATE(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
