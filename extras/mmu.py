@@ -30,6 +30,7 @@ UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
 if sys.version_info[0] >= 3:
     # Use (common) unicode for improved formatting and klipper layout
     UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = '\u00A0', '\u00A0', '\u2014', '\u00B0', '\u2588', '\u2514'
+# Not all character sets include these so best to use defaults above
 #    UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '\u250C', '\u2514', '\u2510', '\u2518'
 #    UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
 #    UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
@@ -1265,6 +1266,7 @@ class Mmu:
 
     def _movequeues_wait_moves(self, toolhead=True, mmu_toolhead=True):
         #self._log_trace("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
+#        self._log_error("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead)) # PAUL
         if toolhead:
             self.toolhead.wait_moves()
         if mmu_toolhead:
@@ -2683,94 +2685,132 @@ class Mmu:
         if self._check_is_disabled(): return
         if self._check_not_homed(): return
         if self._check_in_bypass(): return
+        if self._check_is_loaded(): return
         if self._check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR|self.CALIBRATED_BOWDEN): return
-
         if not self._has_sensor(self.ENDSTOP_TOOLHEAD):
-            raise gcmd.error("This feature requires toolhead sensor")
+            raise gcmd.error("Sorry this feature requires a toolhead sensor")
+        clean = gcmd.get_int('CLEAN', 0, minval=0, maxval=1)
+        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        line = "-----------------------------------------------\n"
+
+
+        msg = "Note:\n"
+        msg += "toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder) are calibrated with a CLEAN extruder and the 'CLEAN=1' flag\n"
+        msg += "toolhead_ooze_reduction (and toolhead_entry_to_extruder) are calibrated with a normal dirty extruder but without a cut filament tip\n"
+        msg += "Desired gate should be selected but the filament unloaded"
+        self._log_always(msg)
 
         try:
             self.calibrating = True
-            self._log_always("Note: For accuracy, the extruder must be cool, empty of all filament (no cut tips) and MMU unloaded")
             self._initialize_filament_position(dwell=True) # Encoder 0000
             self._load_gate(allow_retry=False)
             self._load_bowden(self.calibrated_bowden_length)
-        
-            # Push filament tight against extruder entrance
-            self._home_to_extruder_collision_detection(self.extruder_homing_max)
-        
-            # Ensure extruder is COLD
-            self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0")
-            current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
-            if current_temp > 80:
-                self._log_always("Waiting for extruder to cool")
-                self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=0 MAXIMUM=80")
-        
-            # Enable the extruder stepper
-            stepper_enable = self.printer.lookup_object('stepper_enable')
-            ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
-            ge.motor_enable(self.toolhead.get_last_move_time())
-        
-            # Reliably force filament to the nozzle
-            self._servo_down()
-            actual,_,measured,delta = self._trace_filament_move("Extruder entrance transistion move", 10, speed=self.extruder_sync_load_speed, motor="gear+extruder")
-            self._servo_up()
-            actual,_,measured,delta = self._trace_filament_move("Moving to nozzle", 90, speed=self.extruder_load_speed, motor="extruder")
-        
-            # Measure `toolhead_sensor_to_nozzle`
-            self._servo_down()
-            actual,fhomed,_,_ = self._trace_filament_move("Reverse homing to toolhead sensor", -100, motor="gear+extruder", homing_move=-1, endstop_name=self.ENDSTOP_TOOLHEAD)
-            if fhomed:
-                toolhead_sensor_to_nozzle = -actual
-                self._log_always("Measured toolhead_sensor_to_nozzle: %.1f" % toolhead_sensor_to_nozzle)
+            self._home_to_extruder_collision_detection(self.extruder_homing_max) # Push filament tight against extruder entrance
+
+            if clean:
+                self._log_always("Measuring clean toolhead dimensions after cold pull...")
+                tetn, tstn, tete = self._measure_toolhead()
+                msg = line
+                msg += "Calibration Results (clean nozzle):\n"
+                msg += "> toolhead_extruder_to_nozzle: %.1f (currently: %.1f)\n" % (tetn, self.toolhead_extruder_to_nozzle)
+                msg += "> toolhead_sensor_to_nozzle: %.1f (currently: %.1f)\n" % (tstn, self.toolhead_sensor_to_nozzle)
+                if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+                    msg += "> toolhead_entry_to_extruder: %.1f (currently: %.1f)\n" % (tete, self.toolhead_entry_to_extruder)
+                msg += line
+                self._log_always(msg)
+                if save:
+                    self._log_always("New toolhead calibration active until restart. Update mmu_parameters.cfg to persist settings")
+                    self.toolhead_extruder_to_nozzle = round(tetn, 1)
+                    self.toolhead_sensor_to_nozzle = round(tstn, 1)
+                    self.toolhead_entry_to_extruder = round(tete, 1)
             else:
-                raise MmuError("Failed to reverse home to toolhead sensor")
-        
-            # Move to extruder extrance again
-            self._servo_up()
-            actual,_,measured,delta = self._trace_filament_move("Moving to extruder entrance", -50, speed=self.extruder_unload_speed, motor="extruder")
-        
-            # Measure `toolhead_extruder_to_nozzle`
-            self._servo_down()
-            actual,fhomed,_,_ = self._trace_filament_move("Homing to toolhead sensor", 50, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_TOOLHEAD)
-            if fhomed:
-                toolhead_extruder_to_nozzle = actual + toolhead_sensor_to_nozzle
-                self._log_always("Measured toolhead_extruder_to_nozzle: %.1f" % toolhead_extruder_to_nozzle)
-            else:
-                raise MmuError("Failed to home to toolhead sensor")
-        
-            if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
-                # Retract clear of extruder sensor and then home in "extrude" direction
-                actual,_,measured,delta = self._trace_filament_move("Moving to nozzle", -100, speed=self.extruder_load_speed, motor="gear+extruder")
-                actual,fhomed,_,_ = self._trace_filament_move("Homing to extruder sensor", 100, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_EXTRUDER_ENTRY)
-        
-                # Measure to toolhead sensor and thus `toolhead_entry_to_extruder`
-                if fhomed:
-                    actual,fhomed,_,_ = self._trace_filament_move("Homing to toolhead sensor", 100, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_TOOLHEAD)
-                    if fhomed:
-                        toolhead_entry_to_extruder = actual - (toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle)
-                        self._log_always("Measured toolhead_entry_to_extruder: %.1f" % toolhead_entry_to_extruder)
-                else:
-                    raise MmuError("Failed to reverse home to toolhead sensor")
-        
-            # Unload and re-park filament
-            self._servo_up()
-            actual,_,measured,delta = self._trace_filament_move("Moving to extruder entrance", -50, speed=self.extruder_unload_speed, motor="extruder")
+                self._log_always("Measuring dirty toolhead dimensions (with filament residue)...")
+                tetn, tstn, tete = self._measure_toolhead()
+                # Ooze reduction is the difference between empty and dirty measurements for sensor to nozzle
+                tor = self.toolhead_sensor_to_nozzle - tstn
+                msg = line
+                msg += "Calibration Results (dirty nozzle):\n"
+                msg += "> toolhead_ooze_reduction: %.1f (currently: %.1f)\n" % (tor, self.toolhead_ooze_reduction)
+                if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+                    msg += "> toolhead_entry_to_extruder: %.1f (currently: %.1f)\n" % (tete, self.toolhead_entry_to_extruder)
+                msg += line
+                self._log_always(msg)
+                if save:
+                    self._log_always("New calibrated ooze reduction active until restart. Update mmu_parameters.cfg to persist")
+                    self.toolhead_ooze_reduction = round(tor, 1)
+                    self.toolhead_entry_to_extruder = round(tete, 1)
+
+            # Unload and park filament
             self._unload_bowden(self.calibrated_bowden_length)
             self._unload_gate()
-        
-            # Report
-            msg = "Extruder Calibration Results\n"
-            msg += "> toolhead_extruder_to_nozzle: %.1f (Currently: %.1f)\n" % (toolhead_extruder_to_nozzle, self.toolhead_extruder_to_nozzle)
-            msg += "> toolhead_sensor_to_nozzle: %.1f (Currently: %.1f)\n" % (toolhead_sensor_to_nozzle, self.toolhead_sensor_to_nozzle)
-            if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
-                msg += "> toolhead_entry_to_extruder: %.1f (Currently: %.1f)\n" % (toolhead_entry_to_extruder, self.toolhead_entry_to_extruder)
-            msg += "(don't forget to update mmu_parameters.cfg)"
-            self._log_always(msg)
         except MmuError as ee:
             self._mmu_pause(str(ee))
         finally:
             self.calibrating = False
 
+    # Filament is assumed to be at the extruder and will be at extruder again when complete
+    def _measure_toolhead(self, cold_temp=70, probe_depth=100, sensor_homing=50):
+        # Ensure extruder is COLD
+        self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0")
+        current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
+        if current_temp > cold_temp:
+            self._log_always("Waiting for extruder to cool")
+            self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=0 MAXIMUM=cold_temp")
+
+        # Enable the extruder stepper
+        stepper_enable = self.printer.lookup_object('stepper_enable')
+        ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
+        ge.motor_enable(self.toolhead.get_last_move_time())
+
+        # Reliably force filament to the nozzle
+        self._servo_down()
+        actual,_,measured,delta = self._trace_filament_move("Extruder entrance transistion move", 10, motor="gear+extruder")
+        self._servo_up()
+        actual,_,measured,delta = self._trace_filament_move("Moving to nozzle", probe_depth - 10, motor="extruder")
+
+        # Measure `toolhead_sensor_to_nozzle`
+        self._servo_down()
+        actual,fhomed,_,_ = self._trace_filament_move("Reverse homing to toolhead sensor", -probe_depth, motor="gear+extruder", homing_move=-1, endstop_name=self.ENDSTOP_TOOLHEAD)
+        if fhomed:
+            toolhead_sensor_to_nozzle = -actual
+            self._log_always("Measured toolhead_sensor_to_nozzle: %.1f" % toolhead_sensor_to_nozzle)
+        else:
+            raise MmuError("Failed to reverse home to toolhead sensor")
+
+        # Move to extruder extrance again
+        self._servo_up()
+        actual,_,measured,delta = self._trace_filament_move("Moving to extruder entrance", -(probe_depth - toolhead_sensor_to_nozzle), motor="extruder")
+
+        # Measure `toolhead_extruder_to_nozzle`
+        self._servo_down()
+        actual,fhomed,_,_ = self._trace_filament_move("Homing to toolhead sensor", probe_depth, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_TOOLHEAD)
+        if fhomed:
+            toolhead_extruder_to_nozzle = actual + toolhead_sensor_to_nozzle
+            self._log_always("Measured toolhead_extruder_to_nozzle: %.1f" % toolhead_extruder_to_nozzle)
+        else:
+            raise MmuError("Failed to home to toolhead sensor")
+    
+        toolhead_entry_to_extruder = 0.
+        if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+            # Retract clear of extruder sensor and then home in "extrude" direction
+            actual,fhomed,_,_ = self._trace_filament_move("Reverse homing to extruder entry sensor", -(sensor_homing + toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle), motor="gear+extruder", homing_move=-1)
+            actual,_,measured,delta = self._trace_filament_move("Moving before extruder entry sensor", -20, motor="gear+extruder")
+            actual,fhomed,_,_ = self._trace_filament_move("Homing to extruder sensor", 40, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_EXTRUDER_ENTRY)
+
+            # Measure to toolhead sensor and thus `toolhead_entry_to_extruder`
+            if fhomed:
+                actual,fhomed,_,_ = self._trace_filament_move("Homing to toolhead sensor", sensor_homing, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_TOOLHEAD)
+                if fhomed:
+                    toolhead_entry_to_extruder = actual - (toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle)
+                    self._log_always("Measured toolhead_entry_to_extruder: %.1f" % toolhead_entry_to_extruder)
+            else:
+                raise MmuError("Failed to reverse home to toolhead sensor")
+
+        # Unload and re-park filament
+        self._servo_up()
+        actual,_,measured,delta = self._trace_filament_move("Moving to extruder entrance", -sensor_homing, motor="extruder")
+
+        return toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle, toolhead_entry_to_extruder
 
 #######################
 # MMU STATE FUNCTIONS #
@@ -3093,7 +3133,7 @@ class Mmu:
         if self._is_in_print(force_in_print):
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation, force_in_print=force_in_print)
-        self._initialize_filament_position() # Encoder 0000
+        self._initialize_filament_position(dwell=None) # Encoder 0000 # PAUL added the dwell=None to eliminate delay
         # Ready to continue printing...
 
     def _clear_macro_state(self):
@@ -6239,7 +6279,7 @@ class Mmu:
 
         self._check_runout() # Can throw MmuError
         self._continue_printing("endless_spool") # Continue printing...
-        self._movequeues_wait_moves(toolhead=True, mmu_toolhead=True)
+        #self._movequeues_wait_moves(toolhead=True, mmu_toolhead=True) # PAUL do we need this?
         self.pause_resume.send_resume_command()
 
     def _get_next_endless_spool_gate(self, tool, gate):
