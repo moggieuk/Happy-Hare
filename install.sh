@@ -721,6 +721,10 @@ read_previous_config() {
         if [ "${_param_servo_always_active}" == "" ]; then
             _param_servo_always_active=0
         fi
+
+        if [ "${_param_log_file_level}" -gt 2 ]; then
+            _param_log_file_level=2
+        fi
     fi
 
     cfg="mmu_filametrix.cfg"

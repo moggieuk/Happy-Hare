@@ -523,7 +523,7 @@ class Mmu:
 
         # Logging
         self.log_level = config.getint('log_level', 1, minval=0, maxval=4)
-        self.log_file_level = config.getint('log_file_level', 3, minval=-1, maxval=4)
+        self.log_file_level = config.getint('log_file_level', 2, minval=-1, maxval=4)
         self.log_statistics = config.getint('log_statistics', 0, minval=0, maxval=1)
         self.log_visual = config.getint('log_visual', 1, minval=0, maxval=1)
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
@@ -1266,7 +1266,6 @@ class Mmu:
 
     def _movequeues_wait_moves(self, toolhead=True, mmu_toolhead=True):
         #self._log_trace("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
-#        self._log_error("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead)) # PAUL
         if toolhead:
             self.toolhead.wait_moves()
         if mmu_toolhead:
@@ -2697,7 +2696,7 @@ class Mmu:
         msg = "Note:\n"
         msg += "toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder) are calibrated with a CLEAN extruder and the 'CLEAN=1' flag\n"
         msg += "toolhead_ooze_reduction (and toolhead_entry_to_extruder) are calibrated with a normal dirty extruder but without a cut filament tip\n"
-        msg += "Desired gate should be selected but the filament unloaded"
+        msg += "Desired gate should be selected but the filament unloaded\n"
         self._log_always(msg)
 
         try:
@@ -3537,10 +3536,6 @@ class Mmu:
                 # a more realistic temperature for safe operation.
                 new_target_temp = self.default_extruder_temp
                 source = "minimum"
-
-# TODO deleted (issue #292) but I'm not sure why it was necessary previously
-#        if current_temp < new_target_temp:
-#            wait = True
 
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
