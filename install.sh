@@ -770,8 +770,6 @@ read_previous_config() {
 
             if [ ! "${variable_enable_park}" == "" ]; then
                 variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
-                variable_enable_park_runout=${variable_enable_park}
-                variable_enable_park_standalone=${variable_enable_park}
             fi
             if [ ! "${variable_ramming_volume}" == "" ]; then
                 variable_ramming_volume_standalone=${variable_ramming_volume}
