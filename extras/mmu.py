@@ -2589,7 +2589,7 @@ class Mmu:
         toolhead_entry_to_extruder = 0.
         if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
             # Retract clear of extruder sensor and then home in "extrude" direction
-            actual,fhomed,_,_ = self._trace_filament_move("Reverse homing to extruder entry sensor", -(sensor_homing + toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle), motor="gear+extruder", homing_move=-1)
+            actual,fhomed,_,_ = self._trace_filament_move("Reverse homing to extruder entry sensor", -(sensor_homing + toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle), motor="gear+extruder", homing_move=-1, endstop_name=self.ENDSTOP_EXTRUDER_ENTRY)
             actual,_,measured,delta = self._trace_filament_move("Moving before extruder entry sensor", -20, motor="gear+extruder")
             actual,fhomed,_,_ = self._trace_filament_move("Homing to extruder entry sensor", 40, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_EXTRUDER_ENTRY)
 
