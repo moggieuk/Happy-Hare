@@ -399,6 +399,7 @@ class Mmu:
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.z_hop_ramp = config.getfloat('z_hop_ramp', 0., minval=0.)
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
+        self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=0.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
@@ -3250,14 +3251,14 @@ class Mmu:
         if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude:
             self._log_debug("Retracting %.1fmm" % self.toolchange_retract)
             self.gcode.run_script_from_command("M83")
-            self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.toolchange_retract, self.extruder_unload_speed * 60))
+            self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.toolchange_retract, self.toolchange_retract_speed * 60))
 
     def _unretract(self, force_in_print=False):
         # Un-retract if in print
         if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude:
             self._log_debug("Un-retracting %.1fmm" % self.toolchange_retract)
             self.gcode.run_script_from_command("M83")
-            self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.extruder_load_speed * 60))
+            self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.toolchange_retract_speed * 60))
 
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_position = None
@@ -4685,7 +4686,8 @@ class Mmu:
                 # Use stepper movement
                 reported = False
                 filament_remaining = 0.
-                park_pos = stepper_movement + self.toolhead_ooze_reduction + (self.toolchange_retract if self._is_in_print() else 0) # PAUL RETRACT was: park_pos = stepper_movement
+                # PAUL RETRACT was: park_pos = stepper_movement
+                park_pos = stepper_movement + self.toolhead_ooze_reduction + (self.toolchange_retract if self._is_in_print() else 0)
                 msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1mm (encoder measured %.1fmm)" % (stepper_movement, park_pos, measured)
                 if test:
                     self._log_always(msg)
@@ -4694,7 +4696,8 @@ class Mmu:
             else:
                 # Means the macro reported it (usually for filament cutting)
                 reported = True
-                filament_remaining = park_pos - stepper_movement - self.toolchange_retract # PAUL RETRACT was filament_remaining = park_pos - stepper_movement
+                # PAUL RETRACT was filament_remaining = park_pos - stepper_movement
+                filament_remaining = park_pos - stepper_movement - self.toolchange_retract
                 msg = "After tip forming, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
                 if test:
                     self._log_always(msg)
@@ -6086,7 +6089,8 @@ class Mmu:
         self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
         self.z_hop_ramp = gcmd.get_float('Z_HOP_RAMP', self.z_hop_ramp, minval=0.)
-        self.toolchange_retract = gcmd.get_float('Z_TOOLCHANGE_RETRACT', self.toolchange_retract, minval=0., maxval=5.)
+        self.toolchange_retract = gcmd.get_float('TOOLCHANGE_RETRACT', self.toolchange_retract, minval=0., maxval=5.)
+        self.toolchange_retract_speed = gcmd.get_float('TOOLCHANGE_RETRACT_SPEED', self.toolchange_retract_speed, minval=0.)
 
         # Software behavior options
         self.extruder_temp_variance = gcmd.get_float('EXTRUDER_TEMP_VARIANCE', self.extruder_temp_variance, minval=1.)
@@ -6196,6 +6200,7 @@ class Mmu:
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         msg += "\nz_hop_ramp = %.1f" % self.z_hop_ramp
         msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
+        msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
 
         msg += "\n\nOTHER:"
         msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
