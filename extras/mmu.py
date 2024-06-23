@@ -4685,8 +4685,8 @@ class Mmu:
                 # Use stepper movement
                 reported = False
                 filament_remaining = 0.
-                park_pos = stepper_movement
-                msg = "After tip formation, extruder moved (park_pos): %.1fmm, encoder measured %.1fmm" % (park_pos, measured)
+                park_pos = stepper_movement + self.toolhead_ooze_reduction + (self.toolchange_retract if self._is_in_print() else 0) # PAUL RETRACT was: park_pos = stepper_movement
+                msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1mm (encoder measured %.1fmm)" % (stepper_movement, park_pos, measured)
                 if test:
                     self._log_always(msg)
                 else:
@@ -4694,8 +4694,8 @@ class Mmu:
             else:
                 # Means the macro reported it (usually for filament cutting)
                 reported = True
-                filament_remaining = park_pos - stepper_movement
-                msg = "After tip formation, park_pos reported as: %.1fmm with %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
+                filament_remaining = park_pos - stepper_movement - self.toolchange_retract # PAUL RETRACT was filament_remaining = park_pos - stepper_movement
+                msg = "After tip forming, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
                 if test:
                     self._log_always(msg)
                 else:
