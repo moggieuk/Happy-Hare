@@ -5817,7 +5817,7 @@ class Mmu:
     def cmd_MMU_TEST_CONFIG(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         # Try to catch illegal parameters
-        illegal_params = [p for p in gcmd.get_command_parameters() if vars(self).get(p.lower()) is None]
+        illegal_params = [p for p in gcmd.get_command_parameters() if vars(self).get(p.lower()) is None and p.lower() not in [self.VARS_MMU_CALIB_BOWDEN_LENGTH]]
         if illegal_params:
             raise gcmd.error("Unknown parameter: %s" % illegal_params)
 
