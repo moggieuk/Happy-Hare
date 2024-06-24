@@ -4697,7 +4697,7 @@ class Mmu:
                 # Means the macro reported it (usually for filament cutting)
                 reported = True
                 # PAUL RETRACT was filament_remaining = park_pos - stepper_movement
-                filament_remaining = park_pos - stepper_movement - self.toolchange_retract
+                filament_remaining = park_pos - stepper_movement - (self.toolchange_retract if self._is_in_print() else 0)
                 msg = "After tip forming, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
                 if test:
                     self._log_always(msg)
