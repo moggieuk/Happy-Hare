@@ -2544,7 +2544,7 @@ class Mmu:
         return {'mean': mean, 'stdev': stdev, 'min': vmin, 'max': vmax, 'range': vmax - vmin}
 
     # Filament is assumed to be at the extruder and will be at extruder again when complete
-    def _measure_toolhead(self, cold_temp=70, probe_depth=100, sensor_homing=50):
+    def _probe_toolhead(self, cold_temp=70, probe_depth=100, sensor_homing=50):
         # Ensure extruder is COLD
         self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % self.extruder_name)
         current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
@@ -2756,15 +2756,25 @@ class Mmu:
         if not self._has_sensor(self.ENDSTOP_TOOLHEAD):
             raise gcmd.error("Sorry this feature requires a toolhead sensor")
         clean = gcmd.get_int('CLEAN', 0, minval=0, maxval=1)
+        cut = gcmd.get_int('CUT', 0, minval=0, maxval=1)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         line = "-----------------------------------------------\n"
 
 
         msg = "Note:\n"
-        msg += "toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder) are calibrated with a CLEAN extruder and the 'CLEAN=1' flag\n"
-        msg += "toolhead_ooze_reduction (and toolhead_entry_to_extruder) are calibrated with a normal dirty extruder but without a cut filament tip\n"
+        msg += "1) toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder) are calibrated with a CLEAN extruder and the 'CLEAN=1' flag\n"
+        msg += "2) toolhead_ooze_reduction (and toolhead_entry_to_extruder) are calibrated with a normal dirty extruder but without a cut filament tip\n"
+        msg += "3) Optional variable_blade_pos is calibrated with manuall cut tip and the 'CUT=1' flag\n"
         msg += "Desired gate should be selected but the filament unloaded\n"
         self._log_always(msg)
+
+        if cut:
+            gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, None)
+            if gcode_macro is None:
+                raise gcmd.error("Filament tip forming macro '%s' not found" % self.form_tip_macro)
+            gcode_vars = self.printer.lookup_object("gcode_macro %s_VARS" % self.form_tip_macro, gcode_macro)
+            if not ('blade_pos' in gcode_vars.variables and 'retract_length' in gcode_vars.variables):
+                raise gcmd.error("Filament tip forming macro '%s' does not look like a cutting macro!" % self.form_tip_macro)
 
         try:
             self.calibrating = True
@@ -2773,9 +2783,28 @@ class Mmu:
             self._load_bowden(self.calibrated_bowden_length)
             self._home_to_extruder(self.extruder_homing_max)
 
-            if clean:
+            if cut:
+                self._log_always("Measuring blade cutter postion (with filament fragment)...")
+                tetn, tstn, tete = self._probe_toolhead()
+                # Blade position is the difference between empty and extruder with full cut measurements for sensor to nozzle
+                vbp = self.toolhead_sensor_to_nozzle - tstn
+                msg = line
+                if abs(vbp - self.toolhead_ooze_reduction) < 5:
+                    self._log_error("Measurements did not make sense. Looks like probing went past the blade pos!\nAre you holding the blade closed or have cut filament in the extruder?")
+                else:
+                    msg += "Calibration Results (cut tip):\n"
+                    msg += "> variable_blade_pos: %.1f (currently: %.1f)\n" % (vbp, gcode_vars.variables['blade_pos'])
+                    msg += "> variable_retract_length: %.1f-%.1f, recommend: %.1f (currently: %.1f)\n" % (self.toolhead_ooze_reduction + self.toolchange_retract, vbp, vbp - 5., gcode_vars.variables['retract_length'])
+                    msg += line
+                    self._log_always(msg)
+                    if save:
+                        self._log_always("New calibrated blade_pos and retract_length active until restart. Update mmu_macro_vars.cfg to persist")
+                        gcode_vars.variables['blade_pos'] = vbp
+                        gcode_vars.variables['retract_length'] = vbp - 5.
+
+            elif clean:
                 self._log_always("Measuring clean toolhead dimensions after cold pull...")
-                tetn, tstn, tete = self._measure_toolhead()
+                tetn, tstn, tete = self._probe_toolhead()
                 msg = line
                 msg += "Calibration Results (clean nozzle):\n"
                 msg += "> toolhead_extruder_to_nozzle: %.1f (currently: %.1f)\n" % (tetn, self.toolhead_extruder_to_nozzle)
@@ -2789,9 +2818,10 @@ class Mmu:
                     self.toolhead_extruder_to_nozzle = round(tetn, 1)
                     self.toolhead_sensor_to_nozzle = round(tstn, 1)
                     self.toolhead_entry_to_extruder = round(tete, 1)
+
             else:
                 self._log_always("Measuring dirty toolhead dimensions (with filament residue)...")
-                tetn, tstn, tete = self._measure_toolhead()
+                tetn, tstn, tete = self._probe_toolhead()
                 # Ooze reduction is the difference between empty and dirty measurements for sensor to nozzle
                 tor = self.toolhead_sensor_to_nozzle - tstn
                 msg = line
