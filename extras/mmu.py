@@ -3659,33 +3659,40 @@ class Mmu:
     cmd_MMU_HELP_help = "Display the complete set of MMU commands and function"
     def cmd_MMU_HELP(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
+        callbacks = gcmd.get_int('CALLBACKS', 0, minval=0, maxval=1)
         macros = gcmd.get_int('MACROS', 0, minval=0, maxval=1)
         testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
         steps = gcmd.get_int('STEPS', 0, minval=0, maxval=1)
-        msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 TESTING=1 STEPS=1 GCODE=1 for full command set)\n"
+        msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 CALLBACKS=1 TESTING=1 STEPS=1 for full command set)\n"
         tmsg = "\nCalibration and testing commands:\n"
-        mmsg = "\nMacros and callbacks (defined in mmu_software.cfg, mmu_form_tip.cfg, mmu_cut_tip.cfg, mmu_sequence.cfg, mmu_state.cfg, mmu_leds.cfg):\n"
+        mmsg = "\nMacros (defined in mmu_software.cfg\n"
+        cmsg = "\nCallbacks (defined in mmu_form_tip.cfg, mmu_cut_tip.cfg, mmu_sequence.cfg, mmu_state.cfg, mmu_leds.cfg):\n"
         smsg = "\nIndividual load/unload sequence steps:\n"
         cmds = list(self.gcode.ready_gcode_handlers.keys())
         cmds.sort()
         for c in cmds:
             d = self.gcode.gcode_help.get(c, "n/a")
+
             if c.startswith("MMU_START") or (c.startswith("MMU_END") and c not in ["MMU_ENDLESS_SPOOL"]):
-                mmsg += "%s : %s\n" % (c.upper(), d)
+                cmsg += "%s : %s\n" % (c.upper(), d) # Macro callbacks
+
             elif c.startswith("MMU") and not c.startswith("MMU__"):
-                if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c:
+                if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c and not "MMU_COLD_PULL" in c:
                     if c not in ["MMU_UNLOAD", "MMU_CHANGE_TOOL_STANDALONE", "MMU_CHECK_GATES", "MMU_REMAP_TTG", "MMU_FORM_TIP"]: # Remove aliases
                         msg += "%s : %s\n" % (c.upper(), d)
                 else:
-                    tmsg += "%s : %s\n" % (c.upper(), d)
+                    tmsg += "%s : %s\n" % (c.upper(), d) # Testing and calibration commands
+
             elif c.startswith("_MMU"):
                 if not c.startswith("_MMU_STEP") and c not in ["_MMU_M400"]:
-                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_CUT_TIP", "_MMU_FORM_TIP", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS", "_MMU_UPDATE_HEIGHT"]: # Remove internal helpers
-                        mmsg += "%s : %s\n" % (c.upper(), d)
+                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
+                        mmsg += "%s : %s\n" % (c.upper(), d) # Core command macros
                 else:
-                    smsg += "%s : %s\n" % (c.upper(), d)
+                    smsg += "%s : %s\n" % (c.upper(), d) # Invidual sequence step commands
         if testing:
             msg += tmsg
+        if callbacks:
+            msg += cmsg
         if macros:
             msg += mmsg
         if steps:
