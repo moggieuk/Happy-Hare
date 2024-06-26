@@ -698,6 +698,8 @@ class Mmu:
         logging.info("MMU Hardware Initialization -------------------------------")
         self.has_leds = False
 
+	self.printer.load_object(self.config, "mmu_sensors", None) ## Ensure mmu_sensors is loaded
+	    
         # Selector and Gear h/w setup ------
         section = self.SELECTOR_STEPPER_CONFIG
         if config.has_section(section):
@@ -719,7 +721,7 @@ class Mmu:
 
         # Setup filament homing sensors ------
         for name in [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER]:
-            sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
+            sensor = self.printer.load_object(self.config, "filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
                 # With MMU toolhead sensors must not accidentally pause nor call user defined macros
@@ -742,10 +744,10 @@ class Mmu:
                     mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
 
         # Get servo and (optional) encoder setup -----
-        self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
+        self.servo = self.printer.load_object(self.config, 'mmu_servo mmu_servo', None)
         if not self.servo:
             raise self.config.error("No [mmu_servo] definition found in mmu_hardware.cfg")
-        self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
+        self.encoder_sensor = self.printer.load_object(self.config, 'mmu_encoder mmu_encoder', None)
         if not self.encoder_sensor:
             # MMU logging not set up so use main klippy logger
             logging.warn("No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
