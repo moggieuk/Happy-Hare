@@ -1360,6 +1360,9 @@ class Mmu:
                 'endless_spool': self.enable_endless_spool,
                 'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
                 'reason_for_pause': self.reason_for_pause if self._is_mmu_paused() else "",
+                'extruder_filament_remaining': self.filament_remaining,
+                'extruder_residual_filament': self.toolhead_ooze_reduction,
+                'toolchange_retract': self.toolchange_retract,
         }
 
     def _reset_statistics(self):
@@ -2764,7 +2767,7 @@ class Mmu:
         msg = "Note:\n"
         msg += "1) toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder) are calibrated with a CLEAN extruder and the 'CLEAN=1' flag\n"
         msg += "2) toolhead_ooze_reduction (and toolhead_entry_to_extruder) are calibrated with a normal dirty extruder but without a cut filament tip\n"
-        msg += "3) Optional variable_blade_pos is calibrated with manuall cut tip and the 'CUT=1' flag\n"
+        msg += "3) Optional variable_blade_pos is calibrated with manually cut tip and the 'CUT=1' flag\n"
         msg += "Desired gate should be selected but the filament unloaded\n"
         self._log_always(msg)
 
@@ -4703,8 +4706,8 @@ class Mmu:
             try:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
-                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolhead_ooze_reduction VALUE=%.1f" % (self.form_tip_macro, self.toolhead_ooze_reduction), exception=True)
-                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolchange_retract VALUE=%.1f" % (self.form_tip_macro, self.toolchange_retract if self._is_in_print() else 0), exception=True)
+# PAUL                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolhead_ooze_reduction VALUE=%.1f" % (self.form_tip_macro, self.toolhead_ooze_reduction), exception=True)
+# PAUL                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolchange_retract VALUE=%.1f" % (self.form_tip_macro, self.toolchange_retract if self._is_in_print() else 0), exception=True)
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
