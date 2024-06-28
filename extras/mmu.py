@@ -2764,10 +2764,10 @@ class Mmu:
         line = "-----------------------------------------------\n"
 
 
-        msg = "Note:\n"
-        msg += "1) toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder) are calibrated with a CLEAN extruder and the 'CLEAN=1' flag\n"
-        msg += "2) toolhead_ooze_reduction (and toolhead_entry_to_extruder) are calibrated with a normal dirty extruder but without a cut filament tip\n"
-        msg += "3) Optional variable_blade_pos is calibrated with manually cut tip and the 'CUT=1' flag\n"
+        msg = "Reminder:\n"
+        msg += "1) 'CLEAN=1' with clean extruder for: toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder)\n"
+        msg += "2) No flags with dirty extruder (no cut tip) for: toolhead_ooze_reduction (and toolhead_entry_to_extruder)\n"
+        msg += "3) 'CUT=1' holding blade in for: variable_blade_pos\n"
         msg += "Desired gate should be selected but the filament unloaded\n"
         self._log_always(msg)
 
