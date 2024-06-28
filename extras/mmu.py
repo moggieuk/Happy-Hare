@@ -4706,8 +4706,6 @@ class Mmu:
             try:
                 initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
-# PAUL                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolhead_ooze_reduction VALUE=%.1f" % (self.form_tip_macro, self.toolhead_ooze_reduction), exception=True)
-# PAUL                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=toolchange_retract VALUE=%.1f" % (self.form_tip_macro, self.toolchange_retract if self._is_in_print() else 0), exception=True)
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
@@ -4726,7 +4724,6 @@ class Mmu:
                 # Use stepper movement
                 reported = False
                 filament_remaining = 0.
-                # PAUL RETRACT was: park_pos = stepper_movement
                 park_pos = stepper_movement + self.toolhead_ooze_reduction + (self.toolchange_retract if self._is_in_print() else 0)
                 msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1fmm (encoder measured %.1fmm)" % (stepper_movement, park_pos, measured)
                 if test:
@@ -4736,7 +4733,6 @@ class Mmu:
             else:
                 # Means the macro reported it (usually for filament cutting)
                 reported = True
-                # PAUL RETRACT was filament_remaining = park_pos - stepper_movement
                 filament_remaining = park_pos - stepper_movement - (self.toolchange_retract if self._is_in_print() else 0)
                 msg = "After tip forming, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
                 if test:
