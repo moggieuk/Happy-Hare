@@ -82,19 +82,15 @@ MMU's are complexd! Fortunately Happy Hare has elaborate documentation logically
 
 **Other Resources:**
 <div align="left">
-<a href="https://www.youtube.com/watch?v=uaPLuWJBdQU"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube1.png" width="30%"></a>
-<br>
+<a href="https://www.youtube.com/watch?v=uaPLuWJBdQU"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube1.png" width="30%"></a><br>
 German instructional video created by Crydteam
 <!--
     <img src="https://i9.ytimg.com/vi_webp/uaPLuWJBdQU/maxresdefault.webp?v=6522d1a6&sqp=CKycn6kG&rs=AOn4CLBCiHQsjGJ0c8ywvkxy9uWEk_yUXw" 
          alt="Everything Is AWESOME" 
          style="width:50%;">
 -->
-<br>
+<p>
 <a href="https://www.youtube.com/watch?v=FCl5NfQnulg"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube2.png" width="30%"></a>
-
-<br>
-
 English Happy Hare overview and ERCFv2 setup by Silverback
 </div>
 
