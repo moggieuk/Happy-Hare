@@ -93,7 +93,7 @@ German instructional video created by Crydteam
 <p><br>
 
 <a href="https://www.youtube.com/watch?v=FCl5NfQnulg"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube2.png" width="30%"></a>
-English Happy Hare overview and ERCFv2 setup by Silverback
+English Happy Hare introduction by Silverback
 </div>
 
 </td>
