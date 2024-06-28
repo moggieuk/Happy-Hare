@@ -3169,7 +3169,7 @@ class Mmu:
         if self._is_in_print(force_in_print):
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation, force_in_print=force_in_print)
-        self._initialize_filament_position(dwell=None) # Encoder 0000 # PAUL added the dwell=None to eliminate delay
+        self._initialize_filament_position(dwell=None) # Encoder 0000 # PAUL added the dwell=None to eliminate delay .. causes step_compress! flush move queue first
         # Ready to continue printing...
 
     def _clear_macro_state(self):
@@ -3415,6 +3415,8 @@ class Mmu:
         return self.mmu_toolhead.get_position()[1]
 
     def _set_filament_position(self, position = 0.):
+        self.toolhead.flush_step_generation() # PAUL idea I THINK THIS IS KEY, when steppers are synced
+        self.mmu_toolhead.flush_step_generation() # PAUL idea
         pos = self.mmu_toolhead.get_position()
         pos[1] = position
         self.mmu_toolhead.set_position(pos)
