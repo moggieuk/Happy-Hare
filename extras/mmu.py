@@ -3276,7 +3276,7 @@ class Mmu:
                 # Default: Only undo the z-hop move so sequence macros choose what to do with x,y ('last', 'next', 'none')...
                 if self.saved_toolhead_height >= 0:
                     max_accel = min(self.toolhead.get_status(self.reactor.monotonic())['max_accel'], self.z_hop_max_accel)
-                    self._log_debug("Restoring toolhead height (speed:%d, accel:%d)" % self.z_hop_speed * 60, max_accel)
+                    self._log_debug("Restoring toolhead height (speed:%d, accel:%d)" % (self.z_hop_speed * 60, max_accel))
                     self.gcode.run_script_from_command("G90")
                     self.gcode.run_script_from_command("M204 S%d" % max_accel)
                     self.gcode.run_script_from_command("G1 Z%.4f F%d" % (self.saved_toolhead_height, self.z_hop_speed * 60))
