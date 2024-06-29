@@ -3169,7 +3169,7 @@ class Mmu:
         if self._is_in_print(force_in_print):
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation, force_in_print=force_in_print)
-        self._initialize_filament_position(dwell=None) # Encoder 0000 # PAUL added the dwell=None to eliminate delay .. causes step_compress! flush move queue first
+        self._initialize_filament_position(dwell=None) # Encoder 0000
         # Ready to continue printing...
 
     def _clear_macro_state(self):
@@ -3415,8 +3415,6 @@ class Mmu:
         return self.mmu_toolhead.get_position()[1]
 
     def _set_filament_position(self, position = 0.):
-        self.toolhead.flush_step_generation() # PAUL idea I THINK THIS IS KEY, when steppers are synced
-        self.mmu_toolhead.flush_step_generation() # PAUL idea
         pos = self.mmu_toolhead.get_position()
         pos[1] = position
         self.mmu_toolhead.set_position(pos)
@@ -6320,8 +6318,8 @@ class Mmu:
 
         self._check_runout() # Can throw MmuError
         self._continue_printing("endless_spool") # Continue printing...
-        #self._movequeues_wait_moves(toolhead=True, mmu_toolhead=True) # PAUL do we need this?
-        self.pause_resume.send_resume_command()
+        #self._movequeues_wait_moves(toolhead=True, mmu_toolhead=True) # PAUL why wait?
+        self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
     def _get_next_endless_spool_gate(self, tool, gate):
         group = self.endless_spool_groups[gate]

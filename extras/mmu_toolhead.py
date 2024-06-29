@@ -160,6 +160,11 @@ class MmuToolHead(toolhead.ToolHead, object):
     def set_position(self, newpos, homing_axes=()):
         for _ in range(4 - len(newpos)):
             newpos.append(0.)
+
+        if self.gear_motion_queue: # Avoid stepcompress problem when synced
+            printer_toolhead = self.printer.lookup_object('toolhead')
+            printer_toolhead.flush_step_generation()
+
         super(MmuToolHead, self).set_position(newpos, homing_axes)
         self.resync_gear_position_to_extruder()
 
