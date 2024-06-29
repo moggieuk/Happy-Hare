@@ -396,8 +396,9 @@ class Mmu:
         # Toolchange blob and stringing control
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.4, minval=0.)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
-        self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
         self.z_hop_ramp = config.getfloat('z_hop_ramp', 0., minval=0.)
+        self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
+        self.z_hop_max_accel = config.getint('z_hop_max_accel', 10000, minval=1) # Not currently exposed
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
         self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=0.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
@@ -3211,6 +3212,7 @@ class Mmu:
                 self._log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
                 self.saved_toolhead_position = operation
+                self.saved_toolhead_max_accel = self.toolhead.max_accel # PAUL
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
@@ -3230,10 +3232,13 @@ class Mmu:
                     # Factor z_hop_ramp
                     current_x, current_y = gcode_pos.x, gcode_pos.y
                     new_x, new_y = self.move_towards_center(current_x, current_y, axis_maximum.x, axis_maximum.y, self.z_hop_ramp)
+                    max_accel = min(self.toolhead.get_status(eventtime)['max_accel'], self.z_hop_max_accel) # PAUL
 
                     self.gcode.run_script_from_command("G90")
+                    self.gcode.run_script_from_command("M204 S%d" % max_accel) # PAUL
                     self.gcode.run_script_from_command("G1 X%.4f Y%.4f Z%.4f F%d" % (new_x, new_y, act_z + safe_z, self.z_hop_speed * 60)) # Ramp
                     self.gcode.run_script_from_command("G1 X%.4f Y%.4f F%d" % (current_x, current_y, self.z_hop_speed * 60)) # Restore x,y
+                    self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel) # PAUL
             else:
                 self._log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
@@ -3264,6 +3269,7 @@ class Mmu:
 
             if self.restore_toolhead_xy_position:
                 # Restore pre-pause position and state. Currently not used because we allow sequence macro to control x,y movement
+                self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel) # PAUL
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self._log_debug("Restored gcode state and position (%s) after %s" % (toolhead_gcode_pos, operation))
@@ -3271,8 +3277,12 @@ class Mmu:
                 # Default: Only undo the z-hop move so sequence macros choose what to do with x,y ('last', 'next', 'none')...
                 if self.saved_toolhead_height >= 0:
                     self._log_debug("Restoring toolhead height")
+                    eventtime = self.reactor.monotonic() # PAUL
+                    max_accel = min(self.toolhead.get_status(eventtime)['max_accel'], self.z_hop_max_accel) # PAUL
                     self.gcode.run_script_from_command("G90")
+                    self.gcode.run_script_from_command("M204 S%d" % max_accel) # PAUL
                     self.gcode.run_script_from_command("G1 Z%.4f F%d" % (self.saved_toolhead_height, self.z_hop_speed * 60))
+                    self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel) # PAUL
                 # But ensure gcode state...
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state")
                 self._log_debug("Restored gcode state and z-hop position only (Z:%.1f) after %s" % (self.saved_toolhead_height, operation))
@@ -3296,6 +3306,7 @@ class Mmu:
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_position = None
         self.saved_toolhead_height = -1.
+        self.saved_toolhead_max_accel = 0 # PAUL
 
     def _disable_runout(self):
         enabled = self.runout_enabled
