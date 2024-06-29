@@ -6318,7 +6318,6 @@ class Mmu:
 
         self._check_runout() # Can throw MmuError
         self._continue_printing("endless_spool") # Continue printing...
-        #self._movequeues_wait_moves(toolhead=True, mmu_toolhead=True) # PAUL why wait?
         self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
     def _get_next_endless_spool_gate(self, tool, gate):
