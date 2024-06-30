@@ -84,7 +84,7 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
-    VERSION = 2.53 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 2.60 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.0 # Delay before running bootup tasks
 
@@ -267,6 +267,7 @@ class Mmu:
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
         self._last_tool = self.TOOL_GATE_UNKNOWN
+        self._toolhead_max_accel = self.config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
@@ -396,9 +397,9 @@ class Mmu:
         # Toolchange blob and stringing control
         self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.4, minval=0.)
         self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
-        self.z_hop_ramp = config.getfloat('z_hop_ramp', 0., minval=0.)
-        self.z_hop_speed = config.getfloat('z_hop_speed', 15., minval=1.)
-        self.z_hop_max_accel = config.getint('z_hop_max_accel', 10000, minval=1) # Not currently exposed
+        self.z_hop_ramp = config.getfloat('z_hop_ramp', 15., minval=0.)
+        self.z_hop_speed = config.getfloat('z_hop_speed', 150., minval=1.)
+        self.z_hop_accel = config.getint('z_hop_accel', self._toolhead_max_accel, minval=1)
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
         self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=0.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
@@ -3223,8 +3224,7 @@ class Mmu:
                 # Lift toolhead off print the specified z-hop
                 if self._is_in_print(force_in_print) and z_hop_height is not None and z_hop_height > 0:
                     axis_maximum = self.toolhead.get_status(eventtime)['axis_maximum']
-                    max_accel = min(self.toolhead.get_status(eventtime)['max_accel'], self.z_hop_max_accel)
-                    self._log_debug("Lifting toolhead %.1fmm with %.1fmm ramp (speed:%d, accel:%d)" % (z_hop_height, self.z_hop_ramp, self.z_hop_speed, max_accel))
+                    self._log_debug("Lifting toolhead %.1fmm with %.1fmm ramp (speed:%d, accel:%d)" % (z_hop_height, self.z_hop_ramp, self.z_hop_speed, self.z_hop_accel))
                     act_z = self.saved_toolhead_height = gcode_pos.z
                     max_z = axis_maximum.z
                     max_z -= gcode_move.get_status(eventtime)['homing_origin'].z
@@ -3235,7 +3235,7 @@ class Mmu:
                     new_x, new_y = self.move_towards_center(current_x, current_y, axis_maximum.x, axis_maximum.y, self.z_hop_ramp)
 
                     self.gcode.run_script_from_command("G90")
-                    self.gcode.run_script_from_command("M204 S%d" % max_accel)
+                    self.gcode.run_script_from_command("M204 S%d" % self.z_hop_accel)
                     self.gcode.run_script_from_command("G1 X%.4f Y%.4f Z%.4f F%d" % (new_x, new_y, act_z + safe_z, self.z_hop_speed * 60)) # Ramp
                     self.gcode.run_script_from_command("G1 X%.4f Y%.4f F%d" % (current_x, current_y, self.z_hop_speed * 60)) # Restore x,y
             else:
@@ -3275,10 +3275,9 @@ class Mmu:
             else:
                 # Default: Only undo the z-hop move so sequence macros choose what to do with x,y ('last', 'next', 'none')...
                 if self.saved_toolhead_height >= 0:
-                    max_accel = min(self.toolhead.get_status(self.reactor.monotonic())['max_accel'], self.z_hop_max_accel)
-                    self._log_debug("Restoring toolhead height (speed:%d, accel:%d)" % (self.z_hop_speed, max_accel))
+                    self._log_debug("Restoring toolhead height (speed:%d, accel:%d)" % (self.z_hop_speed, self.z_hop_accel))
                     self.gcode.run_script_from_command("G90")
-                    self.gcode.run_script_from_command("M204 S%d" % max_accel)
+                    self.gcode.run_script_from_command("M204 S%d" % self.z_hop_accel)
                     self.gcode.run_script_from_command("G1 Z%.4f F%d" % (self.saved_toolhead_height, self.z_hop_speed * 60))
                 # But ensure gcode state...
                 self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
@@ -6133,6 +6132,7 @@ class Mmu:
         self.z_hop_height_toolchange = gcmd.get_float('Z_HOP_HEIGHT_TOOLCHANGE', self.z_hop_height_toolchange, minval=0.)
         self.z_hop_height_error = gcmd.get_float('Z_HOP_HEIGHT_ERROR', self.z_hop_height_error, minval=0.)
         self.z_hop_speed = gcmd.get_float('Z_HOP_SPEED', self.z_hop_speed, minval=1.)
+        self.z_hop_accel = gcmd.get_float('Z_HOP_ACCEL', self.z_hop_accel, minval=1.)
         self.z_hop_ramp = gcmd.get_float('Z_HOP_RAMP', self.z_hop_ramp, minval=0.)
         self.toolchange_retract = gcmd.get_float('TOOLCHANGE_RETRACT', self.toolchange_retract, minval=0., maxval=5.)
         self.toolchange_retract_speed = gcmd.get_float('TOOLCHANGE_RETRACT_SPEED', self.toolchange_retract_speed, minval=0.)
@@ -6244,6 +6244,7 @@ class Mmu:
         msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
         msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
         msg += "\nz_hop_ramp = %.1f" % self.z_hop_ramp
+        msg += "\nz_hop_accel = %d" % self.z_hop_accel
         msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
         msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
 
