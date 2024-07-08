@@ -83,6 +83,10 @@ class MmuServer:
 
         self.setup_placeholder_processor(config) # Replaces file_manager/metadata with this file
 
+    async def component_init(self) -> None:
+        # just refetch gate_occupation from spoolman db
+        await self.remote_gate_map(silent=True, dump=False)
+
     async def _log_n_send(self, msg, prompt=False):
         ''' logs and sends msg to the klipper console'''
         logging.error(msg)
