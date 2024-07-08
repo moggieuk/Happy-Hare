@@ -69,7 +69,7 @@ class MmuServer:
             "spoolman_check_filament", self.check_filament
         )
         self.server.register_remote_method(
-            "spoolman_get_spools_for_machine", self.get_spools_for_machine
+            "spoolman_remote_gate_map", self.remote_gate_map
         )
         self.server.register_remote_method(
             "spoolman_set_spool_gate", self.set_spool_gate
@@ -135,7 +135,7 @@ class MmuServer:
                 f"Failed to unset spool {spool_id} for machine {machine_hostname}: {e}")
             await self._log_n_send(f"Failed to unset spool {spool_id} for machine {machine_hostname}")
             return False
-        await self.get_spools_for_machine(silent=True)
+        await self.remote_gate_map(silent=True)
         return True
 
     async def get_info_for_spool(self, spool_id : int):
@@ -450,7 +450,7 @@ class MmuServer:
         based on the filament type and the amount of filament left in spoolman db.
         '''
         logging.info("Checking filaments")
-        await self.get_spools_for_machine(silent=True)
+        await self.remote_gate_map(silent=True)
         await self._log_n_send("Checking filament consistency: ")
         try:
             print_stats = await self.klippy_apis.query_objects({"print_stats": None})
@@ -564,7 +564,7 @@ class MmuServer:
             await self.klippy_apis.resume_print()
         return True
 
-    async def get_spools_for_machine(self, silent=False) -> List[Dict[str, Any]]:
+    async def remote_gate_map(self, silent=False) -> List[Dict[str, Any]]:
         '''
         Gets all spools assigned to the current machine
         '''
@@ -616,13 +616,13 @@ class MmuServer:
         self.gate_occupation = spools
         gate_dict = {}
         for i, spool in enumerate(table):
-            gate_dict[str(i)] = {
+            gate_dict[i] = {
                                 'spool_id': spool['id'] if spool else -1,
                                 'material': spool['filament']['material'][:6] if spool else '',
                                 'color': spool['filament']['color_hex'][:6] if spool else ''
                             }
-        await self._log_n_send(f"Gate dict: {gate_dict}")
-        await self.klippy_apis.run_gcode("MMU_GATE_MAP MAP=\"{}\" QUIET=1".format(gate_dict))
+            await self.klippy_apis.run_gcode("MMU_GATE_MAP GATE={} SPOOLID={} MATERIAL={} COLOR={} QUIET=1".format(i, gate_dict[i]['spool_id'], gate_dict[i]['material'], gate_dict[i]['color']))
+        await self.klippy_apis.run_gcode("MMU_GATE_MAP")
         return True
 
     async def set_spool_gate(self, spool_id : int, gate : int) -> bool:
@@ -635,7 +635,7 @@ class MmuServer:
         returns:
             @return: True if successful, False otherwise
         '''
-        await self.get_spools_for_machine(silent=True)
+        await self.remote_gate_map(silent=True)
         if spool_id is None:
             msg = "Trying to set spool but no spool id provided."
             await self._log_n_send(msg)
@@ -730,7 +730,7 @@ class MmuServer:
         else:
             logging.info(f"Spool {spool_id} set for machine {machine_hostname} @ gate {gate}")
         await self._log_n_send(f"Spool {spool_id} set for machine {machine_hostname} @ gate {gate}")
-        await self.get_spools_for_machine(silent=True)
+        await self.remote_gate_map(silent=True)
         if gate == 0 and (self.filament_gates == 1):
             await self.set_active_gate(gate)
             await self._log_n_send(f"{CONSOLE_TAB*2}Setting gate 0 as active (single gate machine)")
