@@ -145,17 +145,17 @@ class MmuServer:
     async def get_info_for_spool(self, spool_id : int):
         response = await self.http_client.request(
                 method="GET",
-                url=f"{self.spoolman_url}/v1/spool/{spool_id}",
+                url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
             )
         if response.status_code == 404:
-            logging.info(f"Spool ID {spool_id} not found")
-            return False
+            await self._log_n_send(f"Spool ID {spool_id} not found")
+            return {}
         elif response.has_error():
-            err_msg = self._get_response_error(response)
+            err_msg = self.spoolman._get_response_error(response)
             logging.info(f"Attempt to get spool info failed: {err_msg}")
-            return False
+            return {}
         else:
-            logging.info(f"Found Spool ID {self.spool_id} on spoolman instance")
+            logging.info(f"Found Spool ID {spool_id} on spoolman instance")
 
         spool_info = response.json()
         logging.info(f"Spool info: {spool_info}")
