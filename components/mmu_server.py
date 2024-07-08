@@ -120,19 +120,19 @@ class MmuServer:
         try:
             response = await self.http_client.request(
                 method="PATCH",
-                url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}/extra",
+                url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
                 body=json.dumps({"machine_name": ""}),
             )
             if response.status_code == 404:
-                logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}/extra' not found")
+                logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
                 return False
             response = await self.http_client.request(
                 method="PATCH",
-                url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}/extra",
-                body=json.dumps({"mmu_gate_map": ""}),
+                url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
+                body=json.dumps({"extra" : {"mmu_gate_map": -1}}),
             )
             if response.status_code == 404:
-                logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}/extra' not found")
+                logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
                 return False
         except Exception as e:
             logging.error(
