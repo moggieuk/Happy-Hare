@@ -622,16 +622,16 @@ class MmuServer:
             await self._log_n_send(f"No spools assigned to machine: {machine_hostname}")
         self.gate_occupation = spools
         if dump:
-        gate_dict = {}
-        for i, spool in enumerate(table):
-            gate_dict[i] = {
-                                'spool_id': spool['id'] if spool else -1,
-                                'material': spool['filament']['material'][:6] if spool else '',
-                                'color': spool['filament']['color_hex'][:6] if spool else ''
-                            }
+            gate_dict = {}
+            for i, spool in enumerate(table):
+                gate_dict[i] = {
+                                    'spool_id': spool['id'] if spool else -1,
+                                    'material': spool['filament']['material'][:6] if spool else '',
+                                    'color': spool['filament']['color_hex'][:6] if spool else ''
+                                }
                 await self.klippy_apis.run_gcode("MMU_GATE_MAP GATE={} SPOOLID={} MATERIAL={} COLOR={} QUIET=1 SYNC=0".format(i, gate_dict[i]['spool_id'], gate_dict[i]['material'], gate_dict[i]['color']))
             if not silent:
-        await self.klippy_apis.run_gcode("MMU_GATE_MAP")
+                await self.klippy_apis.run_gcode("MMU_GATE_MAP")
         return True
 
     async def set_spool_gate(self, spool_id : int, gate : int) -> bool:
@@ -692,12 +692,12 @@ class MmuServer:
         identical = False
         if machine_name :
             if mmu_gate_map != -1 and mmu_gate_map is not None :
-            # if the spool is already assigned to current machine
-            if machine_name == self.printer_info["hostname"]:
+                # if the spool is already assigned to current machine
+                if machine_name == self.printer_info["hostname"]:
                     await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to this machine @ gate {mmu_gate_map}")
-                if mmu_gate_map == gate:
+                    if mmu_gate_map == gate:
                         identical = True
-                    await self._log_n_send(f"Updating gate for spool {spool_info['filament']['name']} (id: {spool_id}) to {gate}")
+                        await self._log_n_send(f"Updating gate for spool {spool_info['filament']['name']} (id: {spool_id}) to {gate}")
             # if the spool is already assigned to another machine
             else:
                 await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to another machine: {machine_name}")
@@ -705,15 +705,15 @@ class MmuServer:
 
         # then check that no spool is already assigned to the gate of this machine (if not previously identified as the same spool)
         if not identical:
-        if self.gate_occupation not in [False, None]:
+            if self.gate_occupation not in [False, None]:
                 for g, spool in enumerate(self.gate_occupation):
                     if g == gate:
-                    await self._log_n_send(f"Gate {gate} is already assigned to spool {spool['filament']['name']} (id: {spool['id']})")
-                    await self._log_n_send(f"{CONSOLE_TAB}- Overwriting gate assignment")
-                    if not await self.unset_spool_id(spool['id']):
-                        await self._log_n_send(f"{CONSOLE_TAB*2}Failed to unset spool {spool['filament']['name']} (id: {spool['id']}) from gate {gate}")
-                        return False
-                    await self._log_n_send(f"{CONSOLE_TAB*2}Spool {spool['filament']['name']} (id: {spool['id']}) unset from gate {gate}")
+                        await self._log_n_send(f"Gate {gate} is already assigned to spool {spool['filament']['name']} (id: {spool['id']})")
+                        await self._log_n_send(f"{CONSOLE_TAB}- Overwriting gate assignment")
+                        if not await self.unset_spool_id(spool['id']):
+                            await self._log_n_send(f"{CONSOLE_TAB*2}Failed to unset spool {spool['filament']['name']} (id: {spool['id']}) from gate {gate}")
+                            return False
+                        await self._log_n_send(f"{CONSOLE_TAB*2}Spool {spool['filament']['name']} (id: {spool['id']}) unset from gate {gate}")
 
         # Check if spool is not allready archived
         if spool_info['archived']:
