@@ -669,7 +669,10 @@ class MmuServer:
 
         # first check if the spool is not already assigned to a machine
         spool_info = await self.get_info_for_spool(spool_id)
+        if not spool_info:
+            return False
         mmu_gate_map = None
+        machine_name = None
         extra = {}
         if 'extra' in spool_info:
             extra = copy.deepcopy(spool_info['extra'])
@@ -677,28 +680,34 @@ class MmuServer:
             machine_name = extra.get('machine_name', None)
             if machine_name is None :
                 if 'machine_name' not in await self.get_extra_fields("spool"):
-                    await self.add_extra_field("spool", "machine_name", type="text", default_value="N.A.")
-            if mmu_gate_map == -1 or mmu_gate_map is None :
-                mmu_gate_map = None
+                    await self.add_extra_field("spool", "machine_name", type="text", default_value="")
+            if mmu_gate_map is None :
                 if 'mmu_gate_map' not in await self.get_extra_fields("spool"):
                     await self.add_extra_field("spool", "mmu_gate_map", type="integer", default_value=-1)
+            if mmu_gate_map :
+                mmu_gate_map = int(mmu_gate_map)
+            if machine_name :
+                machine_name = json.loads(machine_name)
 
-        if mmu_gate_map:
+        identical = False
+        if machine_name :
+            if mmu_gate_map != -1 and mmu_gate_map is not None :
             # if the spool is already assigned to current machine
             if machine_name == self.printer_info["hostname"]:
-                await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to this machine @ gate {mmu_gate_map.split(':')[1]}")
+                    await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to this machine @ gate {mmu_gate_map}")
                 if mmu_gate_map == gate:
+                        identical = True
                     await self._log_n_send(f"Updating gate for spool {spool_info['filament']['name']} (id: {spool_id}) to {gate}")
             # if the spool is already assigned to another machine
             else:
-                await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to another machine: {mmu_gate_map}")
+                await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to another machine: {machine_name}")
                 return False
 
-        # then check that no spool is already assigned to the gate of this machine
+        # then check that no spool is already assigned to the gate of this machine (if not previously identified as the same spool)
+        if not identical:
         if self.gate_occupation not in [False, None]:
-            for spool in self.gate_occupation:
-                logging.info(f"found spool: {spool['filament']['name']} ")
-                if mmu_gate_map == gate:
+                for g, spool in enumerate(self.gate_occupation):
+                    if g == gate:
                     await self._log_n_send(f"Gate {gate} is already assigned to spool {spool['filament']['name']} (id: {spool['id']})")
                     await self._log_n_send(f"{CONSOLE_TAB}- Overwriting gate assignment")
                     if not await self.unset_spool_id(spool['id']):
@@ -722,7 +731,6 @@ class MmuServer:
             "machine_name" : f"\"{machine_hostname}\"",
             "mmu_gate_map" : gate
         })
-        await self._log_n_send(f"Body for spool {spool_id} : {extra}")
         response = await self.http_client.request(
             method='PATCH',
             url=f'{self.spoolman.spoolman_url}/v1/spool/{spool_id}',
@@ -736,9 +744,7 @@ class MmuServer:
             logging.info(f"Attempt to set spool failed: {err_msg}")
             await self._log_n_send(f"Failed to set spool {spool_id} for machine {machine_hostname}")
             return False
-        else:
-            logging.info(f"Spool {spool_id} set for machine {machine_hostname} @ gate {gate}")
-        await self._log_n_send(f"Spool {spool_id} set for machine {machine_hostname} @ gate {gate}")
+        await self._log_n_send(f"Spool {spool_id} set for machine {machine_hostname} @ gate {gate} in spoolman db")
         await self.remote_gate_map(silent=True)
         if gate == 0 and (self.filament_gates == 1):
             await self.set_active_gate(gate)
