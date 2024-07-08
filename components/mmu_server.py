@@ -762,7 +762,7 @@ class MmuServer:
                     logging.info(
                         f"Clearing gate {gate} for machine: {self.printer_info['hostname']}")
                     self.server.send_event(
-                        "spoolman:clear_spool_gate", {"gate": gate}
+                        "spoolman:unset_spool_gate", {"gate": gate}
                     )
                     await self.unset_spool_id(spool['id'])
                     await self._log_n_send(f"Gate {gate} cleared")
@@ -770,7 +770,7 @@ class MmuServer:
                         logging.info(
                             f"Clearing machine_name : {self.printer_info['hostname']}")
                         self.server.send_event(
-                            "spoolman:clear_spool_gate", {"gate": gate}
+                            "spoolman:unset_spool_gate", {"gate": gate}
                         )
                         await self.unset_spool_id(spool['id'])
                         await self._log_n_send(f"Gate {gate} cleared")
