@@ -568,9 +568,9 @@ class MmuServer:
             await self.klippy_apis.resume_print()
         return True
 
-    async def remote_gate_map(self, silent=False) -> List[Dict[str, Any]]:
+    async def remote_gate_map(self, silent=False, dump=True) -> List[Dict[str, Any]]:
         '''
-        Gets all spools assigned to the current machine
+        Get all spools assigned to the current machine from spoolman db and set them in the gates
         '''
         # get current printer hostname
         machine_hostname = self.printer_info["hostname"]
@@ -582,7 +582,10 @@ class MmuServer:
             )
             for spool in reponse.json() :
                 if 'extra' in spool and 'machine_name' in spool['extra'] and json.loads(spool['extra']['machine_name']) == machine_hostname :
-                    spools.append(spool)
+                    tmp_spool = copy.deepcopy(spool)
+                    tmp_spool['extra']['machine_name'] = json.loads(tmp_spool['extra']['machine_name'])
+                    tmp_spool['extra']['mmu_gate_map'] = int(tmp_spool['extra']['mmu_gate_map'])
+                    spools.append(tmp_spool)
 
         except Exception as e:
             if not silent :
@@ -594,15 +597,15 @@ class MmuServer:
                 await self._log_n_send(f"Number of spools assigned to machine {machine_hostname} is greater than the number of gates available on the machine. Please check the spoolman or moonraker [spoolman] setup.")
             return []
         spools = []
+        table = [None for __ in range(self.filament_gates)]
         if self.machine_occupation:
             if not silent:
                 await self._log_n_send("Spools for machine:")
             # create a table of size len(spools)
-            table = [None for __ in range(self.filament_gates)]
             for spool in self.machine_occupation:
                 gate = None
                 if 'mmu_gate_map' in spool['extra']:
-                    gate = json.loads(spool['extra']['mmu_gate_map'])
+                    gate = int(spool['extra']['mmu_gate_map'])
                 if gate is None :
                     if not silent :
                         await self._log_n_send(f"'mmu_gate_map' extra field for {spool['filament']['name']} @ {spool['id']} in spoolman db seems to not be set. Please check the spoolman setup.")
@@ -618,6 +621,7 @@ class MmuServer:
         if not silent and not spools:
             await self._log_n_send(f"No spools assigned to machine: {machine_hostname}")
         self.gate_occupation = spools
+        if dump:
         gate_dict = {}
         for i, spool in enumerate(table):
             gate_dict[i] = {
@@ -625,7 +629,8 @@ class MmuServer:
                                 'material': spool['filament']['material'][:6] if spool else '',
                                 'color': spool['filament']['color_hex'][:6] if spool else ''
                             }
-            await self.klippy_apis.run_gcode("MMU_GATE_MAP GATE={} SPOOLID={} MATERIAL={} COLOR={} QUIET=1".format(i, gate_dict[i]['spool_id'], gate_dict[i]['material'], gate_dict[i]['color']))
+                await self.klippy_apis.run_gcode("MMU_GATE_MAP GATE={} SPOOLID={} MATERIAL={} COLOR={} QUIET=1 SYNC=0".format(i, gate_dict[i]['spool_id'], gate_dict[i]['material'], gate_dict[i]['color']))
+            if not silent:
         await self.klippy_apis.run_gcode("MMU_GATE_MAP")
         return True
 
