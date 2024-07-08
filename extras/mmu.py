@@ -513,6 +513,7 @@ class Mmu:
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=1)
+        self.enable_spoolman_remote_gate_map = config.getint('enable_spoolman_remote_gate_map', 0, minval=0, maxval=1)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
         self.endless_spool_on_load = config.getint('endless_spool_on_load', 0, minval=0, maxval=1)
@@ -1204,6 +1205,8 @@ class Mmu:
                 self._disable_runout() # Initially disable clog/runout detection
             self._servo_move()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delay to allow for correct initial state
+            if self.enable_spoolman_remote_gate_map:
+                self._gate_map_from_spoolman()
             self._update_filaments_from_spoolman()
         except Exception as e:
             self._log_error('Warning: Error booting up MMU: %s' % str(e))
@@ -1442,7 +1445,7 @@ class Mmu:
             m = (s // 60) % 60
             ms = int(round((seconds * 1000) % 1000, 0))
             s = s % 60
-            
+
             if h > 0:
                 return "{hour}:{min:0>2}:{sec:0>2}".format(hour=h, min=m, sec=s)
             if m > 0:
@@ -1501,7 +1504,7 @@ class Mmu:
             # Map the row names (as described in macro_vars) to the proper values. stats is mandatory
             table_rows_map = {
                 'total':         {'stats': lifetime, 'name': 'total '},
-                'total_average': {'stats': lifetime, 'name': UI_CASCADE + ' avg', 'devide': lifetime.get('total_swaps', 1)}, 
+                'total_average': {'stats': lifetime, 'name': UI_CASCADE + ' avg', 'devide': lifetime.get('total_swaps', 1)},
                 'job':           {'stats': job,      'name': 'this job '},
                 'job_average':   {'stats': job,      'name': UI_CASCADE + ' avg', 'devide': job.get('total_swaps', 1)},
                 'last':          {'stats': last,     'name': 'last'}
@@ -1622,7 +1625,7 @@ class Mmu:
 
         if msg:
             self._log_always(msg)
-    
+
         # This is good place to update the persisted stats...
         self._persist_swap_statistics()
         self._persist_gate_statistics()
@@ -1803,8 +1806,8 @@ class Mmu:
                     metric = self.counters[counter]
                     metric['count'] += incr
                     if metric['count'] > metric['limit']:
-                        msg = "Count %s (%d) above limit %d : %s" % (name, metric['count'], metric['limit'], metric['warning'])
-                        msg += "\nUse 'MMU_STATS COUNTER=%s RESET=1' to reset" % name
+                        msg = "Count %s (%d) above limit %d : %s" % (counter, metric['count'], metric['limit'], metric['warning'])
+                        msg += "\nUse 'MMU_STATS COUNTER=%s RESET=1' to reset" % counter
                         if metric['pause']:
                             self._mmu_pause(msg)
                         else:
@@ -1816,7 +1819,7 @@ class Mmu:
             self._persist_gate_statistics()
             self._dump_statistics(force_log=True, total=True)
             return
- 
+
         self._dump_statistics(force_log=True, total=total or detail, job=True, gate=True, detail=detail, showcounts=showcounts)
 
     cmd_MMU_STATUS_help = "Complete dump of current MMU state and important configuration"
@@ -5231,7 +5234,7 @@ class Mmu:
 
         self._select_and_load_tool(tool)
         self._track_swap_completed()
-        
+
         self._track_time_end('total')
 
         self.gcode.run_script_from_command("M117 T%s" % tool)
@@ -5355,6 +5358,17 @@ class Mmu:
                 webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids)
             except Exception as e:
                 self._log_error("Error while retrieving spoolman info: %s" % str(e))
+
+    # Tell moonraker component we want to get the gate mapping to
+    # be updated with the remotely stored values
+    def _gate_map_from_spoolman(self):
+        if not self.enable_spoolman: return
+        self._log_debug("Requesting the gate map from Spoolman...")
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            webhooks.call_remote_method("spoolman_remote_gate_map", silent=True)
+        except Exception as e:
+            self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
 
 ### CORE GCODE COMMANDS ##########################################################
 
@@ -5894,6 +5908,7 @@ class Mmu:
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=1)
+        self.enable_spoolman_remote_gate_map = gcmd.getint('ENABLE_SPOOLMAN_REMOTE_GATE_MAP', self.enable_spoolman_remote_gate_map, minval=0, maxval=1)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
@@ -5999,6 +6014,7 @@ class Mmu:
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
+        msg += "\nenable_spoolman_remote_gate_map = %d" % self.enable_spoolman_remote_gate
         if self._has_encoder():
             msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
             msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
