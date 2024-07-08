@@ -730,28 +730,6 @@ def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, f
             line = line.replace(METADATA_FILAMENT_USED, ",".join(map(str, filament_used)))
     return line
 
-def extract_metadata(file_path, check_objects=False):
-    # Make it look like we are running in the file_manager directory
-    directory = os.path.dirname(os.path.abspath(__file__))
-    target_dir = directory + "/file_manager"
-    os.chdir(target_dir)
-    sys.path.insert(0, target_dir)
-
-    import metadata
-    mdata = metadata.extract_metadata(file_path, check_objects)
-    has_placeholder, tools_used, colors, temps, materials, purge_volumes, filament_used, slicer = parse_gcode_file(file_path)
-    mdata.update({
-        "has_placeholder": has_placeholder,
-        "tools_used": tools_used,
-        "colors": colors,
-        "temps": temps,
-        "materials": materials,
-        "purge_volumes": purge_volumes,
-        "filament_used": filament_used,
-        "slicer": slicer
-    })
-    return mdata
-
 def main(path, filename, insert_placeholders=False, insert_nextpos=False):
     file_path = os.path.join(path, filename)
     if not os.path.isfile(file_path):
