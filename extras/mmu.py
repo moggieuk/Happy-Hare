@@ -513,7 +513,7 @@ class Mmu:
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=1)
-        self.enable_spoolman_remote_gate_map = config.getint('enable_spoolman_remote_gate_map', 0, minval=0, maxval=1)
+        self.enable_remote_gate_map = config.getint('enable_remote_gate_map', 0, minval=0, maxval=1)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
         self.endless_spool_on_load = config.getint('endless_spool_on_load', 0, minval=0, maxval=1)
@@ -1205,7 +1205,7 @@ class Mmu:
                 self._disable_runout() # Initially disable clog/runout detection
             self._servo_move()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delay to allow for correct initial state
-            if self.enable_spoolman_remote_gate_map:
+            if self.enable_remote_gate_map:
                 self._gate_map_from_spoolman()
             self._update_filaments_from_spoolman()
         except Exception as e:
@@ -1689,7 +1689,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ('%s' %x), self.gate_material))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ('%s' %x), self.gate_color))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
-        if self.enable_spoolman_remote_gate_map and sync:
+        if self.enable_remote_gate_map and sync:
             for gate in range(self.mmu_num_gates):
                 self._spoolman_set_spool_map(self.gate_spool_id[gate], gate)
             self._update_filaments_from_spoolman()
@@ -5389,7 +5389,7 @@ class Mmu:
         self._log_debug("Requesting the gate map from Spoolman...")
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_remote_gate_map", silent=True)
+            webhooks.call_remote_method("remote_gate_map", silent=True)
         except Exception as e:
             self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
 
@@ -5931,7 +5931,7 @@ class Mmu:
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=1)
-        self.enable_spoolman_remote_gate_map = gcmd.getint('ENABLE_SPOOLMAN_REMOTE_GATE_MAP', self.enable_spoolman_remote_gate_map, minval=0, maxval=1)
+        self.enable_remote_gate_map = gcmd.getint('ENABLE_REMOTE_GATE_MAP', self.enable_remote_gate_map, minval=0, maxval=1)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=2)
@@ -6037,7 +6037,7 @@ class Mmu:
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
-        msg += "\nenable_spoolman_remote_gate_map = %d" % self.enable_spoolman_remote_gate
+        msg += "\nenable_remote_gate_map = %d" % self.enable_spoolman_remote_gate
         if self._has_encoder():
             msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
             msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
@@ -6404,7 +6404,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-        sync = bool(gcmd.get_int('SYNC', int(self.enable_spoolman_remote_gate_map), minval=0, maxval=1))
+        sync = bool(gcmd.get_int('SYNC', int(self.enable_remote_gate_map), minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
