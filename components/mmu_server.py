@@ -66,9 +66,6 @@ class MmuServer:
             "spoolman_get_spool_info", self.get_spool_info
         )
         self.server.register_remote_method(
-            "spoolman_check_filament", self.check_filament
-        )
-        self.server.register_remote_method(
             "spoolman_remote_gate_map", self.remote_gate_map
         )
         self.server.register_remote_method(
