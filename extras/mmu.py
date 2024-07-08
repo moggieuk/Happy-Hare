@@ -1684,11 +1684,16 @@ class Mmu:
     def _persist_counters(self):
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_COUNTERS, self.counters))
 
-    def _persist_gate_map(self):
+    def _persist_gate_map(self, sync=False):
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ('%s' %x), self.gate_material))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ('%s' %x), self.gate_color))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
+        if self.enable_spoolman_remote_gate_map and sync:
+            for gate in range(self.mmu_num_gates):
+                self._spoolman_set_spool_map(self.gate_spool_id[gate], gate)
+            self._update_filaments_from_spoolman()
+
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override))
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
@@ -5340,6 +5345,24 @@ class Mmu:
         except Exception as e:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
+    def _spoolman_set_spool_map(self, spool_id=-1, gate=-1):
+        if not self.enable_spoolman: return
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            if spool_id < 0:
+                self._log_debug("Spoolman spool_id not set for current gate")
+            elif gate < 0:
+                self._log_debug("Spoolman gate not set for current gate")
+            else:
+                if spool_id == 0:
+                    self._log_debug("Clearing spool map in spoolman db ...")
+                    webhooks.call_remote_method("spoolman_unset_spool_gate", gate=gate)
+                else:
+                    self._log_debug("Setting spool map in spoolman db for spool %s..." % spool_id)
+                    webhooks.call_remote_method("spoolman_set_spool_gate", spool_id=spool_id, gate=gate)
+        except Exception as e:
+            self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
+
     # Tell moonraker component we are interested in filament data
     # gate=None means all gates with spool_id, else specific gate
     def _update_filaments_from_spoolman(self, gate=None):
@@ -6381,6 +6404,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        sync = bool(gcmd.get_int('SYNC', int(self.enable_spoolman_remote_gate_map), minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
@@ -6447,7 +6471,7 @@ class Mmu:
                 self.gate_speed_override[gate] = speed_override
 
             self._update_gate_color(self.gate_color)
-            self._persist_gate_map() # This will also update LED status
+            self._persist_gate_map(sync=sync) # This will also update LED status
         else:
             quiet = False # Display current map
 
