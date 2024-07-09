@@ -1348,6 +1348,7 @@ class Mmu:
                 'gate_material': list(self.gate_material),
                 'gate_color': list(self.gate_color),
                 'gate_color_rgb': self.gate_color_rgb,
+                'gate_filament_name': list(self.gate_filament_name),
                 'gate_spool_id': list(self.gate_spool_id),
                 'slicer_color_rgb': self.slicer_color_rgb,
                 'endless_spool_groups': list(self.endless_spool_groups),
