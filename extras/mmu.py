@@ -1210,6 +1210,7 @@ class Mmu:
             self.gate_status = self._validate_gate_status(self.gate_status) # Delay to allow for correct initial state
             if self.enable_remote_gate_map:
                 self._gate_map_from_spoolman()
+            else :
             self._update_filaments_from_spoolman()
         except Exception as e:
             self._log_error('Warning: Error booting up MMU: %s' % str(e))
