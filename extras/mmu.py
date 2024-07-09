@@ -821,8 +821,8 @@ class Mmu:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
         # Sanity check to see that mmu_vars.cfg is included. This will verify path because default has single entry
-        self.variables = self.printer.lookup_object('save_variables').allVariables
-        if self.variables == {}:
+        self.save_variables = self.printer.lookup_object('save_variables')
+        if self.save_variables.allVariables == {}:
             raise self.config.error("Calibration settings not found: mmu_vars.cfg probably not found. Check [save_variables] section in mmu_macro_vars.cfg")
 
         # Remember user setting of idle_timeout so it can be restored (if not overridden)
@@ -830,7 +830,7 @@ class Mmu:
             self.default_idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
 
         # Configure gear stepper calibration (set with MMU_CALIBRATE_GEAR)
-        rotation_distance = self.variables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCE, None)
+        rotation_distance = self.save_variables.allVariables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCE, None)
         if rotation_distance:
             self.gear_stepper.set_rotation_distance(rotation_distance)
             self._log_debug("Loaded saved gear rotation distance: %.6f" % rotation_distance)
@@ -846,7 +846,7 @@ class Mmu:
             self.encoder_sensor.set_extruder(self.extruder_name)
             self.encoder_sensor.set_mode(self.enable_clog_detection)
 
-            resolution = self.variables.get(self.VARS_MMU_ENCODER_RESOLUTION, None)
+            resolution = self.save_variables.allVariables.get(self.VARS_MMU_ENCODER_RESOLUTION, None)
             if resolution:
                 self.encoder_resolution = resolution
                 self.encoder_sensor.set_resolution(resolution)
@@ -861,7 +861,7 @@ class Mmu:
         self.encoder_min = 1.5 * self.encoder_resolution
 
         # Configure selector calibration (set with MMU_CALIBRATE_SELECTOR)
-        selector_offsets = self.variables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
+        selector_offsets = self.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
         if selector_offsets:
             if len(selector_offsets) == self.mmu_num_gates:
                 self.selector_offsets = selector_offsets
@@ -873,7 +873,7 @@ class Mmu:
         else:
             self._log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
             self.selector_offsets = [0.] * self.mmu_num_gates
-        bypass_offset = self.variables.get(self.VARS_MMU_SELECTOR_BYPASS, None)
+        bypass_offset = self.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS, None)
         if bypass_offset:
             self.bypass_offset = bypass_offset
             self._log_debug("Loaded saved bypass offset: %s" % bypass_offset)
@@ -881,8 +881,8 @@ class Mmu:
             self.bypass_offset = 0
 
         # Set bowden length from calibration
-        bowden_length = self.variables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
-        bowden_home = self.variables.get(self.VARS_MMU_CALIB_BOWDEN_HOME, self.ENDSTOP_ENCODER)
+        bowden_length = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
+        bowden_home = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_HOME, self.ENDSTOP_ENCODER)
         if bowden_length and bowden_home in self.GATE_ENDSTOPS:
             self.calibrated_bowden_length = bowden_length
             if bowden_home != self.gate_homing_endstop:
@@ -899,7 +899,7 @@ class Mmu:
 
         # Override with saved/calibrated servo positions
         try:
-            servo_angles = self.variables.get(self.VARS_MMU_SERVO_ANGLES, {})
+            servo_angles = self.save_variables.allVariables.get(self.VARS_MMU_SERVO_ANGLES, {})
             self.servo_angles.update(servo_angles)
         except Exception as e:
             raise self.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
@@ -1115,13 +1115,13 @@ class Mmu:
         errors = []
 
         # Always load length of filament remaining in extruder (after cut) and last tool loaded
-        self.filament_remaining = self.variables.get(self.VARS_MMU_FILAMENT_REMAINING, self.filament_remaining)
-        self._last_tool = self.variables.get(self.VARS_MMU_LAST_TOOL, self._last_tool)
+        self.filament_remaining = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_REMAINING, self.filament_remaining)
+        self._last_tool = self.save_variables.allVariables.get(self.VARS_MMU_LAST_TOOL, self._last_tool)
 
         if self.persistence_level >= 1:
             # Load EndlessSpool config
-            self.enable_endless_spool = self.variables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
-            endless_spool_groups = self.variables.get(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
+            self.enable_endless_spool = self.save_variables.allVariables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
+            endless_spool_groups = self.save_variables.allVariables.get(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
             if len(endless_spool_groups) == self.mmu_num_gates:
                 self.endless_spool_groups = endless_spool_groups
             else:
@@ -1129,7 +1129,7 @@ class Mmu:
 
         if self.persistence_level >= 2:
             # Load TTG map
-            tool_to_gate_map = self.variables.get(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
+            tool_to_gate_map = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
             if len(tool_to_gate_map) == self.mmu_num_gates:
                 self.ttg_map = tool_to_gate_map
             else:
@@ -1138,7 +1138,7 @@ class Mmu:
         if self.persistence_level >= 3:
             # Load gate map
             for var, attr, default in self.gate_map_vars:
-                value = self.variables.get(var, getattr(self, attr))
+                value = self.save_variables.allVariables.get(var, getattr(self, attr))
                 if len(value) == self.mmu_num_gates:
                     if attr == "gate_color":
                         self._update_gate_color(value)
@@ -1149,8 +1149,8 @@ class Mmu:
 
         if self.persistence_level >= 4:
             # Load selected tool and gate
-            tool_selected = self.variables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
-            gate_selected = self.variables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
+            tool_selected = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
+            gate_selected = self.save_variables.allVariables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
             if gate_selected < self.mmu_num_gates and tool_selected < self.mmu_num_gates:
                 self._set_tool_selected(tool_selected)
                 self._set_gate_selected(gate_selected)
@@ -1166,13 +1166,13 @@ class Mmu:
 
             # Previous filament position
             if gate_selected != self.TOOL_GATE_UNKNOWN and tool_selected != self.TOOL_GATE_UNKNOWN:
-                self.filament_pos = self.variables.get(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
+                self.filament_pos = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
 
         if len(errors) > 0:
             self._log_info("Warning: Some persisted state was ignored because it contained errors:\n%s" % ''.join(errors))
 
-        swap_stats = self.variables.get(self.VARS_MMU_SWAP_STATISTICS, {})
-        counters = self.variables.get(self.VARS_MMU_COUNTERS, {})
+        swap_stats = self.save_variables.allVariables.get(self.VARS_MMU_SWAP_STATISTICS, {})
+        counters = self.save_variables.allVariables.get(self.VARS_MMU_COUNTERS, {})
         self.counters.update(counters)
 
         # Auto upgrade old names
@@ -1182,7 +1182,7 @@ class Mmu:
         self.statistics.update(swap_stats)
         for gate in range(self.mmu_num_gates):
             self.gate_statistics[gate] = self.EMPTY_GATE_STATS_ENTRY.copy()
-            gstats = self.variables.get("%s%d" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate), None)
+            gstats = self.save_variables.allVariables.get("%s%d" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate), None)
             if gstats:
                 self.gate_statistics[gate].update(gstats)
 
@@ -1205,10 +1205,16 @@ class Mmu:
                 self._display_visual_state(silent=self.persistence_level < 4)
             self._set_print_state("initialized")
             if self._has_encoder():
-                self.encoder_sensor.set_clog_detection_length(self.variables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
+                self.encoder_sensor.set_clog_detection_length(self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_runout() # Initially disable clog/runout detection
+
+            # Sanity check filament pos if toolhead sensor available
+            ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
+            if ts is True and self.filament_pos != self.FILAMENT_POS_LOADED or ts is False and self.filament_pos != self.FILAMENT_POS_UNLOADED:
+                self._recover_filament_pos(message=True)
+
             self._servo_move()
-            self.gate_status = self._validate_gate_status(self.gate_status) # Delay to allow for correct initial state
+            self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
             self._update_filaments_from_spoolman()
         except Exception as e:
             self._log_error('Warning: Error booting up MMU: %s' % str(e))
@@ -1675,26 +1681,28 @@ class Mmu:
 
     def _persist_gate_statistics(self):
         for gate in range(self.mmu_num_gates):
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=\"%s\"" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate, self.gate_statistics[gate]))
+            self._save_variable("%s%d" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate), self.gate_statistics[gate])
         # Good place to persist current clog length
         if self._has_encoder():
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, self.encoder_sensor.get_clog_detection_length()))
+            self._save_variable(self.VARS_MMU_CALIB_CLOG_LENGTH, round(self.encoder_sensor.get_clog_detection_length(), 1))
+        self._write_variables()
 
     def _persist_swap_statistics(self):
         for key in self.statistics:
             if isinstance(self.statistics[key], float):
                 self.statistics[key] = round(self.statistics[key], 2)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SWAP_STATISTICS, self.statistics))
+        self._save_variable(self.VARS_MMU_SWAP_STATISTICS, self.statistics, write=True)
 
     def _persist_counters(self):
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_COUNTERS, self.counters))
+        self._save_variable(self.VARS_MMU_COUNTERS, self.counters, write=True)
 
     def _persist_gate_map(self):
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ('%s' %x), self.gate_material))))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ('%s' %x), self.gate_color))))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override))
+        self._save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status)
+        self._save_variable(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
+        self._save_variable(self.VARS_MMU_GATE_COLOR, self.gate_color)
+        self._save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
+        self._save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
+        self._write_variables()
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
@@ -1993,7 +2001,7 @@ class Mmu:
     def _servo_save_pos(self, pos):
         if self.servo_angle != self.SERVO_UNKNOWN_STATE:
             self.servo_angles[pos] = self.servo_angle
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SERVO_ANGLES, self.servo_angles))
+            self._save_variable(self.VARS_MMU_SERVO_ANGLES, self.servo_angles, write=True)
             self._log_info("Servo angle '%d' for position '%s' has been saved" % (self.servo_angle, pos))
         else:
             self._log_info("Servo angle unknown")
@@ -2168,7 +2176,7 @@ class Mmu:
 #########################
 
     def _set_calibrated_bowden_length(self, reference):
-        self.variables[self.VARS_MMU_CALIB_BOWDEN_LENGTH] = reference
+        self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_LENGTH] = reference
         self.calibrated_bowden_length = reference
         self.calibration_status |= self.CALIBRATED_BOWDEN
 
@@ -2225,7 +2233,7 @@ class Mmu:
 
             if save:
                 self.encoder_sensor.set_resolution(resolution)
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.6f" % (self.VARS_MMU_ENCODER_RESOLUTION, resolution))
+                self._save_variable(self.VARS_MMU_ENCODER_RESOLUTION, round(resolution, 6), write=True)
                 self._log_always("Encoder calibration has been saved")
                 self.calibration_status |= self.CALIBRATED_ENCODER
 
@@ -2292,10 +2300,11 @@ class Mmu:
 
                 if save:
                     self._set_calibrated_bowden_length(average_reference)
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"'%s'\"" % (self.VARS_MMU_CALIB_BOWDEN_HOME, self.gate_homing_endstop))
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_BOWDEN_LENGTH, average_reference))
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=1.0" % (self.VARS_MMU_CALIB_PREFIX, 0))
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_CLOG_LENGTH, detection_length))
+                    self._save_variable(self.VARS_MMU_CALIB_BOWDEN_HOME, self.gate_homing_endstop)
+                    self._save_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTH, round(average_reference, 1))
+                    self._save_variable("%s0" % self.VARS_MMU_CALIB_PREFIX, 1.0)
+                    self._save_variable(self.VARS_MMU_CALIB_CLOG_LENGTH, round(detection_length, 1))
+                    self._write_variables()
                     if self._has_encoder():
                         self.encoder_sensor.set_clog_detection_length(detection_length)
                         self._log_always("Bowden calibration and clog detection length have been saved")
@@ -2325,7 +2334,9 @@ class Mmu:
                 self._log_always("Recommended calibration bowden length is %.1fmm" % actual)
                 if save:
                     self._set_calibrated_bowden_length(actual)
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_CALIB_BOWDEN_LENGTH, actual))
+                    self._save_variable(self.VARS_MMU_CALIB_BOWDEN_HOME, self.ENDSTOP_GATE)
+                    self._save_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTH, round(actual, 1))
+                    self._write_variables()
                     self._log_always("Bowden calibration length has been saved")
                 self._unload_gate() # Use real method to park filament
             else:
@@ -2364,8 +2375,8 @@ class Mmu:
             if not gate == 0: # Gate 0 is not calibrated, it is the reference
                 if ratio > 0.8 and ratio < 1.2:
                     if save:
-                        self.variables["%s%d" % (self.VARS_MMU_CALIB_PREFIX, gate)] = ratio
-                        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=%.6f" % (self.VARS_MMU_CALIB_PREFIX, gate, ratio))
+                        self.save_variables.allVariables["%s%d" % (self.VARS_MMU_CALIB_PREFIX, gate)] = ratio
+                        self._save_variable("%s%d" % (self.VARS_MMU_CALIB_PREFIX, gate), round(ratio, 6), write=True)
                         self._log_always("Calibration for Gate %d has been saved" % gate)
                         self.calibration_status |= self.CALIBRATED_GATES
                 else:
@@ -2420,11 +2431,11 @@ class Mmu:
             if save:
                 if gate >= 0:
                     self.selector_offsets[gate] = round(traveled, 1)
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets))
+                    self._save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
                     self.calibration_status |= self.CALIBRATED_SELECTOR
                 else:
                     self.bypass_offset = round(traveled, 1)
-                    self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset))
+                    self._save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, write=True)
                 self._log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
         except MmuError as ee:
             self._mmu_pause(str(ee))
@@ -2526,8 +2537,9 @@ class Mmu:
             if save:
                 self.selector_offsets = selector_offsets
                 self.bypass_offset = bypass_offset
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets))
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset))
+                self._save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets)
+                self._save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset)
+                self._write_variables()
                 self._log_always("Selector calibration has been saved")
                 self.calibration_status |= self.CALIBRATED_SELECTOR
 
@@ -2631,7 +2643,7 @@ class Mmu:
         if save:
             self.gear_stepper.set_rotation_distance(new_rotation_distance)
             self.ref_gear_rotation_distance = new_rotation_distance
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.6f" % (self.VARS_MMU_GEAR_ROTATION_DISTANCE, new_rotation_distance))
+            self._save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCE, round(new_rotation_distance, 6), write=True)
             self._log_always("Gear calibration has been saved")
             self.calibration_status |= self.CALIBRATED_GEAR
 
@@ -3430,11 +3442,11 @@ class Mmu:
 
     def _set_filament_remaining(self, length):
         self.filament_remaining = length
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%.1f" % (self.VARS_MMU_FILAMENT_REMAINING, length))
+        self._save_variable(self.VARS_MMU_FILAMENT_REMAINING, round(length, 1), write=True)
 
     def _set_last_tool(self, tool):
         self._last_tool = tool
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_LAST_TOOL, tool))
+        self._save_variable(self.VARS_MMU_LAST_TOOL, tool, write=True)
 
     def _set_filament_pos_state(self, state, silent=False):
         self.filament_pos = state
@@ -3443,9 +3455,9 @@ class Mmu:
 
         # Minimal save_variable writes
         if state in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, state))
-        elif self.variables.get(self.VARS_MMU_FILAMENT_POS, 0) != self.FILAMENT_POS_UNKNOWN:
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN))
+            self._save_variable(self.VARS_MMU_FILAMENT_POS, state, write=True)
+        elif self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, 0) != self.FILAMENT_POS_UNKNOWN:
+            self._save_variable(self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN, write=True)
 
     def _set_filament_direction(self, direction):
         self.filament_direction = direction
@@ -3651,6 +3663,16 @@ class Mmu:
         self._set_print_state("standby")
         self._log_always("MMU disabled")
 
+    # Wrapper so we can minimize actual disk writes and batch updates
+    def _save_variable(self, variable, value, write=False):
+        self.save_variables.allVariables[variable] = value
+        if write:
+            self._write_variables()
+
+    def _write_variables(self):
+        mmu_vars_revision = self.save_variables.allVariables.get('mmu__revision', 0) + 1
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=mmu__revision VALUE=%d" % mmu_vars_revision)
+
     def _random_failure(self):
         if self.test_random_failures and randint(0, 10) == 0:
             raise MmuError("Randomized testing failure")
@@ -3792,19 +3814,20 @@ class Mmu:
         self._initialize_state()
         self._reset_statistics()
         self.enable_endless_spool = self.default_enable_endless_spool
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
+        self._save_variable(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
         self.endless_spool_groups = list(self.default_endless_spool_groups)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
+        self._save_variable(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
         self.ttg_map = list(self.default_ttg_map)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
+        self._save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
         self.gate_spool_id = list(self.default_gate_spool_id)
         self._persist_gate_map()
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_FILAMENT_POS, self.filament_pos))
+        self._save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
+        self._save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
+        self._save_variable(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
+        self._write_variables()
         self._log_always("MMU state reset")
         self._schedule_mmu_bootup_tasks()
 
@@ -4098,7 +4121,7 @@ class Mmu:
         tolerance = self.bowden_allowable_load_delta
 
         # See if we need to automatically set calibration ratio for this gate
-        current_ratio = self.variables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), None)
+        current_ratio = self.save_variables.allVariables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), None)
         reference_load = False
         if self.variable_gate_ratios:
             if self._can_use_encoder() and self.auto_calibrate_gates and self.gate_selected > 0 and not current_ratio and not self.calibrating:
@@ -4117,8 +4140,8 @@ class Mmu:
         if reference_load:
             ratio = (length - delta) / length
             if ratio > 0.9 and ratio < 1.1:
-                self.variables["%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected)] = ratio
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s%d VALUE=%.6f" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected, ratio))
+                self.save_variables.allVariables["%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected)] = ratio
+                self._save_variable("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), round(ratio, 6))
                 self._log_always("Calibration ratio for Gate %d was missing. Value of %.6f has been automatically saved" % (self.gate_selected, ratio))
                 self._set_gate_ratio(ratio)
 
@@ -4143,7 +4166,7 @@ class Mmu:
             if delta >= tolerance:
                 self._log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
 
-        self._random_failure()
+        self._random_failure() # Testing
         self._movequeues_wait_moves()
         if full:
             self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
@@ -4184,7 +4207,7 @@ class Mmu:
                 # Only a warning because _unload_gate() will deal with it
                 self._log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
 
-        self._random_failure()
+        self._random_failure() # Testing
         self._movequeues_wait_moves()
         if full:
             self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
@@ -4298,16 +4321,16 @@ class Mmu:
             self._log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self._trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
 
-            # Encoder based validation test
-            if self._can_use_encoder() and not fhomed:
+            # Encoder based validation test if short of deterministic sensors and test makes sense
+            if self._can_use_encoder() and not fhomed and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS:
                 self._log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
                 if measured < self.encoder_min:
-                    raise MmuError("Move to nozzle failed (encoder didn't sense any movement). Extruder may not have picked up filament or filament did not home correctly")
+                    raise MmuError("Move to nozzle failed (encoder didn't sense any movement). Extruder may not have picked up filament or filament did not find homing sensor")
                 elif delta > length * (self.toolhead_move_error_tolerance/100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
-                    raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not home correctly")
+                    raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not find homing sensor")
 
-            self._random_failure()
+            self._random_failure() # Testing
             self._movequeues_wait_moves()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self._log_debug("Filament should loaded to nozzle")
@@ -4391,10 +4414,10 @@ class Mmu:
                     self._set_filament_position(-self.toolhead_extruder_to_nozzle)
 
                 # Encoder based validation test if it has high chance of being useful
-                # NOTE: This check which use to raise MmuError() is triping many folks up because they have poor tip forming
+                # NOTE: This check which used to raise MmuError() is triping many folks up because they have poor tip forming
                 #       logic so just log error and continue. This disguises the root cause problem but will make folks happier
                 #       Not performed for slicer tip forming (validate=True) because everybody is ejecting the filament!
-                if validate and self._can_use_encoder() and length > self.encoder_move_step_size:
+                if validate and self._can_use_encoder() and length > self.encoder_move_step_size and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS:
                     self._log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
                     msg = None
                     if measured < self.encoder_min:
@@ -4406,7 +4429,7 @@ class Mmu:
                         self._log_info("Will attempt to continue...")
                 self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
 
-            self._random_failure()
+            self._random_failure() # Testing
             self._movequeues_wait_moves()
             self._log_debug("Filament should be out of extruder")
 
@@ -4541,7 +4564,7 @@ class Mmu:
                     self._unload_extruder(extruder_only=True, validate=not skip_tip)
                 else:
                     self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence(extruder_only=True)" % start_filament_pos)
-                    raise MmuError("Cannot unload extruder because filament not in extruder!")
+                    raise MmuError("Cannot unload extruder because filament not detected in extruder!")
 
             elif start_filament_pos == self.FILAMENT_POS_UNLOADED:
                 self._log_debug("Assertion failure: Unexpected state %d in _unload_sequence()" % start_filament_pos)
@@ -4696,7 +4719,7 @@ class Mmu:
             self._set_filament_position(-park_pos)
             self._set_encoder_distance(initial_encoder_position + park_pos)
 
-            if detected:
+            if detected or extruder_only:
                 # Definitely in extruder
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
             else:
@@ -5537,8 +5560,9 @@ class Mmu:
             self._set_gate_selected(gate)
 
     def _set_gate_selected(self, gate):
-        self.gate_selected = gate
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
+        if gate != self.gate_selected:
+            self.gate_selected = gate
+            self._save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self._set_gate_ratio(self._get_gate_ratio(gate) if gate >= 0 else 1.)
         self._update_sync_multiplier()
         if gate >= 0:
@@ -5549,7 +5573,7 @@ class Mmu:
     def _set_tool_selected(self, tool):
         if tool != self.tool_selected:
             self.tool_selected = tool
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_TOOL_SELECTED, self.tool_selected))
+            self._save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
 
     def _set_gate_ratio(self, ratio=1.):
         new_rotation_distance = ratio * self.ref_gear_rotation_distance
@@ -5558,7 +5582,7 @@ class Mmu:
 
     def _get_gate_ratio(self, gate):
         if gate < 0: return 1.
-        ratio = self.variables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, gate), 1.)
+        ratio = self.save_variables.allVariables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, gate), 1.)
         if ratio > 0.8 and ratio < 1.2:
             return ratio
         else:
@@ -6348,7 +6372,7 @@ class Mmu:
         if gate >= 0:
             if state != self.gate_status[gate]:
                 self.gate_status[gate] = state
-                self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
+                self._save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status, write=True)
                 if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
                     self._wrap_gcode_command("%s GATE='%d'" % (self.gate_map_changed_macro, gate))
 
@@ -6467,7 +6491,7 @@ class Mmu:
 
     def _remap_tool(self, tool, gate, available=None):
         self.ttg_map[tool] = gate
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
+        self._save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
         self._ensure_ttg_match()
         self._update_slicer_color() # Indexed by gate
         if available is not None:
@@ -6491,7 +6515,7 @@ class Mmu:
     def _reset_ttg_mapping(self):
         self._log_debug("Resetting TTG map")
         self.ttg_map = list(self.default_ttg_map)
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
+        self._save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
         self._ensure_ttg_match()
         self._update_slicer_color() # Indexed by gate
 
@@ -6612,7 +6636,7 @@ class Mmu:
                     self.ttg_map.append(int(gate))
                 else:
                     self.ttg_map.append(0)
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map))
+            self._save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
         elif gate != -1:
             status = self.gate_status[gate]
             if not available == self.GATE_UNKNOWN or (available == self.GATE_UNKNOWN and status == self.GATE_EMPTY):
@@ -6716,7 +6740,7 @@ class Mmu:
 
         if enabled >= 0:
             self.enable_endless_spool = enabled
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool))
+            self._save_variable(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool, write=True)
             if enabled and not quiet:
                 self._log_always("EndlessSpool is enabled")
         if not self.enable_endless_spool:
@@ -6739,7 +6763,7 @@ class Mmu:
                     self.endless_spool_groups.append(int(group))
                 else:
                     self.endless_spool_groups.append(0)
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups))
+            self._save_variable(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups, write=True)
 
         else:
             quiet = False # Display current map
