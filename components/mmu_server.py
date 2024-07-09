@@ -136,7 +136,7 @@ class MmuServer:
                 f"Failed to unset spool {spool_id} for machine {machine_hostname}: {e}")
             await self._log_n_send(f"Failed to unset spool {spool_id} for machine {machine_hostname}")
             return False
-        await self.remote_gate_map(silent=True)
+        await self.remote_gate_map(silent=True, dump=False)
         return True
 
     async def get_info_for_spool(self, spool_id : int):
@@ -371,7 +371,7 @@ class MmuServer:
         returns:
             @return: True if successful, False otherwise
         '''
-        await self.remote_gate_map(silent=True)
+        await self.remote_gate_map(silent=True, dump=False)
         if spool_id is None:
             msg = "Trying to set spool but no spool id provided."
             await self._log_n_send(msg)
@@ -472,7 +472,7 @@ class MmuServer:
             await self._log_n_send(f"Failed to set spool {spool_id} for machine {machine_hostname}")
             return False
         await self._log_n_send(f"Spool {spool_id} set for machine {machine_hostname} @ gate {gate} in spoolman db")
-        await self.remote_gate_map(silent=True)
+        await self.remote_gate_map(silent=True, dump=False)
         if gate == 0 and (self.filament_gates == 1):
             await self.set_active_gate(gate)
             await self._log_n_send(f"{CONSOLE_TAB*2}Setting gate 0 as active (single gate machine)")
