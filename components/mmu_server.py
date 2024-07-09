@@ -323,7 +323,6 @@ class MmuServer:
             if not silent :
                 await self._log_n_send(f"Number of spools assigned to machine {machine_hostname} is greater than the number of gates available on the machine. Please check the spoolman or moonraker [spoolman] setup.")
             return []
-        spools = []
         table = [None for __ in range(self.filament_gates)]
         if self.machine_occupation:
             if not silent:
@@ -337,7 +336,6 @@ class MmuServer:
                     if not silent :
                         await self._log_n_send(f"'mmu_gate_map' extra field for {spool['filament']['name']} @ {spool['id']} in spoolman db seems to not be set. Please check the spoolman setup.")
                 else :
-                    spools.append(spool)
                     table[int(gate)] = spool
             if not silent:
                 for i, spool in enumerate(table):
@@ -347,16 +345,18 @@ class MmuServer:
                         await self._log_n_send(f"{CONSOLE_TAB}{i} : empty")
         if not silent and not spools:
             await self._log_n_send(f"No spools assigned to machine: {machine_hostname}")
-        self.gate_occupation = spools
+        self.gate_occupation = table
         if dump:
             gate_dict = {}
             for i, spool in enumerate(table):
+                if spool :
                 gate_dict[i] = {
-                                    'spool_id': spool['id'] if spool else -1,
-                                    'material': spool['filament']['material'][:6] if spool else '',
-                                    'color': spool['filament']['color_hex'][:6] if spool else ''
+                                        'spool_id': spool['id'],
+                                        'material': spool['filament']['material'][:6],
+                                        'color': spool['filament']['color_hex'][:6],
+                                        'name': spool['filament']['name']
                                 }
-                await self.klippy_apis.run_gcode("MMU_GATE_MAP GATE={} SPOOLID={} MATERIAL={} COLOR={} QUIET=1 SYNC=0".format(i, gate_dict[i]['spool_id'], gate_dict[i]['material'], gate_dict[i]['color']))
+            await self.klippy_apis.run_gcode("MMU_GATE_MAP MAP=\"{}\" QUIET=1 SYNC=0".format(gate_dict))
             if not silent:
                 await self.klippy_apis.run_gcode("MMU_GATE_MAP")
         return True
