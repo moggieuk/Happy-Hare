@@ -198,6 +198,7 @@ class Mmu:
     VARS_MMU_GATE_STATUS            = "mmu_state_gate_status"
     VARS_MMU_GATE_MATERIAL          = "mmu_state_gate_material"
     VARS_MMU_GATE_COLOR             = "mmu_state_gate_color"
+    VARS_MMU_GATE_FILAMENT_NAME     = "mmu_state_gate_filament_name"
     VARS_MMU_GATE_SPOOL_ID          = "mmu_state_gate_spool_id"
     VARS_MMU_GATE_SPEED_OVERRIDE    = "mmu_state_gate_speed_override"
     VARS_MMU_GATE_SELECTED          = "mmu_state_gate_selected"
@@ -427,6 +428,7 @@ class Mmu:
         self.default_gate_status = list(config.getintlist('gate_status', []))
         self.default_gate_material = list(config.getlist('gate_material', []))
         self.default_gate_color = list(config.getlist('gate_color', []))
+        self.default_gate_filament_name = list(config.getlist('gate_filament_name', []))
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
         self.default_gate_speed_override = list(config.getintlist('gate_speed_override', []))
 
@@ -560,6 +562,7 @@ class Mmu:
                                (self.VARS_MMU_GATE_MATERIAL, 'gate_material', ""),
                                (self.VARS_MMU_GATE_COLOR, 'gate_color', ""),
                                (self.VARS_MMU_GATE_SPOOL_ID, 'gate_spool_id', -1),
+                               (self.VARS_MMU_GATE_FILAMENT_NAME, 'gate_filament_name', ""),
                                (self.VARS_MMU_GATE_SPEED_OVERRIDE, 'gate_speed_override', 100) ]
 
         for var, attr, default in self.gate_map_vars:
@@ -1688,6 +1691,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_STATUS, self.gate_status))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_MATERIAL, list(map(lambda x: ('%s' %x), self.gate_material))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_COLOR, list(map(lambda x: ('%s' %x), self.gate_color))))
+        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_FILAMENT_NAME, list(map(lambda x: ('%s' %x), self.gate_filament_name))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
         if self.enable_remote_gate_map and sync:
             for gate in range(self.mmu_num_gates):
@@ -3565,6 +3569,7 @@ class Mmu:
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
+        self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self._persist_gate_map()
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_GATE_SELECTED, self.gate_selected))
@@ -6278,6 +6283,7 @@ class Mmu:
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
+        self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
         self._persist_gate_map()
@@ -6434,6 +6440,7 @@ class Mmu:
                 if self.gate_spool_id[gate] == fil['spool_id']:
                     self.gate_material[gate] = fil['material']
                     self.gate_color[gate] = fil['color']
+                    self.gate_filament_name[gate] = fil['name']
                 else:
                     self._log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Dict=%s" % (gate, fil))
 
