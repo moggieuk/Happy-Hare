@@ -77,6 +77,9 @@ class MmuServer:
         self.server.register_remote_method(
             "spoolman_clear_spools_for_machine", self.clear_spools_for_machine
         )
+        self.server.register_remote_method(
+            "spoolman_set_gate_map", self.set_gate_map
+        )
 
         self.setup_placeholder_processor(config) # Replaces file_manager/metadata with this file
 
@@ -350,12 +353,12 @@ class MmuServer:
             gate_dict = {}
             for i, spool in enumerate(table):
                 if spool :
-                gate_dict[i] = {
+                    gate_dict[i] = {
                                         'spool_id': spool['id'],
                                         'material': spool['filament']['material'][:6],
                                         'color': spool['filament']['color_hex'][:6],
                                         'name': spool['filament']['name']
-                                }
+                                    }
             await self.klippy_apis.run_gcode("MMU_GATE_MAP MAP=\"{}\" QUIET=1 SYNC=0".format(gate_dict))
             if not silent:
                 await self.klippy_apis.run_gcode("MMU_GATE_MAP")
@@ -434,7 +437,7 @@ class MmuServer:
 
         # then check that no spool is already assigned to the gate of this machine (if not previously identified as the same spool)
         if not identical:
-                for g, spool in enumerate(self.gate_occupation):
+            for g, spool in enumerate(self.gate_occupation):
                 if spool:
                     if g == gate :
                         await self._log_n_send(f"Gate {gate} is already assigned to spool {spool['filament']['name']} (id: {spool['id']})")
@@ -488,21 +491,36 @@ class MmuServer:
         if self.gate_occupation not in [False, None]:
             for spool in self.gate_occupation:
                 if spool:
-                if 'mmu_gate_map' in spool['extra'] and spool['extra']['mmu_gate_map'] == gate:
-                    logging.info(
-                        f"Clearing gate {gate} for machine: {self.printer_info['hostname']}")
+                    if 'mmu_gate_map' in spool['extra'] and spool['extra']['mmu_gate_map'] == gate:
+                        logging.info(
+                            f"Clearing gate {gate} for machine: {self.printer_info['hostname']}")
                         self.server.send_event(
                             "spoolman:unset_spool_gate", {"gate": gate}
                         )
                         await self.unset_spool_id(spool['id'])
                         await self._log_n_send(f"Gate {gate} cleared")
-                    return True
+                        return True
             await self._log_n_send(f"No spool assigned to gate {gate}")
             return False
         else:
             msg = "No spools found for this machine"
             await self._log_n_send(msg)
             return False
+
+    async def set_gate_map(self, gate_map) -> bool:
+        '''
+        Sets the gate map for the current machine
+        '''
+        if gate_map is None:
+            logging.error("Gate map not provided")
+            return False
+        for gate, spool_id in enumerate(gate_map):
+            if (spool_id == -1 or spool_id == 0) and self.gate_occupation[gate] is not None:
+                await self.unset_spool_gate(gate)
+            elif spool_id != -1 and spool_id != 0:
+                if (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id) or self.gate_occupation[gate] is None :
+                    await self.set_spool_gate(spool_id, gate)
+        return
 
     async def clear_spools_for_machine(self) -> bool:
         '''
@@ -515,7 +533,7 @@ class MmuServer:
         )
         # get spools assigned to current machine
         for i, __ in enumerate(self.gate_occupation):
-                    await self.unset_spool_gate(i)
+            await self.unset_spool_gate(i)
         else:
             msg = f"No spools for machine {self.printer_info['hostname']}"
             await self._log_n_send(msg)
