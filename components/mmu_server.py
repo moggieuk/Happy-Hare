@@ -424,7 +424,9 @@ class MmuServer:
                     await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to this machine @ gate {mmu_gate_map}")
                     if mmu_gate_map == gate:
                         identical = True
-                        await self._log_n_send(f"Updating gate for spool {spool_info['filament']['name']} (id: {spool_id}) to {gate}")
+                        await self._log_n_send(f"{CONSOLE_TAB}No update needed for spool {spool_info['filament']['name']} (id: {spool_id}) @ gate {gate}")
+                    else :
+                        await self._log_n_send(f"{CONSOLE_TAB}Updating gate for spool {spool_info['filament']['name']} (id: {spool_id}) to gate {gate}")
             # if the spool is already assigned to another machine
             else:
                 await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to another machine: {machine_name}")
@@ -432,9 +434,9 @@ class MmuServer:
 
         # then check that no spool is already assigned to the gate of this machine (if not previously identified as the same spool)
         if not identical:
-            if self.gate_occupation not in [False, None]:
                 for g, spool in enumerate(self.gate_occupation):
-                    if g == gate:
+                if spool:
+                    if g == gate :
                         await self._log_n_send(f"Gate {gate} is already assigned to spool {spool['filament']['name']} (id: {spool['id']})")
                         await self._log_n_send(f"{CONSOLE_TAB}- Overwriting gate assignment")
                         if not await self.unset_spool_id(spool['id']):
