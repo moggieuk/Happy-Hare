@@ -1696,9 +1696,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=\"%s\"" % (self.VARS_MMU_GATE_FILAMENT_NAME, list(map(lambda x: ('%s' %x), self.gate_filament_name))))
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id))
         if self.enable_remote_gate_map and sync:
-            for gate in range(self.mmu_num_gates):
-                self._spoolman_set_spool_map(self.gate_spool_id[gate], gate)
-            self._update_filaments_from_spoolman()
+            self._spoolman_set_gate_map()
 
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE='%s'" % (self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override))
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
