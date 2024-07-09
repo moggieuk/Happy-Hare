@@ -1211,7 +1211,7 @@ class Mmu:
             if self.enable_remote_gate_map:
                 self._gate_map_from_spoolman()
             else :
-            self._update_filaments_from_spoolman()
+                self._update_filaments_from_spoolman()
         except Exception as e:
             self._log_error('Warning: Error booting up MMU: %s' % str(e))
 
@@ -5350,23 +5350,14 @@ class Mmu:
         except Exception as e:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
-    def _spoolman_set_spool_map(self, spool_id=-1, gate=-1):
+    def _spoolman_set_gate_map(self):
         if not self.enable_spoolman: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            if spool_id < 0:
-                self._log_debug("Spoolman spool_id not set for current gate")
-            elif gate < 0:
-                self._log_debug("Spoolman gate not set for current gate")
-            else:
-                if spool_id == 0:
-                    self._log_debug("Clearing spool map in spoolman db ...")
-                    webhooks.call_remote_method("spoolman_unset_spool_gate", gate=gate)
-                else:
-                    self._log_debug("Setting spool map in spoolman db for spool %s..." % spool_id)
-                    webhooks.call_remote_method("spoolman_set_spool_gate", spool_id=spool_id, gate=gate)
+            self._log_debug("Setting gate map in spoolman db ...")
+            webhooks.call_remote_method("spoolman_set_gate_map", gate_map=self.gate_spool_id)
         except Exception as e:
-            self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
+            self._log_error("Error while calling _spoolman_set_gate_map: %s" % str(e))
 
     # Tell moonraker component we are interested in filament data
     # gate=None means all gates with spool_id, else specific gate
