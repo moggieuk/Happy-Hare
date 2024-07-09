@@ -519,10 +519,7 @@ class MmuServer:
             "spoolman:clear_spool_gates", {}
         )
         # get spools assigned to current machine
-        spools = self.gate_occupation
-        if spools not in [False, None]:
-            for i, spool in enumerate(spools):
-                if 'mmu_gate_map' in spool['extra']:
+        for i, __ in enumerate(self.gate_occupation):
                     await self.unset_spool_gate(i)
         else:
             msg = f"No spools for machine {self.printer_info['hostname']}"
