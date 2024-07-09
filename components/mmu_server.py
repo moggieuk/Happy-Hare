@@ -216,7 +216,7 @@ class MmuServer:
                     material = filament.get('material', '')[:6] # Keep material spec short for Klipperscreen
                     color_hex = filament.get('color_hex', '')[:6] # Strip alpha channel if it exists
 
-                    gate_dict[gate_id] = {'spool_id': spool_id, 'material': material, 'color': color_hex}
+                    gate_dict[gate_id] = {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': filament.get('name', '')}
                 elif response.status_code != 404:
                     response.raise_for_status()
             try:
