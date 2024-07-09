@@ -5389,7 +5389,7 @@ class Mmu:
         self._log_debug("Requesting the gate map from Spoolman...")
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("remote_gate_map", silent=True)
+            webhooks.call_remote_method("spoolman_remote_gate_map", silent=True)
         except Exception as e:
             self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
 
@@ -6037,7 +6037,7 @@ class Mmu:
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
-        msg += "\nenable_remote_gate_map = %d" % self.enable_spoolman_remote_gate
+        msg += "\nenable_remote_gate_map = %d" % self.enable_remote_gate_map
         if self._has_encoder():
             msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
             msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
