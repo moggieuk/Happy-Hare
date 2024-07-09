@@ -487,17 +487,10 @@ class MmuServer:
         # get spools assigned to current machine
         if self.gate_occupation not in [False, None]:
             for spool in self.gate_occupation:
+                if spool:
                 if 'mmu_gate_map' in spool['extra'] and spool['extra']['mmu_gate_map'] == gate:
                     logging.info(
                         f"Clearing gate {gate} for machine: {self.printer_info['hostname']}")
-                    self.server.send_event(
-                        "spoolman:unset_spool_gate", {"gate": gate}
-                    )
-                    await self.unset_spool_id(spool['id'])
-                    await self._log_n_send(f"Gate {gate} cleared")
-                    if 'machine_name' in spool['extra'] and spool['extra']['machine_name'] == self.printer_info['hostname']:
-                        logging.info(
-                            f"Clearing machine_name : {self.printer_info['hostname']}")
                         self.server.send_event(
                             "spoolman:unset_spool_gate", {"gate": gate}
                         )
