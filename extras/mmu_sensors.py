@@ -71,7 +71,7 @@ class MmuRunoutHelper:
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
         self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1\n_MMU_M400")
+        self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1")
 
     def _exec_gcode(self, command):
         try:
@@ -154,6 +154,7 @@ class MmuSensors:
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
+            config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
             # Replace with custom runout_helper because limited operation is possible during print
@@ -171,9 +172,10 @@ class MmuSensors:
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
+            config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
-            # Replace with custom runout_helper to pause virtual_sdcard but not PAUSE
+            # Replace with custom runout_helper because limited operation is possible during print
             insert_gcode = "__MMU_GATE_INSERT"
             runout_gcode = "__MMU_GATE_RUNOUT"
             gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
@@ -249,4 +251,3 @@ class MmuSensors:
 
 def load_config(config):
     return MmuSensors(config)
-

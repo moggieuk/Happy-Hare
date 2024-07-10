@@ -1,9 +1,12 @@
 # Addons
-This directory contains possible addons for your MMU setup. 
+This directory contains recommended optional addons for your MMU setup. 
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) EREC Filament Cutter
+## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) EREC Filament Cutter
+
 An addon used to control filament cutting at the MMU rather than the toolhead
-<img src="https://github.com/kevinakasam/ERCF_Filament_Cutter/blob/main/Images/Banner.png" width=60%>
+
+<img src="https://github.com/moggieuk/Happy-Hare/wiki/Addon-Feature-Setup/erec_logo.png" width=60%>
+
 ### Compatibility
 **MMU:** ERCFv2<br>
 **Printer:** _Any_
@@ -17,9 +20,12 @@ https://github.com/kevinakasam/ERCF_Filament_Cutter
 
 <hr>
 
-## ![#f03c15](/doc/f03c15.png) ![#c5f015](/doc/c5f015.png) ![#1589F0](/doc/1589F0.png) Blobifier
+## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Blobifier
+
 An addon used to create purge blobs instead of using a wipe tower
-<img src="https://raw.githubusercontent.com/Dendrowen/Blobifier/main/Pictures/Render_Full.png" width=60%>
+
+<img src="https://github.com/moggieuk/Happy-Hare/wiki/Addon-Feature-Setup/blobifier.png" width=60%>
+
 ### Compatibility
 **MMU:** _Any_<br>
 **Printer:** Voron v2, others in the works
