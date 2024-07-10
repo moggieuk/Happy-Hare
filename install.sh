@@ -1048,7 +1048,7 @@ copy_config_files() {
         src=${SRCDIR}/config/addons/${file}
         dest=${mmu_dir}/addons/${file}
         if [ -f "${dest}" ]; then
-            if ! echo "$file" | grep -E -q "(.*_hw|my_.*)\.cfg.*"; then
+            if ! echo "$file" | grep -E -q ".*_hw\.cfg.*"; then
                 echo -e "${INFO}Upgrading configuration file ${file}"
                 update_copy_file ${src} ${dest} "variable_"
             else
