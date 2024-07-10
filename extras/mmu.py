@@ -5228,9 +5228,8 @@ class Mmu:
     def _buzz_gear_motor(self):
         with self._require_encoder():
             initial_encoder_position = self._get_encoder_distance()
-            # TODO 2.5 should probably be 2.5 * self.default_encoder_resolution to be generic
-            self._trace_filament_move(None, 2.5, accel=self.gear_buzz_accel, encoder_dwell=None)
-            self._trace_filament_move(None, -2.5, accel=self.gear_buzz_accel, encoder_dwell=None)
+            self._trace_filament_move(None, 2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
+            self._trace_filament_move(None, -2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
             measured = self._get_encoder_distance() - initial_encoder_position
             self._log_trace("After buzzing gear motor, encoder measured %.2f" % measured)
             self._set_encoder_distance(initial_encoder_position, dwell=None)

@@ -424,20 +424,26 @@ class MmuKinematics:
         # PAUL: maybe set up a dummy stepper to initially establish rails. Then read real ones. Selector can be virtual anyway.
         # If no stepper_mmu_selector:
         #    Fake config section 
-        fake_selector_rail = FakePrinterRail()
-        logging.info("PAUL: dummy_created")
+#        fake_selector_rail = FakePrinterRail()
+#        logging.info("PAUL: dummy_created")
         # PAUL ^^^ experiementing
 
         # Setup "axis" rails
-#        self.axes = [('x', 'stepper_mmu_selector', True), ('y', 'stepper_mmu_gear', False)]
-#        self.rails = [MmuLookupMultiRail(config.getsection(s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
-        self.axes = [('y', 'stepper_mmu_gear', False)]
-        self.rails = [MmuLookupMultiRail(config.getsection(s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
-        logging.info("PAUL: rails=%s" % self.rails) # PAUL
-        self.rails = [fake_selector_rail, self.rails[0]] # PAUL!!
-        logging.info("PAUL: rails=%s" % self.rails) # PAUL
+        self.axes = [('x', 'selector', True), ('y', 'gear', False)]
+        self.rails = [MmuLookupMultiRail(config.getsection('stepper_mmu_' + s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]        
         for rail, axis in zip(self.rails, 'xy'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
+
+#        # Setup "axis" rails
+#        self.axes = [('x', 'stepper_mmu_selector', True), ('y', 'stepper_mmu_gear', False)]
+#        self.rails = [MmuLookupMultiRail(config.getsection(s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
+#        self.axes = [('y', 'stepper_mmu_gear', False)]
+#        self.rails = [MmuLookupMultiRail(config.getsection(s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
+#        logging.info("PAUL: rails=%s" % self.rails) # PAUL
+#        self.rails = [fake_selector_rail, self.rails[0]] # PAUL!!
+#        logging.info("PAUL: rails=%s" % self.rails) # PAUL
+#        for rail, axis in zip(self.rails, 'xy'):
+#            rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
 
         logging.info("PAUL: steppers")
         for s in self.get_steppers():
