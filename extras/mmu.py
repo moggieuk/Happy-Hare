@@ -724,8 +724,7 @@ class Mmu:
         self.mmu_kinematics = self.mmu_toolhead.get_kinematics()
         rails = self.mmu_toolhead.get_kinematics().rails
         self.selector_rail = rails[0]
-        # PAULself.selector_stepper = self.selector_rail.steppers[0]
-        self.selector_stepper = None # PAUL
+        self.selector_stepper = self.selector_rail.steppers[0]
         self.gear_rail = rails[1]
         self.gear_stepper = self.gear_rail.steppers[0]
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Available now if 'self.homing_extruder' is True
@@ -4941,7 +4940,6 @@ class Mmu:
         return pos[0], homed
 
     def _set_selector_pos(self, new_pos):
-        return # PAUL
         pos = self.mmu_toolhead.get_position()
         pos[0] = new_pos
         self.mmu_toolhead.set_position(pos, homing_axes=(0,))
