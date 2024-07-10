@@ -2013,7 +2013,6 @@ class Mmu:
         self._movequeues_wait_moves()
         self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
-            self.gear_buzz_accel = 1000
             for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
                 self._trace_filament_move(None, -0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
