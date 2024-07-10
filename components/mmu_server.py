@@ -51,8 +51,7 @@ class MmuServer:
         self.spoolman : SpoolManager = self.server.load_component(config, "spoolman", None)
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
         self.http_client: HttpClient = self.server.lookup_component("http_client")
-        self.filament_gates = config.getint(
-            "nb_gates", default=1, minval=1)
+        self.nb_gates = None # set by klippy when calling remote_gate_map
         self.machine_occupation = {}
         self.gate_occupation = {}
         # Spoolman filament info retrieval functionality and update reporting
@@ -298,10 +297,11 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-    async def remote_gate_map(self, silent=False, dump=True) -> List[Dict[str, Any]]:
+    async def remote_gate_map(self, nb_gates, silent=False, dump=True) -> List[Dict[str, Any]]:
         '''
         Get all spools assigned to the current machine from spoolman db and set them in the gates
         '''
+        self.nb_gates = nb_gates
         # get current printer hostname
         machine_hostname = self.printer_info["hostname"]
         logging.info(f"Getting spools for machine: {machine_hostname}")
@@ -322,11 +322,11 @@ class MmuServer:
                 await self._log_n_send(f"Failed to retrieve spools from spoolman: {e}")
             return []
         self.machine_occupation = spools
-        if self.filament_gates < len(spools) :
+        if self.nb_gates < len(spools) :
             if not silent :
                 await self._log_n_send(f"Number of spools assigned to machine {machine_hostname} is greater than the number of gates available on the machine. Please check the spoolman or moonraker [spoolman] setup.")
             return []
-        table = [None for __ in range(self.filament_gates)]
+        table = [None for __ in range(self.nb_gates)]
         if self.machine_occupation:
             if not silent:
                 await self._log_n_send("Spools for machine:")
@@ -386,14 +386,14 @@ class MmuServer:
             "spoolman:spoolman_set_spool_gate", {"id": spool_id, "gate": gate}
         )
         # check that gate not higher than number of gates available
-        if (gate is None) and (self.filament_gates > 1):
+        if (gate is None) and (self.nb_gates > 1):
             msg = f"Trying to set spool {spool_id} for machine {self.printer_info['hostname']} but no gate number provided."
             await self._log_n_send(msg)
             return False
-        elif not gate and (self.filament_gates == 1):
+        elif not gate and (self.nb_gates == 1):
             gate = 0
-        elif gate > self.filament_gates-1:
-            msg = f"Trying to set spool {spool_id} for machine {self.printer_info['hostname']} @ gate {gate} but only {self.filament_gates} gates are available. Please check the spoolman or moonraker [spoolman] setup."
+        elif gate > self.nb_gates-1:
+            msg = f"Trying to set spool {spool_id} for machine {self.printer_info['hostname']} @ gate {gate} but only {self.nb_gates} gates are available. Please check the spoolman or moonraker [spoolman] setup."
             await self._log_n_send(msg)
             return False
 
@@ -478,7 +478,7 @@ class MmuServer:
             return False
         await self._log_n_send(f"Spool {spool_id} set for machine {machine_hostname} @ gate {gate} in spoolman db")
         await self.remote_gate_map(silent=True, dump=False)
-        if gate == 0 and (self.filament_gates == 1):
+        if gate == 0 and (self.nb_gates == 1):
             await self.set_active_gate(gate)
             await self._log_n_send(f"{CONSOLE_TAB*2}Setting gate 0 as active (single gate machine)")
         return True
