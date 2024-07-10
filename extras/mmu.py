@@ -5652,7 +5652,7 @@ class Mmu:
         self._log_debug("Requesting the gate map from Spoolman...")
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_remote_gate_map", silent=True)
+            webhooks.call_remote_method("spoolman_remote_gate_map", self.mmu_num_gates, silent=True)
         except Exception as e:
             self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
 
