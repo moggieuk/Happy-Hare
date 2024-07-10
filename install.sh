@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.51 # Important: Keep synced with mmy.py
+VERSION=2.60 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
@@ -31,126 +31,124 @@ declare -A PIN 2>/dev/null || {
 # Pins for original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
 # Note: uart pin is shared on original EASY-BRD (with different uart addresses)
 #
-PIN[EASY-BRD,gear_uart_pin]="PA8";         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
-PIN[EASY-BRD,gear_step_pin]="PA4";         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
-PIN[EASY-BRD,gear_dir_pin]="PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
-PIN[EASY-BRD,gear_enable_pin]="PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
-PIN[EASY-BRD,gear_diag_pin]="";            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
-PIN[EASY-BRD,selector_uart_pin]="PA8";     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
-PIN[EASY-BRD,selector_step_pin]="PA9";     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
-PIN[EASY-BRD,selector_dir_pin]="PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
-PIN[EASY-BRD,selector_enable_pin]="PA11";  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
-PIN[EASY-BRD,selector_diag_pin]="PA7";     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
-PIN[EASY-BRD,selector_endstop_pin]="PB9";  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
-PIN[EASY-BRD,servo_pin]="PA5";             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
-PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
-PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
-PIN[EASY-BRD,gate_sensor_pin]="PA6";       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
-PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
-PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
-PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
-PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
-PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
-PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
-PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
-PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
-PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
-PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
-PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
-PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
+PIN[EASY-BRD,gear_uart_pin]="PA8";                         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
+PIN[EASY-BRD,gear_step_pin]="PA4";                         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
+PIN[EASY-BRD,gear_dir_pin]="PA10";                         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
+PIN[EASY-BRD,gear_enable_pin]="PA2";                       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
+PIN[EASY-BRD,gear_diag_pin]="";                            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
+PIN[EASY-BRD,selector_uart_pin]="PA8";                     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
+PIN[EASY-BRD,selector_step_pin]="PA9";                     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
+PIN[EASY-BRD,selector_dir_pin]="PB8";                      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
+PIN[EASY-BRD,selector_enable_pin]="PA11";                  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
+PIN[EASY-BRD,selector_diag_pin]="PA7";                     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
+PIN[EASY-BRD,selector_endstop_pin]="PB9";                  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
+PIN[EASY-BRD,servo_pin]="PA5";                             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
+PIN[EASY-BRD,encoder_pin]="PA6";                           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
+PIN[EASY-BRD,neopixel_pin]="";                             PIN[EASY-BRD-RP2040,neopixel_pin]=""
+PIN[EASY-BRD,gate_sensor_pin]="PA6";                       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
+PIN[EASY-BRD,pre_gate_0_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
+PIN[EASY-BRD,pre_gate_1_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
+PIN[EASY-BRD,pre_gate_2_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
+PIN[EASY-BRD,pre_gate_3_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
+PIN[EASY-BRD,pre_gate_4_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
+PIN[EASY-BRD,pre_gate_5_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
+PIN[EASY-BRD,pre_gate_6_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
+PIN[EASY-BRD,pre_gate_7_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
+PIN[EASY-BRD,pre_gate_8_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
+PIN[EASY-BRD,pre_gate_9_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
+PIN[EASY-BRD,pre_gate_10_pin]="";                          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
+PIN[EASY-BRD,pre_gate_11_pin]="";                          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
-# Pins for Mellow EASY-BRD with CANbus
+# Pins for Mellow EASY-BRD with CANbus (original v1.x and v2)
 #
-PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="gpio9";
-PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="gpio7";
-PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="gpio8";
-PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="gpio6";
-PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="gpio23";
-PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="gpio0";
-PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";
-PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";
-PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";
-PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";
-PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";	# Endstop
-PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";		# Servo
-PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";		# Encoder
-PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		# Extra
-PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";	# Encoder (Alt)
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	# Exp 5
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	# Exp 6
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	# Exp 7
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	# Exp 8
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	# Exp 9
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	# Exp 10
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	# Exp 11
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	# Exp 12
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	# Exp 13
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	# Exp 14
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="gpio9";            PIN[MELLOW-EASY-BRD-CANv2,gear_uart_pin]="gpio9";
+PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="gpio7";            PIN[MELLOW-EASY-BRD-CANv2,gear_step_pin]="gpio7";
+PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="gpio8";             PIN[MELLOW-EASY-BRD-CANv2,gear_dir_pin]="gpio8";
+PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="gpio6";          PIN[MELLOW-EASY-BRD-CANv2,gear_enable_pin]="gpio6";
+PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="gpio23";           PIN[MELLOW-EASY-BRD-CANv2,gear_diag_pin]="";               # v2: Dup with encoder (gpio15)
+PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="gpio0";        PIN[MELLOW-EASY-BRD-CANv2,selector_uart_pin]="gpio2";
+PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";        PIN[MELLOW-EASY-BRD-CANv2,selector_step_pin]="gpio4";
+PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";         PIN[MELLOW-EASY-BRD-CANv2,selector_dir_pin]="gpio3";
+PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";      PIN[MELLOW-EASY-BRD-CANv2,selector_enable_pin]="gpio5";
+PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";       PIN[MELLOW-EASY-BRD-CANv2,selector_diag_pin]="gpio20";     # v2: Dup with endstop (gpio20)
+PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";	   PIN[MELLOW-EASY-BRD-CANv2,selector_endstop_pin]="gpio20";  # Endstop
+PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";		   PIN[MELLOW-EASY-BRD-CANv2,servo_pin]="gpio21";             # Servo
+PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";		   PIN[MELLOW-EASY-BRD-CANv2,encoder_pin]="gpio15";           # Encoder
+PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		   PIN[MELLOW-EASY-BRD-CANv2,neopixel_pin]="gpio14";          # v1: Extra  / v2: RGB
+PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";	   PIN[MELLOW-EASY-BRD-CANv2,gate_sensor_pin]="gpio15";       # Encoder (Alt)
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_0_pin]="gpio24";        # v1: Exp 5  / v2: Exp 3
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_1_pin]="gpio22";        # v1: Exp 6  / v2: Exp 4
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_2_pin]="gpio25";        # v1: Exp 7  / v2: Exp 5
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_3_pin]="gpio23";        # v1: Exp 8  / v2: Exp 6
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_4_pin]="gpio13";        # v1: Exp 9  / v2: Exp 7
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_5_pin]="gpio26";        # v1: Exp 10 / v2: Exp 8
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_6_pin]="gpio12";        # v1: Exp 11 / v2: Exp 9
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_7_pin]="gpio27";        # v1: Exp 12 / v2: Exp 10
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_8_pin]="gpio11";        # v1: Exp 13 / v2: Exp 11
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_9_pin]="gpio28";        # v1: Exp 14 / v2: Exp 12
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_10_pin]="gpio10";       #              v2: Exp 13
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_11_pin]="gpio29";       #              v2: Exp 14
 
 # Pins for Fysetc Burrows ERB board (original v1 and v2)
 #
-PIN[ERB,gear_uart_pin]="gpio20";           PIN[ERBv2,gear_uart_pin]="gpio20";
-PIN[ERB,gear_step_pin]="gpio10";           PIN[ERBv2,gear_step_pin]="gpio10";
-PIN[ERB,gear_dir_pin]="gpio9";             PIN[ERBv2,gear_dir_pin]="gpio9";
-PIN[ERB,gear_enable_pin]="gpio8";          PIN[ERBv2,gear_enable_pin]="gpio8";
-PIN[ERB,gear_diag_pin]="gpio13";           PIN[ERBv2,gear_diag_pin]="gpio13";
-PIN[ERB,selector_uart_pin]="gpio17";       PIN[ERBv2,selector_uart_pin]="gpio17";
-PIN[ERB,selector_step_pin]="gpio16";       PIN[ERBv2,selector_step_pin]="gpio16";
-PIN[ERB,selector_dir_pin]="gpio15";        PIN[ERBv2,selector_dir_pin]="gpio15";
-PIN[ERB,selector_enable_pin]="gpio14";     PIN[ERBv2,selector_enable_pin]="gpio14";
-PIN[ERB,selector_diag_pin]="gpio19";       PIN[ERBv2,selector_diag_pin]="gpio19";
-PIN[ERB,selector_endstop_pin]="gpio24";    PIN[ERBv2,selector_endstop_pin]="gpio24";
-PIN[ERB,servo_pin]="gpio23";               PIN[ERBv2,servo_pin]="gpio23";
-PIN[ERB,encoder_pin]="gpio22";             PIN[ERBv2,encoder_pin]="gpio22";
-PIN[ERB,neopixel_pin]="gpio21";            PIN[ERBv2,neopixel_pin]="gpio21";
-PIN[ERB,gate_sensor_pin]="gpio22";         PIN[ERBv2,gate_sensor_pin]="gpio25";  # Hall Effect
-PIN[ERB,pre_gate_0_pin]="gpio0";           PIN[ERBv2,pre_gate_0_pin]="gpio12";
-PIN[ERB,pre_gate_1_pin]="gpio1";           PIN[ERBv2,pre_gate_1_pin]="gpio18";
-PIN[ERB,pre_gate_2_pin]="gpio2";           PIN[ERBv2,pre_gate_2_pin]="gpio2";
-PIN[ERB,pre_gate_3_pin]="gpio3";           PIN[ERBv2,pre_gate_3_pin]="gpio3";
-PIN[ERB,pre_gate_4_pin]="gpio4";           PIN[ERBv2,pre_gate_4_pin]="gpio4";
-PIN[ERB,pre_gate_5_pin]="gpio5";           PIN[ERBv2,pre_gate_5_pin]="gpio5";
-PIN[ERB,pre_gate_6_pin]="gpio6";           PIN[ERBv2,pre_gate_6_pin]="gpio6";
-PIN[ERB,pre_gate_7_pin]="gpio7";           PIN[ERBv2,pre_gate_7_pin]="gpio7";
-PIN[ERB,pre_gate_8_pin]="gpio26";          PIN[ERBv2,pre_gate_8_pin]="gpio26";
-PIN[ERB,pre_gate_9_pin]="gpio27";          PIN[ERBv2,pre_gate_9_pin]="gpio27";
-PIN[ERB,pre_gate_10_pin]="gpio28";         PIN[ERBv2,pre_gate_10_pin]="gpio28";
-PIN[ERB,pre_gate_11_pin]="gpio29";         PIN[ERBv2,pre_gate_11_pin]="gpio29";
-
+PIN[ERB,gear_uart_pin]="gpio20";                           PIN[ERBv2,gear_uart_pin]="gpio20";
+PIN[ERB,gear_step_pin]="gpio10";                           PIN[ERBv2,gear_step_pin]="gpio10";
+PIN[ERB,gear_dir_pin]="gpio9";                             PIN[ERBv2,gear_dir_pin]="gpio9";
+PIN[ERB,gear_enable_pin]="gpio8";                          PIN[ERBv2,gear_enable_pin]="gpio8";
+PIN[ERB,gear_diag_pin]="gpio13";                           PIN[ERBv2,gear_diag_pin]="gpio13";
+PIN[ERB,selector_uart_pin]="gpio17";                       PIN[ERBv2,selector_uart_pin]="gpio17";
+PIN[ERB,selector_step_pin]="gpio16";                       PIN[ERBv2,selector_step_pin]="gpio16";
+PIN[ERB,selector_dir_pin]="gpio15";                        PIN[ERBv2,selector_dir_pin]="gpio15";
+PIN[ERB,selector_enable_pin]="gpio14";                     PIN[ERBv2,selector_enable_pin]="gpio14";
+PIN[ERB,selector_diag_pin]="gpio19";                       PIN[ERBv2,selector_diag_pin]="gpio19";
+PIN[ERB,selector_endstop_pin]="gpio24";                    PIN[ERBv2,selector_endstop_pin]="gpio24";
+PIN[ERB,servo_pin]="gpio23";                               PIN[ERBv2,servo_pin]="gpio23";
+PIN[ERB,encoder_pin]="gpio22";                             PIN[ERBv2,encoder_pin]="gpio22";
+PIN[ERB,neopixel_pin]="gpio21";                            PIN[ERBv2,neopixel_pin]="gpio21";
+PIN[ERB,gate_sensor_pin]="gpio22";                         PIN[ERBv2,gate_sensor_pin]="gpio25";  # Hall Effect
+PIN[ERB,pre_gate_0_pin]="gpio0";                           PIN[ERBv2,pre_gate_0_pin]="gpio12";
+PIN[ERB,pre_gate_1_pin]="gpio1";                           PIN[ERBv2,pre_gate_1_pin]="gpio18";
+PIN[ERB,pre_gate_2_pin]="gpio2";                           PIN[ERBv2,pre_gate_2_pin]="gpio2";
+PIN[ERB,pre_gate_3_pin]="gpio3";                           PIN[ERBv2,pre_gate_3_pin]="gpio3";
+PIN[ERB,pre_gate_4_pin]="gpio4";                           PIN[ERBv2,pre_gate_4_pin]="gpio4";
+PIN[ERB,pre_gate_5_pin]="gpio5";                           PIN[ERBv2,pre_gate_5_pin]="gpio5";
+PIN[ERB,pre_gate_6_pin]="gpio6";                           PIN[ERBv2,pre_gate_6_pin]="gpio6";
+PIN[ERB,pre_gate_7_pin]="gpio7";                           PIN[ERBv2,pre_gate_7_pin]="gpio7";
+PIN[ERB,pre_gate_8_pin]="gpio26";                          PIN[ERBv2,pre_gate_8_pin]="gpio26";
+PIN[ERB,pre_gate_9_pin]="gpio27";                          PIN[ERBv2,pre_gate_9_pin]="gpio27";
+PIN[ERB,pre_gate_10_pin]="gpio28";                         PIN[ERBv2,pre_gate_10_pin]="gpio28";
+PIN[ERB,pre_gate_11_pin]="gpio29";                         PIN[ERBv2,pre_gate_11_pin]="gpio29";
 
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
 # Note BTT MMB v1.1 Board switched gear_enable and pre_gate_1 pins
 #
-PIN[MMB10,gear_uart_pin]="PA10";           PIN[MMB11,gear_uart_pin]="PA10";       # M1
-PIN[MMB10,gear_step_pin]="PB15";           PIN[MMB11,gear_step_pin]="PB15";
-PIN[MMB10,gear_dir_pin]="PB14";            PIN[MMB11,gear_dir_pin]="PB14";
-PIN[MMB10,gear_enable_pin]="PA8";          PIN[MMB11,gear_enable_pin]="PB8";
-PIN[MMB10,gear_diag_pin]="PA3";            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1
-PIN[MMB10,selector_uart_pin]="PC7";        PIN[MMB11,selector_uart_pin]="PC7";    # M2
-PIN[MMB10,selector_step_pin]="PD2";        PIN[MMB11,selector_step_pin]="PD2";
-PIN[MMB10,selector_dir_pin]="PB13";        PIN[MMB11,selector_dir_pin]="PB13";
-PIN[MMB10,selector_enable_pin]="PD1";      PIN[MMB11,selector_enable_pin]="PD1";
-PIN[MMB10,selector_diag_pin]="PA4";        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2
-PIN[MMB10,selector_endstop_pin]="PB2";     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
-PIN[MMB10,servo_pin]="PA0";                PIN[MMB11,servo_pin]="PA0";
-PIN[MMB10,encoder_pin]="PA1";              PIN[MMB11,encoder_pin]="PA1";
-PIN[MMB10,neopixel_pin]="PA2";             PIN[MMB11,neopixel_pin]="PA2";
-PIN[MMB10,gate_sensor_pin]="PA3";          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
-PIN[MMB10,pre_gate_0_pin]="PB9";           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3
-PIN[MMB10,pre_gate_1_pin]="PB8";           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4
-PIN[MMB10,pre_gate_2_pin]="PC15";          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5
-PIN[MMB10,pre_gate_3_pin]="PC13";          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6
-PIN[MMB10,pre_gate_4_pin]="PC14";          PIN[MMB11,pre_gate_4_pin]="PC14";      # STP7
-PIN[MMB10,pre_gate_5_pin]="PB12";          PIN[MMB11,pre_gate_5_pin]="PB12";      # STP8
-PIN[MMB10,pre_gate_6_pin]="PB11";          PIN[MMB11,pre_gate_6_pin]="PB11";      # STP9
-PIN[MMB10,pre_gate_7_pin]="PB10";          PIN[MMB11,pre_gate_7_pin]="PB10";      # STP10
-PIN[MMB10,pre_gate_8_pin]="";              PIN[MMB11,pre_gate_8_pin]="";
-PIN[MMB10,pre_gate_9_pin]="";              PIN[MMB11,pre_gate_9_pin]="";
-PIN[MMB10,pre_gate_10_pin]="";             PIN[MMB11,pre_gate_10_pin]="";
-PIN[MMB10,pre_gate_11_pin]="";             PIN[MMB11,pre_gate_11_pin]="";
-
+PIN[MMB10,gear_uart_pin]="PA10";                           PIN[MMB11,gear_uart_pin]="PA10";       # M1
+PIN[MMB10,gear_step_pin]="PB15";                           PIN[MMB11,gear_step_pin]="PB15";
+PIN[MMB10,gear_dir_pin]="PB14";                            PIN[MMB11,gear_dir_pin]="PB14";
+PIN[MMB10,gear_enable_pin]="PA8";                          PIN[MMB11,gear_enable_pin]="PB8";
+PIN[MMB10,gear_diag_pin]="PA3";                            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1
+PIN[MMB10,selector_uart_pin]="PC7";                        PIN[MMB11,selector_uart_pin]="PC7";    # M2
+PIN[MMB10,selector_step_pin]="PD2";                        PIN[MMB11,selector_step_pin]="PD2";
+PIN[MMB10,selector_dir_pin]="PB13";                        PIN[MMB11,selector_dir_pin]="PB13";
+PIN[MMB10,selector_enable_pin]="PD1";                      PIN[MMB11,selector_enable_pin]="PD1";
+PIN[MMB10,selector_diag_pin]="PA4";                        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2
+PIN[MMB10,selector_endstop_pin]="PB2";                     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
+PIN[MMB10,servo_pin]="PA0";                                PIN[MMB11,servo_pin]="PA0";
+PIN[MMB10,encoder_pin]="PA1";                              PIN[MMB11,encoder_pin]="PA1";
+PIN[MMB10,neopixel_pin]="PA2";                             PIN[MMB11,neopixel_pin]="PA2";
+PIN[MMB10,gate_sensor_pin]="PA3";                          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
+PIN[MMB10,pre_gate_0_pin]="PB9";                           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3
+PIN[MMB10,pre_gate_1_pin]="PB8";                           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4
+PIN[MMB10,pre_gate_2_pin]="PC15";                          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5
+PIN[MMB10,pre_gate_3_pin]="PC13";                          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6
+PIN[MMB10,pre_gate_4_pin]="PC14";                          PIN[MMB11,pre_gate_4_pin]="PC14";      # STP7
+PIN[MMB10,pre_gate_5_pin]="PB12";                          PIN[MMB11,pre_gate_5_pin]="PB12";      # STP8
+PIN[MMB10,pre_gate_6_pin]="PB11";                          PIN[MMB11,pre_gate_6_pin]="PB11";      # STP9
+PIN[MMB10,pre_gate_7_pin]="PB10";                          PIN[MMB11,pre_gate_7_pin]="PB10";      # STP10
+PIN[MMB10,pre_gate_8_pin]="";                              PIN[MMB11,pre_gate_8_pin]="";
+PIN[MMB10,pre_gate_9_pin]="";                              PIN[MMB11,pre_gate_9_pin]="";
+PIN[MMB10,pre_gate_10_pin]="";                             PIN[MMB11,pre_gate_10_pin]="";
+PIN[MMB10,pre_gate_11_pin]="";                             PIN[MMB11,pre_gate_11_pin]="";
 
 # These pins will usually be on main mcu for wiring simplification
 #
@@ -687,6 +685,9 @@ read_previous_config() {
         if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
             _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
         fi
+        if [ ! "${_param_extruder_homing_current}" == "" ]; then
+            _param_extruder_collision_homing_current=${_param_extruder_homing_current}
+        fi
         if [ ! "${_param_log_visual}" == "2" ]; then
             _param_log_visual=1
         fi
@@ -717,8 +718,12 @@ read_previous_config() {
         if [ ! "${_param_servo_move_angle}" == "" ]; then
             _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
         fi
-        if [ ! "${_param_z_hop_height_error}" == "" ]; then
-            unset _param_z_hop_heigth_error
+        if [ "${_param_servo_always_active}" == "" ]; then
+            _param_servo_always_active=0
+        fi
+
+        if [ "${_param_log_file_level}" -gt 2 ]; then
+            _param_log_file_level=2
         fi
     fi
 
@@ -765,8 +770,6 @@ read_previous_config() {
 
             if [ ! "${variable_enable_park}" == "" ]; then
                 variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
-                variable_enable_park_runout=${variable_enable_park}
-                variable_enable_park_standalone=${variable_enable_park}
             fi
             if [ ! "${variable_ramming_volume}" == "" ]; then
                 variable_ramming_volume_standalone=${variable_ramming_volume}
@@ -980,11 +983,20 @@ copy_config_files() {
         # Variables macro ---------------------------------------------------------------------
         elif [ "${file}" == "mmu_macro_vars.cfg" ]; then
             tx_macros=""
-            for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
-            do
-                tx_macros+="[gcode_macro T${i}]\n"
-                tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
-            done
+            if [ "$mmu_num_gates" -eq "$mmu_num_gates" ] 2>/dev/null; then
+                for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
+                do
+                    tx_macros+="[gcode_macro T${i}]\n"
+                    tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
+                done
+            else
+                # Skeleton config file case
+                for (( i=0; i<=11; i++ ))
+                do
+                    tx_macros+="#[gcode_macro T${i}]\n"
+                    tx_macros+="#gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
+                done
+            fi
 
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} | sed -e "\
@@ -1275,6 +1287,8 @@ questionaire() {
     gate_parking_distance=23.0
     gate_endstop_to_encoder=0
     servo_buzz_gear_on_down=0
+    servo_always_active=0
+    servo_duration=0.2
 
     # mmu_hardware.cfg only...
     gear_gear_ratio="80:20"
@@ -1283,8 +1297,8 @@ questionaire() {
     sel_run_current=0.4
     sel_hold_current=0.2
     maximum_servo_angle=180
-    minimum_pulse_width=0.00075
-    maximum_pulse_width=0.00225
+    minimum_pulse_width=0.001
+    maximum_pulse_width=0.002
 
     echo
     echo -e "${INFO}Let me see if I can get you started with initial configuration"
@@ -1305,9 +1319,6 @@ questionaire() {
             mmu_version="1.1"
             servo_buzz_gear_on_down=3
 
-            maximum_servo_angle=180
-            minimum_pulse_width=0.00085
-            maximum_pulse_width=0.00215
             echo
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
@@ -1338,10 +1349,6 @@ questionaire() {
             mmu_version="2.0"
             gate_parking_distance=13.0 # ThumperBlocks is 11.0
             servo_buzz_gear_on_down=3
-
-            maximum_servo_angle=180
-            minimum_pulse_width=0.00085
-            maximum_pulse_width=0.00215
             ;;
         3)
             HAS_ENCODER=no
@@ -1357,9 +1364,6 @@ questionaire() {
             gear_hold_current=0.2
             sel_run_current=0.63
             sel_hold_current=0.2
-            maximum_servo_angle=131
-            minimum_pulse_width=0.00070
-            maximum_pulse_width=0.00220
             echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
             echo
@@ -1397,14 +1401,16 @@ questionaire() {
     brd_type="unknown"
     echo
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
-    echo -e " 1) BTT MMB v1.0"
-    echo -e " 2) BTT MMB v1.1"
-    echo -e " 3) Fysetc Burrows ERB"
-    echo -e " 4) Standard EASY-BRD (with SAMD21)"
-    echo -e " 5) EASY-BRD with RP2040"
-    echo -e " 6) Mellow EASY-BRD with CANbus"
-    echo -e " 7) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 7)
+    echo -e " 1) BTT MMB v1.0 (with CANbus)"
+    echo -e " 2) BTT MMB v1.1 (with CANbus)"
+    echo -e " 3) Fysetc Burrows ERB v1"
+    echo -e " 4) Fysetc Burrows ERB v2"
+    echo -e " 5) Standard EASY-BRD (with SAMD21)"
+    echo -e " 6) EASY-BRD with RP2040"
+    echo -e " 7) Mellow EASY-BRD v1.x (with CANbus)"
+    echo -e " 8) Mellow EASY-BRD v2.x (with CANbus)"
+    echo -e " 9) Not in list / Unknown"
+    num=$(prompt_123 "MCU type?" 9)
     echo
     case $num in
         1)
@@ -1420,18 +1426,26 @@ questionaire() {
             pattern="Klipper_rp2040"
             ;;
         4)
+            brd_type="ERBv2"
+            pattern="Klipper_rp2040"
+            ;;
+        5)
             brd_type="EASY-BRD"
             pattern="Klipper_samd21"
             ;;
-        5)
+        6)
             brd_type="EASY-BRD-RP2040"
             pattern="Klipper_rp2040"
             ;;
-        6)
+        7)
             brd_type="MELLOW-EASY-BRD-CAN"
             pattern="Klipper_rp2040"
             ;;
-        7)
+        8)
+            brd_type="MELLOW-EASY-BRD-CANv2"
+            pattern="Klipper_rp2040"
+            ;;
+        9)
             brd_type="unknown"
             pattern="Klipper_"
             ;;
@@ -1503,15 +1517,21 @@ questionaire() {
     esac
 
     if [ "${mmu_vendor}" == "ERCF" ]; then
+        maximum_servo_angle=180
+        minimum_pulse_width=0.00085
+        maximum_pulse_width=0.00215
+
         echo
         echo -e "${PROMPT}${SECTION}Which servo are you using?"
-        echo -e "1) MG-90S (ERCF)"
-        echo -e "2) Savox SH0255MG (ERCF)"
-        echo -e "3) Not listed / Other${INPUT}"
-        num=$(prompt_123 "Servo?" 3)
+        echo -e "1) MG-90S"
+        echo -e "2) Savox SH0255MG"
+        echo -e "3) GDW DS041MG"
+        echo -e "4) Not listed / Other${INPUT}"
+        num=$(prompt_123 "Servo?" 4)
         echo
         case $num in
             1)
+                # MG-90S
                 servo_up_angle=30
                 if [ "${mmu_version}" == "2.0" ]; then
                     servo_move_angle=61
@@ -1521,6 +1541,7 @@ questionaire() {
                 servo_down_angle=140
                 ;;
             2)
+                # Savox SH0255MG
                 servo_up_angle=140
                 if [ "${mmu_version}" == "2.0" ]; then
                     servo_move_angle=109
@@ -1529,8 +1550,26 @@ questionaire() {
                 fi
                 servo_down_angle=30
                 ;;
+            3)
+                # GDW DS041MG
+                servo_always_active=1
+                maximum_servo_angle=180
+                minimum_pulse_width=0.00050
+                maximum_pulse_width=0.00250
+                servo_up_angle=30
+                if [ "${mmu_version}" == "2.0" ]; then
+                    servo_move_angle=50
+                else
+                    servo_move_angle=${servo_up_angle}
+                fi
+                servo_down_angle=100
         esac
+
     elif [ "${mmu_vendor}" == "Tradrack" ]; then
+        maximum_servo_angle=131
+        minimum_pulse_width=0.00070
+        maximum_pulse_width=0.00220
+
         echo
         echo -e "${PROMPT}${SECTION}Which servo are you using?"
         echo -e "1) PS-1171MG or FT1117M (Tradrack)"
@@ -1544,6 +1583,7 @@ questionaire() {
                 servo_down_angle=1
                 ;;
         esac
+
     else
         servo_up_angle=0
         servo_move_angle=0
