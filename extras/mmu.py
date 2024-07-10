@@ -1378,6 +1378,7 @@ class Mmu:
                 'extruder_filament_remaining': self.filament_remaining,
                 'extruder_residual_filament': self.toolhead_ooze_reduction,
                 'toolchange_retract': self.toolchange_retract,
+                'enable_spoolman': self.enable_spoolman,
         }
 
     def _reset_statistics(self):
