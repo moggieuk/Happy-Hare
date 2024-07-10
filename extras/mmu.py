@@ -517,8 +517,7 @@ class Mmu:
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
-        self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=1)
-        self.enable_remote_gate_map = config.getint('enable_remote_gate_map', 0, minval=0, maxval=1)
+        self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=2)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
         self.endless_spool_on_load = config.getint('endless_spool_on_load', 0, minval=0, maxval=1)
@@ -1219,7 +1218,7 @@ class Mmu:
 
             self._servo_move()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
-            if self.enable_remote_gate_map:
+            if self.enable_spoolman > 1:
                 self._gate_map_from_spoolman()
             else :
                 self._update_filaments_from_spoolman()
@@ -1710,7 +1709,7 @@ class Mmu:
         self._save_variable(self.VARS_MMU_GATE_COLOR, self.gate_color)
         self._save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_color)
         self._save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
-        if self.enable_remote_gate_map and sync:
+        if (self.enable_spoolman > 1) and sync:
             self._spoolman_set_gate_map()
 
         self._save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
@@ -6201,7 +6200,6 @@ class Mmu:
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.mmu_num_gates - 1)
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=1)
-        self.enable_remote_gate_map = gcmd.getint('ENABLE_REMOTE_GATE_MAP', self.enable_remote_gate_map, minval=0, maxval=1)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=1)
@@ -6314,7 +6312,6 @@ class Mmu:
         msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
         msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
-        msg += "\nenable_remote_gate_map = %d" % self.enable_remote_gate_map
         if self._has_encoder():
             msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
             msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
@@ -6691,7 +6688,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-        sync = bool(gcmd.get_int('SYNC', int(self.enable_remote_gate_map), minval=0, maxval=1))
+        sync = bool(gcmd.get_int('SYNC', int(self.enable_spoolman > 1), minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
