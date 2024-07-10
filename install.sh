@@ -650,7 +650,7 @@ read_default_config() {
     parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg"   "variable_" ""        "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg"    "variable_" ""        "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_leds.cfg"       "variable_" ""        "checkdup"
-    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw"`; do
+    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw" | grep -v "my_"`; do
         parse_file "${SRCDIR}/config/addons/${file}"      "variable_" ""        "checkdup"
     done
 }
@@ -1043,7 +1043,8 @@ copy_config_files() {
     fi
 
     # Addon config files are always copied (and updated) so they can be edited ----------------
-    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg`; do
+    # Skipping files with 'my_' prefix for development
+    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "my_"`; do
         src=${SRCDIR}/config/addons/${file}
         dest=${mmu_dir}/addons/${file}
         if [ -f "${dest}" ]; then
