@@ -1045,7 +1045,7 @@ class Mmu:
 
         # Clear 'color' on Tx macros
         for tool in range(self.mmu_num_gates):
-            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None)
+            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None) # TODO spool_id can also be set
             if t_macro:
                 try:
                     del t_macro.variables['color']
@@ -1113,7 +1113,7 @@ class Mmu:
             self.slicer_color_rgb[gate] = self._color_to_rgb(tool_value['color'])
 
             # Set 'color' variable on the Tx macro for Mainsail/Fluidd to pick up
-            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None)
+            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None) # TODO spool_id can also be set
             if t_macro:
                 hex_rgb = self._color_to_hex_rgb(tool_value['color'])
                 t_macro.variables.update({'color': hex_rgb})
