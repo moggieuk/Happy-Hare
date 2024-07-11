@@ -4334,6 +4334,15 @@ class Mmu:
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self._log_debug("Filament should loaded to nozzle")
 
+            # Roll back up to N mm using low torque to pull the filament tight in long bowden tubes with extra space
+            self._log_info("Filament pull after load using low torque")
+            self._adjust_gear_current(percent=30, reason="Pull filament tight")
+            self._set_filament_direction(self.DIRECTION_UNLOAD)
+            
+            _,_,measured,delta = self._trace_filament_move("Loading filament to nozzle", -25, speed=speed, motor="gear", wait=True)
+            self._log_info("Filament pull: rolled back %0.0f mm" % measured) 
+
+
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
     # and we are parked somewhere in the extruder either by slicer or by stand alone tip creation
     # But be careful:
