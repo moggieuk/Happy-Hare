@@ -297,7 +297,7 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-    async def remote_gate_map(self, nb_gates, silent=False, dump=True) -> List[Dict[str, Any]]:
+    async def remote_gate_map(self, nb_gates=0, silent=False, dump=True) -> List[Dict[str, Any]]:
         '''
         Get all spools assigned to the current machine from spoolman db and set them in the gates
         '''
