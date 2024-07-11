@@ -454,15 +454,16 @@ class Mmu:
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
         self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_COLLISION)
-        self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.)
+        self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.) # Extruder homing max
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
-        self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.)
+        self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # Toolhead sensor homing max
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
         self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=35.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
+        self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 0, minval=0, maxval=1) # Whether to apply filament tightening move after load (if not synced). TODO: Currently hidden
 
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
@@ -1752,9 +1753,7 @@ class Mmu:
         return (self.mmu_logger and self.log_file_level >= level) or self.log_level >= level
 
     # Fun visual display of MMU state
-    def _display_visual_state(self, direction=None, silent=False):
-        if direction is not None:
-            self.filament_direction = direction
+    def _display_visual_state(self, silent=False):
         if not silent and self.log_visual and not self.calibrating:
             visual_str = self._state_to_string()
             self._log_always(visual_str)
@@ -4329,18 +4328,18 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                     raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not find homing sensor")
 
+            # Tightening move to prevent erroneous clog detection / runout if gear stepper is not synced with extruder
+            if self._can_use_encoder() and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
+                with self._wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
+                    # Servo will already be down
+                    pullback = self.encoder_sensor.get_clog_detection_length() * .6 # 60% of current clog detection length
+                    _,_,measured,delta = self._trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
+                self._log_info("Filament tightened by %.1fmm" % pullback) 
+
             self._random_failure() # Testing
             self._movequeues_wait_moves()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self._log_debug("Filament should loaded to nozzle")
-
-            # Roll back up to N mm using low torque to pull the filament tight in long bowden tubes with extra space
-            self._log_info("Filament pull after load using low torque")
-            self._adjust_gear_current(percent=30, reason="Pull filament tight")
-            self._set_filament_direction(self.DIRECTION_UNLOAD)
-            
-            _,_,measured,delta = self._trace_filament_move("Loading filament to nozzle", -25, speed=speed, motor="gear", wait=True)
-            self._log_info("Filament pull: rolled back %0.0f mm" % measured) 
 
 
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
@@ -5546,7 +5545,7 @@ class Mmu:
             return
         self._log_info("Selecting filament bypass...")
         self._select_gate(self.TOOL_GATE_BYPASS)
-        self.filament_direction = self.DIRECTION_LOAD
+        self._set_filament_direction(self.DIRECTION_LOAD)
         self._set_tool_selected(self.TOOL_GATE_BYPASS)
         self._log_info("Bypass enabled")
 
@@ -5932,7 +5931,7 @@ class Mmu:
         elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
             # This is to be able to get out of "stuck in bypass" state
             self._log_info("Warning: Making assumption that bypass is unloaded")
-            self.filament_direction = self.DIRECTION_UNKNOWN
+            self._set_filament_direction(self.DIRECTION_UNKNOWN)
             self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
             self._servo_auto()
             return
