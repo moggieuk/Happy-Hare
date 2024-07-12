@@ -421,37 +421,16 @@ class MmuKinematics:
         self.printer = config.get_printer()
         self.toolhead = toolhead
 
-        # PAUL: maybe set up a dummy stepper to initially establish rails. Then read real ones. Selector can be virtual anyway.
-        # If no stepper_mmu_selector:
-        #    Fake config section 
-#        fake_selector_rail = FakePrinterRail()
-#        logging.info("PAUL: dummy_created")
-        # PAUL ^^^ experiementing
-
         # Setup "axis" rails
         self.axes = [('x', 'selector', True), ('y', 'gear', False)]
-        self.rails = [MmuLookupMultiRail(config.getsection('stepper_mmu_' + s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]        
+        self.rails = [MmuLookupMultiRail(config.getsection('stepper_mmu_' + s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
         for rail, axis in zip(self.rails, 'xy'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
 
-#        # Setup "axis" rails
-#        self.axes = [('x', 'stepper_mmu_selector', True), ('y', 'stepper_mmu_gear', False)]
-#        self.rails = [MmuLookupMultiRail(config.getsection(s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
-#        self.axes = [('y', 'stepper_mmu_gear', False)]
-#        self.rails = [MmuLookupMultiRail(config.getsection(s), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm in self.axes]
-#        logging.info("PAUL: rails=%s" % self.rails) # PAUL
-#        self.rails = [fake_selector_rail, self.rails[0]] # PAUL!!
-#        logging.info("PAUL: rails=%s" % self.rails) # PAUL
-#        for rail, axis in zip(self.rails, 'xy'):
-#            rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
-
-        logging.info("PAUL: steppers")
         for s in self.get_steppers():
-            logging.info("PAUL: s=%s" % s)
             s.set_trapq(toolhead.get_trapq())
             toolhead.register_step_generator(s.generate_steps)
 
-        logging.info("PAUL: set b checks")
         # Setup boundary checks
         self.selector_max_velocity, self.selector_max_accel = toolhead.get_selector_limits()
         self.gear_max_velocity, self.gear_max_accel = toolhead.get_gear_limits()
@@ -663,8 +642,7 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
     return rail
 
 
-# Extend ExtruderStepper to allow for adding and managing endstops
-# (useful only when part of gear rail, ie not operating as an Extruder)
+# Extend ExtruderStepper to allow for adding and managing endstops (useful only when part of gear rail, not operating as an Extruder)
 class MmuExtruderStepper(ExtruderStepper, object):
     def __init__(self, config, gear_rail):
         super(MmuExtruderStepper, self).__init__(config)
@@ -682,32 +660,4 @@ class MmuExtruderStepper(ExtruderStepper, object):
         if endstop_pin:
             mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=True)
             mcu_endstop.add_stepper(self.stepper)
-
-
-# PAUL vvv experimenting
-#class FakePrinterRail(stepper.PrinterRail, object):
-class FakePrinterRail():
-    def __init__(self, *args, **kwargs):
-        self.steppers = []
-        #super(DummyPrinterRail, self).__init__(*args, **kwargs)
-        pass
-
-    def get_name(self, *args, **kwargs):
-        logging.info("PAUL: FakeRail.get_name")
-        return "fake_rail"
-
-    def add_extra_stepper(self, *args, **kwargs):
-        logging.info("PAUL: FakeRail.add_extra_stepper")
-        pass
-
-    def setup_itersolve(self, *args, **kwargs):
-        logging.info("PAUL: FakeRail.setup_intersolve")
-        pass
-
-    def get_steppers(self, *args, **kwargs):
-        logging.info("PAUL: FakeRail.get_steppers")
-        return self.steppers
-
-    def get_extra_endstop_names(self, *args, **kwargs):
-        return []
 
