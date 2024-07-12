@@ -3140,7 +3140,7 @@ class Mmu:
             # Handle case where we pause (error) whilst toolchanging. Make sure the resume point the
             # intended position (e.g. last_post) rather then the current positon
             if self.saved_toolhead_position == 'change_tool':
-                if self.TOOLHEAD_POSITION_STATE in gcode_move.saved_states:
+                if self.TOOLHEAD_POSITION_STATE in self.gcode_move.saved_states:
                     self.gcode_move.saved_states['PAUSE_STATE'] = gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
 
         if recover_pos:
@@ -3247,7 +3247,7 @@ class Mmu:
                 # later pause (error) where the resume macro will be run
                 if pause_resume_pos:
                     pause_resume_pos_parsed = list(map(float, pause_resume_pos.split(',')))
-                    gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = pause_resume_pos_parsed[:2]
+                    self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = pause_resume_pos_parsed[:2]
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
