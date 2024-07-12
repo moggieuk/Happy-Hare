@@ -3137,6 +3137,12 @@ class Mmu:
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
 
+            # Handle case where we pause (error) whilst toolchanging. Make sure the resume point the
+            # intended position (e.g. last_post) rather then the current positon
+            if self.saved_toolhead_position == 'change_tool':
+                if self.TOOLHEAD_POSITION_STATE in gcode_move.saved_states:
+                    self.gcode_move.saved_states['PAUSE_STATE'] = gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
+
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
 
@@ -3219,27 +3225,33 @@ class Mmu:
         if state == "standby" and not self._is_in_standby():
             self._set_print_state(state)
 
-    def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False):
+    def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False, pause_resume_pos=None):
         if not self.saved_toolhead_position:
             self._movequeues_wait_moves()
             eventtime = self.reactor.monotonic()
             homed = self.toolhead.get_status(eventtime)['homed_axes']
-            # gcode_move = self.printer.lookup_object("gcode_move") # PAUL self.gcode_move already exists!
 
+            # Always retract
             self._retract(force_in_print)
 
             # Save toolhead position
             if 'xyz' in homed:
-                gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position'] # PAUL added self
+                gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self._log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
                 self.saved_toolhead_position = operation
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
 
+                # If toolchanging ensure we record the intended X,Y resume position in case of
+                # later pause (error) where the resume macro will be run
+                if pause_resume_pos:
+                    pause_resume_pos_parsed = list(map(float, pause_resume_pos.split(',')))
+                    gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = pause_resume_pos_parsed[:2]
+
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
-                    mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE] # PAUL added self
+                    mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
                     self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
@@ -3249,7 +3261,7 @@ class Mmu:
                     self._log_debug("Lifting toolhead %.1fmm with %.1fmm ramp (speed:%d, accel:%d)" % (z_hop_height, self.z_hop_ramp, self.z_hop_speed, self.z_hop_accel))
                     act_z = self.saved_toolhead_height = gcode_pos.z
                     max_z = axis_maximum.z
-                    max_z -= self.gcode_move.get_status(eventtime)['homing_origin'].z # PAUL added self
+                    max_z -= self.gcode_move.get_status(eventtime)['homing_origin'].z
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
 
                     # Factor z_hop_ramp
@@ -3277,13 +3289,11 @@ class Mmu:
     def _restore_toolhead_position(self, operation, force_in_print=False):
         if self.saved_toolhead_position:
             eventtime = self.reactor.monotonic()
-            #gcode_move = self.printer.lookup_object("gcode_move") # PAUL
-            gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position'] # PAUL added self
+            gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
 
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
-                #mmu_state = self.printer.lookup_object("gcode_move").saved_states[self.TOOLHEAD_POSITION_STATE] # PAUL self.gcode_move
-                mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE] # PAUL self.gcode_move
+                mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
@@ -5523,6 +5533,7 @@ class Mmu:
         self.gcode.run_script_from_command("M117 T%s" % tool)
         return True
 
+    # Tell the sequence macros about where to move to next
     def _set_next_position(self, next_pos):
         x, y = (next_pos.split(',') + [None, None])[:2]
         if x and y:
@@ -5731,7 +5742,7 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
             self._recover_filament_pos(message=True)
 
-        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange, pause_resume_pos=next_pos)
 
         if self._has_encoder():
             self.encoder_sensor.update_clog_detection_length()
