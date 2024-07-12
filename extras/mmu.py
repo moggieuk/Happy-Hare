@@ -3141,7 +3141,7 @@ class Mmu:
             # intended position (e.g. last_post) rather then the current positon
             if self.saved_toolhead_position == 'change_tool':
                 if self.TOOLHEAD_POSITION_STATE in self.gcode_move.saved_states:
-                    self.gcode_move.saved_states['PAUSE_STATE'] = gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
+                    self.gcode_move.saved_states['PAUSE_STATE'] = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
 
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
