@@ -335,7 +335,7 @@ cleanup_old_ercf() {
         fi
     fi
 
-    # Klipper modules...
+    # Old klipper modules...
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
         rm -f "${KLIPPER_HOME}/klippy/extras/ercf*.py"
     fi
@@ -371,6 +371,14 @@ cleanup_old_ercf() {
                 /\[include client_macros.cfg\]/ d; \
                     " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
         fi
+    fi
+}
+
+# Silently cleanup legacy mmu file additions (now in a centralized directory)
+cleanup_old_mmu() {
+    # Old klipper monolithic module...
+    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
+        rm -f "${KLIPPER_HOME}/klippy/extras/mmu.py"
     fi
 }
 
@@ -477,9 +485,16 @@ upgrade_led_effects() {
 link_mmu_plugins() {
     echo -e "${INFO}Linking mmu extensions to Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        for file in `cd ${SRCDIR}/extras ; ls *.py`; do
-            ln -sf "${SRCDIR}/extras/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
+        mkdir -p "${KLIPPER_HOME}/klippy/extras/mmu"
+        for dir in extras extras/mmu; do
+            for file in ${SRCDIR}/${dir}/*.py; do
+                ln -sf "$file" "${KLIPPER_HOME}/klippy/${dir}/$(basename "$file")"
+            done
         done
+#        for file in `cd ${SRCDIR}/extras ; ls *.py`; do
+#            ln -sf "${SRCDIR}/extras/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
+#        done
+#        ln -sf "${SRCDIR}/extras/mmu" "${KLIPPER_HOME}/klippy/extras/mmu"
     else
         echo -e "${WARNING}Klipper extensions not installed because Klipper 'extras' directory not found!"
     fi
@@ -497,9 +512,15 @@ link_mmu_plugins() {
 unlink_mmu_plugins() {
     echo -e "${INFO}Unlinking mmu extensions from Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        for file in `cd ${SRCDIR}/extras ; ls *.py`; do
-            rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
+        for dir in extras extras/mmu; do
+            for file in ${SRCDIR}/${dir}/*.py; do
+                rm -f "${KLIPPER_HOME}/klippy/${dir}/$(basename "$file")"
+            done
         done
+#        for file in `cd ${SRCDIR}/extras ; ls *.py`; do
+#            rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
+#        done
+        rm -rf "${KLIPPER_HOME}/klippy/extras/mmu"
     else
         echo -e "${WARNING}MMU modules not uninstalled because Klipper 'extras' directory not found!"
     fi
@@ -1797,6 +1818,7 @@ check_octoprint
 verify_home_dirs
 check_klipper
 cleanup_old_ercf
+cleanup_old_mmu
 if [ "$UNINSTALL" -eq 0 ]; then
 
     # Set in memory parameters from default file

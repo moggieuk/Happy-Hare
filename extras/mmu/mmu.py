@@ -13,12 +13,15 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import sys # To detect python2 or python3
-import logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
+import logging, time, contextlib, math, os.path, re
 from random import randint
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
 import chelper, ast
+
+# Subcomponent clases
+from .mmu_logger import MmuLogger
 
 # Default to no unicode on Python2. Not worth the hassle!
 UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = ' ', '.', '-', '^', '*', '-'
@@ -35,48 +38,6 @@ if sys.version_info[0] >= 3:
 #    UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
 #    UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
-
-# Forward all messages through a queue (polled by background thread)
-class QueueHandler(logging.Handler):
-    def __init__(self, queue):
-        logging.Handler.__init__(self)
-        self.queue = queue
-
-    def emit(self, record):
-        try:
-            self.format(record)
-            record.msg = record.message
-            record.args = None
-            record.exc_info = None
-            self.queue.put_nowait(record)
-        except Exception:
-            self.handleError(record)
-
-# Poll log queue on background thread and log each message to logfile
-class QueueListener(logging.handlers.TimedRotatingFileHandler):
-    def __init__(self, filename):
-        logging.handlers.TimedRotatingFileHandler.__init__(self, filename, when='midnight', backupCount=5)
-        self.bg_queue = queue.Queue()
-        self.bg_thread = threading.Thread(target=self._bg_thread)
-        self.bg_thread.start()
-
-    def _bg_thread(self):
-        while True:
-            record = self.bg_queue.get(True)
-            if record is None:
-                break
-            self.handle(record)
-
-    def stop(self):
-        self.bg_queue.put_nowait(None)
-        self.bg_thread.join()
-
-# Class to improve formatting of multi-line messages
-class MultiLineFormatter(logging.Formatter):
-    def format(self, record):
-        indent = ' ' * 9
-        lines = super(MultiLineFormatter, self).format(record)
-        return lines.replace('\n', '\n' + indent)
 
 # Mmu exception error class
 class MmuError(Exception):
@@ -609,7 +570,6 @@ class Mmu:
         self.counters = {}
 
         # Logging
-        self.queue_listener = None
         self.mmu_logger = None
 
         # Register GCODE commands
@@ -778,12 +738,7 @@ class Mmu:
             else:
                 mmu_log = dirname + '/mmu.log'
             self._log_debug("mmu_log=%s" % mmu_log)
-            self.queue_listener = QueueListener(mmu_log)
-            self.queue_listener.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S'))
-            queue_handler = QueueHandler(self.queue_listener.bg_queue)
-            self.mmu_logger = logging.getLogger('mmu')
-            self.mmu_logger.setLevel(logging.INFO)
-            self.mmu_logger.addHandler(queue_handler)
+            self.mmu_logger = MmuLogger(mmu_log)
 
     def handle_connect(self):
         self._setup_logging()
@@ -919,8 +874,8 @@ class Mmu:
 
     def handle_disconnect(self):
         self._log_debug('Klipper disconnected! MMU Shutdown')
-        if self.queue_listener is not None:
-            self.queue_listener.stop()
+        if self.mmu_logger:
+            self.mmu_logger.shutdown()
 
     def handle_ready(self):
         # Reference correct extruder stepper which will definitely be available now
@@ -1722,42 +1677,42 @@ class Mmu:
     def _log_to_file(self, message):
         message = "> %s" % message
         if self.mmu_logger:
-            self.mmu_logger.info(message)
+            self.mmu_logger.log(message)
 
     def _log_error(self, message):
         if self.mmu_logger:
-            self.mmu_logger.info(message)
+            self.mmu_logger.log(message)
         self.gcode.respond_raw("!! %s" % message)
 
     def _log_always(self, message):
         if self.mmu_logger:
-            self.mmu_logger.info(message)
+            self.mmu_logger.log(message)
         self.gcode.respond_info(message)
 
     def _log_info(self, message):
         if self.mmu_logger and self.log_file_level > 0:
-            self.mmu_logger.info(message)
+            self.mmu_logger.log(message)
         if self.log_level > 0:
             self.gcode.respond_info(message)
 
     def _log_debug(self, message):
         message = "%s DEBUG: %s" % (UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 1:
-            self.mmu_logger.info(message)
+            self.mmu_logger.log(message)
         if self.log_level > 1:
             self.gcode.respond_info(message)
 
     def _log_trace(self, message):
         message = "%s %s TRACE: %s" % (UI_SEPARATOR, UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 2:
-            self.mmu_logger.info(message)
+            self.mmu_logger.log(message)
         if self.log_level > 2:
             self.gcode.respond_info(message)
 
     def _log_stepper(self, message):
         message = "%s %s %s STEPPER: %s" % (UI_SEPARATOR, UI_SEPARATOR, UI_SEPARATOR, message)
         if self.mmu_logger and self.log_file_level > 3:
-            self.mmu_logger.info(message)
+            self.mmu_logger.log(message)
         if self.log_level > 3:
             self.gcode.respond_info(message)
 
@@ -6307,9 +6262,9 @@ class Mmu:
 
         msg += "\n\nLOGGING:"
         msg += "\nlog_level = %d" % self.log_level
-        msg += "\nlog_file_level = %d" % self.log_file_level
         if self.mmu_logger:
-            msg += "\nlog_visual = %d" % self.log_visual
+            msg += "\nlog_file_level = %d" % self.log_file_level
+        msg += "\nlog_visual = %d" % self.log_visual
         msg += "\nlog_statistics = %d" % self.log_statistics
         msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
@@ -7098,6 +7053,3 @@ class Mmu:
             finally:
                 self.calibrating = False
                 self._servo_auto()
-
-def load_config(config):
-    return Mmu(config)
