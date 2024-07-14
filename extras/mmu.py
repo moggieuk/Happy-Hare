@@ -465,7 +465,7 @@ class Mmu:
         self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=35.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
-        self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 0, minval=0, maxval=1) # Whether to apply filament tightening move after load (if not synced). TODO: Currently hidden
+        self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 0, minval=0, maxval=1) # Whether to apply filament tightening move after load (if not synced)
 
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
@@ -6180,6 +6180,7 @@ class Mmu:
         self.toolhead_sensor_to_nozzle = gcmd.get_float('TOOLHEAD_SENSOR_TO_NOZZLE', self.toolhead_sensor_to_nozzle, minval=0.)
         self.toolhead_extruder_to_nozzle = gcmd.get_float('TOOLHEAD_EXTRUDER_TO_NOZZLE', self.toolhead_extruder_to_nozzle, minval=0.)
         self.toolhead_ooze_reduction = gcmd.get_float('TOOLHEAD_OOZE_REDUCTION', self.toolhead_ooze_reduction, minval=0.)
+        self.toolhead_post_load_tighten = gcmd.get_int('TOOLHEAD_POST_LOAD_TIGHTEN', self.toolhead_post_load_tighten, minval=0, maxval=1)
         self.gcode_load_sequence = gcmd.get_int('GCODE_LOAD_SEQUENCE', self.gcode_load_sequence, minval=0, maxval=1)
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
 
@@ -6286,6 +6287,7 @@ class Mmu:
         if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
             msg += "\ntoolhead_entry_to_extruder = %.1f" % self.toolhead_entry_to_extruder
         msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
+        msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
         msg += "\ngcode_load_sequence = %d" % self.gcode_load_sequence
         msg += "\ngcode_unload_sequence = %d" % self.gcode_unload_sequence
 
@@ -6303,6 +6305,14 @@ class Mmu:
         msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
         msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
 
+        msg += "\n\nLOGGING:"
+        msg += "\nlog_level = %d" % self.log_level
+        msg += "\nlog_file_level = %d" % self.log_file_level
+        if self.mmu_logger:
+            msg += "\nlog_visual = %d" % self.log_visual
+        msg += "\nlog_statistics = %d" % self.log_statistics
+        msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
+
         msg += "\n\nOTHER:"
         msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
         if self._has_encoder():
@@ -6319,12 +6329,6 @@ class Mmu:
         msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
         msg += "\nprint_start_detection = %d" % self.print_start_detection
         msg += "\nshow_error_dialog = %d" % self.show_error_dialog
-        msg += "\nlog_level = %d" % self.log_level
-        msg += "\nlog_file_level = %d" % self.log_file_level
-        if self.mmu_logger:
-            msg += "\nlog_visual = %d" % self.log_visual
-        msg += "\nlog_statistics = %d" % self.log_statistics
-        msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
