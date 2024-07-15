@@ -250,6 +250,8 @@ class Mmu:
                   ('tan','#D2B48C'), ('teal','#008080'), ('thistle','#D8BFD8'), ('tomato','#FF6347'), ('turquoise','#40E0D0'), ('violet','#EE82EE'),
                   ('wheat','#F5DEB3'), ('white','#FFFFFF'), ('whitesmoke','#F5F5F5'), ('yellow','#FFFF00'), ('yellowgreen','#9ACD32')]
 
+    TOOLHEAD_POSITION_STATE = 'MMU_state'
+
     UPGRADE_REMINDER = "Sorry but Happy Hare requires you to re-run\n'./install.sh' to complete the update.\nMore details: https://github.com/moggieuk/Happy-Hare/wiki/Upgrade-Notice"
 
     def __init__(self, config):
@@ -402,7 +404,8 @@ class Mmu:
         self.z_hop_speed = config.getfloat('z_hop_speed', 150., minval=1.)
         self.z_hop_accel = config.getint('z_hop_accel', self._toolhead_max_accel, minval=1)
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
-        self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=0.)
+        self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=1.)
+        self.toolchange_unretract_speed = config.getfloat('toolchange_unretract_speed', self.toolchange_retract_speed, minval=1.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
@@ -456,15 +459,16 @@ class Mmu:
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
         self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_COLLISION)
-        self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.)
+        self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.) # Extruder homing max
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
-        self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.)
+        self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # Toolhead sensor homing max
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
         self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=35.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
+        self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 0, minval=0, maxval=1) # Whether to apply filament tightening move after load (if not synced)
 
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
@@ -539,14 +543,24 @@ class Mmu:
         self.console_gate_stat = config.get('console_gate_stat', {o: o for o in self.GATE_STATS_TYPES}, self.GATE_STATS_STRING)
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
+        # Currently hidden options or testing options...
+
+        # Some CANbus boards are prone to this but it have been seen on regular USB boards where a comms
+        # timeout will kill the print. Since it seems to occur only on homing moves they can be safely
+        # retried to workaround. This has been working well in practice
+        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
+
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on
+        # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
+        # can lead to several mm of error depending on speed.
+        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1)
+
         # Currently hidden and testing options
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
-        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10) # Workaround CANbus communication timeout error
 
-        # Hidden feature development
-        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1) # Special MMU homing extruder or klipper default
+        # WIP for type-B MMU support
         self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
 
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
@@ -791,11 +805,11 @@ class Mmu:
         tmc_chips = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
         for chip in tmc_chips:
             if self.selector_tmc is None:
-                self.selector_tmc = self.printer.lookup_object('%s stepper_mmu_selector' % chip, None)
+                self.selector_tmc = self.printer.lookup_object('%s %s' % (chip, self.SELECTOR_STEPPER_CONFIG), None)
                 if self.selector_tmc is not None:
                     self._log_debug("Found %s on selector_stepper. Stallguard 'touch' homing possible." % chip)
             if self.gear_tmc is None:
-                self.gear_tmc = self.printer.lookup_object('%s stepper_mmu_gear' % chip, None)
+                self.gear_tmc = self.printer.lookup_object('%s %s' % (chip, self.GEAR_STEPPER_CONFIG), None)
                 if self.gear_tmc is not None:
                     self._log_debug("Found %s on gear_stepper. Current control enabled. Stallguard 'touch' homing possible." % chip)
             if self.extruder_tmc is None:
@@ -1037,7 +1051,7 @@ class Mmu:
 
         # Clear 'color' on Tx macros
         for tool in range(self.mmu_num_gates):
-            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None)
+            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None) # TODO spool_id can also be set
             if t_macro:
                 try:
                     del t_macro.variables['color']
@@ -1105,7 +1119,7 @@ class Mmu:
             self.slicer_color_rgb[gate] = self._color_to_rgb(tool_value['color'])
 
             # Set 'color' variable on the Tx macro for Mainsail/Fluidd to pick up
-            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None)
+            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None) # TODO spool_id can also be set
             if t_macro:
                 hex_rgb = self._color_to_hex_rgb(tool_value['color'])
                 t_macro.variables.update({'color': hex_rgb})
@@ -1764,9 +1778,7 @@ class Mmu:
         return (self.mmu_logger and self.log_file_level >= level) or self.log_level >= level
 
     # Fun visual display of MMU state
-    def _display_visual_state(self, direction=None, silent=False):
-        if direction is not None:
-            self.filament_direction = direction
+    def _display_visual_state(self, silent=False):
         if not silent and self.log_visual and not self.calibrating:
             visual_str = self._state_to_string()
             self._log_always(visual_str)
@@ -2025,7 +2037,6 @@ class Mmu:
         self._movequeues_wait_moves()
         self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
-            self.gear_buzz_accel = 1000
             for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
                 self._trace_filament_move(None, -0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
@@ -3139,6 +3150,12 @@ class Mmu:
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
 
+            # Handle case where we pause (error) whilst toolchanging. Make sure the resume point the
+            # intended position (e.g. last_post) rather then the current positon
+            if self.saved_toolhead_position == 'change_tool':
+                if self.TOOLHEAD_POSITION_STATE in self.gcode_move.saved_states:
+                    self.gcode_move.saved_states['PAUSE_STATE'] = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
+
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
 
@@ -3221,27 +3238,33 @@ class Mmu:
         if state == "standby" and not self._is_in_standby():
             self._set_print_state(state)
 
-    def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False):
+    def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False, pause_resume_pos=None):
         if not self.saved_toolhead_position:
             self._movequeues_wait_moves()
             eventtime = self.reactor.monotonic()
             homed = self.toolhead.get_status(eventtime)['homed_axes']
-            gcode_move = self.printer.lookup_object("gcode_move")
 
+            # Always retract
             self._retract(force_in_print)
 
             # Save toolhead position
             if 'xyz' in homed:
-                gcode_pos = gcode_move.get_status(eventtime)['gcode_position']
+                gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self._log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
-                self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_state")
+                self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
                 self.saved_toolhead_position = operation
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
 
+                # If toolchanging ensure we record the intended X,Y resume position in case of
+                # later pause (error) where the resume macro will be run
+                if pause_resume_pos:
+                    pause_resume_pos_parsed = list(map(float, pause_resume_pos.split(',')))
+                    self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = pause_resume_pos_parsed[:2]
+
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
-                    mmu_state = gcode_move.saved_states['MMU_state']
+                    mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
                     self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
@@ -3251,7 +3274,7 @@ class Mmu:
                     self._log_debug("Lifting toolhead %.1fmm with %.1fmm ramp (speed:%d, accel:%d)" % (z_hop_height, self.z_hop_ramp, self.z_hop_speed, self.z_hop_accel))
                     act_z = self.saved_toolhead_height = gcode_pos.z
                     max_z = axis_maximum.z
-                    max_z -= gcode_move.get_status(eventtime)['homing_origin'].z
+                    max_z -= self.gcode_move.get_status(eventtime)['homing_origin'].z
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
 
                     # Factor z_hop_ramp
@@ -3279,12 +3302,11 @@ class Mmu:
     def _restore_toolhead_position(self, operation, force_in_print=False):
         if self.saved_toolhead_position:
             eventtime = self.reactor.monotonic()
-            gcode_move = self.printer.lookup_object("gcode_move")
-            gcode_pos = gcode_move.get_status(eventtime)['gcode_position']
+            gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
 
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
-                mmu_state = self.printer.lookup_object("gcode_move").saved_states['MMU_state']
+                mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
@@ -3293,7 +3315,7 @@ class Mmu:
             if self.restore_toolhead_xy_position:
                 # Restore pre-pause position and state. Currently not used because we allow sequence macro to control x,y movement
                 self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
-                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state MOVE=1 MOVE_SPEED=%.1f" % self.z_hop_speed)
+                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.z_hop_speed))
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self._log_debug("Restored gcode state and position (%s) after %s" % (toolhead_gcode_pos, operation))
             else:
@@ -3305,7 +3327,7 @@ class Mmu:
                     self.gcode.run_script_from_command("G1 Z%.4f F%d" % (self.saved_toolhead_height, self.z_hop_speed * 60))
                 # But ensure gcode state...
                 self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
-                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_state")
+                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
                 self._log_debug("Restored gcode state and z-hop position only (Z:%.1f) after %s" % (self.saved_toolhead_height, operation))
 
         self._clear_saved_toolhead_position()
@@ -3322,7 +3344,7 @@ class Mmu:
         if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude:
             self._log_debug("Un-retracting %.1fmm" % self.toolchange_retract)
             self.gcode.run_script_from_command("M83")
-            self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.toolchange_retract_speed * 60))
+            self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.toolchange_unretract_speed * 60))
 
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_position = None
@@ -4343,10 +4365,19 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                     raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not find homing sensor")
 
+            # Tightening move to prevent erroneous clog detection / runout if gear stepper is not synced with extruder
+            if self._can_use_encoder() and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
+                with self._wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
+                    # Servo will already be down
+                    pullback = self.encoder_sensor.get_clog_detection_length() * .6 # 60% of current clog detection length
+                    _,_,measured,delta = self._trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
+                self._log_info("Filament tightened by %.1fmm" % pullback) 
+
             self._random_failure() # Testing
             self._movequeues_wait_moves()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self._log_debug("Filament should loaded to nozzle")
+
 
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
     # and we are parked somewhere in the extruder either by slicer or by stand alone tip creation
@@ -5232,8 +5263,8 @@ class Mmu:
     def _buzz_gear_motor(self):
         with self._require_encoder():
             initial_encoder_position = self._get_encoder_distance()
-            self._trace_filament_move(None, 2.5, accel=self.gear_buzz_accel, encoder_dwell=None)
-            self._trace_filament_move(None, -2.5, accel=self.gear_buzz_accel, encoder_dwell=None)
+            self._trace_filament_move(None, 2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
+            self._trace_filament_move(None, -2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
             measured = self._get_encoder_distance() - initial_encoder_position
             self._log_trace("After buzzing gear motor, encoder measured %.2f" % measured)
             self._set_encoder_distance(initial_encoder_position, dwell=None)
@@ -5270,13 +5301,13 @@ class Mmu:
     def _adjust_gear_current(self, percent=100, reason=""):
          if self.gear_tmc and percent != self.gear_percentage_run_current and percent > 0 and percent < 200:
              self._log_info("Modifying MMU gear stepper run current to %d%% %s" % (percent, reason))
-             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_gear CURRENT=%.2f" % ((self.gear_default_run_current * percent) / 100.))
+             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.GEAR_STEPPER_CONFIG, (self.gear_default_run_current * percent) / 100.))
              self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
             self._log_info("Restoring MMU gear stepper run current to %d%% configured" % self.gear_restore_percent_run_current)
-            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=stepper_mmu_gear CURRENT=%.2f" % self.gear_default_run_current)
+            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.GEAR_STEPPER_CONFIG, self.gear_default_run_current))
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
     @contextlib.contextmanager
@@ -5516,6 +5547,7 @@ class Mmu:
         self.gcode.run_script_from_command("M117 T%s" % tool)
         return True
 
+    # Tell the sequence macros about where to move to next
     def _set_next_position(self, next_pos):
         x, y = (next_pos.split(',') + [None, None])[:2]
         if x and y:
@@ -5551,7 +5583,7 @@ class Mmu:
             return
         self._log_info("Selecting filament bypass...")
         self._select_gate(self.TOOL_GATE_BYPASS)
-        self.filament_direction = self.DIRECTION_LOAD
+        self._set_filament_direction(self.DIRECTION_LOAD)
         self._set_tool_selected(self.TOOL_GATE_BYPASS)
         self._log_info("Bypass enabled")
 
@@ -5744,7 +5776,7 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
             self._recover_filament_pos(message=True)
 
-        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange, pause_resume_pos=next_pos)
 
         if self._has_encoder():
             self.encoder_sensor.update_clog_detection_length()
@@ -5957,7 +5989,7 @@ class Mmu:
         elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
             # This is to be able to get out of "stuck in bypass" state
             self._log_info("Warning: Making assumption that bypass is unloaded")
-            self.filament_direction = self.DIRECTION_UNKNOWN
+            self._set_filament_direction(self.DIRECTION_UNKNOWN)
             self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
             self._servo_auto()
             return
@@ -6182,6 +6214,7 @@ class Mmu:
         self.toolhead_sensor_to_nozzle = gcmd.get_float('TOOLHEAD_SENSOR_TO_NOZZLE', self.toolhead_sensor_to_nozzle, minval=0.)
         self.toolhead_extruder_to_nozzle = gcmd.get_float('TOOLHEAD_EXTRUDER_TO_NOZZLE', self.toolhead_extruder_to_nozzle, minval=0.)
         self.toolhead_ooze_reduction = gcmd.get_float('TOOLHEAD_OOZE_REDUCTION', self.toolhead_ooze_reduction, minval=0.)
+        self.toolhead_post_load_tighten = gcmd.get_int('TOOLHEAD_POST_LOAD_TIGHTEN', self.toolhead_post_load_tighten, minval=0, maxval=1)
         self.gcode_load_sequence = gcmd.get_int('GCODE_LOAD_SEQUENCE', self.gcode_load_sequence, minval=0, maxval=1)
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
 
@@ -6193,6 +6226,7 @@ class Mmu:
         self.z_hop_ramp = gcmd.get_float('Z_HOP_RAMP', self.z_hop_ramp, minval=0.)
         self.toolchange_retract = gcmd.get_float('TOOLCHANGE_RETRACT', self.toolchange_retract, minval=0., maxval=5.)
         self.toolchange_retract_speed = gcmd.get_float('TOOLCHANGE_RETRACT_SPEED', self.toolchange_retract_speed, minval=0.)
+        self.toolchange_unretract_speed = gcmd.get_float('TOOLCHANGE_UNRETRACT_SPEED', self.toolchange_unretract_speed, minval=0.)
 
         # Software behavior options
         self.extruder_temp_variance = gcmd.get_float('EXTRUDER_TEMP_VARIANCE', self.extruder_temp_variance, minval=1.)
@@ -6288,6 +6322,7 @@ class Mmu:
         if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
             msg += "\ntoolhead_entry_to_extruder = %.1f" % self.toolhead_entry_to_extruder
         msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
+        msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
         msg += "\ngcode_load_sequence = %d" % self.gcode_load_sequence
         msg += "\ngcode_unload_sequence = %d" % self.gcode_unload_sequence
 
@@ -6304,6 +6339,15 @@ class Mmu:
         msg += "\nz_hop_accel = %d" % self.z_hop_accel
         msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
         msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
+        msg += "\ntoolchange_unretract_speed = %.1f" % self.toolchange_unretract_speed
+
+        msg += "\n\nLOGGING:"
+        msg += "\nlog_level = %d" % self.log_level
+        msg += "\nlog_file_level = %d" % self.log_file_level
+        if self.mmu_logger:
+            msg += "\nlog_visual = %d" % self.log_visual
+        msg += "\nlog_statistics = %d" % self.log_statistics
+        msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
         msg += "\n\nOTHER:"
         msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
@@ -6321,12 +6365,6 @@ class Mmu:
         msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
         msg += "\nprint_start_detection = %d" % self.print_start_detection
         msg += "\nshow_error_dialog = %d" % self.show_error_dialog
-        msg += "\nlog_level = %d" % self.log_level
-        msg += "\nlog_file_level = %d" % self.log_file_level
-        if self.mmu_logger:
-            msg += "\nlog_visual = %d" % self.log_visual
-        msg += "\nlog_statistics = %d" % self.log_statistics
-        msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
         msg += "\n\nCALIBRATION:"
         msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
