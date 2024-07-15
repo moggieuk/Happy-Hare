@@ -403,8 +403,8 @@ class Mmu:
         self.z_hop_speed = config.getfloat('z_hop_speed', 150., minval=1.)
         self.z_hop_accel = config.getint('z_hop_accel', self._toolhead_max_accel, minval=1)
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
-        self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=0.)
-        self.toolchange_unretract_speed = config.getfloat('toolchange_unretract_speed', 20, minval=0.)
+        self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=1.)
+        self.toolchange_unretract_speed = config.getfloat('toolchange_unretract_speed', self.toolchange_retract_speed, minval=1.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
