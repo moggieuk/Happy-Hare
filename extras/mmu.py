@@ -30,10 +30,10 @@ UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
 if sys.version_info[0] >= 3:
     # Use (common) unicode for improved formatting and klipper layout
     UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = '\u00A0', '\u00A0', '\u2014', '\u00B0', '\u2588', '\u2514'
-# Not all character sets include these so best to use defaults above
-#    UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '\u250C', '\u2514', '\u2510', '\u2518'
-#    UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
-#    UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
+    # Not all character sets include these so best to use defaults above
+    # UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '\u250C', '\u2514', '\u2510', '\u2518'
+    # UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
+    # UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
@@ -188,8 +188,10 @@ class Mmu:
     LOG_DEBUG     = 2
     LOG_TRACE     = 3
     LOG_STEPPER   = 4
-
     LOG_LEVELS = ['ESSENTAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
+
+    # Name used to save gcode state
+    TOOLHEAD_POSITION_STATE = 'MMU_state'
 
     # mmu_vars.cfg variables
     VARS_MMU_CALIB_CLOG_LENGTH      = "mmu_calibration_clog_length"
@@ -249,8 +251,6 @@ class Mmu:
                   ('slategray','#708090'), ('slategrey','#708090'), ('snow','#FFFAFA'), ('springgreen','#00FF7F'), ('steelblue','#4682B4'),
                   ('tan','#D2B48C'), ('teal','#008080'), ('thistle','#D8BFD8'), ('tomato','#FF6347'), ('turquoise','#40E0D0'), ('violet','#EE82EE'),
                   ('wheat','#F5DEB3'), ('white','#FFFFFF'), ('whitesmoke','#F5F5F5'), ('yellow','#FFFF00'), ('yellowgreen','#9ACD32')]
-
-    TOOLHEAD_POSITION_STATE = 'MMU_state'
 
     UPGRADE_REMINDER = "Sorry but Happy Hare requires you to re-run\n'./install.sh' to complete the update.\nMore details: https://github.com/moggieuk/Happy-Hare/wiki/Upgrade-Notice"
 
@@ -1232,10 +1232,7 @@ class Mmu:
 
             self._servo_move()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
-            if self.enable_spoolman > 1:
-                self._gate_map_from_spoolman()
-            else :
-                self._update_filaments_from_spoolman()
+            self._init_spoolman()
         except Exception as e:
             self._log_error('Warning: Error booting up MMU: %s' % str(e))
 
@@ -1939,7 +1936,7 @@ class Mmu:
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
                 msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
-            msg += "\nSpoolMan is %s. " % ("ENABLED" if self.enable_spoolman else "DISABLED") # PAUL
+            msg += "\nSpoolMan is %s. " % ("ENABLED WITH REMOTE GATE MAP" if self.enable_spoolman > 1 else "ENABLED" if self.enable_spoolman else "DISABLED")
             msg += "Sensors: "
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
@@ -5635,6 +5632,14 @@ class Mmu:
             self._log_always("Warning: %s%d value (%.6f) is invalid. Using reference value 1.0. Re-run MMU_CALIBRATE_GATES GATE=%d" % (self.VARS_MMU_CALIB_PREFIX, gate, ratio, gate))
             return 1.
 
+### SPOOLMAN INTEGRATION #########################################################
+
+    def _init_spoolman(self):
+        if self.enable_spoolman > 1:
+            self._gate_map_from_spoolman()
+        else:
+            self._update_filaments_from_spoolman()
+
     def _spoolman_activate_spool(self, spool_id=-1):
         if not self.enable_spoolman: return
         try:
@@ -5676,13 +5681,13 @@ class Mmu:
                 webhooks = self.printer.lookup_object('webhooks')
                 webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids)
             except Exception as e:
-                self._log_error("Error while retrieving spoolman info: %s" % str(e))
+                self._log_error("Error while retrieving spoolman info (see mmu.log for more info): %s" % str(e))
 
     # Tell moonraker component we want to get the gate mapping to
     # be updated with the remotely stored values
     def _gate_map_from_spoolman(self):
         if not self.enable_spoolman: return
-        self._log_debug("Requesting the gate map from Spoolman...")
+        self._log_debug("Requesting the gate map from Spoolman")
         try:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_remote_gate_map", nb_gates=self.mmu_num_gates, silent=True)
@@ -6235,6 +6240,7 @@ class Mmu:
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.mmu_num_gates - 1)
+        prev_enable_spoolman = self.enable_spoolman # PAUL
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=2)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
@@ -6358,6 +6364,8 @@ class Mmu:
         msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
         msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
+        if prev_enable_spoolman != self.enable_spoolman:
+            self._init_spoolman()
         if self._has_encoder():
             msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
             msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
@@ -6556,9 +6564,11 @@ class Mmu:
                 gate_detail = "\nGate {}: ".format(g)
 
             spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
+            name = self.gate_filament_name[g] or "n/a"
             spool_info = ", SpoolID: {}".format(spool_id) if self.enable_spoolman else ""
+            filament_name = ", Name: {}".format(name) if self.enable_spoolman else ""
             speed_info = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
-            msg += "{}Status: {}, Material: {}, Color: {}{}{}".format(gate_detail, available, material, color, spool_info, speed_info)
+            msg += "{}Status: {}, Material: {}, Color: {}{}{}{}".format(gate_detail, available, material, color, spool_info, filament_name, speed_info)
         return msg
 
     def _remap_tool(self, tool, gate, available=None):
@@ -6746,7 +6756,7 @@ class Mmu:
             self._reset_gate_map()
 
         if refresh:
-            self._update_filaments_from_spoolman()
+            self._update_filaments_from_spoolman() # PAUL new?
             quiet = True
 
         if next_spool_id:
@@ -6906,7 +6916,7 @@ class Mmu:
             try:
                 volumes = list(map(float, purge_volumes.split(',')))
                 n = len(volumes)
-                # if enable_spoolman is > 1 automap is enables thus we expect a matrix matching the used tools not the nb_gates
+                # If enable_spoolman is > 1 automap is enables thus we expect a matrix matching the used tools not the nb_gates FIXME
                 if self.enable_spoolman > 1:
                     num_tools = len(self.slicer_tool_map['referenced_tools'])
                 else:
