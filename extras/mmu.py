@@ -6310,9 +6310,9 @@ class Mmu:
 
         msg += "\n\nLOGGING:"
         msg += "\nlog_level = %d" % self.log_level
-        msg += "\nlog_file_level = %d" % self.log_file_level
+        msg += "\nlog_visual = %d" % self.log_visual
         if self.mmu_logger:
-            msg += "\nlog_visual = %d" % self.log_visual
+            msg += "\nlog_file_level = %d" % self.log_file_level
         msg += "\nlog_statistics = %d" % self.log_statistics
         msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
