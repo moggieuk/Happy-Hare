@@ -6867,6 +6867,10 @@ class Mmu:
             try:
                 volumes = list(map(float, purge_volumes.split(',')))
                 n = len(volumes)
+                # if enable_spoolman is > 1 automap is enables thus we expect a matrix matching the used tools not the nb_gates
+                if self.enable_spoolman > 1:
+                    num_tools = len(self.slicer_tool_map['referenced_tools'])
+                else:
                 num_tools = self.mmu_num_gates
                 if num_tools ** 2 == n:
                     # Full NxN matrix supplied
@@ -6879,7 +6883,11 @@ class Mmu:
                     elif num_tools * 2 == n:
                         calc = lambda x,y: volumes[x] + volumes[num_tools + y] # Build matrix with sum of unload and load tools
                     else:
-                        raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expect 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n))
+                        msg = ""
+                        if self.enable_spoolman > 1:
+                            msg += "Used len(REFERENCED_TOOLS) in order to check purge matrix, make sure all tools have been referenced before setting the purge matrix."
+                        msg += "Incorrect number of values for PURGE_VOLUMES. Expect 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n)
+                        raise gcmd.error(msg)
                     self.slicer_tool_map['purge_volumes'] = [
                         [
                             calc(x,y) if x != y else 0
