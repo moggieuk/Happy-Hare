@@ -1722,7 +1722,7 @@ class Mmu:
         self._save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status)
         self._save_variable(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
         self._save_variable(self.VARS_MMU_GATE_COLOR, self.gate_color)
-        self._save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_color)
+        self._save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
         self._save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
         if (self.enable_spoolman > 1) and sync:
             self._spoolman_set_gate_map()
