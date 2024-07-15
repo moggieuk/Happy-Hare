@@ -679,7 +679,7 @@ def parse_gcode_file(file_path):
             if not found_filament_used:
                 match = filament_used_regex.match(line)
                 if match:
-                    filament_used_csv = match.group(2).strip().split(',')
+                    filament_used_csv = [e.strip() for e in match.group(2).strip().split(',')]
                     filament_used.extend(filament_used_csv)
                     found_filament_used = True
 
@@ -690,7 +690,7 @@ def parse_gcode_file(file_path):
             if not found_filament_names:
                 match = filament_names_regex.match(line)
                 if match:
-                    filament_names_csv = match.group(2).strip().split(',')
+                    filament_names_csv = [e.strip() for e in re.split(',|;', match.group(2).strip())]
                     filament_names.extend(filament_names_csv)
                     found_filament_names = True
 
