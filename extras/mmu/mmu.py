@@ -364,7 +364,8 @@ class Mmu:
         self.z_hop_speed = config.getfloat('z_hop_speed', 150., minval=1.)
         self.z_hop_accel = config.getint('z_hop_accel', self._toolhead_max_accel, minval=1)
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
-        self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=0.)
+        self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=1.)
+        self.toolchange_unretract_speed = config.getfloat('toolchange_unretract_speed', self.toolchange_retract_speed, minval=1.)
         self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
@@ -3286,7 +3287,7 @@ class Mmu:
         if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude:
             self._log_debug("Un-retracting %.1fmm" % self.toolchange_retract)
             self.gcode.run_script_from_command("M83")
-            self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.toolchange_retract_speed * 60))
+            self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.toolchange_unretract_speed * 60))
 
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_position = None
@@ -6147,6 +6148,7 @@ class Mmu:
         self.z_hop_ramp = gcmd.get_float('Z_HOP_RAMP', self.z_hop_ramp, minval=0.)
         self.toolchange_retract = gcmd.get_float('TOOLCHANGE_RETRACT', self.toolchange_retract, minval=0., maxval=5.)
         self.toolchange_retract_speed = gcmd.get_float('TOOLCHANGE_RETRACT_SPEED', self.toolchange_retract_speed, minval=0.)
+        self.toolchange_unretract_speed = gcmd.get_float('TOOLCHANGE_UNRETRACT_SPEED', self.toolchange_unretract_speed, minval=0.)
 
         # Software behavior options
         self.extruder_temp_variance = gcmd.get_float('EXTRUDER_TEMP_VARIANCE', self.extruder_temp_variance, minval=1.)
@@ -6259,6 +6261,7 @@ class Mmu:
         msg += "\nz_hop_accel = %d" % self.z_hop_accel
         msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
         msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
+        msg += "\ntoolchange_unretract_speed = %.1f" % self.toolchange_unretract_speed
 
         msg += "\n\nLOGGING:"
         msg += "\nlog_level = %d" % self.log_level
