@@ -28,7 +28,6 @@ from typing import (
     cast
 )
 
-
 if TYPE_CHECKING:
     from .spoolman import SpoolManager, DB_NAMESPACE, ACTIVE_SPOOL_KEY
     from ..common import WebRequest
@@ -41,19 +40,20 @@ if TYPE_CHECKING:
     from .history import History
     from tornado.websocket import WebSocketClientConnection
 
-CONSOLE_TAB = "   " #!FIXME : should probably be done differently
+CONSOLE_TAB = '\u00A0' * 3 # Special space characters used as they will be displayed in gcode console
 
 class MmuServer:
     def __init__(self, config: ConfigHelper):
         self.config = config
         self.server = config.get_server()
         self.printer_info = self.server.get_host_info()
-        self.spoolman : SpoolManager = self.server.load_component(config, "spoolman", None)
+        self.spoolman: SpoolManager = self.server.load_component(config, "spoolman", None)
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
         self.http_client: HttpClient = self.server.lookup_component("http_client")
         self.nb_gates = None # set by klippy when calling remote_gate_map
         self.machine_occupation = {}
         self.gate_occupation = {}
+
         # Spoolman filament info retrieval functionality and update reporting
         self.server.register_remote_method(
             "spoolman_get_filaments", self.get_filaments
@@ -128,7 +128,7 @@ class MmuServer:
             response = await self.http_client.request(
                 method="PATCH",
                 url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
-                body=json.dumps({"extra" : {"mmu_gate_map": -1}}),
+                body=json.dumps({"extra": {"mmu_gate_map": -1}}),
             )
             if response.status_code == 404:
                 logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
@@ -198,7 +198,7 @@ class MmuServer:
             await self._log_n_send(f"Failed to set field {field_name}")
             return False
         logging.info(f"Field {field_name} added to spoolman db for entity type {entity_type}")
-        logging.info("    -fields : %s", response.json())
+        logging.info(f"{CONSOLE_TAB}-fields : %s", response.json())
         return True
 
     # Logic to provide spoolman integration.
@@ -211,7 +211,6 @@ class MmuServer:
 
                 response = await self.spoolman.http_client.request(method="GET", url=full_url, body=None)
                 if not response.has_error():
-
                     record = response.json()
                     filament = record["filament"]
 
@@ -271,29 +270,29 @@ class MmuServer:
             return False
 
         spool_info = await self.get_info_for_spool(spool_id)
-        if not spool_info :
+        if not spool_info:
             msg = f"Spool id {spool_id} not found"
             await self._log_n_send(msg)
             return False
         msg = f"Active spool is: {spool_info['filament']['name']} (id : {spool_info['id']})"
         await self._log_n_send(msg)
-        msg = f"{CONSOLE_TAB}- used: {int(spool_info['used_weight'])} g" # Special space characters used as they will be displayed in gcode console
+        msg = f"{CONSOLE_TAB}- used: {int(spool_info['used_weight'])} g"
         await self._log_n_send(msg)
-        msg = f"{CONSOLE_TAB}- remaining: {int(spool_info['remaining_weight'])} g" # Special space characters used as they will be displayed in gcode console
+        msg = f"{CONSOLE_TAB}- remaining: {int(spool_info['remaining_weight'])} g"
         await self._log_n_send(msg)
-        # if spool_id not in filament_gates :
+        # if spool_id not in filament_gates:
         found = False
         for spool in self.gate_occupation:
-            if int(spool['id']) == spool_id :
-                msg = "{}- gate: {}".format(CONSOLE_TAB, spool['extra']['mmu_gate_map']) # Special space characters used as they will be displayed in gcode console
+            if int(spool['id']) == spool_id:
+                msg = "{}- gate: {}".format(CONSOLE_TAB, spool['extra']['mmu_gate_map'])
                 await self._log_n_send(msg)
                 found = True
         if not found:
             msg = f"Spool id {spool_id} is not assigned to this machine"
             await self._log_n_send(msg)
-            msg = "Run : "
+            msg = "Run :"
             await self._log_n_send(msg)
-            msg = f"{CONSOLE_TAB}SET_SPOOL_GATE ID={spool_id} GATE=integer" # Special space characters used as they will be displayed in gcode console
+            msg = f"{CONSOLE_TAB}SET_SPOOL_GATE ID={spool_id} GATE=integer"
             await self._log_n_send(msg)
             return False
 
@@ -310,20 +309,20 @@ class MmuServer:
             reponse = await self.http_client.get(
                 url=f'{self.spoolman.spoolman_url}/v1/spool',
             )
-            for spool in reponse.json() :
-                if 'extra' in spool and 'machine_name' in spool['extra'] and json.loads(spool['extra']['machine_name']) == machine_hostname :
+            for spool in reponse.json():
+                if 'extra' in spool and 'machine_name' in spool['extra'] and json.loads(spool['extra']['machine_name']) == machine_hostname:
                     tmp_spool = copy.deepcopy(spool)
                     tmp_spool['extra']['machine_name'] = json.loads(tmp_spool['extra']['machine_name'])
                     tmp_spool['extra']['mmu_gate_map'] = int(tmp_spool['extra']['mmu_gate_map'])
                     spools.append(tmp_spool)
 
         except Exception as e:
-            if not silent :
+            if not silent:
                 await self._log_n_send(f"Failed to retrieve spools from spoolman: {e}")
             return []
         self.machine_occupation = spools
-        if self.nb_gates < len(spools) :
-            if not silent :
+        if self.nb_gates < len(spools):
+            if not silent:
                 await self._log_n_send(f"Number of spools assigned to machine {machine_hostname} is greater than the number of gates available on the machine. Please check the spoolman or moonraker [spoolman] setup.")
             return []
         table = [None for __ in range(self.nb_gates)]
@@ -335,10 +334,10 @@ class MmuServer:
                 gate = None
                 if 'mmu_gate_map' in spool['extra']:
                     gate = int(spool['extra']['mmu_gate_map'])
-                if gate is None :
-                    if not silent :
+                if gate is None:
+                    if not silent:
                         await self._log_n_send(f"'mmu_gate_map' extra field for {spool['filament']['name']} @ {spool['id']} in spoolman db seems to not be set. Please check the spoolman setup.")
-                else :
+                else:
                     table[int(gate)] = spool
             if not silent:
                 for i, spool in enumerate(table):
@@ -352,7 +351,7 @@ class MmuServer:
         if dump:
             gate_dict = {}
             for i, spool in enumerate(table):
-                if spool :
+                if spool:
                     gate_dict[i] = {
                                         'spool_id': spool['id'],
                                         'material': spool['filament']['material'][:6],
@@ -385,7 +384,7 @@ class MmuServer:
         self.server.send_event(
             "spoolman:spoolman_set_spool_gate", {"id": spool_id, "gate": gate}
         )
-        # check that gate not higher than number of gates available
+        # Check that gate not higher than number of gates available
         if (gate is None) and (self.nb_gates > 1):
             msg = f"Trying to set spool {spool_id} for machine {self.printer_info['hostname']} but no gate number provided."
             await self._log_n_send(msg)
@@ -397,7 +396,7 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-        # first check if the spool is not already assigned to a machine
+        # First check if the spool is not already assigned to a machine
         spool_info = await self.get_info_for_spool(spool_id)
         if not spool_info:
             return False
@@ -408,38 +407,38 @@ class MmuServer:
             extra = copy.deepcopy(spool_info['extra'])
             mmu_gate_map = extra.get('mmu_gate_map', None)
             machine_name = extra.get('machine_name', None)
-            if machine_name is None :
+            if machine_name is None:
                 if 'machine_name' not in await self.get_extra_fields("spool"):
                     await self.add_extra_field("spool", "machine_name", type="text", default_value="")
-            if mmu_gate_map is None :
+            if mmu_gate_map is None:
                 if 'mmu_gate_map' not in await self.get_extra_fields("spool"):
                     await self.add_extra_field("spool", "mmu_gate_map", type="integer", default_value=-1)
-            if mmu_gate_map :
+            if mmu_gate_map:
                 mmu_gate_map = int(mmu_gate_map)
-            if machine_name :
+            if machine_name:
                 machine_name = json.loads(machine_name)
 
         identical = False
-        if machine_name :
-            if mmu_gate_map != -1 and mmu_gate_map is not None :
-                # if the spool is already assigned to current machine
+        if machine_name:
+            if mmu_gate_map != -1 and mmu_gate_map is not None:
+                # If the spool is already assigned to current machine
                 if machine_name == self.printer_info["hostname"]:
                     await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to this machine @ gate {mmu_gate_map}")
                     if mmu_gate_map == gate:
                         identical = True
                         await self._log_n_send(f"{CONSOLE_TAB}No update needed for spool {spool_info['filament']['name']} (id: {spool_id}) @ gate {gate}")
-                    else :
+                    else:
                         await self._log_n_send(f"{CONSOLE_TAB}Updating gate for spool {spool_info['filament']['name']} (id: {spool_id}) to gate {gate}")
-            # if the spool is already assigned to another machine
+            # If the spool is already assigned to another machine
             else:
                 await self._log_n_send(f"Spool {spool_info['filament']['name']} (id: {spool_id}) is already assigned to another machine: {machine_name}")
                 return False
 
-        # then check that no spool is already assigned to the gate of this machine (if not previously identified as the same spool)
+        # Then check that no spool is already assigned to the gate of this machine (if not previously identified as the same spool)
         if not identical:
             for g, spool in enumerate(self.gate_occupation):
                 if spool:
-                    if g == gate :
+                    if g == gate:
                         await self._log_n_send(f"Gate {gate} is already assigned to spool {spool['filament']['name']} (id: {spool['id']})")
                         await self._log_n_send(f"{CONSOLE_TAB}- Overwriting gate assignment")
                         if not await self.unset_spool_id(spool['id']):
@@ -453,7 +452,7 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-        # use the PATCH method on the spoolman api
+        # Use the PATCH method on the spoolman api
         # get current printer hostname
         machine_hostname = self.printer_info["hostname"]
         logging.info(
@@ -487,7 +486,7 @@ class MmuServer:
         '''
         Unsets the gate number for the current machine
         '''
-        # get spools assigned to current machine
+        # Get spools assigned to current machine
         if self.gate_occupation not in [False, None]:
             for spool in self.gate_occupation:
                 if spool:
@@ -518,7 +517,7 @@ class MmuServer:
             if (spool_id == -1 or spool_id == 0) and self.gate_occupation[gate] is not None:
                 await self.unset_spool_gate(gate)
             elif spool_id != -1 and spool_id != 0:
-                if (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id) or self.gate_occupation[gate] is None :
+                if (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id) or self.gate_occupation[gate] is None:
                     await self.set_spool_gate(spool_id, gate)
         return
 
@@ -531,7 +530,7 @@ class MmuServer:
         self.server.send_event(
             "spoolman:clear_spool_gates", {}
         )
-        # get spools assigned to current machine
+        # Get spools assigned to current machine
         for i, __ in enumerate(self.gate_occupation):
             await self.unset_spool_gate(i)
         else:
