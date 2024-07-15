@@ -1724,11 +1724,12 @@ class Mmu:
         self._save_variable(self.VARS_MMU_GATE_COLOR, self.gate_color)
         self._save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
         self._save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
+        self._save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
+        self._write_variables()
+
         if (self.enable_spoolman > 1) and sync:
             self._spoolman_set_gate_map()
 
-        self._save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
-        self._write_variables()
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
@@ -1938,7 +1939,7 @@ class Mmu:
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
                 msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
-            msg += "\nSpoolMan is %s. " % ("ENABLED" if self.enable_spoolman else "DISABLED")
+            msg += "\nSpoolMan is %s. " % ("ENABLED" if self.enable_spoolman else "DISABLED") # PAUL
             msg += "Sensors: "
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
