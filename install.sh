@@ -734,7 +734,7 @@ read_previous_config() {
         echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
         parse_file "${dest_cfg}" "variable_"
 
-        # Convert from mm/min to mm/sec and 'spd' to 'speed' for consistency in other macros
+        # Hack to convert from mm/min to mm/sec and 'spd' to 'speed' for consistency in other macros
         #
         if [ ! "${variable_rip_speed}" == "" ]; then
             variable_rip_speed=$(echo "$variable_rip_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
@@ -746,10 +746,10 @@ read_previous_config() {
             variable_extruder_move_speed=$(echo "$variable_extruder_move_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
         fi
         if [ ! "${variable_travel_spd}" == "" ]; then
-            variable_travel_speed=$(echo "$variable_travel_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+            variable_travel_speed=$(echo "$variable_travel_spd" | awk '{if ($1 > 300) print int($1 / 60); else print $1}')
         fi
         if [ ! "${variable_cut_fast_move_spd}" == "" ]; then
-            variable_cut_fast_move_speed=$(echo "$variable_cut_fast_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
+            variable_cut_fast_move_speed=$(echo "$variable_cut_fast_move_spd" | awk '{if ($1 > 300) print int($1 / 60); else print $1}')
         fi
         if [ ! "${variable_cut_slow_move_spd}" == "" ]; then
             variable_cut_slow_move_speed=$(echo "$variable_cut_slow_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
