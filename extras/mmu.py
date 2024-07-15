@@ -6909,7 +6909,7 @@ class Mmu:
                 if self.enable_spoolman > 1:
                     num_tools = len(self.slicer_tool_map['referenced_tools'])
                 else:
-                num_tools = self.mmu_num_gates
+                    num_tools = self.mmu_num_gates
                 if num_tools ** 2 == n:
                     # Full NxN matrix supplied
                     self.slicer_tool_map['purge_volumes'] = [volumes[i * num_tools : (i + 1) * num_tools] for i in range(num_tools)]
