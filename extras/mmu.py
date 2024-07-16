@@ -5683,7 +5683,7 @@ class Mmu:
                 webhooks = self.printer.lookup_object('webhooks')
                 webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids)
             except Exception as e:
-                self._log_error("Error while retrieving spoolman info (see mmu.log for more info): %s" % str(e))
+                self._log_error("Error while retrieving spoolman info: %s" % str(e))
 
     # Request to update local gate based on the remote data stored in spoolman db
     def _gate_map_from_spoolman(self):

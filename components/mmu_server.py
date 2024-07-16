@@ -85,7 +85,7 @@ class MmuServer:
         self.setup_placeholder_processor(config) # Replaces file_manager/metadata with this file
 
     async def component_init(self) -> None:
-        # just refetch gate_occupation from spoolman db
+        # Just refetch gate_occupation from spoolman db
         await self.remote_gate_map(silent=True, dump=False)
 
     async def _log_n_send(self, msg, prompt=False):
@@ -216,7 +216,7 @@ class MmuServer:
                     record = response.json()
                     filament = record["filament"]
 
-                    material = filament.get('material', '')[:6] # Keep material spec short for Klipperscreen
+                    material = filament.get('material', '')
                     color_hex = filament.get('color_hex', '')[:6] # Strip alpha channel if it exists
 
                     gate_dict[gate_id] = {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': filament.get('name', '')}
@@ -355,7 +355,7 @@ class MmuServer:
                 if spool:
                     gate_dict[i] = {
                                         'spool_id': spool['id'],
-                                        'material': spool['filament']['material'][:6],
+                                        'material': spool['filament']['material'], 
                                         'color': spool['filament']['color_hex'][:6],
                                         'name': spool['filament']['name']
                                     }
@@ -380,11 +380,8 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-        logging.info(
-            f"Setting spool {spool_id} for machine: {self.printer_info['hostname']} @ gate {gate}")
-        self.server.send_event(
-            "spoolman:spoolman_set_spool_gate", {"id": spool_id, "gate": gate}
-        )
+        logging.info(f"Setting spool {spool_id} for machine: {self.printer_info['hostname']} @ gate {gate}")
+        self.server.send_event("spoolman:spoolman_set_spool_gate", {"id": spool_id, "gate": gate})
         # Check that gate not higher than number of gates available
         if (gate is None) and (self.nb_gates > 1):
             msg = f"Trying to set spool {spool_id} for machine {self.printer_info['hostname']} but no gate number provided."
@@ -456,8 +453,7 @@ class MmuServer:
         # Use the PATCH method on the spoolman api
         # Get current printer hostname
         machine_hostname = self.printer_info["hostname"]
-        logging.info(
-            f"Setting spool {spool_info['filament']['name']} (id: {spool_info['id']}) for machine: {machine_hostname} @ gate {gate}")
+        logging.info(f"Setting spool {spool_info['filament']['name']} (id: {spool_info['id']}) for machine: {machine_hostname} @ gate {gate}")
         # Get spool info from spoolman
         extra.update({
             "machine_name" : f"\"{machine_hostname}\"",
@@ -492,11 +488,8 @@ class MmuServer:
             for spool in self.gate_occupation:
                 if spool:
                     if 'mmu_gate_map' in spool['extra'] and spool['extra']['mmu_gate_map'] == gate:
-                        logging.info(
-                            f"Clearing gate {gate} for machine: {self.printer_info['hostname']}")
-                        self.server.send_event(
-                            "spoolman:unset_spool_gate", {"gate": gate}
-                        )
+                        logging.info(f"Clearing gate {gate} for machine: {self.printer_info['hostname']}")
+                        self.server.send_event("spoolman:unset_spool_gate", {"gate": gate})
                         await self.unset_spool_id(spool['id'])
                         await self._log_n_send(f"Gate {gate} cleared")
                         return True
@@ -526,11 +519,8 @@ class MmuServer:
         '''
         Clears all gates for the current machine
         '''
-        logging.info(
-            f"Clearing spool gates for machine: {self.printer_info['hostname']}")
-        self.server.send_event(
-            "spoolman:clear_spool_gates", {}
-        )
+        logging.info(f"Clearing spool gates for machine: {self.printer_info['hostname']}")
+        self.server.send_event("spoolman:clear_spool_gates", {})
         # Get spools assigned to current machine
         for i, __ in enumerate(self.gate_occupation):
             await self.unset_spool_gate(i)
