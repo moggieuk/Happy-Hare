@@ -92,7 +92,7 @@ METADATA_PURGE_VOLUMES = "!purge_volumes!"
 
 # Detection for next pos processing
 T_PATTERN  = r'^T(\d+)$'
-G1_PATTERN = r'^G[01](?:\s+X([\d.]*)|\s+Y([\d.]*))+.*$'
+G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
 
 def gcode_processed_already(file_path):
     """Expects first line of gcode to be '; processed by HappyHare'"""
