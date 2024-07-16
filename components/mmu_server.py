@@ -298,11 +298,13 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-    async def remote_gate_map(self, nb_gates=0, silent=False, dump=True) -> List[Dict[str, Any]]:
+    async def remote_gate_map(self, nb_gates=None, silent=False, dump=True) -> List[Dict[str, Any]]:
         '''
         Get all spools assigned to the current machine from spoolman db and set them in the gates
         '''
-        self.nb_gates = nb_gates
+        if nb_gates is not None:
+            self.nb_gates = nb_gates
+            self.gate_occupation = [None for __ in range(self.nb_gates)]
         # Get current printer hostname
         machine_hostname = self.printer_info["hostname"]
         logging.info(f"Getting spools for machine: {machine_hostname}")
@@ -322,11 +324,14 @@ class MmuServer:
                 await self._log_n_send(f"Failed to retrieve spools from spoolman: {e}")
             return []
         self.machine_occupation = spools
-        if self.nb_gates < len(spools):
-            if not silent:
-                await self._log_n_send(f"Number of spools assigned to machine {machine_hostname} is greater than the number of gates available on the machine. Please check the spoolman or moonraker [spoolman] setup.")
+        if nb_gates is not None:
+            if self.nb_gates < len(spools):
+                if not silent:
+                    await self._log_n_send(f"Number of spools assigned to machine {machine_hostname} is greater than the number of gates available on the machine. Please check the spoolman or moonraker [spoolman] setup.")
+                return []
+        if not silent and not spools:
+            await self._log_n_send(f"No spools assigned to machine: {machine_hostname}")
             return []
-        table = [None for __ in range(self.nb_gates)]
         if self.machine_occupation:
             if not silent:
                 await self._log_n_send("Spools for machine:")
@@ -339,23 +344,20 @@ class MmuServer:
                     if not silent:
                         await self._log_n_send(f"'mmu_gate_map' extra field for {spool['filament']['name']} @ {spool['id']} in spoolman db seems to not be set. Please check the spoolman setup.")
                 else:
-                    table[int(gate)] = spool
+                    self.gate_occupation[int(gate)] = spool
             if not silent:
-                for i, spool in enumerate(table):
+                for i, spool in enumerate(self.gate_occupation):
                     if spool:
                         await self._log_n_send(f"{CONSOLE_TAB}{i} : {spool['filament']['name']}")
                     else:
                         await self._log_n_send(f"{CONSOLE_TAB}{i} : empty")
-        if not silent and not spools:
-            await self._log_n_send(f"No spools assigned to machine: {machine_hostname}")
-        self.gate_occupation = table
         if dump:
             gate_dict = {}
-            for i, spool in enumerate(table):
+            for i, spool in enumerate(self.gate_occupation):
                 if spool:
                     gate_dict[i] = {
                                         'spool_id': spool['id'],
-                                        'material': spool['filament']['material'], 
+                                        'material': spool['filament']['material'],
                                         'color': spool['filament']['color_hex'][:6],
                                         'name': spool['filament']['name']
                                     }
