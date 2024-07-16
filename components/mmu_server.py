@@ -366,7 +366,7 @@ class MmuServer:
                 await self.klippy_apis.run_gcode("MMU_GATE_MAP")
         return True
 
-    async def set_spool_gate(self, spool_id : int, gate : int) -> bool:
+    async def set_spool_gate(self, spool_id : int | None, gate : int | None) -> bool:
         '''
         Sets the spool with id=id for the current machine into optional gate number if mmu is enabled.
 
