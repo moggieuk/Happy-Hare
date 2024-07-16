@@ -736,7 +736,10 @@ def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, f
     # Ignore comment lines to preserve slicer metadata comments
     if not line.startswith(";"):
         if METADATA_TOOL_DISCOVERY in line:
-            line = line.replace(METADATA_TOOL_DISCOVERY, ",".join(map(str, tools_used)))
+            if tools_used :
+                line = line.replace(METADATA_TOOL_DISCOVERY, ",".join(map(str, tools_used)))
+            else :
+                line = line.replace(METADATA_TOOL_DISCOVERY, "0")
         if METADATA_COLORS in line:
             line = line.replace(METADATA_COLORS, ",".join(map(str, colors)))
         if METADATA_TEMPS in line:
