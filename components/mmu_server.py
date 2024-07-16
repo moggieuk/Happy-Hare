@@ -524,8 +524,9 @@ class MmuServer:
         logging.info(f"Clearing spool gates for machine: {self.printer_info['hostname']}")
         self.server.send_event("spoolman:clear_spool_gates", {})
         # Get spools assigned to current machine
-        for i, __ in enumerate(self.gate_occupation):
-            await self.unset_spool_gate(i)
+        if self.gate_occupation and self.gate_occupation != [None for __ in range(self.nb_gates)]:
+            for i, __ in enumerate(self.gate_occupation):
+                await self.unset_spool_gate(i)
         else:
             msg = f"No spools for machine {self.printer_info['hostname']}"
             await self._log_n_send(msg)
