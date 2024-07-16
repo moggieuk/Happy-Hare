@@ -4369,7 +4369,7 @@ class Mmu:
                     # Servo will already be down
                     pullback = self.encoder_sensor.get_clog_detection_length() * .6 # 60% of current clog detection length
                     _,_,measured,delta = self._trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
-                self._log_info("Filament tightened by %.1fmm" % pullback) 
+                self._log_info("Filament tightened by %.1fmm" % pullback)
 
             self._random_failure() # Testing
             self._movequeues_wait_moves()
@@ -6929,34 +6929,35 @@ class Mmu:
             try:
                 volumes = list(map(float, purge_volumes.split(',')))
                 n = len(volumes)
-                # If enable_spoolman is > 1 automap is enables thus we expect a matrix matching the used tools not the nb_gates PAUL FIXME
-                if self.enable_spoolman > 1:
-                    num_tools = len(self.slicer_tool_map['referenced_tools'])
-                else:
-                    num_tools = self.mmu_num_gates
-                if num_tools ** 2 == n:
-                    # Full NxN matrix supplied
-                    self.slicer_tool_map['purge_volumes'] = [volumes[i * num_tools : (i + 1) * num_tools] for i in range(num_tools)]
-                else:
-                    if n == 1:
-                        calc = lambda x,y: volumes[0] * 2 # Build a single value matrix
-                    elif num_tools == n:
-                        calc = lambda x,y: volumes[x] + volumes[y] # Will build symmetrical purge matrix
-                    elif num_tools * 2 == n:
-                        calc = lambda x,y: volumes[x] + volumes[num_tools + y] # Build matrix with sum of unload and load tools
+                # If enable_spoolman is > 1 automap is enables thus we expect a matrix matching the used tools not the nb_gates FIXME
+                num_tools = len(self.slicer_tool_map['referenced_tools'])
+                # initialize purge volumes to 0
+                self.slicer_tool_map['purge_volumes'] = [[0]*self.mmu_num_gates]*self.mmu_num_gates
+                if num_tools <= self.mmu_num_gates:
+                    if num_tools ** 2 == n:
+                        # Full NxN matrix supplied
+                        for i in range(self.mmu_num_gates):
+                            if i in self.slicer_tool_map['referenced_tools']:
+                                self.slicer_tool_map['purge_volumes'][i] = volumes[i*num_tools : (i + 1)*num_tools]+[0]*(self.mmu_num_gates-num_tools)
                     else:
-                        msg = ""
-                        if self.enable_spoolman > 1:
-                            msg += "Used len(REFERENCED_TOOLS) in order to check purge matrix, make sure all tools have been referenced before setting the purge matrix."
-                        msg += "Incorrect number of values for PURGE_VOLUMES. Expect 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n)
-                        raise gcmd.error(msg)
-                    self.slicer_tool_map['purge_volumes'] = [
-                        [
-                            calc(x,y) if x != y else 0
-                                for y in range(num_tools)
-                        ]
-                        for x in range(num_tools)
-                    ]
+                        if n == 1:
+                            calc = lambda x,y: volumes[0] * 2 # Build a single value matrix
+                        elif num_tools == n:
+                            calc = lambda x,y: volumes[x] + volumes[y] # Will build symmetrical purge matrix
+                        elif num_tools * 2 == n:
+                            calc = lambda x,y: volumes[x] + volumes[num_tools + y] # Build matrix with sum of unload and load tools
+                        else:
+                            msg = "Incorrect number of values for PURGE_VOLUMES. Expect 1, %d, %d, or %d, got %d." % (num_tools, num_tools * 2, num_tools ** 2, n)
+                            if self.enable_spoolman > 1:
+                                msg += " Number of REFERENCED_TOOLS has been used in order to check purge matrix, make sure all tools have been referenced before setting the purge matrix."
+                            raise gcmd.error(msg)
+                        for x in range(self.mmu_num_gates):
+                            if x in self.slicer_tool_map['referenced_tools']:
+                                self.slicer_tool_map['purge_volumes'][x] = [calc(x,y) if x != y else 0 for y in range(num_tools)] + [0]*(self.mmu_num_gates-num_tools)
+                            else :
+                                self.slicer_tool_map['purge_volumes'][x] = [0]*self.mmu_num_gates
+                else :
+                    raise gcmd.error("There seem to be more referenced tools than gates, please check the slicer tool map")
             except ValueError as e:
                 raise gcmd.error("Error parsing PURGE_VOLUMES: %s" % str(e))
             quiet = True

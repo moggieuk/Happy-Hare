@@ -298,11 +298,13 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-    async def remote_gate_map(self, nb_gates=0, silent=False, dump=True) -> List[Dict[str, Any]]:
+    async def remote_gate_map(self, nb_gates=None, silent=False, dump=True) -> List[Dict[str, Any]]:
         '''
         Get all spools assigned to the current machine from spoolman db and set them in the gates
         '''
-        self.nb_gates = nb_gates
+        if nb_gates is not None:
+            self.nb_gates = nb_gates
+            self.gate_occupation = [None for __ in range(self.nb_gates)]
         # Get current printer hostname
         machine_hostname = self.printer_info["hostname"]
         logging.info(f"Getting spools for machine: {machine_hostname}")
@@ -322,11 +324,14 @@ class MmuServer:
                 await self._log_n_send(f"Failed to retrieve spools from spoolman: {e}")
             return []
         self.machine_occupation = spools
-        if self.nb_gates < len(spools):
-            if not silent:
-                await self._log_n_send(f"Number of spools assigned to machine {machine_hostname} is greater than the number of gates available on the machine. Please check the spoolman or moonraker [spoolman] setup.")
+        if nb_gates is not None:
+            if self.nb_gates < len(spools):
+                if not silent:
+                    await self._log_n_send(f"Number of spools assigned to machine {machine_hostname} is greater than the number of gates available on the machine. Please check the spoolman or moonraker [spoolman] setup.")
+                return []
+        if not silent and not spools:
+            await self._log_n_send(f"No spools assigned to machine: {machine_hostname}")
             return []
-        table = [None for __ in range(self.nb_gates)]
         if self.machine_occupation:
             if not silent:
                 await self._log_n_send("Spools for machine:")
@@ -339,23 +344,20 @@ class MmuServer:
                     if not silent:
                         await self._log_n_send(f"'mmu_gate_map' extra field for {spool['filament']['name']} @ {spool['id']} in spoolman db seems to not be set. Please check the spoolman setup.")
                 else:
-                    table[int(gate)] = spool
+                    self.gate_occupation[int(gate)] = spool
             if not silent:
-                for i, spool in enumerate(table):
+                for i, spool in enumerate(self.gate_occupation):
                     if spool:
                         await self._log_n_send(f"{CONSOLE_TAB}{i} : {spool['filament']['name']}")
                     else:
                         await self._log_n_send(f"{CONSOLE_TAB}{i} : empty")
-        if not silent and not spools:
-            await self._log_n_send(f"No spools assigned to machine: {machine_hostname}")
-        self.gate_occupation = table
         if dump:
             gate_dict = {}
-            for i, spool in enumerate(table):
+            for i, spool in enumerate(self.gate_occupation):
                 if spool:
                     gate_dict[i] = {
                                         'spool_id': spool['id'],
-                                        'material': spool['filament']['material'], 
+                                        'material': spool['filament']['material'],
                                         'color': spool['filament']['color_hex'][:6],
                                         'name': spool['filament']['name']
                                     }
@@ -364,7 +366,7 @@ class MmuServer:
                 await self.klippy_apis.run_gcode("MMU_GATE_MAP")
         return True
 
-    async def set_spool_gate(self, spool_id : int, gate : int) -> bool:
+    async def set_spool_gate(self, spool_id : int | None, gate : int | None) -> bool:
         '''
         Sets the spool with id=id for the current machine into optional gate number if mmu is enabled.
 
@@ -500,18 +502,18 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-    async def set_gate_map(self, gate_map) -> bool:
+    async def set_gate_map(self, gate_map = None) -> bool:
         '''
         Sets the gate map for the current machine
         '''
-        if gate_map is None:
-            logging.error("Gate map not provided")
+        if not gate_map:
+            logging.error("Gate map not provided or empty")
             return False
         for gate, spool_id in enumerate(gate_map):
             if (spool_id == -1 or spool_id == 0) and self.gate_occupation[gate] is not None:
                 await self.unset_spool_gate(gate)
             elif spool_id != -1 and spool_id != 0:
-                if (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id) or self.gate_occupation[gate] is None:
+                if self.gate_occupation[gate] is None or (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id):
                     await self.set_spool_gate(spool_id, gate)
         return
 
@@ -522,8 +524,9 @@ class MmuServer:
         logging.info(f"Clearing spool gates for machine: {self.printer_info['hostname']}")
         self.server.send_event("spoolman:clear_spool_gates", {})
         # Get spools assigned to current machine
-        for i, __ in enumerate(self.gate_occupation):
-            await self.unset_spool_gate(i)
+        if self.gate_occupation and self.gate_occupation != [None for __ in range(self.nb_gates)]:
+            for i, __ in enumerate(self.gate_occupation):
+                await self.unset_spool_gate(i)
         else:
             msg = f"No spools for machine {self.printer_info['hostname']}"
             await self._log_n_send(msg)
@@ -546,7 +549,7 @@ TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<too
 METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 
 # PS/SS uses "extruder_colour", Orca uses "filament_colour" but extruder_colour can exist with empty or single color
-COLORS_REGEX = r"^;\s*(?:extruder_colour|filament_colour)\s*=\s*(#.*;.*)$"
+COLORS_REGEX = r"^;\s*(?:extruder_colour|filament_colour)\s*=\s*(#.*;?.*)$"
 METADATA_COLORS = "!colors!"
 
 TEMPS_REGEX = r"^;\s*(nozzle_)?temperature\s*=\s*(.*)$" # Orca Slicer has the 'nozzle_' prefix, others might not
@@ -733,7 +736,10 @@ def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, f
     # Ignore comment lines to preserve slicer metadata comments
     if not line.startswith(";"):
         if METADATA_TOOL_DISCOVERY in line:
-            line = line.replace(METADATA_TOOL_DISCOVERY, ",".join(map(str, tools_used)))
+            if tools_used :
+                line = line.replace(METADATA_TOOL_DISCOVERY, ",".join(map(str, tools_used)))
+            else :
+                line = line.replace(METADATA_TOOL_DISCOVERY, "0")
         if METADATA_COLORS in line:
             line = line.replace(METADATA_COLORS, ",".join(map(str, colors)))
         if METADATA_TEMPS in line:
