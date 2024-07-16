@@ -4370,7 +4370,7 @@ class Mmu:
                     # Servo will already be down
                     pullback = self.encoder_sensor.get_clog_detection_length() * .6 # 60% of current clog detection length
                     _,_,measured,delta = self._trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
-                self._log_info("Filament tightened by %.1fmm" % pullback) 
+                self._log_info("Filament tightened by %.1fmm" % pullback)
 
             self._random_failure() # Testing
             self._movequeues_wait_moves()
