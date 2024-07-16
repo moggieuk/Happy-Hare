@@ -549,7 +549,7 @@ TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<too
 METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 
 # PS/SS uses "extruder_colour", Orca uses "filament_colour" but extruder_colour can exist with empty or single color
-COLORS_REGEX = r"^;\s*(?:extruder_colour|filament_colour)\s*=\s*(#.*;.*)$"
+COLORS_REGEX = r"^;\s*(?:extruder_colour|filament_colour)\s*=\s*(#.*;?.*)$"
 METADATA_COLORS = "!colors!"
 
 TEMPS_REGEX = r"^;\s*(nozzle_)?temperature\s*=\s*(.*)$" # Orca Slicer has the 'nozzle_' prefix, others might not
