@@ -1724,6 +1724,7 @@ class Mmu:
         self._save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
         self._write_variables()
 
+        # Also persist to spoolman db if required
         if (self.enable_spoolman > 1) and sync:
             self._spoolman_set_gate_map()
 
@@ -5648,23 +5649,24 @@ class Mmu:
                 self._log_debug("Spoolman spool_id not set for current gate")
             else:
                 if spool_id == 0:
-                    self._log_debug("Deactivating spool ...")
+                    self._log_debug("Deactivating spool...")
                 else:
                     self._log_debug("Activating spool %s..." % spool_id)
                 webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)
         except Exception as e:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
+    # Store the current gate to spool_id mapping in spoolman db (via moonraker)
     def _spoolman_set_gate_map(self):
         if not self.enable_spoolman: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            self._log_debug("Setting gate map in spoolman db ...")
+            self._log_debug("Storing gate map in spoolman db...")
             webhooks.call_remote_method("spoolman_set_gate_map", gate_map=self.gate_spool_id)
         except Exception as e:
             self._log_error("Error while calling _spoolman_set_gate_map: %s" % str(e))
 
-    # Tell moonraker component we are interested in filament data
+    # Request to send filament data from spoolman db (via moonraker)
     # gate=None means all gates with spool_id, else specific gate
     def _update_filaments_from_spoolman(self, gate=None):
         if not self.enable_spoolman: return
@@ -5683,8 +5685,7 @@ class Mmu:
             except Exception as e:
                 self._log_error("Error while retrieving spoolman info (see mmu.log for more info): %s" % str(e))
 
-    # Tell moonraker component we want to get the gate mapping to
-    # be updated with the remotely stored values
+    # Request to update local gate based on the remote data stored in spoolman db
     def _gate_map_from_spoolman(self):
         if not self.enable_spoolman: return
         self._log_debug("Requesting the gate map from Spoolman")
@@ -6240,7 +6241,7 @@ class Mmu:
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.mmu_num_gates - 1)
-        prev_enable_spoolman = self.enable_spoolman # PAUL
+        prev_enable_spoolman = self.enable_spoolman
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=2)
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
@@ -6756,7 +6757,7 @@ class Mmu:
             self._reset_gate_map()
 
         if refresh:
-            self._update_filaments_from_spoolman() # PAUL new?
+            self._update_filaments_from_spoolman()
             quiet = True
 
         if next_spool_id:
@@ -6793,7 +6794,7 @@ class Mmu:
 
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
-                material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()[:10]
+                material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()
                 color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
                 spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
                 speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
@@ -6916,7 +6917,7 @@ class Mmu:
             try:
                 volumes = list(map(float, purge_volumes.split(',')))
                 n = len(volumes)
-                # If enable_spoolman is > 1 automap is enables thus we expect a matrix matching the used tools not the nb_gates FIXME
+                # If enable_spoolman is > 1 automap is enables thus we expect a matrix matching the used tools not the nb_gates PAUL FIXME
                 if self.enable_spoolman > 1:
                     num_tools = len(self.slicer_tool_map['referenced_tools'])
                 else:

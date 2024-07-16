@@ -50,7 +50,7 @@ class MmuServer:
         self.spoolman: SpoolManager = self.server.load_component(config, "spoolman", None)
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
         self.http_client: HttpClient = self.server.lookup_component("http_client")
-        self.nb_gates = None # set by klippy when calling remote_gate_map
+        self.nb_gates = None # Set by Happy Hare when calling remote_gate_map
         self.machine_occupation = {}
         self.gate_occupation = {}
 
@@ -61,6 +61,11 @@ class MmuServer:
         self.server.register_remote_method(
             "spoolman_set_active_gate", self.set_active_gate
         )
+        self.server.register_remote_method(
+            "spoolman_set_gate_map", self.set_gate_map
+        )
+
+        # Additional remote methods not yet directly called by Happy Hare
         self.server.register_remote_method(
             "spoolman_get_spool_info", self.get_spool_info
         )
@@ -75,9 +80,6 @@ class MmuServer:
         )
         self.server.register_remote_method(
             "spoolman_clear_spools_for_machine", self.clear_spools_for_machine
-        )
-        self.server.register_remote_method(
-            "spoolman_set_gate_map", self.set_gate_map
         )
 
         self.setup_placeholder_processor(config) # Replaces file_manager/metadata with this file
@@ -301,7 +303,7 @@ class MmuServer:
         Get all spools assigned to the current machine from spoolman db and set them in the gates
         '''
         self.nb_gates = nb_gates
-        # get current printer hostname
+        # Get current printer hostname
         machine_hostname = self.printer_info["hostname"]
         logging.info(f"Getting spools for machine: {machine_hostname}")
         try:
@@ -315,7 +317,6 @@ class MmuServer:
                     tmp_spool['extra']['machine_name'] = json.loads(tmp_spool['extra']['machine_name'])
                     tmp_spool['extra']['mmu_gate_map'] = int(tmp_spool['extra']['mmu_gate_map'])
                     spools.append(tmp_spool)
-
         except Exception as e:
             if not silent:
                 await self._log_n_send(f"Failed to retrieve spools from spoolman: {e}")
@@ -329,7 +330,7 @@ class MmuServer:
         if self.machine_occupation:
             if not silent:
                 await self._log_n_send("Spools for machine:")
-            # create a table of size len(spools)
+            # Create a table of size len(spools)
             for spool in self.machine_occupation:
                 gate = None
                 if 'mmu_gate_map' in spool['extra']:
@@ -391,7 +392,7 @@ class MmuServer:
             return False
         elif not gate and (self.nb_gates == 1):
             gate = 0
-        elif gate > self.nb_gates-1:
+        elif gate > self.nb_gates - 1:
             msg = f"Trying to set spool {spool_id} for machine {self.printer_info['hostname']} @ gate {gate} but only {self.nb_gates} gates are available. Please check the spoolman or moonraker [spoolman] setup."
             await self._log_n_send(msg)
             return False
@@ -453,11 +454,11 @@ class MmuServer:
             return False
 
         # Use the PATCH method on the spoolman api
-        # get current printer hostname
+        # Get current printer hostname
         machine_hostname = self.printer_info["hostname"]
         logging.info(
             f"Setting spool {spool_info['filament']['name']} (id: {spool_info['id']}) for machine: {machine_hostname} @ gate {gate}")
-        # get spool info from spoolman
+        # Get spool info from spoolman
         extra.update({
             "machine_name" : f"\"{machine_hostname}\"",
             "mmu_gate_map" : gate
