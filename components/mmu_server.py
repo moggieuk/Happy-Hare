@@ -502,18 +502,18 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-    async def set_gate_map(self, gate_map) -> bool:
+    async def set_gate_map(self, gate_map = None) -> bool:
         '''
         Sets the gate map for the current machine
         '''
-        if gate_map is None:
-            logging.error("Gate map not provided")
+        if not gate_map:
+            logging.error("Gate map not provided or empty")
             return False
         for gate, spool_id in enumerate(gate_map):
             if (spool_id == -1 or spool_id == 0) and self.gate_occupation[gate] is not None:
                 await self.unset_spool_gate(gate)
             elif spool_id != -1 and spool_id != 0:
-                if (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id) or self.gate_occupation[gate] is None:
+                if self.gate_occupation[gate] is None or (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id):
                     await self.set_spool_gate(spool_id, gate)
         return
 
