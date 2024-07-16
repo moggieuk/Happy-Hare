@@ -3258,8 +3258,7 @@ class Mmu:
                 # If toolchanging ensure we record the intended X,Y resume position in case of
                 # later pause (error) where the resume macro will be run
                 if pause_resume_pos:
-                    pause_resume_pos_parsed = list(map(float, pause_resume_pos.split(',')))
-                    self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = pause_resume_pos_parsed[:2]
+                    self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = pause_resume_pos
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
@@ -5535,9 +5534,7 @@ class Mmu:
         if not skip_unload:
             self._unload_tool(skip_tip=skip_tip)
 
-        if next_pos:
-            self._set_next_position(next_pos)
-
+        self._set_next_position(next_pos)
         self._select_and_load_tool(tool)
         self._track_swap_completed()
 
@@ -5548,9 +5545,8 @@ class Mmu:
 
     # Tell the sequence macros about where to move to next
     def _set_next_position(self, next_pos):
-        x, y = (next_pos.split(',') + [None, None])[:2]
-        if x and y:
-            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=%s,%s" % (x, y))
+        if next_pos:
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_xy VALUE=%s,%s" % (next_pos[0], next_pos[1]))
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=True")
         else:
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=False")
@@ -5770,7 +5766,23 @@ class Mmu:
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
+
+        # Convert next position to absolute coordinates
         next_pos = gcmd.get('NEXT_POS', None)
+        if next_pos:
+            try:
+                x, y = map(float, next_pos.split(','))
+                gcode_status = self.gcode_move.get_status(self.reactor.monotonic())
+                if not gcode_status['absolute_coordinates']:
+                    gcode_pos = gcode_status['gcode_position']
+                    x += gcode_pos[0]
+                    y += gcode_pos[1]
+                next_pos = [x, y]
+            except (ValueError, KeyError, TypeError) as ee:
+                # If something goes wrong it is better to ignore next pos completely
+                self._log_debug("Error parsing NEXT_POS: %s" % str(ee))
+                next_pos = None
+
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)
         if match:
