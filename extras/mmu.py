@@ -6915,7 +6915,7 @@ class Mmu:
         used = bool(gcmd.get_int('USED', 1, minval=0, maxval=1)) # Referenced tool?
 
         purge_volumes = gcmd.get('PURGE_VOLUMES', "")
-        num_slicer_tools = gcmd.get_int('NUM_SLICER_TOOLS', self.mmu_num_gates, minval=1) # Allow slicer to have less tools than MMU gates
+        num_slicer_tools = gcmd.get_int('NUM_SLICER_TOOLS', self.mmu_num_gates, minval=1, maxval=self.mmu_num_gates) # Allow slicer to have less tools than MMU gates
 
         quiet = False
         if reset:
@@ -6982,9 +6982,10 @@ class Mmu:
             if detail or purge_map or sparse_purge_map:
                 if have_purge_map:
                     rt = self.slicer_tool_map['referenced_tools']
+                    volumes = [row[:num_slicer_tools] for row in self.slicer_tool_map['purge_volumes'][:num_slicer_tools]]
                     msg += "\nPurge Volume Map (mm^3):\n"
-                    msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(self.mmu_num_gates)) + "\n"
-                    msg += '\n'.join(["T{: <2}{}{}".format(y, UI_SEPARATOR, ' '.join(map(lambda v, x: str(round(v)).rjust(4, UI_SPACE) if (not sparse_purge_map or (y in rt and x in rt)) and v > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row, range(len(row))))) for y, row in enumerate(self.slicer_tool_map['purge_volumes'])])
+                    msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(num_slicer_tools)) + "\n"
+                    msg += '\n'.join(["T{: <2}{}{}".format(y, UI_SEPARATOR, ' '.join(map(lambda v, x: str(round(v)).rjust(4, UI_SPACE) if (not sparse_purge_map or (y in rt and x in rt)) and v > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row, range(len(row))))) for y, row in enumerate(volumes)])
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volume map"
             self._log_always(msg)
