@@ -667,12 +667,12 @@ def parse_gcode_file(file_path):
                 if not has_materials_placeholder and METADATA_MATERIALS in line:
                     has_materials_placeholder = True
 
-            if not found_materials:
-                match = materials_regex.match(line)
-                if match:
-                    materials_csv = match.group(1).strip().split(';')
-                    materials.extend(materials_csv)
-                    found_materials = True
+                if not found_materials:
+                    match = materials_regex.match(line)
+                    if match:
+                        materials_csv = match.group(1).strip().split(';')
+                        materials.extend(materials_csv)
+                        found_materials = True
 
                 # !purge_volumes! processing
                 if not has_purge_volumes_placeholder and METADATA_PURGE_VOLUMES in line:
