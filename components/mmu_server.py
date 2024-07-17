@@ -561,9 +561,6 @@ METADATA_MATERIALS = "!materials!"
 PURGE_VOLUMES_REGEX = r"^;\s*(flush_volumes_matrix|wiping_volumes_matrix)\s*=\s*(.*)$" # flush.. in Orca, wiping... in PS
 METADATA_PURGE_VOLUMES = "!purge_volumes!"
 
-FILAMENT_USED_REGEX = r"^;\s*(filament\sused\s\[g\])\s*=\s*(.*)$" # flush.. in Orca, wiping... in PS
-METADATA_FILAMENT_USED = "!filament_used!"
-
 FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
@@ -599,7 +596,6 @@ def parse_gcode_file(file_path):
     temps = []
     materials = []
     purge_volumes = []
-    filament_used = []
     filament_names = []
 
     with open(file_path, 'r') as in_file:
@@ -665,20 +661,9 @@ def parse_gcode_file(file_path):
                     purge_volumes.extend(purge_volumes_csv)
                     found_purge_volumes = True
 
-            # !filament_used! processing
-            if not has_filament_used_placeholder and METADATA_FILAMENT_USED in line:
-                has_filament_used_placeholder = True
-
-            if not found_filament_used:
-                match = filament_used_regex.match(line)
-                if match:
-                    filament_used_csv = [e.strip() for e in match.group(2).strip().split(',')]
-                    filament_used.extend(filament_used_csv)
-                    found_filament_used = True
-
-            # !filament_names! processing
-            if not filament_names_placeholder and METADATA_FILAMENT_NAMES in line:
-                filament_names_placeholder = True
+                # !filament_names! processing
+                if not filament_names_placeholder and METADATA_FILAMENT_NAMES in line:
+                    filament_names_placeholder = True
 
             if not found_filament_names:
                 match = filament_names_regex.match(line)
@@ -687,10 +672,10 @@ def parse_gcode_file(file_path):
                     filament_names.extend(filament_names_csv)
                     found_filament_names = True
 
-    return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or has_filament_used_placeholder or filament_names_placeholder,
-            sorted(tools_used), colors, temps, materials, purge_volumes, filament_used, filament_names, slicer)
+    return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
+            sorted(tools_used), colors, temps, materials, purge_volumes, filament_names, slicer)
 
-def process_file(input_filename, output_filename, insert_nextpos, tools_used, colors, temps, materials, purge_volumes, filament_used, filament_names):
+def process_file(input_filename, output_filename, insert_nextpos, tools_used, colors, temps, materials, purge_volumes, filament_names):
 
     t_pattern = re.compile(T_PATTERN)
     g1_pattern = re.compile(G1_PATTERN)
@@ -701,7 +686,7 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, co
         outfile.write('; processed by HappyHare\n')
 
         for line in infile:
-            line = add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, filament_used, filament_names)
+            line = add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, filament_names)
             if tool is not None:
                 # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
                 buffer.append(line)
@@ -732,7 +717,7 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, co
             for line in buffer:
                 outfile.write(line)
 
-def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, filament_used, filament_names):
+def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, filament_names):
     # Ignore comment lines to preserve slicer metadata comments
     if not line.startswith(";"):
         if METADATA_TOOL_DISCOVERY in line:
@@ -748,8 +733,6 @@ def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, f
             line = line.replace(METADATA_MATERIALS, ",".join(map(str, materials)))
         if METADATA_PURGE_VOLUMES in line:
             line = line.replace(METADATA_PURGE_VOLUMES, ",".join(map(str, purge_volumes)))
-        if METADATA_FILAMENT_USED in line:
-            line = line.replace(METADATA_FILAMENT_USED, ",".join(map(str, filament_used)))
         if METADATA_FILAMENT_NAMES in line:
             line = line.replace(METADATA_FILAMENT_NAMES, ",".join(map(str, filament_names)))
     return line
@@ -768,10 +751,10 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
 
                 if insert_placeholders:
                     start = time.time()
-                    has_placeholder, tools_used, colors, temps, materials, purge_volumes, filament_used, filament_names, slicer = parse_gcode_file(file_path)
+                    has_placeholder, tools_used, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path)
                     metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
                 else:
-                    tools_used = colors = temps = materials = purge_volumes = filament_used = filament_names = slicer = None
+                    tools_used = colors = temps = materials = purge_volumes = filament_names = slicer = None
                     has_placeholder = False
 
                 if (insert_nextpos and tools_used is not None and len(tools_used) > 0) or has_placeholder:
@@ -781,7 +764,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                         msg.append("Writing MMU placeholders")
                     if insert_nextpos:
                         msg.append("Inserting next position to tool changes")
-                    process_file(file_path, tmp_file, insert_nextpos, tools_used, colors, temps, materials, purge_volumes, filament_used, filament_names)
+                    process_file(file_path, tmp_file, insert_nextpos, tools_used, colors, temps, materials, purge_volumes, filament_names)
                     metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
