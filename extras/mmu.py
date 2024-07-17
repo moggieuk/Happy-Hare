@@ -6902,7 +6902,7 @@ class Mmu:
         if self._check_is_disabled(): return
         display = bool(gcmd.get_int('DISPLAY', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
-        sparse = bool(gcmd.get_int('SPARSE', 0, minval=0, maxval=1))
+        sparse_volumes = bool(gcmd.get_int('SPARSE_VOLUMES', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
 
@@ -6985,7 +6985,7 @@ class Mmu:
                     msg += "\nPurge Volume Map (mm^3):\n"
                     msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(self.mmu_num_gates)) + "\n"
                     #PAUL TEMP OLD LOGIC msg += '\n'.join(["T{: <2}{}{}".format(i, UI_SEPARATOR, ' '.join(map(lambda x: str(round(x)).rjust(4, UI_SPACE) if x > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row))) for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
-                    msg += '\n'.join(["T{: <2}{}{}".format(y, UI_SEPARATOR, ' '.join(map(lambda v, x: str(round(v)).rjust(4, UI_SPACE) if y in rt and x in rt and v > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row, range(len(row))))) for y, row in enumerate(self.slicer_tool_map['purge_volumes'])])
+                    msg += '\n'.join(["T{: <2}{}{}".format(y, UI_SEPARATOR, ' '.join(map(lambda v, x: str(round(v)).rjust(4, UI_SPACE) if ((sparse_volumes and y in rt and x in rt) or not sparse_volumes) and v > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row, range(len(row))))) for y, row in enumerate(self.slicer_tool_map['purge_volumes'])])
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volume map"
             self._log_always(msg)
