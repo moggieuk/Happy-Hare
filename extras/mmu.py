@@ -6929,10 +6929,9 @@ class Mmu:
             try:
                 volumes = list(map(float, purge_volumes.split(',')))
                 n = len(volumes)
-                # If enable_spoolman is > 1 automap is enables thus we expect a matrix matching the used tools not the nb_gates FIXME
                 num_tools = len(self.slicer_tool_map['referenced_tools'])
-                # initialize purge volumes to 0
-                self.slicer_tool_map['purge_volumes'] = [[0]*self.mmu_num_gates]*self.mmu_num_gates
+                # Initialize purge volumes to 0
+                self.slicer_tool_map['purge_volumes'] = [[0] * self.mmu_num_gates] * self.mmu_num_gates
                 if num_tools <= self.mmu_num_gates:
                     if num_tools ** 2 == n:
                         # Full NxN matrix supplied
@@ -6954,9 +6953,9 @@ class Mmu:
                         for x in range(self.mmu_num_gates):
                             if x in self.slicer_tool_map['referenced_tools']:
                                 self.slicer_tool_map['purge_volumes'][x] = [calc(x,y) if x != y else 0 for y in range(num_tools)] + [0]*(self.mmu_num_gates-num_tools)
-                            else :
+                            else:
                                 self.slicer_tool_map['purge_volumes'][x] = [0]*self.mmu_num_gates
-                else :
+                else:
                     raise gcmd.error("There seem to be more referenced tools than gates, please check the slicer tool map")
             except ValueError as e:
                 raise gcmd.error("Error parsing PURGE_VOLUMES: %s" % str(e))
