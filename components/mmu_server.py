@@ -59,9 +59,6 @@ class MmuServer:
             "spoolman_get_filaments", self.get_filaments
         )
         self.server.register_remote_method(
-            "spoolman_set_active_gate", self.set_active_gate
-        )
-        self.server.register_remote_method(
             "spoolman_set_gate_map", self.set_gate_map
         )
 
@@ -235,23 +232,6 @@ class MmuServer:
         args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
         from .file_manager import file_manager
         file_manager.METADATA_SCRIPT = os.path.abspath(__file__) + args
-
-    async def set_active_gate(self, gate = None) -> None:
-        '''
-        Search for spool id matching the gate number and set it as active
-        '''
-        if gate is None:
-            logging.error("Gate number not provided")
-            return
-
-        for spool in self.gate_occupation:
-            logging.info(
-                f"found spool: {spool['filament']['name']} at gate {spool['extra']['mmu_gate_map']}")
-            if spool['extra']['mmu_gate_map'] == gate:
-                self.spoolman.set_active_spool(spool['id'])
-                return
-
-        logging.error(f"Could not find a matching spool for gate {gate}")
 
     async def get_spool_info(self, sid: int = None):
         '''
