@@ -6902,7 +6902,7 @@ class Mmu:
         if self._check_is_disabled(): return
         display = bool(gcmd.get_int('DISPLAY', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
-        sparse_volumes = bool(gcmd.get_int('SPARSE_VOLUMES', 0, minval=0, maxval=1))
+        sparse_purge_map = bool(gcmd.get_int('SPARSE_PURGE_MAP', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.mmu_num_gates - 1)
 
@@ -6949,7 +6949,7 @@ class Mmu:
                 else:
                     raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expected 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n))
                 # Build purge volume map (x=to_tool, y=from_tool)
-                #PAUL TEMP OLD LOGIC should_calc = lambda x,y: x < num_slicer_tools and y < num_slicer_tools and x != y and (not sparse_volumes or all(t in self.slicer_tool_map['referenced_tools'] for t in (x, y)))
+                #PAUL TEMP OLD LOGIC should_calc = lambda x,y: x < num_slicer_tools and y < num_slicer_tools and x != y and (not sparse_purge_map or all(t in self.slicer_tool_map['referenced_tools'] for t in (x, y)))
                 should_calc = lambda x,y: x < num_slicer_tools and y < num_slicer_tools and x != y
                 self.slicer_tool_map['purge_volumes'] = [
                     [
@@ -6985,7 +6985,7 @@ class Mmu:
                     msg += "\nPurge Volume Map (mm^3):\n"
                     msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(self.mmu_num_gates)) + "\n"
                     #PAUL TEMP OLD LOGIC msg += '\n'.join(["T{: <2}{}{}".format(i, UI_SEPARATOR, ' '.join(map(lambda x: str(round(x)).rjust(4, UI_SPACE) if x > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row))) for i, row in enumerate(self.slicer_tool_map['purge_volumes'])])
-                    msg += '\n'.join(["T{: <2}{}{}".format(y, UI_SEPARATOR, ' '.join(map(lambda v, x: str(round(v)).rjust(4, UI_SPACE) if ((sparse_volumes and y in rt and x in rt) or not sparse_volumes) and v > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row, range(len(row))))) for y, row in enumerate(self.slicer_tool_map['purge_volumes'])])
+                    msg += '\n'.join(["T{: <2}{}{}".format(y, UI_SEPARATOR, ' '.join(map(lambda v, x: str(round(v)).rjust(4, UI_SPACE) if (not sparse_purge_map or (y in rt and x in rt)) and v > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row, range(len(row))))) for y, row in enumerate(self.slicer_tool_map['purge_volumes'])])
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volume map"
             self._log_always(msg)
