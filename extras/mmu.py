@@ -221,6 +221,12 @@ class Mmu:
     VARS_MMU_GEAR_ROTATION_DISTANCE = "mmu_gear_rotation_distance"
     VARS_MMU_SERVO_ANGLES           = "mmu_servo_angles"
 
+    # Mainsail/Fluid visualization of extruder colors and other attributes
+    T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled
+    T_MACRO_COLOR_GATEMAP  = 'gatemap'  # As per gatemap but hide empty tools. Will add spool_id if spoolman is enabled
+    T_MACRO_COLOR_SLICER   = 'slicer'   # Color from slicer tool map
+    T_MACRO_COLOR_OPTIONS  = [T_MACRO_COLOR_GATEMAP, T_MACRO_COLOR_SLICER, T_MACRO_COLOR_ALLGATES]
+
     EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'servo_retries': 0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
     W3C_COLORS = [('aliceblue','#F0F8FF'), ('antiquewhite','#FAEBD7'), ('aqua','#00FFFF'), ('aquamarine','#7FFFD4'), ('azure','#F0FFFF'), ('beige','#F5F5DC'),
@@ -272,6 +278,11 @@ class Mmu:
         self._last_tool = self.TOOL_GATE_UNKNOWN
         self._toolhead_max_accel = self.config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
 
+        # Logging
+        self.queue_listener = None
+        self.mmu_logger = None
+
+        # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
@@ -522,6 +533,7 @@ class Mmu:
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=2)
+        self.t_macro_color = config.getchoice('t_macro_color', {o: o for o in self.T_MACRO_COLOR_OPTIONS}, self.T_MACRO_COLOR_SLICER)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
         self.endless_spool_on_load = config.getint('endless_spool_on_load', 0, minval=0, maxval=1)
@@ -540,7 +552,7 @@ class Mmu:
         # Cosmetic console stuff
         self.console_stat_columns = list(config.getlist('console_stat_columns', ['unload', 'load', 'total']))
         self.console_stat_rows = list(config.getlist('console_stat_rows', ['total', 'job', 'job_average']))
-        self.console_gate_stat = config.get('console_gate_stat', {o: o for o in self.GATE_STATS_TYPES}, self.GATE_STATS_STRING)
+        self.console_gate_stat = config.getchoice('console_gate_stat', {o: o for o in self.GATE_STATS_TYPES}, self.GATE_STATS_STRING)
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
         # Currently hidden options or testing options...
@@ -611,10 +623,6 @@ class Mmu:
         self._initialize_state()
         self._reset_statistics()
         self.counters = {}
-
-        # Logging
-        self.queue_listener = None
-        self.mmu_logger = None
 
         # Register GCODE commands
         self.gcode = self.printer.lookup_object('gcode')
@@ -1048,15 +1056,7 @@ class Mmu:
     def _clear_slicer_tool_map(self):
         self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': []}
         self.slicer_color_rgb = [(0.,0.,0.)] * self.mmu_num_gates
-
-        # Clear 'color' on Tx macros
-        for tool in range(self.mmu_num_gates):
-            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None) # TODO spool_id can also be set
-            if t_macro:
-                try:
-                    del t_macro.variables['color']
-                except:
-                    pass
+        self._update_t_macros() # Clear 'color' on Tx macros if displaying slicer colors
 
     # Helper to infer type for setting gcode macro variables
     def _fix_type(self, s):
@@ -1068,21 +1068,21 @@ class Mmu:
             except ValueError:
                 return s
 
-    # This retuns a convenient RGB spec for controlling LEDs in form (0.32, 0.56, 1.00)
-    def _color_to_hex_rgb(self, color):
+    # This retuns the hex color format without leading '#' E.g. ff00e0
+    def _color_to_rgb_hex(self, color):
         if color in self.w3c_colors:
             color = self.w3c_colors.get(color)
         elif color == '':
             color = "#000000"
-        hex_rgb = color.lstrip('#')
-        return hex_rgb
+        rgb_hex = color.lstrip('#')
+        return rgb_hex
 
-    # This retuns a convenient RGB spec for controlling LEDs in form (0.32, 0.56, 1.00)
-    def _color_to_rgb(self, color):
-        hex_rgb = self._color_to_hex_rgb(color)
-        length = len(hex_rgb)
+    # This retuns a convenient RGB tuple for controlling LEDs E.g. (0.32, 0.56, 1.00)
+    def _color_to_rgb_tuple(self, color):
+        rgb_hex = self._color_to_rgb_hex(color)
+        length = len(rgb_hex)
         if length % 3 == 0:
-            return tuple(round(float(int(hex_rgb[i:i + length // 3], 16)) / 255, 3) for i in range(0, length, length // 3))
+            return tuple(round(float(int(rgb_hex[i:i + length // 3], 16)) / 255, 3) for i in range(0, length, length // 3))
         return (0.,0.,0.)
 
     # Helper to return validated color string or None if invalid
@@ -1108,7 +1108,7 @@ class Mmu:
         self.gate_color = new_color_map
 
         # Recalculate RGB map for easy LED support
-        self.gate_color_rgb = [self._color_to_rgb(i) for i in self.gate_color]
+        self.gate_color_rgb = [self._color_to_rgb_tuple(i) for i in self.gate_color]
 
     # Helper to keep parallel RGB color map updated when slicer color or TTG changes
     def _update_slicer_color(self):
@@ -1116,13 +1116,8 @@ class Mmu:
         for tool_key, tool_value in self.slicer_tool_map['tools'].items():
             tool = int(tool_key)
             gate = self.ttg_map[tool]
-            self.slicer_color_rgb[gate] = self._color_to_rgb(tool_value['color'])
-
-            # Set 'color' variable on the Tx macro for Mainsail/Fluidd to pick up
-            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None) # TODO spool_id can also be set
-            if t_macro:
-                hex_rgb = self._color_to_hex_rgb(tool_value['color'])
-                t_macro.variables.update({'color': hex_rgb})
+            self.slicer_color_rgb[gate] = self._color_to_rgb_tuple(tool_value['color'])
+        self._update_t_macros()
 
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro) # Cheat to force LED update
@@ -6220,9 +6215,11 @@ class Mmu:
         self.bowden_allowable_unload_delta = self.bowden_allowable_load_delta = gcmd.get_float('BOWDEN_ALLOWABLE_LOAD_DELTA', self.bowden_allowable_load_delta, minval=1., maxval=50.)
         self.bowden_pre_unload_test = gcmd.get_int('BOWDEN_PRE_UNLOAD_TEST', self.bowden_pre_unload_test, minval=0, maxval=1)
 
-        self.extruder_homing_endstop = gcmd.get('EXTRUDER_HOMING_ENDSTOP', self.extruder_homing_endstop)
-        if self.extruder_homing_endstop not in self.EXTRUDER_ENDSTOPS:
+        extruder_homing_endstop = gcmd.get('EXTRUDER_HOMING_ENDSTOP', self.extruder_homing_endstop)
+        if extruder_homing_endstop not in self.EXTRUDER_ENDSTOPS:
             raise gcmd.error("extruder_homing_endstop is invalid. Options are: %s" % self.EXTRUDER_ENDSTOPS)
+        self.extruder_homing_endstop = extruder_homing_endstop
+
         self.extruder_homing_max = gcmd.get_float('EXTRUDER_HOMING_MAX', self.extruder_homing_max, above=10.)
         self.extruder_force_homing = gcmd.get_int('EXTRUDER_FORCE_HOMING', self.extruder_force_homing, minval=0, maxval=1)
 
@@ -6253,13 +6250,23 @@ class Mmu:
         self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.mmu_num_gates - 1)
         prev_enable_spoolman = self.enable_spoolman
         self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=2)
+
+        prev_t_macro_color = self.t_macro_color
+        t_macro_color = gcmd.get('T_MACRO_COLOR', self.t_macro_color)
+        if t_macro_color not in self.T_MACRO_COLOR_OPTIONS:
+            raise gcmd.error("t_macro_color is invalid. Options are: %s" % self.T_MACRO_COLOR_OPTIONS)
+        self.t_macro_color = t_macro_color
+
         self.log_level = gcmd.get_int('LOG_LEVEL', self.log_level, minval=0, maxval=4)
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=1)
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
-        self.console_gate_stat = gcmd.get('CONSOLE_GATE_STAT', self.console_gate_stat)
-        if self.console_gate_stat not in self.GATE_STATS_TYPES:
+
+        console_gate_stat = gcmd.get('CONSOLE_GATE_STAT', self.console_gate_stat)
+        if console_gate_stat not in self.GATE_STATS_TYPES:
             raise gcmd.error("console_gate_stat is invalid. Options are: %s" % self.GATE_STATS_TYPES)
+        self.console_gate_stat = console_gate_stat
+
         self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.slicer_tip_park_pos, minval=0.)
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
@@ -6377,6 +6384,9 @@ class Mmu:
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
         if prev_enable_spoolman != self.enable_spoolman:
             self._spoolman_init()
+        msg += "\nt_macro_color = %s" % self.t_macro_color
+        if prev_t_macro_color != self.t_macro_color:
+            self._update_t_macros()
         if self._has_encoder():
             msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
             msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
@@ -6623,6 +6633,7 @@ class Mmu:
         self._save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
         self._save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
         self._write_variables()
+        self._update_t_macros()
 
         # Also persist to spoolman db if required
         if (self.enable_spoolman > 1) and sync:
@@ -6630,6 +6641,38 @@ class Mmu:
 
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
+
+    # Set 'color' and 'spool_id' variable on the Tx macro for Mainsail/Fluidd to pick up
+    # We don't use SET_GCODE_VARIABLE because the macro variable may not exist ahead of time
+    def _update_t_macros(self):
+        for tool in range(self.mmu_num_gates):
+            gate = self.ttg_map[tool]
+            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None)
+
+            if t_macro:
+                t_vars = dict(t_macro.variables) # So Mainsail sees the update
+                spool_id = self.gate_spool_id[gate]
+                if spool_id >= 0 and self.enable_spoolman and self.gate_status[gate] != self.GATE_EMPTY and self.t_macro_color == self.T_MACRO_COLOR_GATEMAP:
+                    t_vars['spool_id'] = self.gate_spool_id[gate]
+                else:
+                    t_vars.pop('spool_id', None)
+
+                if self.t_macro_color == self.T_MACRO_COLOR_SLICER:
+                    st = self.slicer_tool_map['tools'].get(str(tool), None)
+                    rgb_hex = self._color_to_rgb_hex(st.get('color', None)) if st else None
+                    if rgb_hex:
+                        t_vars['color'] = rgb_hex
+                    else:
+                        t_vars.pop('color', None)
+                elif self.t_macro_color in [self.T_MACRO_COLOR_GATEMAP, self.T_MACRO_COLOR_ALLGATES]:
+                    rgb_hex = self._color_to_rgb_hex(self.gate_color[gate])
+                    if self.gate_status[gate] != self.GATE_EMPTY or self.t_macro_color == self.T_MACRO_COLOR_ALLGATES:
+                        t_vars['color'] = rgb_hex
+                    else:
+                        t_vars.pop('color', None)
+                else:
+                    t_vars.pop('color', None)
+                t_macro.variables = t_vars
 
     def _reset_gate_map(self, sync=False):
         self._log_debug("Resetting gate map")
