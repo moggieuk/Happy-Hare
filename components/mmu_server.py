@@ -282,7 +282,9 @@ class MmuServer:
         '''
         Get all spools assigned to the current printer from spoolman db and set them in the gates
         '''
-        self._init_gate_occupation(nb_gates)
+        if nb_gates is not None:
+            self.nb_gates = nb_gates
+            self.gate_occupation = [None for __ in range(self.nb_gates)]
         # Get current printer hostname
         printer_hostname = self.printer_info["hostname"]
         logging.info(f"Getting spools for printer: {printer_hostname}")
@@ -499,7 +501,9 @@ class MmuServer:
         '''
         Clears all gates for the current printer
         '''
-        self._init_gate_occupation(nb_gates)
+        # Initialize if this is the first call to module
+        if not self.nb_gates and nb_gates:
+            await self.remote_gate_map(nb_gates=nb_gates, silent=True, dump=False)
         logging.info(f"Clearing spool gates for printer: {self.printer_info['hostname']}")
         self.server.send_event("spoolman:clear_spool_gates", {})
         # Get spools assigned to current printer
@@ -511,11 +515,6 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
         return True
-
-    def _init_gate_occupation(self, nb_gates) -> None:
-        if nb_gates is not None:
-            self.nb_gates = nb_gates
-            self.gate_occupation = [None for __ in range(self.nb_gates)]
 
 def load_component(config):
     return MmuServer(config)
