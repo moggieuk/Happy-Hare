@@ -61,22 +61,22 @@ class MmuServer:
         self.server.register_remote_method(
             "spoolman_set_gate_map", self.set_gate_map
         )
-
-        # Additional remote methods not yet directly called by Happy Hare
-        self.server.register_remote_method(
-            "spoolman_get_spool_info", self.get_spool_info
-        )
         self.server.register_remote_method(
             "spoolman_remote_gate_map", self.remote_gate_map
+        )
+        self.server.register_remote_method(
+            "spoolman_clear_spools_for_printer", self.clear_spools_for_printer
+        )
+
+        # Additional remote methods not directly called by Happy Hare
+        self.server.register_remote_method(
+            "spoolman_get_spool_info", self.get_spool_info
         )
         self.server.register_remote_method(
             "spoolman_set_spool_gate", self.set_spool_gate
         )
         self.server.register_remote_method(
             "spoolman_unset_spool_gate", self.unset_spool_gate
-        )
-        self.server.register_remote_method(
-            "spoolman_clear_spools_for_printer", self.clear_spools_for_printer
         )
 
         self.setup_placeholder_processor(config) # Replaces file_manager/metadata with this file
@@ -262,7 +262,7 @@ class MmuServer:
         await self._log_n_send(msg)
         msg = f"{CONSOLE_TAB}- remaining: {int(spool_info['remaining_weight'])} g"
         await self._log_n_send(msg)
-        # if spool_id not in filament_gates:
+        # If spool_id not in filament_gates:
         found = False
         for spool in self.gate_occupation:
             if int(spool['id']) == spool_id:
@@ -282,9 +282,7 @@ class MmuServer:
         '''
         Get all spools assigned to the current printer from spoolman db and set them in the gates
         '''
-        if nb_gates is not None:
-            self.nb_gates = nb_gates
-            self.gate_occupation = [None for __ in range(self.nb_gates)]
+        self._init_gate_occupation(nb_gates)
         # Get current printer hostname
         printer_hostname = self.printer_info["hostname"]
         logging.info(f"Getting spools for printer: {printer_hostname}")
@@ -497,10 +495,11 @@ class MmuServer:
                     await self.set_spool_gate(spool_id, gate)
         return
 
-    async def clear_spools_for_printer(self) -> bool:
+    async def clear_spools_for_printer(self, nb_gates=None) -> bool:
         '''
         Clears all gates for the current printer
         '''
+        self._init_gate_occupation(nb_gates)
         logging.info(f"Clearing spool gates for printer: {self.printer_info['hostname']}")
         self.server.send_event("spoolman:clear_spool_gates", {})
         # Get spools assigned to current printer
@@ -512,6 +511,11 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
         return True
+
+    def _init_gate_occupation(self, nb_gates) -> None:
+        if nb_gates is not None:
+            self.nb_gates = nb_gates
+            self.gate_occupation = [None for __ in range(self.nb_gates)]
 
 def load_component(config):
     return MmuServer(config)

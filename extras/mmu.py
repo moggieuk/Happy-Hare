@@ -1232,7 +1232,7 @@ class Mmu:
 
             self._servo_move()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
-            self._init_spoolman()
+            self._spoolman_init()
         except Exception as e:
             self._log_error('Warning: Error booting up MMU: %s' % str(e))
 
@@ -1714,22 +1714,6 @@ class Mmu:
 
     def _persist_counters(self):
         self._save_variable(self.VARS_MMU_COUNTERS, self.counters, write=True)
-
-    def _persist_gate_map(self, sync=False):
-        self._save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status)
-        self._save_variable(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
-        self._save_variable(self.VARS_MMU_GATE_COLOR, self.gate_color)
-        self._save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
-        self._save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
-        self._save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
-        self._write_variables()
-
-        # Also persist to spoolman db if required
-        if (self.enable_spoolman > 1) and sync:
-            self._spoolman_set_gate_map()
-
-        if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
-            self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
     def _log_to_file(self, message):
         message = "> %s" % message
@@ -2740,7 +2724,7 @@ class Mmu:
                 self._calibrate_bowden_length_manual(approx_bowden_length, save)
             else:
                 # Automatic method with encoder
-                self._reset_ttg_mapping() # To force tool = gate
+                self._reset_ttg_map() # To force tool = gate
                 self._unload_tool()
                 with self._require_encoder():
                     self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats, save)
@@ -2766,7 +2750,7 @@ class Mmu:
         if gate == -1 and not auto:
             raise gcmd.error("Must specify 'GATE=' or 'ALL=1' for all gates")
         try:
-            self._reset_ttg_mapping() # To force tool = gate
+            self._reset_ttg_map() # To force tool = gate
             self._unload_tool()
             self.calibrating = True
             with self._require_encoder():
@@ -2908,7 +2892,7 @@ class Mmu:
             self._log_info("Spool ID: %s automatically applied to Gate %d" % (self.pending_spool_id, gate))
             self.gate_spool_id[gate] = self.pending_spool_id
             self._pending_spool_id_handler(0) # Prevent resue
-            self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
+            self._spoolman_update_filaments(gate) # Request update of material & color from Spoolman
 
     def _handle_idle_timeout_printing(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "printing")
@@ -3856,11 +3840,11 @@ class Mmu:
         self._update_gate_color(list(self.default_gate_color))
         self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
-        self._persist_gate_map()
         self._save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
         self._save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
         self._save_variable(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
         self._write_variables()
+        self._persist_gate_map()
         self._log_always("MMU state reset")
         self._schedule_mmu_bootup_tasks()
 
@@ -5468,7 +5452,7 @@ class Mmu:
         with self._wrap_track_time('pre_load'):
             self._wrap_gcode_command(self.pre_load_macro, exception=True)
         self._select_tool(tool, move_servo=False)
-        self._update_filaments_from_spoolman(gate) # Request update of material & color from Spoolman
+        self._spoolman_update_filaments(gate) # Request update of material & color from Spoolman
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
@@ -5631,11 +5615,15 @@ class Mmu:
 
 ### SPOOLMAN INTEGRATION #########################################################
 
-    def _init_spoolman(self):
+    def _spoolman_init(self):
         if self.enable_spoolman > 1:
-            self._gate_map_from_spoolman()
-        else:
-            self._update_filaments_from_spoolman()
+            # Update gate map from assignment data stored in spoolman db
+            # This will replace the local gate map including spool_id
+            self._spoolman_update_gate_map()
+        elif self.enable_spoolman:
+            # Ensure local gate map matches spoolman data
+            # This will update the local gate map without changing spool_id
+            self._spoolman_update_filaments()
 
     def _spoolman_activate_spool(self, spool_id=-1):
         if not self.enable_spoolman: return
@@ -5664,7 +5652,7 @@ class Mmu:
 
     # Request to send filament data from spoolman db (via moonraker)
     # gate=None means all gates with spool_id, else specific gate
-    def _update_filaments_from_spoolman(self, gate=None):
+    def _spoolman_update_filaments(self, gate=None):
         if not self.enable_spoolman: return
         gate_ids = []
         if gate is None: # All gates
@@ -5682,7 +5670,7 @@ class Mmu:
                 self._log_error("Error while retrieving spoolman info: %s" % str(e))
 
     # Request to update local gate based on the remote data stored in spoolman db
-    def _gate_map_from_spoolman(self):
+    def _spoolman_update_gate_map(self):
         if not self.enable_spoolman: return
         self._log_debug("Requesting the gate map from Spoolman")
         try:
@@ -5690,6 +5678,16 @@ class Mmu:
             webhooks.call_remote_method("spoolman_remote_gate_map", nb_gates=self.mmu_num_gates, silent=True)
         except Exception as e:
             self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
+
+    # Clear the spool to gate association in spoolman db
+    def _spoolman_clear_gate_map(self): # PAUL
+        if not self.enable_spoolman: return
+        self._log_debug("Requesting to clear the gate map from Spoolman")
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            webhooks.call_remote_method("spoolman_clear_spools_for_printer", nb_gates=self.mmu_num_gates)
+        except Exception as e:
+            self._log_error("Error while clearing spoolman gate mapping: %s" % str(e))
 
 ### CORE GCODE COMMANDS ##########################################################
 
@@ -6378,7 +6376,7 @@ class Mmu:
         msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
         msg += "\nenable_spoolman = %d" % self.enable_spoolman
         if prev_enable_spoolman != self.enable_spoolman:
-            self._init_spoolman()
+            self._spoolman_init()
         if self._has_encoder():
             msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
             msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
@@ -6586,7 +6584,7 @@ class Mmu:
 
     def _remap_tool(self, tool, gate, available=None):
         self.ttg_map[tool] = gate
-        self._save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
+        self._persist_ttg_map()
         self._ensure_ttg_match()
         self._update_slicer_color() # Indexed by gate
         if available is not None:
@@ -6607,14 +6605,33 @@ class Mmu:
                 self._log_info("Resetting tool selected to unknown because current gate isn't associated with tool")
                 self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
 
-    def _reset_ttg_mapping(self):
+    def _persist_ttg_map(self):
+        self._save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
+
+    def _reset_ttg_map(self):
         self._log_debug("Resetting TTG map")
         self.ttg_map = list(self.default_ttg_map)
-        self._save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
+        self._persist_ttg_map()
         self._ensure_ttg_match()
         self._update_slicer_color() # Indexed by gate
 
-    def _reset_gate_map(self):
+    def _persist_gate_map(self, sync=False):
+        self._save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status)
+        self._save_variable(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
+        self._save_variable(self.VARS_MMU_GATE_COLOR, self.gate_color)
+        self._save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
+        self._save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
+        self._save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
+        self._write_variables()
+
+        # Also persist to spoolman db if required
+        if (self.enable_spoolman > 1) and sync:
+            self._spoolman_set_gate_map()
+
+        if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
+            self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
+
+    def _reset_gate_map(self, sync=False):
         self._log_debug("Resetting gate map")
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
         self.gate_material = list(self.default_gate_material)
@@ -6622,8 +6639,7 @@ class Mmu:
         self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
-        self._persist_gate_map()
-
+        self._persist_gate_map(sync=sync) # PAUL
 
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
 
@@ -6720,7 +6736,7 @@ class Mmu:
         available = gcmd.get_int('AVAILABLE', self.GATE_UNKNOWN, minval=self.GATE_EMPTY, maxval=self.GATE_AVAILABLE)
 
         if reset == 1:
-            self._reset_ttg_mapping()
+            self._reset_ttg_map()
         elif ttg_map != "!":
             ttg_map = gcmd.get('MAP').split(",")
             if len(ttg_map) != self.mmu_num_gates:
@@ -6732,7 +6748,7 @@ class Mmu:
                     self.ttg_map.append(int(gate))
                 else:
                     self.ttg_map.append(0)
-            self._save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
+            self._persist_ttg_map()
         elif gate != -1:
             status = self.gate_status[gate]
             if not available == self.GATE_UNKNOWN or (available == self.GATE_UNKNOWN and status == self.GATE_EMPTY):
@@ -6751,10 +6767,11 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-        sync = bool(gcmd.get_int('SYNC', int(self.enable_spoolman > 1), minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
+        sync = bool(gcmd.get_int('SYNC', int(self.enable_spoolman > 1), minval=0, maxval=1)) # Spoolman option
+        clear = bool(gcmd.get_int('CLEAR', 0, minval=0, maxval=1)) # Spoolman option
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}") # Hidden option for bulk update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
@@ -6765,11 +6782,15 @@ class Mmu:
         except Exception as e:
             self._log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
 
+        if clear: # PAUL
+            self._spoolman_clear_gate_map()
+            quiet = True
+
         if reset:
-            self._reset_gate_map()
+            self._reset_gate_map(sync=sync) # PAUL
 
         if refresh:
-            self._update_filaments_from_spoolman()
+            self._spoolman_init()
             quiet = True
 
         if next_spool_id:
@@ -6821,8 +6842,6 @@ class Mmu:
 
             self._update_gate_color(self.gate_color)
             self._persist_gate_map(sync=sync) # This will also update LED status
-        else:
-            quiet = False # Display current map
 
         if not quiet:
             self._log_info(self._gate_map_to_string(detail))
