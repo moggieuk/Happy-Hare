@@ -5680,7 +5680,7 @@ class Mmu:
             self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
 
     # Clear the spool to gate association in spoolman db
-    def _spoolman_clear_gate_map(self): # PAUL
+    def _spoolman_clear_gate_map(self): # PAUL new
         if not self.enable_spoolman: return
         self._log_debug("Requesting to clear the gate map from Spoolman")
         try:
@@ -6639,7 +6639,7 @@ class Mmu:
         self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
-        self._persist_gate_map(sync=sync) # PAUL
+        self._persist_gate_map(sync=sync) # PAUL passing new sync flag
 
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
 
@@ -6787,7 +6787,7 @@ class Mmu:
             quiet = True
 
         if reset:
-            self._reset_gate_map(sync=sync) # PAUL
+            self._reset_gate_map(sync=sync) # PAUL passing sync
 
         if refresh:
             self._spoolman_init()
@@ -6825,11 +6825,13 @@ class Mmu:
                 # Specifying one gate (filament)
                 gatelist.append(gate)
 
+            spool_id_updated = False
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
                 material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()
                 color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
                 spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
+                spool_id_updated |= spool_id != self.gate_spool_id[gate] # PAUL -- Don't persist to spoolman if not necessary
                 speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
                 color = self._validate_color(color)
                 if color is None:
@@ -6841,7 +6843,7 @@ class Mmu:
                 self.gate_speed_override[gate] = speed_override
 
             self._update_gate_color(self.gate_color)
-            self._persist_gate_map(sync=sync) # This will also update LED status
+            self._persist_gate_map(sync=sync and spool_id_updated) # This will also update LED status
 
         if not quiet:
             self._log_info(self._gate_map_to_string(detail))
