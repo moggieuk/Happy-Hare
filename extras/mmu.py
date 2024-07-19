@@ -6697,6 +6697,128 @@ class Mmu:
         self.gate_speed_override = list(self.default_gate_speed_override)
         self._persist_gate_map(sync=True)
 
+    def _automap_gate(self, tool, strategy : str):
+        # !! WORK IN PROGRESS !!
+        # # Automap gates
+        # PREVIOUS code from mmu_sowtware.cfg file for reference
+        # {% set reason = "Filament auto gate mapping" %}
+        # {% set e = [] %}
+        # {% set w = [] %}
+        # {% set m = [] %}
+        # # Strategy checks
+        # {% if vars.automap_strategy not in ['filament_name', 'spool_id', 'closest_color'] %}
+        #     {% set _msg = "`variable_automap_strategy` (%s) not valid. Possible values are : \"filament_name\", \"spool_id\", \"closest_color\", please update in mmu_macro_vars.cfg file." % vars.automap_strategy %}
+        #     {action_raise_error(_msg)}
+        # {% endif %}
+        # {% if vars.automap_strategy in ['spool_id', 'closest_color'] %}
+        #     {% set _msg = "%s automapping strategy is not yet supported. Support for this feature is on the way, please be patient." % vars.automap_strategy %}
+        #     {action_raise_error(_msg)}
+        # {% else %}
+        #     {% if vars.automap_strategy == 'filament_name' %}
+        #         {% set switch_field = filament_names %}
+        #     {% elif vars.automap_strategy == 'spool_id' %}
+        #         # {% set switch_field = spool_ids %} ; Placeholder for future support
+        #     {% elif vars.automap_strategy == 'closest_color' %}
+        #         # {% set switch_field = closest_colors %} ; Placeholder for future support
+        #     {% endif %}
+        # {% endif %}
+        # # Automapping logic
+        # {% if e|length == 0 %}
+        #     {% for t in range(num_slicer_tools) %}
+        #         {% for g in range(num_gates) %}
+        #             {% if switch_field[t] == "" %}
+        #                 {% set _msg = "No filament name found for tool %s. When using automapping with spoolman_enable > 2 all referenced tools must have names (matching the spoolman db)" % t %}
+        #                 {% if not _msg in e %}
+        #                     {% set _ = e.append(_msg) %}
+        #                 {% endif %}
+        #             {% elif gate_fil_names[g] == switch_field[t] %}
+        #                 {% set _msg = "T%s --> G%s (%s)" % (t, g, gate_fil_names[g]) %}
+        #                 {% set _ = m.append(_msg) %}
+        #                 MMU_TTG_MAP TOOL={t} GATE={g} QUIET=1
+        #             {% endif %}
+        #         {% endfor %}
+        #         {% if m|length < t and switch_field[t] %}
+        #             {% set _ = e.append("No gates found for tool %s with %s %s" % (t, vars.spoolman_automap_strategy, switch_field[t])) %}
+        #         {% elif m|length > t %}
+        #             {% set _ = w.append("Multiple gates found for tool %s with %s %s" % (t, vars.spoolman_automap_strategy, switch_field[t])) %}
+        #         {% endif %}
+        #     {% endfor %}
+        # {% endif %}
+        # # display messages while automapping
+        # {% if m|length > 0 %}
+        #     {% set _msg = "Automatically mapped tools to gates based on %s:" % vars.spoolman_automap_strategy %}
+        #     {% set _ = m.insert(0, _msg) %}
+        #     RESPOND MSG=
+        #     {% for msg in m %}
+        #         RESPOND MSG=" - {msg}"
+        #     {% endfor %}
+        # {% endif %}
+        # # display warnings while automapping
+        # {% if w|length > 0 %}
+        #     {% for msg in e %}
+        #         RESPOND MSG="WARNING: {msg}"
+        #     {% endfor %}
+        # {% endif %}
+        # # display errors while automapping
+        # {% if e|length > 0 %}
+        #     SET_GCODE_VARIABLE MACRO=_MMU_ERROR_DIALOG VARIABLE=show_abort VALUE={True}
+        #     SET_GCODE_VARIABLE MACRO=_MMU_ERROR_DIALOG VARIABLE=custom_msg VALUE="{e}"
+        #     MMU_PAUSE REASON="{reason}" MSG="Error during automapping"
+        # {% endif %}
+        if tool is None:
+            self._log_error("Automap tool called without a tool argument")
+            return
+        tool_to_remap = self.slicer_tool_map['tools'][str(tool)]
+        # strategy checks
+        if strategy not in ['filament_name', 'spool_id', 'closest_color']:
+            raise MmuError("Invalid automap strategy %s" % strategy)
+        if strategy in ['spool_id', 'closest_color']:
+            raise MmuError("%s automapping strategy is not yet supported. Support for this feature is on the way, please be patient." % strategy)
+
+        # create printable strategy string
+        strategy_str : str = strategy.replace("_", " ").title()
+
+        # deduct search_in and tool_field based on strategy
+        # tool fields are like {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
+        if strategy == 'filament_name':
+            search_in = self.gate_filament_name
+            tool_field = 'name'
+        elif strategy == 'spool_id':
+            search_in = self.gate_spool_id
+            tool_field = 'spool_id' # Placeholders for future support
+        elif strategy == 'closest_color':
+            search_in = self.gate_color
+            tool_field = 'color' # Placeholders for future support
+
+        # Automapping logic
+        errors = []
+        warnings = []
+        messages = []
+
+        for gn, gate_feature in enumerate(search_in):
+            if not gate_feature:
+                errors.append("No %s found for tool %s. When using automapping all referenced tools must have a %s" % (strategy_str, tool, strategy_str))
+            elif tool_to_remap[tool_field] == gate_feature:
+                messages.append("T%s --> G%s (%s)" % (tool, gn, gate_feature))
+                self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
+        if not len(messages):
+            errors.append("No gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
+        elif len(messages) > 1:
+            warnings.append("Multiple gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
+
+        # display messages while automapping
+        if messages:
+            messages.insert(0, "Automatically mapped tool %s to gates based on %s:" % (tool, strategy_str))
+            for msg in messages:
+                self._log_always(msg)
+        # display warnings while automapping
+        for msg in warnings:
+            self._log_info(msg)
+        # display errors while automapping
+        if errors:
+            self._log_error("Error during automapping")
+            self._mmu_pause("Error during automapping", errors)
+
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
 
     cmd_MMU_TEST_RUNOUT_help = "Manually invoke the clog/runout detection logic for testing"
@@ -6989,6 +7111,7 @@ class Mmu:
         used = bool(gcmd.get_int('USED', 1, minval=0, maxval=1)) # Is used in print (i.e a referenced tool or not)
         purge_volumes = gcmd.get('PURGE_VOLUMES', "")
         num_slicer_tools = gcmd.get_int('NUM_SLICER_TOOLS', self.mmu_num_gates, minval=1, maxval=self.mmu_num_gates) # Allow slicer to have less tools than MMU gates
+        automap_strategy = gcmd.get('AUTOMAP', None)
 
         quiet = False
         if reset:
@@ -6999,6 +7122,8 @@ class Mmu:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
             if used:
                 self.slicer_tool_map['referenced_tools'] = sorted(set(self.slicer_tool_map['referenced_tools'] + [tool]))
+                if automap_strategy :
+                    self._automap_gate(tool, automap_strategy)
             if color:
                 self._update_slicer_color()
             quiet = True
