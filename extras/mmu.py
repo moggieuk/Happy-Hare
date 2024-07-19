@@ -482,7 +482,7 @@ class Mmu:
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
-        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=35.) # +ve value = reduction of load length
+        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=50.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
         self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 0, minval=0, maxval=1) # Whether to apply filament tightening move after load (if not synced)
@@ -538,7 +538,7 @@ class Mmu:
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
-        self.spoolman = config.getchoice('spoolman', {o: o for o in self.SPOOLMAN_OPTIONS}, self.SPOOLMAN_OFF)
+        self.spoolman_support = config.getchoice('spoolman_support', {o: o for o in self.SPOOLMAN_OPTIONS}, self.SPOOLMAN_OFF)
         self.t_macro_color = config.getchoice('t_macro_color', {o: o for o in self.T_MACRO_COLOR_OPTIONS}, self.T_MACRO_COLOR_SLICER)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
@@ -1390,8 +1390,8 @@ class Mmu:
                 'extruder_filament_remaining': self.filament_remaining,
                 'extruder_residual_filament': self.toolhead_ooze_reduction,
                 'toolchange_retract': self.toolchange_retract,
-                'spoolman': self.spoolman,
-                'enable_spoolman': int(not self.spoolman == self.SPOOLMAN_OFF), # Legacy
+                'spoolman_support': self.spoolman_support,
+                'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
         }
 
     def _reset_statistics(self):
@@ -1923,7 +1923,7 @@ class Mmu:
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
                 msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
-            msg += "\nSpoolMan is %s. " % ("ENABLED with REMOTE" if self.spoolman == self.SPOOLMAN_PULL else "ENABLED" if self.spoolman == self.SPOOLMAN_PUSH else "DISABLED")
+            msg += "\nSpoolMan is %s. " % ("ENABLED with REMOTE" if self.spoolman_support == self.SPOOLMAN_PULL else "ENABLED" if self.spoolman_support == self.SPOOLMAN_PUSH else "DISABLED")
             msg += "Sensors: "
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
@@ -5618,17 +5618,17 @@ class Mmu:
 ### SPOOLMAN INTEGRATION #########################################################
 
     def _spoolman_sync(self):
-        if self.spoolman == self.SPOOLMAN_PULL: # Remote gate map
+        if self.spoolman_support == self.SPOOLMAN_PULL: # Remote gate map
             # This will pull gate assignment and filament attributes from spoolman db thus replacing the local map
             self._spoolman_pull_gate_map()
-        elif self.spoolman == self.SPOOLMAN_PUSH: # Local gate map
+        elif self.spoolman_support == self.SPOOLMAN_PUSH: # Local gate map
             # This will update spoolman with just the gate assignment (for visualization) and will update
             # local gate map attributes with data from spoolman thus overwriting the local map
             self._spoolman_push_gate_map()
             self._spoolman_update_filaments()
 
     def _spoolman_activate_spool(self, spool_id=-1):
-        if self.spoolman == self.SPOOLMAN_OFF: return
+        if self.spoolman_support == self.SPOOLMAN_OFF: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
             if spool_id < 0:
@@ -5645,7 +5645,7 @@ class Mmu:
     # Request to send filament data from spoolman db (via moonraker)
     # gate=None means all gates with spool_id, else specific gate
     def _spoolman_update_filaments(self, gate=None):
-        if self.spoolman == self.SPOOLMAN_OFF: return
+        if self.spoolman_support == self.SPOOLMAN_OFF: return
         gate_ids = []
         if gate is None: # All gates
             for i in range(self.mmu_num_gates):
@@ -5663,7 +5663,7 @@ class Mmu:
 
     # Store the current gate to spool_id mapping in spoolman db (via moonraker)
     def _spoolman_push_gate_map(self):
-        if self.spoolman == self.SPOOLMAN_OFF: return
+        if self.spoolman_support == self.SPOOLMAN_OFF: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
             self._log_debug("Storing gate map in spoolman db...")
@@ -5673,7 +5673,7 @@ class Mmu:
 
     # Request to update local gate based on the remote data stored in spoolman db
     def _spoolman_pull_gate_map(self):
-        if self.spoolman == self.SPOOLMAN_OFF: return
+        if self.spoolman_support == self.SPOOLMAN_OFF: return
         self._log_debug("Requesting the gate map from Spoolman")
         try:
             webhooks = self.printer.lookup_object('webhooks')
@@ -5683,7 +5683,7 @@ class Mmu:
 
     # Clear the spool to gate association in spoolman db
     def _spoolman_clear_gate_map(self):
-        if self.spoolman == self.SPOOLMAN_OFF: return
+        if self.spoolman_support == self.SPOOLMAN_OFF: return
         self._log_debug("Requesting to clear the gate map from Spoolman")
         try:
             webhooks = self.printer.lookup_object('webhooks')
@@ -6256,11 +6256,11 @@ class Mmu:
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.mmu_num_gates - 1)
 
-        prev_spoolman = self.spoolman
-        spoolman = gcmd.get_int('SPOOLMAN', self.spoolman)
-        if spoolman not in self.SPOOLMAN_OPTIONS:
-            raise gcmd.error("spoolman is invalid. Options are: %s" % self.SPOOLMAN_OPTIONS)
-        self.spoolman = spoolman
+        prev_spoolman_support = self.spoolman_support
+        spoolman_support = gcmd.get_int('SPOOLMAN_SUPPORT', self.spoolman_support)
+        if spoolman_support not in self.SPOOLMAN_OPTIONS:
+            raise gcmd.error("spoolman_support is invalid. Options are: %s" % self.SPOOLMAN_OPTIONS)
+        self.spoolman_support = spoolman_support
 
         prev_t_macro_color = self.t_macro_color
         t_macro_color = gcmd.get('T_MACRO_COLOR', self.t_macro_color)
@@ -6392,8 +6392,8 @@ class Mmu:
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
         msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
-        msg += "\nspoolman = %s" % self.spoolman
-        if prev_spoolman != self.spoolman:
+        msg += "\nspoolman_support = %s" % self.spoolman_support
+        if prev_spoolman_support != self.spoolman_support:
             self._spoolman_sync()
         msg += "\nt_macro_color = %s" % self.t_macro_color
         if prev_t_macro_color != self.t_macro_color:
@@ -6598,7 +6598,7 @@ class Mmu:
             spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
             name = self.gate_filament_name[g] or "n/a"
             filament_name = ", Name: {}".format(name)
-            spool_info = ", SpoolID: {}".format(spool_id) if not self.spoolman == self.SPOOLMAN_OFF else ""
+            spool_info = ", SpoolID: {}".format(spool_id) if not self.spoolman_support == self.SPOOLMAN_OFF else ""
             speed_info = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
             msg += "{}Status: {}, Material: {}, Color: {}{}{}{}".format(gate_detail, available, material, color, spool_info, filament_name, speed_info)
         return msg
@@ -6647,7 +6647,7 @@ class Mmu:
         self._update_t_macros()
 
         # Also persist to spoolman db if required
-        if sync and self.spoolman == self.SPOOLMAN_PUSH:
+        if sync and self.spoolman_support == self.SPOOLMAN_PUSH:
             self._spoolman_push_gate_map()
 
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
@@ -6663,7 +6663,7 @@ class Mmu:
             if t_macro:
                 t_vars = dict(t_macro.variables) # So Mainsail sees the update
                 spool_id = self.gate_spool_id[gate]
-                if spool_id >= 0 and not self.spoolman == self.SPOOLMAN_OFF and self.gate_status[gate] != self.GATE_EMPTY and self.t_macro_color == self.T_MACRO_COLOR_GATEMAP:
+                if spool_id >= 0 and not self.spoolman_support == self.SPOOLMAN_OFF and self.gate_status[gate] != self.GATE_EMPTY and self.t_macro_color == self.T_MACRO_COLOR_GATEMAP:
                     t_vars['spool_id'] = self.gate_spool_id[gate]
                 else:
                     t_vars.pop('spool_id', None)
