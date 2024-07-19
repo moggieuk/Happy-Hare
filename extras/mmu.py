@@ -5662,12 +5662,14 @@ class Mmu:
                 self._log_error("Error while retrieving spoolman info: %s" % str(e))
 
     # Store the current gate to spool_id mapping in spoolman db (via moonraker)
-    def _spoolman_push_gate_map(self):
+    def _spoolman_push_gate_map(self, gate_ids=None):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
+        if gate_ids is None: # All gates
+            gate_ids = [(i, self.gate_spool_id[i]) for i in range(self.mmu_num_gates)]
         try:
             webhooks = self.printer.lookup_object('webhooks')
             self._log_debug("Storing gate map in spoolman db...")
-            webhooks.call_remote_method("spoolman_set_gate_map", gate_map=self.gate_spool_id)
+            webhooks.call_remote_method("spoolman_set_gate_map", nb_gates=self.mmu_num_gates, gate_ids=gate_ids)
         except Exception as e:
             self._log_error("Error while calling _spoolman_set_gate_map: %s" % str(e))
 
@@ -6636,7 +6638,7 @@ class Mmu:
         self._ensure_ttg_match()
         self._update_slicer_color() # Indexed by gate
 
-    def _persist_gate_map(self, sync=False):
+    def _persist_gate_map(self, sync=False, gate_ids=None):
         self._save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status)
         self._save_variable(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
         self._save_variable(self.VARS_MMU_GATE_COLOR, self.gate_color)
@@ -6648,7 +6650,7 @@ class Mmu:
 
         # Also persist to spoolman db if required
         if sync and self.spoolman_support == self.SPOOLMAN_PUSH:
-            self._spoolman_push_gate_map()
+            self._spoolman_push_gate_map(gate_ids)
 
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
@@ -6860,7 +6862,7 @@ class Mmu:
                     self._log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Dict=%s" % (gate, fil))
 
             self._update_gate_color(self.gate_color)
-            self._persist_gate_map() # This will also update LED status
+            self._persist_gate_map() # This will also update LED status # PAUL do I need to sync?
 
         elif gates != "!" or gate >= 0:
             gatelist = []
@@ -6877,13 +6879,14 @@ class Mmu:
                 # Specifying one gate (filament)
                 gatelist.append(gate)
 
-            spool_id_updated = False
+            gate_ids = []
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
                 material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()
                 color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
                 spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
-                spool_id_updated |= spool_id != self.gate_spool_id[gate]
+                if spool_id != self.gate_spool_id[gate]:
+                    gate_ids.append((gate, self.gate_spool_id[gate]))
                 speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
                 color = self._validate_color(color)
                 if color is None:
@@ -6895,7 +6898,7 @@ class Mmu:
                 self.gate_speed_override[gate] = speed_override
 
             self._update_gate_color(self.gate_color)
-            self._persist_gate_map(sync=spool_id_updated) # This will also update LED status
+            self._persist_gate_map(sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
 
         if not quiet:
             self._log_info(self._gate_map_to_string(detail))

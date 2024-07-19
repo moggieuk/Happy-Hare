@@ -61,8 +61,8 @@ class MmuServer:
         # Spoolman filament info retrieval functionality and update reporting
         self.server.register_remote_method("spoolman_get_filaments", self.get_filaments)
         self.server.register_remote_method("spoolman_set_gate_map", self.set_gate_map)
-        self.server.register_remote_method("spoolman_remote_gate_map", self.remote_gate_map)
         self.server.register_remote_method("spoolman_clear_spools_for_printer", self.clear_spools_for_printer)
+        self.server.register_remote_method("spoolman_remote_gate_map", self.remote_gate_map)
 
         # Additional remote methods not directly called by Happy Hare
         self.server.register_remote_method("spoolman_get_spool_info", self.get_spool_info)
@@ -110,6 +110,45 @@ class MmuServer:
             except self.server.error as e:
                 logging.info("mmu_server: Exception running MMU gcode: %s" % str(e))
         return gate_dict
+
+    async def set_gate_map(self, nb_gates=None, gate_ids=None) -> bool:
+        '''
+        Sets the gate map for the current printer for a list of (gate, spool_id) tuples
+        '''
+        # Initialize if this is the first call to module
+        if not self.nb_gates and nb_gates:
+            await self.remote_gate_map(nb_gates=nb_gates, silent=True, dump=False)
+
+        if not gate_ids:
+            logging.error("Gate map not provided or empty")
+            return False
+        for gate, spool_id in gate_ids:
+            if (spool_id == -1 or spool_id == 0) and self.gate_occupation[gate] is not None:
+                await self.unset_spool_gate(gate)
+            elif spool_id != -1 and spool_id != 0:
+                if self.gate_occupation[gate] is None or (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id):
+                    await self.set_spool_gate(spool_id, gate)
+        return
+
+    async def clear_spools_for_printer(self, nb_gates=None) -> bool:
+        '''
+        Clears all gates for the current printer
+        '''
+        # Initialize if this is the first call to module
+        if not self.nb_gates and nb_gates:
+            await self.remote_gate_map(nb_gates=nb_gates, silent=True, dump=False)
+
+        logging.info(f"Clearing spool gates for printer: {self.printer_info['hostname']}")
+        self.server.send_event("spoolman:clear_spool_gates", {})
+        # Get spools assigned to current printer
+        if self.gate_occupation and self.gate_occupation != [None for __ in range(self.nb_gates)]:
+            for i, __ in enumerate(self.gate_occupation):
+                await self.unset_spool_gate(i)
+        else:
+            msg = f"No spools for printer {self.printer_info['hostname']}"
+            await self._log_n_send(msg)
+            return False
+        return True
 
     async def unset_spool_id(self, spool_id: int) -> bool:
         '''
@@ -457,39 +496,6 @@ class MmuServer:
             await self._log_n_send(msg)
             return False
 
-    async def set_gate_map(self, gate_map = None) -> bool:
-        '''
-        Sets the gate map for the current printer
-        '''
-        if not gate_map:
-            logging.error("Gate map not provided or empty")
-            return False
-        for gate, spool_id in enumerate(gate_map):
-            if (spool_id == -1 or spool_id == 0) and self.gate_occupation[gate] is not None:
-                await self.unset_spool_gate(gate)
-            elif spool_id != -1 and spool_id != 0:
-                if self.gate_occupation[gate] is None or (self.gate_occupation[gate] and self.gate_occupation[gate]['id'] != spool_id):
-                    await self.set_spool_gate(spool_id, gate)
-        return
-
-    async def clear_spools_for_printer(self, nb_gates=None) -> bool:
-        '''
-        Clears all gates for the current printer
-        '''
-        # Initialize if this is the first call to module
-        if not self.nb_gates and nb_gates:
-            await self.remote_gate_map(nb_gates=nb_gates, silent=True, dump=False)
-        logging.info(f"Clearing spool gates for printer: {self.printer_info['hostname']}")
-        self.server.send_event("spoolman:clear_spool_gates", {})
-        # Get spools assigned to current printer
-        if self.gate_occupation and self.gate_occupation != [None for __ in range(self.nb_gates)]:
-            for i, __ in enumerate(self.gate_occupation):
-                await self.unset_spool_gate(i)
-        else:
-            msg = f"No spools for printer {self.printer_info['hostname']}"
-            await self._log_n_send(msg)
-            return False
-        return True
 
 
     # Switch out the metadata processor with this module which handles placeholders
