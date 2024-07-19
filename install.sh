@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.60 # Important: Keep synced with mmy.py
+VERSION=2.61 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
@@ -724,6 +724,14 @@ read_previous_config() {
 
         if [ "${_param_log_file_level}" -gt 2 ]; then
             _param_log_file_level=2
+        fi
+
+        if [ ! "${_param_enable_spoolman}" == "" ]; then
+            if [ ! "${_param_enable_spoolman}" == "1" ]; then
+                _param_spoolman="push"
+            else
+                _param_spoolman="off"
+            fi
         fi
     fi
 

@@ -84,7 +84,7 @@ class MmuError(Exception):
 
 # Main klipper module
 class Mmu:
-    VERSION = 2.60 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 2.61 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.0 # Delay before running bootup tasks
 
@@ -226,6 +226,12 @@ class Mmu:
     T_MACRO_COLOR_GATEMAP  = 'gatemap'  # As per gatemap but hide empty tools. Will add spool_id if spoolman is enabled
     T_MACRO_COLOR_SLICER   = 'slicer'   # Color from slicer tool map
     T_MACRO_COLOR_OPTIONS  = [T_MACRO_COLOR_GATEMAP, T_MACRO_COLOR_SLICER, T_MACRO_COLOR_ALLGATES]
+
+    # Spoolman integration modes of operation
+    SPOOLMAN_OFF           = 'off'     # Spoolman disabled
+    SPOOLMAN_PUSH          = 'push'    # Local gatemap is the source or truth
+    SPOOLMAN_PULL          = 'pull'    # Spoolman db is the source of truth
+    SPOOLMAN_OPTIONS       = [SPOOLMAN_OFF, SPOOLMAN_PUSH, SPOOLMAN_PULL]
 
     EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'servo_retries': 0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
@@ -532,7 +538,7 @@ class Mmu:
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
-        self.enable_spoolman = config.getint('enable_spoolman', 0, minval=0, maxval=2)
+        self.spoolman = config.getchoice('spoolman', {o: o for o in self.SPOOLMAN_OPTIONS}, self.SPOOLMAN_OFF)
         self.t_macro_color = config.getchoice('t_macro_color', {o: o for o in self.T_MACRO_COLOR_OPTIONS}, self.T_MACRO_COLOR_SLICER)
         self.default_enable_endless_spool = config.getint('enable_endless_spool', 0, minval=0, maxval=1)
         self.endless_spool_final_eject = config.getfloat('endless_spool_final_eject', 50, minval=0.)
@@ -1227,7 +1233,7 @@ class Mmu:
 
             self._servo_move()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
-            self._spoolman_init()
+            self._spoolman_sync()
         except Exception as e:
             self._log_error('Warning: Error booting up MMU: %s' % str(e))
 
@@ -1384,7 +1390,8 @@ class Mmu:
                 'extruder_filament_remaining': self.filament_remaining,
                 'extruder_residual_filament': self.toolhead_ooze_reduction,
                 'toolchange_retract': self.toolchange_retract,
-                'enable_spoolman': self.enable_spoolman,
+                'spoolman': self.spoolman,
+                'enable_spoolman': int(not self.spoolman == self.SPOOLMAN_OFF), # Legacy
         }
 
     def _reset_statistics(self):
@@ -1916,7 +1923,7 @@ class Mmu:
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
                 msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
-            msg += "\nSpoolMan is %s. " % ("ENABLED WITH REMOTE GATE MAP" if self.enable_spoolman > 1 else "ENABLED" if self.enable_spoolman else "DISABLED")
+            msg += "\nSpoolMan is %s. " % ("ENABLED with REMOTE" if self.spoolman == self.SPOOLMAN_PULL else "ENABLED" if self.spoolman == self.SPOOLMAN_PUSH else "DISABLED")
             msg += "Sensors: "
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
@@ -3839,7 +3846,7 @@ class Mmu:
         self._save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
         self._save_variable(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
         self._write_variables()
-        self._persist_gate_map()
+        self._persist_gate_map(sync=True)
         self._log_always("MMU state reset")
         self._schedule_mmu_bootup_tasks()
 
@@ -5610,18 +5617,18 @@ class Mmu:
 
 ### SPOOLMAN INTEGRATION #########################################################
 
-    def _spoolman_init(self):
-        if self.enable_spoolman > 1:
-            # Update gate map from assignment data stored in spoolman db
-            # This will replace the local gate map including spool_id
-            self._spoolman_update_gate_map()
-        elif self.enable_spoolman:
-            # Ensure local gate map matches spoolman data
-            # This will update the local gate map without changing spool_id
+    def _spoolman_sync(self):
+        if self.spoolman == self.SPOOLMAN_PULL: # Remote gate map
+            # This will pull gate assignment and filament attributes from spoolman db thus replacing the local map
+            self._spoolman_pull_gate_map()
+        elif self.spoolman == self.SPOOLMAN_PUSH: # Local gate map
+            # This will update spoolman with just the gate assignment (for visualization) and will update
+            # local gate map attributes with data from spoolman thus overwriting the local map
+            self._spoolman_push_gate_map()
             self._spoolman_update_filaments()
 
     def _spoolman_activate_spool(self, spool_id=-1):
-        if not self.enable_spoolman: return
+        if self.spoolman == self.SPOOLMAN_OFF: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
             if spool_id < 0:
@@ -5635,20 +5642,10 @@ class Mmu:
         except Exception as e:
             self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
 
-    # Store the current gate to spool_id mapping in spoolman db (via moonraker)
-    def _spoolman_set_gate_map(self):
-        if not self.enable_spoolman: return
-        try:
-            webhooks = self.printer.lookup_object('webhooks')
-            self._log_debug("Storing gate map in spoolman db...")
-            webhooks.call_remote_method("spoolman_set_gate_map", gate_map=self.gate_spool_id)
-        except Exception as e:
-            self._log_error("Error while calling _spoolman_set_gate_map: %s" % str(e))
-
     # Request to send filament data from spoolman db (via moonraker)
     # gate=None means all gates with spool_id, else specific gate
     def _spoolman_update_filaments(self, gate=None):
-        if not self.enable_spoolman: return
+        if self.spoolman == self.SPOOLMAN_OFF: return
         gate_ids = []
         if gate is None: # All gates
             for i in range(self.mmu_num_gates):
@@ -5664,9 +5661,19 @@ class Mmu:
             except Exception as e:
                 self._log_error("Error while retrieving spoolman info: %s" % str(e))
 
+    # Store the current gate to spool_id mapping in spoolman db (via moonraker)
+    def _spoolman_push_gate_map(self):
+        if self.spoolman == self.SPOOLMAN_OFF: return
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            self._log_debug("Storing gate map in spoolman db...")
+            webhooks.call_remote_method("spoolman_set_gate_map", gate_map=self.gate_spool_id)
+        except Exception as e:
+            self._log_error("Error while calling _spoolman_set_gate_map: %s" % str(e))
+
     # Request to update local gate based on the remote data stored in spoolman db
-    def _spoolman_update_gate_map(self):
-        if not self.enable_spoolman: return
+    def _spoolman_pull_gate_map(self):
+        if self.spoolman == self.SPOOLMAN_OFF: return
         self._log_debug("Requesting the gate map from Spoolman")
         try:
             webhooks = self.printer.lookup_object('webhooks')
@@ -5675,8 +5682,8 @@ class Mmu:
             self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
 
     # Clear the spool to gate association in spoolman db
-    def _spoolman_clear_gate_map(self): # PAUL new
-        if not self.enable_spoolman: return
+    def _spoolman_clear_gate_map(self):
+        if self.spoolman == self.SPOOLMAN_OFF: return
         self._log_debug("Requesting to clear the gate map from Spoolman")
         try:
             webhooks = self.printer.lookup_object('webhooks')
@@ -6248,8 +6255,12 @@ class Mmu:
         self.enable_endless_spool = gcmd.get_int('ENABLE_ENDLESS_SPOOL', self.enable_endless_spool, minval=0, maxval=1)
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.mmu_num_gates - 1)
-        prev_enable_spoolman = self.enable_spoolman
-        self.enable_spoolman = gcmd.get_int('ENABLE_SPOOLMAN', self.enable_spoolman, minval=0, maxval=2)
+
+        prev_spoolman = self.spoolman
+        spoolman = gcmd.get_int('SPOOLMAN', self.spoolman)
+        if spoolman not in self.SPOOLMAN_OPTIONS:
+            raise gcmd.error("spoolman is invalid. Options are: %s" % self.SPOOLMAN_OPTIONS)
+        self.spoolman = spoolman
 
         prev_t_macro_color = self.t_macro_color
         t_macro_color = gcmd.get('T_MACRO_COLOR', self.t_macro_color)
@@ -6381,9 +6392,9 @@ class Mmu:
         msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
         msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
         msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
-        msg += "\nenable_spoolman = %d" % self.enable_spoolman
-        if prev_enable_spoolman != self.enable_spoolman:
-            self._spoolman_init()
+        msg += "\nspoolman = %s" % self.spoolman
+        if prev_spoolman != self.spoolman:
+            self._spoolman_sync()
         msg += "\nt_macro_color = %s" % self.t_macro_color
         if prev_t_macro_color != self.t_macro_color:
             self._update_t_macros()
@@ -6586,8 +6597,8 @@ class Mmu:
 
             spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
             name = self.gate_filament_name[g] or "n/a"
-            spool_info = ", SpoolID: {}".format(spool_id) if self.enable_spoolman else ""
-            filament_name = ", Name: {}".format(name) if self.enable_spoolman else ""
+            filament_name = ", Name: {}".format(name)
+            spool_info = ", SpoolID: {}".format(spool_id) if not self.spoolman == self.SPOOLMAN_OFF else ""
             speed_info = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
             msg += "{}Status: {}, Material: {}, Color: {}{}{}{}".format(gate_detail, available, material, color, spool_info, filament_name, speed_info)
         return msg
@@ -6636,8 +6647,8 @@ class Mmu:
         self._update_t_macros()
 
         # Also persist to spoolman db if required
-        if (self.enable_spoolman > 1) and sync:
-            self._spoolman_set_gate_map()
+        if sync and self.spoolman == self.SPOOLMAN_PUSH:
+            self._spoolman_push_gate_map()
 
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
@@ -6652,7 +6663,7 @@ class Mmu:
             if t_macro:
                 t_vars = dict(t_macro.variables) # So Mainsail sees the update
                 spool_id = self.gate_spool_id[gate]
-                if spool_id >= 0 and self.enable_spoolman and self.gate_status[gate] != self.GATE_EMPTY and self.t_macro_color == self.T_MACRO_COLOR_GATEMAP:
+                if spool_id >= 0 and not self.spoolman == self.SPOOLMAN_OFF and self.gate_status[gate] != self.GATE_EMPTY and self.t_macro_color == self.T_MACRO_COLOR_GATEMAP:
                     t_vars['spool_id'] = self.gate_spool_id[gate]
                 else:
                     t_vars.pop('spool_id', None)
@@ -6682,7 +6693,7 @@ class Mmu:
         self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
-        self._persist_gate_map(sync=sync) # PAUL passing new sync flag
+        self._persist_gate_map(sync=True)
 
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
 
@@ -6812,9 +6823,8 @@ class Mmu:
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
-        refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1)) # Spoolman option # PAUL SPOOLMAN_REFRESH ? pulls gate map from spoolman
-        sync = bool(gcmd.get_int('SYNC', int(self.enable_spoolman > 1), minval=0, maxval=1)) # Spoolman option # PAUL SPOOLMAN_SYNC ? Need way to force the sync
-        clear = bool(gcmd.get_int('CLEAR', 0, minval=0, maxval=1)) # Spoolman option # PAUL SPOOLMAN_CLEAR ?
+        spoolman_sync = bool(gcmd.get_int('SPOOLMAN_SYNC', 0, minval=0, maxval=1))
+        spoolman_clear = bool(gcmd.get_int('SPOOLMAN_CLEAR', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}") # Hidden option for bulk update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
@@ -6825,15 +6835,14 @@ class Mmu:
         except Exception as e:
             self._log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
 
-        if clear: # PAUL
-            self._spoolman_clear_gate_map()
-            quiet = True
-
         if reset:
-            self._reset_gate_map(sync=sync) # PAUL passing sync
+            self._reset_gate_map()
 
-        if refresh:
-            self._spoolman_init()
+        if spoolman_sync:
+            self._spoolman_sync()
+
+        if spoolman_clear:
+            self._spoolman_clear_gate_map() # Clear the gate allocation in spoolman db
             quiet = True
 
         if next_spool_id:
@@ -6874,7 +6883,7 @@ class Mmu:
                 material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()
                 color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
                 spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
-                spool_id_updated |= spool_id != self.gate_spool_id[gate] # PAUL -- Don't persist to spoolman if not necessary
+                spool_id_updated |= spool_id != self.gate_spool_id[gate]
                 speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
                 color = self._validate_color(color)
                 if color is None:
@@ -6886,7 +6895,7 @@ class Mmu:
                 self.gate_speed_override[gate] = speed_override
 
             self._update_gate_color(self.gate_color)
-            self._persist_gate_map(sync=sync and spool_id_updated) # This will also update LED status
+            self._persist_gate_map(sync=spool_id_updated) # This will also update LED status
 
         if not quiet:
             self._log_info(self._gate_map_to_string(detail))
