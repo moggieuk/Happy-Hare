@@ -59,31 +59,18 @@ class MmuServer:
         self.gate_occupation = {}
 
         # Spoolman filament info retrieval functionality and update reporting
-        self.server.register_remote_method(
-            "spoolman_get_filaments", self.get_filaments
-        )
-        self.server.register_remote_method(
-            "spoolman_set_gate_map", self.set_gate_map
-        )
-        self.server.register_remote_method(
-            "spoolman_remote_gate_map", self.remote_gate_map
-        )
-        self.server.register_remote_method(
-            "spoolman_clear_spools_for_printer", self.clear_spools_for_printer
-        )
+        self.server.register_remote_method("spoolman_get_filaments", self.get_filaments)
+        self.server.register_remote_method("spoolman_set_gate_map", self.set_gate_map)
+        self.server.register_remote_method("spoolman_remote_gate_map", self.remote_gate_map)
+        self.server.register_remote_method("spoolman_clear_spools_for_printer", self.clear_spools_for_printer)
 
         # Additional remote methods not directly called by Happy Hare
-        self.server.register_remote_method(
-            "spoolman_get_spool_info", self.get_spool_info
-        )
-        self.server.register_remote_method(
-            "spoolman_set_spool_gate", self.set_spool_gate
-        )
-        self.server.register_remote_method(
-            "spoolman_unset_spool_gate", self.unset_spool_gate
-        )
+        self.server.register_remote_method("spoolman_get_spool_info", self.get_spool_info)
+        self.server.register_remote_method("spoolman_set_spool_gate", self.set_spool_gate)
+        self.server.register_remote_method("spoolman_unset_spool_gate", self.unset_spool_gate)
 
-        self.setup_placeholder_processor(config) # Replaces file_manager/metadata with this file
+        # Replace file_manager/metadata with this file
+        self.setup_placeholder_processor(config)
 
     async def component_init(self) -> None:
         # Just refetch gate_occupation from spoolman db
@@ -505,8 +492,8 @@ class MmuServer:
         return True
 
 
+    # Switch out the metadata processor with this module which handles placeholders
     def setup_placeholder_processor(self, config):
-        # Switch out the metadata processor with this module which handles placeholders
         args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
         args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
         from .file_manager import file_manager

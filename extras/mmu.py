@@ -6812,9 +6812,9 @@ class Mmu:
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
-        refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
-        sync = bool(gcmd.get_int('SYNC', int(self.enable_spoolman > 1), minval=0, maxval=1)) # Spoolman option
-        clear = bool(gcmd.get_int('CLEAR', 0, minval=0, maxval=1)) # Spoolman option
+        refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1)) # Spoolman option # PAUL SPOOLMAN_REFRESH ? pulls gate map from spoolman
+        sync = bool(gcmd.get_int('SYNC', int(self.enable_spoolman > 1), minval=0, maxval=1)) # Spoolman option # PAUL SPOOLMAN_SYNC ? Need way to force the sync
+        clear = bool(gcmd.get_int('CLEAR', 0, minval=0, maxval=1)) # Spoolman option # PAUL SPOOLMAN_CLEAR ?
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}") # Hidden option for bulk update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
