@@ -1080,16 +1080,22 @@ class Mmu:
             color = self.w3c_colors.get(color)
         elif color == '':
             color = "#000000"
-        rgb_hex = color.lstrip('#')
+        rgb_hex = color.lstrip('#').lower()
         return rgb_hex
 
-    # This retuns a convenient RGB tuple for controlling LEDs E.g. (0.32, 0.56, 1.00)
-    def _color_to_rgb_tuple(self, color):
+    # This retuns a convenient RGB fraction tuple for controlling LEDs E.g. (0.32, 0.56, 1.00)
+    # or integer version (82, 143, 255)
+    def _color_to_rgb_tuple(self, color, fraction=True):
         rgb_hex = self._color_to_rgb_hex(color)
         length = len(rgb_hex)
-        if length % 3 == 0:
-            return tuple(round(float(int(rgb_hex[i:i + length // 3], 16)) / 255, 3) for i in range(0, length, length // 3))
-        return (0.,0.,0.)
+        if fraction:
+            if length % 3 == 0:
+                return tuple(round(float(int(rgb_hex[i:i + length // 3], 16)) / 255, 3) for i in range(0, length, length // 3))
+            return (0.,0.,0.)
+        else:
+            if length % 3 == 0:
+                return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+            return (0,0,0)
 
     # Helper to return validated color string or None if invalid
     def _validate_color(self, color):
@@ -6655,38 +6661,6 @@ class Mmu:
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
-    # Set 'color' and 'spool_id' variable on the Tx macro for Mainsail/Fluidd to pick up
-    # We don't use SET_GCODE_VARIABLE because the macro variable may not exist ahead of time
-    def _update_t_macros(self):
-        for tool in range(self.mmu_num_gates):
-            gate = self.ttg_map[tool]
-            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None)
-
-            if t_macro:
-                t_vars = dict(t_macro.variables) # So Mainsail sees the update
-                spool_id = self.gate_spool_id[gate]
-                if spool_id >= 0 and not self.spoolman_support == self.SPOOLMAN_OFF and self.gate_status[gate] != self.GATE_EMPTY and self.t_macro_color == self.T_MACRO_COLOR_GATEMAP:
-                    t_vars['spool_id'] = self.gate_spool_id[gate]
-                else:
-                    t_vars.pop('spool_id', None)
-
-                if self.t_macro_color == self.T_MACRO_COLOR_SLICER:
-                    st = self.slicer_tool_map['tools'].get(str(tool), None)
-                    rgb_hex = self._color_to_rgb_hex(st.get('color', None)) if st else None
-                    if rgb_hex:
-                        t_vars['color'] = rgb_hex
-                    else:
-                        t_vars.pop('color', None)
-                elif self.t_macro_color in [self.T_MACRO_COLOR_GATEMAP, self.T_MACRO_COLOR_ALLGATES]:
-                    rgb_hex = self._color_to_rgb_hex(self.gate_color[gate])
-                    if self.gate_status[gate] != self.GATE_EMPTY or self.t_macro_color == self.T_MACRO_COLOR_ALLGATES:
-                        t_vars['color'] = rgb_hex
-                    else:
-                        t_vars.pop('color', None)
-                else:
-                    t_vars.pop('color', None)
-                t_macro.variables = t_vars
-
     def _reset_gate_map(self, sync=False):
         self._log_debug("Resetting gate map")
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
@@ -6697,7 +6671,7 @@ class Mmu:
         self.gate_speed_override = list(self.default_gate_speed_override)
         self._persist_gate_map(sync=True)
 
-    def _automap_gate(self, tool, strategy : str):
+    def _automap_gate(self, tool, strategy):
         # !! WORK IN PROGRESS !!
         # # Automap gates
         # PREVIOUS code from mmu_sowtware.cfg file for reference
@@ -6775,10 +6749,10 @@ class Mmu:
         if strategy in ['spool_id', 'closest_color']:
             raise MmuError("%s automapping strategy is not yet supported. Support for this feature is on the way, please be patient." % strategy)
 
-        # create printable strategy string
-        strategy_str : str = strategy.replace("_", " ").title()
+        # Create printable strategy string
+        strategy_str = strategy.replace("_", " ").title()
 
-        # deduct search_in and tool_field based on strategy
+        # Deduct search_in and tool_field based on strategy
         # tool fields are like {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
         if strategy == 'filament_name':
             search_in = self.gate_filament_name
@@ -6788,7 +6762,7 @@ class Mmu:
             tool_field = 'spool_id' # Placeholders for future support
         elif strategy == 'closest_color':
             search_in = self.gate_color
-            tool_field = 'color' # Placeholders for future support
+            tool_field = 'color' # Placeholders for future support PAUL FYI added _find_closest_color() method below
 
         # Automapping logic
         errors = []
@@ -6806,18 +6780,73 @@ class Mmu:
         elif len(messages) > 1:
             warnings.append("Multiple gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
 
-        # display messages while automapping
+        # Display messages while automapping
         if messages:
             messages.insert(0, "Automatically mapped tool %s to gates based on %s:" % (tool, strategy_str))
             for msg in messages:
                 self._log_always(msg)
-        # display warnings while automapping
+        # Display warnings while automapping
         for msg in warnings:
             self._log_info(msg)
-        # display errors while automapping
+        # Display errors while automapping
         if errors:
-            self._log_error("Error during automapping")
-            self._mmu_pause("Error during automapping", errors)
+            self._mmu_pause("Error during automapping: %s" % errors)
+# PAUL May want to consider logic (in print this command would likely want to pause(?) but from console error is sufficient)
+# if self._is_printing():
+#     self._mmu_pause(msg)
+# else:
+#     self._log_error(msg)
+
+    # Helper for finding the closest color
+    # Example:
+    # color_list = ['123456', 'abcdef', '789abc', '4a7d9f', '010203']
+    # _find_closest_color('4b7d8e', color_list) returns '4a7d9f'
+    def _find_closest_color(ref_color, color_list):
+        ref_rgb = self._color_to_rgb_tuple(ref_color, fraction=False)
+        min_distance = float('inf')
+        closest_color = None
+        for color in color_list:
+            color_rgb = hex_to_rgb(color)
+            distance = _weighted_euclidean_distance(ref_rgb, color_rgb)
+            if distance < min_distance:
+                min_distance = distance
+                closest_color = color
+        return closest_color
+
+    def _weighted_euclidean_distance(color1, color2, weights=(0.3, 0.59, 0.11)):
+        return sum(weights[i] * (a - b) ** 2 for i, (a, b) in enumerate(zip(color1, color2))) # ** 0.5 sqrt not needed
+
+    # Set 'color' and 'spool_id' variable on the Tx macro for Mainsail/Fluidd to pick up
+    # We don't use SET_GCODE_VARIABLE because the macro variable may not exist ahead of time
+    def _update_t_macros(self):
+        for tool in range(self.mmu_num_gates):
+            gate = self.ttg_map[tool]
+            t_macro = self.printer.lookup_object("gcode_macro T%d" % tool, None)
+
+            if t_macro:
+                t_vars = dict(t_macro.variables) # So Mainsail sees the update
+                spool_id = self.gate_spool_id[gate]
+                if spool_id >= 0 and not self.spoolman_support == self.SPOOLMAN_OFF and self.gate_status[gate] != self.GATE_EMPTY and self.t_macro_color == self.T_MACRO_COLOR_GATEMAP:
+                    t_vars['spool_id'] = self.gate_spool_id[gate]
+                else:
+                    t_vars.pop('spool_id', None)
+
+                if self.t_macro_color == self.T_MACRO_COLOR_SLICER:
+                    st = self.slicer_tool_map['tools'].get(str(tool), None)
+                    rgb_hex = self._color_to_rgb_hex(st.get('color', None)) if st else None
+                    if rgb_hex:
+                        t_vars['color'] = rgb_hex
+                    else:
+                        t_vars.pop('color', None)
+                elif self.t_macro_color in [self.T_MACRO_COLOR_GATEMAP, self.T_MACRO_COLOR_ALLGATES]:
+                    rgb_hex = self._color_to_rgb_hex(self.gate_color[gate])
+                    if self.gate_status[gate] != self.GATE_EMPTY or self.t_macro_color == self.T_MACRO_COLOR_ALLGATES:
+                        t_vars['color'] = rgb_hex
+                    else:
+                        t_vars.pop('color', None)
+                else:
+                    t_vars.pop('color', None)
+                t_macro.variables = t_vars
 
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
 
