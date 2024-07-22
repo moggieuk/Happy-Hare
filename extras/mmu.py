@@ -6783,9 +6783,6 @@ class Mmu:
             return
         tool_to_remap = self.slicer_tool_map['tools'][str(tool)]
         # strategy checks
-        if strategy not in ['filament_name', 'spool_id', 'closest_color', 'color']:
-            self._log_error("Invalid automap strategy '%s'" % strategy)
-            return
         if strategy in ['spool_id']:
             self._log_error("'%s' automapping strategy is not yet supported. Support for this feature is on the way, please be patient." % strategy)
             return
@@ -6801,9 +6798,15 @@ class Mmu:
         elif strategy == 'spool_id':
             search_in = self.gate_spool_id
             tool_field = 'spool_id' # Placeholders for future support
+        elif strategy == 'material':
+            search_in = self.gate_material
+            tool_field = 'material'
         elif strategy in ['closest_color', 'color']:
             search_in = self.gate_color
             tool_field = 'color'
+        else:
+            self._log_error("Invalid automap strategy '%s'" % strategy)
+            return
 
         # Automapping logic
         errors = []
@@ -6863,7 +6866,7 @@ class Mmu:
 
                 if not len(remaps):
                     errors.append("Unable to find a suitable color for tool %s (color: %s)" % (tool, tool_to_remap['color']))
-            if len(messages) > 1:
+            if len(remaps) > 1:
                 warnings.append("Multiple gates found for tool %s with %s '%s'" % (tool, strategy_str, tool_to_remap[tool_field]))
 
         # Display messages while automapping
