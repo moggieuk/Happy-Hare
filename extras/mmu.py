@@ -659,8 +659,8 @@ class Mmu:
         # Endstops for print start / stop. Automatically called if printing from virtual SD-card
         self.gcode.register_command('_MMU_PRINT_START', self.cmd_MMU_PRINT_START, desc = self.cmd_MMU_PRINT_START_help)
         self.gcode.register_command('_MMU_PRINT_END', self.cmd_MMU_PRINT_END, desc = self.cmd_MMU_PRINT_END_help)
-        self.gcode.register_command('_MMU_LOG', self.cmd_MMU_LOG, desc = self.cmd_MMU_LOG_help)
 
+        self.gcode.register_command('MMU_LOG', self.cmd_MMU_LOG, desc = self.cmd_MMU_LOG_help)
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
         self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
@@ -5633,7 +5633,7 @@ class Mmu:
             # This will update spoolman with just the gate assignment (for visualization) and will update
             # local gate map attributes with data from spoolman thus overwriting the local map
             self._spoolman_push_gate_map(quiet=quiet)
-            self._spoolman_update_filaments(quiet=quiet)
+        self._spoolman_update_filaments(quiet=quiet)
 
     def _spoolman_activate_spool(self, spool_id=-1):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
@@ -5750,7 +5750,7 @@ class Mmu:
             self._log_error("Error while displaying spool location map: %s" % str(e))
 
 
-### SPOOLMAN COMMANDS  ###########################################################
+### SPOOLMAN COMMANDS ############################################################
 
     cmd_MMU_SPOOLMAN_help = "Manage spoolman integration"
     def cmd_MMU_SPOOLMAN(self, gcmd):
@@ -5763,8 +5763,8 @@ class Mmu:
         update = bool(gcmd.get_int('UPDATE', 0, minval=0, maxval=1))
         spool_id = gcmd.get_int('SPOOLID', 0, minval=1) # 0 is the do nothing value
         gate = gcmd.get_int('GATE', -1, minval=-1, maxval=self.mmu_num_gates - 1)
-        showinfo = bool(gcmd.get_int('SHOWINFO', 0, minval=0, maxval=1))
         printer = gcmd.get('PRINTER', None) # Option to see other printers!
+        showinfo = bool(gcmd.get_int('SHOWINFO', 0, minval=0, maxval=1))
 
         if refresh:
             self._spoolman_refresh(quiet=quiet)
@@ -5998,8 +5998,12 @@ class Mmu:
     cmd_MMU_LOG_help = "Logs messages in MMU log"
     def cmd_MMU_LOG(self, gcmd):
         #self._log_to_file(gcmd.get_commandline())
-        message = gcmd.get('MESSAGE', "")
-        self._log_info(message.replace("|", "\n")) # TODO pass in level
+        #msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", UI_SPACE)
+        msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", '\u00A0')
+        if gcmd.get_int('ERROR', 0, minval=0, maxval=1):
+            self._log_error(msg)
+        else:
+            self._log_info(msg)
 
     cmd_MMU_PAUSE_help = "Pause the current print and lock the MMU operations"
     def cmd_MMU_PAUSE(self, gcmd):
@@ -6756,12 +6760,13 @@ class Mmu:
 
         # Also persist to spoolman db if required
         if sync and self.spoolman_support == self.SPOOLMAN_PUSH:
+            self._log_error(f"PAUL: _persist_gate_map(sync={sync}, gate_ids={gate_ids})")
             self._spoolman_push_gate_map(gate_ids)
 
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
 
-    def _reset_gate_map(self, sync=False):
+    def _reset_gate_map(self):
         self._log_debug("Resetting gate map")
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
         self.gate_material = list(self.default_gate_material)
@@ -6769,7 +6774,7 @@ class Mmu:
         self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
-        self._persist_gate_map(sync=True)
+        self._persist_gate_map()
 
     def _automap_gate(self, tool, strategy):
         # !! WORK IN PROGRESS !!
@@ -7077,7 +7082,8 @@ class Mmu:
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
-        gmapstr = gcmd.get('MAP', "{}") # Hidden option for bulk update from moonraker component
+        spoolids = gcmd.get('SPOOLIDS', "!") # Hidden option for spoolman pull
+        gmapstr = gcmd.get('MAP', "{}")      # Hidden option for bulk update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
 
@@ -7130,7 +7136,12 @@ class Mmu:
                 spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
                 name = gcmd.get('NAME', self.gate_filament_name[gate])
                 if spool_id != self.gate_spool_id[gate]:
-                    gate_ids.append((gate, self.gate_spool_id[gate]))
+                    if spool_id in self.gate_spool_id:
+                        old_gate = self.gate_spool_id.index(spool_id)
+                        if old_gate != gate:
+                            self.gate_spool_id[old_gate] = -1
+                            gate_ids.append((old_gate, -1))
+                    gate_ids.append((gate, spool_id))
                 speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
                 color = self._validate_color(color)
                 if color is None:
