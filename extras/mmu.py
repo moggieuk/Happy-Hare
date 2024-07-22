@@ -6778,81 +6778,17 @@ class Mmu:
 
     def _automap_gate(self, tool, strategy):
         # !! WORK IN PROGRESS !!
-        # # Automap gates
-        # PREVIOUS code from mmu_sowtware.cfg file for reference
-        # {% set reason = "Filament auto gate mapping" %}
-        # {% set e = [] %}
-        # {% set w = [] %}
-        # {% set m = [] %}
-        # # Strategy checks
-        # {% if vars.automap_strategy not in ['filament_name', 'spool_id', 'closest_color'] %}
-        #     {% set _msg = "`variable_automap_strategy` (%s) not valid. Possible values are : \"filament_name\", \"spool_id\", \"closest_color\", please update in mmu_macro_vars.cfg file." % vars.automap_strategy %}
-        #     {action_raise_error(_msg)}
-        # {% endif %}
-        # {% if vars.automap_strategy in ['spool_id', 'closest_color'] %}
-        #     {% set _msg = "%s automapping strategy is not yet supported. Support for this feature is on the way, please be patient." % vars.automap_strategy %}
-        #     {action_raise_error(_msg)}
-        # {% else %}
-        #     {% if vars.automap_strategy == 'filament_name' %}
-        #         {% set switch_field = filament_names %}
-        #     {% elif vars.automap_strategy == 'spool_id' %}
-        #         # {% set switch_field = spool_ids %} ; Placeholder for future support
-        #     {% elif vars.automap_strategy == 'closest_color' %}
-        #         # {% set switch_field = closest_colors %} ; Placeholder for future support
-        #     {% endif %}
-        # {% endif %}
-        # # Automapping logic
-        # {% if e|length == 0 %}
-        #     {% for t in range(num_slicer_tools) %}
-        #         {% for g in range(num_gates) %}
-        #             {% if switch_field[t] == "" %}
-        #                 {% set _msg = "No filament name found for tool %s. When using automapping with spoolman_enable > 2 all referenced tools must have names (matching the spoolman db)" % t %}
-        #                 {% if not _msg in e %}
-        #                     {% set _ = e.append(_msg) %}
-        #                 {% endif %}
-        #             {% elif gate_fil_names[g] == switch_field[t] %}
-        #                 {% set _msg = "T%s --> G%s (%s)" % (t, g, gate_fil_names[g]) %}
-        #                 {% set _ = m.append(_msg) %}
-        #                 MMU_TTG_MAP TOOL={t} GATE={g} QUIET=1
-        #             {% endif %}
-        #         {% endfor %}
-        #         {% if m|length < t and switch_field[t] %}
-        #             {% set _ = e.append("No gates found for tool %s with %s %s" % (t, vars.spoolman_automap_strategy, switch_field[t])) %}
-        #         {% elif m|length > t %}
-        #             {% set _ = w.append("Multiple gates found for tool %s with %s %s" % (t, vars.spoolman_automap_strategy, switch_field[t])) %}
-        #         {% endif %}
-        #     {% endfor %}
-        # {% endif %}
-        # # display messages while automapping
-        # {% if m|length > 0 %}
-        #     {% set _msg = "Automatically mapped tools to gates based on %s:" % vars.spoolman_automap_strategy %}
-        #     {% set _ = m.insert(0, _msg) %}
-        #     RESPOND MSG=
-        #     {% for msg in m %}
-        #         RESPOND MSG=" - {msg}"
-        #     {% endfor %}
-        # {% endif %}
-        # # display warnings while automapping
-        # {% if w|length > 0 %}
-        #     {% for msg in e %}
-        #         RESPOND MSG="WARNING: {msg}"
-        #     {% endfor %}
-        # {% endif %}
-        # # display errors while automapping
-        # {% if e|length > 0 %}
-        #     SET_GCODE_VARIABLE MACRO=_MMU_ERROR_DIALOG VARIABLE=show_abort VALUE={True}
-        #     SET_GCODE_VARIABLE MACRO=_MMU_ERROR_DIALOG VARIABLE=custom_msg VALUE="{e}"
-        #     MMU_PAUSE REASON="{reason}" MSG="Error during automapping"
-        # {% endif %}
         if tool is None:
             self._log_error("Automap tool called without a tool argument")
             return
         tool_to_remap = self.slicer_tool_map['tools'][str(tool)]
         # strategy checks
-        if strategy not in ['filament_name', 'spool_id', 'closest_color']:
-            raise MmuError("Invalid automap strategy %s" % strategy)
-        if strategy in ['spool_id', 'closest_color']:
-            raise MmuError("%s automapping strategy is not yet supported. Support for this feature is on the way, please be patient." % strategy)
+        if strategy not in ['filament_name', 'spool_id', 'closest_color', 'color']:
+            self._log_error("Invalid automap strategy '%s'" % strategy)
+            return
+        if strategy in ['spool_id']:
+            self._log_error("'%s' automapping strategy is not yet supported. Support for this feature is on the way, please be patient." % strategy)
+            return
 
         # Create printable strategy string
         strategy_str = strategy.replace("_", " ").title()
@@ -6865,29 +6801,77 @@ class Mmu:
         elif strategy == 'spool_id':
             search_in = self.gate_spool_id
             tool_field = 'spool_id' # Placeholders for future support
-        elif strategy == 'closest_color':
+        elif strategy in ['closest_color', 'color']:
             search_in = self.gate_color
-            tool_field = 'color' # Placeholders for future support PAUL FYI added _find_closest_color() method below
+            tool_field = 'color'
 
         # Automapping logic
         errors = []
         warnings = []
         messages = []
+        remaps = []
 
-        for gn, gate_feature in enumerate(search_in):
-            if not gate_feature:
-                errors.append("No %s found for tool %s. When using automapping all referenced tools must have a %s" % (strategy_str, tool, strategy_str))
-            elif tool_to_remap[tool_field] == gate_feature:
-                messages.append("T%s --> G%s (%s)" % (tool, gn, gate_feature))
-                self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
-        if not len(messages):
-            errors.append("No gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
-        elif len(messages) > 1:
-            warnings.append("Multiple gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
+        if not tool_to_remap[tool_field]:
+            errors.append("%s of tool %s must be set. When using automapping all referenced tools must have a %s" % (tool_field, tool, strategy_str))
+
+        if not errors:
+            # 'standard' exactly matching fields
+            if strategy != 'closest_color':
+                for gn, gate_feature in enumerate(search_in):
+                    if self.gate_spool_id[gn] not in [-1, 0, '']: # COOPER : could be removed if names, colors ... are cleared locally when clearing a gate
+                        if tool_to_remap[tool_field] == gate_feature:
+                            remaps.append("T%s --> G%s (%s)" % (tool, gn, gate_feature))
+                            self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
+                if not len(remaps):
+                    errors.append("No gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
+            # 'colors' search for closest
+            elif strategy == 'closest_color':
+                if tool_to_remap['material'] == "unknown":
+                    errors.append("When automapping with closest color, the tool material must be set.")
+                if tool_to_remap['material'] not in self.gate_material:
+                    errors.append("No gate has a filament matching the desired material (%s). Available are : %s" % (tool_to_remap['material'], self.gate_material))
+                if not errors:
+                    color_list = []
+                    for gn, color in enumerate(search_in):
+                        if self.gate_spool_id[gn] not in [-1, 0]: # COOPER : could be removed if names, colors ... are cleared locally when clearing a gate
+                            gm = "".join(self.gate_material[gn].strip()).replace('#', '').upper()
+                            if gm == tool_to_remap['material']:
+                                color_list.append(color)
+                    if not color_list:
+                        errors.append("Gates with %s are mssing color information..." % tool_to_remap['material'])
+                if not errors:
+                    closest, distance = self._find_closest_color(tool_to_remap['color'], color_list)
+                    for gn, color in enumerate(search_in):
+                        if self.gate_spool_id[gn] not in [-1, 0]:
+                            gm = "".join(self.gate_material[gn].strip()).replace('#', '').upper()
+                            if gm == tool_to_remap['material']:
+                                if closest == color:
+                                    t = self.console_gate_stat
+                                    if distance > 0.5:
+                                        warnings.append("Color matching is significantly different ! %s" % (UI_EMOTICONS[7] if t == 'emoticon' else ''))
+                                    elif distance > 0.2:
+                                        warnings.append("Color matching might be noticebly different %s" % (UI_EMOTICONS[5] if t == 'emoticon' else ''))
+                                    elif distance > 0.05:
+                                        warnings.append("Color matching seems quite good %s" % (UI_EMOTICONS[3] if t == 'emoticon' else ''))
+                                    elif distance > 0.02:
+                                        warnings.append("Color matching is excellent %s" % (UI_EMOTICONS[2] if t == 'emoticon' else ''))
+                                    elif distance < 0.02:
+                                        warnings.append("Color matching is perfect %s" % (UI_EMOTICONS[1] if t == 'emoticon' else ''))
+
+                                    remaps.append("T%s --> G%s (%s with closest color: %s)" % (tool, gn, gm, color))
+                                    self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
+
+                if not len(remaps):
+                    errors.append("Unable to find a suitable color for tool %s (color: %s)" % (tool, tool_to_remap['color']))
+            if len(messages) > 1:
+                warnings.append("Multiple gates found for tool %s with %s '%s'" % (tool, strategy_str, tool_to_remap[tool_field]))
 
         # Display messages while automapping
+        if remaps:
+            remaps.insert(0, "Automatically mapped tool %s based on %s:" % (tool, strategy_str))
+            for msg in remaps:
+                self._log_always(msg)
         if messages:
-            messages.insert(0, "Automatically mapped tool %s to gates based on %s:" % (tool, strategy_str))
             for msg in messages:
                 self._log_always(msg)
         # Display warnings while automapping
@@ -6895,31 +6879,33 @@ class Mmu:
             self._log_info(msg)
         # Display errors while automapping
         if errors:
-            self._mmu_pause("Error during automapping: %s" % errors)
-# PAUL May want to consider logic (in print this command would likely want to pause(?) but from console error is sufficient)
-# if self._is_printing():
-#     self._mmu_pause(msg)
-# else:
-#     self._log_error(msg)
+            reason = ["Error during automapping"]
+            if self._is_printing():
+                self._mmu_pause("\n".join(reason+errors))
+            else:
+                self._log_error(reason[0])
+                for e in errors:
+                    self._log_error(e)
+
+    # COOPER : I made the functions methods but you might wanna move them
+    def _weighted_euclidean_distance(self, color1, color2, weights=(0.3, 0.59, 0.11)):
+        return sum(weights[i] * (a - b) ** 2 for i, (a, b) in enumerate(zip(color1, color2))) # ** 0.5 sqrt not needed
 
     # Helper for finding the closest color
     # Example:
     # color_list = ['123456', 'abcdef', '789abc', '4a7d9f', '010203']
     # _find_closest_color('4b7d8e', color_list) returns '4a7d9f'
-    def _find_closest_color(ref_color, color_list):
+    def _find_closest_color(self, ref_color, color_list):
         ref_rgb = self._color_to_rgb_tuple(ref_color, fraction=False)
         min_distance = float('inf')
         closest_color = None
         for color in color_list:
-            color_rgb = hex_to_rgb(color)
-            distance = _weighted_euclidean_distance(ref_rgb, color_rgb)
+            color_rgb = self._color_to_rgb_tuple(color)
+            distance = self._weighted_euclidean_distance(ref_rgb, color_rgb)
             if distance < min_distance:
                 min_distance = distance
                 closest_color = color
-        return closest_color
-
-    def _weighted_euclidean_distance(color1, color2, weights=(0.3, 0.59, 0.11)):
-        return sum(weights[i] * (a - b) ** 2 for i, (a, b) in enumerate(zip(color1, color2))) # ** 0.5 sqrt not needed
+        return closest_color, min_distance
 
     # Set 'color' and 'spool_id' variable on the Tx macro for Mainsail/Fluidd to pick up
     # We don't use SET_GCODE_VARIABLE because the macro variable may not exist ahead of time
