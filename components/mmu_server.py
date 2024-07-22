@@ -179,7 +179,6 @@ class MmuServer:
                     logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
                     return False
                 elif response.has_error():
-                    #response.raise_for_status() # PAUL TODO make consistent with other logging / error handling
                     err_msg = self.spoolman._get_response_error(response)
                     logging.info(f"Attempt to fetch spool info failed: {err_msg}")
                     return False
@@ -277,6 +276,7 @@ class MmuServer:
         for gate, spool_id in gate_ids:
             last_occurrence[gate] = (gate, spool_id)
         gate_ids = list(last_occurrence.values())
+        logging.info(f"PAUL reduced gate_ids={gate_ids}")
 
         # Write to spoolman db
         tasks = []
@@ -351,7 +351,7 @@ class MmuServer:
             gate = 0
 
         # Use the PATCH method on the spoolman api
-        logging.info(f"Setting printer {printer_name} and gate for spool id {spool_id}")
+        logging.info(f"Setting spool_id (spool_id) for printer {printer_name} @ gate {gate}")
         data = {'extra': {MMU_NAME_FIELD: f"\"{printer_name}\"", MMU_GATE_FIELD: gate}}
         if self.update_location:
             data['location'] = f"{printer_name} @ MMU Gate:{gate}"
@@ -429,22 +429,10 @@ class MmuServer:
         if not self._initialize_mmu(nb_gates):
             return False
 
-        # Example: [2, None, None, 3, 5, 6, None, None, 7]
-#        gate_dict = {}
-#        for i, spool in enumerate(self.gate_occupation):
-# PAUL TODO batch this as single call!
-#            if spool:
-#                gate_dict[i] = {
-#                    'spool_id': spool['id'],
-#                    'material': spool['filament']['material'],
-#                    'color': spool['filament']['color_hex'][:6],
-#                    'name': spool['filament']['name']
-#                }
-#            # This will tell Happy Hare to update it's local gate map
-#            await self.klippy_apis.run_gcode("MMU_GATE_MAP GATE={} SPOOLID={} MATERIAL={} COLOR={} NAME={} QUIET=1".format(i, spool['id'], spool['filament']['material'], spool['filament']['color_hex'][:6], spool['filament']['name']))
-#
-#        if not silent:
-#            await self.klippy_apis.run_gcode("MMU_GATE_MAP")
+        # This will tell Happy Hare to update it's local gate map. Cascade effect will be to refresh filament attributes
+        spool_ids = ",".join(map(str, [-1 if item is None else item for item in self.remote_gate_spool_id])) # None -> -1
+        quiet = "QUIET=0" if silent else ""
+        await self.klippy_apis.run_gcode(f"MMU_GATE_MAP SPOOLIDS=\"{spool_ids}\" {quiet}")
 
     async def display_spool_info(self, spool_id: int | None = None):
         '''

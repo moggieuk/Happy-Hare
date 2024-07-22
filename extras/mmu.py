@@ -6369,7 +6369,7 @@ class Mmu:
         self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.mmu_num_gates - 1)
 
         prev_spoolman_support = self.spoolman_support
-        spoolman_support = gcmd.get_int('SPOOLMAN_SUPPORT', self.spoolman_support)
+        spoolman_support = gcmd.get('SPOOLMAN_SUPPORT', self.spoolman_support)
         if spoolman_support not in self.SPOOLMAN_OPTIONS:
             raise gcmd.error("spoolman_support is invalid. Options are: %s" % self.SPOOLMAN_OPTIONS)
         self.spoolman_support = spoolman_support
@@ -7111,7 +7111,16 @@ class Mmu:
                     self._log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Dict=%s" % (gate, fil))
 
             self._update_gate_color(self.gate_color)
-            self._persist_gate_map() # This will also update LED status # PAUL do I need to sync?
+            self._persist_gate_map() # This will also update LED status
+
+        elif spoolids != "!":
+            try:
+                spoolids_parsed = [int(spoolid) for spoolid in spoolids.split(',')]
+                self.gate_spool_id = spoolids_parsed
+                self._persist_gate_map(sync=True) # This will also update LED status
+            except ValueError as e:
+                self._log_debug("Error: Could not parse spoolids (%s) as list of integers: %s" % (spoolids, e))
+                return
 
         elif gates != "!" or gate >= 0:
             gatelist = []
