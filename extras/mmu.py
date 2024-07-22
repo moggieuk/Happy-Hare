@@ -1117,6 +1117,25 @@ class Mmu:
 
         return None # Not valid
 
+    # Helper for finding the closest color
+    # Example:
+    # color_list = ['123456', 'abcdef', '789abc', '4a7d9f', '010203']
+    # _find_closest_color('4b7d8e', color_list) returns '4a7d9f'
+    def _find_closest_color(self, ref_color, color_list):
+        weighted_euclidean_distance = lambda color1, color2, weights=(0.3, 0.59, 0.11): (
+            sum(weights[i] * (a - b) ** 2 for i, (a, b) in enumerate(zip(color1, color2)))
+        )
+        ref_rgb = self._color_to_rgb_tuple(ref_color, fraction=False)
+        min_distance = float('inf')
+        closest_color = None
+        for color in color_list:
+            color_rgb = self._color_to_rgb_tuple(color)
+            distance = weighted_euclidean_distance(ref_rgb, color_rgb)
+            if distance < min_distance:
+                min_distance = distance
+                closest_color = color
+        return closest_color, min_distance
+
     # Helper to keep parallel RGB color map updated when color changes
     def _update_gate_color(self, new_color_map):
         self.gate_color = new_color_map
@@ -6760,8 +6779,10 @@ class Mmu:
 
         # Also persist to spoolman db if required
         if sync and self.spoolman_support == self.SPOOLMAN_PUSH:
-            self._log_error(f"PAUL: _persist_gate_map(sync={sync}, gate_ids={gate_ids})")
-            self._spoolman_push_gate_map(gate_ids)
+            if gate_ids is None:
+                gate_ids = [(gate, spool_id) for gate, spool_id in enumerate(self.gate_spool_id)]
+            if gate_ids:
+                self._spoolman_push_gate_map(gate_ids)
 
         if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
             self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
@@ -6774,10 +6795,9 @@ class Mmu:
         self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
-        self._persist_gate_map()
+        self._persist_gate_map() # PAUL sync? all gate_ids?
 
     def _automap_gate(self, tool, strategy):
-        # !! WORK IN PROGRESS !!
         if tool is None:
             self._log_error("Automap tool called without a tool argument")
             return
@@ -6889,26 +6909,6 @@ class Mmu:
                 self._log_error(reason[0])
                 for e in errors:
                     self._log_error(e)
-
-    # COOPER : I made the functions methods but you might wanna move them
-    def _weighted_euclidean_distance(self, color1, color2, weights=(0.3, 0.59, 0.11)):
-        return sum(weights[i] * (a - b) ** 2 for i, (a, b) in enumerate(zip(color1, color2))) # ** 0.5 sqrt not needed
-
-    # Helper for finding the closest color
-    # Example:
-    # color_list = ['123456', 'abcdef', '789abc', '4a7d9f', '010203']
-    # _find_closest_color('4b7d8e', color_list) returns '4a7d9f'
-    def _find_closest_color(self, ref_color, color_list):
-        ref_rgb = self._color_to_rgb_tuple(ref_color, fraction=False)
-        min_distance = float('inf')
-        closest_color = None
-        for color in color_list:
-            color_rgb = self._color_to_rgb_tuple(color)
-            distance = self._weighted_euclidean_distance(ref_rgb, color_rgb)
-            if distance < min_distance:
-                min_distance = distance
-                closest_color = color
-        return closest_color, min_distance
 
     # Set 'color' and 'spool_id' variable on the Tx macro for Mainsail/Fluidd to pick up
     # We don't use SET_GCODE_VARIABLE because the macro variable may not exist ahead of time
@@ -7072,7 +7072,7 @@ class Mmu:
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
         spoolids = gcmd.get('SPOOLIDS', "!") # Hidden option for spoolman pull
-        gmapstr = gcmd.get('MAP', "{}")      # Hidden option for bulk update from moonraker component
+        gmapstr = gcmd.get('MAP', "{}")      # Hidden option for bulk filament update from moonraker component
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
 
@@ -7105,8 +7105,13 @@ class Mmu:
         elif spoolids != "!":
             try:
                 spoolids_parsed = [int(spoolid) for spoolid in spoolids.split(',')]
-                self.gate_spool_id = spoolids_parsed
-                self._persist_gate_map(sync=True) # This will also update LED status
+                if len(spoolids_parsed) == self.mmu_num_gates:
+                    self.gate_spool_id = spoolids_parsed
+                    self._persist_gate_map(sync=True) # This will also update LED status
+                    self._spoolman_update_filaments() # Request refresh of filament attributes
+                else:
+                    self._log_debug("Error: Incorrect spoolids (%s) length" % spoolids)
+                    return
             except ValueError as e:
                 self._log_debug("Error: Could not parse spoolids (%s) as list of integers: %s" % (spoolids, e))
                 return

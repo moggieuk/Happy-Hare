@@ -63,7 +63,7 @@ class MmuServer:
 
         # Similar to Happy Hare gate_spool_id array but -1 -> None
         # Example: [2, None, None, 3, 5, 6, None, None, 7]
-        self.remote_gate_spool_id = []
+        self.remote_gate_spool_id = [] # !TODO IMPORTANT this needs to be a dict of arrays indexed by printer_name.  Only local printer is populated by default. Otherwise remote printers won't work
         self.nb_gates = None             # Set by Happy Hare on first call
         self.cache_lock = asyncio.Lock() # Lock to synchronize cache updates
 
@@ -100,9 +100,10 @@ class MmuServer:
         await self.build_spool_location_cache(silent=True)
 
     # !TODO: implement mainsail/fluidd gui prompts
-    # !TODO: implement level system
     async def _log_n_send(self, msg, error=False, prompt=False, silent=False):
-        ''' logs and sends msg to the klipper console '''
+        '''
+        logs and sends msg to the klipper console
+        '''
         logging.info(msg)
         msg = msg.replace("\n", "\\n")
         error_flag = "ERROR=1" if error else ""
@@ -276,15 +277,24 @@ class MmuServer:
         for gate, spool_id in gate_ids:
             last_occurrence[gate] = (gate, spool_id)
         gate_ids = list(last_occurrence.values())
-        logging.info(f"PAUL reduced gate_ids={gate_ids}")
+
+        # If setting a full gate map, include updates for "dirty" spool id's
+        # that are not going to overwritten
+        if len(gate_ids) == self.nb_gates:
+            for spool_id, (p_name, gate) in self.spool_location.items():
+                if p_name == printer_name and not any(s == spool_id for _, s in gate_ids):
+                    gate_ids.append((-1, spool_id))
+        logging.info(f"PAUL finialized gate_ids={gate_ids}")
 
         # Write to spoolman db
         tasks = []
         for gate, spool_id in gate_ids:
             if spool_id <= 0:
                 tasks.append(self.unset_spool_gate(gate=gate, silent=True))
-            else:
+            elif spool_id > 0 and gate >=0:
                 tasks.append(self.set_spool_gate(spool_id, gate, printer=printer_name, silent=silent))
+            else:
+                tasks.append(self.unset_spool_gate(spool_id=spool_id, silent=True))
 
         logging.info(f"PAUL BEFORE *******: spool_location={self.spool_location}")
         results = await asyncio.gather(*tasks) # Run in parallel
