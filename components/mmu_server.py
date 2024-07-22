@@ -83,6 +83,7 @@ class MmuServer:
         self.update_location = self.config.getboolean("update_spoolman_location", True)
 
 
+    # !TODO: Need database version check
     async def component_init(self) -> None:
         # Get current printer hostname
         self.printer_hostname = self.printer_info["hostname"]
@@ -130,7 +131,7 @@ class MmuServer:
 
     async def _get_active_spool(self):
         spool_id = await self.spoolman.database.get_item(
-            DB_NAMESPACE, ACTIVE_SPOOL_KEY, None
+            self.spoolman.DB_NAMESPACE, self.spoolman.ACTIVE_SPOOL_KEY, None
         )
         return spool_id
 
@@ -287,7 +288,7 @@ class MmuServer:
         tasks = []
         for gate, spool_id in gate_ids:
             if spool_id <= 0:
-                tasks.append(self.unset_spool_gate(gate=gate, silent=silent))
+                tasks.append(self.unset_spool_gate(gate=gate, silent=True))
             else:
                 tasks.append(self.set_spool_gate(spool_id, gate, printer=printer_name, silent=silent))
 
@@ -394,7 +395,8 @@ class MmuServer:
         current_printer_name, current_gate = self.spool_location.get(spool_id, (None, None))
 
         if not spool_id:
-            await self._log_n_send("Trying to unset spool but spool id is invalid or not found.")
+            if not silent:
+                await self._log_n_send("Trying to unset spool but spool id is invalid or not found.")
             return False
 
         # Use the PATCH method on the spoolman api
@@ -413,14 +415,16 @@ class MmuServer:
         elif response.has_error():
             err_msg = self.spoolman._get_response_error(response)
             logging.info(f"Attempt to unset spool failed: {err_msg}")
-            await self._log_n_send(f"Failed to unset spool {spool_id}")
+            if not silent:
+                await self._log_n_send(f"Failed to unset spool {spool_id}")
             return False
 
         async with self.cache_lock:
             self.spool_location.pop(spool_id, None)
 
         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": spool_id, "gate": gate})
-        await self._log_n_send(f"Spool {spool_id} gate cleared in spoolman db")
+        if not silent:
+            await self._log_n_send(f"Spool {spool_id} gate cleared in spoolman db")
         return True
 
 
@@ -479,7 +483,7 @@ class MmuServer:
         await self._log_n_send(msg)
 
         # Check if spool_id is assigned
-        spool = next((gate for sid, (printer, gate) in self.spool_location.items() if spoolid == sid), None)
+        spool = next((gate for sid, (printer, gate) in self.spool_location.items() if spool_id == sid), None)
         if spool is not None:
             msg = f"{CONSOLE_TAB}- gate: {spool}"
             await self._log_n_send(msg)
@@ -520,7 +524,7 @@ class MmuServer:
             ((spool_id, gate) for spool_id, (printer, gate) in self.spool_location.items() if printer == printer_name),
             key=lambda x: x[1]
         )
-        
+
         msg = ""
         msg += f"Gate assignment for printer: {printer_name}\n"
         msg += f"{'Gate':<8}{'Spool ID':<8}\n"
