@@ -40,9 +40,6 @@ if TYPE_CHECKING:
     from .history import History
     from tornado.websocket import WebSocketClientConnection
 
-CONSOLE_SPACE = '\u00A0' # Special space characters used as they will be displayed in gcode console
-CONSOLE_TAB = CONSOLE_SPACE * 3
-
 MMU_NAME_FIELD   = 'printer_name'
 MMU_GATE_FIELD   = 'mmu_gate_map'
 DB_NAMESPACE     = "moonraker"
@@ -163,7 +160,7 @@ class MmuServer:
             logging.error(f"Attempt add field {field_name} failed: {err_msg}")
             return False
         logging.info(f"Field {field_name} added to spoolman db for entity type {entity_type}")
-        logging.info(f"{CONSOLE_TAB}-fields: %s", response.json())
+        logging.info(f"  -fields: %s", response.json())
         return True
 
     async def get_filaments(self, gate_ids, silent=False) -> bool:
@@ -226,9 +223,9 @@ class MmuServer:
     
                     # Highlight errors
                     if mmu_gate and mmu_gate <= 0:
-                        errors += f"\n{CONSOLE_TAB}- spool_id:{spool_id} has invalid mmu_gate:{mmu_gate}"
+                        errors += f"\n  - spool_id:{spool_id} has invalid mmu_gate:{mmu_gate}"
                     if mmu_gate and not printer_name:
-                        errors += f"\n{CONSOLE_TAB}- spool_id:{spool_id} has mmu_gate:{mmu_gate} but no printer assigned"
+                        errors += f"\n  - spool_id:{spool_id} has mmu_gate:{mmu_gate} but no printer assigned"
         except Exception as e:
             if not silent:
                 await self._log_n_send(f"Failed to retrieve spools from spoolman: {e}")
@@ -515,10 +512,10 @@ class MmuServer:
         )    
         if filtered:
             msg = f"Gate assignment for printer: {printer_name}\n"
-            msg += " Gate | Spool ID\n"
-            msg += "------+---------\n"
+            msg += "Gate | Spool ID\n"
+            msg += "-----+---------\n"
             for spool_id, gate in filtered:
-                msg += f" {gate:<5}| {spool_id:<7}\n"
+                msg += f"{gate:<5}| {spool_id:<8}\n"
         else:
             msg = f"No gates assigned for printer: {printer_name}"
         await self._log_n_send(msg)

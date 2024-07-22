@@ -5782,20 +5782,24 @@ class Mmu:
         update = bool(gcmd.get_int('UPDATE', 0, minval=0, maxval=1))
         spool_id = gcmd.get_int('SPOOLID', 0, minval=1) # 0 is the do nothing value
         gate = gcmd.get_int('GATE', -1, minval=-1, maxval=self.mmu_num_gates - 1)
-        printer = gcmd.get('PRINTER', None) # Option to see other printers!
+        printer = gcmd.get('PRINTER', None) # Option to see other printers (only with SHOWINFO atm)
         showinfo = bool(gcmd.get_int('SHOWINFO', 0, minval=0, maxval=1))
 
         if refresh:
+            # Rebuild cache in moonraker and sync local and remote
             self._spoolman_refresh(quiet=quiet)
             self._spoolman_sync(quiet=quiet)
 
         elif sync:
+            # Sync local and remote gate maps
             self._spoolman_sync(quiet=quiet)
 
         elif clear:
-            self._spoolman_clear_gate_map(quiet=quiet) # Clear the gate allocation in spoolman db
+            # Clear the gate allocation in spoolman db
+            self._spoolman_clear_gate_map(quiet=quiet)
 
         elif update:
+            # Update a record in spoolman db
             if spool_id > 0 and gate >= 0:
                 self._spoolman_set_spool_gate(spool_id, gate, quiet=quiet)
             elif gate >= 0: # Gate but no spool id
@@ -5808,7 +5812,7 @@ class Mmu:
             self._spoolman_display_spool_info(spool_id if spool_id > 0 else None)
 
         else:
-            # Display gate association table from spoolman db
+            # Display gate association table from spoolman db for specified printer
             self._spoolman_display_spool_location(printer=printer)
 
 
@@ -6017,8 +6021,7 @@ class Mmu:
     cmd_MMU_LOG_help = "Logs messages in MMU log"
     def cmd_MMU_LOG(self, gcmd):
         #self._log_to_file(gcmd.get_commandline())
-        #msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", UI_SPACE)
-        msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", '\u00A0')
+        msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", UI_SPACE)
         if gcmd.get_int('ERROR', 0, minval=0, maxval=1):
             self._log_error(msg)
         else:
@@ -7110,7 +7113,7 @@ class Mmu:
                     self._persist_gate_map(sync=True) # This will also update LED status
                     self._spoolman_update_filaments() # Request refresh of filament attributes
                 else:
-                    self._log_debug("Error: Incorrect spoolids (%s) length" % spoolids)
+                    self._log_error("Error: Incorrect spoolids (%s) length" % spoolids)
                     return
             except ValueError as e:
                 self._log_debug("Error: Could not parse spoolids (%s) as list of integers: %s" % (spoolids, e))
