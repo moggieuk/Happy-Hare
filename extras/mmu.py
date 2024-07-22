@@ -1096,7 +1096,7 @@ class Mmu:
             return (0.,0.,0.)
         else:
             if length % 3 == 0:
-                return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+                return tuple(int(rgb_hex[i:i+2], 16) for i in (0, 2, 4))
             return (0,0,0)
 
     # Helper to return validated color string or None if invalid
