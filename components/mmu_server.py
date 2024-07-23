@@ -275,16 +275,22 @@ class MmuServer:
             return False
 
         # We know which spool_id's have changed but we only need persist the last change
-        # to spoolman especially since this is done in parallel writes
+        # to spool especially since this is done in parallel writes
         last_occurrence = {}
+        cleanup = []
         for gate, spool_id in gate_ids:
+            old_sid_for_gate = self.find_spool_id(None, gate)
+            if old_sid_for_gate:
+                cleanup.append((-1, old_sid_for_gate))
             last_occurrence[gate] = (gate, spool_id)
-        gate_ids = list(last_occurrence.values())
+        gate_ids = cleanup + list(last_occurrence.values())
+        logging.info(f"PAUL reduced gate_ids={gate_ids}, cleanup={cleanup}")
 
         # If setting a full gate map, include updates for "dirty" spool id's
         # that are not going to overwritten
         if len(gate_ids) == self.nb_gates:
             for spool_id, (p_name, gate, _) in self.spool_location.items():
+                logging.info(f"PAUL checking spool_id:{spool_id}, p_name:{p_name}, gate:{gate}")
                 if p_name == printer_name and not any(s == spool_id for _, s in gate_ids):
                     gate_ids.append((-1, spool_id))
         logging.info(f"PAUL finialized gate_ids={gate_ids}")
