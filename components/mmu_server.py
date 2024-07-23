@@ -14,6 +14,7 @@
 #
 from __future__ import annotations
 import copy
+from distutils import version
 from distutils.command import check
 import json
 import logging, os, sys, re, time, asyncio
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
 
 MMU_NAME_FIELD   = 'printer_name'
 MMU_GATE_FIELD   = 'mmu_gate_map'
+MIN_SM_VER       = version.LooseVersion('0.18.1')
+
 DB_NAMESPACE     = "moonraker"
 ACTIVE_SPOOL_KEY = "spoolman.spool_id"
 
@@ -81,18 +84,32 @@ class MmuServer:
         # Options
         self.update_location = self.config.getboolean("update_spoolman_location", True)
 
-    # !TODO: Need database version check
+    async def _get_spoolman_version(self) -> version.LooseVersion:
+        response = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/info')
+        if response.status_code == 404:
+            logging.info(f"'{self.spoolman.spoolman_url}/v1/info' not found")
+            return False
+        elif response.has_error():
+            err_msg = self.spoolman._get_response_error(response)
+            logging.error(f"Attempt to get info from spoolman failed: {err_msg}")
+            return False
+        else:
+            logging.info("info field in spoolman retrieved")
+            return version.LooseVersion(response.json()['version'])
+
     async def component_init(self) -> None:
         # Get current printer hostname
         self.printer_hostname = self.printer_info["hostname"]
-
-        # Make sure db has required extra fields
-        fields = await self.get_extra_fields("spool")
-        if MMU_NAME_FIELD not in fields:
-            await self.add_extra_field("spool", field_name="Printer Name", field_key=MMU_NAME_FIELD, field_type="text", default_value="")
-        if MMU_GATE_FIELD not in await self.get_extra_fields("spool"):
-            await self.add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=None)
-
+        spoolman_version = await self._get_spoolman_version()
+        if spoolman_version >= MIN_SM_VER:
+            # Make sure db has required extra fields
+            fields = await self.get_extra_fields("spool")
+            if MMU_NAME_FIELD not in fields:
+                await self.add_extra_field("spool", field_name="Printer Name", field_key=MMU_NAME_FIELD, field_type="text", default_value="")
+            if MMU_GATE_FIELD not in await self.get_extra_fields("spool"):
+                await self.add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=None)
+        else :
+            logging.error(f"Could not initialize mmu_server component. Spoolman db version too old (found {spoolman_version} < {MIN_SM_VER})")
         # Create cache of spool location from spoolman db for effeciency
         await self.build_spool_location_cache(silent=True)
 
@@ -118,7 +135,7 @@ class MmuServer:
         '''
         if self.nb_gates:
             return True # Already initialized
-       
+
         if nb_gates:
             self.nb_gates = nb_gates
             self.remote_gate_spool_id = [None] * self.nb_gates
@@ -226,7 +243,7 @@ class MmuServer:
                     if printer_name and mmu_gate >= 0:
                         filament_attr = self.get_filament_attr(spool_info)
                         self.spool_location[spool_id] = (printer_name.strip('"'), mmu_gate, filament_attr)
-    
+
                     # Highlight errors
                     if printer_name and mmu_gate < 0:
                         errors += f"\n  - spool_id {spool_id} has printer {printer_name} but no mmu_gate assigned"
@@ -307,7 +324,7 @@ class MmuServer:
         logging.info(f"PAUL BEFORE *******: spool_location={self.spool_location}")
         results = await asyncio.gather(*tasks) # Run in parallel
         logging.info(f"PAUL AFTER *******: spool_location={self.spool_location}")
-        
+
         # Rebuild remote gate_spool_id map
         self.build_remote_gate_spool_id()
         return True
@@ -328,7 +345,7 @@ class MmuServer:
         for spool_id, (p_name, gate, _) in spool_location_copy.items():
             if p_name == printer_name:
                 tasks.append(self.unset_spool_gate(spool_id=spool_id))
-        
+
         logging.info(f"PAUL BEFORE *******: spool_location={self.spool_location}")
         results = await asyncio.gather(*tasks)  # Run in parallel and collect results
         logging.info(f"PAUL AFTER *******: spool_location={self.spool_location}")
@@ -539,7 +556,7 @@ class MmuServer:
         filtered = sorted(
             ((spool_id, gate) for spool_id, (printer, gate, _) in self.spool_location.items() if printer == printer_name),
             key=lambda x: x[1]
-        )    
+        )
         if filtered:
             msg = f"Gate assignment for printer: {printer_name}\n"
             msg += "Gate | Spool ID\n"
