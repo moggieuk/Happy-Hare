@@ -5652,7 +5652,7 @@ class Mmu:
             # This will update spoolman with just the gate assignment (for visualization) and will update
             # local gate map attributes with data from spoolman thus overwriting the local map
             self._spoolman_push_gate_map(quiet=quiet)
-        self._spoolman_update_filaments(quiet=quiet)
+            self._spoolman_update_filaments(quiet=quiet)
 
     def _spoolman_activate_spool(self, spool_id=-1):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
@@ -6780,7 +6780,7 @@ class Mmu:
         self._write_variables()
         self._update_t_macros()
 
-        # Also persist to spoolman db if required
+        # Also persist to spoolman db if pushing updates for visability
         if sync and self.spoolman_support == self.SPOOLMAN_PUSH:
             if gate_ids is None:
                 gate_ids = [(gate, spool_id) for gate, spool_id in enumerate(self.gate_spool_id)]
@@ -6798,7 +6798,7 @@ class Mmu:
         self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
-        self._persist_gate_map() # PAUL sync? all gate_ids?
+        self._persist_gate_map(sync=True)
 
     def _automap_gate(self, tool, strategy):
         if tool is None:
