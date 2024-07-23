@@ -5802,7 +5802,7 @@ class Mmu:
             # Update a record in spoolman db
             if spool_id > 0 and gate >= 0:
                 self._spoolman_set_spool_gate(spool_id, gate, quiet=quiet)
-            elif gate >= 0: # Gate but no spool id
+            elif spool_id == 0 and gate >= 0: # Gate but no spool id
                 self._spoolman_unset_spool_gate(gate=gate, quiet=quiet)
             elif spool_id > 0 and gate < 0: # Spool id but no gate
                 self._spoolman_unset_spool_gate(spool_id=spool_id, quiet=quiet)
@@ -6301,8 +6301,10 @@ class Mmu:
     cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
     def cmd_MMU_TEST_CONFIG(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+
         # Try to catch illegal parameters
-        illegal_params = [p for p in gcmd.get_command_parameters() if vars(self).get(p.lower()) is None and p.lower() not in [self.VARS_MMU_CALIB_BOWDEN_LENGTH]]
+        illegal_params = [p for p in gcmd.get_command_parameters() if vars(self).get(p.lower()) is None and p.lower() not in [self.VARS_MMU_CALIB_BOWDEN_LENGTH] and p.upper() not in ['QUIET']]
         if illegal_params:
             raise gcmd.error("Unknown parameter: %s" % illegal_params)
 
@@ -6443,109 +6445,110 @@ class Mmu:
         self.test_force_in_print = gcmd.get_int('TEST_FORCE_IN_PRINT', self.test_force_in_print, minval=0, maxval=1)
         self.canbus_comms_retries = gcmd.get_int('CANBUS_COMMS_RETRIES', self.canbus_comms_retries, minval=1, maxval=10)
 
-        msg = "SPEEDS:"
-        msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
-        msg += "\ngear_from_buffer_accel = %.1f" % self.gear_from_buffer_accel
-        msg += "\ngear_from_spool_speed = %.1f" % self.gear_from_spool_speed
-        msg += "\ngear_from_spool_accel = %.1f" % self.gear_from_spool_accel
-        msg += "\ngear_short_move_speed = %.1f" % self.gear_short_move_speed
-        msg += "\ngear_short_move_accel = %.1f" % self.gear_short_move_accel
-        msg += "\ngear_short_move_threshold = %.1f" % self.gear_short_move_threshold
-        msg += "\ngear_homing_speed = %.1f" % self.gear_homing_speed
-        msg += "\nextruder_homing_speed = %.1f" % self.extruder_homing_speed
-        msg += "\nextruder_load_speed = %.1f" % self.extruder_load_speed
-        msg += "\nextruder_unload_speed = %.1f" % self.extruder_unload_speed
-        msg += "\nextruder_sync_load_speed = %.1f" % self.extruder_sync_load_speed
-        msg += "\nextruder_sync_unload_speed = %.1f" % self.extruder_sync_unload_speed
-        msg += "\nextruder_accel = %.1f" % self.extruder_accel
-        msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
-        msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
-        msg += "\nselector_touch_speed = %.1f" % self.selector_touch_speed
-        msg += "\nselector_touch_enable = %d" % self.selector_touch_enable
-
-        msg += "\n\nTMC & MOTOR SYNC CONTROL:"
-        msg += "\nsync_to_extruder = %d" % self.sync_to_extruder
-        msg += "\nsync_form_tip = %d" % self.sync_form_tip
-        msg += "\nsync_feedback_enable = %d" % self.sync_feedback_enable
-        msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
-        msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
-        msg += "\nsync_gear_current = %d" % self.sync_gear_current
-        msg += "\nextruder_collision_homing_current = %d" % self.extruder_collision_homing_current
-        msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
-
-        msg += "\n\nLOADING/UNLOADING:"
-        msg += "\ngate_homing_endstop = %s" % self.gate_homing_endstop
-        if self.gate_homing_endstop == self.ENDSTOP_GATE and self._has_encoder():
-            msg += "\ngate_endstop_to_encoder = %s" % self.gate_endstop_to_encoder
-        msg += "\ngate_parking_distance = %s" % self.gate_parking_distance
-        if self._has_encoder():
-            msg += "\nbowden_apply_correction = %d" % self.bowden_apply_correction
-            msg += "\nbowden_allowable_load_delta = %d" % self.bowden_allowable_load_delta
-            msg += "\nbowden_pre_unload_test = %d" % self.bowden_pre_unload_test
-        msg += "\nextruder_force_homing = %d" % self.extruder_force_homing
-        msg += "\nextruder_homing_endstop = %s" % self.extruder_homing_endstop
-        msg += "\nextruder_homing_max = %.1f" % self.extruder_homing_max
-        msg += "\ntoolhead_extruder_to_nozzle = %.1f" % self.toolhead_extruder_to_nozzle
-        if self._has_sensor(self.ENDSTOP_TOOLHEAD):
-            msg += "\ntoolhead_sensor_to_nozzle = %.1f" % self.toolhead_sensor_to_nozzle
-            msg += "\ntoolhead_homing_max = %.1f" % self.toolhead_homing_max
-        if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
-            msg += "\ntoolhead_entry_to_extruder = %.1f" % self.toolhead_entry_to_extruder
-        msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
-        msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
-        msg += "\ngcode_load_sequence = %d" % self.gcode_load_sequence
-        msg += "\ngcode_unload_sequence = %d" % self.gcode_unload_sequence
-
-        msg += "\n\nTIP FORMING:"
-        msg += "\nform_tip_macro = %s" % self.form_tip_macro
-        msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
-        msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
-
-        msg += "\n\nBLOB/STRINGING:"
-        msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
-        msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
-        msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
-        msg += "\nz_hop_ramp = %.1f" % self.z_hop_ramp
-        msg += "\nz_hop_accel = %d" % self.z_hop_accel
-        msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
-        msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
-        msg += "\ntoolchange_unretract_speed = %.1f" % self.toolchange_unretract_speed
-
-        msg += "\n\nLOGGING:"
-        msg += "\nlog_level = %d" % self.log_level
-        msg += "\nlog_visual = %d" % self.log_visual
-        if self.mmu_logger:
-            msg += "\nlog_file_level = %d" % self.log_file_level
-        msg += "\nlog_statistics = %d" % self.log_statistics
-        msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
-
-        msg += "\n\nOTHER:"
-        msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
-        if self._has_encoder():
-            msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
-        msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
-        msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
-        msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
-        msg += "\nspoolman_support = %s" % self.spoolman_support
-        if prev_spoolman_support != self.spoolman_support:
-            self._spoolman_sync()
-        msg += "\nt_macro_color = %s" % self.t_macro_color
-        if prev_t_macro_color != self.t_macro_color:
-            self._update_t_macros()
-        if self._has_encoder():
-            msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
-            msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
-            msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
-        msg += "\nfilament_recovery_on_pause = %d" % self.filament_recovery_on_pause
-        msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
-        msg += "\nprint_start_detection = %d" % self.print_start_detection
-        msg += "\nshow_error_dialog = %d" % self.show_error_dialog
-
-        msg += "\n\nCALIBRATION:"
-        msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
-        if self._has_encoder():
-            msg += "\nmmu_calibration_clog_length = %.1f" % self.encoder_sensor.get_clog_detection_length()
-        self._log_info(msg)
+        if not quiet:
+            msg = "SPEEDS:"
+            msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
+            msg += "\ngear_from_buffer_accel = %.1f" % self.gear_from_buffer_accel
+            msg += "\ngear_from_spool_speed = %.1f" % self.gear_from_spool_speed
+            msg += "\ngear_from_spool_accel = %.1f" % self.gear_from_spool_accel
+            msg += "\ngear_short_move_speed = %.1f" % self.gear_short_move_speed
+            msg += "\ngear_short_move_accel = %.1f" % self.gear_short_move_accel
+            msg += "\ngear_short_move_threshold = %.1f" % self.gear_short_move_threshold
+            msg += "\ngear_homing_speed = %.1f" % self.gear_homing_speed
+            msg += "\nextruder_homing_speed = %.1f" % self.extruder_homing_speed
+            msg += "\nextruder_load_speed = %.1f" % self.extruder_load_speed
+            msg += "\nextruder_unload_speed = %.1f" % self.extruder_unload_speed
+            msg += "\nextruder_sync_load_speed = %.1f" % self.extruder_sync_load_speed
+            msg += "\nextruder_sync_unload_speed = %.1f" % self.extruder_sync_unload_speed
+            msg += "\nextruder_accel = %.1f" % self.extruder_accel
+            msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
+            msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
+            msg += "\nselector_touch_speed = %.1f" % self.selector_touch_speed
+            msg += "\nselector_touch_enable = %d" % self.selector_touch_enable
+    
+            msg += "\n\nTMC & MOTOR SYNC CONTROL:"
+            msg += "\nsync_to_extruder = %d" % self.sync_to_extruder
+            msg += "\nsync_form_tip = %d" % self.sync_form_tip
+            msg += "\nsync_feedback_enable = %d" % self.sync_feedback_enable
+            msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
+            msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
+            msg += "\nsync_gear_current = %d" % self.sync_gear_current
+            msg += "\nextruder_collision_homing_current = %d" % self.extruder_collision_homing_current
+            msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
+    
+            msg += "\n\nLOADING/UNLOADING:"
+            msg += "\ngate_homing_endstop = %s" % self.gate_homing_endstop
+            if self.gate_homing_endstop == self.ENDSTOP_GATE and self._has_encoder():
+                msg += "\ngate_endstop_to_encoder = %s" % self.gate_endstop_to_encoder
+            msg += "\ngate_parking_distance = %s" % self.gate_parking_distance
+            if self._has_encoder():
+                msg += "\nbowden_apply_correction = %d" % self.bowden_apply_correction
+                msg += "\nbowden_allowable_load_delta = %d" % self.bowden_allowable_load_delta
+                msg += "\nbowden_pre_unload_test = %d" % self.bowden_pre_unload_test
+            msg += "\nextruder_force_homing = %d" % self.extruder_force_homing
+            msg += "\nextruder_homing_endstop = %s" % self.extruder_homing_endstop
+            msg += "\nextruder_homing_max = %.1f" % self.extruder_homing_max
+            msg += "\ntoolhead_extruder_to_nozzle = %.1f" % self.toolhead_extruder_to_nozzle
+            if self._has_sensor(self.ENDSTOP_TOOLHEAD):
+                msg += "\ntoolhead_sensor_to_nozzle = %.1f" % self.toolhead_sensor_to_nozzle
+                msg += "\ntoolhead_homing_max = %.1f" % self.toolhead_homing_max
+            if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+                msg += "\ntoolhead_entry_to_extruder = %.1f" % self.toolhead_entry_to_extruder
+            msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
+            msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
+            msg += "\ngcode_load_sequence = %d" % self.gcode_load_sequence
+            msg += "\ngcode_unload_sequence = %d" % self.gcode_unload_sequence
+    
+            msg += "\n\nTIP FORMING:"
+            msg += "\nform_tip_macro = %s" % self.form_tip_macro
+            msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
+            msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
+    
+            msg += "\n\nBLOB/STRINGING:"
+            msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
+            msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
+            msg += "\nz_hop_speed = %.1f" % self.z_hop_speed
+            msg += "\nz_hop_ramp = %.1f" % self.z_hop_ramp
+            msg += "\nz_hop_accel = %d" % self.z_hop_accel
+            msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
+            msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
+            msg += "\ntoolchange_unretract_speed = %.1f" % self.toolchange_unretract_speed
+    
+            msg += "\n\nLOGGING:"
+            msg += "\nlog_level = %d" % self.log_level
+            msg += "\nlog_visual = %d" % self.log_visual
+            if self.mmu_logger:
+                msg += "\nlog_file_level = %d" % self.log_file_level
+            msg += "\nlog_statistics = %d" % self.log_statistics
+            msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
+    
+            msg += "\n\nOTHER:"
+            msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
+            if self._has_encoder():
+                msg += "\nenable_clog_detection = %d" % self.enable_clog_detection
+            msg += "\nenable_endless_spool = %d" % self.enable_endless_spool
+            msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
+            msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
+            msg += "\nspoolman_support = %s" % self.spoolman_support
+            if prev_spoolman_support != self.spoolman_support:
+                self._spoolman_sync()
+            msg += "\nt_macro_color = %s" % self.t_macro_color
+            if prev_t_macro_color != self.t_macro_color:
+                self._update_t_macros()
+            if self._has_encoder():
+                msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
+                msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
+                msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
+            msg += "\nfilament_recovery_on_pause = %d" % self.filament_recovery_on_pause
+            msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
+            msg += "\nprint_start_detection = %d" % self.print_start_detection
+            msg += "\nshow_error_dialog = %d" % self.show_error_dialog
+    
+            msg += "\n\nCALIBRATION:"
+            msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
+            if self._has_encoder():
+                msg += "\nmmu_calibration_clog_length = %.1f" % self.encoder_sensor.get_clog_detection_length()
+            self._log_info(msg)
 
 
 ###########################################
@@ -6718,6 +6721,7 @@ class Mmu:
             material = self.gate_material[g] or "n/a"
             color = self.gate_color[g] or "n/a"
             available = available_status[self.gate_status[g]]
+            name = self.gate_filament_name[g] or "n/a"
 
             gate_detail = ""
             if detail:
@@ -6729,12 +6733,16 @@ class Mmu:
             else:
                 gate_detail = "\nGate {}: ".format(g)
 
-            spool_id = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
-            name = self.gate_filament_name[g] or "n/a"
-            filament_name = ", Name: {}".format(name)
-            spool_info = ", SpoolID: {}".format(spool_id) if not self.spoolman_support == self.SPOOLMAN_OFF else ""
-            speed_info = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
-            msg += "{}Status: {}, Material: {}, Color: {}{}{}{}".format(gate_detail, available, material, color, spool_info, filament_name, speed_info)
+            msg += "{}Status: {}".format(gate_detail, available)
+            speed_option = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
+            spool_option = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
+            if self.spoolman_support == self.SPOOLMAN_PULL:
+                if self.gate_spool_id[g] > 0:
+                    msg += ", SpoolId: {} --> Material: {}, Color: {}, Name: {}{}".format(spool_option, material, color, name, speed_option)
+            elif self.spoolman_support == self.SPOOLMAN_PUSH:
+                msg += ", SpoolId: {}, Material: {}, Color: {}, Name: {}{}".format(spool_option, material, color, name, speed_option)
+            else:
+                msg += ", Material: {}, Color: {}, Name: {}{}".format(material, color, name, speed_option)
         return msg
 
     def _remap_tool(self, tool, gate, available=None):
