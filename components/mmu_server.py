@@ -236,7 +236,6 @@ class MmuServer:
             await self._log_n_send(f"Failed to retrieve spools from spoolman: {e}", silent=silent)
             return False
 
-        logging.info(f"Errors found in spoolman db:{errors}")
         if errors:
             await self._log_n_send(f"Errors found in spoolman db:{errors}", silent=silent)
         return True
@@ -250,12 +249,12 @@ class MmuServer:
 
         # Build remote gate map
         logging.info(f"Building gate map for printer: {self.printer_hostname}")
-        self.remote_gate_spool_id = [self.find_spool_id(self.printer_hostname, gate) for gate in range(self.nb_gates)]
+        self.remote_gate_spool_id = [self._find_spool_id(self.printer_hostname, gate) for gate in range(self.nb_gates)]
         logging.info(f"PAUL *******:\nremote_gate_spool_id={self.remote_gate_spool_id}")
         return True
 
     # Function to find the spool_location entry with a matching 'printer/gate' or just 'gate' if 'printer' in None
-    def find_spool_id(self, target_printer, target_gate):
+    def _find_spool_id(self, target_printer, target_gate):
         return next((spoolid
                 for spoolid, (printer, gate, _) in self.spool_location.items()
                 if (target_printer is None or printer == target_printer) and gate == target_gate
@@ -279,7 +278,7 @@ class MmuServer:
         last_occurrence = {}
         cleanup = []
         for gate, spool_id in gate_ids:
-            old_sid_for_gate = self.find_spool_id(None, gate)
+            old_sid_for_gate = self._find_spool_id(printer_name, gate)
             if old_sid_for_gate:
                 cleanup.append((-1, old_sid_for_gate))
             last_occurrence[gate] = (gate, spool_id)
@@ -369,6 +368,11 @@ class MmuServer:
                 return False
             gate = 0
 
+        # If another spool was previously assigned to gate on this printer make sure that is cleared
+        old_sid_for_gate = self._find_spool_id(printer_name, gate)
+        if old_sid_for_gate:
+            await self.unset_spool_gate(spool_id=old_sid_for_gate, printer=printer_name, silent=silent)
+
         # Use the PATCH method on the spoolman api
         logging.info(f"Setting spool_id (spool_id) for printer {printer_name} @ gate {gate}")
         data = {'extra': {MMU_NAME_FIELD: f"\"{printer_name}\"", MMU_GATE_FIELD: gate}}
@@ -405,7 +409,7 @@ class MmuServer:
         logging.info(f"PAUL unset_spool_gate(spool_id={spool_id}, gate={gate}, silent={silent})")
 
         # Sanity checking...
-        spool_id = spool_id or self.find_spool_id(None, gate)
+        spool_id = spool_id or self._find_spool_id(None, gate)
         current_printer_name, current_gate, _ = self.spool_location.get(spool_id, (None, None, None))
         if not spool_id:
             await self._log_n_send("Trying to unset spool {spool_id} but not found in cache", error=True, silent=silent)
@@ -457,7 +461,7 @@ class MmuServer:
         gate_dict = {}
         for gate, spool_id in enumerate(self.remote_gate_spool_id):
             if spool_id:
-                gate_dict[gate] = self.spool_location[spool_id][2]
+                gate_dict[gate] = self.spool_location[spool_id][2] # PAUL KeyError: 3 ??
             else:
                 gate_dict[gate] = {'spool_id': -1} # PAUL uset other filament attributes??
         try:
