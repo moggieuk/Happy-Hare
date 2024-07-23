@@ -7074,8 +7074,8 @@ class Mmu:
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
-        spoolids = gcmd.get('SPOOLIDS', "!") # Hidden option for spoolman pull
-        gmapstr = gcmd.get('MAP', "{}")      # Hidden option for bulk filament update from moonraker component
+        gmapstr = gcmd.get('MAP', "{}")                                # Hidden option for bulk filament update from moonraker component
+        replace = bool(gcmd.get_int('REPLACE', 0, minval=0, maxval=1)) # Hidden option for bulk filament
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
 
@@ -7092,32 +7092,32 @@ class Mmu:
             self.pending_spool_id = next_spool_id
             self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.monotonic() + self.pending_spool_id_timeout)
 
-        if not gate_map == {}:
-            self._log_debug("Received gate map update from Spoolman: %s" % gmapstr)
-            for gate, fil in gate_map.items():
-                if self.gate_spool_id[gate] == fil['spool_id']:
-                    self.gate_material[gate] = fil['material']
-                    self.gate_color[gate] = fil['color']
-                    self.gate_filament_name[gate] = fil['name']
-                else:
-                    self._log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Dict=%s" % (gate, fil))
+        if gate_map:
+            self._log_debug("Received gate map update (replace: %s) from Spoolman: %s" % (replace, gmapstr))
+            if replace:
+                for gate, fil in gate_map.items():
+                    self.gate_spool_id[gate] = fil['spool_id']
+                    if fil['spool_id'] >= 0:
+                        self.gate_material[gate] = fil.get('material', '')
+                        self.gate_color[gate] = fil.get('color', '')
+                        self.gate_filament_name[gate] = fil.get('name', '')
+                    else:
+                        # Replace map
+                        self.gate_material[gate] = ''
+                        self.gate_color[gate] = ''
+                        self.gate_filament_name[gate] = ''
+                        self.gate_speed_override[gate] = 100
+            else:
+                for gate, fil in gate_map.items():
+                    if self.gate_spool_id[gate] == fil['spool_id']:
+                        self.gate_material[gate] = fil.get('material', '')
+                        self.gate_color[gate] = fil.get('color', '')
+                        self.gate_filament_name[gate] = fil.get('name', '')
+                    else:
+                        self._log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Dict=%s" % (gate, fil))
 
             self._update_gate_color(self.gate_color)
             self._persist_gate_map() # This will also update LED status
-
-        elif spoolids != "!":
-            try:
-                spoolids_parsed = [int(spoolid) for spoolid in spoolids.split(',')]
-                if len(spoolids_parsed) == self.mmu_num_gates:
-                    self.gate_spool_id = spoolids_parsed
-                    self._persist_gate_map(sync=True) # This will also update LED status
-                    self._spoolman_update_filaments() # Request refresh of filament attributes
-                else:
-                    self._log_error("Error: Incorrect spoolids (%s) length" % spoolids)
-                    return
-            except ValueError as e:
-                self._log_debug("Error: Could not parse spoolids (%s) as list of integers: %s" % (spoolids, e))
-                return
 
         elif gates != "!" or gate >= 0:
             gatelist = []
