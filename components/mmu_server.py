@@ -110,6 +110,7 @@ class MmuServer:
                 await self.add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=None)
         else :
             logging.error(f"Could not initialize mmu_server component. Spoolman db version too old (found {spoolman_version} < {MIN_SM_VER})")
+
         # Create cache of spool location from spoolman db for effeciency
         await self.build_spool_location_cache(silent=True)
 
@@ -118,10 +119,10 @@ class MmuServer:
         '''
         logs and sends msg to the klipper console
         '''
-        msg = msg.replace("\n", "\\n")
         logging.info(msg)
         if not silent:
             error_flag = "ERROR=1" if error else ""
+            msg = msg.replace("\n", "\\n") # Get through klipper filtering
             await self.klippy_apis.run_gcode(f"MMU_LOG MSG='{msg}' {error_flag}")
 
     def _initialize_mmu(self, nb_gates):
