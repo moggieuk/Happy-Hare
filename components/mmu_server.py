@@ -583,7 +583,7 @@ class MmuServer:
         async with self.cache_lock:
             filtered = sorted(((spool_id, gate) for spool_id, (printer, gate, _) in self.spool_location.items() if printer == printer_name), key=lambda x: x[1])
         if filtered:
-            msg = f"Gate assignment for printer: {printer_name}\n"
+            msg = f"Spoolman gate assignment for printer: {printer_name}\n"
             msg += "Gate | SpoolId\n"
             msg += "-----+--------\n"
             if self.nb_gates:
