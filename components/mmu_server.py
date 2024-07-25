@@ -65,7 +65,7 @@ class MmuServer:
         # Example: [2, None, None, 3, 5, 6, None, None, 7]
         self.remote_gate_spool_id = [] # !TODO this needs to be a dict of arrays indexed by printer_name. Only local printer is populated by default. Otherwise remote printers won't work so prevents PRINTER=xxx functionality on some commands
         self.nb_gates = None             # Set by Happy Hare on first call
-        self.cache_lock = asyncio.Lock() # Lock to synchronize cache updates
+        self.cache_lock = asyncio.Lock() # Lock to synchronize cache updates/reads
 
         # Spoolman filament info retrieval functionality and update reporting
         self.server.register_remote_method("spoolman_get_filaments", self.get_filaments)
@@ -190,6 +190,22 @@ class MmuServer:
         logging.info(f"  -fields: %s", response.json())
         return True
 
+    async def fetch_spool_info(self, spool_id) -> dict | None:
+        '''
+        Retrieve an individual spool_info record
+        '''
+        full_url = f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}"
+        response = await self.spoolman.http_client.request(method="GET", url=full_url, body=None)
+        if response.status_code == 404:
+            logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+            return None
+        elif response.has_error():
+            err_msg = self.spoolman._get_response_error(response)
+            logging.info(f"Attempt to fetch spool info failed: {err_msg}")
+            return None
+        spool_info = response.json()
+        return spool_info
+
     def get_filament_attr(self, spool_info) -> dict:
         spool_id = spool_info["id"]
         filament = spool_info["filament"]
@@ -197,32 +213,6 @@ class MmuServer:
         color_hex = filament.get('color_hex', '')[:6] # Strip alpha channel if it exists
         name = filament.get('name', '')
         return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name}
-
-    async def get_filaments(self, gate_ids, silent=False) -> bool:
-        '''
-        Retrieve filament attributes for list of (gate, spool_id) tuples
-        Pass back to Happy Hare with MMU_GATE_MAP call
-        '''
-        gate_dict = {}
-        if self.spoolman:
-            for gate_id, spool_id in gate_ids:
-                full_url = f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}"
-                response = await self.spoolman.http_client.request(method="GET", url=full_url, body=None)
-                if response.status_code == 404:
-                    logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
-                    return False
-                elif response.has_error():
-                    err_msg = self.spoolman._get_response_error(response)
-                    logging.info(f"Attempt to fetch spool info failed: {err_msg}")
-                    return False
-                spool_info = response.json()
-                gate_dict[gate_id] = self.get_filament_attr(spool_info)
-            try:
-                await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" QUIET=1")
-            except Exception as e:
-                await self._log_n_send("Exception running MMU_GATE_MAP gcode: %s" % str(e), silent=silent)
-                return False
-        return True
 
     async def refresh_cache(self, nb_gates=None, silent=False) -> bool:
         '''
@@ -285,6 +275,91 @@ class MmuServer:
                 if (target_printer is None or printer == target_printer) and gate == target_gate
             ), None)
 
+
+    async def get_filaments(self, gate_ids, silent=False) -> bool:
+        '''
+        Retrieve filament attributes for list of (gate, spool_id) tuples
+        Pass back to Happy Hare with MMU_GATE_MAP call
+        '''
+        gate_dict = {}
+        if self.spoolman:
+            async with self.cache_lock:
+                for gate_id, spool_id in gate_ids:
+                    s = self.spool_location.get(spool_id, None)
+                    if s:
+                        gate_dict[gate_id] = s[2]
+                    else:
+                        logging.error(f"Spool id {spool_id} requested but not found in cache")
+            try:
+                await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" QUIET=1")
+            except Exception as e:
+                await self._log_n_send(f"Exception running MMU_GATE_MAP gcode: {str(e)}", silent=silent)
+                return False
+    
+        return True
+
+# PAUL ORIG
+#        gate_dict = {}
+#        if self.spoolman:
+#            for gate_id, spool_id in gate_ids:
+#                async with self.cache_lock:
+#                    s = self.spool_location.get(spool_id, None)
+#                if s:
+#                    gate_dict[gate_id] = s[2]
+#                else:
+#                    full_url = f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}"
+#                    response = await self.spoolman.http_client.request(method="GET", url=full_url, body=None)
+#                    if response.status_code == 404:
+#                        logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+#                        return False
+#                    elif response.has_error():
+#                        err_msg = self.spoolman._get_response_error(response)
+#                        logging.info(f"Attempt to fetch spool info failed: {err_msg}")
+#                        return False
+#                    spool_info = response.json()
+#                    gate_dict[gate_id] = self.get_filament_attr(spool_info)
+#            try:
+#                await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" QUIET=1")
+#            except Exception as e:
+#                await self._log_n_send("Exception running MMU_GATE_MAP gcode: %s" % str(e), silent=silent)
+#                return False
+#        return True
+
+# PAUL PARALLEL ATTEMPT
+#        logging.info(f"PAUL get_filaments()")
+#        logging.info(f"PAUL spool_location=\n{self.spool_location}")
+#        gate_dict = {}
+#        if self.spoolman:
+#            tasks = []
+#            # Pull from cache if available (should be)
+#            async with self.cache_lock:
+#                for gate_id, spool_id in gate_ids:
+#                    s = self.spool_location.get(spool_id, None)
+#                    if s:
+#                        logging.info(f"PAUL spool_id {spool_id} from cache: s={s}")
+#                        gate_dict[gate_id] = s[2]
+#                    else:
+#                        logging.info(f"PAUL spool_id {spool_id} fetched")
+#                        tasks.append((gate_id, spool_id))
+#    
+#            async def handle_task(gate_id, spool_id):
+#                spool_info = await self.fetch_spool_info(spool_id)
+#                if spool_info:
+#                    gate_dict[gate_id] = self.get_filament_attr(spool_info)
+#                return success
+#    
+#            results = await asyncio.gather(*[handle_task(gate_id, spool_id) for gate_id, spool_id in tasks])
+#            if not all(results):
+#                return False
+#    
+#            try:
+#                await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" QUIET=1")
+#            except Exception as e:
+#                await self._log_n_send(f"Exception running MMU_GATE_MAP gcode: {str(e)}", silent=silent)
+#                return False
+#    
+#        return True
+
     async def set_gate_map(self, gate_ids=None, printer=None, nb_gates=None, silent=False) -> bool:
         '''
         Store the gate map for the printer for a list of (gate, spool_id) tuples
@@ -314,22 +389,25 @@ class MmuServer:
 
         # If setting a full gate map, include updates for "dirty" spool id's
         # that are not going to overwritten
+# PAUL        async with self.cache_lock:
         if len(gate_ids) == self.nb_gates:
             for spool_id, (p_name, gate, _) in self.spool_location.items():
                 if p_name == printer_name and not any(s == spool_id for _, s in gate_ids):
                     gate_ids.append((-1, spool_id))
 
         # Write to spoolman db
-        tasks = []
+        unset_tasks = []
+        set_tasks = []
         for gate, spool_id in gate_ids:
             if spool_id <= 0:
-                tasks.append(self.unset_spool_gate(gate=gate, silent=True))
+                unset_tasks.append(self.unset_spool_gate(gate=gate, silent=True))
             elif spool_id > 0 and gate >=0:
-                tasks.append(self.set_spool_gate(spool_id, gate, printer=printer_name, silent=silent))
+                set_tasks.append(self.set_spool_gate(spool_id, gate, printer=printer_name, silent=silent))
             else:
-                tasks.append(self.unset_spool_gate(spool_id=spool_id, silent=True))
+                unset_tasks.append(self.unset_spool_gate(spool_id=spool_id, silent=True))
 
-        results = await asyncio.gather(*tasks) # Run in parallel
+        await asyncio.gather(*unset_tasks)
+        await asyncio.gather(*set_tasks)
 
         # Rebuild remote gate_spool_id map
         self.build_remote_gate_spool_id(silent=silent)
@@ -390,8 +468,8 @@ class MmuServer:
 
         # If another spool was previously assigned to gate on this printer make sure that is cleared
         old_sid_for_gate = self._find_spool_id(printer_name, gate)
-        if old_sid_for_gate:
-            await self.unset_spool_gate(spool_id=old_sid_for_gate, printer=printer_name, silent=silent)
+        if old_sid_for_gate and not old_sid_for_gate == gate:
+            self.unset_spool_gate(spool_id=old_sid_for_gate, printer=printer_name, silent=silent)
 
         # Use the PATCH method on the spoolman api
         if self.spoolman_has_extras:
@@ -406,11 +484,12 @@ class MmuServer:
             )
             if response.status_code == 404:
                 logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+                await self._log_n_send(f"SpoolId {spool_id} not found", error=True, silent=False)
                 return False
             elif response.has_error():
                 err_msg = self.spoolman._get_response_error(response)
                 logging.error(f"Attempt to set spool failed: {err_msg}")
-                await self._log_n_send(f"Failed to set spool {spool_id} for printer {printer_name}", silent=silent)
+                await self._log_n_send(f"Failed to set spool {spool_id} for printer {printer_name}", error=True, silent=False)
                 return False
 
         async with self.cache_lock:
@@ -448,11 +527,12 @@ class MmuServer:
             )
             if response.status_code == 404:
                 logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+                await self._log_n_send(f"SpoolId {spool_id} not found", error=True, silent=False)
                 return False
             elif response.has_error():
                 err_msg = self.spoolman._get_response_error(response)
                 logging.error(f"Attempt to unset spool failed: {err_msg}")
-                await self._log_n_send(f"Failed to unset spool {spool_id}", error=True, silent=silent)
+                await self._log_n_send(f"Failed to unset spool {spool_id}", error=True, silent=False)
                 return False
 
         async with self.cache_lock:
@@ -470,29 +550,29 @@ class MmuServer:
         if not self._initialize_mmu(nb_gates):
             return False
 
-        async with self.cache_lock:
-            # Refresh the spool_location cache if any filament attributes are missing for spools of interest
-            if any(
-                self.spool_location[spool_id][2] is None
-                for spool_id in self.remote_gate_spool_id
-                if spool_id is not None and spool_id in self.spool_location
-            ):
-                await self.build_spool_location_cache(silent=True)
+        # Refresh the spool_location cache if any filament attributes are missing for spools of interest
+        if any(
+            self.spool_location[spool_id][2] is None
+            for spool_id in self.remote_gate_spool_id
+            if spool_id is not None and spool_id in self.spool_location
+        ):
+            await self.build_spool_location_cache(silent=True)
     
-            # Tell Happy Hare to update it's local gate map
+        # Tell Happy Hare to update it's local gate map
+        async with self.cache_lock:
             gate_dict = {}
             for gate, spool_id in enumerate(self.remote_gate_spool_id):
                 if spool_id:
-                    if self.spool_location.get(spool_id, None) is None:
+                    if self.spool_location.get(spool_id, None) is not None:
                         gate_dict[gate] = self.spool_location[spool_id][2]
                 else:
                     gate_dict[gate] = {'spool_id': -1}
-            try:
-                await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" REPLACE=1")
-            except Exception as e:
-                await self._log_n_send("Exception running MMU_GATE_MAP gcode: %s" % str(e), silent=silent)
-                return False
-            return True
+        try:
+            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" REPLACE=1")
+        except Exception as e:
+            await self._log_n_send("Exception running MMU_GATE_MAP gcode: %s" % str(e), silent=silent)
+            return False
+        return True
 
     async def display_spool_info(self, spool_id: int | None = None):
         '''
@@ -511,7 +591,7 @@ class MmuServer:
             await self._log_n_send(msg, error=True)
             return False
 
-        spool_info = await self.get_info_for_spool(spool_id)
+        spool_info = await self.fetch_spool_info(spool_id)
         if not spool_info:
             msg = f"Spool id {spool_id} not found"
             await self._log_n_send(msg, error=True)
@@ -537,25 +617,25 @@ class MmuServer:
         await self._log_n_send(msg)
         return True
 
-    async def get_info_for_spool(self, spool_id : int):
-        '''
-        Gets and returns spool info json for desired spool
-        '''
-        response = await self.http_client.request(
-               method="GET",
-               url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
-            )
-        if response.status_code == 404:
-            return {}
-        elif response.has_error():
-            err_msg = self.spoolman._get_response_error(response)
-            logging.error(f"Attempt to get spool info failed: {err_msg}")
-            return {}
-        else:
-            logging.info(f"Found Spool id {spool_id} on spoolman instance")
-        spool_info = response.json()
-        logging.info(f"Spool info: {spool_info}")
-        return spool_info
+#    async def get_info_for_spool(self, spool_id : int):
+#        '''
+#        Gets and returns spool info json for desired spool
+#        '''
+#        response = await self.http_client.request(
+#               method="GET",
+#               url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
+#            )
+#        if response.status_code == 404:
+#            return {}
+#        elif response.has_error():
+#            err_msg = self.spoolman._get_response_error(response)
+#            logging.error(f"Attempt to get spool info failed: {err_msg}")
+#            return {}
+#        else:
+#            logging.info(f"Found Spool id {spool_id} on spoolman instance")
+#        spool_info = response.json()
+#        logging.info(f"Spool info: {spool_info}")
+#        return spool_info
 
     async def display_spool_location(self, printer=None):
         printer_name = printer or self.printer_hostname

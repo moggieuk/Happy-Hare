@@ -7096,7 +7096,7 @@ class Mmu:
 
         if reset:
             self._reset_gate_map()
-            self._spoolman_sync()
+# PAUL            self._spoolman_sync()
 
         if next_spool_id:
             self.pending_spool_id = next_spool_id
@@ -7119,12 +7119,12 @@ class Mmu:
                         self.gate_speed_override[gate] = 100
             else:
                 for gate, fil in gate_map.items():
-                    if self.gate_spool_id[gate] == fil['spool_id']:
+                    if fil and self.gate_spool_id[gate] == fil.get('spool_id', None):
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
                         self.gate_filament_name[gate] = fil.get('name', '')
                     else:
-                        self._log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Dict=%s" % (gate, fil))
+                        self._log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Attributes=%s" % (gate, fil))
 
             self._update_gate_color(self.gate_color)
             self._persist_gate_map() # This will also update LED status
