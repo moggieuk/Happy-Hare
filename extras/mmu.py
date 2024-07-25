@@ -6739,6 +6739,8 @@ class Mmu:
             if self.spoolman_support == self.SPOOLMAN_PULL:
                 if self.gate_spool_id[g] > 0:
                     msg += ", SpoolId: {} --> Material: {}, Color: {}, Name: {}{}".format(spool_option, material, color, name, speed_option)
+                else:
+                    msg += ", SpoolId: n/a"
             elif self.spoolman_support == self.SPOOLMAN_PUSH:
                 msg += ", SpoolId: {}, Material: {}, Color: {}, Name: {}{}".format(spool_option, material, color, name, speed_option)
             else:
