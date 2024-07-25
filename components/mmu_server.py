@@ -111,7 +111,7 @@ class MmuServer:
             if MMU_GATE_FIELD not in await self.get_extra_fields("spool"):
                 extras = extras and await self.add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=None)
         else:
-            self._log_n_send(f"Could not initialize mmu_server component. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})", error=True)
+            logging.error(f"Could not initialize Spoolman db for Happy Hare. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})")
 
         # Create cache of spool location from spoolman db for effeciency
         if extras:
@@ -484,7 +484,7 @@ class MmuServer:
             for gate, spool_id in enumerate(self.remote_gate_spool_id):
                 if spool_id:
                     if self.spool_location.get(spool_id, None) is None:
-                    gate_dict[gate] = self.spool_location[spool_id][2]
+                        gate_dict[gate] = self.spool_location[spool_id][2]
                 else:
                     gate_dict[gate] = {'spool_id': -1}
             try:
