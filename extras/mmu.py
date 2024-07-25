@@ -5764,7 +5764,7 @@ class Mmu:
         if self.spoolman_support == self.SPOOLMAN_OFF: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_display_spool_location", printer=printer)
+            webhooks.call_remote_method("spoolman_display_spool_location", printer=printer, nb_gates=self.mmu_num_gates)
         except Exception as e:
             self._log_error("Error while displaying spool location map: %s" % str(e))
 
@@ -6445,6 +6445,12 @@ class Mmu:
         self.test_force_in_print = gcmd.get_int('TEST_FORCE_IN_PRINT', self.test_force_in_print, minval=0, maxval=1)
         self.canbus_comms_retries = gcmd.get_int('CANBUS_COMMS_RETRIES', self.canbus_comms_retries, minval=1, maxval=10)
 
+        # Some changes need additional action to be taken
+        if prev_spoolman_support != self.spoolman_support:
+            self._spoolman_sync()
+        if prev_t_macro_color != self.t_macro_color:
+            self._update_t_macros()
+
         if not quiet:
             msg = "SPEEDS:"
             msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
@@ -6530,11 +6536,7 @@ class Mmu:
             msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
             msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
             msg += "\nspoolman_support = %s" % self.spoolman_support
-            if prev_spoolman_support != self.spoolman_support:
-                self._spoolman_sync()
             msg += "\nt_macro_color = %s" % self.t_macro_color
-            if prev_t_macro_color != self.t_macro_color:
-                self._update_t_macros()
             if self._has_encoder():
                 msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
                 msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
@@ -6548,6 +6550,7 @@ class Mmu:
             msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
             if self._has_encoder():
                 msg += "\nmmu_calibration_clog_length = %.1f" % self.encoder_sensor.get_clog_detection_length()
+
             self._log_info(msg)
 
 
@@ -7096,7 +7099,6 @@ class Mmu:
 
         if reset:
             self._reset_gate_map()
-# PAUL            self._spoolman_sync()
 
         if next_spool_id:
             self.pending_spool_id = next_spool_id
@@ -7151,23 +7153,30 @@ class Mmu:
                 color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
                 spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
                 name = gcmd.get('NAME', self.gate_filament_name[gate])
-                if spool_id != self.gate_spool_id[gate]:
-                    if spool_id in self.gate_spool_id:
-                        old_gate = self.gate_spool_id.index(spool_id)
-                        if old_gate != gate:
-                            self.gate_spool_id[old_gate] = -1
-                            gate_ids.append((old_gate, -1))
-                    gate_ids.append((gate, spool_id))
                 speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
-                color = self._validate_color(color)
-                if color is None:
-                    raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
-                self.gate_material[gate] = material
-                self.gate_color[gate] = color
-                self.gate_filament_name[gate] = name
-                self.gate_status[gate] = available
-                self.gate_spool_id[gate] = spool_id
-                self.gate_speed_override[gate] = speed_override
+
+                if not self.spoolman_support == self.SPOOLMAN_PULL:
+                    # Local gate map
+                    if spool_id != self.gate_spool_id[gate]:
+                        if spool_id in self.gate_spool_id:
+                            old_gate = self.gate_spool_id.index(spool_id)
+                            if old_gate != gate:
+                                self.gate_spool_id[old_gate] = -1
+                                gate_ids.append((old_gate, -1))
+                        gate_ids.append((gate, spool_id))
+                    color = self._validate_color(color)
+                    if color is None:
+                        raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
+                    self.gate_material[gate] = material
+                    self.gate_color[gate] = color
+                    self.gate_filament_name[gate] = name
+                    self.gate_status[gate] = available
+                    self.gate_spool_id[gate] = spool_id
+                    self.gate_speed_override[gate] = speed_override
+                else:
+                    # Remote (spoolman) gate map
+                    self.gate_status[gate] = available
+                    self.gate_speed_override[gate] = speed_override
 
             self._update_gate_color(self.gate_color)
             self._persist_gate_map(sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
