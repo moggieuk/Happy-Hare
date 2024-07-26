@@ -336,7 +336,7 @@ class MmuServer:
         #logging.error(f"PAUL: set_gate_map() Find last\ngate_ids={gate_ids}")
 
         # If setting a full gate map, include updates for "dirty" spool id's
-        # that are not otherwise going to overwritten
+        # that are not otherwise going to be overwritten
         if len(gate_ids) == self.nb_gates:
             async with self.cache_lock:
                 for spool_id, (p_name, gate, _) in self.spool_location.items():
@@ -462,12 +462,18 @@ class MmuServer:
         if not await self._initialize_mmu(nb_gates):
             return False
 
-        # Sanity checking...
-        spool_id = spool_id or await self._find_spool_id(None, gate)
-        current_printer_name, current_gate, _ = self.spool_location.get(spool_id, (None, None, None))
-        if not spool_id:
-            await self._log_n_send(f"Trying to unset spool {spool_id} but not found in cache", error=True, silent=silent)
+        printer_name = printer or self.printer_hostname
+
+        # Sanity checking and deriving spool_id if only given gate...
+        spool_id_supplied = spool_id
+        sid = spool_id or await self._find_spool_id(None, gate)
+        if not sid:
+            if spool_id:
+                await self._log_n_send(f"Trying to unset spool {spool_id} but not found in cache", error=True, silent=silent)
             return False
+        spool_id = sid
+
+        current_printer_name, current_gate, _ = self.spool_location.get(spool_id, (None, None, None))
 
         # Use the PATCH method on the spoolman api
         if self.spoolman_has_extras:
