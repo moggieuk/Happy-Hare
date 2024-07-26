@@ -1871,9 +1871,12 @@ else
 fi
 
 if [ "$INSTALL" -eq 0 ]; then
+    if [ "$VERSION" -eq 2.70 ]; then
+        restart_moonraker
+    fi
     restart_klipper
 else
-    echo -e "${WARNING}Klipper not restarted automatically because you need to validate and complete config"
+    echo -e "${WARNING}Klipper not restarted automatically because you need to validate and complete config first"
 fi
 
 if [ "$UNINSTALL" -eq 0 ]; then

@@ -210,7 +210,7 @@ class MmuServer:
         spool_id = spool_info["id"]
         filament = spool_info["filament"]
         material = filament.get('material', '')
-        color_hex = filament.get('color_hex', '')[:6] # Strip alpha channel if it exists
+        color_hex = filament.get('color_hex', '')[:6].lower() # Strip alpha channel if it exists
         name = filament.get('name', '')
         return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name}
 

@@ -1110,7 +1110,7 @@ class Mmu:
             return color
 
         # Try RGB color
-        color = color.lstrip('#')
+        color = color.lstrip('#').lower()
         x = re.search("^([a-f\d]{6})$", color)
         if x is not None and x.group() == color:
             return color
@@ -3126,7 +3126,7 @@ class Mmu:
             self._log_info(msg)
             self._set_print_state("printing")
 
-    # Force state transistion to printing for any early moves
+    # Hack: Force state transistion to printing for any early moves
     def _fix_started_state(self):
         if self._is_printer_printing() and not self._is_in_print():
             self._wrap_gcode_command("_MMU_PRINT_START")
@@ -4890,6 +4890,7 @@ class Mmu:
                     found = self._check_filament_at_gate()
                     if not found:
                         # Try to engage filament to the encoder
+                        self._servo_down()
                         _,_,measured,delta = self._trace_filament_move("Trying to re-enguage encoder", 45.)
                         if measured < self.encoder_min:
                             raise MmuError("Selector recovery failed. Path is probably internally blocked and unable to move filament to clear")
@@ -5979,9 +5980,9 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         if self._check_is_calibrated(): return
-        self.last_statistics = {}
         self._fix_started_state()
 
+        self.last_statistics = {}
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
         skip_tip = bool(gcmd.get_int('SKIP_TIP', 0, minval=0, maxval=1))
@@ -6084,14 +6085,14 @@ class Mmu:
     cmd_PAUSE_help = "Wrapper around default PAUSE macro"
     def cmd_PAUSE(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
-        if not self.is_enabled:
+        if self.is_enabled:
+            self._fix_started_state() # Get out of 'started' state before transistion to pause
             self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
-            return
-
-        self._log_trace("MMU PAUSE wrapper called")
-        self._fix_started_state() # Get out of 'started' state before transistion to pause
-        self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_error)
-        self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
+            self._log_trace("MMU PAUSE wrapper called")
+            self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_error)
+            self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
+        else:
+            self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
     cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
@@ -6739,15 +6740,13 @@ class Mmu:
             msg += "{}Status: {}".format(gate_detail, available)
             speed_option = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
             spool_option = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
-            if self.spoolman_support == self.SPOOLMAN_PULL:
+            if self.spoolman_support == self.SPOOLMAN_OFF:
+                msg += ", Material: {}, Color: {}, Name: {}{}".format(material, color, name, speed_option)
+            else:
                 if self.gate_spool_id[g] > 0:
                     msg += ", SpoolId: {} --> Material: {}, Color: {}, Name: {}{}".format(spool_option, material, color, name, speed_option)
                 else:
-                    msg += ", SpoolId: n/a"
-            elif self.spoolman_support == self.SPOOLMAN_PUSH:
-                msg += ", SpoolId: {}, Material: {}, Color: {}, Name: {}{}".format(spool_option, material, color, name, speed_option)
-            else:
-                msg += ", Material: {}, Color: {}, Name: {}{}".format(material, color, name, speed_option)
+                    msg += ", SpoolId: n/a{}".format(speed_option)
         return msg
 
     def _remap_tool(self, tool, gate, available=None):
@@ -6873,7 +6872,7 @@ class Mmu:
                     color_list = []
                     for gn, color in enumerate(search_in):
                         if self.gate_spool_id[gn] not in [-1, 0]: # COOPER : could be removed if names, colors ... are cleared locally when clearing a gate
-                            gm = "".join(self.gate_material[gn].strip()).replace('#', '').upper()
+                            gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
                             if gm == tool_to_remap['material']:
                                 color_list.append(color)
                     if not color_list:
@@ -6882,7 +6881,7 @@ class Mmu:
                     closest, distance = self._find_closest_color(tool_to_remap['color'], color_list)
                     for gn, color in enumerate(search_in):
                         if self.gate_spool_id[gn] not in [-1, 0]:
-                            gm = "".join(self.gate_material[gn].strip()).replace('#', '').upper()
+                            gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
                             if gm == tool_to_remap['material']:
                                 if closest == color:
                                     t = self.console_gate_stat
@@ -6991,7 +6990,7 @@ class Mmu:
         # TODO Future bypass preload feature - make gate act like bypass
 
     # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate
-    # sensor that fired.  This is not protected by klipper is_printing check so be careful when
+    # sensor that fired.  This is not protected by klipper "is printing" check so be careful when
     # runout handle_logic is fired
     cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
@@ -7025,6 +7024,8 @@ class Mmu:
     def cmd_MMU_GATE_INSERT(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
+        self._fix_started_state()
+
         try:
             gate = gcmd.get_int('GATE', None)
             if gate is not None:
@@ -7257,6 +7258,8 @@ class Mmu:
     def cmd_MMU_SLICER_TOOL_MAP(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        self._fix_started_state()
+
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         purge_map = bool(gcmd.get_int('PURGE_MAP', 0, minval=0, maxval=1))
         sparse_purge_map = bool(gcmd.get_int('SPARSE_PURGE_MAP', 0, minval=0, maxval=1))
