@@ -5652,8 +5652,8 @@ class Mmu:
         elif self.spoolman_support == self.SPOOLMAN_PUSH: # Local gate map
             # This will update spoolman with just the gate assignment (for visualization) and will update
             # local gate map attributes with data from spoolman thus overwriting the local map
-            self._spoolman_push_gate_map(quiet=quiet)
-            self._spoolman_update_filaments(quiet=quiet)
+            self._spoolman_push_gate_map(quiet=quiet) # PAUL these separate is a problem
+            self._spoolman_update_filaments(quiet=quiet) # PAUL these need to be atomic
 
     def _spoolman_activate_spool(self, spool_id=-1):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
@@ -5776,7 +5776,7 @@ class Mmu:
     def cmd_MMU_SPOOLMAN(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        quiet = bool(gcmd.get_int('QUIET', 1, minval=0, maxval=1))
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
         clear = bool(gcmd.get_int('CLEAR', 0, minval=0, maxval=1))
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
