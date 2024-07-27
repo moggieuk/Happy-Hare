@@ -647,7 +647,7 @@ class MmuServer:
                 msg += f"  - Gate: {spool}"
             else:
                 msg += f"Spool id {spool_id} is not assigned to this printer!\n"
-                msg += f"Run: MMU_SPOOLMAN UPDATE=1 SPOOLID={spool_id} GATE=.. to add"
+                msg += f"Run: MMU_SPOOLMAN SPOOLID={spool_id} GATE=.. to add"
             await self._log_n_send(msg)
             return True
 
