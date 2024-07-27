@@ -1950,8 +1950,8 @@ class Mmu:
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
                 msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
-            msg += "\nSpoolMan is %s. " % ("ENABLED with REMOTE" if self.spoolman_support == self.SPOOLMAN_PULL else "ENABLED" if self.spoolman_support == self.SPOOLMAN_PUSH else "DISABLED")
-            msg += "Sensors: "
+            msg += "\nSpoolMan is %s" % ("ENABLED (pulling gate map)" if self.spoolman_support == self.SPOOLMAN_PULL else "ENABLED" if self.spoolman_support == self.SPOOLMAN_PUSH else "DISABLED")
+            msg += "\nSensors: "
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
                 msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state == True else "Empty"))
@@ -3737,44 +3737,54 @@ class Mmu:
     cmd_MMU_HELP_help = "Display the complete set of MMU commands and function"
     def cmd_MMU_HELP(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
+        testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
+        slicer = gcmd.get_int('SLICER', 0, minval=0, maxval=1)
         callbacks = gcmd.get_int('CALLBACKS', 0, minval=0, maxval=1)
         macros = gcmd.get_int('MACROS', 0, minval=0, maxval=1)
-        testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
         steps = gcmd.get_int('STEPS', 0, minval=0, maxval=1)
-        msg = "Happy Hare MMU commands: (use MMU_HELP MACROS=1 CALLBACKS=1 TESTING=1 STEPS=1 for full command set)\n"
-        tmsg = "\nCalibration and testing commands:\n"
-        mmsg = "\nMacros (defined in mmu_software.cfg\n"
-        cmsg = "\nCallbacks (defined in mmu_form_tip.cfg, mmu_cut_tip.cfg, mmu_sequence.cfg, mmu_state.cfg, mmu_leds.cfg):\n"
-        smsg = "\nIndividual load/unload sequence steps:\n"
+        msg = "Happy Hare MMU commands: (use MMU_HELP SLICER=1 MACROS=1 CALLBACKS=1 TESTING=1 STEPS=1 for full command set)\n"
+        tesing_msg = "\nCalibration and testing commands:\n"
+        slicer_msg = "\nPrint start/end or slicer macros (defined in mmu_software.cfg\n"
+        macro_msg = "\nOther misc macros\n"
+        callback_msg = "\nCallbacks (defined in mmu_sequence.cfg, mmu_state.cfg)\n"
+        seq_msg = "\nAdvanced load/unload sequence and steps:\n"
         cmds = list(self.gcode.ready_gcode_handlers.keys())
         cmds.sort()
+
+        # Logic to partition commands:
         for c in cmds:
             d = self.gcode.gcode_help.get(c, "n/a")
 
-            if c.startswith("MMU_START") or (c.startswith("MMU_END") and c not in ["MMU_ENDLESS_SPOOL"]):
-                cmsg += "%s : %s\n" % (c.upper(), d) # Macro callbacks
+            if (c.startswith("MMU_START") or c.startswith("MMU_END") or c in ["_MMU_UPDATE_HEIGHT"]) and c not in ["MMU_ENDLESS_SPOOL"]:
+                slicer_msg += "%s : %s\n" % (c.upper(), d) # Print start/end macros
+
+            elif c in ["_MMU_PRINT_END", "_MMU_PRINT_START"]:
+                slicer_msg += "%s : %s\n" % (c.upper(), d) # More commands intended for slicer control
+
+            elif c in ["_MMU_DUMP_TOOLHEAD"]:
+                tesing_msg += "%s : %s\n" % (c.upper(), d) # Testing and calibration commands
 
             elif c.startswith("MMU") and not c.startswith("MMU__"):
-                if not "_CALIBRATE" in c and not "_TEST" in c and not "_SOAKTEST" in c and not "MMU_COLD_PULL" in c:
-                    if c not in ["MMU_UNLOAD", "MMU_CHANGE_TOOL_STANDALONE", "MMU_CHECK_GATES", "MMU_REMAP_TTG", "MMU_FORM_TIP"]: # Remove aliases
-                        msg += "%s : %s\n" % (c.upper(), d)
+                if any(substring in c for substring in ["_CALIBRATE", "_TEST", "_SOAKTEST", "MMU_COLD_PULL"]):
+                    tesing_msg += "%s : %s\n" % (c.upper(), d) # Testing and calibration commands
                 else:
-                    tmsg += "%s : %s\n" % (c.upper(), d) # Testing and calibration commands
+                    if c not in ["MMU_UNLOAD", "MMU_CHANGE_TOOL_STANDALONE", "MMU_CHECK_GATES", "MMU_REMAP_TTG", "MMU_FORM_TIP"]: # Remove aliases
+                        msg += "%s : %s\n" % (c.upper(), d) # Base command
 
             elif c.startswith("_MMU"):
-                if not c.startswith("_MMU_STEP") and c not in ["_MMU_M400"]:
-                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
-                        mmsg += "%s : %s\n" % (c.upper(), d) # Core command macros
+                if c.startswith("_MMU_STEP") or c in ["_MMU_M400", "_MMU_LOAD_SEQUENCE", "_MMU_UNLOAD_SEQUENCE"]:
+                    seq_msg += "%s : %s\n" % (c.upper(), d) # Invidual sequence step commands
+                elif c.startswith("_MMU_PRE_") or c.startswith("_MMU_POST_") or c in ["_MMU_ACTION_CHANGED", "_MMU_GATE_MAP_CHANGED", "_MMU_PRINT_STATE_CHANGED"]:
+                    callback_msg += "%s : %s\n" % (c.upper(), d) # Callbacks
                 else:
-                    smsg += "%s : %s\n" % (c.upper(), d) # Invidual sequence step commands
-        if testing:
-            msg += tmsg
-        if callbacks:
-            msg += cmsg
-        if macros:
-            msg += mmsg
-        if steps:
-            msg += smsg
+                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
+                        macro_msg += "%s : %s\n" % (c.upper(), d) # Core command macros
+
+        msg += slicer_msg if slicer else ""
+        msg += tesing_msg if testing else ""
+        msg += callback_msg if callbacks else ""
+        msg += macro_msg if macros else ""
+        msg += seq_msg if steps else ""
         self._log_always(msg)
 
     cmd_MMU_ENCODER_help = "Display encoder position and stats or enable/disable runout detection logic in encoder"
@@ -3807,7 +3817,6 @@ class Mmu:
         if self._check_has_leds(): return
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_num_gates - 1)
 
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
         gcode_vars = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", gcode_macro)
@@ -6008,14 +6017,14 @@ class Mmu:
             except MmuError as ee:
                 self._mmu_pause(str(ee))
 
-    cmd_MMU_PRINT_START_help = "Initialize MMU state and ready for print"
+    cmd_MMU_PRINT_START_help = "Forces initialization of MMU state ready for print (usually automatic)"
     def cmd_MMU_PRINT_START(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if not self._is_in_print():
             self._on_print_start()
             self._clear_macro_state()
 
-    cmd_MMU_PRINT_END_help = "Cleans up state after after print end"
+    cmd_MMU_PRINT_END_help = "Forces clean up of state after after print end (usually automatic)"
     def cmd_MMU_PRINT_END(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         end_state = gcmd.get('STATE', "complete")
