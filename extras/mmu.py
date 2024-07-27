@@ -5652,8 +5652,8 @@ class Mmu:
         elif self.spoolman_support == self.SPOOLMAN_PUSH: # Local gate map
             # This will update spoolman with just the gate assignment (for visualization) and will update
             # local gate map attributes with data from spoolman thus overwriting the local map
-            self._spoolman_push_gate_map(quiet=quiet) # PAUL these separate is a problem
-            self._spoolman_update_filaments(quiet=quiet) # PAUL these need to be atomic
+            self._spoolman_push_gate_map(quiet=quiet)
+            self._spoolman_update_filaments(quiet=quiet)
 
     def _spoolman_activate_spool(self, spool_id=-1):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
@@ -5723,12 +5723,12 @@ class Mmu:
             self._log_error("Error while clearing spoolman gate mapping: %s" % str(e))
 
     # Refresh the spoolman cache to pick up changes from elsewhere
-    def _spoolman_refresh(self, quiet=True):
+    def _spoolman_refresh(self, fix, quiet=True):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
         self._log_debug("Requesting to refresh the spoolman gate cache")
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_refresh", nb_gates=self.mmu_num_gates, silent=quiet)
+            webhooks.call_remote_method("spoolman_refresh", nb_gates=self.mmu_num_gates, fix=fix, silent=quiet)
         except Exception as e:
             self._log_error("Error while refreshing spoolman gate cache: %s" % str(e))
 
@@ -5780,39 +5780,45 @@ class Mmu:
         sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
         clear = bool(gcmd.get_int('CLEAR', 0, minval=0, maxval=1))
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
-        update = bool(gcmd.get_int('UPDATE', 0, minval=0, maxval=1))
-        spool_id = gcmd.get_int('SPOOLID', 0, minval=1) # 0 is the do nothing value
-        gate = gcmd.get_int('GATE', -1, minval=-1, maxval=self.mmu_num_gates - 1)
-        printer = gcmd.get('PRINTER', None) # Option to see other printers (only with SHOWINFO atm)
-        showinfo = bool(gcmd.get_int('SHOWINFO', 0, minval=0, maxval=1))
+        fix = bool(gcmd.get_int('FIX', 0, minval=0, maxval=1))
+        spool_id = gcmd.get_int('SPOOLID', None, minval=1)
+        gate = gcmd.get_int('GATE', None, minval=-1, maxval=self.mmu_num_gates - 1)
+        printer = gcmd.get('PRINTER', None) # Option to see other printers (only for gate association table atm)
+        spoolinfo = gcmd.get_int('SPOOLINFO', None, minval=-1) # -1 or 0 is active spool
+        run = False
 
         if refresh:
             # Rebuild cache in moonraker and sync local and remote
-            self._spoolman_refresh(quiet=quiet)
-            self._spoolman_sync(quiet=quiet)
+            self._spoolman_refresh(fix, quiet=quiet)
+            if not sync:
+                self._spoolman_sync(quiet=quiet)
+            run = True
 
-        elif sync:
-            # Sync local and remote gate maps
-            self._spoolman_sync(quiet=quiet)
-
-        elif clear:
+        if clear:
             # Clear the gate allocation in spoolman db
             self._spoolman_clear_gate_map(quiet=quiet)
+            run = True
 
-        elif update:
+        if sync:
+            # Sync local and remote gate maps
+            self._spoolman_sync(quiet=quiet)
+            run = True
+
+        # Rest of the options are mutually exclusive
+        if spoolinfo is not None:
+            # Dump spool info for active spool or specifed spool id
+            self._spoolman_display_spool_info(spoolinfo if spoolinfo > 0 else None)
+
+        elif spool_id is not None or gate is not None:
             # Update a record in spoolman db
-            if spool_id > 0 and gate >= 0:
+            if spool_id is not None and gate is not None:
                 self._spoolman_set_spool_gate(spool_id, gate, quiet=quiet)
-            elif spool_id == 0 and gate >= 0: # Gate but no spool id
+            elif spool_id is None and gate is not None:
                 self._spoolman_unset_spool_gate(gate=gate, quiet=quiet)
-            elif spool_id > 0 and gate < 0: # Spool id but no gate
+            elif spool_id is not None and gate is None:
                 self._spoolman_unset_spool_gate(spool_id=spool_id, quiet=quiet)
 
-        elif showinfo:
-            # Dump spool info for active spool or specifed spool id
-            self._spoolman_display_spool_info(spool_id if spool_id > 0 else None)
-
-        else:
+        elif not run:
             # Display gate association table from spoolman db for specified printer
             self._spoolman_display_spool_location(printer=printer)
 

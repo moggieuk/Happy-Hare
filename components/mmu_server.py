@@ -218,7 +218,7 @@ class MmuServer:
         name = filament.get('name', '')
         return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name}
 
-    async def _build_spool_location_cache(self, silent=False) -> bool:
+    async def _build_spool_location_cache(self, fix=False, silent=False) -> bool:
         '''
         Helper to get all spools and gates assigned to printers from spoolman db and cache them
         '''
@@ -228,6 +228,7 @@ class MmuServer:
             # Fetch all spools
             errors = ""
             assignments = {}
+            sids_to_fix = []
             reponse = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/spool')
             for spool_info in reponse.json():
                 spool_id = spool_info['id']
@@ -246,19 +247,35 @@ class MmuServer:
                 # Highlight errors
                 if printer_name and mmu_gate < 0:
                     errors += f"\n  - Spool {spool_id} has printer {printer_name} but no mmu_gate assigned"
+                    sids_to_fix.append(spool_id)
                 if mmu_gate >= 0 and not printer_name:
                     errors += f"\n  - Spool {spool_id} has mmu_gate {mmu_gate} but no printer assigned"
+                    sids_to_fix.append(spool_id)
 
             for p, gates in assignments.items():
                 for g, spool_list in gates.items():
                     if len(spool_list) > 1:
                         errors += f"\n  - Printer {p} @ gate {g} has multiple spool ids: {spool_list}"
+                        sids_to_fix.extend(spool_list[1:])
         except Exception as e:
             await self._log_n_send(f"Failed to retrieve spools from spoolman: {str(e)}", error=True, silent=silent)
             return False
 
         if errors:
+            if fix:
+                errors += f"\nWill attempt to fix..."
             await self._log_n_send(f"Warning - Inconsistencies found in spoolman db:{errors}", silent=silent)
+
+        if fix:
+            tasks = {sid: self._unset_spool_gate(sid, silent=silent) for sid in sids_to_fix}
+            results = await asyncio.gather(*tasks.values())
+
+            # Log results and update cache
+            for sid, result in zip(tasks.keys(), results):
+                if result:
+                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    self.spool_location[sid] = ('', -1, filament_attr)
+                    await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate}", silent=silent)
         return True
 
     def _build_remote_gate_spool_id(self, silent=False) -> bool:
@@ -339,14 +356,17 @@ class MmuServer:
             return False
         return True
 
-    async def refresh_cache(self, nb_gates=None, silent=False) -> bool:
+    async def refresh_cache(self, nb_gates=None, fix=False, silent=False) -> bool:
         '''
         Rebuilds the local cache of essential spool information
         '''
         async with self.cache_lock:
-            await self._build_spool_location_cache(silent=silent)
+            if not self._initialize_mmu(nb_gates):
+                return False
 
-            # Build remote_gate_spool_id list and establish number of gates
+            await self._build_spool_location_cache(fix=fix, silent=silent)
+
+            # Rebuild remote gate_spool_id map
             return self._build_remote_gate_spool_id(silent=silent)
 
     async def get_filaments(self, gate_ids, silent=False) -> bool:
@@ -567,21 +587,11 @@ class MmuServer:
         '''
         Get all spools assigned to the current printer from spoolman db and map them to gates
         Pass back to Happy Hare with MMU_GATE_MAP call
-        PAUL TODO: Use this opportunity to clean up a bad map? Or perhaps a FIX=1 options to MMU_SPOOLMAN REFRESH=1
         '''
         async with self.cache_lock:
             if not self._initialize_mmu(nb_gates):
                 return False
 
-            # Refresh the spool_location cache if any filament attributes are missing for spools of interest
-            if any(
-                self.spool_location[spool_id][2] is None
-                for spool_id in self.remote_gate_spool_id
-                if spool_id is not None and spool_id in self.spool_location
-            ):
-                logging.info(f"Rebuilding spool location cache because it appears stale")
-                await self._build_spool_location_cache(silent=True)
-    
             # Tell Happy Hare to update it's local gate map
             gate_dict = {}
             for gate, spool_id in enumerate(self.remote_gate_spool_id):
