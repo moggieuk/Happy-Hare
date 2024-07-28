@@ -228,11 +228,11 @@ class Mmu:
     T_MACRO_COLOR_OPTIONS  = [T_MACRO_COLOR_GATEMAP, T_MACRO_COLOR_SLICER, T_MACRO_COLOR_ALLGATES]
 
     # Spoolman integration modes of operation
-    SPOOLMAN_OFF           = 'off'     # Spoolman disabled
-    SPOOLMAN_GET           = 'get'     # Get filament attributes only
-    SPOOLMAN_PUSH          = 'push'    # Local gatemap is the source or truth
-    SPOOLMAN_PULL          = 'pull'    # Spoolman db is the source of truth
-    SPOOLMAN_OPTIONS       = [SPOOLMAN_OFF, SPOOLMAN_GET, SPOOLMAN_PUSH, SPOOLMAN_PULL]
+    SPOOLMAN_OFF           = 'off'      # Spoolman disabled
+    SPOOLMAN_READONLY      = 'readonly' # Get filament attributes only
+    SPOOLMAN_PUSH          = 'push'     # Local gatemap is the source or truth
+    SPOOLMAN_PULL          = 'pull'     # Spoolman db is the source of truth
+    SPOOLMAN_OPTIONS       = [SPOOLMAN_OFF, SPOOLMAN_READONLY, SPOOLMAN_PUSH, SPOOLMAN_PULL]
 
     EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'servo_retries': 0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
@@ -1951,7 +1951,7 @@ class Mmu:
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
                 msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
-            msg += "\nSpoolMan is %s" % ("ENABLED (pulling gate map)" if self.spoolman_support == self.SPOOLMAN_PULL else "ENABLED (push gate map)" if self.spoolman_support == self.SPOOLMAN_PUSH else "ENABLED" if self.spoolman_support == self.SPOOLMAN_GET else "DISABLED")
+            msg += "\nSpoolMan is %s" % ("ENABLED (pulling gate map)" if self.spoolman_support == self.SPOOLMAN_PULL else "ENABLED (push gate map)" if self.spoolman_support == self.SPOOLMAN_PUSH else "ENABLED" if self.spoolman_support == self.SPOOLMAN_READONLY else "DISABLED")
             msg += "\nSensors: "
             sensors = self._check_all_sensors()
             for name, state in sensors.items():
@@ -5662,7 +5662,7 @@ class Mmu:
             # This will update spoolman with just the gate assignment (for visualization) and will update
             # local gate map attributes with data from spoolman thus overwriting the local map
             self._spoolman_push_gate_map(quiet=quiet)
-        elif self.spoolman_support == self.SPOOLMAN_GET: # Get filament attributes only
+        elif self.spoolman_support == self.SPOOLMAN_READONLY: # Get filament attributes only
             self._spoolman_update_filaments(quiet=quiet)
 
     def _spoolman_activate_spool(self, spool_id=-1):
