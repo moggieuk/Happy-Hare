@@ -728,7 +728,7 @@ read_previous_config() {
 
         if [ ! "${_param_enable_spoolman}" == "" ]; then
             if [ ! "${_param_enable_spoolman}" == "1" ]; then
-                _param_spoolman_support="push"
+                _param_spoolman_support="readonly"
             else
                 _param_spoolman_support="off"
             fi
