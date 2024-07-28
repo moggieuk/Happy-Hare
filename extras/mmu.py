@@ -6840,6 +6840,8 @@ class Mmu:
     def cmd_MMU_SLICER_TOOL_MAP(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        self._fix_started_state()
+
         display = bool(gcmd.get_int('DISPLAY', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
