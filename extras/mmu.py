@@ -4866,6 +4866,7 @@ class Mmu:
                     found = self._check_filament_at_gate()
                     if not found:
                         # Try to engage filament to the encoder
+                        self._servo_down()
                         _,_,measured,delta = self._trace_filament_move("Trying to re-enguage encoder", 45.)
                         if measured < self.encoder_min:
                             raise MmuError("Selector recovery failed. Path is probably internally blocked and unable to move filament to clear")
