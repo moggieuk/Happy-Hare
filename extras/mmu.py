@@ -234,6 +234,15 @@ class Mmu:
     SPOOLMAN_PULL          = 'pull'     # Spoolman db is the source of truth
     SPOOLMAN_OPTIONS       = [SPOOLMAN_OFF, SPOOLMAN_READONLY, SPOOLMAN_PUSH, SPOOLMAN_PULL]
 
+    # Automap strategies
+    AUTOMAP_NONE           = 'none'
+    AUTOMAP_FILAMENT_NAME  = 'filament_name'
+    AUTOMAP_SPOOL_ID       = 'spool_id'
+    AUTOMAP_MATERIAL       = 'material'
+    AUTOMAP_CLOSEST_COLOR  = 'closest_color'
+    AUTOMAP_COLOR          = 'color'
+    AUTOMAP_OPTIONS        = [AUTOMAP_NONE, AUTOMAP_FILAMENT_NAME, AUTOMAP_SPOOL_ID, AUTOMAP_MATERIAL, AUTOMAP_CLOSEST_COLOR, AUTOMAP_COLOR]
+
     EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'servo_retries': 0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
     W3C_COLORS = [('aliceblue','#F0F8FF'), ('antiquewhite','#FAEBD7'), ('aqua','#00FFFF'), ('aquamarine','#7FFFD4'), ('azure','#F0FFFF'), ('beige','#F5F5DC'),
@@ -6845,16 +6854,16 @@ class Mmu:
 
         # Deduct search_in and tool_field based on strategy
         # tool fields are like {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
-        if strategy == 'filament_name':
+        if strategy == self.AUTOMAP_FILAMENT_NAME:
             search_in = self.gate_filament_name
             tool_field = 'name'
-        elif strategy == 'spool_id':
+        elif strategy == self.AUTOMAP_SPOOL_ID:
             search_in = self.gate_spool_id
             tool_field = 'spool_id' # Placeholders for future support
-        elif strategy == 'material':
+        elif strategy == self.AUTOMAP_MATERIAL:
             search_in = self.gate_material
             tool_field = 'material'
-        elif strategy in ['closest_color', 'color']:
+        elif strategy in [self.AUTOMAP_CLOSEST_COLOR, self.AUTOMAP_COLOR]:
             search_in = self.gate_color
             tool_field = 'color'
         else:
@@ -6872,7 +6881,7 @@ class Mmu:
 
         if not errors:
             # 'standard' exactly matching fields
-            if strategy != 'closest_color':
+            if strategy != self.AUTOMAP_CLOSEST_COLOR:
                 for gn, gate_feature in enumerate(search_in):
                     if self.gate_spool_id[gn] not in [-1, 0, '']: # COOPER : could be removed if names, colors ... are cleared locally when clearing a gate
                         if tool_to_remap[tool_field] == gate_feature:
@@ -6881,7 +6890,7 @@ class Mmu:
                 if not len(remaps):
                     errors.append("No gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
             # 'colors' search for closest
-            elif strategy == 'closest_color':
+            elif strategy == self.AUTOMAP_CLOSEST_COLOR:
                 if tool_to_remap['material'] == "unknown":
                     errors.append("When automapping with closest color, the tool material must be set.")
                 if tool_to_remap['material'] not in self.gate_material:
@@ -7304,7 +7313,7 @@ class Mmu:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
             if used:
                 self.slicer_tool_map['referenced_tools'] = sorted(set(self.slicer_tool_map['referenced_tools'] + [tool]))
-                if automap_strategy :
+                if automap_strategy and automap_strategy != self.AUTOMAP_NONE:
                     self._automap_gate(tool, automap_strategy)
             if color:
                 self._update_slicer_color()
