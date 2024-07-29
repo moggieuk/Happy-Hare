@@ -78,7 +78,7 @@ class MmuServer:
         # Options
         self.update_location = self.config.getboolean("update_spoolman_location", True)
 
-    async def _get_spoolman_version(self) -> version.LooseVersion:
+    async def _get_spoolman_version(self) -> (int, int, int) | None:
         response = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/info')
         if response.status_code == 404:
             logging.info(f"'{self.spoolman.spoolman_url}/v1/info' not found")
