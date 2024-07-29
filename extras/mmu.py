@@ -591,6 +591,9 @@ class Mmu:
         # WIP for type-B MMU support
         self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
 
+        # Turn off splash bling
+        self.serious = config.getint('serious', 0, minval=0, maxval=1)
+
         # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
 
         # Endless spool groups
@@ -1254,7 +1257,16 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
         try:
-            self._log_always('(\_/)\n( *,*)\n(")_(") Happy Hare %s Ready' % fversion(self.config_version))
+            # Splash...
+            msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}' % fversion(self.config_version)
+            msg_splash = msg.format('</span>', '<span style=\"color:#C0C0C0\">', '<span style=\"color:#FF69B4\">', '<span style=\"color:#90EE90\">', '<span style=\"color:#87CEEB\">')
+            msg_serious = msg.format('','','','','')
+            if not self.serious:
+                self.gcode.respond_raw(msg_splash)
+            else:
+                self.gcode.respond_raw(msg_serious)
+            self._log_to_file(msg_serious, prefix='')
+
             if self.log_startup_status > 0:
                 self._log_always(self._ttg_map_to_string(summary=self.log_startup_status == 1))
                 self._display_visual_state(silent=self.persistence_level < 4)
@@ -1754,8 +1766,8 @@ class Mmu:
     def _persist_counters(self):
         self._save_variable(self.VARS_MMU_COUNTERS, self.counters, write=True)
 
-    def _log_to_file(self, message):
-        message = "> %s" % message
+    def _log_to_file(self, message, prefix='> '):
+        message = "%s%s" % (prefix, message)
         if self.mmu_logger:
             self.mmu_logger.info(message)
 
@@ -1898,8 +1910,7 @@ class Mmu:
             msg += ", Encoder reads %.1fmm" % self._get_encoder_distance()
         msg += "\nPrint state is %s" % self.print_state.upper()
         msg += ". Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
-        msg += ". Tool %s selected " % self._selected_tool_string()
-        msg += " on Gate %s" % self._selected_gate_string()
+        msg += ". Tool %s selected on gate %s" % (self._selected_tool_string(), self._selected_gate_string())
         msg += ". Toolhead position saved" if self.saved_toolhead_position else ""
         msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
         if self.mmu_toolhead.is_gear_synced_to_extruder():
@@ -6470,6 +6481,7 @@ class Mmu:
         self.test_disable_encoder = gcmd.get_int('TEST_DISABLE_ENCODER', self.test_disable_encoder, minval=0, maxval=1)
         self.test_force_in_print = gcmd.get_int('TEST_FORCE_IN_PRINT', self.test_force_in_print, minval=0, maxval=1)
         self.canbus_comms_retries = gcmd.get_int('CANBUS_COMMS_RETRIES', self.canbus_comms_retries, minval=1, maxval=10)
+        self.serious = gcmd.get_int('SERIOUS', self.serious, minval=0, maxval=1)
 
         # Some changes need additional action to be taken
         if prev_spoolman_support != self.spoolman_support:
