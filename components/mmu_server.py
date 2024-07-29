@@ -13,9 +13,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 from __future__ import annotations
-import copy
-from distutils import version
-from distutils.command import check
 import json
 import logging, os, sys, re, time, asyncio
 import runpy, argparse, shutil, traceback, tempfile, filecmp
@@ -43,7 +40,7 @@ if TYPE_CHECKING:
 
 MMU_NAME_FIELD   = 'printer_name'
 MMU_GATE_FIELD   = 'mmu_gate_map'
-MIN_SM_VER       = version.LooseVersion('0.18.1')
+MIN_SM_VER       = (0, 18, 1)
 
 DB_NAMESPACE     = "moonraker"
 ACTIVE_SPOOL_KEY = "spoolman.spool_id"
@@ -92,7 +89,7 @@ class MmuServer:
             return False
         else:
             logging.info("info field in spoolman retrieved")
-            return version.LooseVersion(response.json()['version'])
+            return tuple([int(n) for n in response.json()['version'].split('.')])
 
     async def component_init(self) -> None:
         async with self.cache_lock:
@@ -406,10 +403,10 @@ class MmuServer:
             # Create minimal set of async tasks to update spoolman db and run them in parallel
             tasks = {
                 sid: (
-                    self._unset_spool_gate(sid, silent=silent), 
+                    self._unset_spool_gate(sid, silent=silent),
                     None
                 ) if updates[sid] < 0 else (
-                    self._set_spool_gate(sid, self.printer_hostname, updates[sid], silent=silent), 
+                    self._set_spool_gate(sid, self.printer_hostname, updates[sid], silent=silent),
                     updates[sid]
                 )
                 for sid in updates.keys()
