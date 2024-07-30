@@ -187,7 +187,6 @@ class MmuServer:
         else:
             logging.info(f"Extra fields for {entity_type} found")
             return [r['name'] for r in response.json()]
-        return True
 
     async def _add_extra_field(self, entity_type, field_key, field_name, field_type, default_value) -> bool:
         '''
