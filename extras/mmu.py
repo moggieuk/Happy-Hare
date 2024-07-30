@@ -1396,7 +1396,7 @@ class Mmu:
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
-                'nb_gates': self.mmu_num_gates,
+                'num_gates': self.mmu_num_gates,
                 'is_paused': self._is_mmu_paused(),
                 'is_locked': self._is_mmu_paused(), # Alias for is_paused
                 'is_homed': self.is_homed,
