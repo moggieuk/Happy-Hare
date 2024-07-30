@@ -521,7 +521,7 @@ class MmuServer:
             if gate is not None and gate < 0:
                 await self._log_n_send("Trying to set spool {spool_id} for printer {self.printer_hostname} but gate {gate} is invalid.", error=True, silent=silent)
                 return False
-            if gate is not None and gate > self.nb_gates:
+            if gate is not None and gate > self.nb_gates -1:
                 await self._log_n_send(f"Trying to set spool {spool_id} for printer {self.printer_hostname} @ gate {gate} but only {self.nb_gates} gates are available. Please check the spoolman or moonraker [spoolman] setup.", error=True, silent=silent)
                 return False
             if gate is None:
