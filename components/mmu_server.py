@@ -161,7 +161,7 @@ class MmuServer:
         Initialize mmu gate map if not already done
 
         returns:
-            @return: True if initialized, False otherwise
+            @return: True once initialized
         '''
         if not hasattr(self, 'mmu_backend_present'):
             await self._init_mmu_backend()
