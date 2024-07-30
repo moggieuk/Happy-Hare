@@ -278,7 +278,7 @@ class MmuServer:
 
         if errors:
             if fix:
-                errors += f"\nWill attempt to fix..."
+                errors += "\nWill attempt to fix..."
             await self._log_n_send(f"Warning - Inconsistencies found in spoolman db:{errors}", silent=silent)
 
         if fix:
