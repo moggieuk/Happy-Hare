@@ -545,6 +545,7 @@ class Mmu:
         self.selector_touch_speed = config.getfloat('selector_touch_speed', 60, minval=1.)
 
         # Optional features
+        self.preload_attempts = config.getint('preload_attempts', 5, minval=1, maxval=20) # How many times to try to grab the filament
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
         self.selector_touch_enable = config.getint('selector_touch_enable', 1, minval=0, maxval=1)
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
@@ -6460,6 +6461,7 @@ class Mmu:
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
         self.filament_recovery_on_pause = gcmd.get_int('FILAMENT_RECOVERY_ON_PAUSE', self.filament_recovery_on_pause, minval=0, maxval=1)
+        self.preload_attempts = gcmd.get_int('PRELOAD_ATTEMPTS', self.preload_attempts, minval=1, maxval=20)
         self.encoder_move_validation = gcmd.get_int('ENCODER_MOVE_VALIDATION', self.encoder_move_validation, minval=0, maxval=1)
         self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
         self.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.retry_tool_change_on_error, minval=0, maxval=1)
@@ -6580,6 +6582,7 @@ class Mmu:
             msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
             msg += "\nspoolman_support = %s" % self.spoolman_support
             msg += "\nt_macro_color = %s" % self.t_macro_color
+            msg += "\npreload_attempts = %d" % self.preload_attempts
             if self._has_encoder():
                 msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
                 msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
@@ -7559,7 +7562,7 @@ class Mmu:
                 else:
                     self._select_gate(gate)
                 self._initialize_filament_position()    # Encoder 0000
-                for i in range(5):
+                for i in range(self.preload_attempts):
                     self._log_always("Loading...")
                     try:
                         self._load_gate(allow_retry=False, adjust_servo_on_error=False)
