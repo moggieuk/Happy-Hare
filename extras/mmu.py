@@ -1073,6 +1073,7 @@ class Mmu:
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
         self._clear_slicer_tool_map()
         self.pending_spool_id = None # For automatic assignment of spool_id if set perhaps by rfid reader
+        self._has_retracted = False
 
     def _clear_slicer_tool_map(self):
         self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': []}
@@ -1398,6 +1399,7 @@ class Mmu:
                 'is_paused': self._is_mmu_paused(),
                 'is_locked': self._is_mmu_paused(), # Alias for is_paused
                 'is_homed': self.is_homed,
+                'is_in_print': self._is_in_print(),
                 'tool': self.tool_selected,
                 'gate': self.gate_selected,
                 'active_filament': self.active_filament,
@@ -1509,13 +1511,11 @@ class Mmu:
     # Per gate tracking
     def _track_gate_statistics(self, key, gate, count=1):
         try:
-            if gate >= self.TOOL_GATE_UNKNOWN:
+            if gate >= 0:
                 if isinstance(count, float):
                     self.gate_statistics[gate][key] = round(self.gate_statistics[gate][key] + count, 3)
                 else:
                     self.gate_statistics[gate][key] += count
-            else:
-                self._log_debug("Unknown gate provided to record gate stats")
         except Exception as e:
             self._log_debug("Exception whilst tracking gate stats: %s" % str(e))
 
@@ -3244,7 +3244,7 @@ class Mmu:
         self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
         if self._is_in_print(force_in_print):
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
-        self._restore_toolhead_position(operation, force_in_print=force_in_print)
+        self._restore_toolhead_position(operation)
         self._initialize_filament_position(dwell=None) # Encoder 0000
         # Ready to continue printing...
 
@@ -3331,7 +3331,7 @@ class Mmu:
         length = math.hypot(dx, dy)
         return x + d * dx / length, y + d * dy / length
 
-    def _restore_toolhead_position(self, operation, force_in_print=False):
+    def _restore_toolhead_position(self, operation):
         if self.saved_toolhead_position:
             eventtime = self.reactor.monotonic()
             gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
@@ -3342,7 +3342,7 @@ class Mmu:
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
-            self._unretract(force_in_print)
+            self._unretract()
 
             if self.restore_toolhead_xy_position:
                 # Restore pre-pause position and state. Currently not used because we allow sequence macro to control x,y movement
@@ -3370,18 +3370,21 @@ class Mmu:
             self._log_debug("Retracting %.1fmm" % self.toolchange_retract)
             self.gcode.run_script_from_command("M83")
             self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.toolchange_retract, self.toolchange_retract_speed * 60))
+            self._has_retracted = True
 
-    def _unretract(self, force_in_print=False):
+    def _unretract(self):
         # Un-retract if in print
-        if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude:
+        if self._has_retracted and self.toolhead.get_extruder().get_heater().can_extrude:
             self._log_debug("Un-retracting %.1fmm" % self.toolchange_retract)
             self.gcode.run_script_from_command("M83")
             self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.toolchange_unretract_speed * 60))
+            self._has_retracted = False
 
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_position = None
         self.saved_toolhead_height = -1.
         self.saved_toolhead_max_accel = 0
+        self._has_retracted = False
 
     def _disable_runout(self):
         enabled = self.runout_enabled
