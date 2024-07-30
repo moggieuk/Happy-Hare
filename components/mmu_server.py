@@ -103,7 +103,7 @@ class MmuServer:
                 fields = await self._get_extra_fields("spool")
                 if MMU_NAME_FIELD not in fields:
                     extras = extras and await self._add_extra_field("spool", field_name="Printer Name", field_key=MMU_NAME_FIELD, field_type="text", default_value="")
-                if MMU_GATE_FIELD not in await self._get_extra_fields("spool"):
+                if MMU_GATE_FIELD not in fields:
                     extras = extras and await self._add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=None)
             else:
                 logging.error(f"Could not initialize Spoolman db for Happy Hare. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})")
@@ -185,7 +185,7 @@ class MmuServer:
             return False
         else:
             logging.info(f"Extra fields for {entity_type} found")
-            return [r['name'] for r in response.json()]
+            return [r['key'] for r in response.json()]
 
     async def _add_extra_field(self, entity_type, field_key, field_name, field_type, default_value) -> bool:
         '''
