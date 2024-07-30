@@ -4819,13 +4819,15 @@ class Mmu:
             initial_encoder_position = self._get_encoder_distance()
 
             gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
+            # Capture PA in case user's tip forming resets it
+            initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0).get('pressure_advance', None)
             try:
-                initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0)['pressure_advance'] # Capture PA in case user's tip forming resets it
                 self._log_info("Forming tip...")
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
                 self._movequeues_wait_moves()
-                self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
+                if initial_pa is not None:
+                    self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
 
             stepper_movement = initial_extruder_position - self.mmu_extruder_stepper.stepper.get_commanded_position()
             measured = self._get_encoder_distance(dwell=None) - initial_encoder_position

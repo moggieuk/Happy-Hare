@@ -507,9 +507,8 @@ class MmuServer:
             if not silent:
                 logging.info(f"Attempting to set gate {gate} for printer {self.printer_hostname}")
 
-            # Create minimal set of async tasks to update spoolman db and run them
+            # Create minimal set of async tasks to update spoolman db and run them in parallel
             old_sids = self._find_all_spool_ids(self.printer_hostname, gate)
-
             tasks = {
                 sid: (self._unset_spool_gate(sid, silent=silent), None)
                 for sid in old_sids if sid != spool_id
@@ -566,7 +565,7 @@ class MmuServer:
                     await self._log_n_send(f"Trying to unset spool {spool_id} but not found in cache. Perhaps try refreshing cache", error=True, silent=silent)
                     return False
 
-            # Create minimal set of async tasks to update spoolman db and run them
+            # Create minimal set of async tasks to update spoolman db and run them in parallel
             sids = self._find_all_spool_ids(self.printer_hostname, gate) if gate is not None else [spool_id]
             tasks = {sid: self._unset_spool_gate(sid, silent=silent) for sid in sids}
             results = await asyncio.gather(*tasks.values())
