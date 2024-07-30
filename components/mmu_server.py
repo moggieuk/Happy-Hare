@@ -585,7 +585,7 @@ class MmuServer:
 
             # Sanity checking...
             if spool_id is None and gate is None:
-                await self._log_n_send(f"Trying to unset spool but no spool_id or gate provided", error=True, silent=silent)
+                await self._log_n_send("Trying to unset spool but no spool_id or gate provided", error=True, silent=silent)
                 return False
             if spool_id is not None and gate is not None:
                 await self._log_n_send(f"Trying to unset spool but both spool_id {spool_id} and gate {gate} provided. Only one or the other expected", error=True, silent=silent)
