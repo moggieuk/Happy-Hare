@@ -140,15 +140,14 @@ class MmuServer:
         returns:
             @return: True if initialized, False otherwise
         '''
-        if not hasattr(self, 'mmu_backend_present'):
-            self.mmu_backend_present = 'mmu' in await self.klippy_apis.get_object_list()
-            logging.info(f"MMU backend present: {self.mmu_backend_present}")
-            if self.mmu_backend_present:
-                self.mmu_backend_config = await self.klippy_apis.query_objects({"mmu": None})
-                self.mmu_enabled = self.mmu_backend_config.get('mmu', {}).get('enabled', False)
-            else:
-                self.mmu_enabled = False
-            logging.info(f"MMU backend enabled: {self.mmu_enabled}")
+        self.mmu_backend_present = 'mmu' in await self.klippy_apis.get_object_list()
+        if self.mmu_backend_present:
+            self.mmu_backend_config = await self.klippy_apis.query_objects({"mmu": None})
+            self.mmu_enabled = self.mmu_backend_config.get('mmu', {}).get('enabled', False)
+        else:
+            self.mmu_enabled = False
+        logging.info(f"MMU backend present: {self.mmu_backend_present}")
+        logging.info(f"MMU backend enabled: {self.mmu_enabled}")
         return True
 
     def _mmu_backend_enabled(self):
