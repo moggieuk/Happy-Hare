@@ -162,13 +162,13 @@ class MmuServer:
         returns:
             @return: True if initialized, False otherwise
         '''
-        self.nb_gates = 0
         if not hasattr(self, 'mmu_backend_present'):
             await self._init_mmu_backend()
-        if self._mmu_backend_enabled():
-            if len(self.mmu_backend_config.get('mmu', {}).get('ttg_map', [])) == 0:
-                return False
-            self.nb_gates = len(self.mmu_backend_config.get('mmu', {}).get('ttg_map', []))
+            if self._mmu_backend_enabled():
+                self.nb_gates = self.mmu_backend_config.get('mmu', {}).get('nb_gates', 0)
+            else:
+                self.nb_gates = 1 # for standalone usage (no mmu backend considering standard printer setup)
+            logging.info(f"MMU nb_gates: {self.nb_gates}")
         return True
 
     async def _get_extra_fields(self, entity_type) -> bool:
