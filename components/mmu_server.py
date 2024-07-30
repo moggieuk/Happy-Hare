@@ -119,21 +119,19 @@ class MmuServer:
         '''
         logs and sends msg to the klipper console
         '''
-        async with self.cache_lock:
-            if not await self._initialize_mmu():
-                if error:
-                    logging.error(msg)
-                else:
-                    logging.info(msg)
-                if not silent:
-                    if self._mmu_backend_enabled():
-                        error_flag = "ERROR=1" if error else ""
-                        msg = msg.replace("\n", "\\n") # Get through klipper filtering
-                        await self.klippy_apis.run_gcode(f"MMU_LOG MSG='{msg}' {error_flag}")
-                    else:
-                        await self.klippy_apis.run_gcode(f"RESPOND MSG='{msg}'")
-                        if error :
-                            await self.klippy_apis.pause_print()
+        if error:
+            logging.error(msg)
+        else:
+            logging.info(msg)
+        if not silent:
+            if self._mmu_backend_enabled():
+                error_flag = "ERROR=1" if error else ""
+                msg = msg.replace("\n", "\\n") # Get through klipper filtering
+                await self.klippy_apis.run_gcode(f"MMU_LOG MSG='{msg}' {error_flag}")
+            else:
+                await self.klippy_apis.run_gcode(f"RESPOND MSG='{msg}'")
+                if error :
+                    await self.klippy_apis.pause_print()
 
     async def _init_mmu_backend(self):
         '''
