@@ -204,7 +204,7 @@ class MmuServer:
             logging.error(f"Attempt add field {field_name} failed: {err_msg}")
             return False
         logging.info(f"Field {field_name} added to spoolman db for entity type {entity_type}")
-        logging.info(f"  -fields: %s", response.json())
+        logging.info("  -fields: %s", response.json())
         return True
 
     async def _fetch_spool_info(self, spool_id) -> dict | None:
