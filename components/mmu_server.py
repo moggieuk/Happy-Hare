@@ -385,8 +385,7 @@ class MmuServer:
         Rebuilds the local cache of essential spool information
         '''
         async with self.cache_lock:
-            if not await self._initialize_mmu():
-                return False
+            await self._initialize_mmu()
             return await self._build_spool_location_cache(fix=fix, silent=silent)
 
     async def get_filaments(self, gate_ids, silent=False) -> bool:
@@ -404,8 +403,7 @@ class MmuServer:
         Then updates Happy Hare with filament attributes
         '''
         async with self.cache_lock:
-            if not await self._initialize_mmu():
-                return False
+            await self._initialize_mmu()
 
             if not gate_ids:
                 logging.error("Gate spool id mapping not provided or empty")
@@ -466,8 +464,7 @@ class MmuServer:
         Pass back to Happy Hare
         '''
         async with self.cache_lock:
-            if not await self._initialize_mmu():
-                return False
+            await self._initialize_mmu()
 
             gate_ids = [(gate, self._find_first_spool_id(self.printer_hostname, gate)) for gate in range(self.nb_gates)]
             return await self._send_gate_map_update(gate_ids, replace=True, silent=silent)
@@ -477,8 +474,7 @@ class MmuServer:
         Clears all gates for the printer
         '''
         async with self.cache_lock:
-            if not await self._initialize_mmu():
-                return False
+            await self._initialize_mmu()
 
             printer_name = printer or self.printer_hostname
             if not silent:
@@ -518,8 +514,7 @@ class MmuServer:
         Removes the printer + gate allocation in spoolman db for gate (if supplied)
         '''
         async with self.cache_lock:
-            if not await self._initialize_mmu():
-                return False
+            await self._initialize_mmu()
 
             # Sanity checking...
             if gate is not None and gate < 0:
@@ -580,8 +575,7 @@ class MmuServer:
         Removes the printer + gate allocation in spoolman db for gate or spool_id (if supplied)
         '''
         async with self.cache_lock:
-            if not await self._initialize_mmu():
-                return False
+            await self._initialize_mmu()
 
             # Sanity checking...
             if spool_id is None and gate is None:
