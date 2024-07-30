@@ -151,6 +151,8 @@ class MmuServer:
         return True
 
     def _mmu_backend_enabled(self):
+        if not hasattr(self, 'mmu_backend_present'):
+            return False
         return self.mmu_backend_present and self.mmu_enabled
 
     async def _initialize_mmu(self):
