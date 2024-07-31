@@ -4088,7 +4088,8 @@ class Mmu:
                     measured += m
                     if (m) > 6.0:
                         self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
-                        self._set_filament_position(measured)
+                        self._set_filament_position(measured + self.gate_parking_distance)
+                        self._set_encoder_distance(measured + self.gate_parking_distance)
                         self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
                         return
                     else:
@@ -4104,7 +4105,8 @@ class Mmu:
                 if homed:
                     self._log_debug("Gate endstop reached after %.1fmm (measured %.1fmm)" % (actual, measured))
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
-                    self._initialize_filament_position()
+                    self._set_filament_position(self.gate_parking_distance)
+                    self._set_encoder_distance(self.gate_parking_distance)
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
                     return
                 else:
@@ -4153,9 +4155,7 @@ class Mmu:
                     # Large enough delta here means we are out of the encoder
                     if sdelta >= self.encoder_move_step_size * 0.2: # 20 %
                         park = self.gate_parking_distance - sdelta # will be between 8 and 20mm (for 23mm gate_parking_distance, 15mm step)
-                        self._set_filament_position(self._get_filament_position() + delta)
                         _,_,measured,_ = self._trace_filament_move("Final parking", -park)
-                        self._set_filament_position(self._get_filament_position() + park)
                         # We don't expect any movement of the encoder unless it is free-spinning
                         if measured > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
                             self._log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
@@ -4193,7 +4193,7 @@ class Mmu:
         if self.calibrated_bowden_length > 0 and not self.calibrating:
             length = min(length, self.calibrated_bowden_length)
         full = length == self.calibrated_bowden_length
-        length -= self._get_filament_position()
+        length -= (self._get_filament_position() - self.gate_parking_distance)
 
         self._log_debug("Loading bowden tube")
         self._set_filament_direction(self.DIRECTION_LOAD)
@@ -4210,7 +4210,7 @@ class Mmu:
                 self._log_info("Warning: Gate %d not calibrated! Using default 1.0 gear ratio!" % self.gate_selected)
 
         # "Fast" load
-        _,_,_,delta = self._trace_filament_move("Course loading move into bowden", length, track=True, encoder_dwell=reference_load)
+        _,_,_,delta = self._trace_filament_move("Fast loading move into bowden", length, track=True, encoder_dwell=reference_load)
         delta -= self._get_encoder_dead_space()
 
         # Encoder based validation test
@@ -4279,7 +4279,7 @@ class Mmu:
 
         # "Fast" unload
         if not (self._check_sensor(self.ENDSTOP_GATE) is False):
-            _,_,_,delta = self._trace_filament_move("Course unloading move from bowden", -length, track=True)
+            _,_,_,delta = self._trace_filament_move("Fast unloading move from bowden", -length, track=True)
             delta -= self._get_encoder_dead_space()
 
             # Encoder based validation test
