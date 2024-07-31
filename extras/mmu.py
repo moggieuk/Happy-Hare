@@ -869,7 +869,7 @@ class Mmu:
 
         # Sanity check to see that mmu_vars.cfg is included. This will verify path because default has single entry
         self.save_variables = self.printer.lookup_object('save_variables')
-        if self.save_variables.allVariables == {}:
+        if not self.save_variables or self.save_variables.allVariables == {}:
             raise self.config.error("Calibration settings not found: mmu_vars.cfg probably not found. Check [save_variables] section in mmu_macro_vars.cfg")
 
         # Remember user setting of idle_timeout so it can be restored (if not overridden)
