@@ -5999,7 +5999,7 @@ class Mmu:
     def cmd_MMU_LOAD(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        if not in_bypass and self._check_not_homed(): return
+        if self._check_not_homed(): return
         self._fix_started_state()
 
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
