@@ -1059,9 +1059,8 @@ class Mmu:
         self.is_enabled = self.runout_enabled = True
         self.is_homed = self.is_handling_runout = self.calibrating = False
         self.last_print_stats = self.paused_extruder_temp = self.reason_for_pause = None
-        self.tool_selected = self._next_tool = self.TOOL_GATE_UNKNOWN
+        self.tool_selected = self._next_tool = self.gate_selected = self.TOOL_GATE_UNKNOWN
         self._last_toolchange = "Unknown"
-        self.gate_selected = self.TOOL_GATE_UNKNOWN # We keep record of gate selected in case user messes with mapping in print
         self.active_filament = {}
         self.servo_state = self.servo_angle = self.SERVO_UNKNOWN_STATE
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
@@ -6000,11 +5999,11 @@ class Mmu:
     def cmd_MMU_LOAD(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        if not in_bypass and self._check_not_homed(): return
         self._fix_started_state()
 
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
-
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
             try:
                 if not extruder_only:
