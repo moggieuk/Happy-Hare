@@ -58,7 +58,7 @@ class MmuServer:
         # Example: {2: ('BigRed', 0, {"material": "pla", "color": "ff56e0"}), 3: ('BigRed', 3, {"material": "abs"}), ...
         self.spool_location = {}
 
-        self.nb_gates = None             # Set by Happy Hare on first call
+        self.nb_gates = None             # Set during initialization to the size of the MMU or 1 if standalone
         self.cache_lock = asyncio.Lock() # Lock to serialize a async calls for Happy Hare
 
         # Spoolman filament info retrieval functionality and update reporting
@@ -521,7 +521,7 @@ class MmuServer:
             if gate is not None and gate < 0:
                 await self._log_n_send("Trying to set spool {spool_id} for printer {self.printer_hostname} but gate {gate} is invalid.", error=True, silent=silent)
                 return False
-            if gate is not None and gate > self.nb_gates -1:
+            if gate is not None and gate > self.nb_gates - 1:
                 await self._log_n_send(f"Trying to set spool {spool_id} for printer {self.printer_hostname} @ gate {gate} but only {self.nb_gates} gates are available. Please check the spoolman or moonraker [spoolman] setup.", error=True, silent=silent)
                 return False
             if gate is None:
