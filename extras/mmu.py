@@ -1397,6 +1397,7 @@ class Mmu:
     def get_status(self, eventtime):
         return {
                 'enabled': self.is_enabled,
+                'num_gates': self.mmu_num_gates,
                 'is_paused': self._is_mmu_paused(),
                 'is_locked': self._is_mmu_paused(), # Alias for is_paused
                 'is_homed': self.is_homed,
@@ -5734,7 +5735,7 @@ class Mmu:
         try:
             webhooks = self.printer.lookup_object('webhooks')
             self._log_debug("Storing gate map in spoolman db...")
-            webhooks.call_remote_method("spoolman_push_gate_map", nb_gates=self.mmu_num_gates, gate_ids=gate_ids, silent=quiet)
+            webhooks.call_remote_method("spoolman_push_gate_map", gate_ids=gate_ids, silent=quiet)
         except Exception as e:
             self._log_error("Error while calling _spoolman_push_gate_map: %s" % str(e))
 
@@ -5744,7 +5745,7 @@ class Mmu:
         self._log_debug("Requesting the gate map from Spoolman")
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_pull_gate_map", nb_gates=self.mmu_num_gates, silent=quiet)
+            webhooks.call_remote_method("spoolman_pull_gate_map", silent=quiet)
         except Exception as e:
             self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
 
@@ -5754,7 +5755,7 @@ class Mmu:
         self._log_debug("Requesting to clear the gate map in Spoolman")
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_clear_spools_for_printer", nb_gates=self.mmu_num_gates, sync=sync, silent=quiet)
+            webhooks.call_remote_method("spoolman_clear_spools_for_printer", sync=sync, silent=quiet)
         except Exception as e:
             self._log_error("Error while clearing spoolman gate mapping: %s" % str(e))
 
@@ -5764,7 +5765,7 @@ class Mmu:
         self._log_debug("Requesting to refresh the spoolman gate cache")
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_refresh", nb_gates=self.mmu_num_gates, fix=fix, silent=quiet)
+            webhooks.call_remote_method("spoolman_refresh", fix=fix, silent=quiet)
         except Exception as e:
             self._log_error("Error while refreshing spoolman gate cache: %s" % str(e))
 
@@ -5774,7 +5775,7 @@ class Mmu:
         self._log_debug("Setting spool %d to gate %d directly in spoolman db" % (spool_id, gate))
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_set_spool_gate", spool_id=spool_id, gate=gate, nb_gates=self.mmu_num_gates, sync=sync, silent=quiet)
+            webhooks.call_remote_method("spoolman_set_spool_gate", spool_id=spool_id, gate=gate, sync=sync, silent=quiet)
         except Exception as e:
             self._log_error("Error while setting spoolman gate association: %s" % str(e))
 
@@ -5783,7 +5784,7 @@ class Mmu:
         self._log_debug("Unsetting spool %s or gate %s in spoolman db" % (spool_id, gate))
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_unset_spool_gate", spool_id=spool_id, gate=gate, nb_gates=self.mmu_num_gates, sync=sync, silent=quiet)
+            webhooks.call_remote_method("spoolman_unset_spool_gate", spool_id=spool_id, gate=gate, sync=sync, silent=quiet)
         except Exception as e:
             self._log_error("Error while unsetting spoolman gate association: %s" % str(e))
 
@@ -5801,7 +5802,7 @@ class Mmu:
         if self.spoolman_support == self.SPOOLMAN_OFF: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_display_spool_location", printer=printer, nb_gates=self.mmu_num_gates)
+            webhooks.call_remote_method("spoolman_display_spool_location", printer=printer)
         except Exception as e:
             self._log_error("Error while displaying spool location map: %s" % str(e))
 
@@ -6516,7 +6517,7 @@ class Mmu:
             msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
             msg += "\nselector_touch_speed = %.1f" % self.selector_touch_speed
             msg += "\nselector_touch_enable = %d" % self.selector_touch_enable
-    
+
             msg += "\n\nTMC & MOTOR SYNC CONTROL:"
             msg += "\nsync_to_extruder = %d" % self.sync_to_extruder
             msg += "\nsync_form_tip = %d" % self.sync_form_tip
@@ -6526,7 +6527,7 @@ class Mmu:
             msg += "\nsync_gear_current = %d" % self.sync_gear_current
             msg += "\nextruder_collision_homing_current = %d" % self.extruder_collision_homing_current
             msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
-    
+
             msg += "\n\nLOADING/UNLOADING:"
             msg += "\ngate_homing_endstop = %s" % self.gate_homing_endstop
             if self.gate_homing_endstop == self.ENDSTOP_GATE and self._has_encoder():
@@ -6549,12 +6550,12 @@ class Mmu:
             msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
             msg += "\ngcode_load_sequence = %d" % self.gcode_load_sequence
             msg += "\ngcode_unload_sequence = %d" % self.gcode_unload_sequence
-    
+
             msg += "\n\nTIP FORMING:"
             msg += "\nform_tip_macro = %s" % self.form_tip_macro
             msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
             msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
-    
+
             msg += "\n\nBLOB/STRINGING:"
             msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
             msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
@@ -6564,7 +6565,7 @@ class Mmu:
             msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
             msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
             msg += "\ntoolchange_unretract_speed = %.1f" % self.toolchange_unretract_speed
-    
+
             msg += "\n\nLOGGING:"
             msg += "\nlog_level = %d" % self.log_level
             msg += "\nlog_visual = %d" % self.log_visual
@@ -6572,7 +6573,7 @@ class Mmu:
                 msg += "\nlog_file_level = %d" % self.log_file_level
             msg += "\nlog_statistics = %d" % self.log_statistics
             msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
-    
+
             msg += "\n\nOTHER:"
             msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
             if self._has_encoder():
@@ -6591,7 +6592,7 @@ class Mmu:
             msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
             msg += "\nprint_start_detection = %d" % self.print_start_detection
             msg += "\nshow_error_dialog = %d" % self.show_error_dialog
-    
+
             msg += "\n\nCALIBRATION:"
             msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
             if self._has_encoder():
