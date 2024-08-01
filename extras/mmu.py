@@ -3323,6 +3323,7 @@ class Mmu:
 
         else:
             self._log_debug("Asked to save toolhead position for %s but it is already saved for %s. Ignored" % (operation, self.saved_toolhead_position))
+
     # For z_hop_ramp. Return new position along move vector
     # (towards center unless at center then towards origin)
     def move_towards_center(self, x, y, w, h, d):
@@ -3350,18 +3351,18 @@ class Mmu:
                 self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.z_hop_speed))
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
-                self._log_debug("Restored gcode state and position (%s) after %s" % (toolhead_gcode_pos, operation))
+                self._log_debug("Restored gcode state and full position (%s) after %s" % (toolhead_gcode_pos, operation))
             else:
                 # Default: Only undo the z-hop move so sequence macros choose what to do with x,y ('last', 'next', 'none')...
                 if self.saved_toolhead_height >= 0:
-                    self._log_debug("Restoring toolhead height (speed:%d, accel:%d)" % (self.z_hop_speed, self.z_hop_accel))
+                    self._log_debug("Restoring just toolhead height %.1f (speed:%d, accel:%d) after %s" % (self.saved_toolhead_height, self.z_hop_speed, self.z_hop_accel, operation))
                     self.gcode.run_script_from_command("G90")
                     self.gcode.run_script_from_command("M204 S%d" % self.z_hop_accel)
                     self.gcode.run_script_from_command("G1 Z%.4f F%d" % (self.saved_toolhead_height, self.z_hop_speed * 60))
                 # But ensure gcode state...
                 self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
                 self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
-                self._log_debug("Restored gcode state and z-hop position only (Z:%.1f) after %s" % (self.saved_toolhead_height, operation))
+                self._log_debug("Restored gcode state after %s" % operation)
 
         self._clear_saved_toolhead_position()
 
@@ -6095,7 +6096,7 @@ class Mmu:
             self._wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), None)
             return
 
-        self._log_trace("MMU RESUME wrapper called")
+        self._log_debug("MMU RESUME wrapper called")
         if not self._is_printer_paused() and not self._is_mmu_paused():
             self._log_always("Print is not paused. Resume ignored.")
             return
@@ -6130,7 +6131,7 @@ class Mmu:
         if self.is_enabled:
             self._fix_started_state() # Get out of 'started' state before transistion to pause
             self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
-            self._log_trace("MMU PAUSE wrapper called")
+            self._log_debug("MMU PAUSE wrapper called")
             self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_error)
             self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
         else:
@@ -6141,7 +6142,7 @@ class Mmu:
     def cmd_CLEAR_PAUSE(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self.is_enabled:
-            self._log_trace("MMU CLEAR_PAUSE wrapper called")
+            self._log_debug("MMU CLEAR_PAUSE wrapper called")
         self._wrap_gcode_command("__CLEAR_PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
