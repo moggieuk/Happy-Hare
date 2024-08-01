@@ -26,11 +26,11 @@ Universal MMU driver for Klipper
 Happy Hare is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem - the original open source filament changer for multi-colored printing. However it has now been rearchitected to support most types of MMU's connected to the Klipper ecosystem. That includes **ERCF**, **Tradrack**, AMS-style and other custom designs. It has extensive configuration to allow for customization and using the installer simplifies initial setup for common MMU types. The three conceptual types of MMUs and the function and operation of their various sensors can be [found here](https://github.com/moggieuk/Happy-Hare/wiki/Conceptual-MMU) and should be consulted for any customized setup.  It is best partnered with [KlipperScreen for Happy Hare](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) projet at least until the Mainsail integration is complete :-)
 
 Some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). Although I'm not doing this for any financial reward this is a BIG undertaking (9000 lines of python, 5000 lines of doc, 4000 lines of macros/config). I have put hundreds of hours into this project and if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable. Thank you!
-<p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="25%"></a></p>
+<p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="35%"></a></p>
 
 <br>
 
-## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Major features:
+## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) A few of the features:
 
 - Support any brand of MMU and user defined monsters (ERCF 1.1, 2.0, Tradrack, Custom.  Prusa & KMS coming very soon)
 - Synchronized movement of extruder and gear motors (with feedback control) to overcome friction and even work with FLEX materials!
@@ -39,10 +39,9 @@ Some folks have asked about making a donation to cover the cost of the all the c
 - EndlessSpool allowing a spool to automatically be mapped and take over from a spool that runs out
 - Sophisticated logging options (console and mmu.log file)
 - Can define material type and color in each gate for visualization and customized settings (like Pressure Advance)
-- Spoolman integration
+- Deep Spoolman integration
 - Automated calibration for easy setup
 - Supports MMU "bypass" gate functionality
-- Ability to manipulate gear and extruder current (TMC) during various operations for reliable operation
 - Moonraker update-manager support
 - Complete persistence of state and statistics across restarts. That's right you don't even need to home!
 - Highly configurable speed control that intelligently takes into account the realities of friction and tugs on the spool
@@ -100,6 +99,13 @@ English Happy Hare introduction by Silverback
 </tr>
 </table>
 
+<br>
+
+## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Just how good a MMU multi-color prints?
+
+Although the journey to calibrating and setup can be a frustrating one, I wanted to share @igiannakas (ERCFv2 + Orca Slicer + Happy Hare) example prints here.  Click on the image to zoom it. Incredible! :cool: :clap:
+
+<p align="center"><a href="https://github.com/moggieuk/Happy-Hare/wiki/resources/example_mmu_print.png"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/example_mmu_print.png" width="800" alt="Example Prints"></a></p>
 <br>
 
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) My Testing and Setup:

@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.60 # Important: Keep synced with mmy.py
+VERSION=2.70 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
@@ -709,7 +709,7 @@ read_previous_config() {
         if [ ! "${_param_extruder_homing_current}" == "" ]; then
             _param_extruder_collision_homing_current=${_param_extruder_homing_current}
         fi
-        if [ ! "${_param_log_visual}" == "2" ]; then
+        if [ "${_param_log_visual}" == "2" ]; then
             _param_log_visual=1
         fi
         if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
@@ -745,6 +745,14 @@ read_previous_config() {
 
         if [ "${_param_log_file_level}" -gt 2 ]; then
             _param_log_file_level=2
+        fi
+
+        if [ ! "${_param_enable_spoolman}" == "" ]; then
+            if [ ! "${_param_enable_spoolman}" == "1" ]; then
+                _param_spoolman_support="readonly"
+            else
+                _param_spoolman_support="off"
+            fi
         fi
     fi
 
@@ -1885,9 +1893,12 @@ else
 fi
 
 if [ "$INSTALL" -eq 0 ]; then
+    if [ "$VERSION" == "2.70" -a "$FROM_VERSION" != "2.70" ]; then
+        restart_moonraker
+    fi
     restart_klipper
 else
-    echo -e "${WARNING}Klipper not restarted automatically because you need to validate and complete config"
+    echo -e "${WARNING}Klipper not restarted automatically because you need to validate and complete config first"
 fi
 
 if [ "$UNINSTALL" -eq 0 ]; then
