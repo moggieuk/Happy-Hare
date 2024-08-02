@@ -976,17 +976,28 @@ copy_config_files() {
             # Ensure that supplemental user added params are retained. These are those that are
             # by default set internally in Happy Hare based on vendor and version settings but
             # can be overridden.  This set also includes a couple of hidden test parameters.
-            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta gate_parking_distance encoder_default_resolution"
-            hidden_params="virtual_selector homing_extruder test_random_failures"
-            for var in $(set | grep '^_param_' | cut -d'=' -f1); do
+            echo "" >> $dest
+            echo "# SUPPLEMENTAL USER CONFIG retained after upgrade --------------------------------------------------------------------" >> $dest
+            echo "#" >> $dest
+            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance gate_parking_distance encoder_default_resolution gate_material gate_color gate_spool_id gate_status gate_filament_name gate_speed_override endless_spool_groups tool_to_gate_map"
+            hidden_params="virtual_selector homing_extruder test_random_failures canbus_comms_retries test_random_failures test_disable_encoder test_force_in_print serious mitigate_ttc"
+            for var in $(set | grep '^_param_' | cut -d'=' -f1 | sort); do
                 param=${var#_param_}
                 for item in ${supplemental_params} ${hidden_params}; do
                     if [ "$item" = "$param" ]; then
                         value=$(eval echo "\$${var}")
-                        echo "${param}: ${value} # User added and retained after upgrade"
+                        echo "${param}: ${value}"
+                        eval unset ${var}
                     fi
                 done
             done >> $dest
+
+            # If any params are still left worn the user because they will be lost (should have been upgraded)
+            for var in $(set | grep '^_param_' | cut -d= -f1); do
+                value=$(eval echo \$$var)
+                param=${var#_param_}
+                echo "Parameter: '$param: $value' is deprecated and has been removed"
+            done
 
         # Variables macro ---------------------------------------------------------------------
         elif [ "${file}" == "mmu_macro_vars.cfg" ]; then
