@@ -401,8 +401,12 @@ class Mmu:
         self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.) # ERCF v1.1 only
         self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1 only
         self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
+
         # Allow model parameters to be customized
         self.variable_gate_ratios = config.getint('variable_gate_ratios', self.variable_gate_ratios, minval=0, maxval=1)
+
+        # Klipper tuning
+        self.update_trsync = config.getint('update_trsync', 0, minval=0, maxval=1)
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -821,6 +825,7 @@ class Mmu:
 
     def handle_connect(self):
         self._setup_logging()
+
         self.toolhead = self.printer.lookup_object('toolhead')
         self.mmu_sensors = self.printer.lookup_object('mmu_sensors', None)
 
@@ -950,6 +955,14 @@ class Mmu:
             self.servo_angles.update(servo_angles)
         except Exception as e:
             raise self.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
+
+        # Timer too close mitigation
+        if self.update_trsync:
+            try:
+                import mcu
+                mcu.TRSYNC_TIMEOUT = max(mcu.TRSYNC_TIMEOUT, 0.05)
+            except Exception as e:
+                self._log_error("Unable to update TRSYNC_TIMEOUT: %s" % str(e))
 
     def handle_disconnect(self):
         self._log_debug('Klipper disconnected! MMU Shutdown')
