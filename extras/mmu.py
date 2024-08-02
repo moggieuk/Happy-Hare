@@ -406,7 +406,15 @@ class Mmu:
         self.variable_gate_ratios = config.getint('variable_gate_ratios', self.variable_gate_ratios, minval=0, maxval=1)
 
         # Klipper tuning
+        # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing
+        # operations especially so with CANbus connected mcus. Happy Hare using many homing moves for reliable extruder loading
+        # and unloading and enabling this option affords klipper more tolerance and avoids this dreaded error.
         self.update_trsync = config.getint('update_trsync', 0, minval=0, maxval=1)
+
+        # Some CANbus boards are prone to this but it have been seen on regular USB boards where a comms
+        # timeout will kill the print. Since it seems to occur only on homing moves they can be safely
+        # retried to workaround. This has been working well in practice
+        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -577,11 +585,6 @@ class Mmu:
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
         # Currently hidden options or testing options...
-
-        # Some CANbus boards are prone to this but it have been seen on regular USB boards where a comms
-        # timeout will kill the print. Since it seems to occur only on homing moves they can be safely
-        # retried to workaround. This has been working well in practice
-        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
 
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on
         # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
