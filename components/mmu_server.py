@@ -62,15 +62,16 @@ class MmuServer:
         self.cache_lock = asyncio.Lock() # Lock to serialize a async calls for Happy Hare
 
         # Spoolman filament info retrieval functionality and update reporting
-        self.server.register_remote_method("spoolman_refresh", self.refresh_cache)
-        self.server.register_remote_method("spoolman_get_filaments", self.get_filaments) # "get" mode
-        self.server.register_remote_method("spoolman_push_gate_map", self.push_gate_map) # "push" mode
-        self.server.register_remote_method("spoolman_pull_gate_map", self.pull_gate_map) # "pull" mode
-        self.server.register_remote_method("spoolman_clear_spools_for_printer", self.clear_spools_for_printer)
-        self.server.register_remote_method("spoolman_set_spool_gate", self.set_spool_gate)
-        self.server.register_remote_method("spoolman_unset_spool_gate", self.unset_spool_gate)
-        self.server.register_remote_method("spoolman_get_spool_info", self.display_spool_info)
-        self.server.register_remote_method("spoolman_display_spool_location", self.display_spool_location)
+        if self.spoolman:
+            self.server.register_remote_method("spoolman_refresh", self.refresh_cache)
+            self.server.register_remote_method("spoolman_get_filaments", self.get_filaments) # "get" mode
+            self.server.register_remote_method("spoolman_push_gate_map", self.push_gate_map) # "push" mode
+            self.server.register_remote_method("spoolman_pull_gate_map", self.pull_gate_map) # "pull" mode
+            self.server.register_remote_method("spoolman_clear_spools_for_printer", self.clear_spools_for_printer)
+            self.server.register_remote_method("spoolman_set_spool_gate", self.set_spool_gate)
+            self.server.register_remote_method("spoolman_unset_spool_gate", self.unset_spool_gate)
+            self.server.register_remote_method("spoolman_get_spool_info", self.display_spool_info)
+            self.server.register_remote_method("spoolman_display_spool_location", self.display_spool_location)
 
         # Replace file_manager/metadata with this file
         self.setup_placeholder_processor(config)
@@ -92,6 +93,10 @@ class MmuServer:
             return tuple([int(n) for n in response.json()['version'].split('.')])
 
     async def component_init(self) -> None:
+        if self.spoolman is None:
+            logging.error(f"Spoolman not configured in moonraker. Remote methods unavailable")
+            return
+
         async with self.cache_lock:
             # Get current printer hostname
             self.printer_hostname = self.printer_info["hostname"]

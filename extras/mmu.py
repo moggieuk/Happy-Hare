@@ -233,6 +233,7 @@ class Mmu:
     SPOOLMAN_PUSH          = 'push'     # Local gatemap is the source or truth
     SPOOLMAN_PULL          = 'pull'     # Spoolman db is the source of truth
     SPOOLMAN_OPTIONS       = [SPOOLMAN_OFF, SPOOLMAN_READONLY, SPOOLMAN_PUSH, SPOOLMAN_PULL]
+    SPOOLMAN_CONFIG_ERROR  = "Moonraker/spoolman may not be configured (check moonraker.log)"
 
     # Automap strategies
     AUTOMAP_NONE           = 'none'
@@ -5722,7 +5723,7 @@ class Mmu:
                     self._log_debug("Activating spool %s..." % spool_id)
                 webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)
         except Exception as e:
-            self._log_error("Error while calling spoolman_set_active_spool: %s" % str(e))
+            self._log_error("Error while setting active spool: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     # Request to send filament data from spoolman db (via moonraker)
     # gate=None means all gates with spool_id, else specific gate
@@ -5741,7 +5742,7 @@ class Mmu:
                 webhooks = self.printer.lookup_object('webhooks')
                 webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids, silent=quiet)
             except Exception as e:
-                self._log_error("Error while retrieving spoolman info: %s" % str(e))
+                self._log_error("Error while fetching filament attributes from spoolman: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     # Store the current gate to spool_id mapping in spoolman db (via moonraker)
     def _spoolman_push_gate_map(self, gate_ids=None, quiet=True):
@@ -5754,7 +5755,7 @@ class Mmu:
             self._log_debug("Storing gate map in spoolman db...")
             webhooks.call_remote_method("spoolman_push_gate_map", gate_ids=gate_ids, silent=quiet)
         except Exception as e:
-            self._log_error("Error while calling _spoolman_push_gate_map: %s" % str(e))
+            self._log_error("Error while pushing gate map to spoolman: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     # Request to update local gate based on the remote data stored in spoolman db
     def _spoolman_pull_gate_map(self, quiet=True):
@@ -5764,7 +5765,7 @@ class Mmu:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_pull_gate_map", silent=quiet)
         except Exception as e:
-            self._log_error("Error while retrieving spoolman gate mapping info (see mmu.log for more info): %s" % str(e))
+            self._log_error("Error while requesting gate map from spoolman: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     # Clear the spool to gate association in spoolman db
     def _spoolman_clear_gate_map(self, sync=False, quiet=True):
@@ -5774,7 +5775,7 @@ class Mmu:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_clear_spools_for_printer", sync=sync, silent=quiet)
         except Exception as e:
-            self._log_error("Error while clearing spoolman gate mapping: %s" % str(e))
+            self._log_error("Error while clearing spoolman gate mapping: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     # Refresh the spoolman cache to pick up changes from elsewhere
     def _spoolman_refresh(self, fix, quiet=True):
@@ -5784,7 +5785,7 @@ class Mmu:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_refresh", fix=fix, silent=quiet)
         except Exception as e:
-            self._log_error("Error while refreshing spoolman gate cache: %s" % str(e))
+            self._log_error("Error while refreshing spoolman gate cache: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     # Force spool to map association in spoolman db
     def _spoolman_set_spool_gate(self, spool_id, gate, sync=False, quiet=True):
@@ -5794,7 +5795,7 @@ class Mmu:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_set_spool_gate", spool_id=spool_id, gate=gate, sync=sync, silent=quiet)
         except Exception as e:
-            self._log_error("Error while setting spoolman gate association: %s" % str(e))
+            self._log_error("Error while setting spoolman gate association: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     def _spoolman_unset_spool_gate(self, spool_id=None, gate=None, sync=False, quiet=True):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
@@ -5803,7 +5804,7 @@ class Mmu:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_unset_spool_gate", spool_id=spool_id, gate=gate, sync=sync, silent=quiet)
         except Exception as e:
-            self._log_error("Error while unsetting spoolman gate association: %s" % str(e))
+            self._log_error("Error while unsetting spoolman gate association: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     # Dump spool info to console
     def _spoolman_display_spool_info(self, spool_id):
@@ -5812,7 +5813,7 @@ class Mmu:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_get_spool_info", spool_id=spool_id)
         except Exception as e:
-            self._log_error("Error while displaying spool info: %s" % str(e))
+            self._log_error("Error while displaying spool info: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
     # Dump spool info to console
     def _spoolman_display_spool_location(self, printer=None):
@@ -5821,7 +5822,7 @@ class Mmu:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_display_spool_location", printer=printer)
         except Exception as e:
-            self._log_error("Error while displaying spool location map: %s" % str(e))
+            self._log_error("Error while displaying spool location map: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
 
 ### SPOOLMAN COMMANDS ############################################################
@@ -6508,12 +6509,6 @@ class Mmu:
         self.canbus_comms_retries = gcmd.get_int('CANBUS_COMMS_RETRIES', self.canbus_comms_retries, minval=1, maxval=10)
         self.serious = gcmd.get_int('SERIOUS', self.serious, minval=0, maxval=1)
 
-        # Some changes need additional action to be taken
-        if prev_spoolman_support != self.spoolman_support:
-            self._spoolman_sync()
-        if prev_t_macro_color != self.t_macro_color:
-            self._update_t_macros()
-
         if not quiet:
             msg = "SPEEDS:"
             msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
@@ -6616,6 +6611,12 @@ class Mmu:
                 msg += "\nmmu_calibration_clog_length = %.1f" % self.encoder_sensor.get_clog_detection_length()
 
             self._log_info(msg)
+
+        # Some changes need additional action to be taken
+        if prev_spoolman_support != self.spoolman_support:
+            self._spoolman_sync()
+        if prev_t_macro_color != self.t_macro_color:
+            self._update_t_macros()
 
 
 ###########################################
