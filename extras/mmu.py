@@ -2324,6 +2324,10 @@ class Mmu:
     #   gate_endstop_to_encoder    .. potential dead space from gate sensor to encoder
     #   toolhead_entry_to_extruder .. distance for extruder entry sensor to extruder gears
     def _calibrate_bowden_length_auto(self, approximate_length, extruder_homing_max, repeats, save=True):
+
+        # Can't allow "none" endstop during calibration
+        endstop = self.extruder_homing_endstop
+        self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_COLLISION if endstop == self.ENDSTOP_EXTRUDER_NONE else self.extruder_homing_endstop
         try:
             self._log_always("Calibrating bowden length on reference Gate 0 using %s as gate reference point" % self._gate_homing_string())
             self._select_tool(0)
@@ -2331,9 +2335,6 @@ class Mmu:
             reference_sum = spring_max = 0.
             successes = 0
 
-            # Can't allow "none" endstop during calibration
-            endstop = self.extruder_homing_endstop
-            self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_COLLISION if endstop == self.ENDSTOP_EXTRUDER_NONE else self.extruder_homing_endstop
             for i in range(repeats):
                 self._initialize_filament_position(dwell=True) # Encoder 0000
                 self._load_gate(allow_retry=False)
