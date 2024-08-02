@@ -1,5 +1,6 @@
 {
     "debian": [
-        "evdev"
+        "evdev",
+        "PAUL"
     ]
 }
