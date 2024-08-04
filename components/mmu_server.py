@@ -50,7 +50,10 @@ class MmuServer:
         self.config = config
         self.server = config.get_server()
         self.printer_info = self.server.get_host_info()
-        self.spoolman: SpoolManager = self.server.load_component(config, "spoolman", None)
+        self.spoolman = None
+        if config.has_section("spoolman"): # Avoid exception if spoolman not configured
+            self.spoolman: SpoolManager = self.server.load_component(config, "spoolman", None)
+        self.spoolman: SpoolManager = self.server.lookup_component("spoolman", None)
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
         self.http_client: HttpClient = self.server.lookup_component("http_client")
 
@@ -94,7 +97,7 @@ class MmuServer:
 
     async def component_init(self) -> None:
         if self.spoolman is None:
-            logging.error(f"Spoolman not configured in moonraker. Remote methods unavailable")
+            logging.warning("Spoolman not available. Happy Hare remote methods not available")
             return
 
         async with self.cache_lock:
