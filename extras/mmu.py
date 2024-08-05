@@ -6051,6 +6051,7 @@ class Mmu:
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
         skip_tip = bool(gcmd.get_int('SKIP_TIP', 0, minval=0, maxval=1))
+        pause_on_failure = bool(gcmd.get_int('PAUSE_ON_FAILURE', 1, minval=0, maxval=1))
 
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
             try:
@@ -6065,7 +6066,10 @@ class Mmu:
                 else:
                     self._log_always("Filament not loaded")
             except MmuError as ee:
-                self._mmu_pause(str(ee))
+                if pause_on_failure:
+                    self._mmu_pause(str(ee))
+                else:
+                    self._log_error(str(ee))
 
     cmd_MMU_PRINT_START_help = "Forces initialization of MMU state ready for print (usually automatic)"
     def cmd_MMU_PRINT_START(self, gcmd):
