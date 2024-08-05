@@ -413,8 +413,9 @@ class Mmu:
         self.update_trsync = config.getint('update_trsync', 0, minval=0, maxval=1)
 
         # Some CANbus boards are prone to this but it have been seen on regular USB boards where a comms
-        # timeout will kill the print. Since it seems to occur only on homing moves they can be safely
-        # retried to workaround. This has been working well in practice
+        # timeout will kill the print. Since it seems to occur only on homing moves perhaps because of too
+        # high a microstep setting or speed. They can be safely retried to workaround.
+        # This has been working well in practice.
         self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
 
         # Printer interaction config
@@ -750,8 +751,8 @@ class Mmu:
 
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
-        # This assumes that the hardware configuartion appears before the '[mmu]' section
-        # the installer by default already guarantees this order
+        # This assumes that the hardware configuartion appears before the '[mmu]' section.
+        # The default recommended install will guarantee this order
         self._setup_mmu_hardware(config)
 
     def _setup_mmu_hardware(self, config):
@@ -772,7 +773,7 @@ class Mmu:
         self.selector_stepper = self.selector_rail.steppers[0]
         self.gear_rail = rails[1]
         self.gear_stepper = self.gear_rail.steppers[0]
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Available now if 'self.homing_extruder' is True
+        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is MmuExtruderStepper if 'self.homing_extruder' is True
 
         # Detect if selector touch is possible
         self.selector_touch = self.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
@@ -782,8 +783,9 @@ class Mmu:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
-                # With MMU toolhead sensors must not accidentally pause nor call user defined macros
-                # (this is done in [mmu_sensors] but legacy setups may have discrete [filament_switch_sensors])
+                # With MMU toolhead, sensors must not accidentally pause nor call user defined macros
+                # This is done in [mmu_sensors] but legacy setups may have discrete [filament_switch_sensors])
+                # so we ensure correct setup here
                 if name not in [self.ENDSTOP_GATE]:
                     self.sensors[name].runout_helper.runout_pause = False
                     self.sensors[name].runout_helper.runout_gcode = None
@@ -798,6 +800,7 @@ class Mmu:
                 mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
 
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
+                # otherwise the extruder can continue to move a small (speed dependent) distance
                 if self.homing_extruder:
                     mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
 
@@ -977,7 +980,7 @@ class Mmu:
         # Reference correct extruder stepper which will definitely be available now
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
         if not self.homing_extruder:
-            self._log_debug("Warning: Using original klipper extruder stepper")
+            self._log_debug("Warning: Using original klipper extruder stepper. Homing not possible")
 
         # Restore state if fully calibrated
         if not self._check_is_calibrated(silent=True):
@@ -5171,10 +5174,10 @@ class Mmu:
                     hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
                     init_pos = pos[1]
                     pos[1] += dist
-                    got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
                     for attempt in range(self.canbus_comms_retries):  # HACK: We can repeat because homing move
+                        got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
                         try:
-                            initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For not homing extruder
+                            initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For no homing extruder case
                             #init_pos = pos[1]
                             #pos[1] += dist
                             with self._wrap_accel(accel):
@@ -5189,6 +5192,7 @@ class Mmu:
                             if abs(trig_pos[1] - dist) > 0. and not "after full movement" in str(e):
                                 if 'communication timeout' in str(e).lower():
                                     got_comms_timeout = True
+                                    speed *= 0.8 # Reduce speed by 20%
                                 self._log_error("Did not complete homing move: %s" % str(e))
                             else:
                                 if self._log_enabled(self.LOG_STEPPER):

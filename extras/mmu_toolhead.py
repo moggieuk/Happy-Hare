@@ -377,10 +377,11 @@ class MmuToolHead(toolhead.ToolHead, object):
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
             msg += header[:100] + "\n"
             for idx, s in enumerate(rail.get_steppers()):
-                msg += "- Stepper %d: %s\n" % (idx, s.get_name())
-                msg += "- - Commanded Position: %.2f, " % s.get_commanded_position()
-                msg += "MCU Position: %.2f, " % s.get_mcu_position()
-                msg += "Rotation Distance: %.6f (in %d steps)\n" % s.get_rotation_distance()
+                msg += "Stepper %d: %s\n" % (idx, s.get_name())
+                msg += "- - Commanded Pos: %.2f, " % s.get_commanded_position()
+                msg += "MCU Pos: %.2f, " % s.get_mcu_position()
+                rd = s.get_rotation_distance()
+                msg += "Rotation Dist: %.6f (in %d steps, res=%.6f)\n" % (rd[0], rd[1], rd[0]/rd[1])
             msg += "Endstops:\n"
             for (mcu_endstop, name) in rail.endstops:
                 if mcu_endstop.__class__.__name__ == "MockEndstop":
@@ -388,12 +389,12 @@ class MmuToolHead(toolhead.ToolHead, object):
                 else:
                     msg += "- '%s', mcu: '%s', pin: '%s', obj_id: %s" % (name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin, id(mcu_endstop))
                     msg += " (virtual)\n" if rail.is_endstop_virtual(name) else "\n"
-                    msg += "- - Registed on steppers: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
+                    msg += "- - Registered on steppers: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
             msg += "Extra Endstops:\n"
             for (mcu_endstop, name) in rail.extra_endstops:
                 msg += "- '%s', mcu: '%s', pin: '%s', obj_id: %s" % (name, mcu_endstop.get_mcu().get_name(), mcu_endstop._pin, id(mcu_endstop))
                 msg += " (virtual)\n" if rail.is_endstop_virtual(name) else "\n"
-                msg += "- - Registed on steppers: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
+                msg += "- - Registered on steppers: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
             if axis == 1:
                 if self.gear_motion_queue:
                     msg += "Gear rail SYNCED to extruder '%s'\n" % self.gear_motion_queue
@@ -404,13 +405,14 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         extruder = self.printer.lookup_object(extruder_name, None)
         if extruder and isinstance(extruder, PrinterExtruder):
-            msg +=  "\nPRINTER TOOLHEAD: %s\n" % printer_toolhead.get_position()
-            header = "Extruder Stepper: %s %s" % (extruder_name, '-' * 100)
-            msg += header[:100] + "\n"
             extruder_stepper = extruder.extruder_stepper.stepper
-            msg += "- - Commanded Position: %.2f, " % extruder_stepper.get_commanded_position()
-            msg += "MCU Position: %.2f, " % extruder_stepper.get_mcu_position()
-            msg += "Rotation Distance: %.6f (in %d steps)\n" % extruder_stepper.get_rotation_distance()
+            msg +=  "\nPRINTER TOOLHEAD: %s\n" % printer_toolhead.get_position()
+            header = "Extruder Stepper: %s %s %s" % (extruder_name, "(MmuExtruderStepper)" if isinstance(extruder.extruder_stepper, MmuExtruderStepper) else "", '-' * 100)
+            msg += header[:100] + "\n"
+            msg += "- - Commanded Pos: %.2f, " % extruder_stepper.get_commanded_position()
+            msg += "MCU Pos: %.2f, " % extruder_stepper.get_mcu_position()
+            rd = extruder_stepper.get_rotation_distance()
+            msg += "Rotation Dist: %.6f (in %d steps, res=%.6f)\n" % (rd[0], rd[1], rd[0]/rd[1])
         return msg
 
 
@@ -656,6 +658,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
             except:
                 pass
 
+        # This allows for setup of stallguard as an option for nozzle homing
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin:
             mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=True)
