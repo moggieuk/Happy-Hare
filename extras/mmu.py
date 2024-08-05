@@ -3169,10 +3169,29 @@ class Mmu:
             self._log_info(msg)
             self._set_print_state("printing")
 
-    # Hack: Force state transistion to printing for any early moves
+    # Hack: Force state transistion to printing for any early moves if _MMU_PRINT_STATE not yet run
     def _fix_started_state(self):
         if self._is_printer_printing() and not self._is_in_print():
             self._wrap_gcode_command("_MMU_PRINT_START")
+
+    # If this is called automatically it will occur after the user's print ends.
+    # Therefore don't do anything that requires operating kinematics or execute gcode
+    def _on_print_end(self, state="complete"):
+        if not self._is_in_endstate():
+            self._log_trace("_on_print_end(%s)" % state)
+            self._movequeues_wait_moves()
+            self._clear_saved_toolhead_position()
+            self.resume_to_state = "ready"
+            self.paused_extruder_temp = None
+            self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self._disable_runout() # Disable runout/clog detection after print
+
+            if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
+                self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
+            self._sync_gear_to_extruder(False, servo=True)
+            self._set_print_state(state)
+        if state == "standby" and not self._is_in_standby():
+            self._set_print_state(state)
 
     def _mmu_pause(self, reason, force_in_print=False):
         self._fix_started_state() # Get out of 'started' state before transistion to pause
@@ -3273,25 +3292,6 @@ class Mmu:
     def _clear_macro_state(self):
         if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
             self._wrap_gcode_command(self.clear_position_macro)
-
-    # If this is called automatically it will occur after the user's print ends.
-    # Therefore don't do anything that requires operating kinematics or execute gcode
-    def _on_print_end(self, state="complete"):
-        if not self._is_in_endstate():
-            self._log_trace("_on_print_end(%s)" % state)
-            self._movequeues_wait_moves()
-            self._clear_saved_toolhead_position()
-            self.resume_to_state = "ready"
-            self.paused_extruder_temp = None
-            self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
-            self._disable_runout() # Disable runout/clog detection after print
-
-            if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
-                self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
-            self._sync_gear_to_extruder(False, servo=True)
-            self._set_print_state(state)
-        if state == "standby" and not self._is_in_standby():
-            self._set_print_state(state)
 
     def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False, pause_resume_pos=None):
         if not self.saved_toolhead_position:
@@ -5889,8 +5889,10 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         if self.virtual_selector: return
+        self._fix_started_state()
+
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR):
-            self._log_always("Will home to endstop only!")
+            self._log_always("Not calibrated. Will home to endstop only!")
             tool = -1
             force_unload = 0
         else:
@@ -5910,6 +5912,8 @@ class Mmu:
         if self._check_not_homed(): return
         if self._check_is_loaded(): return
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
+        self._fix_started_state()
+
         bypass = gcmd.get_int('BYPASS', -1, minval=0, maxval=1)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
@@ -5920,6 +5924,12 @@ class Mmu:
     cmd_MMU_SELECT_BYPASS_help = "Select the filament bypass"
     def cmd_MMU_SELECT_BYPASS(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
+        if self._check_is_disabled(): return
+        if self._check_not_homed(): return
+        if self._check_is_loaded(): return
+        if self._check_is_calibrated(self.CALIBRATED_SELECTOR): return
+        self._fix_started_state()
+
         self._select(1, -1, -1)
 
     def _select(self, bypass, tool, gate):
@@ -5952,9 +5962,9 @@ class Mmu:
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
         if self._check_is_calibrated(): return
-        self.last_statistics = {}
         self._fix_started_state()
 
+        self.last_statistics = {}
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
 
@@ -6045,7 +6055,6 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         if self._check_is_calibrated(): return
-        self._fix_started_state()
 
         self.last_statistics = {}
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
