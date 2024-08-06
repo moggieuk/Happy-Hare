@@ -3879,8 +3879,9 @@ class Mmu:
         if led_vars_macro and set_led_macro:
 
             current_led_enable = led_vars_macro.variables['led_enable']
+            current_led_animation = led_vars_macro.variables['led_animation']
             led_enable = bool(gcmd.get_int('ENABLE', current_led_enable, minval=0, maxval=1))
-            led_animation = bool(gcmd.get_int('ANIMATION', led_vars_macro.variables['led_animation'],minval=0, maxval=1))
+            led_animation = bool(gcmd.get_int('ANIMATION', current_led_animation, minval=0, maxval=1))
             if led_animation and not self.has_led_animation:
                 raise gcmd.error("Led animation is unavailable. Klipper led_effects module is missing")
 
@@ -3900,13 +3901,16 @@ class Mmu:
                 self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off")
                 led_vars_macro.variables.update(led_vars)
             else:
+                if current_led_animation and not led_animation:
+                    # Turning animation off so clear existing effects
+                    self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off") # PAUL needs to be immediate else next led set doesn't work
                 led_vars_macro.variables.update(led_vars)
                 self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default")
 
             if not quiet:
                 effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled != -1 else "Unavailable"
                 msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
-                msg = "LED animations are %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
+                msg = "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
                 msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, set_led_macro.variables['exit_first_led_index'])
                 msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, set_led_macro.variables['entry_first_led_index'])
                 msg += "Default status effect: %s\n" % effect_string(default_status_effect, set_led_macro.variables['status_led_index'])
