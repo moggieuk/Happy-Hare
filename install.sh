@@ -645,11 +645,6 @@ read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""          "_param_" "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_software.cfg"   "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_sequence.cfg"   "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg"   "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg"    "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_leds.cfg"       "variable_" ""        "checkdup"
     for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw" | grep -v "my_"`; do
         parse_file "${SRCDIR}/config/addons/${file}"      "variable_" ""        "checkdup"
     done
@@ -765,7 +760,7 @@ read_previous_config() {
     fi
 
     # TODO Remove mmu_variables once everybody has upgraded
-    for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_leds.cfg mmu_macro_vars.cfg; do
+    for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
         if [ ! -f "${dest_cfg}" ]; then
