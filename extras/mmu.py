@@ -3903,7 +3903,7 @@ class Mmu:
             else:
                 if current_led_animation and not led_animation:
                     # Turning animation off so clear existing effects
-                    self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off") # PAUL needs to be immediate else next led set doesn't work
+                    self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off FADETIME=0")
                 led_vars_macro.variables.update(led_vars)
                 self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default")
 
