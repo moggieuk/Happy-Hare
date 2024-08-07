@@ -66,7 +66,11 @@ class MmuLeds:
         if MmuLeds.led_strip is None:
             MmuLeds.chains = {}
         else:
-            MmuLeds.led_effect_module = config.get_printer().lookup_object('led_effect', None) is not None
+            try:
+                led_effects = config.get_printer().load_object(config, 'led_effect')
+                MmuLeds.led_effect_module = True
+            except Exception:
+                MmuLeds.led_effect_module = False
 
 def load_config(config):
     return MmuLeds(config)
