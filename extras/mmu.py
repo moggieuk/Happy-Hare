@@ -3832,8 +3832,7 @@ class Mmu:
                     seq_msg += "%s : %s\n" % (c.upper(), d) # Invidual sequence step commands
                 elif c.startswith("_MMU_PRE_") or c.startswith("_MMU_POST_") or c in ["_MMU_ACTION_CHANGED", "_MMU_GATE_MAP_CHANGED", "_MMU_PRINT_STATE_CHANGED"]:
                     callback_msg += "%s : %s\n" % (c.upper(), d) # Callbacks
-                else:
-                    if not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
+                elif not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
                         macro_msg += "%s : %s\n" % (c.upper(), d) # Core command macros
 
         msg += slicer_msg if slicer else ""
