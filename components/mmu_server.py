@@ -721,7 +721,7 @@ METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 COLORS_REGEX = {
     'PrusaSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;.*)$",
     'SuperSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;.*)$",
-    'OrcaSlicer' : r"^;\s*filament_colour\s*=\s*(#.*;.*)$"
+    'OrcaSlicer' : r"^;\s*filament_colour\s*=\s*(#.*;*.*)$"
 }
 METADATA_COLORS = "!colors!"
 
