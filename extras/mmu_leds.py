@@ -23,6 +23,7 @@ class MmuLeds:
     led_strip = None
     frame_rate = 24
     chains = {}
+    led_effect_module = False
 
     def __init__(self, config):
         led_strip = config.get('led_strip')
@@ -64,6 +65,12 @@ class MmuLeds:
         # Lack of this module loading will make future mmu_led_effect definitions a no-op. This provides an easy way to disable
         if MmuLeds.led_strip is None:
             MmuLeds.chains = {}
+        else:
+            try:
+                led_effects = config.get_printer().load_object(config, 'led_effect')
+                MmuLeds.led_effect_module = True
+            except Exception:
+                MmuLeds.led_effect_module = False
 
 def load_config(config):
     return MmuLeds(config)

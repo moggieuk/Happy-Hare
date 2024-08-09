@@ -29,7 +29,8 @@ class MmuLedEffect:
         layers = config.get('layers')
         led_effect_section = config.get_name()[4:]
 
-        if chains: # This makes it a no-op if [mmu_leds] is not present
+        # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed
+        if chains and MmuLeds.led_effect_module:
             for segment in MmuLeds.SEGMENTS:
                 if chains[segment] and (not define_on or segment in define_on):
                     section_to = "%s_%s" % (led_effect_section, segment)
