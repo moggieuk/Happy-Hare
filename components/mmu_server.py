@@ -719,9 +719,9 @@ METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 
 # PS/SS uses "extruder_colour", Orca uses "filament_colour" but extruder_colour can exist with empty or single color
 COLORS_REGEX = {
-    'PrusaSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;.*)$",
-    'SuperSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;.*)$",
-    'OrcaSlicer' : r"^;\s*filament_colour\s*=\s*(#.*;.*)$"
+    'PrusaSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;*.*)$",
+    'SuperSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;*.*)$",
+    'OrcaSlicer' : r"^;\s*filament_colour\s*=\s*(#.*;*.*)$"
 }
 METADATA_COLORS = "!colors!"
 
