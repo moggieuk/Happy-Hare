@@ -995,12 +995,10 @@ copy_config_files() {
 
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} | sed -e "\
-                    s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}
             else
                 cat ${src} | sed -e "\
-                    s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}.tmp
                 update_copy_file "${dest}.tmp" "${dest}" "variable_|filename" && rm ${dest}.tmp
