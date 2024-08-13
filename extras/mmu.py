@@ -13,8 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import sys # To detect python2 or python3
-import logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
-from random import randint
+import random, logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
@@ -298,6 +297,7 @@ class Mmu:
         self.filament_remaining = 0.
         self._last_tool = self.TOOL_GATE_UNKNOWN
         self._toolhead_max_accel = self.config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
+        self.sync_test = False # PAUL
 
         # Logging
         self.queue_listener = None
@@ -1356,6 +1356,56 @@ class Mmu:
                     with self._wrap_track_time('post_load'):
                         self._wrap_gcode_command(self.post_load_macro, exception=False)
 
+        if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
+            self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name)
+
+        if gcmd.get_int('SYNC_E2G', 0, minval=0, maxval=1):
+            extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
+            self.mmu_toolhead.sync_extruder_to_gear(self.extruder_name, extruder_only=extruder_only)
+
+        if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
+            self.mmu_toolhead.unsync()
+
+        pos = gcmd.get_int('SET_POS', -1, minval=0)
+        if pos >= 0:
+            self._set_filament_position(pos)
+
+        if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
+            endstop = gcmd.get('ENDSTOP', 'extruder')
+            loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
+            self.servo_disabled = True
+            self.sync_test = True
+            for i in range(loop):
+                move_type = random.randint(0, 6)
+                move = random.randint(0, 200) - 100
+                speed = random.uniform(50, 300)
+                accel = random.randint(50, 500)
+                homing = random.randint(0, 1)
+                motor = random.choice(["gear", "gear+extruder", "extruder"])
+                if move_type == 0:
+                    self._log_info("Loop: %d - Synced extruder movement" % i)
+                    self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name)
+                    self.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
+                    if random.randint(0, 1):
+                        self.mmu_toolhead.unsync()
+                elif move_type == 1:
+                    self._log_info("Loop: %d - Unsynced extruder movement" % i)
+                    self.mmu_toolhead.unsync()
+                    self.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
+                elif move_type == 2:
+                    self._log_info("Loop: %d - Regular move: %s" %  (i, motor))
+                    self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=%.2f SPEED=%d" % (motor, move, speed))
+                elif move_type == 3 or move_type == 4:
+                    self._log_info("Loop: %d - HOMING MOVE: %s" % (i, motor))
+                    self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=%.2f SPEED=%d ENDSTOP=%s" % (motor, move, speed, endstop))
+                elif move_type == 5:
+                    self._log_info("Loop: %d - Changed filament position" % i)
+                    self._set_filament_position(random.uniform(0, 300))
+                else:
+                    self._log_info("Loop: %d - Initialized filament position" % i)
+                    self._initialize_filament_position()
+            self.sync_test = False
+
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
             macro = command.split()[0]
@@ -1495,18 +1545,13 @@ class Mmu:
         self.job_statistics = {}
 
     def _track_time_start(self, name):
-        #self.track[name] = time.time()
         self.track[name] = self.toolhead.get_last_move_time()
-        #self._log_trace("Track times: %s" % self.track)
 
     def _track_time_end(self, name):
         if name not in self.track:
             return # Timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        #self._log_trace("Statistics: %s" % self.statistics)
-
-        #elapsed = time.time() - self.track[name]
         elapsed = self.toolhead.get_last_move_time() - self.track[name]
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
@@ -2117,7 +2162,8 @@ class Mmu:
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
         self._movequeues_wait_moves()
-        self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
+        if not self.sync_test: # PAUL
+            self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
@@ -2132,7 +2178,8 @@ class Mmu:
         self._log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self._movequeues_wait_moves()
-            self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
+            if not self.sync_test: # PAUL
+                self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = self.SERVO_MOVE_STATE
@@ -2145,7 +2192,8 @@ class Mmu:
             self._movequeues_wait_moves()
             if measure:
                 initial_encoder_position = self._get_encoder_distance(dwell=None)
-            self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
+            if not self.sync_test: # PAUL
+                self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter
@@ -2883,7 +2931,6 @@ class Mmu:
         cut = gcmd.get_int('CUT', 0, minval=0, maxval=1)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         line = "-----------------------------------------------\n"
-
 
         msg = "Reminder:\n"
         msg += "1) 'CLEAN=1' with clean extruder for: toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder)\n"
@@ -3795,7 +3842,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=mmu__revision VALUE=%d" % mmu_vars_revision)
 
     def _random_failure(self):
-        if self.test_random_failures and randint(0, 10) == 0:
+        if self.test_random_failures and random.randint(0, 10) == 0:
             raise MmuError("Randomized testing failure")
 
 
@@ -6285,11 +6332,11 @@ class Mmu:
             self._home()
             for l in range(loops):
                 self._log_always("Testing loop %d / %d" % (l + 1, loops))
-                tool = randint(0, self.mmu_num_gates)
+                tool = random.randint(0, self.mmu_num_gates)
                 if tool == self.mmu_num_gates:
                     self._select_bypass()
                 else:
-                    if randint(0, 10) == 0 and home:
+                    if random.randint(0, 10) == 0 and home:
                         self._home(tool)
                     else:
                         self._select_tool(tool, move_servo=servo)
@@ -6316,7 +6363,7 @@ class Mmu:
                 for t in range(self.mmu_num_gates):
                     tool = t
                     if random == 1:
-                        tool = randint(0, self.mmu_num_gates - 1)
+                        tool = random.randint(0, self.mmu_num_gates - 1)
                     gate = self.ttg_map[tool]
                     if self.gate_status[gate] == self.GATE_EMPTY:
                         self._log_always("Skipping tool %d of %d because Gate %d is empty" % (tool, self.mmu_num_gates, gate))
