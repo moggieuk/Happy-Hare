@@ -229,7 +229,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._prev_trapq = following_steppers[0].get_trapq()
             driving_trapq = driving_toolhead.get_trapq()
             s_alloc = ffi_lib.cartesian_stepper_alloc(b"y")
-#            self.mmu_toolhead.get_last_move_time() # PAUL needed??
             pos = [0., self.mmu_toolhead.get_position()[1], 0.]
 
             # Inject the extruder steppers into the gear rail
