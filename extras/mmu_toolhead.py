@@ -240,7 +240,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             s_alloc = ffi_lib.cartesian_stepper_alloc(b"y")
             self.mmu_toolhead.get_last_move_time() # PAUL needed??
             pos1 = [0., self.mmu_toolhead.get_kinematics().rails[1].get_commanded_position(), 0.] # PAUL
-            logging.info("PAUL: pos1=%s" % pos) # PAUL
+            logging.info("PAUL: pos1=%s" % pos1) # PAUL
             pos = [0., self.mmu_toolhead.get_position()[1], 0.]
             logging.info("PAUL: pos=%s" % pos) # PAUL
             if pos != pos1: # PAUL
