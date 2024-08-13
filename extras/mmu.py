@@ -1376,7 +1376,7 @@ class Mmu:
             self.servo_disabled = True
             self.sync_test = True
             for i in range(loop):
-                move_type = random.randint(0, 6)
+                move_type = random.randint(0, 7)
                 move = random.randint(0, 200) - 100
                 speed = random.uniform(50, 300)
                 accel = random.randint(50, 500)
@@ -1401,9 +1401,13 @@ class Mmu:
                 elif move_type == 5:
                     self._log_info("Loop: %d - Changed filament position" % i)
                     self._set_filament_position(random.uniform(0, 300))
-                else:
+                elif move_type == 6:
                     self._log_info("Loop: %d - Initialized filament position" % i)
                     self._initialize_filament_position()
+                else:
+                    self._log_info("Loop: %d - Changing rotation_distance" % i)
+                    self._set_gate_ratio(ratio=random.uniform(0.9, 1.1))
+
             self.sync_test = False
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):

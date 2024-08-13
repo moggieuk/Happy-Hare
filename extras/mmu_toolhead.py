@@ -245,6 +245,14 @@ class MmuToolHead(toolhead.ToolHead, object):
             logging.info("PAUL: pos=%s" % pos) # PAUL
             if pos != pos1: # PAUL
                 logging.info("PAUL: **** POSITION MISMATCH!")
+                driving_toolhead.get_last_move_time()
+                following_toolhead.get_last_move_time()
+                pos1 = [0., self.mmu_toolhead.get_kinematics().rails[1].get_commanded_position(), 0.] # PAUL
+                logging.info("PAUL: pos1=%s" % pos1) # PAUL
+                pos = [0., self.mmu_toolhead.get_position()[1], 0.]
+                logging.info("PAUL: pos=%s" % pos) # PAUL
+                if pos != pos1: # PAUL
+                    logging.info("PAUL: **** POSITION STILL MISMATCH!")
 
             # Inject the extruder steppers into the gear rail
             # Cripple unused/unwanted gear steppers
@@ -274,6 +282,14 @@ class MmuToolHead(toolhead.ToolHead, object):
             logging.info("PAUL: pos=%s" % pos)
             if pos != pos1: # PAUL
                 logging.info("PAUL: **** POSITION MISMATCH!")
+                driving_toolhead.get_last_move_time()
+                following_toolhead.get_last_move_time()
+                pos1 = [0., self.mmu_toolhead.get_kinematics().rails[1].get_commanded_position(), 0.] # PAUL
+                logging.info("PAUL: pos1=%s" % pos1) # PAUL
+                pos = [0., self.mmu_toolhead.get_position()[1], 0.]
+                logging.info("PAUL: pos=%s" % pos) # PAUL
+                if pos != pos1: # PAUL
+                    logging.info("PAUL: **** POSITION STILL MISMATCH!")
 
         else:
             raise Exception("Invalid sync_direction: %d" % new_sync_direction)
