@@ -30,10 +30,10 @@ UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
 if sys.version_info[0] >= 3:
     # Use (common) unicode for improved formatting and klipper layout
     UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = '\u00A0', '\u00A0', '\u2014', '\u00B0', '\u2588', '\u2514'
-# Not all character sets include these so best to use defaults above
-#    UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '\u250C', '\u2514', '\u2510', '\u2518'
-#    UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
-#    UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
+    # Not all character sets include these so best to use defaults above
+    # UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '\u250C', '\u2514', '\u2510', '\u2518'
+    # UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
+    # UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 
 # Forward all messages through a queue (polled by background thread)
@@ -4866,6 +4866,7 @@ class Mmu:
                     found = self._check_filament_at_gate()
                     if not found:
                         # Try to engage filament to the encoder
+                        self._servo_down()
                         _,_,measured,delta = self._trace_filament_move("Trying to re-enguage encoder", 45.)
                         if measured < self.encoder_min:
                             raise MmuError("Selector recovery failed. Path is probably internally blocked and unable to move filament to clear")
@@ -6310,9 +6311,9 @@ class Mmu:
 
         msg += "\n\nLOGGING:"
         msg += "\nlog_level = %d" % self.log_level
-        msg += "\nlog_file_level = %d" % self.log_file_level
+        msg += "\nlog_visual = %d" % self.log_visual
         if self.mmu_logger:
-            msg += "\nlog_visual = %d" % self.log_visual
+            msg += "\nlog_file_level = %d" % self.log_file_level
         msg += "\nlog_statistics = %d" % self.log_statistics
         msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
@@ -6840,6 +6841,8 @@ class Mmu:
     def cmd_MMU_SLICER_TOOL_MAP(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        self._fix_started_state()
+
         display = bool(gcmd.get_int('DISPLAY', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
