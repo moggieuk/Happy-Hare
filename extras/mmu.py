@@ -297,7 +297,6 @@ class Mmu:
         self.filament_remaining = 0.
         self._last_tool = self.TOOL_GATE_UNKNOWN
         self._toolhead_max_accel = self.config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
-        self.sync_test = False # PAUL
 
         # Logging
         self.queue_listener = None
@@ -1374,7 +1373,6 @@ class Mmu:
             endstop = gcmd.get('ENDSTOP', 'extruder')
             loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
             self.servo_disabled = True
-            self.sync_test = True
             for i in range(loop):
                 move_type = random.randint(0, 7)
                 move = random.randint(0, 200) - 100
@@ -1407,8 +1405,6 @@ class Mmu:
                 else:
                     self._log_info("Loop: %d - Changing rotation_distance" % i)
                     self._set_gate_ratio(ratio=random.uniform(0.9, 1.1))
-
-            self.sync_test = False
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
@@ -2166,8 +2162,7 @@ class Mmu:
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
         self._movequeues_wait_moves()
-        if not self.sync_test: # PAUL
-            self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
+        self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
@@ -2182,8 +2177,7 @@ class Mmu:
         self._log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self._movequeues_wait_moves()
-            if not self.sync_test: # PAUL
-                self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
+            self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = self.SERVO_MOVE_STATE
@@ -2196,8 +2190,7 @@ class Mmu:
             self._movequeues_wait_moves()
             if measure:
                 initial_encoder_position = self._get_encoder_distance(dwell=None)
-            if not self.sync_test: # PAUL
-                self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
+            self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter

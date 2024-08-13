@@ -236,18 +236,15 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Cripple unused/unwanted gear steppers
             rail = self.mmu_toolhead.get_kinematics().rails[1]
             if extruder_only:
-                logging.info("PAUL: replacing rail with extruder stepper")
                 self._prev_rail_steppers = list(rail.steppers)
                 rail.steppers = following_steppers
                 for s in self._prev_rail_steppers:
                     self.mmu_toolhead.step_generators.remove(s.generate_steps)
             else:
                 self._prev_rail_steppers = list(rail.steppers)
-                logging.info("PAUL: adding extruder stepper to rail")
                 rail.steppers.extend(following_steppers)
 
         elif new_sync_direction == GEAR_SYNCED_TO_EXTRUDER:
-            logging.info("x\nPAUL: sync(GEAR_SYNCED_TO_EXTRUDER)")
             driving_toolhead = self.printer_toolhead
             following_toolhead = self.mmu_toolhead
             following_steppers = self.mmu_toolhead.get_kinematics().rails[1].get_steppers()
@@ -261,7 +258,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         
         self._prev_sk, self._prev_rd = [], []
         for s in following_steppers:
-            logging.info("PAUL: s=%s" % s.get_name())
             s_kinematics = ffi_main.gc(s_alloc, ffi_lib.free)
             self._prev_sk.append(s.set_stepper_kinematics(s_kinematics))
             self._prev_rd.append(s.get_rotation_distance()[0])
@@ -279,42 +275,34 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu_toolhead.flush_step_generation()
 
         if self.sync_direction == EXTRUDER_SYNCED_TO_GEAR:
-            logging.info("x\nPAUL: unsync(EXTRUDER_SYNCED_TO_GEAR)")
             driving_toolhead = self.mmu_toolhead
             following_toolhead = self.printer_toolhead
             following_steppers = [self.printer_toolhead.get_extruder().extruder_stepper.stepper]
             pos = [self.printer_toolhead.get_position()[3], 0., 0.]
-            logging.info("PAUL: pos=%s" % pos)
 
             # Remove extruder steppers from gear rail
             # Restore previously unused/unwanted gear steppers
             rail = self.mmu_toolhead.get_kinematics().rails[1]
             if self._prev_rail_steppers:
-                logging.info("PAUL: resetting original rail stepper")
                 rail.steppers = self._prev_rail_steppers
 
                 for s in self._prev_rail_steppers:
                     self.mmu_toolhead.register_step_generator(s.generate_steps)
                     p = [0., self.mmu_toolhead.get_position()[1], 0.]
-                    logging.info("PAUL: resetting positiong for stepper %s to %s" % (s.get_name(), p))
                     s.set_position(p)
             else:
-                logging.info("PAUL: stripping extruder stepper from rail")
                 rail.steppers = rail.steppers[:-len(steppers)]
 
         elif self.sync_direction == GEAR_SYNCED_TO_EXTRUDER:
-            logging.info("x\nPAUL: unsync(GEAR_SYNCED_TO_EXTRUDER)")
             driving_toolhead = self.printer_toolhead
             following_toolhead = self.mmu_toolhead
             following_steppers = self.mmu_toolhead.get_kinematics().rails[1].get_steppers()
             pos = [0., self.mmu_toolhead.get_position()[1], 0.]
-            logging.info("PAUL: pos=%s" % pos)
 
         else:
             raise Exception("Invalid sync_direction: %d" % sync_direction)
 
         for i, s in enumerate(following_steppers):
-            logging.info("PAUL: s=%s" % s.get_name())
             s.set_stepper_kinematics(self._prev_sk[i])
             s.set_rotation_distance(self._prev_rd[i])
             driving_toolhead.step_generators.remove(s.generate_steps)
@@ -326,157 +314,16 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.sync_direction = None
 
     def sync_extruder_to_gear(self, extruder_name, extruder_only=False):
-        if extruder_name is None: # PAUL historical
+        if extruder_name is None: # historical
             self.unsync()
         elif self.sync_direction != EXTRUDER_SYNCED_TO_GEAR:
             self._sync(EXTRUDER_SYNCED_TO_GEAR, extruder_only=extruder_only)
 
     def sync_gear_to_extruder(self, extruder_name):
-        if extruder_name is None: # PAUL historical
+        if extruder_name is None: # historical
             self.unsync()
         elif self.sync_direction != GEAR_SYNCED_TO_EXTRUDER:
             self._sync(GEAR_SYNCED_TO_EXTRUDER)
-
-# PAUL old logic
-#    def sync_extruder_to_gear(self, extruder_name, extruder_only=False):
-#        if self.gear_motion_queue:
-#            self.sync_gear_to_extruder(None) # Mutually exclusive so unsync first
-#
-#        printer_toolhead = self.printer.lookup_object('toolhead')
-#        printer_toolhead.flush_step_generation()
-#        self.flush_step_generation()
-#        gear_rail = self.get_kinematics().rails[1]
-#
-#        if extruder_name:
-#            # Syncing
-#            if self.extruder_synced_to_gear: return
-#            extruder = self.printer.lookup_object(extruder_name, None)
-#            if extruder is None or not isinstance(extruder, PrinterExtruder):
-#                raise self.printer.command_error("'%s' is not a valid extruder" % extruder_name)
-#            extruder_stepper = extruder.extruder_stepper.stepper
-#
-#            # Switch extruder stepper to use MMU toolhead kinematics and trapq
-#            self.prev_sk = extruder_stepper.set_stepper_kinematics(self.sk_default)
-#            self.prev_trapq = extruder_stepper.set_trapq(self.get_trapq())
-#            g_pos = gear_rail.get_commanded_position()
-#            extruder_stepper.set_position([0., g_pos, 0.])
-#
-#            # Injecting the extruder stepper into the gear rail
-#            if extruder_only:
-#                self.prev_rail_steppers = gear_rail.steppers
-#                gear_rail.steppers = [extruder_stepper]
-#                gear_rail.get_commanded_position = extruder_stepper.get_commanded_position
-#                gear_rail.calc_position_from_coord = extruder_stepper.calc_position_from_coord
-#            else:
-#                gear_rail.steppers.append(extruder_stepper)
-#
-#            # Shift extruder step generator to mmu toolhead
-#            handler = extruder_stepper.generate_steps
-#            printer_toolhead.step_generators.remove(handler)
-#            self.register_step_generator(handler)
-#
-#            # Remove step generator for default gear steppers if necessary
-#            if extruder_only:
-#                for s in self.prev_rail_steppers:
-#                    handler = s.generate_steps
-#                    self.step_generators.remove(handler)
-#
-#            self.extruder_synced_to_gear = extruder_name # We are synced!
-#        else:
-#            # Unsyncing
-#            if not self.extruder_synced_to_gear: return
-#            extruder = self.printer.lookup_object(self.extruder_synced_to_gear)
-#            extruder_stepper = extruder.extruder_stepper.stepper
-#
-#            # Restore step generator for default gear steppers and reset position if necessary
-#            if self.prev_rail_steppers: # Rail contains only extruder
-#                for s in self.prev_rail_steppers:
-#                    handler = s.generate_steps
-#                    self.register_step_generator(handler)
-#
-#                g_pos = gear_rail.get_commanded_position()
-#                gear_rail.steppers = self.prev_rail_steppers
-#                gear_rail.get_commanded_position = gear_rail.steppers[0].get_commanded_position
-#                gear_rail.calc_position_from_coord = gear_rail.steppers[0].calc_position_from_coord
-#                gear_rail.set_position([0., g_pos, 0.])
-#                self.prev_rail_steppers = None
-#            else:
-#                gear_rail.steppers.pop() # Extruder stepper
-#
-#            # Restore extruder kinematics and trap queue
-#            extruder_stepper.set_trapq(self.prev_trapq)
-#            extruder_stepper.set_stepper_kinematics(self.prev_sk)
-#            e_pos = printer_toolhead.get_position()[3]
-#            extruder_stepper.set_position([e_pos, 0., 0.])
-#
-#            # Shift extruder step generator back to printer toolhead
-#            handler = extruder_stepper.generate_steps
-#            self.step_generators.remove(handler)
-#            printer_toolhead.register_step_generator(handler)
-#
-#            self.extruder_synced_to_gear = None
-#
-#        self.printer.send_event("mmu:extruder_synced" if self.extruder_synced_to_gear else "mmu:extruder_unsynced")
-#
-#    def sync_gear_to_extruder(self, extruder_name):
-#        if self.extruder_synced_to_gear:
-#            self.sync_extruder_to_gear(None) # Mutually exclusive so unsync first
-#
-#        printer_toolhead = self.printer.lookup_object('toolhead')
-#        printer_toolhead.flush_step_generation()
-#        self.flush_step_generation()
-#        gear_rail = self.get_kinematics().rails[1]
-#
-#        if extruder_name:
-#            # Syncing
-#            if self.gear_motion_queue: return
-#            extruder = self.printer.lookup_object(extruder_name, None)
-#            if extruder is None or not isinstance(extruder, PrinterExtruder):
-#                raise self.printer.command_error("'%s' is not a valid extruder" % extruder_name)
-#
-#            self.prev_g_sk, self.prev_g_rd = [], []
-#            for s in gear_rail.get_steppers():
-#                # Record original to restore on unsync
-#                self.prev_g_sk.append(s.set_stepper_kinematics(self.extruder_sk))
-#                self.prev_d_rd.append(s.get_rotation_distance()[0])
-#
-#                # Shift gear rail step generator to printer toolhead. Each stepper is registered individually
-#                self.step_generators.remove(s.generate_steps)
-#                printer_toolhead.register_step_generator(s.generate_steps)
-#
-#            # Shift gear rail trap queue to extruder and set position to extruder position for all steppers on rail
-#            gear_rail.set_trapq(extruder.get_trapq())
-#            gear_rail.set_position([extruder.last_position, 0., 0.])
-#
-#            self.gear_motion_queue = extruder_name # We are synced!
-#        else:
-#            # Unsyncing
-#            if not self.gear_motion_queue: return
-#            for s, sk, rd in zip(gear_rail.get_steppers(), self.prev_g_sk, self.prev_g_rd):
-#                # Restore MMU kinematics and rotation_distance
-#                s.set_stepper_kinematics(sk)
-#                s.set_rotation_distance(rd)
-#
-#                # Shift gear rail steppers step generator back to MMU toolhead
-#                printer_toolhead.step_generators.remove(s.generate_steps)
-#                self.register_step_generator(s.generate_steps)
-#
-#            # Shift trap queue back and set position for all steppers on rail
-#            gear_rail.set_trapq(self.get_trapq())
-#            gear_rail.set_position([0., self.get_position()[1], 0.])
-#            self.gear_motion_queue = None
-#
-#        self.printer.send_event("mmu:gear_synced" if self.gear_motion_queue else "mmu:gear_unsynced")
-#
-#    def resync_gear_position_to_extruder(self):
-#        return # PAUL
-#        logging.info("PAUL: resync_gear_position_to_extruder")
-#        if self.sync_direction == GEAR_SYNCED_TO_EXTRUDER:
-#            logging.info("PAUL: gear_rail.set_position()...")
-#            logging.info("PAUL:   extruder.last_position=%s" % self.printer_toolhead.get_extruder().last_position)
-#            logging.info("PAUL:   self.printer_toolhead.get_position=%s" % self.printer_toolhead.get_position()[3])
-#            gear_rail = self.get_kinematics().rails[1]
-#            gear_rail.set_position([self.printer_toolhead.get_extruder().last_position, 0., 0.])
 
     def get_status(self, eventtime):
         res = super(MmuToolHead, self).get_status(eventtime)
