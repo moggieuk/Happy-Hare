@@ -536,25 +536,27 @@ unlink_mmu_plugins() {
 }
 
 parse_file() {
-    filename="$1"
+    file="$1"
     prefix_filter="$2"
     namespace="$3"
     checkdup="$4"
     checkdup=""
 
-    if [ ! -f "${filename}" ]; then
+    if [ ! -f "${file}" ]; then
         return
     fi
 
     # Read old config files
     while IFS= read -r line
     do
-        # Remove comments
+        # Remove leading spaces, comments and config sections
+        line="${line#"${line%%[![:space:]]*}"}"
         line="${line%%#*}"
+        line="${line%%[*}"
         line="${line%%;*}"
 
         # Check if line is not empty and contains variable or parameter
-        if [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
+         if [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [[ "$line" =~ ^($prefix_filter) ]]; }; then
             # Split the line into parameter and value
             IFS=":=" read -r parameter value <<< "$line"
 
@@ -580,7 +582,7 @@ parse_file() {
                 fi
             fi
         fi
-    done < "${filename}"
+    done < "${file}"
 }
 
 update_copy_file() {
@@ -592,10 +594,10 @@ update_copy_file() {
     # Read the file line by line
     while IFS="" read -r line || [ -n "$line" ]
     do
-        if echo "$line" | grep -E -q '^[#;]'; then
+        if echo "$line" | grep -E -q '^[[:space:]]*#'; then
             # Just copy simple comments
             echo "$line"
-        elif [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
+        elif [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [[ "$line" =~ ^($prefix_filter) ]]; }; then
             # Line of interest
             # Split the line into the part before # and the part after #
             parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/;/# /' | cut -d'#' -f1)
@@ -755,35 +757,6 @@ read_previous_config() {
         fi
     fi
 
-    cfg="mmu_filametrix.cfg"
-    dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
-
-    if [ -f "${dest_cfg}" ]; then
-        echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
-        parse_file "${dest_cfg}" "variable_"
-
-        # Hack to convert from mm/min to mm/sec and 'spd' to 'speed' for consistency in other macros
-        #
-        if [ ! "${variable_rip_speed}" == "" ]; then
-            variable_rip_speed=$(echo "$variable_rip_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_evacuate_speed}" == "" ]; then
-            variable_evacuate_speed=$(echo "$variable_evacuate_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_extruder_move_speed}" == "" ]; then
-            variable_extruder_move_speed=$(echo "$variable_extruder_move_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_travel_spd}" == "" ]; then
-            variable_travel_speed=$(echo "$variable_travel_spd" | awk '{if ($1 > 300) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_cut_fast_move_spd}" == "" ]; then
-            variable_cut_fast_move_speed=$(echo "$variable_cut_fast_move_spd" | awk '{if ($1 > 300) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_cut_slow_move_spd}" == "" ]; then
-            variable_cut_slow_move_speed=$(echo "$variable_cut_slow_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-    fi
-
     # TODO Remove mmu_variables once everybody has upgraded
     for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
@@ -794,7 +767,11 @@ read_previous_config() {
             fi
         else
             echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
-            parse_file "${dest_cfg}" "variable_"
+            if [ "${cfg}" == "mmu_macro_vars.cfg" ]; then
+                parse_file "${dest_cfg}" "variable_|filename"
+            else
+                parse_file "${dest_cfg}" "variable_"
+            fi
 
             if [ ! "${variable_enable_park}" == "" ]; then
                 variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
@@ -1039,15 +1016,13 @@ copy_config_files() {
 
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} | sed -e "\
-                    s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}
             else
                 cat ${src} | sed -e "\
-                    s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}.tmp
-                update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
+                update_copy_file "${dest}.tmp" "${dest}" "variable_|filename" && rm ${dest}.tmp
             fi
 
         # Everything else is read-only symlink ------------------------------------------------

@@ -13,8 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import sys # To detect python2 or python3
-import logging, time, contextlib, math, os.path, re
-from random import randint
+import random, logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
@@ -98,29 +97,33 @@ class Mmu:
     ACTION_HOMING = 8
     ACTION_SELECTING = 9
 
+    MACRO_EVENT_RESTART          = "restart"          # Params: None
+    MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE=-1 for all
+    MACRO_EVENT_FILAMENT_ENGAGED = "servo_down"       # Params: None
+
     # Standard sensor and endstop or pseudo endstop names
-    ENDSTOP_ENCODER            = "encoder"        # Fake Gate endstop
-    ENDSTOP_GATE               = "mmu_gate"       # Gate
+    ENDSTOP_ENCODER             = "encoder"        # Fake Gate endstop
+    ENDSTOP_GATE                = "mmu_gate"       # Gate
 
-    ENDSTOP_EXTRUDER_NONE      = "none"           # Fake Extruder endstop aka don't attempt home
-    ENDSTOP_EXTRUDER_COLLISION = "collision"      # Fake Extruder endstop
-    ENDSTOP_EXTRUDER_ENTRY     = "extruder"       # Extruder entry sensor
-    ENDSTOP_GEAR_TOUCH         = "mmu_gear_touch" # Extruder
+    ENDSTOP_EXTRUDER_NONE       = "none"           # Fake Extruder endstop aka don't attempt home
+    ENDSTOP_EXTRUDER_COLLISION  = "collision"      # Fake Extruder endstop
+    ENDSTOP_EXTRUDER_ENTRY      = "extruder"       # Extruder entry sensor
+    ENDSTOP_GEAR_TOUCH          = "mmu_gear_touch" # Extruder
 
-    ENDSTOP_TOOLHEAD           = "toolhead"
-    ENDSTOP_EXTRUDER_TOUCH     = "mmu_ext_touch"
+    ENDSTOP_TOOLHEAD            = "toolhead"
+    ENDSTOP_EXTRUDER_TOUCH      = "mmu_ext_touch"
 
-    ENDSTOP_SELECTOR_TOUCH     = "mmu_sel_touch"
-    ENDSTOP_SELECTOR_HOME      = "mmu_sel_home"
-    PRE_GATE_SENSOR_PREFIX     = "mmu_pre_gate"
+    ENDSTOP_SELECTOR_TOUCH      = "mmu_sel_touch"
+    ENDSTOP_SELECTOR_HOME       = "mmu_sel_home"
+    PRE_GATE_SENSOR_PREFIX      = "mmu_pre_gate"
 
     EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER_ENTRY, ENDSTOP_EXTRUDER_NONE]
     GATE_ENDSTOPS     = [ENDSTOP_GATE, ENDSTOP_ENCODER]
 
     # Statistics output types
-    GATE_STATS_STRING     = "string"
-    GATE_STATS_PERCENTAGE = "percentage"
-    GATE_STATS_EMOTICON   = "emoticon"
+    GATE_STATS_STRING           = "string"
+    GATE_STATS_PERCENTAGE       = "percentage"
+    GATE_STATS_EMOTICON         = "emoticon"
 
     GATE_STATS_TYPES = [GATE_STATS_STRING, GATE_STATS_PERCENTAGE, GATE_STATS_EMOTICON]
 
@@ -414,7 +417,7 @@ class Mmu:
         self.pause_macro = config.get('pause_macro', 'PAUSE')
         self.action_changed_macro = config.get('action_changed_macro', '_MMU_ACTION_CHANGED')
         self.print_state_changed_macro = config.get('print_state_changed_macro', '_MMU_PRINT_STATE_CHANGED')
-        self.gate_map_changed_macro = config.get('gate_map_changed_macro', '_MMU_GATE_MAP_CHANGED')
+        self.mmu_event_macro = config.get('mmu_event_macro', '_MMU_EVENT')
         self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP')
         self.pre_unload_macro = config.get('pre_unload_macro', '_MMU_PRE_UNLOAD')
         self.post_form_tip_macro = config.get('post_form_tip_macro', '_MMU_POST_FORM_TIP')
@@ -1153,9 +1156,7 @@ class Mmu:
             gate = self.ttg_map[tool]
             self.slicer_color_rgb[gate] = self._color_to_rgb_tuple(tool_value['color'])
         self._update_t_macros()
-
-        if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
-            self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro) # Cheat to force LED update
+        self._mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1") # Cheat to force LED update
 
     def _load_persisted_state(self):
         self._log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
@@ -1240,6 +1241,7 @@ class Mmu:
     def _mmu_bootup_tasks(self, eventtime):
         self._log_trace("_bootup_tasks()")
         self._exec_gcode("__MMU_BOOTUP_TASKS")
+        self._mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     cmd_MMU_BOOTUP_TASKS_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP_TASKS(self, gcmd):
@@ -1312,6 +1314,57 @@ class Mmu:
                     with self._wrap_track_time('post_load'):
                         self._wrap_gcode_command(self.post_load_macro, exception=False)
 
+        if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
+            self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name)
+
+        if gcmd.get_int('SYNC_E2G', 0, minval=0, maxval=1):
+            extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
+            self.mmu_toolhead.sync_extruder_to_gear(self.extruder_name, extruder_only=extruder_only)
+
+        if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
+            self.mmu_toolhead.unsync()
+
+        pos = gcmd.get_int('SET_POS', -1, minval=0)
+        if pos >= 0:
+            self._set_filament_position(pos)
+
+        if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
+            endstop = gcmd.get('ENDSTOP', 'extruder')
+            loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
+            self.servo_disabled = True
+            for i in range(loop):
+                move_type = random.randint(0, 7)
+                move = random.randint(0, 200) - 100
+                speed = random.uniform(50, 300)
+                accel = random.randint(50, 500)
+                homing = random.randint(0, 1)
+                motor = random.choice(["gear", "gear+extruder", "extruder"])
+                if move_type == 0:
+                    self._log_info("Loop: %d - Synced extruder movement" % i)
+                    self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name)
+                    self.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
+                    if random.randint(0, 1):
+                        self.mmu_toolhead.unsync()
+                elif move_type == 1:
+                    self._log_info("Loop: %d - Unsynced extruder movement" % i)
+                    self.mmu_toolhead.unsync()
+                    self.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
+                elif move_type == 2:
+                    self._log_info("Loop: %d - Regular move: %s" %  (i, motor))
+                    self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=%.2f SPEED=%d" % (motor, move, speed))
+                elif move_type == 3 or move_type == 4:
+                    self._log_info("Loop: %d - HOMING MOVE: %s" % (i, motor))
+                    self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=%.2f SPEED=%d ENDSTOP=%s" % (motor, move, speed, endstop))
+                elif move_type == 5:
+                    self._log_info("Loop: %d - Changed filament position" % i)
+                    self._set_filament_position(random.uniform(0, 300))
+                elif move_type == 6:
+                    self._log_info("Loop: %d - Initialized filament position" % i)
+                    self._initialize_filament_position()
+                else:
+                    self._log_info("Loop: %d - Changing rotation_distance" % i)
+                    self._set_gate_ratio(ratio=random.uniform(0.9, 1.1))
+
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
             macro = command.split()[0]
@@ -1328,6 +1381,10 @@ class Mmu:
                     self._log_error("Error running %s: %s" % (macro, str(e)))
             else:
                 raise
+
+    def _mmu_macro_event(self, event_name, params=""):
+        if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
+            self._wrap_gcode_command("%s EVENT=%s %s" % (self.mmu_event_macro, event_name, params))
 
     def _movequeues_wait_moves(self, toolhead=True, mmu_toolhead=True):
         #self._log_trace("_movequeues_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
@@ -1447,18 +1504,13 @@ class Mmu:
         self.job_statistics = {}
 
     def _track_time_start(self, name):
-        #self.track[name] = time.time()
         self.track[name] = self.toolhead.get_last_move_time()
-        #self._log_trace("Track times: %s" % self.track)
 
     def _track_time_end(self, name):
         if name not in self.track:
             return # Timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        #self._log_trace("Statistics: %s" % self.statistics)
-
-        #elapsed = time.time() - self.track[name]
         elapsed = self.toolhead.get_last_move_time() - self.track[name]
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
@@ -1688,10 +1740,12 @@ class Mmu:
                 msg += "\n\n"
             msg += "Consumption counters:\n"
             for counter, metric in self.counters.items():
-                if metric['count'] > metric['limit']:
-                    msg += "Warning: Count %s (%d) above limit %d : %s" % (counter, metric['count'], metric['limit'], metric['warning'])
+                if metric['limit'] >= 0 and metric['count'] > metric['limit']:
+                    msg += "Count %s: %d (above limit %d), Warning: %s" % (counter, metric['count'], metric['limit'], metric.get('warning', ""))
+                elif metric['limit'] >= 0:
+                    msg += "Count %s: %d (limit %d%s)\n" % (counter, metric['count'], metric['limit'], ", will pause" if metric.get('pause', False) else "")
                 else:
-                    msg += "Count %s: %d (limit %d%s)\n" % (counter, metric['count'], metric['limit'], ", will pause" if metric['pause'] else "")
+                    msg += "Count %s: %d\n" % (counter, metric['count'])
 
         if msg:
             self._log_always(msg)
@@ -1843,44 +1897,52 @@ class Mmu:
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         total = bool(gcmd.get_int('TOTAL', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         showcounts = bool(gcmd.get_int('SHOWCOUNTS', 0, minval=0, maxval=1))
 
         if counter:
             counter = counter.strip()
             delete = bool(gcmd.get_int('DELETE', 0, minval=0, maxval=1))
-            limit = gcmd.get_int('LIMIT', 0, minval=1)
+            limit = gcmd.get_int('LIMIT', 0, minval=-1)
             incr = gcmd.get_int('INCR', 0, minval=1)
+            quiet = True
             if delete:
                 _ = self.counters.pop(counter, None)
             elif reset:
                 if counter in self.counters:
                     self.counters[counter]['count'] = 0
-            elif limit:
-                warning = gcmd.get('WARNING', "")
-                pause = bool(gcmd.get_int('PAUSE', 0, minval=0, maxval=1))
+            elif not limit == 0:
                 if counter not in self.counters:
                     self.counters[counter] = {'count': 0}
+                warning = gcmd.get('WARNING', self.counters[counter].get('warning', ""))
+                pause = bool(gcmd.get_int('PAUSE', self.counters[counter].get('pause', 0), minval=0, maxval=1))
                 self.counters[counter].update({'limit': limit, 'warning': warning, 'pause': pause})
             elif incr:
                 if counter in self.counters:
                     metric = self.counters[counter]
                     metric['count'] += incr
-                    if metric['count'] > metric['limit']:
-                        msg = "Count %s (%d) above limit %d : %s" % (counter, metric['count'], metric['limit'], metric['warning'])
+                    if metric['limit'] >= 0 and metric['count'] > metric['limit']:
+                        warn = "Warning: %s" % metric.get('warning', "")
+                        msg = "Count %s (%d) above limit %d" % (counter, metric['count'], metric['limit'])
                         msg += "\nUse 'MMU_STATS COUNTER=%s RESET=1' to reset" % counter
-                        if metric['pause']:
-                            self._mmu_pause(msg)
+                        if metric.get('pause', False):
+                            self._mmu_pause("%s\n%s" % (warn, msg))
                         else:
-                            self._log_always("Warning: " + msg)
+                            self._log_error(warn)
+                            self._log_always(msg)
+                else:
+                    self.counters[counter] = {'count': 0, 'limit': -1, 'warning': ""}
             self._persist_counters()
         elif reset:
             self._reset_statistics()
             self._persist_swap_statistics()
             self._persist_gate_statistics()
-            self._dump_statistics(force_log=True, total=True)
+            if not quiet:
+                self._dump_statistics(force_log=True, total=True)
             return
 
-        self._dump_statistics(force_log=True, total=total or detail, job=True, gate=True, detail=detail, showcounts=showcounts)
+        if not quiet:
+            self._dump_statistics(force_log=True, total=total or detail, job=True, gate=True, detail=detail, showcounts=showcounts)
 
     cmd_MMU_STATUS_help = "Complete dump of current MMU state and important configuration"
     def cmd_MMU_STATUS(self, gcmd):
@@ -2067,6 +2129,7 @@ class Mmu:
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
         self.servo_angle = self.servo_angles['down']
         self.servo_state = self.SERVO_DOWN_STATE
+        self._mmu_macro_event(self.MACRO_EVENT_FILAMENT_ENGAGED)
 
     def _servo_move(self): # Position servo for selector movement
         if self.servo_state == self.SERVO_MOVE_STATE: return
@@ -2824,7 +2887,6 @@ class Mmu:
         cut = gcmd.get_int('CUT', 0, minval=0, maxval=1)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         line = "-----------------------------------------------\n"
-
 
         msg = "Reminder:\n"
         msg += "1) 'CLEAN=1' with clean extruder for: toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder)\n"
@@ -3736,7 +3798,7 @@ class Mmu:
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=mmu__revision VALUE=%d" % mmu_vars_revision)
 
     def _random_failure(self):
-        if self.test_random_failures and randint(0, 10) == 0:
+        if self.test_random_failures and random.randint(0, 10) == 0:
             raise MmuError("Randomized testing failure")
 
 
@@ -3791,7 +3853,7 @@ class Mmu:
             elif c.startswith("_MMU"):
                 if c.startswith("_MMU_STEP") or c in ["_MMU_M400", "_MMU_LOAD_SEQUENCE", "_MMU_UNLOAD_SEQUENCE"]:
                     seq_msg += "%s : %s\n" % (c.upper(), d) # Invidual sequence step commands
-                elif c.startswith("_MMU_PRE_") or c.startswith("_MMU_POST_") or c in ["_MMU_ACTION_CHANGED", "_MMU_GATE_MAP_CHANGED", "_MMU_PRINT_STATE_CHANGED"]:
+                elif c.startswith("_MMU_PRE_") or c.startswith("_MMU_POST_") or c in ["_MMU_ACTION_CHANGED", "_MMU_EVENT", "_MMU_PRINT_STATE_CHANGED"]:
                     callback_msg += "%s : %s\n" % (c.upper(), d) # Callbacks
                 elif not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
                         macro_msg += "%s : %s\n" % (c.upper(), d) # Core command macros
@@ -6226,11 +6288,11 @@ class Mmu:
             self._home()
             for l in range(loops):
                 self._log_always("Testing loop %d / %d" % (l + 1, loops))
-                tool = randint(0, self.mmu_num_gates)
+                tool = random.randint(0, self.mmu_num_gates)
                 if tool == self.mmu_num_gates:
                     self._select_bypass()
                 else:
-                    if randint(0, 10) == 0 and home:
+                    if random.randint(0, 10) == 0 and home:
                         self._home(tool)
                     else:
                         self._select_tool(tool, move_servo=servo)
@@ -6257,7 +6319,7 @@ class Mmu:
                 for t in range(self.mmu_num_gates):
                     tool = t
                     if random == 1:
-                        tool = randint(0, self.mmu_num_gates - 1)
+                        tool = random.randint(0, self.mmu_num_gates - 1)
                     gate = self.ttg_map[tool]
                     if self.gate_status[gate] == self.GATE_EMPTY:
                         self._log_always("Skipping tool %d of %d because Gate %d is empty" % (tool, self.mmu_num_gates, gate))
@@ -6678,8 +6740,7 @@ class Mmu:
             if state != self.gate_status[gate]:
                 self.gate_status[gate] = state
                 self._save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status, write=True)
-                if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
-                    self._wrap_gcode_command("%s GATE='%d'" % (self.gate_map_changed_macro, gate))
+                self._mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
 
     # Use pre-gate sensors (if fitted) to "correct" gate status
     # Return updated gate_status
@@ -6853,8 +6914,8 @@ class Mmu:
             if gate_ids:
                 self._spoolman_push_gate_map(gate_ids)
 
-        if self.printer.lookup_object("gcode_macro %s" % self.gate_map_changed_macro, None) is not None:
-            self._wrap_gcode_command("%s GATE=-1" % self.gate_map_changed_macro)
+        if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
+            self._mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
 
     def _reset_gate_map(self):
         self._log_debug("Resetting gate map")
