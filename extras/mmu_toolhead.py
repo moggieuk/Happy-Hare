@@ -168,14 +168,14 @@ class MmuToolHead(toolhead.ToolHead, object):
     # Gear/Extruder synchronization and stepper swapping management...
 
 # WORK IN PROGRESS
-#    def select_gear_stepper(self, gate): # TODO untested WIP
+#    def select_gear_stepper(self, gate):
 #        if gate < 0:
-#            self.select_gear_steppers(None)
+#            self.select_gear_stepper(None)
 #        else:
-#            self.select_gear_steppers(["mmu_gear_%d" % gate])
+#            self.select_gear_stepper(["mmu_gear_%d" % gate])
 #        return
 #
-#    def select_gear_steppers(self, selected_steppers): # TODO untested WIP
+#    def select_gear_stepper(self, selected_stepper): # TODO untested WIP
 #        # Unsync first to simplify transition
 #        gear_motion_queue = self.gear_motion_queue
 #        extruder_synced_to_gear = self.extruder_synced_to_gear
