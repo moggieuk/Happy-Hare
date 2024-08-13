@@ -96,14 +96,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.extruder = DummyExtruder(self.printer)
 
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
-# PAUL
-#        # Setup extruder kinematics for when gear rail is synced to extruder
-#        ffi_main, ffi_lib = chelper.get_ffi()
-#        self.extruder_sk = ffi_main.gc(ffi_lib.extruder_stepper_alloc(), ffi_lib.free)
-#
-#        # Normal gear rail kinematics when extruder is synced to gear rail
-#        ffi_main, ffi_lib = chelper.get_ffi()
-#        self.mmu_sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'y'), ffi_lib.free)
         
         # Create MMU kinematics
         try:
@@ -231,28 +223,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_direction == EXTRUDER_SYNCED_TO_GEAR:
-            logging.info("x\nPAUL: sync(EXTRUDER_SYNCED_TO_GEAR)")
             driving_toolhead = self.mmu_toolhead
             following_toolhead = self.printer_toolhead
             following_steppers = [self.printer_toolhead.get_extruder().extruder_stepper.stepper]
             self._prev_trapq = following_steppers[0].get_trapq()
             driving_trapq = driving_toolhead.get_trapq()
             s_alloc = ffi_lib.cartesian_stepper_alloc(b"y")
-            self.mmu_toolhead.get_last_move_time() # PAUL needed??
-            pos1 = [0., self.mmu_toolhead.get_kinematics().rails[1].get_commanded_position(), 0.] # PAUL
-            logging.info("PAUL: pos1=%s" % pos1) # PAUL
+#            self.mmu_toolhead.get_last_move_time() # PAUL needed??
             pos = [0., self.mmu_toolhead.get_position()[1], 0.]
-            logging.info("PAUL: pos=%s" % pos) # PAUL
-            if pos != pos1: # PAUL
-                logging.info("PAUL: **** POSITION MISMATCH!")
-                driving_toolhead.get_last_move_time()
-                following_toolhead.get_last_move_time()
-                pos1 = [0., self.mmu_toolhead.get_kinematics().rails[1].get_commanded_position(), 0.] # PAUL
-                logging.info("PAUL: pos1=%s" % pos1) # PAUL
-                pos = [0., self.mmu_toolhead.get_position()[1], 0.]
-                logging.info("PAUL: pos=%s" % pos) # PAUL
-                if pos != pos1: # PAUL
-                    logging.info("PAUL: **** POSITION STILL MISMATCH!")
 
             # Inject the extruder steppers into the gear rail
             # Cripple unused/unwanted gear steppers
@@ -276,20 +254,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._prev_trapq = self.mmu_toolhead.get_trapq()
             driving_trapq = self.printer_toolhead.get_extruder().get_trapq()
             s_alloc = ffi_lib.extruder_stepper_alloc()
-            pos1 = [self.printer_toolhead.get_extruder().last_position, 0., 0.] # PAUL
-            logging.info("PAUL: pos1=%s" % pos1) # PAUL
-            pos = [self.printer_toolhead.get_position()[3], 0., 0.] # PAUL: isn't this the same?!? but simplier?
-            logging.info("PAUL: pos=%s" % pos)
-            if pos != pos1: # PAUL
-                logging.info("PAUL: **** POSITION MISMATCH!")
-                driving_toolhead.get_last_move_time()
-                following_toolhead.get_last_move_time()
-                pos1 = [0., self.mmu_toolhead.get_kinematics().rails[1].get_commanded_position(), 0.] # PAUL
-                logging.info("PAUL: pos1=%s" % pos1) # PAUL
-                pos = [0., self.mmu_toolhead.get_position()[1], 0.]
-                logging.info("PAUL: pos=%s" % pos) # PAUL
-                if pos != pos1: # PAUL
-                    logging.info("PAUL: **** POSITION STILL MISMATCH!")
+            pos = [self.printer_toolhead.get_position()[3], 0., 0.]
 
         else:
             raise Exception("Invalid sync_direction: %d" % new_sync_direction)
@@ -601,9 +566,8 @@ class MmuKinematics:
         for i, rail in enumerate(self.rails):
             if not (i == 1 and self.toolhead.is_gear_synced_to_extruder()):
                 rail.set_position(newpos)
-            else: # PAUL
-                logging.warning("PAUL: Cannot set_postion because gear rail is synced to extruder") # PAUL
-# PAUL                self.toolhead.resync_gear_position_to_extruder() # Better done on Rail itself but rail doesn't know it's the mmu gear
+            else:
+                logging.warning("Cannot set_postion because gear rail is synced to extruder")
             if i in homing_axes:
                 self.limits[i] = rail.get_range()
     
