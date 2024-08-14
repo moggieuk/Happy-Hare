@@ -14,7 +14,7 @@
 #
 import sys # To detect python2 or python3
 import random, logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
-from extras.mmu_toolhead import MmuToolHead, MmuHoming
+from extras.mmu_machine import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
 import chelper, ast
@@ -37,6 +37,7 @@ if sys.version_info[0] >= 3:
     # UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
     # UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
+
 
 # Mmu exception error class
 class MmuError(Exception):
@@ -551,19 +552,9 @@ class Mmu:
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
         # Currently hidden options or testing options...
-
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on
-        # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
-        # can lead to several mm of error depending on speed.
-        self.homing_extruder = config.getint('homing_extruder', 1, minval=0, maxval=1)
-
-        # Currently hidden and testing options
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
-
-        # WIP for type-B MMU support
-        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
 
         # Turn off splash bling
         self.serious = config.getint('serious', 0, minval=0, maxval=1)
@@ -733,7 +724,11 @@ class Mmu:
             config.fileconfig.set(section, 'position_min', -1.)
             config.fileconfig.set(section, 'position_max', self._get_max_selector_movement())
             config.fileconfig.set(section, 'homing_speed', self.selector_homing_speed)
-        self.mmu_toolhead = MmuToolHead(config, self.homing_extruder)
+
+        self.mmu_machine = self.printer.lookup_object("mmu_machine")
+        self.homing_extruder = self.mmu_machine.homing_extruder
+
+        self.mmu_toolhead = MmuToolHead(config, self)
         self.mmu_kinematics = self.mmu_toolhead.get_kinematics()
         rails = self.mmu_toolhead.get_kinematics().rails
         self.selector_rail = rails[0]
@@ -1364,6 +1359,10 @@ class Mmu:
                 else:
                     self._log_info("Loop: %d - Changing rotation_distance" % i)
                     self._set_gate_ratio(ratio=random.uniform(0.9, 1.1))
+
+        select_gate = gcmd.get_int('GATE_MOTOR', -99, minval=self.TOOL_GATE_BYPASS, maxval=self.mmu_num_gates)
+        if not select_gate == -99:
+            self.mmu_toolhead.select_gear_stepper(select_gate)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
@@ -2431,7 +2430,7 @@ class Mmu:
             self._servo_auto()
 
     def _calibrate_bowden_length_manual(self, approx_bowden_length, save=True):
-        if self.gate_selected != 0 and not self.virtual_selector:
+        if self.gate_selected != 0 and not self.mmu_machine.virtual_selector:
             raise MmuError("Calibration of bowden length must be performed on gate 0")
         try:
             self._log_always("Calibrating bowden length (manual method) using %s as gate reference point" % self._gate_homing_string())
@@ -4934,7 +4933,7 @@ class Mmu:
 #################################
 
     def _home(self, tool = -1, force_unload = -1):
-        if self.virtual_selector: return
+        if self.mmu_machine.virtual_selector: return
         if self._check_in_bypass(): return
         with self._wrap_action(self.ACTION_HOMING):
             self._log_info("Homing MMU...")
@@ -5694,12 +5693,14 @@ class Mmu:
     def _select_gate(self, gate):
         if gate == self.gate_selected: return
 
-        if self.virtual_selector:
-            self.mmu_toolhead.select_gear_stepper(gate)
+        # Selector correct stepper. No-op if a type-A MMU
+        self.mmu_toolhead.select_gear_stepper(gate)
+
+        if self.mmu_machine.virtual_selector or self.mmu_machine.multigear:
             self._set_gate_selected(gate)
             return
 
-        with self._wrap_action(self.ACTION_SELECTING):
+        with self._wrap_action(self.ACTION_SELECTING): # PAUL -- need to move servo control to mmu_toolhead. Call it actuate
             self._servo_move()
             if gate == self.TOOL_GATE_BYPASS:
                 offset = self.bypass_offset
@@ -5925,7 +5926,7 @@ class Mmu:
     def cmd_MMU_HOME(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        if self.virtual_selector: return
+        if self.mmu_machine.virtual_selector: return
         self._fix_started_state()
 
         if self._check_is_calibrated(self.CALIBRATED_SELECTOR):
