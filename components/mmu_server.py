@@ -326,7 +326,7 @@ class MmuServer:
         if self.spoolman_has_extras:
             data = {'extra': {MMU_NAME_FIELD: f"\"{printer}\"", MMU_GATE_FIELD: gate}}
             if self.update_location:
-                data['location'] = f"{printer} @ MMU Gate:{gate}"
+                data['location'] = f"\"{printer} @ MMU Gate:{gate}\""
             response = await self.http_client.request(
                 method="PATCH",
                 url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",

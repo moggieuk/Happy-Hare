@@ -3356,10 +3356,10 @@ class Mmu:
     def _continue_printing(self, operation, sync=True, force_in_print=False):
         self._clear_macro_state()
         self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
-        if self._is_in_print(force_in_print):
-            self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation)
         self._initialize_filament_position(dwell=None) # Encoder 0000
+        if self._is_in_print(force_in_print):
+            self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         # Ready to continue printing...
 
     def _clear_macro_state(self):
