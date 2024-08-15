@@ -323,24 +323,23 @@ class MmuServer:
         # Use the PATCH method on the spoolman api
         if not silent:
             logging.info(f"Setting spool {spool_id} for printer {printer} @ gate {gate}")
-        if self.spoolman_has_extras:
-            data = {'extra': {MMU_NAME_FIELD: f"\"{printer}\"", MMU_GATE_FIELD: gate}}
-            if self.update_location:
-                data['location'] = f"{printer} @ MMU Gate:{gate}"
-            response = await self.http_client.request(
-                method="PATCH",
-                url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
-                body=json.dumps(data)
-            )
-            if response.status_code == 404:
-                logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
-                await self._log_n_send(f"SpoolId {spool_id} not found", error=True, silent=False)
-                return False
-            elif response.has_error():
-                err_msg = self.spoolman._get_response_error(response)
-                logging.error(f"Attempt to set spool failed: {err_msg}")
-                await self._log_n_send(f"Failed to set spool {spool_id} for printer {printer}", error=True, silent=False)
-                return False
+        data = {'extra': {MMU_NAME_FIELD: f"\"{printer}\"", MMU_GATE_FIELD: gate}}
+        if self.update_location:
+            data['location'] = f"{printer} @ MMU Gate:{gate}"
+        response = await self.http_client.request(
+            method="PATCH",
+            url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
+            body=json.dumps(data)
+        )
+        if response.status_code == 404:
+            logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+            await self._log_n_send(f"SpoolId {spool_id} not found", error=True, silent=False)
+            return False
+        elif response.has_error():
+            err_msg = self.spoolman._get_response_error(response)
+            logging.error(f"Attempt to set spool failed: {err_msg}")
+            await self._log_n_send(f"Failed to set spool {spool_id} for printer {printer}. Look at moonraker.log for more details.", error=True, silent=False)
+            return False
         return True
 
     async def _unset_spool_gate(self, spool_id, silent=False) -> bool:
@@ -364,7 +363,7 @@ class MmuServer:
         elif response.has_error():
             err_msg = self.spoolman._get_response_error(response)
             logging.error(f"Attempt to unset spool failed: {err_msg}")
-            await self._log_n_send(f"Failed to unset spool {spool_id}", error=True, silent=False)
+            await self._log_n_send(f"Failed to unset spool {spool_id}. Look at moonraker.log for more details", error=True, silent=False)
             return False
         return True
 
