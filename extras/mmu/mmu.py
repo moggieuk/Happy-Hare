@@ -2274,6 +2274,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         if self._check_in_bypass(): return
+        if self._check_not_homed(): return
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print current
@@ -3314,10 +3315,10 @@ class Mmu:
     def _continue_printing(self, operation, sync=True, force_in_print=False):
         self._clear_macro_state()
         self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
+        self._initialize_filament_position(dwell=None) # Encoder 0000
         if self._is_in_print(force_in_print):
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
         self._restore_toolhead_position(operation)
-        self._initialize_filament_position(dwell=None) # Encoder 0000
         # Ready to continue printing...
 
     def _clear_macro_state(self):
@@ -3558,6 +3559,8 @@ class Mmu:
         return self.mmu_toolhead.get_position()[1]
 
     def _set_filament_position(self, position = 0.):
+        self._sync_gear_to_extruder(False)
+        mmu_last_move = self.mmu_toolhead.get_last_move_time()
         pos = self.mmu_toolhead.get_position()
         pos[1] = position
         self.mmu_toolhead.set_position(pos)
@@ -3673,6 +3676,12 @@ class Mmu:
     def _check_has_leds(self):
         if not self.has_leds:
             self._log_error("No LEDs configured on MMU")
+            return True
+        return False
+
+    def _check_spoolman_enabled(self):
+        if self.spoolman_support == self.SPOOLMAN_OFF:
+            self._log_error("Spoolman support is currently disabled")
             return True
         return False
 
@@ -5290,7 +5299,7 @@ class Mmu:
             else:
                 trace_str += ". Stepper: '%s' moved %.1fmm, encoder measured %.1fmm (delta %.1fmm)"
                 trace_str = trace_str % (motor, dist, measured, delta)
-                trace_str += ". Pos: @%.1f, (%.1fmm)" % (self.mmu_toolhead.get_position()[1], encoder_end)
+            trace_str += ". Pos: @%.1f, (%.1fmm)" % (self.mmu_toolhead.get_position()[1], encoder_end)
             self._log_trace(trace_str)
 
         if self._can_use_encoder() and motor == "gear" and track:
@@ -5586,7 +5595,7 @@ class Mmu:
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-            self._log_debug("Tool already unloaded")
+            self._log_info("Tool already unloaded")
             return
 
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
@@ -5873,6 +5882,8 @@ class Mmu:
     def cmd_MMU_SPOOLMAN(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        if self._check_spoolman_enabled(): return
+
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
         clear = bool(gcmd.get_int('CLEAR', 0, minval=0, maxval=1))
@@ -5916,8 +5927,11 @@ class Mmu:
                 self._spoolman_unset_spool_gate(spool_id=spool_id, sync=self.spoolman_support == self.SPOOLMAN_PULL, quiet=quiet)
 
         elif not run:
-            # Display gate association table from spoolman db for specified printer
-            self._spoolman_display_spool_location(printer=printer)
+            if self.spoolman_support in [self.SPOOLMAN_PULL, self.SPOOLMAN_PUSH]:
+                # Display gate association table from spoolman db for specified printer
+                self._spoolman_display_spool_location(printer=printer)
+            else:
+                self._log_error("Spoolman gate map not available. Spoolman mode is: %s" % self.spoolman_support)
 
 
 ### CORE GCODE COMMANDS ##########################################################
@@ -7552,7 +7566,6 @@ class Mmu:
                     for gate, tool in gates_tools:
                         try:
                             self._select_gate(gate)
-                            self._initialize_filament_position() # Encoder 0000
                             self.calibrating = True # To suppress visual filament position
                             self._log_info("Checking Gate %d..." % gate)
                             self._load_gate(allow_retry=False, adjust_servo_on_error=False)
@@ -7586,6 +7599,7 @@ class Mmu:
                                 self._log_info(msg)
                                 self._log_debug("Reason: %s" % str(ee))
                         finally:
+                            self._initialize_filament_position() # Encoder 0000
                             self.calibrating = False
 
                     # If not printing select original tool and load filament if necessary
@@ -7630,7 +7644,6 @@ class Mmu:
                     gate = self.gate_selected
                 else:
                     self._select_gate(gate)
-                self._initialize_filament_position()    # Encoder 0000
                 for i in range(self.preload_attempts):
                     self._log_always("Loading...")
                     try:
@@ -7649,4 +7662,5 @@ class Mmu:
                 self._log_always("Filament preload for Gate %d failed: %s" % (gate, str(ee)))
             finally:
                 self.calibrating = False
+                self._initialize_filament_position()    # Encoder 0000
                 self._servo_auto()
