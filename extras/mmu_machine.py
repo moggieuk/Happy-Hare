@@ -35,6 +35,7 @@ GEAR_STEPPER_CONFIG     = "stepper_mmu_gear"
 
 SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
 OTHER_STEPPER_PARAMS     = [ 'step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
+
 SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
 
 # Wrapper object to delay loading of toolhead implementation until Happy Hare ready
@@ -46,27 +47,23 @@ class MmuMachine():
         # can lead to several mm of error depending on speed. Also homing of jus the extruder is not possible.
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
 
-        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
-
-        self.filament_clamp = "servo"
-
         # PAUL WIP for config validation
+        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
+        self.filament_clamp = "servo"
         self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
-
         self.multigear = False
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         for i in range(1, 24): # Don't allow "_0" or it is confusing with unprefixed initial stepper
-            section = "%s_%s" % (GEAR_STEPPER_CONFIG, str(i))
+            section = "%s_%d" % (GEAR_STEPPER_CONFIG, i)
             if not config.has_section(section):
                 break
 
             self.multigear = True
+
             for key in SHAREABLE_STEPPER_PARAMS:
-                logging.info("PAUL: key=%s" % key)
                 if not config.fileconfig.has_option(section, key):
                     base_value = config.fileconfig.get(GEAR_STEPPER_CONFIG, key)
-                    logging.info("PAUL: Adding base value (%s) for: %s" % (base_value, key))
                     if base_value:
                         config.fileconfig.set(section, key, base_value)
 
@@ -74,12 +71,10 @@ class MmuMachine():
             for chip in TMC_CHIPS:
                 base_tmc = '%s %s' % (chip, GEAR_STEPPER_CONFIG)
                 if config.has_section(base_tmc):
-                    tmc_section = '%s %s_%s' % (chip, GEAR_STEPPER_CONFIG, str(i))
+                    tmc_section = '%s %s_%d' % (chip, GEAR_STEPPER_CONFIG, i)
                     for key in SHAREABLE_TMC_PARAMS:
-                        logging.info("PAUL: key=%s" % key)
                         if not config.fileconfig.has_option(tmc_section, key):
                             base_value = config.fileconfig.get(base_tmc, key)
-                            logging.info("PAUL: Adding base value (%s) for: %s" % (base_value, key))
                             if base_value:
                                 config.fileconfig.set(tmc_section, key, base_value)
 
@@ -667,7 +662,7 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
     logging.info("PAUL: MmuLookupMultiRail")
     rail = MmuPrinterRail(config, need_position_minmax=need_position_minmax, default_position_endstop=default_position_endstop, units_in_radians=units_in_radians)
     for i in range(1, 24): # Don't allow "_0" or it is confusing with unprefixed initial stepper
-        section_name = "%s_%s" % (config.get_name(), str(i))
+        section_name = "%s_%d" % (config.get_name(), i)
         if not config.has_section(section_name):
             break
         logging.info("PAUL: section_name=%s. add_extra_stepper()" % section_name)
@@ -681,8 +676,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         super(MmuExtruderStepper, self).__init__(config)
 
         # Ensure sure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
-        tmc_chips = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
-        for chip in tmc_chips:
+        for chip in TMC_CHIPS:
             try:
                 _ = self.printer.load_object(config, '%s extruder' % chip)
                 break
