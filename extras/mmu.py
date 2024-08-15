@@ -3356,10 +3356,10 @@ class Mmu:
     def _continue_printing(self, operation, sync=True, force_in_print=False):
         self._clear_macro_state()
         self.is_handling_runout = False # Covers errorless runout handling and mmu_resume()
-        self._restore_toolhead_position(operation)
         self._initialize_filament_position(dwell=None) # Encoder 0000
         if self._is_in_print(force_in_print):
             self._sync_gear_to_extruder(self.sync_to_extruder and sync, servo=True, current=sync)
+        self._restore_toolhead_position(operation)
         # Ready to continue printing...
 
     def _clear_macro_state(self):
@@ -3600,6 +3600,8 @@ class Mmu:
         return self.mmu_toolhead.get_position()[1]
 
     def _set_filament_position(self, position = 0.):
+        self._sync_gear_to_extruder(False)
+        mmu_last_move = self.mmu_toolhead.get_last_move_time()
         pos = self.mmu_toolhead.get_position()
         pos[1] = position
         self.mmu_toolhead.set_position(pos)
@@ -5332,7 +5334,7 @@ class Mmu:
             else:
                 trace_str += ". Stepper: '%s' moved %.1fmm, encoder measured %.1fmm (delta %.1fmm)"
                 trace_str = trace_str % (motor, dist, measured, delta)
-                trace_str += ". Pos: @%.1f, (%.1fmm)" % (self.mmu_toolhead.get_position()[1], encoder_end)
+            trace_str += ". Pos: @%.1f, (%.1fmm)" % (self.mmu_toolhead.get_position()[1], encoder_end)
             self._log_trace(trace_str)
 
         if self._can_use_encoder() and motor == "gear" and track:
@@ -5628,7 +5630,7 @@ class Mmu:
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-            self._log_debug("Tool already unloaded")
+            self._log_info("Tool already unloaded")
             return
 
         self._log_debug("Unloading tool %s" % self._selected_tool_string())
@@ -7592,7 +7594,6 @@ class Mmu:
                     for gate, tool in gates_tools:
                         try:
                             self._select_gate(gate)
-                            self._initialize_filament_position() # Encoder 0000
                             self.calibrating = True # To suppress visual filament position
                             self._log_info("Checking Gate %d..." % gate)
                             self._load_gate(allow_retry=False, adjust_servo_on_error=False)
@@ -7626,6 +7627,7 @@ class Mmu:
                                 self._log_info(msg)
                                 self._log_debug("Reason: %s" % str(ee))
                         finally:
+                            self._initialize_filament_position() # Encoder 0000
                             self.calibrating = False
 
                     # If not printing select original tool and load filament if necessary
@@ -7670,7 +7672,6 @@ class Mmu:
                     gate = self.gate_selected
                 else:
                     self._select_gate(gate)
-                self._initialize_filament_position()    # Encoder 0000
                 for i in range(self.preload_attempts):
                     self._log_always("Loading...")
                     try:
@@ -7689,6 +7690,7 @@ class Mmu:
                 self._log_always("Filament preload for Gate %d failed: %s" % (gate, str(ee)))
             finally:
                 self.calibrating = False
+                self._initialize_filament_position()    # Encoder 0000
                 self._servo_auto()
 
 def load_config(config):
