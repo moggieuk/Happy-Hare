@@ -3721,6 +3721,12 @@ class Mmu:
             return True
         return False
 
+    def _check_spoolman_enabled(self):
+        if self.spoolman_support == self.SPOOLMAN_OFF:
+            self._log_error("Spoolman support is currently disabled")
+            return True
+        return False
+
     def _gate_homing_string(self):
         return "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "ENDSTOP '%s'" % self.gate_homing_endstop
 
@@ -5916,6 +5922,8 @@ class Mmu:
     def cmd_MMU_SPOOLMAN(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        if self._check_spoolman_enabled(): return
+
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
         clear = bool(gcmd.get_int('CLEAR', 0, minval=0, maxval=1))
@@ -5959,8 +5967,11 @@ class Mmu:
                 self._spoolman_unset_spool_gate(spool_id=spool_id, sync=self.spoolman_support == self.SPOOLMAN_PULL, quiet=quiet)
 
         elif not run:
-            # Display gate association table from spoolman db for specified printer
-            self._spoolman_display_spool_location(printer=printer)
+            if self.spoolman_support in [self.SPOOLMAN_PULL, self.SPOOLMAN_PUSH]:
+                # Display gate association table from spoolman db for specified printer
+                self._spoolman_display_spool_location(printer=printer)
+            else:
+                self._log_error("Spoolman gate map not available. Spoolman mode is: %s" % self.spoolman_support)
 
 
 ### CORE GCODE COMMANDS ##########################################################
