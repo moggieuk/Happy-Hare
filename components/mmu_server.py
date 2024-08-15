@@ -323,7 +323,7 @@ class MmuServer:
         # Use the PATCH method on the spoolman api
         if not silent:
             logging.info(f"Setting spool {spool_id} for printer {printer} @ gate {gate}")
-        data = {'extra': {MMU_NAME_FIELD: f"\"{printer}\"", MMU_GATE_FIELD: gate}}
+        data = {'extra': {MMU_NAME_FIELD: json.dumps(f"{printer}"), MMU_GATE_FIELD: gate}}
         if self.update_location:
             data['location'] = f"{printer} @ MMU Gate:{gate}"
         response = await self.http_client.request(
@@ -348,7 +348,7 @@ class MmuServer:
         # Use the PATCH method on the spoolman api
         if not silent:
             logging.info(f"Unsetting gate map on spool id {spool_id}")
-        data = {'extra': {MMU_NAME_FIELD: "\"\"", MMU_GATE_FIELD: -1}}
+        data = {'extra': {MMU_NAME_FIELD: json.dumps(""), MMU_GATE_FIELD: -1}}
         if self.update_location:
             data['location'] = ""
         response = await self.http_client.request(
