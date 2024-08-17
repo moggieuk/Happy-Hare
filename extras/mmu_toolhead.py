@@ -200,19 +200,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             s_alloc = ffi_lib.cartesian_stepper_alloc(b"y")
             pos = [0., self.mmu_toolhead.get_position()[1], 0.]
 
-# PAUL
-#            # Inject the extruder steppers into the gear rail
-#            # Cripple unused/unwanted gear steppers
-#            rail = self.mmu_toolhead.get_kinematics().rails[1]
-#            if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
-#                self._inactive_gear_steppers = list(rail.steppers)
-#                rail.steppers = following_steppers
-#                for s in self._inactive_gear_steppers:
-#                    self.mmu_toolhead.step_generators.remove(s.generate_steps)
-#            else:
-#                self._inactive_gear_steppers = list(rail.steppers)
-#                rail.steppers.extend(following_steppers)
-
             # Cripple unused/unwanted gear steppers
             # Inject the extruder steppers into the gear rail
             rail = self.mmu_toolhead.get_kinematics().rails[1]
@@ -260,20 +247,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             following_toolhead = self.printer_toolhead
             following_steppers = [self.printer_toolhead.get_extruder().extruder_stepper.stepper]
             pos = [self.printer_toolhead.get_position()[3], 0., 0.]
-
-# PAUL
-#            # Remove extruder steppers from gear rail
-#            # Restore previously unused/unwanted gear steppers
-#            rail = self.mmu_toolhead.get_kinematics().rails[1]
-#            if self._inactive_gear_steppers:
-#                rail.steppers = self._inactive_gear_steppers
-#
-#                for s in self._inactive_gear_steppers:
-#                    self.mmu_toolhead.register_step_generator(s.generate_steps)
-#                    p = [0., self.mmu_toolhead.get_position()[1], 0.]
-#                    s.set_position(p)
-#            else:
-#                rail.steppers = rail.steppers[:-len(following_steppers)]
 
             # Restore previously unused/unwanted gear steppers
             # Remove extruder steppers from gear rail
@@ -347,14 +320,6 @@ class MmuToolHead(toolhead.ToolHead, object):
                     msg += "SYNCHRONIZED: Gear rail synced to extruder '%s'\n" % extruder_name
                 if self.is_extruder_synced_to_gear():
                     msg += "SYNCHRONIZED: Extruder '%s' synced to gear rail\n" % extruder_name
-# PAUL
-#                msg += "Other Rail Steppers:\n"
-#                for idx, s in enumerate(self._inactive_gear_steppers if self._inactive_gear_steppers is not None else []):
-#                    msg += "Stepper %d: %s\n" % (idx, s.get_name())
-#                    msg += "- Commanded Pos: %.2f, " % s.get_commanded_position()
-#                    msg += "MCU Pos: %.2f, " % s.get_mcu_position()
-#                    rd = s.get_rotation_distance()
-#                    msg += "Rotation Dist: %.6f (in %d steps, res=%.6f)\n" % (rd[0], rd[1], rd[0]/rd[1])
 
         e_stepper = self.printer_toolhead.get_extruder().extruder_stepper.stepper
         msg +=  "\nPRINTER TOOLHEAD: %s\n" % self.printer_toolhead.get_position()

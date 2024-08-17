@@ -2021,7 +2021,7 @@ class Mmu:
         msg += ". Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
         msg += ". Tool %s selected on gate %s" % (self._selected_tool_string(), self._selected_gate_string())
         msg += ". Toolhead position saved" if self.saved_toolhead_position else ""
-        msg += "\nGear stepper is at %d%% and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
+        msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
         if self.mmu_toolhead.is_gear_synced_to_extruder():
             msg += "\nSync feedback indicates filament in bowden is: %s" % self._get_sync_feedback_string().upper()
 
@@ -2613,8 +2613,6 @@ class Mmu:
                     self.bypass_offset = round(traveled, 1)
                     self._save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, write=True)
                 self._log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
-# PAUL        except MmuError as ee:
-# PAUL            self._handle_mmu_error(str(ee)) # PAUL NO... re-raise
         finally:
             self.calibrating = False
             self._motors_off()
@@ -3088,7 +3086,7 @@ class Mmu:
                 self._update_sync_multiplier()
 
     def _handle_mmu_synced(self):
-        self._log_info("MMU Synced to extruder%s" % " (sync feedback activated)" if self.sync_feedback_enable else "")
+        self._log_info("Synced MMU to extruder%s" % " (sync feedback activated)" if self.sync_feedback_enable else "")
         if not self.sync_feedback_operational:
             # Enable sync feedback
             self.sync_feedback_operational = True
@@ -3096,7 +3094,7 @@ class Mmu:
             self._update_sync_multiplier()
 
     def _handle_mmu_unsynced(self):
-        self._log_info("MMU Unsynced from extruder%s" % " (sync feedback deactivated)" if self.sync_feedback_enable else "")
+        self._log_info("Unsynced MMU from extruder%s" % " (sync feedback deactivated)" if self.sync_feedback_enable else "")
         if self.sync_feedback_operational:
             # Disable sync feedback
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
@@ -4124,7 +4122,6 @@ class Mmu:
         try:
             self._load_gate()
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
 
     cmd_MMU_STEP_UNLOAD_GATE_help = "User composable unloading step: Move filament from start of bowden and park in the gate"
@@ -4134,7 +4131,6 @@ class Mmu:
         try:
             self._unload_gate(homing_max=self.calibrated_bowden_length if full else None)
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
 
     cmd_MMU_STEP_LOAD_BOWDEN_help = "User composable loading step: Smart loading of bowden"
@@ -4144,7 +4140,6 @@ class Mmu:
         try:
             self._load_bowden(length)
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
 
     cmd_MMU_STEP_UNLOAD_BOWDEN_help = "User composable unloading step: Smart unloading of bowden"
@@ -4154,7 +4149,6 @@ class Mmu:
         try:
             self._unload_bowden(length)
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
 
     cmd_MMU_STEP_HOME_EXTRUDER_help = "User composable loading step: Home to extruder sensor or entrance through collision detection"
@@ -4163,7 +4157,6 @@ class Mmu:
         try:
             self._home_to_extruder(self.extruder_homing_max)
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
 
     cmd_MMU_STEP_LOAD_TOOLHEAD_help = "User composable loading step: Toolhead loading"
@@ -4173,7 +4166,6 @@ class Mmu:
         try:
             self._load_extruder(extruder_only)
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
 
     cmd_MMU_STEP_UNLOAD_TOOLHEAD_help = "User composable unloading step: Toolhead unloading"
@@ -4190,7 +4182,6 @@ class Mmu:
 
             self._unload_extruder(extruder_only = extruder_only)
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
 
     cmd_MMU_STEP_HOMING_MOVE_help = "User composable loading step: Generic homing move"
@@ -4199,7 +4190,6 @@ class Mmu:
         try:
             self._homing_move_cmd(gcmd, "User defined step homing move")
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
     cmd_MMU_STEP_MOVE_help = "User composable loading step: Generic move"
@@ -4208,7 +4198,6 @@ class Mmu:
         try:
             self._move_cmd(gcmd, "User defined step move")
         except MmuError as ee:
-            # PAUL raise gcmd.error("_MMU_STEP_MOVE: %s" % str(ee))
             self._handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
 
     cmd_MMU_STEP_SET_FILAMENT_help = "User composable loading step: Set filament position state"
@@ -6079,8 +6068,6 @@ class Mmu:
                             break
                     else:
                         self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
-# PAUL        except MmuError as ee: # PAUL should just throw MmuError
-# PAUL            self._handle_mmu_error(str(ee))
         finally:
             self._servo_auto()
 
@@ -6126,7 +6113,7 @@ class Mmu:
                 with self._wrap_sync_state(): # Don't undo syncing if called in print
                     skip_tip = self._is_printing() and not (standalone or self.force_form_tip_standalone)
                     if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.is_homed: # Will be done later if not homed
-                        self._recover_filament_pos(message=True) # PAUL this can alter sync state!
+                        self._recover_filament_pos(message=True)
 
                     self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange, pause_resume_pos=next_pos)
 
