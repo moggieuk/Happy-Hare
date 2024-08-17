@@ -376,8 +376,11 @@ class MmuServer:
         '''
         if self._mmu_backend_enabled():
             gate_dict = {
-                gate: {'spool_id': -1} if spool_id < 0 else (
-                    spool[2].copy() if (spool := self.spool_location.get(spool_id)) else logging.error(f"Spool id {spool_id} requested but not found in spoolman")
+                gate: (
+                    {'spool_id': -1} if spool_id < 0 else
+                    self.spool_location.get(spool_id)[2].copy()
+                    if self.spool_location.get(spool_id)
+                    else logging.error(f"Spool id {spool_id} requested but not found in spoolman")
                 )
                 for gate, spool_id in gate_ids
             }
