@@ -185,7 +185,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.unsync()
         if new_sync_mode is None: return # Lazy way to unsync()
         self.mmu._log_stepper("sync(mode=%s)" % new_sync_mode)
-        self.mmu._log_error("PAUL: sync(mode=%s)" % new_sync_mode)
 
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
@@ -238,7 +237,6 @@ class MmuToolHead(toolhead.ToolHead, object):
     def unsync(self):
         if self.sync_mode is None: return
         self.mmu._log_stepper("unsync()")
-        self.mmu._log_error("PAUL: unsync()")
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
 
@@ -365,7 +363,6 @@ class MmuKinematics:
         return [stepper_positions[rail.steppers[0].get_name()] for rail in self.rails] # Note can't assume rail name == stepper name
 
     def set_position(self, newpos, homing_axes):
-        logging.info("PAUL: rail set_position()")
         for i, rail in enumerate(self.rails):
             if not (i == 1 and self.toolhead.is_gear_synced_to_extruder()):
                 rail.set_position(newpos)

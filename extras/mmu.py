@@ -298,7 +298,6 @@ class Mmu:
         self.filament_remaining = 0.
         self._last_tool = self.TOOL_GATE_UNKNOWN
         self._toolhead_max_accel = self.config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
-        self.disable_servo = False # PAUL TEMP
 
         # Logging
         self.queue_listener = None
@@ -1371,9 +1370,8 @@ class Mmu:
             endstop = gcmd.get('ENDSTOP', 'extruder')
             loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
             self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
-            self.disable_servo = True # PAUL
             for i in range(loop):
-                move_type = random.randint(0, 10)
+                move_type = random.randint(0, 12)
                 move = random.randint(0, 100) - 50
                 speed = random.uniform(50, 200)
                 accel = random.randint(50, 1000)
@@ -1406,12 +1404,18 @@ class Mmu:
                 elif move_type == 9:
                     self._log_info("Loop: %d - Restore gcode state" % i)
                     self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=mmu_test")
+                elif move_type == 10:
+                    self._log_info("Loop: %d - legacy 'synced' movement" % i)
+                    self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d" % (move, speed))
+                elif move_type == 11:
+                    self._log_info("Loop: %d - legacy 'both' movement" % i)
+                    self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=both MOVE=%.2f SPEED=%d" % (move, speed))
                 else:
                     self._log_info("Loop: %d - Synced extruder to gear movement%s" % (i, " (extruder only)" if extruder_only else ""))
                     self.mmu_toolhead.sync(MmuToolHead.EXTRUDER_ONLY_ON_GEAR if extruder_only else MmuToolHead.EXTRUDER_SYNCED_TO_GEAR)
                 sync = "---" if self.mmu_toolhead.sync_mode is None else "E2G" if self.mmu_toolhead.sync_mode == MmuToolHead.EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER else "Ext"
                 self._log_info("STATUS: sync: %s, pos=%s" % (sync, self._get_filament_position()))
-            self.disable_servo = False # PAUL
+            self.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD")
 
     def _wrap_gcode_command(self, command, exception=False, variables=None):
         try:
@@ -1941,7 +1945,7 @@ class Mmu:
         ts_str  = "{0}{2} {1}".format(*homed(self.FILAMENT_POS_HOMED_TS, trig(ts, self.ENDSTOP_TOOLHEAD))) if self._has_sensor(self.ENDSTOP_TOOLHEAD) else ""
         nz_str  = "{} Nz]".format(past(self.FILAMENT_POS_LOADED))
         summary = " {5}{4}LOADED{0}{6}" if self.filament_pos == self.FILAMENT_POS_LOADED else " {5}{4}UNLOADED{0}{6}" if self.filament_pos == self.FILAMENT_POS_UNLOADED else " {5}{2)UNKNOWN{0}{6}" if self.filament_pos == self.FILAMENT_POS_UNKNOWN else ""
-        counter = " %.1fmm%s" % (self._get_filament_position(), " {1}(e:%.1fmm){0}" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
+        counter = " {5}%.1fmm{6}%s" % (self._get_filament_position(), " {1}(e:%.1fmm){0}" % self._get_encoder_distance(dwell=None) if self._has_encoder() and self.encoder_move_validation else "")
         visual = "".join((t_str, g_str, gs_str, en_str, bowden1, bowden2, es_str, ex_str, ts_str, nz_str, summary, counter))
         return visual
 
@@ -2177,11 +2181,9 @@ class Mmu:
     def _servo_down(self, buzz_gear=True):
         if self.gate_selected == self.TOOL_GATE_BYPASS: return
         if self.servo_state == self.SERVO_DOWN_STATE: return
-        self._log_error("PAUL: Servo down")
         self._log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
         self._movequeues_wait_moves()
-        if not self.disable_servo: # PAUL
-            self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
+        self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
@@ -2193,27 +2195,23 @@ class Mmu:
 
     def _servo_move(self): # Position servo for selector movement
         if self.servo_state == self.SERVO_MOVE_STATE: return
-        self._log_error("PAUL: Servo move")
         self._log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self._movequeues_wait_moves()
-            if not self.disable_servo: # PAUL
-                self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
+            self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self, measure=False):
         if self.servo_state == self.SERVO_UP_STATE: return 0.
-        self._log_error("PAUL: Servo up")
         self._log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up'])
         delta = 0.
         if self.servo_angle != self.servo_angles['up']:
             self._movequeues_wait_moves()
             if measure:
                 initial_encoder_position = self._get_encoder_distance(dwell=None)
-            if not self.disable_servo: # PAUL
-                self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
+            self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
             self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter
@@ -5560,7 +5558,7 @@ class Mmu:
         if self._check_in_bypass(): return
         endstop = gcmd.get('ENDSTOP', "default")
         move = gcmd.get_float('MOVE', 100.)
-        speed = gcmd.get_flmat('SPEED', None)
+        speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None) # Ignored for extruder led moves
         motor = gcmd.get('MOTOR', "gear")
         sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
