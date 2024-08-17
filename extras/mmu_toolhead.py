@@ -136,6 +136,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
 
         # Bi-directional sync management of gear(s) and extruder(s)
+        self._inactive_gear_steppers = []
         self.mmu_toolhead = self
         self.sync_mode = None
 
@@ -183,6 +184,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if new_sync_mode == self.sync_mode: return
         self.unsync()
         if new_sync_mode is None: return # Lazy way to unsync()
+        self.mmu._log_stepper("sync(mode=%s)" % new_sync_mode)
         self.mmu._log_error("PAUL: sync(mode=%s)" % new_sync_mode)
 
         self.printer_toolhead.flush_step_generation()
@@ -243,12 +245,12 @@ class MmuToolHead(toolhead.ToolHead, object):
             s.set_position(pos)
 
         self.sync_mode = new_sync_mode
-        self.printer.send_event("mmu:extruder_synced" if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR] else "mmu:gear_synced")
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
-            self.mmu._log_info("MMU Synced to extruder")
+            self.printer.send_event("mmu:synced")
 
     def unsync(self):
         if self.sync_mode is None: return
+        self.mmu._log_stepper("unsync()")
         self.mmu._log_error("PAUL: unsync()")
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
@@ -281,7 +283,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 for s in self._inactive_gear_steppers:
                     self.mmu_toolhead.register_step_generator(s.generate_steps)
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
-                #self._inactive_gear_steppers.clear()
+                self._inactive_gear_steppers.clear()
             rail.steppers = rail.steppers[:-len(following_steppers)]
 
         elif self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
@@ -301,9 +303,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             s.set_trapq(self._prev_trapq)
             s.set_position(pos)
 
-        self.printer.send_event("mmu:extruder_unsynced" if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR] else "mmu:gear_unsynced")
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
-            self.mmu._log_info("MMU Unsynced from extruder")
+            self.printer.send_event("mmu:unsynced")
         self.sync_mode = None
 
     def get_status(self, eventtime):
