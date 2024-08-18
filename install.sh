@@ -3,6 +3,9 @@
 # Installer / Updater script
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
+# Modified      2024  hamyy <oudy_1999@hotmail.com>
+#               2024  Unsweeticetea <iamzevle@gmail.com>
+#               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
 VERSION=2.70 # Important: Keep synced with mmy.py
 
@@ -12,6 +15,13 @@ SCRIPTPATH="$(dirname "$SCRIPT")"
 SCRIPTNAME="$0"
 ARGS=( "$@" )
 
+# Creality K1 series printers run on MIPS, with a limited instruction set and different default klipper directories
+# Checking for machine type is the easiest way so far to spot them (will be set to 1 if on MIPS):
+IS_MIPS=0
+if [[$(uname -m) = "mips"]]; then
+    IS_MIPS=1
+fi
+
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"
 KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
@@ -20,6 +30,14 @@ KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 SENSORS_SECTION="FILAMENT SENSORS"
 LED_SECTION="MMU OPTIONAL NEOPIXEL"
+
+if [ "$IS_MIPS" -eq 1]; then
+    KLIPPER_HOME="/usr/share/klipper"
+    MOONRAKER_HOME="/usr/data/moonraker/moonraker"
+    KLIPPER_CONFIG_HOME="/usr/data/printer_data/config"
+    unset OCTOPRINT_KLIPPER_CONFIG_HOME
+    unset OLD_KLIPPER_CONFIG_HOME
+fi
 
 set -e # Exit immediately on error
 
@@ -193,7 +211,13 @@ self_update() {
     cd "$SCRIPTPATH"
 
     set +e
-    BRANCH=$(timeout 3s git branch --show-current)
+    # timeout is unavailable on MIPS
+    if ["$IS_MIPS" -ne 1]; then
+        BRANCH=$(git branch --show-current)
+    else
+        BRANCH=$(timeout 3s git branch --show-current)
+    fi
+
     if [ $? -ne 0 ]; then
         echo -e "${ERROR}Error updating from github"
         echo -e "${ERROR}You might have an old version of git"
@@ -263,25 +287,44 @@ function nextsuffix {
 }
 
 verify_not_root() {
-    if [ "$EUID" -eq 0 ]; then
-        echo -e "${ERROR}This script must not run as root"
-        exit -1
+    if [ "$IS_MIPS" -ne 1]; then
+        if [ "$EUID" -eq 0 ]; then
+            echo -e "${ERROR}This script must not run as root"
+            exit -1
+        fi
+    else
+        echo -e "${WARNING}This script is running on a MIPS system, so we expect it to be run as root"
     fi
 }
 
 check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
-        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
-            echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
+        if [ "$IS_MIPS" -ne 1]; then
+            if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
+                echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
+            else
+                echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
+                exit -1
+            fi
         else
-            echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
-            exit -1
+            # There is no systemd on MIPS, we can only check the running processes
+            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/usr/share/klipper/klippy/klippy.py | awk '{print $1}')
+            KLIPPER_PID_FILE=/var/run/klippy.pid
+
+            if [[ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]]; then
+                echo -e "${INFO}Klipper service found"
+            else
+                echo -e "${ERROR}Klipper service not found! Please install Klipper first"
+                exit -1
+            fi
         fi
     fi
 }
 
 check_octoprint() {
-    if [ "$NOSERVICE" -ne 1 ]; then
+    if [ "$IS_MIPS" -eq 1]; then
+        OCTOPRINT=0 # Octoprint can not be set up on MIPS
+    elif [ "$NOSERVICE" -ne 1]; then
         if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
             echo -e "${INFO}OctoPrint service found"
             OCTOPRINT=1
@@ -1229,7 +1272,14 @@ uninstall_update_manager() {
 restart_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Klipper..."
-        sudo systemctl restart ${KLIPPER_SERVICE}
+
+        if [ "$IS_MIPS" -ne 1]; then
+            sudo systemctl restart ${KLIPPER_SERVICE}
+        else
+            set +e
+            /etc/init.d/*klipper_service restart
+            set -e
+        fi
     else
         echo -e "${WARNING}Klipper restart suppressed - Please restart ${KLIPPER_SERVICE} by hand"
     fi
@@ -1238,7 +1288,14 @@ restart_klipper() {
 restart_moonraker() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Moonraker..."
-        sudo systemctl restart moonraker
+
+        if [ "$IS_MIPS" -ne 1]; then
+            sudo systemctl restart moonraker
+        else
+            set +e
+            /etc/init.d/*moonraker_service restart
+            set -e
+        fi
     else
         echo -e "${WARNING}Moonraker restart suppressed - Please restart by hand"
     fi
