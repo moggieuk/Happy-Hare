@@ -208,6 +208,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 for s in self._inactive_gear_steppers:
                     self.mmu_toolhead.step_generators.remove(s.generate_steps)
             rail.steppers.extend(following_steppers)
+            # PAUL prepend expr rail.steppers[:0] = following_steppers # PAUL
 
         elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             driving_toolhead = self.printer_toolhead
@@ -258,6 +259,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
                 self._inactive_gear_steppers.clear()
             rail.steppers = rail.steppers[:-len(following_steppers)]
+            # PAUL prepend expr rail.steppers = rail.steppers[len(following_steppers):]
 
         elif self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             driving_toolhead = self.printer_toolhead
