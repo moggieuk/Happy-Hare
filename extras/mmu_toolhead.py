@@ -184,7 +184,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         if new_sync_mode == self.sync_mode: return
         self.unsync()
         if new_sync_mode is None: return # Lazy way to unsync()
-        self.mmu._log_stepper("sync(mode=%s)" % new_sync_mode)
+        self.mmu.log_error("PAUL: sync(mode=%s)" % new_sync_mode)
+        self.mmu.log_stepper("sync(mode=%s)" % new_sync_mode)
 
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
@@ -236,7 +237,8 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def unsync(self):
         if self.sync_mode is None: return
-        self.mmu._log_stepper("unsync()")
+        self.mmu.log_stepper("unsync()")
+        self.mmu.log_error("PAUL: unsync()")
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
 
@@ -278,10 +280,16 @@ class MmuToolHead(toolhead.ToolHead, object):
             self.printer.send_event("mmu:unsynced")
         self.sync_mode = None
 
+    def is_selector_homed(self):
+        return self.kin.get_status(self.reactor.monotonic())["selector_homed"]
+
     def get_status(self, eventtime):
         res = super(MmuToolHead, self).get_status(eventtime)
         res.update(dict(self.get_kinematics().get_status(eventtime)))
-        res.update({ 'filament_pos': self.mmu_toolhead.get_position()[1] })
+        res.extend({
+            'filament_pos': self.mmu_toolhead.get_position()[1],
+            'sync_mode': self.sync_mode
+        })
         return res
 
     cmd_DUMP_RAILS_help = "For debugging: dump current configuration of MMU Toolhead rails"
@@ -301,7 +309,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 msg += "- Commanded Pos: %.2f, " % s.get_commanded_position()
                 msg += "MCU Pos: %.2f, " % s.get_mcu_position()
                 rd = s.get_rotation_distance()
-                msg += "Rotation Dist: %.6f (in %d steps, res=%.6f)\n" % (rd[0], rd[1], rd[0]/rd[1])
+                msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], s.get_step_dist())
             msg += "Endstops:\n"
             for (mcu_endstop, name) in rail.endstops:
                 if mcu_endstop.__class__.__name__ == "MockEndstop":
@@ -326,7 +334,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         msg += "- Commanded Pos: %.2f, " % e_stepper.get_commanded_position()
         msg += "MCU Pos: %.2f, " % e_stepper.get_mcu_position()
         rd = e_stepper.get_rotation_distance()
-        msg += "Rotation Dist: %.6f (in %d steps, res=%.6f)\n" % (rd[0], rd[1], rd[0]/rd[1])
+        msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], e_stepper.get_step_dist())
         return msg
 
 
@@ -395,15 +403,14 @@ class MmuKinematics:
             raise move.move_error()
         
         if move.axes_d[0]: # Selector
-            move.limit_speed(self.selector_max_velocity, self.selector_max_accel)
+            move.limit_speed(self.selector_max_velocity, min(self.selector_max_accel, self.move_accel or self.selector_max_accel))
+
         elif move.axes_d[1]: # Gear
-            move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel) if self.move_accel else self.gear_max_accel)
+            move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel or self.gear_max_accel))
 
     def get_status(self, eventtime):
         return {
             'selector_homed': self.limits[0][0] <= self.limits[0][1],
-            'gear_synced_to_extruder': self.is_gear_synced_to_extruder(),
-            'extruder_synced_to_gear': self.is_extruder_synced_to_gear()
         }
 
 
