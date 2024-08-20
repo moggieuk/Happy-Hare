@@ -900,7 +900,7 @@ class Mmu:
         # Configure encoder calibration (set with MMU_CALIBRATE_ENCODER)
         self.encoder_resolution = self.encoder_default_resolution
         if self._has_encoder():
-            self.encoder_sensor.set_logger(self._log_debug) # Combine with MMU log
+            self.encoder_sensor.set_logger(self.log_debug) # Combine with MMU log
             self.encoder_sensor.set_extruder(self.extruder_name)
             self.encoder_sensor.set_mode(self.enable_clog_detection)
 
@@ -3473,7 +3473,7 @@ class Mmu:
 
                     # Factor z_hop_ramp
                     current_x, current_y = gcode_pos.x, gcode_pos.y
-                    new_x, new_y = self.move_towards_center(current_x, current_y, axis_maximum.x, axis_maximum.y, self.z_hop_ramp)
+                    new_x, new_y = self._move_towards_center(current_x, current_y, axis_maximum.x, axis_maximum.y, self.z_hop_ramp)
 
                     self.gcode.run_script_from_command("G90")
                     self.gcode.run_script_from_command("M204 S%d" % self.z_hop_accel)
@@ -3487,7 +3487,7 @@ class Mmu:
 
     # For z_hop_ramp. Return new position along move vector
     # (towards center unless at center then towards origin)
-    def move_towards_center(self, x, y, w, h, d):
+    def _move_towards_center(self, x, y, w, h, d):
         cx, cy = w / 2.0, h / 2.0
         target_x, target_y = (0, 0) if (x, y) == (cx, cy) else (cx, cy)
         dx, dy = target_x - x, target_y - y
