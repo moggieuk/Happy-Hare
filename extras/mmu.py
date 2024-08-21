@@ -88,20 +88,23 @@ class DebugStepperMovement:
         self.mmu = mmu 
 
     def __enter__(self):
-        self.init_gear_mcu_pos = self.mmu.gear_stepper.get_mcu_position()
-        self.init_ext_mcu_pos = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
-        self.init_pos = self.mmu.mmu_toolhead.get_position()[1]
+        self.g_steps0 = self.mmu.gear_stepper.get_mcu_position()
+        self.g_pos0 = self.mmu.gear_stepper.get_commanded_position()
+        self.e_steps0 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
+        self.e_pos0 = self.mmu.mmu_extruder_stepper.stepper.get_commanded_position()
+        self.rail_pos0 = self.mmu.mmu_toolhead.get_position()[1]
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.mmu._wait_moves()
-        final_gear_mcu_pos = self.mmu.gear_stepper.get_mcu_position()
-        final_ext_mcu_pos = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
-        gear_steps = final_gear_mcu_pos - self.init_gear_mcu_pos
-        ext_steps = final_ext_mcu_pos - self.init_ext_mcu_pos
-        final_pos = self.mmu.mmu_toolhead.get_position()[1]
-        self.mmu.log_always("Gear movement: %s, steps: %s" % (gear_steps * self.mmu.gear_stepper.get_step_dist(), gear_steps))
-        self.mmu.log_always("Extruder movement: %s, steps: %s" % (ext_steps * self.mmu.mmu_extruder_stepper.stepper.get_step_dist(), ext_steps))
-        self.mmu.log_always("Rail movement: %s" % (final_pos - self.init_pos))
+        self.mmu.log_always("Waiting for movement to complete...")
+        self.mmu.movequeues_wait()
+        g_steps1 = self.mmu.gear_stepper.get_mcu_position()
+        g_pos1 = self.mmu.gear_stepper.get_commanded_position()
+        e_steps1 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
+        e_pos1 = self.mmu.mmu_extruder_stepper.stepper.get_commanded_position()
+        rail_pos1 = self.mmu.mmu_toolhead.get_position()[1]
+        self.mmu.log_always("Gear steps: %d = %.4f, commanded movement: %.4f" % (g_steps1 - self.g_steps0, (g_steps1 - self.g_steps0) * self.mmu.gear_stepper.get_step_dist(), g_pos1 - self.g_pos0))
+        self.mmu.log_always("Extruder steps: %d = %.4f, commanded movement: %.4f" % (e_steps1 - self.e_steps0, (e_steps1 - self.e_steps0) * self.mmu.mmu_extruder_stepper.stepper.get_step_dist(), e_pos1 - self.e_pos0))
+        self.mmu.log_always("Rail movement: %.4f" % (rail_pos1 - self.rail_pos0))
 
 # Main klipper module
 class Mmu:
@@ -1325,7 +1328,7 @@ class Mmu:
         except Exception as e:
             self.log_error('Warning: Error booting up MMU: %s' % str(e))
 
-    cmd_MMU_TEST_help = "Internal Happy Hare testing"
+    cmd_MMU_TEST_help = "Internal Happy Hare development tests"
     def cmd_MMU_TEST(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
@@ -1383,6 +1386,8 @@ class Mmu:
             endstop = gcmd.get('ENDSTOP', 'extruder')
             loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
             self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
+            self._initialize_filament_position()
+            total = 0.
             for i in range(loop):
                 move_type = random.randint(0, 12)
                 move = random.randint(0, 100) - 50
@@ -1392,25 +1397,27 @@ class Mmu:
                 extruder_only = random.randint(0, 1)
                 motor = random.choice(["gear", "gear+extruder", "extruder"])
                 if move_type == 0 or move_type == 1:
-                    self.log_info("Loop: %d - Synced gear to extruder movement" % i)
+                    self.log_info("Loop: %d - Synced gear to extruder movement: %.1fmm" % (i, move))
                     self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
                     self.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                 elif move_type == 2:
-                    self.log_info("Loop: %d - Unsynced extruder movement" % i)
+                    self.log_info("Loop: %d - Unsynced extruder movement: %.1fmm" % (i, move))
                     self.mmu_toolhead.unsync()
                     self.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                 elif move_type == 3:
-                    self.log_info("Loop: %d - Regular move: %s" %  (i, motor))
+                    self.log_info("Loop: %d - Regular move: %.1fmm, MOTOR=%s" %  (i, move, motor))
                     self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=%.2f SPEED=%d" % (motor, move, speed))
+                    total += move
                 elif move_type == 4 or move_type == 5:
-                    self.log_info("Loop: %d - HOMING MOVE: %s" % (i, motor))
+                    self.log_info("Loop: %d - HOMING MOVE: %.1fmm, MOTOR=%s" % (i, move, motor))
                     self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=%.2f SPEED=%d ENDSTOP=%s" % (motor, move, speed, endstop))
+                    total += move
                 elif move_type == 6:
-                    self.log_info("Loop: %d - Changed filament position" % i)
-                    self._set_filament_position(random.uniform(0, 300))
+                    self.log_info("Loop: %d - Changed filament position: %.1fmm" % (i, move))
+                    # PAUL self._set_filament_position(random.uniform(0, 300))
                 elif move_type == 7:
                     self.log_info("Loop: %d - Initialized filament position" % i)
-                    self._initialize_filament_position()
+                    # PAUL self._initialize_filament_position()
                 elif move_type == 8:
                     self.log_info("Loop: %d - Save gcode state" % i)
                     self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
@@ -1418,17 +1425,22 @@ class Mmu:
                     self.log_info("Loop: %d - Restore gcode state" % i)
                     self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=mmu_test")
                 elif move_type == 10:
-                    self.log_info("Loop: %d - legacy 'synced' movement" % i)
+                    self.log_info("Loop: %d - legacy 'synced' movement: %.1fmm" % (i, move))
                     self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d" % (move, speed))
+                    total += move
                 elif move_type == 11:
-                    self.log_info("Loop: %d - legacy 'both' movement" % i)
+                    self.log_info("Loop: %d - legacy 'both' movement: %.1fmm" % (i, move))
                     self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=both MOVE=%.2f SPEED=%d" % (move, speed))
+                    total += move
                 else:
-                    self.log_info("Loop: %d - Synced extruder to gear movement%s" % (i, " (extruder only)" if extruder_only else ""))
+                    self.log_info("Loop: %d - Synced extruder to gear movement: %.1fmm%s" % (i, move, " (extruder only)" if extruder_only else ""))
                     self.mmu_toolhead.sync(MmuToolHead.EXTRUDER_ONLY_ON_GEAR if extruder_only else MmuToolHead.EXTRUDER_SYNCED_TO_GEAR)
+                    total += move
+
                 sync = "---" if self.mmu_toolhead.sync_mode is None else "E2G" if self.mmu_toolhead.sync_mode == MmuToolHead.EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER else "Ext"
                 self.log_info("STATUS: sync: %s, pos=%s" % (sync, self._get_filament_position()))
             self.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD")
+            self.log_info("Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" % (total, self._get_filament_position()))
 
         if gcmd.get_int('SEL_MOVE', 0, minval=0, maxval=1):
             move = gcmd.get_float('MOVE', 10.)
@@ -1480,18 +1492,22 @@ class Mmu:
 
         if gcmd.get_int('SPECIAL', 0, minval=0, maxval=1):
             servo = bool(gcmd.get_int('SERVO', 0, minval=0, maxval=1))
+            loop = gcmd.get_int('LOOP', 5, minval=1, maxval=50)
+            self.gcode.run_script_from_command("M83")
+            rot_dist = self.gear_stepper.get_rotation_distance()[0]
+            move = rot_dist / loop
             with DebugStepperMovement(self):
-                for i in range(3):
-                    self.log_always(str(i))
-                    self.gcode.run_script_from_command("G1 E6 F120")
-                self._wait_moves()
+                for i in range(loop):
+                    self.log_always("Extruder: %d" % i)
+                    self.gcode.run_script_from_command("G1 E%.4f F240" % move)
                 self._sync_gear_to_extruder(True, servo=servo, current=False)
-                for i in range(3):
-                    self.log_always(str(i))
-                    self.gcode.run_script_from_command("G1 E6 F120")
+                self.gcode.run_script_from_command("G1 E%.4f F240" % rot_dist)
+                for i in range(loop):
+                    self.log_always("Extruder: %d" % i)
+                    self.gcode.run_script_from_command("G1 E%.4f F240" % move)
                 self._sync_gear_to_extruder(False, servo=servo, current=False)
 
-    def _wrap_gcode_command(self, command, exception=False, variables=None):
+    def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
             macro = command.split()[0]
             if variables is not None:
@@ -1499,6 +1515,8 @@ class Mmu:
                 gcode_macro.variables.update(variables)
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
+            if wait:
+                self.movequeues_wait(mmu_toolhead=False)
         except Exception as e:
             if exception is not None:
                 if exception:
@@ -1512,24 +1530,27 @@ class Mmu:
         if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
             self._wrap_gcode_command("%s EVENT=%s %s" % (self.mmu_event_macro, event_name, params))
 
-    def _wait_moves(self, toolhead=True, mmu_toolhead=True):
-        self.log_error("PAUL: _wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
-        #self.log_trace("_wait_moves(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
+    # Wait on desired move queues
+    def movequeues_wait(self, toolhead=True, mmu_toolhead=True):
+        self.log_error("PAUL: movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
+        #self.log_trace("movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if toolhead:
             self.toolhead.wait_moves()
         if mmu_toolhead:
             self.mmu_toolhead.wait_moves()
 
-    def _movequeues_dwell(self, dwell, toolhead=True, mmu_toolhead=True): # PAUL rename
+    # Dwell on desired move queues
+    def movequeues_dwell(self, dwell, toolhead=True, mmu_toolhead=True):
         if dwell > 0.:
             if toolhead and mmu_toolhead:
-                self._movequeues_sync()
+                self.movequeues_sync()
             if toolhead:
                 self.toolhead.dwell(dwell)
             if mmu_toolhead:
                 self.mmu_toolhead.dwell(dwell)
 
-    def _movequeues_sync(self): # PAUL rename
+    # Align timing of move queues
+    def movequeues_sync(self):
         mmu_last_move = self.mmu_toolhead.get_last_move_time()
         last_move = self.toolhead.get_last_move_time()
         delta = mmu_last_move - last_move
@@ -2254,44 +2275,45 @@ class Mmu:
             self.log_info("Servo angle unknown")
 
     def _servo_down(self, buzz_gear=True):
+        return # PAUL
         if self.gate_selected == self.TOOL_GATE_BYPASS: return
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self.log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
-        self.log_error("PAUL: 1. servo_down()")
-        self._wait_moves()
-        self.log_error("PAUL: 2. servo_down()")
+        self.movequeues_wait()
+        self.log_error("PAUL: servo_down()")
         self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
                 self._trace_filament_move(None, -0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
-            self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
+            self.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
         self.servo_angle = self.servo_angles['down']
         self.servo_state = self.SERVO_DOWN_STATE
         self._mmu_macro_event(self.MACRO_EVENT_FILAMENT_ENGAGED)
 
     def _servo_move(self): # Position servo for selector movement
+        return # PAUL
         if self.servo_state == self.SERVO_MOVE_STATE: return
         self.log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
-            self._wait_moves()
+            self.movequeues_wait()
             self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
-            self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
+            self.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = self.SERVO_MOVE_STATE
 
     def _servo_up(self, measure=False):
+        return # PAUL
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self.log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up'])
         delta = 0.
         if self.servo_angle != self.servo_angles['up']:
-            self.log_error("PAUL: 1. servo_up()")
-            self._wait_moves()
-            self.log_error("PAUL: 2. servo_up()")
+            self.movequeues_wait()
+            self.log_error("PAUL: servo_up()")
             if measure:
                 initial_encoder_position = self._get_encoder_distance(dwell=None)
             self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
-            self._movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
+            self.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter
                 delta = self._get_encoder_distance() - initial_encoder_position
@@ -2388,19 +2410,19 @@ class Mmu:
             self.selector.move(None, pos - 5, wait=False)
             self.selector.move(None, pos, wait=False)
         elif motor == "servo":
-            self._wait_moves()
+            self.movequeues_wait()
             old_state = self.servo_state
             small=min(self.servo_angles['down'], self.servo_angles['up'])
             large=max(self.servo_angles['down'], self.servo_angles['up'])
             mid=(self.servo_angles['down'] + self.servo_angles['up'])/2
             duration=None if self.servo_always_active else self.servo_duration
             self.servo.set_value(angle=mid, duration=duration)
-            self._movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+            self.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
             self.servo.set_value(angle=abs(mid+small)/2, duration=duration)
-            self._movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+            self.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
             self.servo.set_value(angle=abs(mid+large)/2, duration=duration)
-            self._movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-            self._wait_moves()
+            self.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+            self.movequeues_wait()
             if old_state == self.SERVO_DOWN_STATE:
                 self._servo_down(buzz_gear=False)
             elif old_state == self.SERVO_MOVE_STATE:
@@ -3357,7 +3379,7 @@ class Mmu:
     def _on_print_end(self, state="complete"):
         if not self._is_in_endstate():
             self.log_trace("_on_print_end(%s)" % state)
-            self._wait_moves()
+            self.movequeues_wait()
             self._clear_saved_toolhead_position()
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
@@ -3474,7 +3496,7 @@ class Mmu:
 
     def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False, pause_resume_pos=None):
         if not self.saved_toolhead_position:
-            self._wait_moves()
+            self.movequeues_wait()
             eventtime = self.reactor.monotonic()
             homed = self.toolhead.get_status(eventtime)['homed_axes']
 
@@ -3666,11 +3688,11 @@ class Mmu:
     def _encoder_dwell(self, dwell):
         if self._has_encoder():
             if dwell:
-                self._movequeues_dwell(self.encoder_dwell)
-                self._wait_moves()
+                self.movequeues_dwell(self.encoder_dwell)
+                self.movequeues_wait()
                 return True
             elif dwell is False and self._can_use_encoder():
-                self._wait_moves()
+                self.movequeues_wait()
                 return True
             elif dwell is None and self._can_use_encoder():
                 return True
@@ -4476,7 +4498,7 @@ class Mmu:
                 self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
 
         self._random_failure() # Testing
-        self._wait_moves()
+        self.movequeues_wait()
         if full:
             self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
         elif not self.filament_pos == self.FILAMENT_POS_IN_BOWDEN:
@@ -4517,7 +4539,7 @@ class Mmu:
                 self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
 
         self._random_failure() # Testing
-        self._wait_moves()
+        self.movequeues_wait()
         if full:
             self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
         elif not self.filament_pos == self.FILAMENT_POS_IN_BOWDEN:
@@ -4648,7 +4670,7 @@ class Mmu:
                 self.log_info("Filament tightened by %.1fmm" % pullback)
 
             self._random_failure() # Testing
-            self._wait_moves()
+            self.movequeues_wait()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self.log_debug("Filament should loaded to nozzle")
 
@@ -4748,7 +4770,7 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
 
             self._random_failure() # Testing
-            self._wait_moves()
+            self.movequeues_wait()
             self.log_debug("Filament should be out of extruder")
 
 
@@ -4757,7 +4779,7 @@ class Mmu:
 ##############################################
 
     def _load_sequence(self, length=None, skip_extruder=False, extruder_only=False):
-        self._wait_moves()
+        self.movequeues_wait()
         self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
         full = home = False
         if not length:
@@ -4809,7 +4831,7 @@ class Mmu:
                 if not skip_extruder:
                     self._load_extruder()
 
-            self._wait_moves()
+            self.movequeues_wait()
             msg = "Load of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
                 msg += " {1}(encoder measured %.1fmm){0}" % self._get_encoder_distance(dwell=None)
@@ -4827,7 +4849,7 @@ class Mmu:
                 self._servo_up()
 
     def _unload_sequence(self, length=None, check_state=False, skip_tip=False, extruder_only=False, runout=False):
-        self._wait_moves()
+        self.movequeues_wait()
         if not length:
             length = self.calibrated_bowden_length
         self._set_filament_direction(self.DIRECTION_UNLOAD)
@@ -4868,7 +4890,7 @@ class Mmu:
                     if not(self._check_pre_gate_sensor(self.gate_selected) is True or self._check_sensor(self.ENDSTOP_GATE) is True or (self._has_encoder() and self._get_encoder_distance() > 0)):
                         self.log_info("Warning: Filament not seen at MMU after after tip forming move. Unload may not be possible")
 
-                self._wrap_gcode_command(self.post_form_tip_macro, exception=True)
+                self._wrap_gcode_command(self.post_form_tip_macro, exception=True, wait=True)
 
             # Note: Conditionals deliberately coded this way to match macro alternative
             start_filament_pos = self.filament_pos
@@ -4979,7 +5001,7 @@ class Mmu:
     # activate a filament cutting mechanism. Sets filament position based on park pos
     # Returns True if filament is detected
     def _form_tip_standalone(self, extruder_only=False):
-        self._wait_moves()
+        self.movequeues_wait()
 
         # Pre check to validate the presence of filament in the extruder and case where we don't need to form tip
         if self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY) or self._check_sensor(self.ENDSTOP_TOOLHEAD):
@@ -5061,7 +5083,7 @@ class Mmu:
                 self.log_info("Forming tip...")
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
             finally:
-                self._wait_moves()
+                self.movequeues_wait()
                 if initial_pa is not None:
                     self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
 
@@ -5169,11 +5191,6 @@ class Mmu:
         null_rtn = (0., False, 0., 0.)
 
         if homing_move != 0:
-#            # Klipper generates TTC errors for tiny homing moves!
-#            if abs(dist) < 0.01: # Workaround for Timer Too Close error with short homing moves
-#                self.log_trace("Warning: short homing move detected on gear - ignored")
-#                return null_rtn
-
             # Check for valid endstop
             endstop = self.gear_rail.get_extra_endstop(endstop_name) if endstop_name is not None else self.gear_rail.get_endstops()
             if endstop is None:
@@ -5224,18 +5241,15 @@ class Mmu:
             accel *= adjust
 
         if sync:
-            self._movequeues_sync()
+            self.movequeues_sync()
 
         # Gear rail is driving the filament
         if motor in ["gear", "gear+extruder", "extruder"]:
             self.mmu_toolhead.sync(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else None)
             if homing_move != 0:
-# PAUL
-#                if self.log_enabled(self.LOG_STEPPER):
-#                    self.log_stepper("%s HOME: dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, sync=%s, wait=%s"% (motor.upper(), dist, speed, accel, endstop_name, sync, wait))
                 trig_pos = [0., 0., 0., 0.]
                 hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
-                init_ext_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
+                init_ext_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
                 init_pos = pos[1]
                 pos[1] += dist
                 for attempt in range(self.canbus_comms_retries):  # HACK: We can repeat because homing move
@@ -5264,15 +5278,17 @@ class Mmu:
                         homed = False
                     finally:
                         halt_pos = self.mmu_toolhead.get_position()
-                        actual = halt_pos[1] - init_pos
                         ext_actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
-                        self.log_error("PAUL: %s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, sync=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, sync, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, trig_pos[1])))
+
+                        # Support setup where extruder is not exclusively on gear rail or a non-homing extruder is being used
+                        if motor == "extruder" and not self.homing_extruder:
+                            # This isn't super accurate if extruder isn't (homing) MmuExtruder because doesn't have required endstop, but will have to do
+                            halt_pos[1] = ext_actual
+                            # PAUL self.mmu_toolhead.set_position(halt_pos) # Correct the gear rail position
+
+                        actual = halt_pos[1] - init_pos
                         if self.log_enabled(self.LOG_STEPPER):
                             self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, sync=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, sync, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, trig_pos[1])))
-                        if motor == "extruder":
-# PAUL                        if not self.homing_extruder:
-                            # This isn't super accurate if extruder isn't MmuExtruder and  doesn't have required endstop, but good enough
-                            actual = ext_actual
                     if not got_comms_timeout:
                         break
             else:
@@ -5310,7 +5326,7 @@ class Mmu:
                 self.toolhead.move(ext_pos, speed)
 
         if not homing_move and wait:
-            self._wait_moves()
+            self.movequeues_wait()
 
         encoder_end = self._get_encoder_distance(dwell=encoder_dwell)
         measured = encoder_end - encoder_start
@@ -5422,22 +5438,15 @@ class Mmu:
         if self.gate_selected < 0:
             sync = current = False
 
-# PAUL        prev_sync_state = self.mmu_toolhead.is_gear_synced_to_extruder()
         if servo:
-            if sync:
-                self._servo_down()
-            else:
-                self._servo_auto()
+            self._servo_down() if sync else self._servo_auto()
+
         if sync != self.mmu_toolhead.is_gear_synced_to_extruder():
-            # PAUL self._wait_moves()
+            # PAUL self.movequeues_wait(mmu_toolhead=False) # PAUL put code in mmu_toolhead..
             self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None)
 
         # Option to reduce current during print
-        if current and sync:
-            self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
-        else:
-            self._restore_gear_current()
-# PAUL        return prev_sync_state
+        self._adjust_gear_current(self.sync_gear_current, "for extruder syncing") if current and sync else self._restore_gear_current()
 
     @contextlib.contextmanager
     def _wrap_sync_state(self):
@@ -5530,7 +5539,7 @@ class Mmu:
         else:
             self._servo_down()
             if self.gear_rail.is_endstop_virtual(endstop):
-                self._movequeues_dwell(1, toolhead=False) # TMC needs time to settle after gear buzz for servo
+                self.movequeues_dwell(1, toolhead=False) # TMC needs time to settle after gear buzz for servo
         self.log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
         return self._trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop, sync=sync)
 
@@ -5597,13 +5606,13 @@ class Mmu:
                 raise MmuError("Gate %d is empty!\nUse 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % (gate, gate, gate))
 
         with self._wrap_track_time('pre_load'):
-            self._wrap_gcode_command(self.pre_load_macro, exception=True)
+            self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
         self._select_tool(tool, move_servo=False)
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
         with self._wrap_track_time('post_load'):
-            self._wrap_gcode_command(self.post_load_macro, exception=True)
+            self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
@@ -5614,12 +5623,12 @@ class Mmu:
         self.log_debug("Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
         with self._wrap_track_time('pre_unload'):
-            self._wrap_gcode_command(self.pre_unload_macro, exception=True)
+            self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True)
         self._record_tool_override() # Remember M220 and M221 overrides
         self._unload_sequence(skip_tip=skip_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
         with self._wrap_track_time('post_unload'):
-            self._wrap_gcode_command(self.post_unload_macro, exception=True)
+            self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True, next_pos=None):
@@ -7193,7 +7202,7 @@ class Mmu:
     cmd_MMU_M400_help = "Wait on both move queues"
     def cmd_MMU_M400(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
-        self._wait_moves(toolhead=True, mmu_toolhead=True)
+        self.movequeues_wait(toolhead=True, mmu_toolhead=True)
 
     cmd_MMU_TTG_MAP_help = "aka MMU_REMAP_TTG Display or remap a tool to a specific gate and set gate availability"
     def cmd_MMU_TTG_MAP(self, gcmd):
@@ -7694,7 +7703,7 @@ class MmuSelector():
     def _home_selector(self):
         self.mmu.gate_selected = self.mmu.TOOL_GATE_UNKNOWN
         self.mmu._servo_move()
-        self.mmu._wait_moves()
+        self.mmu.movequeues_wait()
         homing_state = MmuHoming(self.mmu.printer, self.mmu_toolhead)
         homing_state.set_axes([0])
         try:
@@ -7818,7 +7827,7 @@ class MmuSelector():
             if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
                 self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
             if wait:
-                self.mmu._wait_moves(toolhead=False, mmu_toolhead=True)
+                self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
 
         self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
         return pos[0], homed

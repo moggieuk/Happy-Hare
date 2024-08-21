@@ -20,6 +20,7 @@ import logging, importlib, math, os, time
 import stepper, chelper, toolhead
 from extras.homing import Homing, HomingMove
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
+from itertools import chain
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
@@ -186,7 +187,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         if new_sync_mode is None: return # Lazy way to unsync()
         self.mmu.log_error("PAUL: sync(mode=%s)" % new_sync_mode)
         self.mmu.log_stepper("sync(mode=%s)" % new_sync_mode)
-
+#        if new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
+#            self.mmu.movequeues_wait(mmu_toolhead=False)
+#        else:
+#            self.mmu.movequeues_wait(toolhead=False)
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
 
@@ -207,8 +211,8 @@ class MmuToolHead(toolhead.ToolHead, object):
                 self._inactive_gear_steppers = list(rail.steppers)
                 for s in self._inactive_gear_steppers:
                     self.mmu_toolhead.step_generators.remove(s.generate_steps)
+                rail.steppers = []
             rail.steppers.extend(following_steppers)
-            # PAUL prepend expr rail.steppers[:0] = following_steppers # PAUL
 
         elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             driving_toolhead = self.printer_toolhead
@@ -240,6 +244,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.sync_mode is None: return
         self.mmu.log_stepper("unsync()")
         self.mmu.log_error("PAUL: unsync()")
+#        if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
+#            self.mmu.movequeues_wait(mmu_toolhead=False)
+#        else:
+#            self.mmu.movequeues_wait(toolhead=False)
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
 
@@ -252,14 +260,14 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Restore previously unused/unwanted gear steppers
             # Remove extruder steppers from gear rail
             rail = self.mmu_toolhead.get_kinematics().rails[1]
-            if self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
-            #if self._inactive_gear_steppers:
+            if self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR: # I.e. self._inactive_gear_steppers is not None
                 for s in self._inactive_gear_steppers:
                     self.mmu_toolhead.register_step_generator(s.generate_steps)
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
+                rail.steppers = list(self._inactive_gear_steppers)
                 self._inactive_gear_steppers.clear()
-            rail.steppers = rail.steppers[:-len(following_steppers)]
-            # PAUL prepend expr rail.steppers = rail.steppers[len(following_steppers):]
+            else:
+                rail.steppers = rail.steppers[:-len(following_steppers)]
 
         elif self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             driving_toolhead = self.printer_toolhead
@@ -306,7 +314,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             msg += "\n" if axis > 0 else ""
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
             msg += header[:100] + "\n"
-            for idx, s in enumerate(rail.get_steppers()):
+            for idx, s in enumerate(chain(rail.get_steppers(), self._inactive_gear_steppers)):
                 msg += "Stepper %d: %s%s\n" % (idx, s.get_name(), "(INACTIVE)" if axis == 1 and s in self._inactive_gear_steppers else "")
                 msg += "- Commanded Pos: %.2f, " % s.get_commanded_position()
                 msg += "MCU Pos: %.2f, " % s.get_mcu_position()
