@@ -20,7 +20,6 @@ import logging, importlib, math, os, time
 import stepper, chelper, toolhead
 from extras.homing import Homing, HomingMove
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
-from itertools import chain
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
@@ -137,7 +136,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
 
         # Bi-directional sync management of gear(s) and extruder(s)
-        self._inactive_gear_steppers = []
+        self.inactive_gear_steppers = []
         self.mmu_toolhead = self
         self.sync_mode = None
 
@@ -185,12 +184,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if new_sync_mode == self.sync_mode: return
         self.unsync()
         if new_sync_mode is None: return # Lazy way to unsync()
-        self.mmu.log_error("PAUL: sync(mode=%s)" % new_sync_mode)
         self.mmu.log_stepper("sync(mode=%s)" % new_sync_mode)
-#        if new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
-#            self.mmu.movequeues_wait(mmu_toolhead=False)
-#        else:
-#            self.mmu.movequeues_wait(toolhead=False)
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
 
@@ -208,10 +202,9 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Inject the extruder steppers into the gear rail
             rail = self.mmu_toolhead.get_kinematics().rails[1]
             if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
-                self._inactive_gear_steppers = list(rail.steppers)
-                for s in self._inactive_gear_steppers:
+                self.inactive_gear_steppers = list(rail.steppers)
+                for s in self.inactive_gear_steppers:
                     self.mmu_toolhead.step_generators.remove(s.generate_steps)
-                rail.steppers = []
             rail.steppers.extend(following_steppers)
 
         elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
@@ -243,11 +236,6 @@ class MmuToolHead(toolhead.ToolHead, object):
     def unsync(self):
         if self.sync_mode is None: return
         self.mmu.log_stepper("unsync()")
-        self.mmu.log_error("PAUL: unsync()")
-#        if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
-#            self.mmu.movequeues_wait(mmu_toolhead=False)
-#        else:
-#            self.mmu.movequeues_wait(toolhead=False)
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
 
@@ -260,14 +248,12 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Restore previously unused/unwanted gear steppers
             # Remove extruder steppers from gear rail
             rail = self.mmu_toolhead.get_kinematics().rails[1]
-            if self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR: # I.e. self._inactive_gear_steppers is not None
-                for s in self._inactive_gear_steppers:
+            if self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR: # I.e. self.inactive_gear_steppers is not None
+                for s in self.inactive_gear_steppers:
                     self.mmu_toolhead.register_step_generator(s.generate_steps)
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
-                rail.steppers = list(self._inactive_gear_steppers)
-                self._inactive_gear_steppers.clear()
-            else:
-                rail.steppers = rail.steppers[:-len(following_steppers)]
+                self.inactive_gear_steppers.clear()
+            rail.steppers = rail.steppers[:-len(following_steppers)]
 
         elif self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             driving_toolhead = self.printer_toolhead
@@ -314,8 +300,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             msg += "\n" if axis > 0 else ""
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
             msg += header[:100] + "\n"
-            for idx, s in enumerate(chain(rail.get_steppers(), self._inactive_gear_steppers)):
-                msg += "Stepper %d: %s%s\n" % (idx, s.get_name(), "(INACTIVE)" if axis == 1 and s in self._inactive_gear_steppers else "")
+            for idx, s in enumerate(rail.get_steppers()):
+                msg += "Stepper %d: %s%s\n" % (idx, s.get_name(), "(INACTIVE)" if axis == 1 and s in self.inactive_gear_steppers else "")
                 msg += "- Commanded Pos: %.2f, " % s.get_commanded_position()
                 msg += "MCU Pos: %.2f, " % s.get_mcu_position()
                 rd = s.get_rotation_distance()
@@ -375,18 +361,27 @@ class MmuKinematics:
         return [s for rail in self.rails for s in rail.get_steppers()]
 
     def calc_position(self, stepper_positions):
-        #for r in self.rails:
-        #    logging.info("DEBUG: * rail=%s, initial_stepper_name=%s" % (r.get_name, r.steppers[0].get_name()))
-        #logging.info("DEBUG: * stepper_positions=%s" % stepper_positions)
-        return [stepper_positions[rail.steppers[0].get_name()] for rail in self.rails] # Note can't assume rail name == stepper name
+        positions = []
+        for i, r in enumerate(self.rails):
+            #logging.info("DEBUG: * %d. rail=%s, initial_stepper_name=%s", i, r.get_name(), r.steppers[0].get_name())
+            if i == 1:
+                stepper = next((s for s in r.steppers if s not in self.toolhead.inactive_gear_steppers), None)
+                if stepper:
+                    positions.append(stepper_positions[stepper.get_name()])
+                else:
+                    positions.append(stepper_positions[r.get_name()])
+            else:
+                positions.append(stepper_positions[r.get_name()])
+        return positions
 
     def set_position(self, newpos, homing_axes):
         for i, rail in enumerate(self.rails):
-            if not (i == 1 and self.toolhead.is_gear_synced_to_extruder()):
-                rail.set_position(newpos)
+            if i == 1 and self.toolhead.is_gear_synced_to_extruder():
+                continue
+            rail.set_position(newpos)
             if i in homing_axes:
                 self.limits[i] = rail.get_range()
-    
+
     def home(self, homing_state):
         for axis in homing_state.get_axes():
             if not axis == 0: # Saftey: Only selector (axis[0]) can be homed
@@ -411,10 +406,8 @@ class MmuKinematics:
         xpos, ypos = move.end_pos[:2]
         if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
             raise move.move_error()
-        
         if move.axes_d[0]: # Selector
             move.limit_speed(self.selector_max_velocity, min(self.selector_max_accel, self.move_accel or self.selector_max_accel))
-
         elif move.axes_d[1]: # Gear
             move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel or self.gear_max_accel))
 
