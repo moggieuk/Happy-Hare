@@ -7478,7 +7478,7 @@ class Mmu:
                 elif n == num_slicer_tools * 2:
                     calc = lambda x,y: volumes[x] + volumes[num_slicer_tools + y] # Build matrix with sum of "from" and "to" tools
                 elif n == num_slicer_tools ** 2:
-                    calc = lambda x,y: volumes[x + y * num_slicer_tools] # Full NxN matrix supplied
+                    calc = lambda x,y: volumes[y + x * num_slicer_tools] # Full NxN matrix supplied
                 else:
                     raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expected 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n))
                 # Build purge volume map (x=to_tool, y=from_tool)
@@ -7487,7 +7487,7 @@ class Mmu:
                     [
                         calc(x,y) if should_calc(x,y) else 0
                         for y in range(self.mmu_num_gates)
-                    ]
+                    ] 
                     for x in range(self.mmu_num_gates)
                 ]
             except ValueError as e:
