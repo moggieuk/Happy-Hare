@@ -1339,59 +1339,59 @@ class Mmu:
     def cmd_MMU_TEST(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        try:
-            self.internal_test = True
 
-            if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-                self.log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
-                self.log_info("DUMP_UNICODE=1 : Display special characters used in display")
-                self.log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
+        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+            self.log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
+            self.log_info("DUMP_UNICODE=1 : Display special characters used in display")
+            self.log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
 
-            feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
-            if feedback is not None:
-                self.log_info("Sending 'mmu:sync_feedback %.2f' event" % feedback)
-                self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
+        feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
+        if feedback is not None:
+            self.log_info("Sending 'mmu:sync_feedback %.2f' event" % feedback)
+            self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
 
-            if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
-                self.log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s, UI_CASCADE=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE))
-                self.log_info("{}{}{}{}".format(UI_BOX_TL, UI_BOX_T, UI_BOX_H, UI_BOX_TR))
-                self.log_info("{}{}{}{}".format(UI_BOX_L,  UI_BOX_M, UI_BOX_H, UI_BOX_R))
-                self.log_info("{}{}{}{}".format(UI_BOX_V,  UI_BOX_V, UI_SPACE, UI_BOX_V))
-                self.log_info("{}{}{}{}".format(UI_BOX_BL, UI_BOX_B, UI_BOX_H, UI_BOX_BR))
-                self.log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
+        if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
+            self.log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s, UI_CASCADE=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE))
+            self.log_info("{}{}{}{}".format(UI_BOX_TL, UI_BOX_T, UI_BOX_H, UI_BOX_TR))
+            self.log_info("{}{}{}{}".format(UI_BOX_L,  UI_BOX_M, UI_BOX_H, UI_BOX_R))
+            self.log_info("{}{}{}{}".format(UI_BOX_V,  UI_BOX_V, UI_SPACE, UI_BOX_V))
+            self.log_info("{}{}{}{}".format(UI_BOX_BL, UI_BOX_B, UI_BOX_H, UI_BOX_BR))
+            self.log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
 
-            if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
-                with self._wrap_track_time('total'):
-                    with self._wrap_track_time('unload'):
-                        with self._wrap_track_time('pre_unload'):
-                            self._wrap_gcode_command(self.pre_unload_macro, exception=False)
-                        self._wrap_gcode_command(self.post_form_tip_macro, exception=False)
-                        with self._wrap_track_time('post_unload'):
-                            self._wrap_gcode_command(self.post_unload_macro, exception=False)
-                    with self._wrap_track_time('load'):
-                        with self._wrap_track_time('pre_load'):
-                            self._wrap_gcode_command(self.pre_load_macro, exception=False)
-                        with self._wrap_track_time('post_load'):
-                            self._wrap_gcode_command(self.post_load_macro, exception=False)
+        if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
+            with self._wrap_track_time('total'):
+                with self._wrap_track_time('unload'):
+                    with self._wrap_track_time('pre_unload'):
+                        self._wrap_gcode_command(self.pre_unload_macro, exception=False)
+                    self._wrap_gcode_command(self.post_form_tip_macro, exception=False)
+                    with self._wrap_track_time('post_unload'):
+                        self._wrap_gcode_command(self.post_unload_macro, exception=False)
+                with self._wrap_track_time('load'):
+                    with self._wrap_track_time('pre_load'):
+                        self._wrap_gcode_command(self.pre_load_macro, exception=False)
+                    with self._wrap_track_time('post_load'):
+                        self._wrap_gcode_command(self.post_load_macro, exception=False)
 
-            if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
-                self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
+        if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
+            self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
 
-            if gcmd.get_int('SYNC_E2G', 0, minval=0, maxval=1):
-                extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
-                self.mmu_toolhead.sync(MmuToolHead.EXTRUDER_ONLY_ON_GEAR if extruder_only else MmuToolHead.EXTRUDER_SYNCED_TO_GEAR)
+        if gcmd.get_int('SYNC_E2G', 0, minval=0, maxval=1):
+            extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
+            self.mmu_toolhead.sync(MmuToolHead.EXTRUDER_ONLY_ON_GEAR if extruder_only else MmuToolHead.EXTRUDER_SYNCED_TO_GEAR)
 
-            if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
-                self.mmu_toolhead.unsync()
+        if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
+            self.mmu_toolhead.unsync()
 
-            pos = gcmd.get_float('SET_POS', -1, minval=0)
-            if pos >= 0:
-                self._set_filament_position(pos)
+        pos = gcmd.get_float('SET_POS', -1, minval=0)
+        if pos >= 0:
+            self._set_filament_position(pos)
 
-            if gcmd.get_int('GET_POS', 0, minval=0, maxval=1):
-                self.log_info("Filament position: %s" % self._get_filament_position())
+        if gcmd.get_int('GET_POS', 0, minval=0, maxval=1):
+            self.log_info("Filament position: %s" % self._get_filament_position())
 
-            if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
+        if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
+            try:
+                self.internal_test = True
                 endstop = gcmd.get('ENDSTOP', 'extruder')
                 loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
@@ -1445,88 +1445,88 @@ class Mmu:
                         self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=both MOVE=%.2f SPEED=%d" % (move, speed))
                         total += move
 
-                    sync = "---" if self.mmu_toolhead.sync_mode is None else "E2G" if self.mmu_toolhead.sync_mode == MmuToolHead.EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER else "Ext"
-                    self.movequeues_wait()
-                    tracking = abs(self._get_filament_position() - total) < 0.1
-                    self.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, self._get_filament_position(), total))
-                    if not tracking:
-                        self.log_error(">>>>>> Position tracking error")
-                        break
+                        sync = "---" if self.mmu_toolhead.sync_mode is None else "E2G" if self.mmu_toolhead.sync_mode == MmuToolHead.EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER else "Ext"
+                        self.movequeues_wait()
+                        tracking = abs(self._get_filament_position() - total) < 0.1
+                        self.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, self._get_filament_position(), total))
+                        if not tracking:
+                            self.log_error(">>>>>> Position tracking error")
+                            break
                 self.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD")
                 self.log_info("Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" % (total, self._get_filament_position()))
+            finally:
+                self.internal_test = True
 
-            if gcmd.get_int('SEL_MOVE', 0, minval=0, maxval=1):
-                move = gcmd.get_float('MOVE', 10.)
-                speed = gcmd.get_float('SPEED', None)
-                accel = gcmd.get_float('ACCEL', None)
-                wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
-                loop = gcmd.get_int('LOOP', 1, minval=1)
+        if gcmd.get_int('SEL_MOVE', 0, minval=0, maxval=1):
+            move = gcmd.get_float('MOVE', 10.)
+            speed = gcmd.get_float('SPEED', None)
+            accel = gcmd.get_float('ACCEL', None)
+            wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
+            loop = gcmd.get_int('LOOP', 1, minval=1)
+            for i in range(loop):
+                pos = self.mmu_toolhead.get_position()[0]
+                actual = self.selector.move("Test move", pos + move, speed=speed, accel=accel, wait=wait)
+                self.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
+                if actual != pos + move:
+                    self.log_always("Off target position by: %.4f" % (actual - (pos + move)))
+
+        if gcmd.get_int('SEL_HOMING_MOVE', 0, minval=0, maxval=1):
+            move = gcmd.get_float('MOVE', 10.)
+            speed = gcmd.get_float('SPEED', None)
+            accel = gcmd.get_float('ACCEL', None)
+            wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
+            loop = gcmd.get_int('LOOP', 1, minval=1)
+            endstop = gcmd.get('ENDSTOP', self.ENDSTOP_SELECTOR_TOUCH if self.selector.use_touch_move() else self.ENDSTOP_SELECTOR_HOME)
+            for i in range(loop):
+                pos = self.mmu_toolhead.get_position()[0]
+                self.log_always("Rail starting pos: %s" % pos)
+                actual,homed = self.selector.homing_move("Test homing move", pos + move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
+                self.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
+                if actual != pos + move:
+                    self.log_always("Off target position by: %.4f" % (actual - (pos + move)))
+
+        if gcmd.get_int('SEL_LOAD_TEST', 0, minval=0, maxval=1):
+            loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
+            if gcmd.get_int('HOME', 0, minval=0, maxval=1):
+                self.gcode.run_script_from_command("MMU_HOME")
+            for i in range(loop):
+                move_type = random.randint(0, 2)
+                move = random.randint(10, 100)
+                speed = random.uniform(50, 200)
+                accel = random.randint(50, 2000)
+                homing = random.randint(0, 2)
+                wait = random.randint(0, 1)
+                pos = self.mmu_toolhead.get_position()[0]
+                if move_type == 2 or move_type == 1:
+                    endstop = "mmu_sel_touch" if move_type == 2 else "mmu_sel_home"
+                    actual,homed = self.selector.homing_move("Test homing move", move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
+                    self.log_always("%d. Homing move: Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
+                else:
+                    actual = self.selector.move("Test move", move, speed=speed, accel=accel, wait=wait)
+                    self.log_always("%d. Move: Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
+
+        if gcmd.get_int('SPECIAL', 0, minval=0, maxval=1):
+            servo = bool(gcmd.get_int('SERVO', 0, minval=0, maxval=1))
+            loop = gcmd.get_int('LOOP', 5, minval=1, maxval=50)
+            self.gcode.run_script_from_command("M83")
+            rot_dist = self.gear_stepper.get_rotation_distance()[0]
+            move = rot_dist / loop
+            with DebugStepperMovement(self):
                 for i in range(loop):
-                    pos = self.mmu_toolhead.get_position()[0]
-                    actual = self.selector.move("Test move", pos + move, speed=speed, accel=accel, wait=wait)
-                    self.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
-                    if actual != pos + move:
-                        self.log_always("Off target position by: %.4f" % (actual - (pos + move)))
-
-            if gcmd.get_int('SEL_HOMING_MOVE', 0, minval=0, maxval=1):
-                move = gcmd.get_float('MOVE', 10.)
-                speed = gcmd.get_float('SPEED', None)
-                accel = gcmd.get_float('ACCEL', None)
-                wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
-                loop = gcmd.get_int('LOOP', 1, minval=1)
-                endstop = gcmd.get('ENDSTOP', self.ENDSTOP_SELECTOR_TOUCH if self.selector.use_touch_move() else self.ENDSTOP_SELECTOR_HOME)
+                    self.log_always("Extruder: %d" % i)
+                    self.gcode.run_script_from_command("G1 E%.4f F240" % move)
+                self._sync_gear_to_extruder(True, servo=servo, current=False)
+                self.gcode.run_script_from_command("G1 E%.4f F240" % rot_dist)
                 for i in range(loop):
-                    pos = self.mmu_toolhead.get_position()[0]
-                    self.log_always("Rail starting pos: %s" % pos)
-                    actual,homed = self.selector.homing_move("Test homing move", pos + move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
-                    self.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
-                    if actual != pos + move:
-                        self.log_always("Off target position by: %.4f" % (actual - (pos + move)))
+                    self.log_always("Extruder: %d" % i)
+                    self.gcode.run_script_from_command("G1 E%.4f F240" % move)
+                self._sync_gear_to_extruder(False, servo=servo, current=False)
 
-            if gcmd.get_int('SEL_LOAD_TEST', 0, minval=0, maxval=1):
-                loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
-                if gcmd.get_int('HOME', 0, minval=0, maxval=1):
-                    self.gcode.run_script_from_command("MMU_HOME")
-                for i in range(loop):
-                    move_type = random.randint(0, 2)
-                    move = random.randint(10, 100)
-                    speed = random.uniform(50, 200)
-                    accel = random.randint(50, 2000)
-                    homing = random.randint(0, 2)
-                    wait = random.randint(0, 1)
-                    pos = self.mmu_toolhead.get_position()[0]
-                    if move_type == 2 or move_type == 1:
-                        endstop = "mmu_sel_touch" if move_type == 2 else "mmu_sel_home"
-                        actual,homed = self.selector.homing_move("Test homing move", move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
-                        self.log_always("%d. Homing move: Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
-                    else:
-                        actual = self.selector.move("Test move", move, speed=speed, accel=accel, wait=wait)
-                        self.log_always("%d. Move: Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
-
-            if gcmd.get_int('SPECIAL', 0, minval=0, maxval=1):
-                servo = bool(gcmd.get_int('SERVO', 0, minval=0, maxval=1))
-                loop = gcmd.get_int('LOOP', 5, minval=1, maxval=50)
-                self.gcode.run_script_from_command("M83")
-                rot_dist = self.gear_stepper.get_rotation_distance()[0]
-                move = rot_dist / loop
-                with DebugStepperMovement(self):
-                    for i in range(loop):
-                        self.log_always("Extruder: %d" % i)
-                        self.gcode.run_script_from_command("G1 E%.4f F240" % move)
-                    self._sync_gear_to_extruder(True, servo=servo, current=False)
-                    self.gcode.run_script_from_command("G1 E%.4f F240" % rot_dist)
-                    for i in range(loop):
-                        self.log_always("Extruder: %d" % i)
-                        self.gcode.run_script_from_command("G1 E%.4f F240" % move)
-                    self._sync_gear_to_extruder(False, servo=servo, current=False)
-
-            if gcmd.get_int('TTC_TEST', 0, minval=0, maxval=1):
-                loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
-                for i in range(loop):
-                    stop_on_endstop = random.randint(0, 1) * 2 - 1
-                    self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d" % stop_on_endstop)
-        finally:
-            self.internal_test = True
+        if gcmd.get_int('TTC_TEST', 0, minval=0, maxval=1):
+            loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
+            for i in range(loop):
+                stop_on_endstop = random.randint(0, 1) * 2 - 1
+                self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d" % stop_on_endstop)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
