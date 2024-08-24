@@ -3,7 +3,7 @@
 #   - "drip" homing and movement without pauses
 #   - bi-directional syncing of extruder to gear rail or gear rail to extruder
 #   - extra "standby" endstops
-#   - extruder endstops
+#   - extruder homing and endstops
 #
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
