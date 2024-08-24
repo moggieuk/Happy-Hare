@@ -238,6 +238,23 @@ class Mmu:
     SPOOLMAN_OPTIONS       = [SPOOLMAN_OFF, SPOOLMAN_READONLY, SPOOLMAN_PUSH, SPOOLMAN_PULL]
     SPOOLMAN_CONFIG_ERROR  = "Moonraker/spoolman may not be configured (check moonraker.log)"
 
+    # filament sync tension states
+    class SyncTensionState:
+        SYNC_NEUTRAL = 0
+        SYNC_COMPRESSED = 1
+        SYNC_EXPANDED = -1
+        #  a helper function easily output tension state to log
+        @classmethod
+        def tension_state_to_text(cls, state):
+            if math.isclose(float(state), cls.SYNC_NEUTRAL):
+                return "neutral"
+            elif math.isclose(float(state), cls.SYNC_COMPRESSED):
+                return "compressed"
+            elif math.isclose(float(state), cls.SYNC_EXPANDED):
+                return "expanded"
+            else:
+                return f"unknown ({state=})"
+
     # Automap strategies
     AUTOMAP_NONE           = 'none'
     AUTOMAP_FILAMENT_NAME  = 'filament_name'
@@ -1083,7 +1100,12 @@ class Mmu:
                 self._handle_sync_feedback(eventtime, 1) # Assume compressed starting state
             elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
                 self._handle_sync_feedback(eventtime, -1) # Assume expanded starting state
-
+            elif self.mmu_sensors.has_tension_switch and self.mmu_sensors.has_compression_switch:
+                # note, if try to read tension sensor here, sometimes the value is wrong.
+                # also _log_debug() cannot output log in webpage console in here.
+                state_tension = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_TENSION]
+                state_compression = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_COMPRESSION]
+                self._log_debug(f"handle_ready() has both expand and compress sensor {state_tension=} {state_compression=}")
         # Runout bootup tasks
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
@@ -3065,6 +3087,23 @@ class Mmu:
         if self.sync_feedback_operational: return
         self.sync_feedback_operational = True
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
+
+        eventtime = self.reactor.monotonic()
+        state_expanded = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_TENSION]
+        state_compressed = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_COMPRESSION]
+        self._log_debug(f"_enable_sync_feedback() sync sensor {state_expanded=}   {state_compressed=}")
+        #  -1 (expanded) and 1 (compressed)
+        if state_expanded and state_compressed:
+            self._log_error("both expanded and compressed sensor are triggered at the same time?! check hardware!")
+        elif state_expanded:
+            self.sync_feedback_last_state = Mmu.SyncTensionState.SYNC_EXPANDED
+        elif state_compressed:
+            self.sync_feedback_last_state = Mmu.SyncTensionState.SYNC_COMPRESSED
+        else:
+            # both sensors are 0
+            self.sync_feedback_last_state = Mmu.SyncTensionState.SYNC_NEUTRAL
+
+        self._log_always(f"filament sync state is: {Mmu.SyncTensionState.tension_state_to_text(self.sync_feedback_last_state)} ({self.sync_feedback_last_state})")
         self._update_sync_multiplier()
 
     def _disable_sync_feedback(self):
