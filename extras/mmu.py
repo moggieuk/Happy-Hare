@@ -5437,12 +5437,13 @@ class Mmu:
         if self.gate_selected < 0:
             sync = current = False
 
-        prev_sync_state = self.mmu_toolhead.is_gear_synced_to_extruder()
         if servo:
             if sync:
                 self._servo_down()
             else:
                 self._servo_auto()
+        # note the _servo_down() calls this function _sync_gear_to_extruder() and it messes up the prev_sync_state
+        prev_sync_state = self.mmu_toolhead.is_gear_synced_to_extruder()
         if prev_sync_state != sync:
             self._log_debug("%s gear stepper and extruder" % ("Syncing" if sync else "Unsyncing"))
             self.mmu_toolhead.sync_gear_to_extruder(self.extruder_name if sync else None)
