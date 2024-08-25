@@ -181,9 +181,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         return self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER
 
     def sync(self, new_sync_mode):
-        if new_sync_mode == self.sync_mode: return
+        if new_sync_mode == self.sync_mode: return new_sync_mode
+        prev_sync_mode = self.sync_mode
         self.unsync()
-        if new_sync_mode is None: return # Lazy way to unsync()
+        if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
         self.mmu.log_stepper("sync(mode=%s)" % new_sync_mode)
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
@@ -232,10 +233,12 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.sync_mode = new_sync_mode
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             self.printer.send_event("mmu:synced")
+        return prev_sync_mode
 
     def unsync(self):
-        if self.sync_mode is None: return
+        if self.sync_mode is None: return None
         self.mmu.log_stepper("unsync()")
+        prev_sync_mode = self.sync_mode
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
 
@@ -275,6 +278,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             self.printer.send_event("mmu:unsynced")
         self.sync_mode = None
+        return prev_sync_mode
 
     def is_selector_homed(self):
         return self.kin.get_status(self.reactor.monotonic())["selector_homed"]
