@@ -2697,16 +2697,18 @@ class Mmu:
             mean_neg = self._sample_stats(neg_values)['mean']
             mean = (float(mean_pos) + float(mean_neg)) / 2
             ratio = mean / length
-            new_rd = round(ratio * self.rotation_distances[gate], 6)
+            current_rd = self.gear_stepper.get_rotation_distance()[0]
+            new_rd = round(ratio * current_rd, 6)
 
             self.log_always("Calibration move of %d x %.1fmm, average encoder measurement: %.1fmm - Ratio is %.6f" % (repeats * 2, length, mean, ratio))
             self.log_always("Calculated gate %d rotation_distance: %.6f (currently: %.6f)" % (gate, new_rd, self.rotation_distances[gate]))
             if gate != 0: # Gate 0 is not calibrated, it is the reference and set with MMU_CALIBRATE_GEAR
                 gate0_rd = self.rotation_distances[0]
-                tolerance =  gate0_rd * 0.2 # Allow 20% variation
-                if gate0_rd - tolerance <= new_rd < gate0_rd + tolerance:
+                tolerance_range = (gate0_rd - gate0_rd * 0.2, gate0_rd + gate0_rd * 0.2) # Allow 20% variation from gate 0
+                if tolerance_range[0] <= new_rd < tolerance_range[1]:
                     if save:
-                        self.rotation_distances[gate] = round(ratio * self.rotation_distances[gate], 6)
+                        self._set_rotation_distance(new_rd)
+                        self.rotation_distances[gate] = new_rd
                         self._save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
                         self.log_always("Calibration for gate %d has been saved" % gate)
                         self.calibration_status |= self.CALIBRATED_GATES
@@ -4530,7 +4532,7 @@ class Mmu:
     def _load_bowden(self, full, length=0.):
         self.log_error("PAUL: _load_bowden(%s, %s)" % (full, length))
         if full:
-            length = self.calibrated_bowden_length # PAUL adjusted for endstops
+            length = self.calibrated_bowden_length # PAUL TODO adjust for dynamic endstop changes?
         else:
             if self.calibrated_bowden_length > 0 and not self.calibrating:
                 # Cannot exceed calibrated distance
@@ -4545,13 +4547,13 @@ class Mmu:
         self._servo_down()
 
         # See if we need to automatically set calibration ratio for this gate
-        current_ratio = self.save_variables.allVariables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), None)
+        current_rd = self._get_rotation_distance(self.gate_selected)
         reference_load = False
-#        if self.variable_gate_ratios: # PAUL
-#            if self._can_use_encoder() and self.auto_calibrate_gates and self.gate_selected > 0 and not current_ratio and not self.calibrating:
-#                reference_load = True
-#            if current_ratio is None and not self.calibrating:
-#                self.log_info("Warning: Gate %d not calibrated! Using default 1.0 gear ratio!" % self.gate_selected)
+        if self.variable_gate_ratios:
+            if self._can_use_encoder() and self.auto_calibrate_gates and self.gate_selected > 0 not current_rd and not self.calibrating:
+                reference_load = True
+            if not current_rd and not self.calibrating:
+                self.log_info("Warning: Gate %d not calibrated! Using default rotation distance from gate 0" % self.gate_selected)
 
         # "Fast" load
         _,_,_,delta = self._trace_filament_move("Fast loading move through bowden", length, track=True, encoder_dwell=reference_load) # PAUL dwell probably is False(?) May not need to set encoder_dwell..
@@ -4561,14 +4563,17 @@ class Mmu:
         if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
             raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
 
-# PAUL deal with this
-#        if reference_load:
-#            ratio = (length - delta) / length
-#            if ratio > 0.9 and ratio < 1.1:
-#                self.save_variables.allVariables["%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected)] = ratio
-#                self._save_variable("%s%d" % (self.VARS_MMU_CALIB_PREFIX, self.gate_selected), round(ratio, 6))
-#                self.log_always("Calibration ratio for Gate %d was missing. Value of %.6f has been automatically saved" % (self.gate_selected, ratio))
-#                self._set_gate_ratio(ratio) # PAUL
+        if reference_load:
+            current_rd = self.gear_stepper.get_rotation_distance()[0]
+            ratio = (length - delta) / length
+            new_rd = round(ratio * current_rd, 6)
+            gate0_rd = self.rotation_distances[0]
+            tolerance_range = (gate0_rd - gate0_rd * 0.2, gate0_rd + gate0_rd * 0.2) # Allow 20% variation from gate 0
+            if tolerance_range[0] <= new_rd < tolerance_range[1]:
+                self._set_rotation_distance(new_rd)
+                self.rotation_distances[self.gate_selected] = new_rd
+                self._save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
+                self.log_always("Calibrated rotation_distance for gate %d was missing. Value of %.6f has been automatically saved (ratio: %.6f)" % (self.gate_selected, new_rd, ratio))
 
         # Encoder based validation test
         elif self._can_use_encoder() and delta >= self.bowden_allowable_load_delta and not self.calibrating and current_ratio:
@@ -5205,7 +5210,7 @@ class Mmu:
             initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
             initial_encoder_position = self._get_encoder_distance()
 
-            with self._wrap_pressure_advance(0., " for tip forming"):
+            with self._wrap_pressure_advance(0., "for tip forming"):
                 gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
                 self.log_info("Forming tip...")
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
@@ -5638,7 +5643,7 @@ class Mmu:
         initial_pa = self.toolhead.get_extruder().get_status(0).get('pressure_advance', None)
         if initial_pa is not None:
             if reason:
-                self.log_debug("Setting pressure advance%s: %.6f" % (reason, pa))
+                self.log_debug("Setting pressure advance %s: %.6f" % (reason, pa))
             self._set_pressure_advance(pa)
         try:
             yield self
