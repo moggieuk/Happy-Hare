@@ -5205,16 +5205,11 @@ class Mmu:
             initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
             initial_encoder_position = self._get_encoder_distance()
 
-            gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
-            # Capture PA in case user's tip forming resets it
-            initial_pa = self.printer.lookup_object(self.extruder_name).get_status(0).get('pressure_advance', None)
-            try:
+            with self._wrap_pressure_advance(0., " for tip forming"):
+                gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
                 self.log_info("Forming tip...")
                 self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
-            finally:
                 self.movequeues_wait()
-                if initial_pa is not None:
-                    self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % initial_pa) # Restore PA
 
             final_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
             stepper_movement = (initial_mcu_pos - final_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
@@ -5589,15 +5584,15 @@ class Mmu:
             self.mmu_toolhead.sync(prev_sync_mode)
 
     def _adjust_gear_current(self, percent=100, reason=""):
-         if self.gear_tmc and percent != self.gear_percentage_run_current and percent > 0 and percent < 200:
-             self.log_info("Modifying MMU gear stepper run current to %d%% %s" % (percent, reason))
-             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.GEAR_STEPPER_CONFIG, (self.gear_default_run_current * percent) / 100.))
-             self.gear_percentage_run_current = percent
+        if self.gear_tmc and percent != self.gear_percentage_run_current and percent > 0 and percent < 200:
+            self.log_info("Modifying MMU gear stepper run current to %d%% %s" % (percent, reason))
+            self._set_tmc_current(self.GEAR_STEPPER_CONFIG, (self.gear_default_run_current * percent) / 100., self.gear_tmc)
+            self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
             self.log_info("Restoring MMU gear stepper run current to %d%% configured" % self.gear_restore_percent_run_current)
-            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.GEAR_STEPPER_CONFIG, self.gear_default_run_current))
+            self._set_tmc_current(self.GEAR_STEPPER_CONFIG, self.gear_default_run_current, self.gear_tmc)
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
     @contextlib.contextmanager
@@ -5619,16 +5614,43 @@ class Mmu:
             self._restore_extruder_current()
 
     def _adjust_extruder_current(self, percent=100, reason=""):
-         if self.extruder_tmc and percent != self.extruder_percentage_run_current and percent > 0 and percent < 200:
-             self.log_info("Modifying extruder_stepper run current to %d%% %s" % (percent, reason))
-             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.extruder_name, (self.extruder_default_run_current * percent) / 100.))
-             self.extruder_percentage_run_current = percent
+        if self.extruder_tmc and percent != self.extruder_percentage_run_current and percent > 0 and percent < 200:
+            self.log_info("Modifying extruder stepper run current to %d%% %s" % (percent, reason))
+            self._set_tmc_current(self.extruder_name, (self.extruder_default_run_current * percent) / 100., self.extruder_tmc)
+            self.extruder_percentage_run_current = percent
 
     def _restore_extruder_current(self):
         if self.extruder_tmc and self.extruder_percentage_run_current != 100:
-            self.log_info("Restoring extruder_stepper run current to 100% configured")
-            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (self.extruder_name, self.extruder_default_run_current))
+            self.log_info("Restoring extruder stepper run current to 100% configured")
+            self._set_tmc_current(self.extruder_name, self.extruder_default_run_current, self.extruder_tmc)
             self.extruder_percentage_run_current = 100
+
+    def _set_tmc_current(self, stepper, run_current, tmc):
+        self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
+        # Duplicate klipper logic to avoid duplicate console messages (except klipper doesn't expose the cmdhelper object)
+        #if tmc:
+        #    print_time = self.toolhead.get_last_move_time()
+        #    prev_cur, prev_hold_cur, req_hold_cur, max_cur = tmc.current_helper.get_current()
+        #    tmc.current_helper.set_current(min(run_current, max_cur), req_hold_current, print_time)
+
+    @contextlib.contextmanager
+    def _wrap_pressure_advance(self, pa=0, reason=""):
+        initial_pa = self.toolhead.get_extruder().get_status(0).get('pressure_advance', None)
+        if initial_pa is not None:
+            if reason:
+                self.log_debug("Setting pressure advance%s: %.6f" % (reason, pa))
+            self._set_pressure_advance(pa)
+        try:
+            yield self
+        finally:
+            if initial_pa is not None:
+                if reason:
+                    self.log_debug("Restoring pressure advance: %.6f" % initial_pa)
+                self._set_pressure_advance(initial_pa)
+
+    def _set_pressure_advance(self, pa):
+        self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % pa)
+        # TODO avoid klipper console messages?
 
     def _move_cmd(self, gcmd, trace_str):
         if self._check_is_disabled(): return
