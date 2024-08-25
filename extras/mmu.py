@@ -452,6 +452,11 @@ class Mmu:
         # This has been working well in practice.
         self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
 
+        # Older neopixels have very finiky timing and can generate lots of "Unable to obtain 'neopixel_result' response"
+        # errors in klippy.log. This has been linked to subsequent Timer too close errors. An often cited workaround is
+        # to increase BIT_MAX_TIME in neopixel.py. This option does that automatically for you to save dirtying klipper.
+        self.update_bit_max_time = config.getint('update_bit_max_time', 0, minval=0, maxval=1)
+
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
         self.timeout_pause = config.getint('timeout_pause', 72000, minval=120)
@@ -783,6 +788,22 @@ class Mmu:
         # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP_TASKS', self.cmd_MMU_BOOTUP_TASKS, desc = self.cmd_MMU_BOOTUP_TASKS_help) # Bootup tasks
 
+        # Timer too close mitigation
+        if self.update_trsync:
+            try:
+                import mcu
+                mcu.TRSYNC_TIMEOUT = max(mcu.TRSYNC_TIMEOUT, 0.05)
+            except Exception as e:
+                self.log_error("Unable to update TRSYNC_TIMEOUT: %s" % str(e))
+
+        # Neopixel update mitigation
+        if self.update_bit_max_time:
+            try:
+                import extras.neopixel as neopixel
+                neopixel.BIT_MAX_TIME = max(neopixel.BIT_MAX_TIME, 0.000030)
+            except Exception as e:
+                self.log_error("Unable to update BIT_MAX_TIME: %s" % str(e))
+
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
         # This assumes that the hardware configuartion appears before the '[mmu]' section.
@@ -992,14 +1013,6 @@ class Mmu:
             self.servo_angles.update(servo_angles)
         except Exception as e:
             raise self.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
-
-        # Timer too close mitigation
-        if self.update_trsync:
-            try:
-                import mcu
-                mcu.TRSYNC_TIMEOUT = max(mcu.TRSYNC_TIMEOUT, 0.05)
-            except Exception as e:
-                self.log_error("Unable to update TRSYNC_TIMEOUT: %s" % str(e))
 
     def handle_disconnect(self):
         self.log_debug('Klipper disconnected! MMU Shutdown')
