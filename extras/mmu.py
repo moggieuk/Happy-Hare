@@ -1651,7 +1651,7 @@ class Mmu:
                 "Unknown") # Error case - should not happen
 
     def _get_sync_feedback_string(self):
-        if self.sync_feedback_enable and self.sync_feedback_operational:
+        if self.is_enabled and self.sync_feedback_enable and self.sync_feedback_operational:
             return 'compressed' if self.sync_feedback_last_state > 0.1 else 'expanded' if self.sync_feedback_last_state < -0.1 else 'neutral'
         return "disabled"
 
@@ -2519,7 +2519,7 @@ class Mmu:
 #########################
 
     def _set_calibrated_bowden_length(self, reference):
-        self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_LENGTH] = reference
+        self._save_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTH, reference)
         self.calibrated_bowden_length = reference
         self.calibration_status |= self.CALIBRATED_BOWDEN
 
@@ -2983,7 +2983,7 @@ class Mmu:
         length = gcmd.get_float('LENGTH', 100., above=50.)
         measured = gcmd.get_float('MEASURED', -1, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
-        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1) # PAUL TODO add to doc also don't forget _MMU_PRINT_END addition
+        reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
         gate = self.gate_selected if self.gate_selected >= 0 else 0
 
         if reset:
@@ -3273,6 +3273,7 @@ class Mmu:
     # Gear/Extruder sync feedback state should be -1 (expanded) and 1 (compressed)
     # or can be a proportional float value between -1.0 and 1.0
     def _handle_sync_feedback(self, eventtime, state):
+        if not self.is_enabled: return
         self.log_trace("Got sync force feedback update. State: %s" % state)
         if abs(state) <= 1:
             self.sync_feedback_last_state = float(state)
@@ -3280,6 +3281,7 @@ class Mmu:
                 self._update_sync_multiplier()
 
     def _handle_mmu_synced(self):
+        if not self.is_enabled: return
         self.log_info("Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enable else ""))
         if not self.sync_feedback_operational:
             # Enable sync feedback
@@ -3288,6 +3290,7 @@ class Mmu:
             self._update_sync_multiplier()
 
     def _handle_mmu_unsynced(self):
+        if not self.is_enabled: return
         self.log_info("Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enable else ""))
         if self.sync_feedback_operational:
             # Disable sync feedback
@@ -3297,17 +3300,18 @@ class Mmu:
             self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
 
     def _update_sync_feedback(self, eventtime):
-        estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time(eventtime)
-        extruder = self.toolhead.get_extruder()
-        pos = extruder.find_past_position(estimated_print_time)
-        past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIMERANGE))
-        if abs(pos - past_pos) >= self.SYNC_POSITION_MIN_DELTA:
-            prev_direction = self.sync_feedback_last_direction
-            self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
-            if self.sync_feedback_last_direction != prev_direction:
-                d = self.sync_feedback_last_direction
-                self.log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
-                self._update_sync_multiplier()
+        if self.is_enabled:
+            estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time(eventtime)
+            extruder = self.toolhead.get_extruder()
+            pos = extruder.find_past_position(estimated_print_time)
+            past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIMERANGE))
+            if abs(pos - past_pos) >= self.SYNC_POSITION_MIN_DELTA:
+                prev_direction = self.sync_feedback_last_direction
+                self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
+                if self.sync_feedback_last_direction != prev_direction:
+                    d = self.sync_feedback_last_direction
+                    self.log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
+                    self._update_sync_multiplier()
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
     def _update_sync_multiplier(self):
@@ -4514,13 +4518,13 @@ class Mmu:
                     # Large enough delta here means we are out of the encoder
                     if sdelta >= self.encoder_move_step_size * 0.2: # 20 %
                         park = self.gate_parking_distance - sdelta # will be between 8 and 20mm (for 23mm gate_parking_distance, 15mm step)
-                        actual += sdelta
+                        actual -= sdelta
                         _,_,measured,_ = self._trace_filament_move("Final parking", -park)
                         # We don't expect any movement of the encoder unless it is free-spinning
                         if measured > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
                             self.log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
                         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-                        return actual
+                        return max(actual - self.gate_unload_buffer, 0)
                 self.log_debug("Filament did not clear encoder even after moving %.1fmm" % (self.encoder_move_step_size * max_steps))
         else:
             actual,homed,_,_ = self._trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self.ENDSTOP_GATE)
@@ -4529,7 +4533,7 @@ class Mmu:
                 # Final parking step
                 self._trace_filament_move("Final parking", -self.gate_parking_distance)
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-                return actual
+                return max(actual - self.gate_unload_buffer, 0)
             else:
                 self.log_debug("Did not home to gate sensor")
 
@@ -4551,9 +4555,8 @@ class Mmu:
     # plus any overshoot. The start of the bowden move is from the parking homing point.
     # Returns ratio of measured movement to real movement IF it is "clean" and could be used for auto-calibration else 0
     def _load_bowden(self, full, length=0.):
-        self.log_error("PAUL: _load_bowden(%s, %s)" % (full, length))
         if full:
-            length = self.calibrated_bowden_length # PAUL TODO adjust for dynamic endstop changes?
+            length = self.calibrated_bowden_length
         else:
             if self.calibrated_bowden_length > 0 and not self.calibrating:
                 # Cannot exceed calibrated distance
@@ -4611,9 +4614,8 @@ class Mmu:
 
     # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (gate_unload_buffer away)
     def _unload_bowden(self, full, length=0.):
-        self.log_error("PAUL: _unload_bowden(%s, %s)" % (full, length))
         if full:
-            length = self.calibrated_bowden_length # PAUL adjust for endstops
+            length = self.calibrated_bowden_length
         else:
             if self.calibrated_bowden_length > 0 and not self.calibrating:
                 length = min(length, self.calibrated_bowden_length) # Cannot exceed calibrated distance
@@ -4630,7 +4632,7 @@ class Mmu:
         if full and self._has_encoder() and self.bowden_pre_unload_test and not (self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY) is False) and not (self._check_sensor(self.ENDSTOP_GATE) is False):
             with self._require_encoder():
                 self.log_debug("Performing bowden pre-unload test")
-                _,_,_,delta = self._trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size) # PAUL need encoder dwell?
+                _,_,_,delta = self._trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size)
                 if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                     raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder")
@@ -4762,7 +4764,7 @@ class Mmu:
                 actual,fhomed,measured,_ = self._trace_filament_move("Homing to toolhead sensor", self.toolhead_homing_max, motor=motor, homing_move=1, endstop_name=self.ENDSTOP_TOOLHEAD)
                 if fhomed:
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_TS)
-                    homing_movement = actual - (self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle)
+                    homing_movement = max(actual - (self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle), 0)
                 else:
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
                     raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
@@ -4915,11 +4917,11 @@ class Mmu:
     #
     # Calibration replaces the previous value. Autotuning applies a moving average
     def _auto_calibrate(self, direction, bowden_move_ratio, homing_movement):
-        msg = "Autotune: bowden move ratio: %.6f, homing_movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
+        msg = "Autotune: bowden move ratio: %.6f, Extra homing movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
         if homing_movement is not None:
             if self.auto_calibrate_gates and self.gate_selected > 0 and bowden_move_ratio > 0 and homing_movement > 0:
                 if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:
-                    # Encoder based automatic calibration of gate's gear rotation_distance
+                    # Encoder based automatic calibration of gate's gear rotation_distance aka MMU_CALIBRATE_GATES
                     current_rd = self.gear_stepper.get_rotation_distance()[0]
                     new_rd = round(bowden_move_ratio * current_rd, 6)
                     gate0_rd = self.rotation_distances[0]
@@ -4938,10 +4940,9 @@ class Mmu:
                     else:
                         msg += "\nCalculated rotation_distance: %.6f for gate %d failed sanity check and has been ignored (ratio: %.6f)" % (new_rd, self.gate_selected, bowden_move_ratio)
 
-            if self.auto_calibrate_bowden and self.gate_selected == 0 and bowden_move_ratio > 0.9 and bowden_move_ratio < 1.1:
+            if self.auto_calibrate_bowden and self.gate_selected == 0 and ((bowden_move_ratio > 0.9 and bowden_move_ratio < 1.1) or not self._has_encoder()):
                 if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:
-                    if direction == self.DIRECTION_UNLOAD:
-                        homing_movement -= self.gate_unload_buffer # Expected
+                    # Homing movement based automatic calibration of bowden length aka MMU_CALIBRATE_BOWDEN
                     if homing_movement > 10: # Represents padding because we want some homing room
                         new_bl = self.calibrated_bowden_length + homing_movement - 10.
                     elif homing_movement == 0:
@@ -4950,12 +4951,16 @@ class Mmu:
                         new_bl = self.calibrated_bowden_length
                     new_bl = round((self.calibrated_bowden_length * 5 + new_bl) / 6, 1) # Moving average
                     if new_bl != self.calibrated_bowden_length:
-                        self.calibrated_bowden_length = new_bl
+                        self._set_calibrated_bowden_length(new_bl)
                         msg += "\nAutotuned bowden length: %.1f" % new_bl
 
             if self.gate_selected == 0 and homing_movement > 0 and bowden_move_ratio > 0:
+                # Bowden movement based warning of encoder calibration aka MMU_CALIBRATE_ENCODER
                 if not(0.95 < bowden_move_ratio < 1.05):
                     msg += "\nEncoder measurement on gate 0 was outside of desired calibration range. You may want to check function or recalibrate"
+
+        else:
+            msg += ". Tuning not possible"
 
         self.log_debug(msg)
 
@@ -5979,7 +5984,6 @@ class Mmu:
             self._set_gate_selected(gate)
 
     def _set_gate_selected(self, gate):
-        self.log_error("PAUL: _set_gate_selected()")
         if gate != self.gate_selected:
             self.gate_selected = gate
             self._save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
@@ -5992,7 +5996,6 @@ class Mmu:
         } if gate >= 0 else {}
 
     def _set_rotation_distance(self, rd):
-        self.log_error("PAUL: _set_rotation_distance: %.6f" % rd)
         if rd <= 0:
             rd = self.default_rotation_distance
             self.log_debug("Falling back to default hardware configured default rotation distance: %.6f" % rd)
@@ -6744,6 +6747,10 @@ class Mmu:
         self.extruder_collision_homing_current = gcmd.get_int('EXTRUDER_COLLISION_HOMING_CURRENT', self.extruder_collision_homing_current, minval=10, maxval=100)
         self.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.extruder_form_tip_current, minval=100, maxval=150)
 
+        # Calibration
+        prev_calibrated_bowden_length = self.calibrated_bowden_length
+        self.calibrated_bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.calibrated_bowden_length, minval=10.)
+
         # Homing, loading and unloading controls
         gate_homing_endstop = gcmd.get('GATE_HOMING_ENDSTOP', self.gate_homing_endstop)
         if gate_homing_endstop not in self.GATE_ENDSTOPS:
@@ -6831,9 +6838,6 @@ class Mmu:
         if form_tip_macro != self.form_tip_macro:
             self.form_tip_vars = None # If macro is changed invalidate defaults
         self.form_tip_macro = form_tip_macro
-
-        # Calibration
-        self.calibrated_bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.calibrated_bowden_length, minval=10.)
 
         # Available only with encoder
         if self._has_encoder():
@@ -6951,7 +6955,6 @@ class Mmu:
             msg += "\nmmu_calibration_bowden_length = %.1f" % self.calibrated_bowden_length
             if self._has_encoder():
                 msg += "\nmmu_calibration_clog_length = %.1f" % self.encoder_sensor.get_clog_detection_length()
-
             self.log_info(msg)
 
         # Some changes need additional action to be taken
@@ -6959,6 +6962,12 @@ class Mmu:
             self._spoolman_sync()
         if prev_t_macro_color != self.t_macro_color:
             self._update_t_macros()
+
+        # These are save_variables and are persisted automatically
+        if prev_calibrated_bowden_length != self.calibrated_bowden_length:
+            self._save_variable(self.VARS_MMU_CALIB_BOWDEN_HOME, self.gate_homing_endstop)
+            self._save_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTH, self.calibrated_bowden_length)
+            self._write_variables()
 
 
 ###########################################
