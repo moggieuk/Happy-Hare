@@ -1393,6 +1393,16 @@ class Mmu:
             self.log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
             self.log_info("DUMP_UNICODE=1 : Display special characters used in display")
             self.log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
+            self.log_info("GET_POS=1 : Fetch the current filament position")
+            self.log_info("SET_POS=<pos> : Set the current filament position")
+            self.log_info("SYNC_LOAD_TEST=1 : Hammer stepper syncing and movement. Parama: LOOP|HOME")
+            self.log_info("SEL_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP")
+            self.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
+            self.log_info("SEL_LOAD_TEST=1 : Load test selector movements. Params: HOME|LOOP")
+            self.log_info("TTC_TEST=1 : Provoke known TTC condition. Parms: LOOP")
+            self.log_info("SYNC_G2E=1 : Sync gear to extruder")
+            self.log_info("SYNC_E2G=1 : Sync extruder to gear. Params: EXTRUDER_ONLY")
+            self.log_info("UNSYNC=1 : Unsync")
 
         feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
         if feedback is not None:
@@ -1554,28 +1564,19 @@ class Mmu:
                     actual = self.selector.move("Test move", move, speed=speed, accel=accel, wait=wait)
                     self.log_always("%d. Move: Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
 
-        if gcmd.get_int('SPECIAL', 0, minval=0, maxval=1):
-            servo = bool(gcmd.get_int('SERVO', 0, minval=0, maxval=1))
-            loop = gcmd.get_int('LOOP', 5, minval=1, maxval=50)
-            self.gcode.run_script_from_command("M83")
-            rot_dist = self.gear_stepper.get_rotation_distance()[0]
-            move = rot_dist / loop
-            with DebugStepperMovement(self):
-                for i in range(loop):
-                    self.log_always("Extruder: %d" % i)
-                    self.gcode.run_script_from_command("G1 E%.4f F240" % move)
-                self._sync_gear_to_extruder(True, servo=servo, current=False)
-                self.gcode.run_script_from_command("G1 E%.4f F240" % rot_dist)
-                for i in range(loop):
-                    self.log_always("Extruder: %d" % i)
-                    self.gcode.run_script_from_command("G1 E%.4f F240" % move)
-                self._sync_gear_to_extruder(False, servo=servo, current=False)
-
         if gcmd.get_int('TTC_TEST', 0, minval=0, maxval=1):
             loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
             for i in range(loop):
                 stop_on_endstop = random.randint(0, 1) * 2 - 1
                 self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d" % stop_on_endstop)
+
+        if gcmd.get_int('AUTO_CALIBRATE', 0, minval=0, maxval=1):
+            gate = gcmd.get_int('GATE', 0, minval=-2, maxval=8)
+            direction = gcmd.get_int('DIRECTION', 1, minval=-1, maxval=1)
+            ratio = gcmd.get_float('RATIO', 1., minval=-1, maxval=2)
+            homing_movement = gcmd.get_float('HOMING', None, minval=0, maxval=100)
+            self.gate_selected = gate
+            self._auto_calibrate(direction, ratio, homing_movement)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
@@ -4066,6 +4067,7 @@ class Mmu:
     def _disable_mmu(self):
         if not self.is_enabled: return
         self._initialize_state()
+        self._disable_runout()
         self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.is_enabled = False
@@ -4503,28 +4505,31 @@ class Mmu:
                     self.log_debug("Slow unload of the encoder")
                 max_steps = int(homing_max / self.encoder_move_step_size) + 5
                 delta = 0.
+                actual = 0.
                 for i in range(max_steps):
                     msg = "Unloading step #%d from encoder" % (i+1)
-                    _,_,_,sdelta = self._trace_filament_move(msg, -self.encoder_move_step_size)
+                    sactual,_,_,sdelta = self._trace_filament_move(msg, -self.encoder_move_step_size)
                     delta += sdelta
+                    actual -= sactual
                     # Large enough delta here means we are out of the encoder
                     if sdelta >= self.encoder_move_step_size * 0.2: # 20 %
                         park = self.gate_parking_distance - sdelta # will be between 8 and 20mm (for 23mm gate_parking_distance, 15mm step)
+                        actual += sdelta
                         _,_,measured,_ = self._trace_filament_move("Final parking", -park)
                         # We don't expect any movement of the encoder unless it is free-spinning
                         if measured > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
                             self.log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
                         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-                        return
+                        return actual
                 self.log_debug("Filament did not clear encoder even after moving %.1fmm" % (self.encoder_move_step_size * max_steps))
         else:
-            _,homed,_,_ = self._trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self.ENDSTOP_GATE)
+            actual,homed,_,_ = self._trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self.ENDSTOP_GATE)
             if homed:
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
                 # Final parking step
                 self._trace_filament_move("Final parking", -self.gate_parking_distance)
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-                return
+                return actual
             else:
                 self.log_debug("Did not home to gate sensor")
 
@@ -4660,7 +4665,7 @@ class Mmu:
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._servo_down()
         measured = 0.
-        homing_movement = -1
+        homing_movement = None
 
         if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
             if self._has_encoder():
@@ -4736,7 +4741,7 @@ class Mmu:
             # Important to wait for filaments with wildy different print temps. In practice, the time taken
             # to perform a swap should be adequate to reach the target temp but better safe than sorry
             self._ensure_safe_extruder_temperature(wait=True)
-            homing_movement = -1
+            homing_movement = None
 
             synced = not extruder_only
             if synced:
@@ -4892,14 +4897,13 @@ class Mmu:
             self._random_failure() # Testing
             self.movequeues_wait()
             self.log_debug("Filament should be out of extruder")
-            return 0. # PAUL TODO .. need ratio
 
     # Use data from load or unload operation to auto-calibrate / auto-tune
     #
     # Data we can use:
     #  - ratio of large bowden move to that measure by encoder (0 if it can't be relied on)
     #  - the amount of unexpected homing necessary to reach endstop. We want some homing
-    #    movement but we can use excessive numbers for tuning (-1 if not available)
+    #    movement but we can use excessive numbers for tuning (None if not available)
     #  - the direction of filament movement
     #
     # Things we can tune:
@@ -4911,44 +4915,47 @@ class Mmu:
     #
     # Calibration replaces the previous value. Autotuning applies a moving average
     def _auto_calibrate(self, direction, bowden_move_ratio, homing_movement):
-        msg = "Autotune report: bowden move ratio: %.6f, homing_movement: %.1fmm" % (bowden_move_ratio, homing_movement)
-        if self.auto_calibrate_gates and self.gate_selected > 0 and bowden_move_ratio > 0 and homing_movement > 0:
-            if direction in [self.DIRECTION_LOAD]: # TODO only load direction verifed so far
-                # Encoder based automatic calibration of gate's gear rotation_distance
-                current_rd = self.gear_stepper.get_rotation_distance()[0]
-                new_rd = round(bowden_move_ratio * current_rd, 6)
-                gate0_rd = self.rotation_distances[0]
-                tolerance_range = (gate0_rd - gate0_rd * 0.1, gate0_rd + gate0_rd * 0.1) # Allow max 10% variation from gate 0 for autotune
-                if tolerance_range[0] <= new_rd < tolerance_range[1]:
-                    if not self.calibrating and self.rotation_distances[self.gate_selected] > 0:
-                        # Tuning existing calibration
-                        new_rd = round((self.rotation_distances[self.gate_selected] * 5 + new_rd) / 6, 6) # Moving average
-                        msg += "\nAutotuned rotation_distance: %.6f for gate %d (ratio: %.6f)" % (new_rd, self.gate_selected, bowden_move_ratio)
+        msg = "Autotune: bowden move ratio: %.6f, homing_movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
+        if homing_movement is not None:
+            if self.auto_calibrate_gates and self.gate_selected > 0 and bowden_move_ratio > 0 and homing_movement > 0:
+                if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:
+                    # Encoder based automatic calibration of gate's gear rotation_distance
+                    current_rd = self.gear_stepper.get_rotation_distance()[0]
+                    new_rd = round(bowden_move_ratio * current_rd, 6)
+                    gate0_rd = self.rotation_distances[0]
+                    tolerance_range = (gate0_rd - gate0_rd * 0.1, gate0_rd + gate0_rd * 0.1) # Allow max 10% variation from gate 0 for autotune
+                    if tolerance_range[0] <= new_rd < tolerance_range[1]:
+                        if not self.calibrating and self.rotation_distances[self.gate_selected] > 0:
+                            # Tuning existing calibration
+                            new_rd = round((self.rotation_distances[self.gate_selected] * 5 + new_rd) / 6, 6) # Moving average
+                            msg += "\nAutotuned rotation_distance: %.6f for gate %d (ratio: %.6f)" % (new_rd, self.gate_selected, bowden_move_ratio)
+                        else:
+                            # First time calibration or forced re-calibration
+                            self.log_always("Calibrated rotation_distance: %.6f has been automatically saved for gate %d (ratio: %.6f)" % (new_rd, self.gate_selected, bowden_move_ratio))
+                        self._set_rotation_distance(new_rd)
+                        self.rotation_distances[self.gate_selected] = new_rd
+                        self._save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
                     else:
-                        # First time calibration or forced re-calibration
-                        self.log_always("Calibrated rotation_distance: %.6f has been automatically saved for gate %d (ratio: %.6f)" % (new_rd, self.gate_selected, bowden_move_ratio))
-                    self._set_rotation_distance(new_rd)
-                    self.rotation_distances[self.gate_selected] = new_rd
-                    self._save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
-                else:
-                    msg += "\nCalculated rotation_distance: %.6f for gate %d failed sanity check and has been ignored (ratio: %.6f)" % (new_rd, self.gate_selected, bowden_move_ratio)
+                        msg += "\nCalculated rotation_distance: %.6f for gate %d failed sanity check and has been ignored (ratio: %.6f)" % (new_rd, self.gate_selected, bowden_move_ratio)
 
-        if self.auto_calibrate_bowden and self.gate_selected == 0 and homing_movement >= 0 and bowden_move_ratio > 0.9 and bowden_move_ratio < 1.1:
-            if direction in [self.DIRECTION_LOAD]: # TODO only load direction verifed so far
-                if homing_movement > 10: # Represents padding because we want some homing room
-                    new_bl = self.calibrated_bowden_length + homing_movement - 10.
-                elif homing_movement == 0:
-                    new_bl = self.calibrated_bowden_length - 5. # Reduce slightly
-                else:
-                    new_bl = self.calibrated_bowden_length
-                new_bl = round((self.calibrated_bowden_length * 5 + new_bl) / 6, 1) # Moving average
-                if new_bl != self.calibrated_bowden_length:
-                    self.calibrated_bowden_length = new_bl
-                    msg += "\nAutotuned bowden length: %.1f" % new_bl
+            if self.auto_calibrate_bowden and self.gate_selected == 0 and bowden_move_ratio > 0.9 and bowden_move_ratio < 1.1:
+                if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:
+                    if direction == self.DIRECTION_UNLOAD:
+                        homing_movement -= self.gate_unload_buffer # Expected
+                    if homing_movement > 10: # Represents padding because we want some homing room
+                        new_bl = self.calibrated_bowden_length + homing_movement - 10.
+                    elif homing_movement == 0:
+                        new_bl = self.calibrated_bowden_length - 5. # Reduce slightly
+                    else:
+                        new_bl = self.calibrated_bowden_length
+                    new_bl = round((self.calibrated_bowden_length * 5 + new_bl) / 6, 1) # Moving average
+                    if new_bl != self.calibrated_bowden_length:
+                        self.calibrated_bowden_length = new_bl
+                        msg += "\nAutotuned bowden length: %.1f" % new_bl
 
-        if self.gate_selected == 0 and homing_movement > 0 and bowden_move_ratio > 0:
-            if not(0.95 < bowden_move_ratio < 1.05):
-                msg += "\nEncoder measurement on gate 0 was outside of desired calibration range. You may want to check function or recalibrate"
+            if self.gate_selected == 0 and homing_movement > 0 and bowden_move_ratio > 0:
+                if not(0.95 < bowden_move_ratio < 1.05):
+                    msg += "\nEncoder measurement on gate 0 was outside of desired calibration range. You may want to check function or recalibrate"
 
         self.log_debug(msg)
 
@@ -4981,7 +4988,7 @@ class Mmu:
 
         try:
             self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
-            homing_movement = 0. # Track how much homing is done for calibrated bowden length optimization
+            homing_movement = None # Track how much homing is done for calibrated bowden length optimization
             bowden_move_ratio = 0. # Track mismatch in moved vs measured bowden distance
             start_filament_pos = self.filament_pos
 
@@ -5009,10 +5016,14 @@ class Mmu:
                     bowden_move_ratio = self._load_bowden(full, length=bowden_move)
 
                 if start_filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER and home:
-                    homing_movement += self._home_to_extruder(self.extruder_homing_max)
+                    hm = self._home_to_extruder(self.extruder_homing_max)
+                    if hm is not None:
+                        homing_movement = (homing_movement or 0) + hm
 
                 if not skip_extruder:
-                    homing_movement += self._load_extruder()
+                    hm = self._load_extruder()
+                    if hm is not None:
+                        homing_movement = (homing_movement or 0) + hm
 
             self.movequeues_wait()
             msg = "Load of %.1fmm filament successful" % self._get_filament_position()
@@ -5087,7 +5098,7 @@ class Mmu:
                 self._wrap_gcode_command(self.post_form_tip_macro, exception=True)
 
             # Note: Conditionals deliberately coded this way to match macro alternative
-            homing_movement = 0. # Track how much homing is done for calibrated bowden length optimization
+            homing_movement = None # Track how much homing is done for calibrated bowden length optimization
             bowden_move_ratio = 0. # Track mismatch in moved vs measured bowden distance
             start_filament_pos = self.filament_pos
             unload_to_buffer = (start_filament_pos >= self.FILAMENT_POS_END_BOWDEN and not extruder_only)
@@ -5110,12 +5121,12 @@ class Mmu:
             else:
                 if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
                     # Exit extruder, fast unload of bowden, then slow unload encoder
-                    homing_movement = self._unload_extruder(validate=not skip_tip)
+                    self._unload_extruder(validate=not skip_tip)
 
                 if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
                     # Fast unload of bowden, then unload encoder
                     bowden_move_ratio = self._unload_bowden(full, length=bowden_move)
-                    self._unload_gate()
+                    homing_movement = self._unload_gate()
 
                 elif start_filament_pos >= self.FILAMENT_POS_HOMED_GATE:
                     # Have to do slow unload because we don't know exactly where we are
@@ -5981,12 +5992,14 @@ class Mmu:
         } if gate >= 0 else {}
 
     def _set_rotation_distance(self, rd):
-        self.log_error("PAUL: Setting gear motor rotation distance: %.6f" % rd)
-        self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
+        self.log_error("PAUL: _set_rotation_distance: %.6f" % rd)
         if rd <= 0:
-            self.log_debug("Falling back to default hardware configured default rotation distance")
             rd = self.default_rotation_distance
-        self.gear_stepper.set_rotation_distance(rd)
+            self.log_debug("Falling back to default hardware configured default rotation distance: %.6f" % rd)
+            self.gear_stepper.set_rotation_distance(rd)
+        else:
+            self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
+            self.gear_stepper.set_rotation_distance(rd)
 
     def _get_rotation_distance(self, gate):
         return self.rotation_distances[gate if gate >= 0 and self.variable_gate_ratios else 0]
