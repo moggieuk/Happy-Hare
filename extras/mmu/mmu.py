@@ -29,6 +29,7 @@ UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '+', '+', '+', '+'
 UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '+', '-', '|'
 UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
 
+
 if sys.version_info[0] >= 3:
     # Use (common) unicode for improved formatting and klipper layout
     UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = '\u00A0', '\u00A0', '\u2014', '\u00B0', '\u2588', '\u2514'
@@ -1548,7 +1549,7 @@ class Mmu:
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
             if wait:
-                self.movequeues_wait(mmu_toolhead=False)
+                self.movequeues_wait()
         except Exception as e:
             if exception is not None:
                 if exception:
@@ -5013,8 +5014,6 @@ class Mmu:
             if not self._is_printing():
                 self._servo_up()
 
-# PAUL
-#    def _unload_sequence(self, bowden_move=-1, check_state=False, tip_forming=self.FORM_TIP_STANDALONE, extruder_only=False, runout=False):
     def _unload_sequence(self, bowden_move=-1, check_state=False, skip_tip=False, extruder_only=False, runout=False):
         self.movequeues_wait()
 
@@ -5045,9 +5044,8 @@ class Mmu:
                 self._display_visual_state()
 
             park_pos = 0.
-# PAUL
-#            if tip_forming in [self.FORM_TIP_NONE, self.FORM_TIP_SLICER] and not runout:
-            if skip_tip and not runout:
+            form_tip = form_tip if not None else self.FORM_TIP_STANDALONE
+            if form_tip == self.FORM_TIP_SLICER:
                 # Slicer was responsible for the tip, but the user must set the slicer_tip_park_pos
                 park_pos = self.slicer_tip_park_pos
                 self._set_filament_position(-park_pos)
@@ -5056,7 +5054,7 @@ class Mmu:
                 else:
                     self.log_debug("Tip forming performed by slicer, park_pos set to %.1fmm" % park_pos)
 
-            elif self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER or runout:
+            elif form_tip == self.FORM_TIP_STANDALONE and (self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER or runout):
                 # Extruder only in runout case to give filament best chance to reach gear
                 detected = self._form_tip_standalone(extruder_only=(extruder_only or runout))
                 park_pos = self._get_filament_position()
@@ -5079,7 +5077,7 @@ class Mmu:
 
             elif extruder_only:
                 if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                    self._unload_extruder(extruder_only=True, validate=not skip_tip) # PAUL
+                    self._unload_extruder(extruder_only=True, validate=(form_tip == self.FORM_TIP_STANDALONE))
                 else:
                     self.log_debug("Assertion failure: Unexpected state %d in _unload_sequence(extruder_only=True)" % start_filament_pos)
                     raise MmuError("Cannot unload extruder because filament not detected in extruder!")
@@ -5091,7 +5089,7 @@ class Mmu:
             else:
                 if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
                     # Exit extruder, fast unload of bowden, then slow unload encoder
-                    self._unload_extruder(validate=not skip_tip) # PAUL
+                    self._unload_extruder(validate=(form_tip == self.FORM_TIP_STANDALONE))
 
                 if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
                     # Fast unload of bowden, then unload encoder
@@ -5822,7 +5820,7 @@ class Mmu:
             self._wrap_gcode_command(self.post_load_macro, exception=True)
 
     # Primary method to unload current tool but retains selection
-    def _unload_tool(self, skip_tip=False, runout=False): # PAUL
+    def _unload_tool(self, form_tip=None, runout=False):
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_info("Tool already unloaded")
             return
@@ -5832,14 +5830,14 @@ class Mmu:
         with self._wrap_track_time('pre_unload'):
             self._wrap_gcode_command(self.pre_unload_macro, exception=True)
         self._record_tool_override() # Remember M220 and M221 overrides
-        self._unload_sequence(skip_tip=skip_tip, runout=runout) # PAUL
+        self._unload_sequence(form_tip=form_tip if not None else self.FORM_TIP_STANDALONE, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
         with self._wrap_track_time('post_unload'):
             self._wrap_gcode_command(self.post_unload_macro, exception=True)
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
-    def _change_tool(self, tool, skip_tip=True, next_pos=None): # PAUL
-        self.log_debug("Tool change initiated %s" % ("with slicer tip forming" if skip_tip else "with standalone MMU tip forming")) # PAUL
+    def _change_tool(self, tool, form_tip, next_pos=None):
+        self.log_debug("Tool change initiated %s" % ("with slicer tip forming" if form_tip == self.FORM_TIP_SLICER else "with standalone MMU tip forming" if form_tip == self.FORM_TIP_STANDALONE else "without tip forming"))
         self._track_time_start('total')
         skip_unload = False
         initial_tool_string = self._selected_tool_string()
@@ -5878,7 +5876,7 @@ class Mmu:
         self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
 
         if not skip_unload:
-            self._unload_tool(skip_tip=skip_tip) # PAUL
+            self._unload_tool(form_tip=form_tip)
 
         self._set_next_position(next_pos)
         self._select_and_load_tool(tool)
@@ -6281,7 +6279,7 @@ class Mmu:
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
-                    skip_tip = self._is_printing() and not (standalone or self.force_form_tip_standalone) # PAUL
+                    form_tip = self.FORM_TIP_SLICER if (self._is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
                     if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed: # Will be done later if not homed
                         self._recover_filament_pos(message=True)
 
@@ -6295,7 +6293,7 @@ class Mmu:
                     try:
                         for i in range(attempts):
                             try:
-                                if self._change_tool(tool, skip_tip, next_pos):
+                                if self._change_tool(tool, form_tip, next_pos=next_pos):
                                     self._dump_statistics(job=not quiet, gate=not quiet)
                                 continue
                             except MmuError as ee:
@@ -6347,16 +6345,17 @@ class Mmu:
         self.last_statistics = {}
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
-        skip_tip = bool(gcmd.get_int('SKIP_TIP', 0, minval=0, maxval=1)) # PAUL maybe should be tri-state including None. See other note
+        skip_tip = bool(gcmd.get_int('SKIP_TIP', 0, minval=0, maxval=1))
+        form_tip = self.FORM_TIP_STANDALONE if not skip_tip else self.FORM_TIP_NONE
 
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
                     if not extruder_only:
-                        self._unload_tool(skip_tip=skip_tip)
+                        self._unload_tool(form_tip=form_tip)
                     elif extruder_only and self.filament_pos != self.FILAMENT_POS_UNLOADED:
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
-                        self._unload_sequence(bowden_move=0., skip_tip=skip_tip, extruder_only=True)
+                        self._unload_sequence(bowden_move=0., form_tip=form_tip, extruder_only=True)
                         if in_bypass:
                             self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                             self.log_always("Please pull the filament out clear of the MMU selector")
