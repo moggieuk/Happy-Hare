@@ -112,7 +112,7 @@ class MmuServer:
                 if MMU_NAME_FIELD not in fields:
                     extras = extras and await self._add_extra_field("spool", field_name="Printer Name", field_key=MMU_NAME_FIELD, field_type="text", default_value="")
                 if MMU_GATE_FIELD not in fields:
-                    extras = extras and await self._add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=None)
+                    extras = extras and await self._add_extra_field("spool", field_name="MMU Gate", field_key=MMU_GATE_FIELD, field_type="integer", default_value=-1)
             else:
                 logging.error(f"Could not initialize Spoolman db for Happy Hare. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})")
 
@@ -200,10 +200,10 @@ class MmuServer:
         '''
         Helper to add a new field to the extra field of the spoolman db
         '''
-        default_value = json.dumps(default_value) if field_type == 'text' else default_value
+        #default_value = json.dumps(default_value) if field_type == 'text' else default_value
         response = await self.http_client.post(
             url=f'{self.spoolman.spoolman_url}/v1/field/{entity_type}/{field_key}',
-            body={"name" : field_name, "field_type" : field_type, "default_value" : default_value}
+            body={"name" : field_name, "field_type" : field_type, "default_value" : json.dumps(default_value)}
         )
         if response.status_code == 404:
             logging.info(f"'{self.spoolman.spoolman_url}/v1/field/spool/{field_key}' not found")
@@ -323,7 +323,7 @@ class MmuServer:
         # Use the PATCH method on the spoolman api
         if not silent:
             logging.info(f"Setting spool {spool_id} for printer {printer} @ gate {gate}")
-        data = {'extra': {MMU_NAME_FIELD: f"\"{printer}\"", MMU_GATE_FIELD: gate}}
+        data = {'extra': {MMU_NAME_FIELD: json.dumps(f"{printer}"), MMU_GATE_FIELD: json.dumps(gate)}}
         if self.update_location:
             data['location'] = f"{printer} @ MMU Gate:{gate}"
         response = await self.http_client.request(
@@ -348,7 +348,7 @@ class MmuServer:
         # Use the PATCH method on the spoolman api
         if not silent:
             logging.info(f"Unsetting gate map on spool id {spool_id}")
-        data = {'extra': {MMU_NAME_FIELD: "\"\"", MMU_GATE_FIELD: -1}}
+        data = {'extra': {MMU_NAME_FIELD: json.dumps(""), MMU_GATE_FIELD: json.dumps(-1)}}
         if self.update_location:
             data['location'] = ""
         response = await self.http_client.request(
@@ -376,8 +376,11 @@ class MmuServer:
         '''
         if self._mmu_backend_enabled():
             gate_dict = {
-                gate: {'spool_id': -1} if spool_id < 0 else (
-                    spool[2].copy() if (spool := self.spool_location.get(spool_id)) else logging.error(f"Spool id {spool_id} requested but not found in spoolman")
+                gate: (
+                    {'spool_id': -1} if spool_id < 0 else
+                    self.spool_location.get(spool_id)[2].copy()
+                    if self.spool_location.get(spool_id)
+                    else logging.error(f"Spool id {spool_id} requested but not found in spoolman")
                 )
                 for gate, spool_id in gate_ids
             }
