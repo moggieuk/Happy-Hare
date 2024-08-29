@@ -1836,8 +1836,10 @@ if [ "$UNINSTALL" -eq 0 ]; then
         result=$(awk -v n1="$VERSION" -v n2="$FROM_VERSION" 'BEGIN {print (n1<n2) ? "1" : "0"}')
         if [ "$result" -eq 1 ]; then
             echo -e "${WARNING}Trying to update from version ${FROM_VERSION} to ${VERSION}"
-            echo -e "${ERROR}Cannot automatically 'upgrade' to earlier version. You must do this by hand"
-            exit 1
+            echo -e "${ERROR}Automatic 'downgrade' to earlier version is not garanteed. If you encounter startup problems you may"
+            echo -e "${ERROR}need to manually compare the backed-up 'mmu_parameters.cfg' with current one to restore differences"
+#            echo -e "${ERROR}Cannot automatically 'upgrade' to earlier version. You must do this by hand"
+#            exit 1
         elif [ ! "${FROM_VERSION}" == "${VERSION}" ]; then
             echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
         fi
