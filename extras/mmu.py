@@ -1118,8 +1118,7 @@ class Mmu:
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
 
         # Ensure sync_feedback starting state. This is mainly cosmetic because state is ensured when enabling
-        if self.mmu_sensors:
-            self._update_sync_starting_state()
+        self._update_sync_starting_state()
 
         # Runout bootup tasks
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
@@ -5495,6 +5494,7 @@ class Mmu:
         if servo:
             self._servo_down() if sync else self._servo_auto()
         self._adjust_gear_current(self.sync_gear_current, "for extruder syncing") if current and sync else self._restore_gear_current()
+        self.mmu.movequeues_wait()
         return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
 
     # This is used to protect the in print synchronization state and is used as an outermost wrapper for
