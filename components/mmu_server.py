@@ -105,7 +105,7 @@ class MmuServer:
             self.printer_hostname = self.printer_info["hostname"]
             self.spoolman_version = await self._get_spoolman_version()
             extras = False
-            if self.spoolman_version >= MIN_SM_VER:
+            if self.spoolman_version and self.spoolman_version >= MIN_SM_VER:
                 # Make sure db has required extra fields
                 extras = True
                 fields = await self._get_extra_fields("spool")
