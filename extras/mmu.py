@@ -3338,6 +3338,7 @@ class Mmu:
 
     # Ensure correct sync_feedback starting assumption by generating a fake event
     def _update_sync_starting_state(self):
+        if not self.mmu_sensors: return
         eventtime = self.reactor.monotonic()
         sss = self.SYNC_STATE_NEUTRAL
 
