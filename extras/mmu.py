@@ -5491,6 +5491,7 @@ class Mmu:
     def _sync_gear_to_extruder(self, sync, servo=False, current=False):
         if self.gate_selected < 0: # Safety in case somehow called with bypass/unknown selected
             sync = current = False
+        self.movequeues_wait() # TODO Not sure we need this but perhaps safer for now
         if servo:
             self._servo_down() if sync else self._servo_auto()
         self._adjust_gear_current(self.sync_gear_current, "for extruder syncing") if current and sync else self._restore_gear_current()
@@ -5501,7 +5502,7 @@ class Mmu:
     # restored, but like the rest of Happy Hare it employs lazy servo movement to reduce "flutter"
     @contextlib.contextmanager
     def _wrap_sync_gear_to_extruder(self):
-        self.movequeues_wait() # TODO Not sure we need this but perhaps safer for now
+        #self.movequeues_wait() # TODO Not sure we need this but perhaps safer for now
         prev_gear_synced = self._sync_gear_to_extruder(False, servo=False, current=True)
         try:
             yield self
