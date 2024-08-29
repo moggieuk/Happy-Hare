@@ -79,14 +79,14 @@ class MmuMachine():
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
 # (code pulled from toolhead.py)
 class MmuToolHead(toolhead.ToolHead, object):
-    def __init__(self, config, mmu):
-        self.mmu = mmu
 
     # Gear/Extruder synchronization modes (None = unsynced)
     EXTRUDER_SYNCED_TO_GEAR = 1
     EXTRUDER_ONLY_ON_GEAR   = 2
     GEAR_SYNCED_TO_EXTRUDER = 3
 
+    def __init__(self, config, mmu):
+        self.mmu = mmu
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
