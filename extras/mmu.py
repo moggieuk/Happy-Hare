@@ -1118,8 +1118,7 @@ class Mmu:
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
 
         # Ensure sync_feedback starting state. This is mainly cosmetic because state is ensured when enabling
-        if self.mmu_sensors:
-            self._update_sync_starting_state()
+        self._update_sync_starting_state()
 
         # Runout bootup tasks
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
@@ -3266,6 +3265,7 @@ class Mmu:
 
     # Ensure correct sync_feedback starting assumption by generating a fake event
     def _update_sync_starting_state(self):
+        if not self.mmu_sensors: return
         eventtime = self.reactor.monotonic()
         sss = self.SYNC_STATE_NEUTRAL
 
