@@ -3266,6 +3266,7 @@ class Mmu:
 
     # Ensure correct sync_feedback starting assumption by generating a fake event
     def _update_sync_starting_state(self):
+        if not self.mmu_sensors: return
         eventtime = self.reactor.monotonic()
         sss = self.SYNC_STATE_NEUTRAL
 
@@ -3277,7 +3278,7 @@ class Mmu:
             state_expanded = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_TENSION]
             state_compressed = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_COMPRESSION]
             if state_expanded and state_compressed:
-                self._log_error("Both expanded and compressed sync feedback sensors are triggered at the same time. Check hardware!")
+                self.log_error("Both expanded and compressed sync feedback sensors are triggered at the same time. Check hardware!")
             elif state_expanded:
                 sss = self.SYNC_STATE_EXPANDED
             elif state_compressed:
