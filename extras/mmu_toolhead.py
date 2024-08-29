@@ -53,7 +53,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity)
         self.max_accel = max(self.selector_max_accel, self.gear_max_accel)
 
-        # The following aren't very interesting for MMU control so leave to klipper defaults
         min_cruise_ratio = 0.5
         if config.getfloat('minimum_cruise_ratio', None) is None:
             req_accel_to_decel = config.getfloat('max_accel_to_decel', None, above=0.)
@@ -63,8 +62,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.min_cruise_ratio = config.getfloat('minimum_cruise_ratio', min_cruise_ratio, below=1., minval=0.)
         self.square_corner_velocity = config.getfloat('square_corner_velocity', 5., minval=0.)
         self.junction_deviation = self.max_accel_to_decel = 0.
+        self.requested_accel_to_decel = self.min_cruise_ratio * self.max_accel # Backward klipper compatibility 31de734d193d
         self._calc_junction_deviation()
-        self.requested_accel_to_decel = req_accel_to_decel # Backward compatibility for old klipper & Sovol SV 04 IDEX Printer
 
         # Input stall detection
         self.check_stall_time = 0.
