@@ -91,7 +91,7 @@ PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";               PIN[MELLOW-EASY-BRD-C
 
 # Pins for Fysetc Burrows ERB board (original v1 and v2)
 #
-PIN[ERB,gear_uart_pin]="gpio20";                           PIN[ERBv2,gear_uart_pin]="gpio20";
+PIN[ERB,gear_uart_pin]="gpio20";                           PIN[ERBv2,gear_uart_pin]="gpio11";
 PIN[ERB,gear_step_pin]="gpio10";                           PIN[ERBv2,gear_step_pin]="gpio10";
 PIN[ERB,gear_dir_pin]="gpio9";                             PIN[ERBv2,gear_dir_pin]="gpio9";
 PIN[ERB,gear_enable_pin]="gpio8";                          PIN[ERBv2,gear_enable_pin]="gpio8";
