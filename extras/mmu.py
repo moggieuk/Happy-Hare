@@ -3276,7 +3276,7 @@ class Mmu:
             state_expanded = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_TENSION]
             state_compressed = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_COMPRESSION]
             if state_expanded and state_compressed:
-                self._log_error("Both expanded and compressed sync feedback sensors are triggered at the same time. Check hardware!")
+                self.log_error("Both expanded and compressed sync feedback sensors are triggered at the same time. Check hardware!")
             elif state_expanded:
                 sss = self.SYNC_STATE_EXPANDED
             elif state_compressed:
