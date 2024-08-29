@@ -7740,12 +7740,11 @@ class Mmu:
     def cmd_MMU_PRELOAD(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
-        if self._check_not_homed(): return
         if self._check_in_bypass(): return
         if self._check_is_loaded(): return
         if self._check_is_calibrated(): return
 
-        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
+        gate = gcmd.get_int('GATE', -1, minval=-1, maxval=self.mmu_num_gates - 1)
         self.log_always("Preloading filament in %s" % (("Gate %d" % gate) if gate >= 0 else "current gate"))
         try:
             with self._wrap_action(self.ACTION_CHECKING):
