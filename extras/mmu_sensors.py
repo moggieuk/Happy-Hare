@@ -30,7 +30,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, time
+import logging, time, math
 
 class MmuRunoutHelper:
     def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay, pause_delay):
@@ -251,3 +251,234 @@ class MmuSensors:
 
 def load_config(config):
     return MmuSensors(config)
+
+
+
+
+
+
+# filament sync tension handler, help to adjust rotation dist in real time automatically
+# to search and use the perfect rotation_dist value.
+# Theory of operation
+# use binary search to get the perfect rotation dist value.
+# the upper limit: can slowly trigger expanded sensor (not enough filament)
+# the lower limit: can slowly trigger compressed sensor ( too much filament)
+# the perfect rotation dist is always within the upper and lower limit.
+# when in neutral, get a avg value from upper and lower set it as new rotation_dist, and test it,
+# when it triggers another upper or lower limit, and use it as a new upper or lower limit value.
+# As it goes, slowly and slowly we have smaller and smaller range from upper to lower value,
+# a better and better , more and more precise rota dist value.
+
+# function get_rotation_dist_on_state_change()
+#   when non sensor is triggered, we are in neutral positioin:
+#      time to test a avg value from current upper and lower rotation_dist values.
+#   When it's compressed, we have a confirmed compressed value, update the lower limit using current rotation_dist
+#   When it's expanded,  we have a confirmed expanded value, update the upper limit using current rotation_dist
+#   this function doesn't change the rotation dist when it's compressed or expanded, only record the confirmed bad value for getting the avg
+#
+# update_sync_rotation_dist()
+#  similar to _update_sync_multiplier
+#   1
+#   it will be called again and again frequently.
+#   it's responsible to get the sensor out of the tension, by using a known upper/lower rotation_dist to go to the other direction
+#   the initial adjustment is 50% more or 50% less of the initial rotation_dist.
+#   as filament tension state changes, the upper and lower limit will change, we will have smaller range of upper lower limit.
+#   the perfect rotation_dist must be in between upper and lower limit.
+#   2
+#   to add a safety measure, count the times (counter, not time/sec/min) the sensor remains in the same compressed or expanded state,
+#   if with the known/confirmed other direction of the rotation_dist we still cannot get out of the current state within certain count (ALLOW_STAY_IN_TENSION_STATE_MAX)
+#   We further increase or reduce the confirmed bad value to make sure we can move out of the tension state.
+
+# in the beginning,
+class FilaSyncTensionHandler:
+    SYNC_NEUTRAL = 0
+    SYNC_COMPRESSED = 1
+    SYNC_EXPANDED = -1
+
+    # MIN_ROTATION_DIST_DIFF = 0.02  # if upper and lower limit value are very close, no need to do more(avg).
+
+    # larger the value, less safe to get out of tension bad state if something goes wrong
+    # smaller the value, easier to get out of tension, but harder to find the perfect rotation_dist value, because the rota dist is adjusted more often
+    # 20 or 30 or 40 should be good values, the better the rota dist value is , it takes longer to get out of the trigger state because
+    # a good  rota dist doesn't change the tension state a lot
+    ALLOW_STAY_IN_TENSION_STATE_MAX = 40
+    # adjust the get out of tension rota dist even more (1%)
+    # once we have counter reach above (40), we increase /decrease 0.01, when reach another 40, we increase /decrease another 0.01
+    # so to make sure we can get out of the current tension state and go to neutral
+    ADJUST_WHEN_STAY_TENSION_TOO_LONG = 0.01
+
+    sync_auto_adjust_rotation_dist_enabled = False
+
+    # the initial adjustment (50% more and 50% less) for upper and lower limit for rotation_dist 0.5 VS 1.5
+    MAX_ADJ = 0.5
+
+    def __init__(self):
+
+        # self.init_for_next_print(rota_dist)
+        self._log_debug = None
+        self._log_always = None
+        self._log_error = None
+
+    def init_for_next_print(self, rota_dist:float):
+        # the upper limit of the rotation_dist, larger rotation_dist, less filament, it's expanded
+        self.bad_rotation_dist_expanded = None
+        # the lower limit of the rotation_dist, smaller rotation_dist, more filament, it's compressed
+        self.bad_rotation_dist_compressed = None
+        self.rotation_dist = rota_dist
+        self.delta = 0
+        self.set_init_bad_values()
+        self.stayed_in_tension_count = 0
+
+    @staticmethod
+    def is_auto_adjust_enabled() -> bool:
+        return FilaSyncTensionHandler.sync_auto_adjust_rotation_dist_enabled
+
+    @staticmethod
+    def set_auto_adjust_feature_enable(enable:bool=True):
+        FilaSyncTensionHandler.sync_auto_adjust_rotation_dist_enabled = enable
+
+    def set_logger(self, log_debug, log_always, log_error ):
+        # reuse the mmu log functions
+        self._log_debug = log_debug
+        self._log_always = log_always
+        self._log_error = log_error
+
+
+    #  a helper function easily output tension state to log
+    @staticmethod
+    def tension_state_to_text(state:float) ->str:
+        if math.isclose(float(state), FilaSyncTensionHandler.SYNC_NEUTRAL):
+            return "neutral"
+        elif math.isclose(float(state), FilaSyncTensionHandler.SYNC_COMPRESSED):
+            return "compressed"
+        elif math.isclose(float(state), FilaSyncTensionHandler.SYNC_EXPANDED):
+            return "expanded"
+        else:
+            return f"unknown ({state=})"
+
+    @staticmethod
+    def is_sync_tension_neutral(state:float) -> bool:
+        return math.isclose(float(state), FilaSyncTensionHandler.SYNC_NEUTRAL)
+
+    @staticmethod
+    def is_sync_tension_compressed(state:float) -> bool:
+        return math.isclose(float(state), FilaSyncTensionHandler.SYNC_COMPRESSED)
+
+    @staticmethod
+    def is_sync_tension_expanded(state:float) -> bool:
+        return math.isclose(float(state), FilaSyncTensionHandler.SYNC_EXPANDED)
+
+
+    # similar to _update_sync_multiplier, it deals with rotation_dist dcirectly instead of ratio and multiplier
+    def update_sync_rotation_dist(self, state: float) -> float:
+
+        if self.is_sync_tension_compressed(state):
+            # too much filament, need go slower, larger rota dist
+            # use the other side of rotat_dist value
+            # use this known value to go to the other direction
+            self.stayed_in_tension_count += 1
+            if self.stayed_in_tension_count > FilaSyncTensionHandler.ALLOW_STAY_IN_TENSION_STATE_MAX:
+                self._log_debug(f"we are in trouble get out of compressed state? {self.stayed_in_tension_count=}")
+                # are we in trouble to get out of the bad compressed state??? adjust (make % larger) the known bad expanded value to get out of this state quickly
+                # ie make it larger , 105% of the current value
+                new_val = self.bad_rotation_dist_expanded * ( 1+ FilaSyncTensionHandler.ADJUST_WHEN_STAY_TENSION_TOO_LONG)
+                # just to make sure the expand value can make more filament (so to ensure to reach the expanded state)
+                self._log_debug(f"in trouble get out of compressed state? {self.stayed_in_tension_count=}(too long time), make known bad "
+                f"expanded value larger {FilaSyncTensionHandler.ADJUST_WHEN_STAY_TENSION_TOO_LONG*100}%, now {new_val}(was {self.bad_rotation_dist_expanded})")
+                self.bad_rotation_dist_expanded = new_val
+                self.stayed_in_tension_count = 0
+            if not math.isclose(self.rotation_dist, self.bad_rotation_dist_expanded):
+                # reduce meaningless logs, only output when values are different
+                self._log_debug(f"update_sync_rotation_dist() compressed {state=}({FilaSyncTensionHandler.tension_state_to_text(state)})"
+                         f" to return bad expanded val(the other dir) {self.bad_rotation_dist_expanded} (to give less filament), tension counter={self.stayed_in_tension_count}")
+
+            self.rotation_dist = self.bad_rotation_dist_expanded
+
+        elif self.is_sync_tension_expanded(state):
+            # too little filament, need go faster, smaller rota dist
+            # use this known value to go to the other direction
+            self.stayed_in_tension_count += 1
+            if self.stayed_in_tension_count > FilaSyncTensionHandler.ALLOW_STAY_IN_TENSION_STATE_MAX:
+
+                # are we in trouble to get out of the bad compressed state??? adjust (make % smaller) the known bad expanded value
+                # to get out of this state quickly
+                # ie make it smaller , 95% of the current value
+                new_val = self.bad_rotation_dist_compressed * (1 - FilaSyncTensionHandler.ADJUST_WHEN_STAY_TENSION_TOO_LONG)
+                # just to make sure the expand value can make more filament (so to ensure to reach the expanded state)
+                self._log_debug(f"in trouble get out of expanded state? {self.stayed_in_tension_count=}(too long time), make known bad " 
+                f"compressed value smaller {FilaSyncTensionHandler.ADJUST_WHEN_STAY_TENSION_TOO_LONG*100}%, now {new_val}(was {self.bad_rotation_dist_compressed})")
+                self.stayed_in_tension_count = 0
+                self.bad_rotation_dist_compressed = new_val
+            if not math.isclose(self.rotation_dist, self.bad_rotation_dist_compressed):
+                self._log_debug(f"update_sync_rotation_dist() expanded {state=}({FilaSyncTensionHandler.tension_state_to_text(state)})"
+                   f" to return bad compressed(the other dir) val {self.bad_rotation_dist_compressed}(to give more filament), tension counter={self.stayed_in_tension_count}")
+
+            self.rotation_dist = self.bad_rotation_dist_compressed
+
+
+        elif self.is_sync_tension_neutral(state):
+            self.stayed_in_tension_count = 0
+            # do nothing don't change the current rotation dist
+            pass
+
+        return self.rotation_dist
+
+    def set_init_bad_values(self) -> None:
+
+        if not self.bad_rotation_dist_compressed:
+            # this value will cause compressed
+            self.bad_rotation_dist_compressed = self.rotation_dist * ( 1.0 - FilaSyncTensionHandler.MAX_ADJ )
+
+        if not self.bad_rotation_dist_expanded:
+            # this value will cause expanded
+            self.bad_rotation_dist_expanded = self.rotation_dist * ( 1.0 + FilaSyncTensionHandler.MAX_ADJ )
+        return
+
+    def cal_rotation_dist_by_tension_value(self, compressed:float, expanded:float) -> float:
+
+        rotation_dist = (self.bad_rotation_dist_compressed + self.bad_rotation_dist_expanded)/2.0
+        self._log_always(
+            f"using bad compressed {compressed} and bad expanded {expanded} to avg: new better rotation_dist:{rotation_dist}")
+        return rotation_dist
+
+    def get_rotation_dist_on_state_change(self, last_state: float, state: float) -> float:
+
+        self._log_debug(f"get_rotation_dist_on_state_change() working {last_state=}({FilaSyncTensionHandler.tension_state_to_text(last_state)}) {state=}({FilaSyncTensionHandler.tension_state_to_text(state)})")
+        # same tension state?? impossible?? this function won't be called.
+        if math.isclose(last_state, state):
+            # impossible, state didn't change,
+            return self.rotation_dist
+
+        if FilaSyncTensionHandler.is_sync_tension_compressed(state):
+            # tension state just turn to compressed from neutral
+            # only record the confirmed bad compressed value and not to adjust it in here, let the other function update_sync_rotation_dist() to adjust it
+
+            # record the current bad compressed value, this current rota dist value is confirmed bad compressed because it just triggered the compressed sensor
+            self.bad_rotation_dist_compressed = self.rotation_dist
+            self._log_debug(f"tension state changed to compressed (from neutral), record current rota_dist as new bad compressed val:{self.rotation_dist}(current rota dist)")
+
+        elif FilaSyncTensionHandler.is_sync_tension_expanded(state):
+            # tension state just turn to expanded from neutral
+            # record the current bad expanded value, this current rota dist value is confirmed bad expanded because it just triggered the expanded sensor
+            self.bad_rotation_dist_expanded = self.rotation_dist
+            self._log_debug(f"tension state changed to expanded (from neutral), record current rota_dist as new bad expanded val:{self.rotation_dist}(current rota dist)")
+
+
+        # enhanced error handling, this shouldn't happen but just in case, if the two upper /lower limit values are messed up , fix them
+        if self.bad_rotation_dist_compressed > self.bad_rotation_dist_expanded:
+            self._log_error(f"impossible! why bad compressed rota_dist is larger than bad expanded rota ?? {self.bad_rotation_dist_compressed}>{self.bad_rotation_dist_expanded}, just swap them")
+            temp = self.bad_rotation_dist_compressed
+            self.bad_rotation_dist_compressed = self.bad_rotation_dist_expanded
+            self.bad_rotation_dist_expanded = temp
+            self._log_error(f"after swap, now compressed rota dist:{self.bad_rotation_dist_compressed} < expanded rota dist:{self.bad_rotation_dist_expanded}")
+
+        if FilaSyncTensionHandler.is_sync_tension_neutral(state):
+            # tension state just turn to neutral (because tension state is slowly moving from one end to other dir,
+            # binary search, when it's neutral, test the middle point of the two side bad value.
+            rotation_dist =  self.cal_rotation_dist_by_tension_value(self.bad_rotation_dist_compressed, self.bad_rotation_dist_expanded)
+
+            self.rotation_dist = rotation_dist
+
+        return self.rotation_dist
+
+

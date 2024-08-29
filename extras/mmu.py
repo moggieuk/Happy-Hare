@@ -17,6 +17,8 @@ import random, logging, logging.handlers, threading, queue, time, contextlib, ma
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
+from extras.mmu_sensors import FilaSyncTensionHandler
+
 import chelper, ast
 
 # Default to no unicode on Python2. Not worth the hassle!
@@ -520,6 +522,15 @@ class Mmu:
         self.sync_multiplier_high = config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
         self.sync_multiplier_low = config.getfloat('sync_multipler_low', 0.95, minval=0.5, maxval=1.)
         self.sync_feedback_enable = config.getint('sync_feedback_enable', 0, minval=0, maxval=1)
+        # must have two tension sensors for expanded and compressed, otherwise it's impossible to work.
+        sync_auto_adjust_rotation_dist_enabled = config.getint('sync_auto_adjust_rotation_dist', 0, minval=0, maxval=1)
+        if sync_auto_adjust_rotation_dist_enabled:
+            self.sync_tension_handler = FilaSyncTensionHandler()
+            self.sync_tension_handler.set_auto_adjust_feature_enable(True)
+            self.sync_tension_handler.set_logger(self._log_debug, self._log_always, self._log_error)
+            self.current_rotation_dist = 0
+        else:
+            self.sync_tension_handler = None
 
         # Servo control
         self.servo_angles = {}
@@ -1079,10 +1090,40 @@ class Mmu:
         # Important to ensure correct sync_feedback starting assumption by generating a fake event
         if self.mmu_sensors:
             eventtime = self.reactor.monotonic()
+            has_both_sensors = False
             if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
                 self._handle_sync_feedback(eventtime, 1) # Assume compressed starting state
             elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
                 self._handle_sync_feedback(eventtime, -1) # Assume expanded starting state
+
+            elif self.mmu_sensors.has_tension_switch and self.mmu_sensors.has_compression_switch:
+                # note, if try to read tension sensor here, sometimes the value is wrong.
+                # also _log_debug() cannot output log in webpage console in here.
+                has_both_sensors = True
+                state_tension = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_TENSION]
+                state_compression = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_COMPRESSION]
+                self._log_debug(f"handle_ready() has both expand and compress sensor {state_tension=} {state_compression=}")
+            else:
+                # no tension sensor at all.
+                # disable sync feedback regardless what user set in the config since no sensor at all.
+                if self.sync_feedback_enable:
+                    self._log_always("not even one tension sensor is configed, disabling sync_feedback_enable even though it's enabled in config file")
+                self.sync_feedback_enable = False
+
+            # adjusting the sync_auto_adjust_rotation_dist_enabled setting based on hw/sw config
+            # can only enable the advance auto adjust rotation_dist feature when we have both expanded and compressed sensor.
+            # and only when user enable it in config
+            if not self.sync_feedback_enable:
+                self._log_debug("disabling sync_auto_adjust_rotation_dist since the whole sync feedback feature is disabled")
+                FilaSyncTensionHandler.set_auto_adjust_feature_enable(False)
+            elif not has_both_sensors:
+                if FilaSyncTensionHandler.is_auto_adjust_enabled():
+                    self._log_always(
+                    "even though user enabled sync_auto_adjust_rotation_dist but since the system doesn't have two sensors for sync tension, disabling it")
+                FilaSyncTensionHandler.set_auto_adjust_feature_enable(False)
+            else:
+                self._log_debug(f"has both tension sensors, and sync_auto_adjust_rotation_dist is {FilaSyncTensionHandler.is_auto_adjust_enabled()}")
+
 
         # Runout bootup tasks
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
@@ -2322,6 +2363,9 @@ class Mmu:
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print current
         self._sync_gear_to_extruder(sync, servo=servo, current=self._is_in_print(force_in_print))
 
+        #self.sync_tension_handler.test_calculate_sync_multiplier()
+        #self._log_debug("finished test_calculate_sync_multiplier")
+        #self.sync_tension_handler.test_get_rotation_dist_on_state_change()
 
 #########################
 # CALIBRATION FUNCTIONS #
@@ -3055,16 +3099,53 @@ class Mmu:
     # Gear/Extruder sync feedback state should be -1 (expanded) and 1 (compressed)
     # or can be a proportional float value between -1.0 and 1.0
     def _handle_sync_feedback(self, eventtime, state):
+        if not self.sync_feedback_enable or not self.sync_feedback_operational:
+            return
+
         self._log_trace("Got sync force feedback update: eventtime=%s, state=%s" % (eventtime, state))
+
         if abs(state) <= 1:
-            self.sync_feedback_last_state = float(state)
-            if self.sync_feedback_enable and self.sync_feedback_operational:
+            # only do advance auto adjust rotation_dist when it's enabled.
+            if FilaSyncTensionHandler.is_auto_adjust_enabled():
+                new_rota_dist = self.sync_tension_handler.get_rotation_dist_on_state_change(\
+                                       self.sync_feedback_last_state, state)
+                if not math.isclose(new_rota_dist, self.current_rotation_dist):
+                    self.set_gate_rotation_dist(new_rota_dist)
+                    self.current_rotation_dist = new_rota_dist
+                self.sync_feedback_last_state = float(state)
+                # once it's done, stop here, do not go further for non-advance auto adjust rotation dist normal multiplier processing.
+                return
+            else:
+                self.sync_feedback_last_state = float(state)
                 self._update_sync_multiplier()
+        else:
+            self._log_error(f"_handle_sync_feedback() has invalid tension state {state}! why??")
 
     def _enable_sync_feedback(self):
+
         if self.sync_feedback_operational: return
         self.sync_feedback_operational = True
         self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
+        eventtime = self.reactor.monotonic()
+        state_expanded = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_TENSION]
+        state_compressed = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_COMPRESSION]
+        self._log_debug(f"_enable_sync_feedback() sync sensor {state_expanded=}   {state_compressed=}")
+        #  -1 (expanded) and 1 (compressed)
+        if state_expanded and state_compressed:
+            self._log_error("both expanded and compressed sensor are triggered at the same time?! check hardware!")
+        elif state_expanded:
+            self.sync_feedback_last_state = FilaSyncTensionHandler.SYNC_EXPANDED
+        elif state_compressed:
+            self.sync_feedback_last_state = FilaSyncTensionHandler.SYNC_COMPRESSED
+        else:
+            # both sensors are 0
+            self.sync_feedback_last_state = FilaSyncTensionHandler.SYNC_NEUTRAL
+
+        if FilaSyncTensionHandler.is_auto_adjust_enabled():
+            if self.sync_tension_handler:
+                self.sync_tension_handler.init_for_next_print(self.ref_gear_rotation_distance)
+
+        self._log_always(f"filament sync state is: {FilaSyncTensionHandler.tension_state_to_text(self.sync_feedback_last_state)} ({self.sync_feedback_last_state})")
         self._update_sync_multiplier()
 
     def _disable_sync_feedback(self):
@@ -3091,6 +3172,28 @@ class Mmu:
 
     def _update_sync_multiplier(self):
         if not self.sync_feedback_enable or not self.sync_feedback_operational: return
+
+        if FilaSyncTensionHandler.is_auto_adjust_enabled():
+
+            if self.sync_feedback_last_direction == self.DIRECTION_UNKNOWN:
+                # 0 = unknown
+                # not running, just ignore
+                return
+
+            if self.sync_feedback_last_direction == self.DIRECTION_UNLOAD:
+                # ignore when retract since usually retract is very very small distance! don't let it mess up the sync ratio.
+                # self._log_debug(f"sync_feedback_last_direction==UNLOAD so ignore and do nothing")
+                return
+
+            rotation_distance = self.sync_tension_handler.update_sync_rotation_dist(self.sync_feedback_last_state)
+            if not math.isclose(self.current_rotation_dist, rotation_distance):
+                # if it's the same value, don't set it again and again
+                self.current_rotation_dist = rotation_distance
+                self.set_gate_rotation_dist(rotation_distance)
+            return
+        # end of if FilaSyncTensionHandler.is_auto_adjust_enabled():
+        #################################################################
+
         if self.sync_feedback_last_direction == 0:
             multiplier = 1.
         else:
@@ -5779,8 +5882,16 @@ class Mmu:
         self._log_trace("Setting gear motor rotation distance: %.6f (ratio: %.6f)" % (new_rotation_distance, ratio))
         self.gear_stepper.set_rotation_distance(new_rotation_distance)
 
+    def set_gate_rotation_dist(self, rota_dist):
+        # user have the right to know what is the actual rotation_dist set to gear stepper motor,
+        # don't hide it, besides, this log doesn't show a lot as the tension state doesn't change a lot.
+        self._log_always(f"set_gate_rotation_dist() setting gear motor rotation distance: {rota_dist:.6f}")
+        self.gear_stepper.set_rotation_distance(rota_dist)
+
+
     def _get_gate_ratio(self, gate):
         if gate < 0: return 1.
+        # to do  this need to move to init step, not every time it's called
         ratio = self.save_variables.allVariables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, gate), 1.)
         if ratio > 0.8 and ratio < 1.2:
             return ratio
