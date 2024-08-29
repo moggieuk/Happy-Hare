@@ -207,6 +207,9 @@ class Mmu:
     SYNC_FEEDBACK_INTERVAL  = 0.5   # How often to check extruder direction
     SYNC_POSITION_TIMERANGE = 0.6   # Interval to compare movement
     SYNC_POSITION_MIN_DELTA = 0.001 # Min extruder move distance to be significant
+    SYNC_STATE_NEUTRAL = 0
+    SYNC_STATE_COMPRESSED = 1.
+    SYNC_STATE_EXPANDED = -1.
 
     # Vendor MMU's supported
     VENDOR_ERCF     = "ERCF"
@@ -1114,13 +1117,8 @@ class Mmu:
 
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
 
-        # Important to ensure correct sync_feedback starting assumption by generating a fake event
-        if self.mmu_sensors:
-            eventtime = self.reactor.monotonic()
-            if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
-                self._handle_sync_feedback(eventtime, 1) # Assume compressed starting state
-            elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
-                self._handle_sync_feedback(eventtime, -1) # Assume expanded starting state
+        # Ensure sync_feedback starting state. This is mainly cosmetic because state is ensured when enabling
+        self._update_sync_starting_state()
 
         # Runout bootup tasks
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
@@ -1615,7 +1613,7 @@ class Mmu:
 
     def _get_sync_feedback_string(self):
         if self.sync_feedback_enable and self.sync_feedback_operational:
-            return 'compressed' if self.sync_feedback_last_state > 0.1 else 'expanded' if self.sync_feedback_last_state < -0.1 else 'neutral'
+            return 'compressed' if self.sync_feedback_last_state > 0.5 else 'expanded' if self.sync_feedback_last_state < -0.5 else 'neutral'
         return "disabled"
 
     # Returning new list() is so that clients like KlipperScreen sees the change
@@ -2155,8 +2153,10 @@ class Mmu:
         msg += ". Tool %s selected on gate %s" % (self._selected_tool_string(), self._selected_gate_string())
         msg += ". Toolhead position saved" if self.saved_toolhead_position else ""
         msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
-        if self.mmu_toolhead.is_gear_synced_to_extruder():
+        if self.sync_feedback_enable and self.sync_feedback_operational:
             msg += "\nSync feedback indicates filament in bowden is: %s" % self._get_sync_feedback_string().upper()
+        elif self.sync_feedback_enable:
+            msg += "\nSync feedback is disabled"
 
         if config:
             msg += "\n\nLoad Sequence:"
@@ -3222,7 +3222,7 @@ class Mmu:
             # Enable sync feedback
             self.sync_feedback_operational = True
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
-            self._update_sync_multiplier()
+            self._update_sync_starting_state()
 
     def _handle_mmu_unsynced(self):
         self.log_info("Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enable else ""))
@@ -3230,7 +3230,7 @@ class Mmu:
             # Disable sync feedback
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
             self.sync_feedback_operational = False
-            self.sync_feedback_last_direction = 0
+            self.sync_feedback_last_direction = self.SYNC_STATE_NEUTRAL
             self.log_trace("Reset sync multiplier")
             self._set_gate_ratio(self._get_gate_ratio(self.gate_selected))
 
@@ -3250,7 +3250,7 @@ class Mmu:
 
     def _update_sync_multiplier(self):
         if not self.sync_feedback_enable or not self.sync_feedback_operational: return
-        if self.sync_feedback_last_direction == 0:
+        if self.sync_feedback_last_direction == self.SYNC_STATE_NEUTRAL:
             multiplier = 1.
         else:
             go_slower = lambda s, d: abs(s - d) < abs(s + d)
@@ -3262,6 +3262,30 @@ class Mmu:
                 multiplier = 1. + (abs(1. - self.sync_multiplier_high) * abs(self.sync_feedback_last_state))
         self.log_trace("Updated sync multiplier: %.4f" % multiplier)
         self._set_gate_ratio(self._get_gate_ratio(self.gate_selected) / multiplier)
+
+    # Ensure correct sync_feedback starting assumption by generating a fake event
+    def _update_sync_starting_state(self):
+        eventtime = self.reactor.monotonic()
+        sss = self.SYNC_STATE_NEUTRAL
+
+        if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
+            sss = self.SYNC_STATE_EXPANDED if self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_TENSION] else self.SYNC_STATE_COMPRESSED
+        elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
+            sss = self.SYNC_STATE_COMPRESSED if self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_COMPRESSION] else self.SYNC_STATE_EXPANDED
+        elif self.mmu_sensors.has_compression_switch and self.mmu_sensors.has_tension_switch:
+            state_expanded = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_TENSION]
+            state_compressed = self.mmu_sensors.get_status(eventtime)[self.SWITCH_SYNC_FEEDBACK_COMPRESSION]
+            if state_expanded and state_compressed:
+                self._log_error("Both expanded and compressed sync feedback sensors are triggered at the same time. Check hardware!")
+            elif state_expanded:
+                sss = self.SYNC_STATE_EXPANDED
+            elif state_compressed:
+                sss = self.SYNC_STATE_COMPRESSED
+            else:
+                pass # Assume neutral
+
+        self._handle_sync_feedback(eventtime, sss)
+        self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string())
 
     def _is_printer_printing(self):
         return self.print_stats and self.print_stats.state == "printing"
