@@ -1539,6 +1539,58 @@ class Mmu:
                 stop_on_endstop = random.randint(0, 1) * 2 - 1
                 self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d" % stop_on_endstop)
 
+        if gcmd.get_int('KEVIN', 0, minval=0, maxval=1):
+            loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
+            endstop = self.selector.selector_rail.get_extra_endstop("mmu_sel_touch")
+            for i in range(loop):
+                move_type = random.randint(0, 2)
+                move = random.randint(10, 100)
+                speed = random.randint(50, 200)
+                accel = random.randint(50, 2000)
+                speed = self.selector_touch_speed
+                wait = random.randint(0, 1)
+                gate = random.randint(0, 8)
+                tool = random.randint(0, 8)
+                homing = random.randint(0, 1)
+                offset = self.selector_offsets[gate]
+
+                with self._wrap_action(self.ACTION_SELECTING):
+                    #self.movequeues_wait()
+#                    init_pos = self.mmu_toolhead.get_position()[0]
+#                    halt_pos,homed = self.selector.homing_move("Positioning selector with 'touch' move", move, homing_move=1, endstop_name=self.ENDSTOP_SELECTOR_TOUCH)
+
+#                    with self._wrap_track_time("test"):
+                    pos = self.mmu_toolhead.get_position()
+                    self.log_error("Start print time: %s" % self.mmu_toolhead.print_time)
+                    pos[0] = move
+                    if homing:
+                        hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
+                        try:
+                            #accel = 500
+                            with self._wrap_accel(accel):
+                                #halt_pos,homed = self.selector.homing_move("Positioning selector with 'touch' move", move, homing_move=1, endstop_name=self.ENDSTOP_SELECTOR_TOUCH)
+                                logging.info(f"PAUL: trig_pos = hmove.homing_move({pos}, {speed}, probe_pos=True, triggered=True, check_triggered=True)")
+                                trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=True, check_triggered=True)
+                                actual = self.mmu_toolhead.get_position()
+                                self.log_always("%d. Homing move: Rail starting pos: %.2f, Selector moved to %.2fmm, trig_pos=%s" % (i, pos[0], actual[0], trig_pos))
+                                delta = abs(pos[0] - trig_pos[0])
+                                #if delta > 0:
+                                if delta < 1.0:
+                                    self.log_always("Truing selector %.4fmm" % delta)
+                                    logging.info(f"PAUL: self.mmu_toolhead.move({pos}, {speed})")
+                                    self.mmu_toolhead.move(pos, speed)
+                                    actual = self.mmu_toolhead.get_position()
+                                    self.log_always("Final selector pos: %.1fmm" % actual[0])
+                                self.mmu_toolhead.get_last_move_time()
+                        except self.printer.command_error as e:
+                            self.log_error("Exception: %s" % str(e))
+
+                        self.movequeues_wait(toolhead=False)
+                        self.log_error("Homing: Print time: %s, last_move_time: %s" % (self.mmu_toolhead.print_time, self.mmu_toolhead.get_last_move_time()))
+                    else:
+                        self.mmu_toolhead.move(pos, speed)
+                        self.log_error("Regular: Print time: %s, last_move_time: %s" % (self.mmu_toolhead.print_time, self.mmu_toolhead.get_last_move_time()))
+
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
             macro = command.split()[0]
@@ -1683,14 +1735,16 @@ class Mmu:
         self.job_statistics = {}
 
     def _track_time_start(self, name):
-        self.track[name] = self.toolhead.get_last_move_time()
+        # PAUL self.track[name] = self.toolhead.get_last_move_time()
+        self.track[name] = self.toolhead.print_time
 
     def _track_time_end(self, name):
         if name not in self.track:
             return # Timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        elapsed = self.toolhead.get_last_move_time() - self.track[name]
+        # PAUL elapsed = self.toolhead.get_last_move_time() - self.track[name]
+        elapsed = self.toolhead.print_time - self.track[name]
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
         self.last_statistics[name] = elapsed
@@ -3802,7 +3856,7 @@ class Mmu:
         return self.mmu_toolhead.get_position()[1]
 
     def _set_filament_position(self, position = 0.):
-        mmu_last_move = self.mmu_toolhead.get_last_move_time()
+        # PAUL mmu_last_move = self.mmu_toolhead.get_last_move_time()
         pos = self.mmu_toolhead.get_position()
         pos[1] = position
         self.mmu_toolhead.set_position(pos)
@@ -5495,7 +5549,7 @@ class Mmu:
         if servo:
             self._servo_down() if sync else self._servo_auto()
         self._adjust_gear_current(self.sync_gear_current, "for extruder syncing") if current and sync else self._restore_gear_current()
-        self.movequeues_wait()
+        self.movequeues_wait() # PAUL safety but should not be required
         return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
 
     # This is used to protect the in print synchronization state and is used as an outermost wrapper for
@@ -7794,7 +7848,7 @@ class MmuSelector():
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
 
-        self.last_selector_move_time = None
+        # PAUL self.last_selector_move_time = None
         self.is_homed = False
 
     def _home_selector(self):
@@ -7806,7 +7860,7 @@ class MmuSelector():
         try:
             self.mmu.mmu_kinematics.home(homing_state)
             self.is_homed = True
-            self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
+            # PAUL self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
         except Exception as e: # Homing failed
             self.mmu._set_tool_selected(self.mmu.TOOL_GATE_UNKNOWN)
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
@@ -7904,8 +7958,8 @@ class MmuSelector():
                         if delta < 1.0:
                             homed = False
                             self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
-                            #self.mmu_toolhead.move(pos, speed) # Klipper bug. Frequently causes TTC errors. But another probing move is fine?!?
-                            trig_pos2 = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
+                            self.mmu_toolhead.move(pos, speed) # Klipper bug. Frequently causes TTC errors. But another probing move is fine?!?
+                            # PAUL hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
                         else:
                             homed = True
                     else:
@@ -7913,6 +7967,7 @@ class MmuSelector():
             except self.mmu.printer.command_error as e:
                 homed = False
             finally:
+                self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True) # TTC mitigation when homing move + regular + get_last_move_time() is close succession
                 pos = self.mmu_toolhead.get_position()
                 if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
                     self.mmu.log_stepper("SELECTOR HOMING MOVE: requested position=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s >> %s" % (new_pos, speed, accel, endstop_name, "%s actual pos=%.2f, trig_pos=%.2f" % ("HOMED" if homed else "DID NOT HOMED",  pos[0], trig_pos[0])))
@@ -7926,11 +7981,11 @@ class MmuSelector():
             if wait:
                 self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
 
-        self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
+        # PAUL self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
         return pos[0], homed
 
     def set_position(self, position):
-        mmu_last_move = self.mmu_toolhead.get_last_move_time()
+        # PAUL mmu_last_move = self.mmu_toolhead.get_last_move_time()
         pos = self.mmu_toolhead.get_position()
         pos[0] = position
         self.mmu_toolhead.set_position(pos, homing_axes=(0,))
@@ -7955,13 +8010,13 @@ class MmuSelector():
     def disable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_disable(self.mmu_toolhead.get_last_move_time())
+        se.motor_disable(self.mmu_toolhead.get_last_move_time() + 0.1)
         self.is_homed = False
 
     def enable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_enable(self.mmu_toolhead.get_last_move_time())
+        se.motor_enable(self.mmu_toolhead.get_last_move_time() + 0.1)
 
     def use_touch_move(self):
         return self.mmu.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.mmu.selector_touch_enable
