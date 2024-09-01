@@ -116,7 +116,7 @@ class DebugStepperMovement:
 class Mmu:
     VERSION = 2.70 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
-    BOOT_DELAY = 2.0 # Delay before running bootup tasks
+    BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
     # Calibration steps
     CALIBRATED_GEAR     = 0b00001
@@ -1370,18 +1370,26 @@ class Mmu:
             self.log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
 
         if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
+            if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
+                self._set_print_state("printing")
+                self.test_force_in_print = True
+            else:
+                self._set_print_state("idle")
+                self.test_force_in_print = False
+
             with self._wrap_track_time('total'):
                 with self._wrap_track_time('unload'):
                     with self._wrap_track_time('pre_unload'):
-                        self._wrap_gcode_command(self.pre_unload_macro, exception=False)
-                    self._wrap_gcode_command(self.post_form_tip_macro, exception=False)
+                        self._wrap_gcode_command(self.pre_unload_macro, exception=False, wait=True)
+                    self._wrap_gcode_command(self.post_form_tip_macro, exception=False, wait=True)
                     with self._wrap_track_time('post_unload'):
-                        self._wrap_gcode_command(self.post_unload_macro, exception=False)
+                        self._wrap_gcode_command(self.post_unload_macro, exception=False, wait=True)
                 with self._wrap_track_time('load'):
                     with self._wrap_track_time('pre_load'):
-                        self._wrap_gcode_command(self.pre_load_macro, exception=False)
+                        self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
                     with self._wrap_track_time('post_load'):
-                        self._wrap_gcode_command(self.post_load_macro, exception=False)
+                        self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
+            self.log_info("Statistics:%s" % self.last_statistics)
 
         if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
             self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
@@ -1516,80 +1524,12 @@ class Mmu:
                     actual = self.selector.move("Test move", move, speed=speed, accel=accel, wait=wait)
                     self.log_always("%d. Move: Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
 
-        if gcmd.get_int('SPECIAL', 0, minval=0, maxval=1):
-            servo = bool(gcmd.get_int('SERVO', 0, minval=0, maxval=1))
-            loop = gcmd.get_int('LOOP', 5, minval=1, maxval=50)
-            self.gcode.run_script_from_command("M83")
-            rot_dist = self.gear_stepper.get_rotation_distance()[0]
-            move = rot_dist / loop
-            with DebugStepperMovement(self):
-                for i in range(loop):
-                    self.log_always("Extruder: %d" % i)
-                    self.gcode.run_script_from_command("G1 E%.4f F240" % move)
-                self._sync_gear_to_extruder(True, servo=servo, current=False)
-                self.gcode.run_script_from_command("G1 E%.4f F240" % rot_dist)
-                for i in range(loop):
-                    self.log_always("Extruder: %d" % i)
-                    self.gcode.run_script_from_command("G1 E%.4f F240" % move)
-                self._sync_gear_to_extruder(False, servo=servo, current=False)
-
         if gcmd.get_int('TTC_TEST', 0, minval=0, maxval=1):
             loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
             for i in range(loop):
                 stop_on_endstop = random.randint(0, 1) * 2 - 1
                 self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d" % stop_on_endstop)
-
-        if gcmd.get_int('KEVIN', 0, minval=0, maxval=1):
-            loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
-            endstop = self.selector.selector_rail.get_extra_endstop("mmu_sel_touch")
-            for i in range(loop):
-                move_type = random.randint(0, 2)
-                move = random.randint(10, 100)
-                speed = random.randint(50, 200)
-                accel = random.randint(50, 2000)
-                speed = self.selector_touch_speed
-                wait = random.randint(0, 1)
-                gate = random.randint(0, 8)
-                tool = random.randint(0, 8)
-                homing = random.randint(0, 1)
-                offset = self.selector_offsets[gate]
-
-                with self._wrap_action(self.ACTION_SELECTING):
-                    #self.movequeues_wait()
-#                    init_pos = self.mmu_toolhead.get_position()[0]
-#                    halt_pos,homed = self.selector.homing_move("Positioning selector with 'touch' move", move, homing_move=1, endstop_name=self.ENDSTOP_SELECTOR_TOUCH)
-
-#                    with self._wrap_track_time("test"):
-                    pos = self.mmu_toolhead.get_position()
-                    self.log_error("Start print time: %s" % self.mmu_toolhead.print_time)
-                    pos[0] = move
-                    if homing:
-                        hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
-                        try:
-                            #accel = 500
-                            with self._wrap_accel(accel):
-                                #halt_pos,homed = self.selector.homing_move("Positioning selector with 'touch' move", move, homing_move=1, endstop_name=self.ENDSTOP_SELECTOR_TOUCH)
-                                logging.info(f"PAUL: trig_pos = hmove.homing_move({pos}, {speed}, probe_pos=True, triggered=True, check_triggered=True)")
-                                trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=True, check_triggered=True)
-                                actual = self.mmu_toolhead.get_position()
-                                self.log_always("%d. Homing move: Rail starting pos: %.2f, Selector moved to %.2fmm, trig_pos=%s" % (i, pos[0], actual[0], trig_pos))
-                                delta = abs(pos[0] - trig_pos[0])
-                                #if delta > 0:
-                                if delta < 1.0:
-                                    self.log_always("Truing selector %.4fmm" % delta)
-                                    logging.info(f"PAUL: self.mmu_toolhead.move({pos}, {speed})")
-                                    self.mmu_toolhead.move(pos, speed)
-                                    actual = self.mmu_toolhead.get_position()
-                                    self.log_always("Final selector pos: %.1fmm" % actual[0])
-                                self.mmu_toolhead.get_last_move_time()
-                        except self.printer.command_error as e:
-                            self.log_error("Exception: %s" % str(e))
-
-                        self.movequeues_wait(toolhead=False)
-                        self.log_error("Homing: Print time: %s, last_move_time: %s" % (self.mmu_toolhead.print_time, self.mmu_toolhead.get_last_move_time()))
-                    else:
-                        self.mmu_toolhead.move(pos, speed)
-                        self.log_error("Regular: Print time: %s, last_move_time: %s" % (self.mmu_toolhead.print_time, self.mmu_toolhead.get_last_move_time()))
+                self.mmu_toolhead.get_last_move_time() # Try to provoke TTC
 
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
@@ -1600,7 +1540,7 @@ class Mmu:
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
             if wait:
-                self.movequeues_wait(mmu_toolhead=False)
+                self.movequeues_wait()
         except Exception as e:
             if exception is not None:
                 if exception:
@@ -1735,16 +1675,14 @@ class Mmu:
         self.job_statistics = {}
 
     def _track_time_start(self, name):
-        # PAUL self.track[name] = self.toolhead.get_last_move_time()
-        self.track[name] = self.toolhead.print_time
+        self.track[name] = self.toolhead.get_last_move_time()
 
     def _track_time_end(self, name):
         if name not in self.track:
             return # Timer not initialized
         self.statistics.setdefault(name, 0)
         self.job_statistics.setdefault(name, 0)
-        # PAUL elapsed = self.toolhead.get_last_move_time() - self.track[name]
-        elapsed = self.toolhead.print_time - self.track[name]
+        elapsed = self.toolhead.get_last_move_time() - self.track[name]
         self.statistics[name] += elapsed
         self.job_statistics[name] += elapsed
         self.last_statistics[name] = elapsed
@@ -3856,7 +3794,6 @@ class Mmu:
         return self.mmu_toolhead.get_position()[1]
 
     def _set_filament_position(self, position = 0.):
-        # PAUL mmu_last_move = self.mmu_toolhead.get_last_move_time()
         pos = self.mmu_toolhead.get_position()
         pos[1] = position
         self.mmu_toolhead.set_position(pos)
@@ -5010,7 +4947,7 @@ class Mmu:
                     if not(self._check_pre_gate_sensor(self.gate_selected) is True or self._check_sensor(self.ENDSTOP_GATE) is True or (self._has_encoder() and self._get_encoder_distance() > 0)):
                         self.log_info("Warning: Filament not seen at MMU after after tip forming move. Unload may not be possible")
 
-                self._wrap_gcode_command(self.post_form_tip_macro, exception=True)
+                self._wrap_gcode_command(self.post_form_tip_macro, exception=True, wait=True)
 
             # Note: Conditionals deliberately coded this way to match macro alternative
             start_filament_pos = self.filament_pos
@@ -5057,7 +4994,7 @@ class Mmu:
                 movement = self._servo_up(measure=True)
                 if movement > self.encoder_min:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
-                    raise MmuError("It may be time to get the pliers out! Filament appears to stuck somewhere")
+                    raise MmuError("It may be time to get the pliers out! Filament appears to be stuck somewhere")
             else:
                 self._servo_up()
 
@@ -5549,7 +5486,7 @@ class Mmu:
         if servo:
             self._servo_down() if sync else self._servo_auto()
         self._adjust_gear_current(self.sync_gear_current, "for extruder syncing") if current and sync else self._restore_gear_current()
-        self.movequeues_wait() # PAUL safety but should not be required
+        self.movequeues_wait() # Safety but should not be required(?)
         return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
 
     # This is used to protect the in print synchronization state and is used as an outermost wrapper for
@@ -5557,7 +5494,6 @@ class Mmu:
     # restored, but like the rest of Happy Hare it employs lazy servo movement to reduce "flutter"
     @contextlib.contextmanager
     def _wrap_sync_gear_to_extruder(self):
-        #self.movequeues_wait() # TODO Not sure we need this but perhaps safer for now
         prev_gear_synced = self._sync_gear_to_extruder(False, servo=False, current=True)
         try:
             yield self
@@ -5753,13 +5689,13 @@ class Mmu:
                 raise MmuError("Gate %d is empty!\nUse 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % (gate, gate, gate))
 
         with self._wrap_track_time('pre_load'):
-            self._wrap_gcode_command(self.pre_load_macro, exception=True)
+            self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
         self._select_tool(tool, move_servo=False)
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
         with self._wrap_track_time('post_load'):
-            self._wrap_gcode_command(self.post_load_macro, exception=True)
+            self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
     # Primary method to unload current tool but retains selection
     def _unload_tool(self, skip_tip=False, runout=False):
@@ -5770,12 +5706,12 @@ class Mmu:
         self.log_debug("Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
         with self._wrap_track_time('pre_unload'):
-            self._wrap_gcode_command(self.pre_unload_macro, exception=True)
+            self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True)
         self._record_tool_override() # Remember M220 and M221 overrides
         self._unload_sequence(skip_tip=skip_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
         with self._wrap_track_time('post_unload'):
-            self._wrap_gcode_command(self.post_unload_macro, exception=True)
+            self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
     # This is the main function for initiating a tool change, it will handle unload if necessary
     def _change_tool(self, tool, skip_tip=True, next_pos=None):
@@ -7848,7 +7784,6 @@ class MmuSelector():
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
 
-        # PAUL self.last_selector_move_time = None
         self.is_homed = False
 
     def _home_selector(self):
@@ -7860,7 +7795,6 @@ class MmuSelector():
         try:
             self.mmu.mmu_kinematics.home(homing_state)
             self.is_homed = True
-            # PAUL self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
         except Exception as e: # Homing failed
             self.mmu._set_tool_selected(self.mmu.TOOL_GATE_UNKNOWN)
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
@@ -7935,15 +7869,6 @@ class MmuSelector():
                 self.mmu.log_error("Endstop '%s' not found on selector rail" % endstop_name)
                 return pos[0], homed
 
-# Does not appear necessary despite klipper documentation?
-#            # Don't allow stallguard home moves in rapid succession (TMC limitation)
-#            delay = 1. if self.selector_rail.is_endstop_virtual(endstop_name) else 0. # 1 sec recovery time
-#            current_ept = self.mmu.estimated_print_time(self.mmu.reactor.monotonic())
-#            wait_time = (self.last_selector_move_time - current_ept + delay) if self.last_selector_move_time is not None else 0.
-#            if (wait_time) > 0:
-#                self.mmu.log_trace("Waiting %.2f seconds before next touch move" % wait_time)
-#                self.mmu_toolhead.dwell(wait_time)
-
             hmove = HomingMove(self.mmu.printer, endstop, self.mmu_toolhead)
             try:
                 trig_pos = [0., 0., 0., 0.]
@@ -7958,8 +7883,7 @@ class MmuSelector():
                         if delta < 1.0:
                             homed = False
                             self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
-                            self.mmu_toolhead.move(pos, speed) # Klipper bug. Frequently causes TTC errors. But another probing move is fine?!?
-                            # PAUL hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
+                            self.mmu_toolhead.move(pos, speed)
                         else:
                             homed = True
                     else:
@@ -7981,11 +7905,9 @@ class MmuSelector():
             if wait:
                 self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
 
-        # PAUL self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
         return pos[0], homed
 
     def set_position(self, position):
-        # PAUL mmu_last_move = self.mmu_toolhead.get_last_move_time()
         pos = self.mmu_toolhead.get_position()
         pos[0] = position
         self.mmu_toolhead.set_position(pos, homing_axes=(0,))
