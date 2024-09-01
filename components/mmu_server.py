@@ -83,6 +83,7 @@ class MmuServer:
         self.update_location = self.config.getboolean("update_spoolman_location", True)
 
     async def _get_spoolman_version(self) -> tuple[int, int, int] | None:
+        await asyncio.sleep(2) # Give spoolman time to connect
         response = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/info')
         if response.status_code == 404:
             logging.info(f"'{self.spoolman.spoolman_url}/v1/info' not found")
@@ -105,7 +106,7 @@ class MmuServer:
             self.printer_hostname = self.printer_info["hostname"]
             self.spoolman_version = await self._get_spoolman_version()
             extras = False
-            if self.spoolman_version >= MIN_SM_VER:
+            if self.spoolman_version and self.spoolman_version >= MIN_SM_VER:
                 # Make sure db has required extra fields
                 extras = True
                 fields = await self._get_extra_fields("spool")
@@ -318,7 +319,9 @@ class MmuServer:
         ]
 
     async def _set_spool_gate(self, spool_id, printer, gate, silent=False) -> bool:
-        if not self.spoolman_has_extras: return
+        if not self.spoolman_has_extras:
+            await self._log_n_send(f"Spoolman is incompatible version or unavailable")
+            return
 
         # Use the PATCH method on the spoolman api
         if not silent:
@@ -343,7 +346,9 @@ class MmuServer:
         return True
 
     async def _unset_spool_gate(self, spool_id, silent=False) -> bool:
-        if not self.spoolman_has_extras: return
+        if not self.spoolman_has_extras:
+            await self._log_n_send(f"Spoolman is incompatible version or unavailable")
+            return
 
         # Use the PATCH method on the spoolman api
         if not silent:
