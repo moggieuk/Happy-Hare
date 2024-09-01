@@ -6355,7 +6355,6 @@ class Mmu:
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
-#                    skip_tip = self._is_printing() and not (standalone or self.force_form_tip_standalone)
                     form_tip = self.FORM_TIP_SLICER if (self._is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
                     if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed: # Will be done later if not homed
                         self._recover_filament_pos(message=True)
