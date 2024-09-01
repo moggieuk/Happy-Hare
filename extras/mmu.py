@@ -1590,6 +1590,64 @@ class Mmu:
             self.gate_selected = gate
             self._auto_calibrate(direction, ratio, homing_movement)
 
+# PAUL TEMP
+        if gcmd.get_int('KEVIN', 0, minval=0, maxval=1):
+            loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
+            endstop = self.selector.selector_rail.get_extra_endstop("mmu_sel_touch")
+            for i in range(loop):
+                move_type = random.randint(0, 2)
+                move = random.randint(10, 100)
+                speed = random.randint(50, 200)
+                accel = random.randint(50, 2000)
+                speed = self.selector_touch_speed
+                wait = random.randint(0, 1)
+                gate = random.randint(0, 8)
+                tool = random.randint(0, 8)
+                offset = self.selector_offsets[gate]
+
+                with self._wrap_action(self.ACTION_SELECTING):
+                    with self._wrap_track_time("test"):
+                        pos = self.mmu_toolhead.get_position()
+                        pos[0] = move
+                        hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
+                        try:
+                            #accel = 500
+                            with self._wrap_accel(accel):
+                                #halt_pos,homed = self.selector.homing_move("Positioning selector with 'touch' move", move, homing_move=1, endstop_name=self.ENDSTOP_SELECTOR_TOUCH)
+                                logging.info(f"PAUL: trig_pos = hmove.homing_move({pos}, {speed}, probe_pos=True, triggered=True, check_triggered=True)")
+                                trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=True, check_triggered=True)
+                                actual = self.mmu_toolhead.get_position()
+                                self.log_always("%d. Homing move: Rail starting pos: %.2f, Selector moved to %.2fmm, trig_pos=%s" % (i, pos[0], actual[0], trig_pos))
+                                delta = abs(pos[0] - trig_pos[0])
+                                #if delta > 0:
+                                if delta < 1.0:
+                                    self.log_always("Truing selector %.4fmm" % delta)
+                                    logging.info(f"PAUL: self.mmu_toolhead.move({pos}, {speed})")
+                                    self.mmu_toolhead.move(pos, speed)
+                                    actual = self.mmu_toolhead.get_position()
+                                    self.log_always("Final selector pos: %.1fmm" % actual[0])
+                        except self.printer.command_error as e:
+                            self.log_error("Exception: %s" % str(e))
+
+                        #mmu_vars_revision = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, 0) + 1
+                        #self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_REVISION, mmu_vars_revision))
+                        #self.movequeues_wait(toolhead=False)
+                        self.mmu_toolhead.flush_step_generation()
+                        self.last_selector_move_time = self.mmu_toolhead.get_last_move_time() # Provoke TTC
+                        self._set_gate_selected(random.randint(0,8))
+                        self._set_tool_selected(random.randint(0,8))
+
+        if gcmd.get_int('PAUL', 0, minval=0, maxval=1):
+            eventtime = self.reactor.monotonic()
+            mmu_last_move = self.mmu_toolhead.get_last_move_time()
+            self.log_info(f"PAUL: START")
+            for i in range(1000):
+                self.mmu_toolhead.flush_step_generation()
+                self.toolhead.flush_step_generation()
+            self.log_info(f"PAUL: END: Time:%.4f, Wall:%.4f" % (self.mmu_toolhead.get_last_move_time() - mmu_last_move, self.reactor.monotonic() - eventtime))
+
+# PAUL TEMP ^^^
+
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
             macro = command.split()[0]
@@ -5575,8 +5633,15 @@ class Mmu:
                     ext_pos[3] += dist
                     self.toolhead.move(ext_pos, speed)
 
-        if not homing_move and wait:
+        if wait: # PAUL
             self.movequeues_wait()
+        else:
+            pass
+            # TTC mitigation
+            #self.mmu_toolhead.flush_step_generation()
+            #self.toolhead.flush_step_generation()
+        self.toolhead.get_last_move_time() # PAUL temp provoke TTC
+        self.mmu_toolhead.get_last_move_time() # PAUL temp provoke TTC
 
         encoder_end = self._get_encoder_distance(dwell=encoder_dwell)
         measured = encoder_end - encoder_start
@@ -8100,7 +8165,7 @@ class MmuSelector():
             except self.mmu.printer.command_error as e:
                 homed = False
             finally:
-                self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True) # TTC mitigation when homing move + regular + get_last_move_time() is close succession
+                self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
                 pos = self.mmu_toolhead.get_position()
                 if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
                     self.mmu.log_stepper("SELECTOR HOMING MOVE: requested position=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s >> %s" % (new_pos, speed, accel, endstop_name, "%s actual pos=%.2f, trig_pos=%.2f" % ("HOMED" if homed else "DID NOT HOMED",  pos[0], trig_pos[0])))
