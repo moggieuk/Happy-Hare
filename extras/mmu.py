@@ -5633,15 +5633,11 @@ class Mmu:
                     ext_pos[3] += dist
                     self.toolhead.move(ext_pos, speed)
 
-        if wait: # PAUL
+        if wait:
             self.movequeues_wait()
         else:
-            pass
-            # TTC mitigation
-            #self.mmu_toolhead.flush_step_generation()
-            #self.toolhead.flush_step_generation()
-        self.toolhead.get_last_move_time() # PAUL temp provoke TTC
-        self.mmu_toolhead.get_last_move_time() # PAUL temp provoke TTC
+            self.mmu_toolhead.flush_step_generation() # TTC mitigation
+            self.toolhead.flush_step_generation()     # TTC mitigation
 
         encoder_end = self._get_encoder_distance(dwell=encoder_dwell)
         measured = encoder_end - encoder_start
