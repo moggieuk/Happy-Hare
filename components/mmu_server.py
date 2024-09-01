@@ -319,7 +319,9 @@ class MmuServer:
         ]
 
     async def _set_spool_gate(self, spool_id, printer, gate, silent=False) -> bool:
-        if not self.spoolman_has_extras: return
+        if not self.spoolman_has_extras:
+            await self._log_n_send(f"Spoolman is incompatible version or unavailable")
+            return
 
         # Use the PATCH method on the spoolman api
         if not silent:
@@ -344,7 +346,9 @@ class MmuServer:
         return True
 
     async def _unset_spool_gate(self, spool_id, silent=False) -> bool:
-        if not self.spoolman_has_extras: return
+        if not self.spoolman_has_extras:
+            await self._log_n_send(f"Spoolman is incompatible version or unavailable")
+            return
 
         # Use the PATCH method on the spoolman api
         if not silent:
