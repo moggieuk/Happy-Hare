@@ -4813,6 +4813,17 @@ class Mmu:
                 self.log_debug("Unloading last %.1fmm to exit the extruder%s" % (length, " (synced)" if synced else ""))
                 _,_,measured,delta = self._trace_filament_move("Unloading extruder", -length, speed=speed, motor=motor, wait=True)
 
+                # filament should be out of extruder now, but is it really? worth double checking before try to
+                # unload the whole bowden length in hi speed.
+                UNLOAD_EXTRUDER_MORE_MAX = 100
+                step = 20
+                unloaded, extra_len = self.retract_from_extruder_until_mmu_can_freely_pull(UNLOAD_EXTRUDER_MORE_MAX,
+                                                                                           step)
+                if unloaded:
+                    self.log_debug("unload extruder done!")
+                else:
+                    raise MmuError(f"failed to unload from extruder even with {extra_len}mm more length.")
+
                 # Best guess of filament position is right at extruder entrance or just beyond if synced
                 if synced:
                     self._set_filament_position(-(self.toolhead_extruder_to_nozzle + self.toolhead_unload_safety_margin))
@@ -4839,6 +4850,36 @@ class Mmu:
             self.movequeues_wait()
             self.log_debug("Filament should be out of extruder")
 
+    # helper function to help to do a simple retract / unload from extruder until mmu encoder
+    # can detect filament can move freely
+    # if it's still locked in extruder, MMU cannot move filament freely
+    # return True if successful
+    def retract_from_extruder_until_mmu_can_freely_pull(self, max_dist:float=120, step:float=20)->tuple:
+        self._servo_down()
+        unloaded_more = 0
+        # must make sure step is negative float later)
+        step = abs(step)
+        while True:
+            in_extruder, _ = self.with_tension_sensor_check_is_filament_in_extruder_by_weak_move()
+            if not in_extruder:
+                break
+            self.log_info(f"in extruder! about to unloaded {step}mm more (so far total {unloaded_more:.1f}mm) to get filament out of extruder")
+            _, _, measured, _ = self._trace_filament_move("Unloading extruder more", -1.0*step, speed=self.extruder_sync_unload_speed,
+                                                          motor="gear+extruder", wait=True)
+            measured = abs(measured)
+            if measured <0.5:
+                # safety guard avoid endless loop, if measured 0, something is wrong, servo cannot push down? current too low?
+                self._servo_down()
+                measured = 1
+            unloaded_more += measured
+            if unloaded_more > max_dist:
+                self.log_error(f"even unloaded {unloaded_more:.1f}mm extra, but filament is still in extruder ?")
+                return False, unloaded_more
+
+        if unloaded_more:
+            self.log_always(
+                f"had to unload extra {unloaded_more:.1f}mm to unload from extruder, suggest adjust toolhead_extruder_to_nozzle in config")
+        return True, unloaded_more
 
 ##############################################
 # LOAD / UNLOAD SEQUENCES AND FILAMENT TESTS #
@@ -4846,7 +4887,7 @@ class Mmu:
 
     def _load_sequence(self, length=None, skip_extruder=False, extruder_only=False):
         self.movequeues_wait()
-        self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
+        self.log_info("_load_sequence() working Loading %s..." % ("extruder" if extruder_only else "filament"))
         full = home = False
         if not length:
             length = self.calibrated_bowden_length
@@ -4898,7 +4939,7 @@ class Mmu:
                     self._load_extruder()
 
             self.movequeues_wait()
-            msg = "Load of %.1fmm filament successful" % self._get_filament_position()
+            msg = "_load_sequence() Load of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
                 msg += " {1}(encoder measured %.1fmm){0}" % self._get_encoder_distance(dwell=None)
             self.log_info(msg, color=True)
@@ -4912,7 +4953,9 @@ class Mmu:
             if not extruder_only:
                 self._set_action(current_action)
             if not self._is_printing():
-                self._servo_up()
+                # leave servo as is
+                pass
+
 
     def _unload_sequence(self, length=None, check_state=False, skip_tip=False, extruder_only=False, runout=False):
         self.movequeues_wait()
@@ -4930,8 +4973,9 @@ class Mmu:
             self._servo_auto()
             return
 
+        unload_from_extruder = ( self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER)
         try:
-            self.log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
+            self.log_info("_unload_sequence Unloading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
                 self._track_time_start('unload')
@@ -4948,8 +4992,11 @@ class Mmu:
                     self.log_debug("Tip forming performed by slicer, park_pos set to %.1fmm" % park_pos)
 
             elif self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER or runout:
+                unload_from_extruder = True
+                self.log_info("self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER or runout")
                 # Extruder only in runout case to give filament best chance to reach gear
                 detected = self._form_tip_standalone(extruder_only=(extruder_only or runout))
+                # form tip makes servo up!
                 park_pos = self._get_filament_position()
 
                 if runout:
@@ -5003,13 +5050,18 @@ class Mmu:
                 movement = self._servo_up(measure=True)
                 if movement > self.encoder_min:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
-                    raise MmuError("It may be time to get the pliers out! Filament appears to stuck somewhere")
+                    raise MmuError(f"It may be time to get the pliers out! Filament appears to stuck somewhere {movement}>{self.encoder_min}")
+                pass
             else:
                 self._servo_up()
 
+            # sanity check, we unload from extruder, to make sure it actually unloaded at least 50% of the bowden length
+            encode_dist = self._get_encoder_distance(dwell=False)
+            if unload_from_extruder and encode_dist < ( 0.5* self.calibrated_bowden_length):
+                raise MmuError(f"most likely unload failed, unload from extruder but only unloaded {encode_dist:.1f}mm while bowden is {self.calibrated_bowden_length}mm long?")
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
-                msg += " (encoder measured %.1fmm)" % self._get_encoder_distance(dwell=False)
+                msg += " (encoder measured %.1fmm)" % encode_dist # self._get_encoder_distance(dwell=False)
             self.log_info(msg)
 
         except MmuError as ee:
@@ -5028,6 +5080,7 @@ class Mmu:
             self.log_info("Attempting to recover filament position...")
         ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
         if ts is None: # Not installed
+            self.log_debug("NO toolhead sensor installed, checking if filament in extruder")
             if self._check_filament_in_mmu():
                 if self._check_filament_still_in_extruder():
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
@@ -5057,6 +5110,12 @@ class Mmu:
     # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
     # Return if filament detected and distance filament moved during test
     def _test_filament_in_extruder_by_retracting(self, length=None):
+        has_tension_sensor = self.mmu_sensors.has_tension_switch or self.mmu_sensors.has_compression_switch
+        # below checking code doesn't work well with tension sensor device due to the free moving dist
+        if has_tension_sensor:
+            self.log_debug(f"has tension sensor, _test_filament_in_extruder_by_retracting assume in extruder")
+            return True, 0
+
         with self._require_encoder():
             self.log_debug("Testing for filament in extruder by retracting on extruder stepper only")
             if not length:
@@ -5064,6 +5123,7 @@ class Mmu:
             self._servo_up()
             _,_,measured,_ = self._trace_filament_move("Moving extruder to test for filament exit", -length, speed=self.extruder_unload_speed, motor="extruder")
             detected = measured > self.encoder_min
+            self.log_debug(f"extruder attempted to retract {length} and encoder measured {measured} VS {self.encoder_min}, {detected=}")
             self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
             return detected, measured
 
@@ -5122,6 +5182,7 @@ class Mmu:
                         detected = False
                     elif synced:
                         # A further test is needed to see if the filament is actually in the extruder
+                        # below test doesn't work well with tension sensor device installed.
                         detected, moved = self._test_filament_in_extruder_by_retracting()
                         park_pos += moved
 
@@ -5460,17 +5521,84 @@ class Mmu:
         self.log_debug("No sensors configured!")
         return False
 
+
+    # Do a quick check see if filament in extruder by moving MMU gear
+    # attempt to move filament toward extruder some distance, it should at least move min.
+    # min should include possible tension device free move dist + PTFE tube spring back movement
+    # move must > min , also some head room is needed
+    # Can find the min, load filament locked in extruder, then run MMU_TEST_MOVE MOVE=-60  MMU_TEST_MOVE MOVE=60
+    # the actual measured value means even it's locked in extruder, it still can move that distance.
+    # max_delta: if actual movement delta larger than that, it's NOT freely moving.
+    # Assuming ~~45 is reasonable for most tension sensor system + ptfe tube spring back
+    # pay attention to direction, when try to pull it out of extruder, it need to be pullback to avoid stuck
+    def with_tension_sensor_check_is_filament_in_extruder_by_weak_move(self, move:float=50, max_delta:float=20, pullback:bool=True)->bool:
+        self.log_debug(f"with_tension_sensor_check_is_filament_in_extruder_by_weak_move working {move=} {max_delta=} {pullback=}")
+
+        if not self._has_encoder():
+            # rather stop it immediately, it's better than causing strange problem during 10hours print
+            raise MmuError(f"cannot do it without encoder, please don't call this function")
+
+        move = abs(move)
+        max_delta = abs(max_delta)
+        if pullback:
+            move = -1.0*move
+        self._servo_down()
+        # even caller is confused, make sure it's negative float (later)
+
+            # don't use too small stepper current, it may fail rotate and fail to pull even though it's already out of extruder
+        with self._wrap_gear_current(self.extruder_collision_homing_current, "quick check filament in extruder"):
+            _, _, measured,_ = self._trace_filament_move("quick check filament in extruder", \
+                                             move, speed=self.extruder_load_speed,  motor="gear")
+            self.log_debug(f"_trace_filament_move moved {move}, measured={measured:.1f}")
+        measured=abs(measured)
+        actual_delta = abs(abs(move)-abs(measured))
+        if actual_delta < max_delta:
+            # smaller delta = freely move ,  larger delta, stuck
+            self.log_debug(f"with tension sensor check move filament measured {measured:.1f}, actual delta:{actual_delta:.1f}<{max_delta=}, it can move freely")
+            # can move, so it's not in extruder
+            return False, measured
+        else:
+            detected = True
+            # not enough movement detected by encoder, either blocked by extruder, or it got back left encoder
+            self.log_debug(f"with tension sensor check move filament measured {measured:.1f}, actual delta:{actual_delta:.1f}>{max_delta=} delta too large, cannot move freely,..also need to check encoder")
+            # cannot freely move, most likely in extruder
+            # there is a case when filament is just out of encoder a little, then pulled back, so encoder cannot detect much movement.
+            # so it's not even inside encoder , not to mention extruder.
+            if pullback:
+                # to let buzz gear motor works better
+                #move_release_tension = measured*0.5
+                #_, _, measured, _ = self._trace_filament_move("quick check filament in extruder", \
+                #                                              move_release_tension, speed=self.extruder_load_speed, motor="gear")
+                #time.sleep(10)
+                detected = self._buzz_gear_motor()
+            if detected:
+                self.log_debug(f"filament still in encoder and cannot move freely, concluded it's in extruder")
+            else:
+                self.log_debug(f"filament already left encoder, so, not in extruder")
+            return detected, measured
+
+
     # Check for filament in extruder by moving extruder motor. Even with toolhead sensor this
     # can happen if the filament is in the short distance from sensor to gears
     def _check_filament_still_in_extruder(self):
         if self._has_encoder():
-            self.log_debug("Checking for possibility of filament still in extruder gears...")
-            self._ensure_safe_extruder_temperature(wait=False)
-            self._servo_up()
-            length = self.encoder_move_step_size
-            _,_,measured,_ = self._trace_filament_move("Checking extruder", -length, speed=self.extruder_unload_speed, motor="extruder")
-            detected = measured > self.encoder_min
-            self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
+            has_tension_sensor = self.mmu_sensors.has_tension_switch or self.mmu_sensors.has_compression_switch
+            if not has_tension_sensor:
+                self.log_debug("Checking for possibility of filament still in extruder gears...")
+                self._ensure_safe_extruder_temperature(wait=False)
+                self._servo_up()
+                length = self.encoder_move_step_size
+                _,_,measured,_ = self._trace_filament_move("Checking extruder", -length, speed=self.extruder_unload_speed, motor="extruder")
+                detected = measured > self.encoder_min
+                self.log_debug("check step1 Filament %s in extruder" % ("detected" if detected else "not detected"))
+
+            else:
+                self.log_debug("_check_filament_still_in_extruder() working, has tension sensor, outputing a bit filament")
+                # has tension sensor
+                detected, _ = self.with_tension_sensor_check_is_filament_in_extruder_by_weak_move(pullback=False)
+                self.log_debug("with tension sensor, Filament %s in extruder" % ("detected" if detected else "not detected"))
+
+
             return detected
         return False
 
@@ -5711,7 +5839,7 @@ class Mmu:
             self.log_info("Tool already unloaded")
             return
 
-        self.log_debug("Unloading tool %s" % self._selected_tool_string())
+        self.log_debug("_unload_tool() Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
         with self._wrap_track_time('pre_unload'):
             self._wrap_gcode_command(self.pre_unload_macro, exception=True)
