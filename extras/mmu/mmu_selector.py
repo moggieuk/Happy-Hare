@@ -20,11 +20,25 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-# Implements Virtual selector for type-B MMU's with gear driver per gate
+FILAMENT_HOLD_STATE = 2     # PAUL aka servo_move
+FILAMENT_DRIVE_STATE = 1    # PAUL aka servo_down
+FILAMENT_RELEASE_STATE = 0  # PAUL aka servo_up
+FILAMENT_UNKNOWN_STATE = -1 # PAUL aka servo_unkonwn
+
+################################################################################
+# Virtual Selector
+# Implements selector for type-B MMU's with gear driver per gate
+################################################################################
 class VirtualSelector():
     def __init__(self, mmu):
         self.mmu = mmu
         self.mmu_toolhead = mmu.mmu_toolhead
+
+    def reinit(self):
+        pass
+
+    def handle_connect(self):
+        pass
 
     def select_gate(self, gate):
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper
@@ -49,19 +63,69 @@ class VirtualSelector():
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
         se.motor_enable(self.mmu_toolhead.get_last_move_time())
 
+    def buzz_motor(self, motor):
+        pass
+
+    def get_status(self):
+        return {}
+
+    def get_mmu_config(self):
+        return "TODO"
+
+
+################################################################################
+# Linear Selector
 # Implements Linear Selector for type-A MMU's that uses stepper conrolled rail[0] on mmu toolhead
+################################################################################
 class LinearSelector():
     def __init__(self, mmu):
         self.mmu = mmu
         self.mmu_toolhead = mmu.mmu_toolhead
 
         # Initialize required resources
-        self.servo = LinearSelectorServo(self, mmu)
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
-
-        self.last_selector_move_time = None
         self.is_homed = False
+
+        # Sub components
+        self.servo = LinearSelectorServo(mmu)
+
+        # Register GCODE commands specific to this module
+        gcode = self.mmu.printer.lookup_object('gcode')
+        gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
+
+    def reinit(self):
+        self.servo.reinit()
+
+    def handle_connect(self):
+        self.servo.handle_connect()
+
+    cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
+    def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
+        self.mmu.log_to_file(gcmd.get_commandline())
+        if self.mmu._check_is_disabled(): return
+        if self.mmu._check_is_loaded(): return
+        if self.mmu._check_is_calibrated(self.CALIBRATED_SELECTOR): return
+        loops = gcmd.get_int('LOOP', 100)
+        servo = bool(gcmd.get_int('SERVO', 0))
+        home = bool(gcmd.get_int('HOME', 1))
+        try:
+            if home:
+                self._home()
+            for l in range(loops):
+                self.log_always("Testing loop %d / %d" % (l + 1, loops))
+                tool = random.randint(0, self.mmu_num_gates)
+                if tool == self.mmu_num_gates:
+                    self._select_bypass()
+                else:
+                    if random.randint(0, 10) == 0 and home:
+                        self._home(tool)
+                    else:
+                        self.mmu._select_tool(tool, move_servo=servo) # PAUL select tool or gate?
+                if servo:
+                    self.selector.filament_drive()
+        except MmuError as ee:
+            self.mmu._handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
     def select_gate(self, gate):
         if gate == self.mmu.gate_selected: return
@@ -75,14 +139,17 @@ class LinearSelector():
             self.position(offset)
             self.mmu._set_gate_selected(gate)
 
-    def filament_drive(self): # PAUL aka _servo_down
-        pass
+    def filament_drive(self, buzz_gear=True): # PAUL aka _servo_down
+        self.servo._servo_down(buzz_gear=buzz_gear)
 
-    def filament_release(self): # PAUL aka _servo_up
-        pass
+    def filament_release(self, measure=False): # PAUL aka _servo_up
+        self.servo._servo_up(measure=measure)
 
     def filament_hold(self): # PAUL aka _servo_move
-        pass
+        self.servo._servo_move()
+
+    def get_filament_grip_state(self):
+        return self.servo.get_filament_grip_state(self)
 
     def disable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
@@ -90,10 +157,39 @@ class LinearSelector():
         se.motor_disable(self.mmu_toolhead.get_last_move_time())
         self.is_homed = False
 
+        self.servo.disable_motors()
+
     def enable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
         se.motor_enable(self.mmu_toolhead.get_last_move_time())
+
+    def buzz_motor(self, motor):
+        if motor == "selector":
+            pos = self.mmu_toolhead.get_position()[0]
+            self.move(None, pos + 5, wait=False)
+            self.move(None, pos - 5, wait=False)
+            self.move(None, pos, wait=False)
+        elif motor == "servo":
+            self.servo.buzz_motor(motor)
+        else:
+            return False
+        return True
+
+    def get_status(self):
+        status = {
+            'grip': "release" if self.servo.servo_state == self.servo.SERVO_UP_STATE else
+                    "drive" if self.servo.servo_state == self.servo.SERVO_DOWN_STATE else
+                    "hold" if self.servo.servo_state == self.servo.SERVO_MOVE_STATE else
+                    "unknown",
+        }
+        status.update(self.servo.get_status())
+        return status
+
+    def get_mmu_config(self):
+        msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
+        msg += self.servo.get_mmu_config()
+        return msg
 
     def _home_selector(self):
         self.mmu.gate_selected = self.mmu.TOOL_GATE_UNKNOWN
@@ -104,7 +200,6 @@ class LinearSelector():
         try:
             self.mmu.mmu_kinematics.home(homing_state)
             self.is_homed = True
-            self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
         except Exception as e: # Homing failed
             self.mmu._set_tool_selected(self.mmu.TOOL_GATE_UNKNOWN)
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
@@ -120,8 +215,8 @@ class LinearSelector():
                     travel = abs(init_pos - halt_pos)
                     if travel < 4.0: # Filament stuck in the current gate (based on ERCF design)
                         self.mmu.log_info("Selector is blocked by filament inside gate, will try to recover...")
-                        #self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos) # Klipper bug. Causes TTC error!
-                        self.homing_move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos, homing_move=1, endstop_name=self.mmu.ENDSTOP_SELECTOR_TOUCH)
+                        self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
+                        self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
 
                         # See if we can detect filament in the encoder
                         found = self.mmu._check_filament_at_gate()
@@ -179,15 +274,6 @@ class LinearSelector():
                 self.mmu.log_error("Endstop '%s' not found on selector rail" % endstop_name)
                 return pos[0], homed
 
-# Does not appear necessary despite klipper documentation?
-#            # Don't allow stallguard home moves in rapid succession (TMC limitation)
-#            delay = 1. if self.selector_rail.is_endstop_virtual(endstop_name) else 0. # 1 sec recovery time
-#            current_ept = self.mmu.estimated_print_time(self.mmu.reactor.monotonic())
-#            wait_time = (self.last_selector_move_time - current_ept + delay) if self.last_selector_move_time is not None else 0.
-#            if (wait_time) > 0:
-#                self.mmu.log_trace("Waiting %.2f seconds before next touch move" % wait_time)
-#                self.mmu_toolhead.dwell(wait_time)
-
             hmove = HomingMove(self.mmu.printer, endstop, self.mmu_toolhead)
             try:
                 trig_pos = [0., 0., 0., 0.]
@@ -202,8 +288,7 @@ class LinearSelector():
                         if delta < 1.0:
                             homed = False
                             self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
-                            #self.mmu_toolhead.move(pos, speed) # Klipper bug. Frequently causes TTC errors. But another probing move is fine?!?
-                            trig_pos2 = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
+                            self.mmu_toolhead.move(pos, speed)
                         else:
                             homed = True
                     else:
@@ -211,6 +296,7 @@ class LinearSelector():
             except self.mmu.printer.command_error as e:
                 homed = False
             finally:
+                self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
                 pos = self.mmu_toolhead.get_position()
                 if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
                     self.mmu.log_stepper("SELECTOR HOMING MOVE: requested position=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s >> %s" % (new_pos, speed, accel, endstop_name, "%s actual pos=%.2f, trig_pos=%.2f" % ("HOMED" if homed else "DID NOT HOMED",  pos[0], trig_pos[0])))
@@ -224,11 +310,9 @@ class LinearSelector():
             if wait:
                 self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
 
-        self.last_selector_move_time = self.mmu_toolhead.get_last_move_time()
         return pos[0], homed
 
     def set_position(self, position):
-        mmu_last_move = self.mmu_toolhead.get_last_move_time()
         pos = self.mmu_toolhead.get_position()
         pos[0] = position
         self.mmu_toolhead.set_position(pos, homing_axes=(0,))
@@ -254,12 +338,20 @@ class LinearSelector():
         return self.mmu.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.mmu.selector_touch_enable
 
 
+################################################################################
+# LinearSelectorServo
+# Implements servo control for typical linear selector
+################################################################################
 class LinearSelectorServo():
 
-    SERVO_MOVE_STATE = 2
-    SERVO_DOWN_STATE = 1
-    SERVO_UP_STATE = 0
-    SERVO_UNKNOWN_STATE = -1
+    # mmu_vars.cfg variables
+    VARS_MMU_SERVO_ANGLES = "mmu_servo_angles"
+
+    # Servo states
+    SERVO_MOVE_STATE      = FILAMENT_HOLD_STATE
+    SERVO_DOWN_STATE      = FILAMENT_DRIVE_STATE
+    SERVO_UP_STATE        = FILAMENT_RELEASE_STATE
+    SERVO_UNKNOWN_STATE   = FILAMENT_UNKNOWN_STATE
 
     def __init__(self, mmu):
         self.mmu = mmu
@@ -280,11 +372,62 @@ class LinearSelectorServo():
         if not self.servo:
             raise self.mmu.config.error("No [mmu_servo] definition found in mmu_hardware.cfg")
 
-        self._servo_reset_state()
+        self.reinit()
 
-    def _servo_reset_state(self):
+        # Register GCODE commands specific to this module
+        gcode = self.mmu.printer.lookup_object('gcode')
+        gcode.register_command('MMU_SERVO', self.cmd_MMU_SERVO, desc = self.cmd_MMU_SERVO_help)
+
+    def reinit(self):
         self.servo_state = self.SERVO_UNKNOWN_STATE
         self.servo_angle = self.SERVO_UNKNOWN_STATE
+
+    def handle_connect(self):
+        # Override with saved/calibrated servo positions
+        try:
+            servo_angles = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SERVO_ANGLES, {})
+            self.servo_angles.update(servo_angles)
+        except Exception as e:
+            raise self.mmu.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
+
+# PAUL TODO change self.
+    cmd_MMU_SERVO_help = "Move MMU servo to position specified position or angle"
+    def cmd_MMU_SERVO(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self._check_is_disabled(): return
+        save = gcmd.get_int('SAVE', 0)
+        pos = gcmd.get('POS', "").lower()
+        if pos == "off":
+            self._servo_off() # For 'servo_always_active' case
+        elif pos == "up":
+            if save:
+                self._servo_save_pos(pos)
+            else:
+                self.mmu.selector.filament_release()
+        elif pos == "move":
+            if save:
+                self._servo_save_pos(pos)
+            else:
+                self.mmu.selector.filament_hold()
+        elif pos == "down":
+            if self._check_in_bypass(): return
+            if save:
+                self._servo_save_pos(pos)
+            else:
+                self.mmu.selector.filament_drive()
+        elif save:
+            self.log_error("Servo position not specified for save")
+        elif pos == "":
+            if self._check_in_bypass(): return
+            angle = gcmd.get_int('ANGLE', None)
+            if angle is not None:
+                self.log_debug("Setting servo to angle: %d" % angle)
+                self._servo_set_angle(angle)
+            else:
+                self.log_always("Current servo angle: %d, Positions: %s" % (self.servo_angle, self.servo_angles))
+                self.log_info("Use POS= or ANGLE= to move position")
+        else:
+            self.log_error("Unknown servo position '%s'" % pos)
 
     def _servo_set_angle(self, angle):
         self.servo.set_value(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
@@ -350,7 +493,7 @@ class LinearSelectorServo():
     def _servo_auto(self):
         if self.mmu._is_printing() and self.mmu_toolhead.is_gear_synced_to_extruder():
             self._servo_down()
-        elif not self.selector.is_homed or self.mmu.tool_selected < 0 or self.mmu.gate_selected < 0:
+        elif not self.mmu.selector.is_homed or self.mmu.tool_selected < 0 or self.mmu.gate_selected < 0:
             self._servo_move()
         else:
             self._servo_up()
@@ -358,3 +501,48 @@ class LinearSelectorServo():
     # De-energize servo if 'servo_always_active' or 'servo_active_down' are being used
     def _servo_off(self):
         self.servo.set_value(width=0, duration=None)
+
+    def get_filament_grip_state(self):
+        return self.servo_state
+
+    def disable_motors(self):
+        self._servo_move()
+        self._servo_off()
+        self.reinit()
+
+    def enable_motors(self):
+        self._servo_move()
+
+    def buzz_motor(self):
+        self.mmu.movequeues_wait()
+        old_state = self.servo_state
+        small=min(self.servo_angles['down'], self.servo_angles['up'])
+        large=max(self.servo_angles['down'], self.servo_angles['up'])
+        mid=(self.servo_angles['down'] + self.servo_angles['up'])/2
+        duration=None if self.servo_always_active else self.servo_duration
+        self.set_value(angle=mid, duration=duration)
+        self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+        self.set_value(angle=abs(mid+small)/2, duration=duration)
+        self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+        self.set_value(angle=abs(mid+large)/2, duration=duration)
+        self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+        self.mmu.movequeues_wait()
+        if old_state == self.SERVO_DOWN_STATE:
+            self._servo_down(buzz_gear=False)
+        elif old_state == self.SERVO_MOVE_STATE:
+            self._servo_move()
+        else:
+            self._servo_up()
+
+    def get_mmu_config(self):
+        msg = ". Servo in %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
+                "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
+        return msg
+
+    def get_status(self):
+        return {
+            'servo': "Up" if self.servo_state == self.SERVO_UP_STATE else
+                     "Down" if self.servo_state == self.SERVO_DOWN_STATE else
+                     "Move" if self.servo_state == self.SERVO_MOVE_STATE else
+                     "Unknown",
+        }
