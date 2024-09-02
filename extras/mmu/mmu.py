@@ -89,11 +89,12 @@ class Mmu:
     CALIBRATED_GATES    = 0b10000
     CALIBRATED_ALL      = 0b01111 # Calibrated gates is optional
 
-# PAUL move to Selector Class
+# PAUL move to Selector Class vvv
     SERVO_MOVE_STATE = 2
     SERVO_DOWN_STATE = 1
     SERVO_UP_STATE = 0
     SERVO_UNKNOWN_STATE = -1
+# ^^^^
 
     TOOL_GATE_UNKNOWN = -1
     TOOL_GATE_BYPASS = -2
@@ -224,7 +225,9 @@ class Mmu:
     VARS_MMU_SELECTOR_BYPASS         = "mmu_selector_bypass"
     VARS_MMU_ENCODER_RESOLUTION      = "mmu_encoder_resolution"
     VARS_MMU_GEAR_ROTATION_DISTANCES = "mmu_gear_rotation_distances"
+# PAUL move to Servo class vvv
     VARS_MMU_SERVO_ANGLES            = "mmu_servo_angles"
+# ^^^
 
     VARS_MMU_GEAR_ROTATION_DISTANCE  = "mmu_gear_rotation_distance" # Deprecated
     VARS_MMU_CALIB_PREFIX            = "mmu_calibration_"           # Deprecated
@@ -669,13 +672,17 @@ class Mmu:
         # Calibration
         self.gcode.register_command('MMU_CALIBRATE_GEAR', self.cmd_MMU_CALIBRATE_GEAR, desc=self.cmd_MMU_CALIBRATE_GEAR_help)
         self.gcode.register_command('MMU_CALIBRATE_ENCODER', self.cmd_MMU_CALIBRATE_ENCODER, desc=self.cmd_MMU_CALIBRATE_ENCODER_help)
+# PAUL move to LinearSelector
         self.gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc = self.cmd_MMU_CALIBRATE_SELECTOR_help)
+# ^^^
         self.gcode.register_command('MMU_CALIBRATE_BOWDEN', self.cmd_MMU_CALIBRATE_BOWDEN, desc = self.cmd_MMU_CALIBRATE_BOWDEN_help)
         self.gcode.register_command('MMU_CALIBRATE_GATES', self.cmd_MMU_CALIBRATE_GATES, desc = self.cmd_MMU_CALIBRATE_GATES_help)
         self.gcode.register_command('MMU_CALIBRATE_TOOLHEAD', self.cmd_MMU_CALIBRATE_TOOLHEAD, desc = self.cmd_MMU_CALIBRATE_TOOLHEAD_help)
 
         # Servo and motor control
+# PAUL move to LinearSelector Servo class
         self.gcode.register_command('MMU_SERVO', self.cmd_MMU_SERVO, desc = self.cmd_MMU_SERVO_help)
+# ^^^
         self.gcode.register_command('MMU_MOTORS_OFF', self.cmd_MMU_MOTORS_OFF, desc = self.cmd_MMU_MOTORS_OFF_help)
         self.gcode.register_command('MMU_SYNC_GEAR_MOTOR', self.cmd_MMU_SYNC_GEAR_MOTOR, desc=self.cmd_MMU_SYNC_GEAR_MOTOR_help)
 
@@ -864,10 +871,12 @@ class Mmu:
         self.selector_tmc = self.gear_tmc = self.extruder_tmc = None
         tmc_chips = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
         for chip in tmc_chips:
+# PAUL TODO move into Selector Class vvv
             if self.selector_tmc is None:
                 self.selector_tmc = self.printer.lookup_object('%s %s' % (chip, self.SELECTOR_STEPPER_CONFIG), None)
                 if self.selector_tmc is not None:
                     self.log_debug("Found %s on selector_stepper. Stallguard 'touch' homing possible." % chip)
+# PAUL ^^^^
             if self.gear_tmc is None:
                 self.gear_tmc = self.printer.lookup_object('%s %s' % (chip, self.GEAR_STEPPER_CONFIG), None)
                 if self.gear_tmc is not None:
@@ -877,8 +886,10 @@ class Mmu:
                 if self.extruder_tmc is not None:
                     self.log_debug("Found %s on extruder. Current control enabled. %s" % (chip, "Stallguard 'touch' homing possible." if self.homing_extruder else ""))
 
+# PAUL TODO move into Selector Class vvv
         if self.selector_tmc is None:
             self.log_debug("TMC driver not found for selector_stepper, cannot use sensorless homing and recovery")
+# PAUL ^^^^
         if self.gear_tmc is None:
             self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
         if self.extruder_tmc is None:
@@ -964,6 +975,7 @@ class Mmu:
         # The threshold (mm) that determines real encoder movement (set to 1.5 pulses of encoder. i.e. allow one error pulse)
         self.encoder_min = 1.5 * self.encoder_resolution
 
+# PAUL TODO move into Selector Class vvv
         # Configure selector calibration (set with MMU_CALIBRATE_SELECTOR)
         selector_offsets = self.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
         if selector_offsets:
@@ -983,6 +995,7 @@ class Mmu:
             self.log_debug("Loaded saved bypass offset: %s" % bypass_offset)
         else:
             self.bypass_offset = 0
+# PAUL ^^^^
 
         # Set bowden length from calibration
         bowden_length = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
@@ -1001,12 +1014,15 @@ class Mmu:
         else:
             self.log_always("Warning: Reference bowden length not found in mmu_vars.cfg. Probably not calibrated")
 
+# PAUL TODO move into Servo class
+# self.selector.read_config() ??
         # Override with saved/calibrated servo positions
         try:
             servo_angles = self.save_variables.allVariables.get(self.VARS_MMU_SERVO_ANGLES, {})
             self.servo_angles.update(servo_angles)
         except Exception as e:
             raise self.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
+# PAUL ^^^^
 
     def _ensure_list_size(lst, size, default_value=None):
         lst = lst[:size] # Truncate if too long
@@ -2392,6 +2408,7 @@ class Mmu:
 
 ### SERVO AND MOTOR GCODE FUNCTIONS
 
+# PAUL move to servo class vvv
     cmd_MMU_SERVO_help = "Move MMU servo to position specified position or angle"
     def cmd_MMU_SERVO(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -2429,15 +2446,18 @@ class Mmu:
                 self.log_info("Use POS= or ANGLE= to move position")
         else:
             self.log_error("Unknown servo position '%s'" % pos)
+# PAUL ^^^
 
     cmd_MMU_MOTORS_OFF_help = "Turn off both MMU motors"
     def cmd_MMU_MOTORS_OFF(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
         self._motors_off()
-        self.selector.filament_hold() # PAUL call selector class
+        self.selector.filament_hold()
+# PAUL move to servo class
         self._servo_off()
         self._servo_reset_state()
+# ^^^
 
     cmd_MMU_TEST_BUZZ_MOTOR_help = "Simple buzz the selected motor (default gear) for setup testing"
     def cmd_MMU_TEST_BUZZ_MOTOR(self, gcmd):
@@ -2449,11 +2469,13 @@ class Mmu:
             found = self._buzz_gear_motor()
             self.log_info("Filament %s by gear motor buzz" % ("detected" if found else "not detected"))
         elif motor == "selector":
+# PAUL move
             pos = self.mmu_toolhead.get_position()[0]
             self.selector.move(None, pos + 5, wait=False)
             self.selector.move(None, pos - 5, wait=False)
             self.selector.move(None, pos, wait=False)
         elif motor == "servo":
+# PAUL move
             self.movequeues_wait()
             old_state = self.servo_state
             small=min(self.servo_angles['down'], self.servo_angles['up'])
