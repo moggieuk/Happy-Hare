@@ -145,7 +145,7 @@ class MmuServer:
             db_awake = await self._init_spoolman()
             if not silent:
                 if not db_awake:
-                    await self._log_n_send(f"Couldn't connect to Spoolman. Check moonraker.log")
+                    await self._log_n_send(f"Couldn't connect to Spoolman. Maybe not configured/running yet (check moonraker.log).\nUse MMU_SPOOLMAN REFRESH=1 to force retry")
                 elif not self.spoolman_has_extras:
                     await self._log_n_send(f"Incompatible Spoolman version for this feature. Check moonraker.log")
         return self.spoolman_has_extras
