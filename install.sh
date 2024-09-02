@@ -383,7 +383,7 @@ cleanup_old_mmu() {
 }
 
 # TEMPORARY: Upgrade to mmu-toolhead version from manual_stepper
-cleanup_manual_stepper_version() {
+cleanup_previous_versions() {
     # Legacy klipper modules...
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
         rm -f "${KLIPPER_HOME}/klippy/extras/manual_mh_stepper.py"
@@ -423,6 +423,8 @@ cleanup_manual_stepper_version() {
         echo "------------------------------------------------------------------------------------------------------------"
         echo
     fi
+
+    rm -f "${KLIPPER_HOME}/klippy/extras/mmu_toolhead.py" # Renamed as mmu_machine.py in v3.0.0
 }
 
 # TEMPORARY: Upgrade mmu sensors part of mmu_hardware.cfg
@@ -1849,7 +1851,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
     copy_config_files
 
     # Temp upgrades
-    cleanup_manual_stepper_version
+    cleanup_previous_versions
     upgrade_mmu_sensors
     upgrade_led_effects
 
