@@ -1383,7 +1383,8 @@ class Mmu:
 
             self._servo_move()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
-            self._spoolman_sync()
+            self.movequeues_wait()
+            self._spoolman_sync() # Delay as long as possible to maximize the chance it is contactable after reboot
         except Exception as e:
             self.log_error('Warning: Error booting up MMU: %s' % str(e))
 
