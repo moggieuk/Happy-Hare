@@ -83,7 +83,6 @@ class MmuServer:
         self.update_location = self.config.getboolean("update_spoolman_location", True)
 
     async def _get_spoolman_version(self) -> tuple[int, int, int] | None:
-        await asyncio.sleep(2) # Give spoolman time to connect
         response = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/info')
         if response.status_code == 404:
             logging.info(f"'{self.spoolman.spoolman_url}/v1/info' not found")
@@ -101,10 +100,21 @@ class MmuServer:
             logging.warning("Spoolman not available. Happy Hare remote methods not available")
             return
 
+        # Get current printer hostname
+        self.printer_hostname = self.printer_info["hostname"]
+        self.spoolman_has_extras = False
+        asyncio.create_task(self._init_spoolman(retry=3)) # Spoolman may start up after us so retry a few times
+
+    async def _init_spoolman(self, retry=1) -> bool:
         async with self.cache_lock:
-            # Get current printer hostname
-            self.printer_hostname = self.printer_info["hostname"]
-            self.spoolman_version = await self._get_spoolman_version()
+            for _ in range(retry):
+                self.spoolman_version = await self._get_spoolman_version()
+                if self.spoolman_version:
+                    logging.info(f"Contacted spoolman")
+                    break
+                logging.warning(f"Spoolman not available yet. Retrying in 2 seconds...")
+                await asyncio.sleep(2)
+
             extras = False
             if self.spoolman_version and self.spoolman_version >= MIN_SM_VER:
                 # Make sure db has required extra fields
@@ -121,6 +131,13 @@ class MmuServer:
             if extras:
                 await self._build_spool_location_cache(silent=True)
             self.spoolman_has_extras = extras
+            return extras
+
+    async def _check_init_spoolman(self) -> bool:
+        if not self.spoolman_has_extras:
+            if not await self._init_spoolman():
+                await self._log_n_send(f"Spoolman is incompatible version or unavailable")
+        return self.spoolman_has_extras
 
 
     # !TODO: implement mainsail/fluidd gui prompts?
@@ -319,9 +336,7 @@ class MmuServer:
         ]
 
     async def _set_spool_gate(self, spool_id, printer, gate, silent=False) -> bool:
-        if not self.spoolman_has_extras:
-            await self._log_n_send(f"Spoolman is incompatible version or unavailable")
-            return
+        if not await self._check_init_spoolman(): return
 
         # Use the PATCH method on the spoolman api
         if not silent:
@@ -346,9 +361,7 @@ class MmuServer:
         return True
 
     async def _unset_spool_gate(self, spool_id, silent=False) -> bool:
-        if not self.spoolman_has_extras:
-            await self._log_n_send(f"Spoolman is incompatible version or unavailable")
-            return
+        if not await self._check_init_spoolman(): return
 
         # Use the PATCH method on the spoolman api
         if not silent:
