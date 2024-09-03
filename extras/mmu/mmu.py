@@ -1959,10 +1959,6 @@ class Mmu:
         if msg:
             self.log_always(msg)
 
-        # This is good place to update the persisted stats...
-        self._persist_swap_statistics()
-        self._persist_gate_statistics()
-
     def _gate_statistics_to_string(self):
         msg = "Gate Statistics:\n"
         dbg = ""
@@ -4922,12 +4918,13 @@ class Mmu:
         finally:
             if full:
                 self._track_time_end('load')
+                self._track_gate_statistics('loads', self.gate_selected)
             if not extruder_only:
                 self._set_action(current_action)
             if not self._is_printing():
                 self.selector.filament_release()
 
-    def _unload_sequence(self, bowden_move=-1, check_state=False, skip_tip=False, extruder_only=False, runout=False):
+    def _unload_sequence(self, bowden_move=-1, check_state=False, form_tip=None, extruder_only=False, runout=False):
         self.movequeues_wait()
 
         full = bowden_move < 0 or bowden_move > self.calibrated_bowden_length
@@ -5045,8 +5042,10 @@ class Mmu:
             raise MmuError("Unload sequence failed: %s" % (str(ee)))
 
         finally:
-            if not extruder_only:
+            if full:
                 self._track_time_end('unload')
+                self._track_gate_statistics('unloads', self.gate_selected)
+            if not extruder_only:
                 self._set_action(current_action)
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
@@ -6205,6 +6204,10 @@ class Mmu:
                     finally:
                         self._next_tool = self.TOOL_GATE_UNKNOWN
 
+                # Updates swap statistics
+                self._persist_swap_statistics()
+                self._persist_gate_statistics()
+
                 # If actively printing then we must restore toolhead position, if paused, mmu_resume will do this
                 if self._is_printing():
                     self._check_runout() # Can throw MmuError
@@ -6230,6 +6233,7 @@ class Mmu:
                         self._load_sequence(bowden_move=0., extruder_only=True)
                     else:
                         self.log_always("Filament already loaded")
+            self._persist_gate_statistics()
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
             if self.tool_selected == self.TOOL_GATE_BYPASS:
@@ -6261,6 +6265,7 @@ class Mmu:
                             self.log_always("Please pull the filament out clear of the MMU selector")
                     else:
                         self.log_always("Filament not loaded")
+            self._persist_gate_statistics()
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
 
