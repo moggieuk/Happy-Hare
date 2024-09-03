@@ -498,7 +498,6 @@ class Mmu:
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
         self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=1.)
         self.toolchange_unretract_speed = config.getfloat('toolchange_unretract_speed', self.toolchange_retract_speed, minval=1.)
-        self.restore_toolhead_xy_position = config.getint('restore_toolhead_xy_postion', 0) # Not currently exposed
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
@@ -1424,10 +1423,10 @@ class Mmu:
         if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
             if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
                 self._set_print_state("printing")
-                self.test_force_in_print = True
+                self.test_force_in_print = 1
             else:
                 self._set_print_state("idle")
-                self.test_force_in_print = False
+                self.test_force_in_print = 0
 
             with self._wrap_track_time('total'):
                 with self._wrap_track_time('unload'):
@@ -1442,6 +1441,35 @@ class Mmu:
                     with self._wrap_track_time('post_load'):
                         self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
             self.log_info("Statistics:%s" % self.last_statistics)
+
+        if gcmd.get_int('RUN_CHANGE_SEQUENCE', 0, minval=0, maxval=1):
+            z_hop = gcmd.get_int('Z_HOP', 0, minval=0, maxval=50)
+            pause = gcmd.get_int('PAUSE', 0, minval=0, maxval=1)
+            next_pos = gcmd.get('NEXT_POS', "last")
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
+            goto_pos = None
+            if next_pos == 'next':
+                goto_pos = [11, 11]
+                self._set_next_position(goto_pos)
+            self.test_force_in_print = 1
+            self._save_toolhead_position_and_lift("change_tool", z_hop_height=z_hop, next_pos=goto_pos)
+            with self._wrap_track_time('total'):
+                with self._wrap_track_time('unload'):
+                    with self._wrap_track_time('pre_unload'):
+                        self._wrap_gcode_command(self.pre_unload_macro, exception=False, wait=True)
+                    self._wrap_gcode_command(self.post_form_tip_macro, exception=False, wait=True)
+                    with self._wrap_track_time('post_unload'):
+                        self._wrap_gcode_command(self.post_unload_macro, exception=False, wait=True)
+                with self._wrap_track_time('load'):
+                    with self._wrap_track_time('pre_load'):
+                        self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
+                    if pause:
+                        self._handle_mmu_error("TEST")
+                    else:
+                        with self._wrap_track_time('post_load'):
+                            self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
+                        self._restore_toolhead_position("change_tool")
+                        self.test_force_in_print = 0
 
         if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
             self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
@@ -1731,8 +1759,8 @@ class Mmu:
         return {
                 'enabled': self.is_enabled,
                 'num_gates': self.mmu_num_gates,
-                'is_paused': self._is_handle_mmu_errord(),
-                'is_locked': self._is_handle_mmu_errord(), # Alias for is_paused
+                'is_paused': self._is_handle_mmu_error(),
+                'is_locked': self._is_handle_mmu_error(), # Alias for is_paused
                 'is_homed': self.selector.is_homed,
                 'is_in_print': self._is_in_print(),
                 'tool': self.tool_selected,
@@ -1772,7 +1800,7 @@ class Mmu:
                 'clog_detection': self.enable_clog_detection,
                 'endless_spool': self.enable_endless_spool,
                 'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
-                'reason_for_pause': self.reason_for_pause if self._is_handle_mmu_errord() else "",
+                'reason_for_pause': self.reason_for_pause if self._is_handle_mmu_error() else "",
                 'extruder_filament_remaining': self.filament_remaining,
                 'extruder_residual_filament': self.toolhead_ooze_reduction,
                 'toolchange_retract': self.toolchange_retract,
@@ -2253,7 +2281,7 @@ class Mmu:
         fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
         msg = "MMU: Happy Hare %s running %s v%s" % (fversion(self.config_version), self.mmu_vendor, self.mmu_version_string)
         msg += " with %d gates" % (self.mmu_num_gates)
-        msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_handle_mmu_errord() else "OPERATIONAL")
+        msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self._is_handle_mmu_error() else "OPERATIONAL")
         msg += "\nServo in %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
         if self._has_encoder():
@@ -3440,7 +3468,7 @@ class Mmu:
     def _is_in_print(self, force_in_print=False): # Printing or paused
         return self.print_state in ["printing", "pause_locked", "paused"] or force_in_print or self.test_force_in_print
 
-    def _is_handle_mmu_errord(self): # The MMU is paused
+    def _is_handle_mmu_error(self): # The MMU is paused
         return self.print_state in ["pause_locked", "paused"]
 
     def _is_handle_mmu_error_locked(self): # The MMU is paused (and locked)
@@ -3596,7 +3624,7 @@ class Mmu:
 
         run_pause_macro = recover_pos = send_event = False
         if self._is_in_print(force_in_print):
-            if not self._is_handle_mmu_errord():
+            if not self._is_handle_mmu_error():
                 self.resume_to_state = "printing" if self._is_in_print() else "ready"
                 self.reason_for_pause = reason
                 self._display_mmu_error()
@@ -3622,8 +3650,8 @@ class Mmu:
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
 
-            # Handle case where we pause (error) whilst toolchanging. Make sure the resume point the
-            # intended position (e.g. last_post) rather then the current positon
+            # Handle case where we pause (error) whilst toolchanging. Make sure the resume point is the
+            # intended position rather then the current positon
             if self.saved_toolhead_position == 'change_tool':
                 if self.TOOLHEAD_POSITION_STATE in self.gcode_move.saved_states:
                     self.gcode_move.saved_states['PAUSE_STATE'] = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
@@ -3656,7 +3684,7 @@ class Mmu:
             self._wrap_gcode_command('RESPOND TYPE=command MSG="action:prompt_end"')
 
     def _mmu_unlock(self):
-        if self._is_handle_mmu_errord():
+        if self._is_handle_mmu_error():
             self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
             self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER)
 
@@ -3667,7 +3695,7 @@ class Mmu:
             self._set_print_state("paused")
 
     def _mmu_resume(self, force_in_print=False):
-        if self._is_handle_mmu_errord():
+        if self._is_handle_mmu_error():
             self.reason_for_pause = None
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.paused_extruder_temp = None
@@ -3694,7 +3722,7 @@ class Mmu:
         if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
             self._wrap_gcode_command(self.clear_position_macro)
 
-    def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False, pause_resume_pos=None):
+    def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False, next_pos=None):
         if not self.saved_toolhead_position:
             self.movequeues_wait()
             eventtime = self.reactor.monotonic()
@@ -3712,10 +3740,10 @@ class Mmu:
                 self.saved_toolhead_position = operation
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
 
-                # If toolchanging ensure we record the intended X,Y resume position in case of
-                # later pause (error) where the resume macro will be run
-                if pause_resume_pos:
-                    self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = pause_resume_pos
+                # If toolchanging ensure we record the intended X,Y resume position in case of later pause (error) where the
+                # resume macro will be run and we want the restore toolhead postion logic to ensure x,y position
+                if next_pos:
+                    self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = next_pos
 
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
@@ -3727,7 +3755,7 @@ class Mmu:
                 if self._is_in_print(force_in_print) and z_hop_height is not None and z_hop_height > 0:
                     axis_maximum = self.toolhead.get_status(eventtime)['axis_maximum']
                     self.log_debug("Lifting toolhead %.1fmm with %.1fmm ramp (speed:%d, accel:%d)" % (z_hop_height, self.z_hop_ramp, self.z_hop_speed, self.z_hop_accel))
-                    act_z = self.saved_toolhead_height = gcode_pos.z
+                    act_z = gcode_pos.z
                     max_z = axis_maximum.z
                     max_z -= self.gcode_move.get_status(eventtime)['homing_origin'].z
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
@@ -3757,9 +3785,6 @@ class Mmu:
 
     def _restore_toolhead_position(self, operation):
         if self.saved_toolhead_position:
-            eventtime = self.reactor.monotonic()
-            gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
-
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
                 mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
@@ -3767,25 +3792,11 @@ class Mmu:
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
             self._unretract()
-
-            if self.restore_toolhead_xy_position:
-                # Restore pre-pause position and state. Currently not used because we allow sequence macro to control x,y movement
-                self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
-                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.z_hop_speed))
-                toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
-                self.log_debug("Restored gcode state and full position (%s) after %s" % (toolhead_gcode_pos, operation))
-            else:
-                # Default: Only undo the z-hop move so sequence macros choose what to do with x,y ('last', 'next', 'none')...
-                if self.saved_toolhead_height >= 0:
-                    self.log_debug("Restoring just toolhead height %.1f (speed:%d, accel:%d) after %s" % (self.saved_toolhead_height, self.z_hop_speed, self.z_hop_accel, operation))
-                    self.gcode.run_script_from_command("G90")
-                    self.gcode.run_script_from_command("M204 S%d" % self.z_hop_accel)
-                    self.gcode.run_script_from_command("G1 Z%.4f F%d" % (self.saved_toolhead_height, self.z_hop_speed * 60))
-                # But ensure gcode state...
-                self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
-                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
-                self.log_debug("Restored gcode state after %s" % operation)
-
+            gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
+            display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
+            self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
+            self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.z_hop_speed))
+            self.log_debug("Restored gcode state and position (%s) after %s" % (display_gcode_pos, operation))
         self._clear_saved_toolhead_position()
 
     def _retract(self, force_in_print=False):
@@ -3837,7 +3848,7 @@ class Mmu:
             sensor.runout_helper.enable_runout(restore and (self.gate_selected != self.TOOL_GATE_UNKNOWN))
 
     def _check_runout(self):
-        if self._is_handle_mmu_errord() and not self.resume_to_state == "printing": return
+        if self._is_handle_mmu_error() and not self.resume_to_state == "printing": return
         if self._check_pre_gate_sensor(self.gate_selected) is False:
             raise MmuError("Runout check failed. Pre-gate sensor for gate %d does not detect filament" % self.gate_selected)
         if self._check_sensor(self.ENDSTOP_GATE) is False:
@@ -4082,7 +4093,7 @@ class Mmu:
                 # Don't wait if just messing with cold printer
                 wait = False
         elif source == "auto":
-            if self._is_handle_mmu_errord():
+            if self._is_handle_mmu_error():
                 # In a pause we always want to restore the temp we paused at
                 new_target_temp = self.paused_extruder_temp if self.paused_extruder_temp is not None else current_temp # Pause temp should not be None
                 source = "pause"
@@ -6389,21 +6400,24 @@ class Mmu:
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
 
-        # Convert next position to absolute coordinates
-        next_pos = gcmd.get('NEXT_POS', None)
-        if next_pos:
-            try:
-                x, y = map(float, next_pos.split(','))
-                gcode_status = self.gcode_move.get_status(self.reactor.monotonic())
-                if not gcode_status['absolute_coordinates']:
-                    gcode_pos = gcode_status['gcode_position']
-                    x += gcode_pos[0]
-                    y += gcode_pos[1]
-                next_pos = [x, y]
-            except (ValueError, KeyError, TypeError) as ee:
-                # If something goes wrong it is better to ignore next pos completely
-                self.log_debug("Error parsing NEXT_POS: %s" % str(ee))
-                next_pos = None
+        # Handle "next_pos" option for toolhead position restoration
+        next_pos = None
+        sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+        if sequence_vars_macro and sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'next':
+            # Convert next position to absolute coordinates
+            next_pos = gcmd.get('NEXT_POS', None)
+            if next_pos:
+                try:
+                    x, y = map(float, next_pos.split(','))
+                    gcode_status = self.gcode_move.get_status(self.reactor.monotonic())
+                    if not gcode_status['absolute_coordinates']:
+                        gcode_pos = gcode_status['gcode_position']
+                        x += gcode_pos[0]
+                        y += gcode_pos[1]
+                    next_pos = [x, y]
+                except (ValueError, KeyError, TypeError) as ee:
+                    # If something goes wrong it is better to ignore next pos completely
+                    self.log_info("Error parsing NEXT_POS: %s" % str(ee))
 
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)
@@ -6421,7 +6435,7 @@ class Mmu:
                     if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed: # Will be done later if not homed
                         self._recover_filament_pos(message=True)
 
-                    self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange, pause_resume_pos=next_pos)
+                    self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange, next_pos=next_pos)
 
                     if self._has_encoder():
                         self.encoder_sensor.update_clog_detection_length()
@@ -6554,7 +6568,7 @@ class Mmu:
             return
 
         self.log_debug("MMU RESUME wrapper called")
-        if not self._is_printer_paused() and not self._is_handle_mmu_errord():
+        if not self._is_printer_paused() and not self._is_handle_mmu_error():
             self.log_always("Print is not paused. Resume ignored.")
             return
 
@@ -6574,7 +6588,7 @@ class Mmu:
                 # TODO: We should always be in a deterministic state here: unloaded or loaded... not in between...
 
             self._wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())))
-            if self._is_handle_mmu_errord():
+            if self._is_handle_mmu_error():
                 self._mmu_resume(force_in_print=force_in_print) # Continue printing...
             else:
                 self._continue_printing("resume", force_in_print=force_in_print) # Continue printing...
