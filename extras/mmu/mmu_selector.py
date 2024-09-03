@@ -551,6 +551,7 @@ class LinearSelector():
         return position
 
     def measure_to_home(self):
+        self.mmu.movequeues_wait()
         init_mcu_pos = self.selector_stepper.get_mcu_position()
         homed = False
         try:
