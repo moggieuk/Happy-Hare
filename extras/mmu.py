@@ -380,7 +380,7 @@ class Mmu:
         self.cad_block_width = 5.
         self.cad_bypass_block_width = 6.
         self.cad_bypass_block_delta = 9.
-        self.cad_selector_tolerance = 10.
+        self.cad_selector_tolerance = 15.
 
         # Vendor specific attributes
         self.variable_gate_ratios = 1 # Whether ratio of each gate can be different and needs separate calibration
