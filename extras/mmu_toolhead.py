@@ -254,7 +254,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 for s in self.inactive_gear_steppers:
                     self.mmu_toolhead.register_step_generator(s.generate_steps)
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
-                self.inactive_gear_steppers = [] # self.inactive_gear_steppers.clear()
+                self.inactive_gear_steppers = [] # python3 - self.inactive_gear_steppers.clear()
             rail.steppers = rail.steppers[:-len(following_steppers)]
 
         elif self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
