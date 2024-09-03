@@ -5156,12 +5156,12 @@ class Mmu:
         finally:
             if full:
                 self._track_time_end('load')
+                self._track_gate_statistics('loads', self.gate_selected)
             if not extruder_only:
                 self._set_action(current_action)
             if not self._is_printing():
                 self._servo_up()
 
-        self.movequeues_wait()
     def _unload_sequence(self, bowden_move=-1, check_state=False, form_tip=None, extruder_only=False, runout=False):
 
         full = bowden_move < 0 or bowden_move > self.calibrated_bowden_length
@@ -5280,8 +5280,10 @@ class Mmu:
             raise MmuError("Unload sequence failed: %s" % (str(ee)))
 
         finally:
-            if not extruder_only:
+            if full:
                 self._track_time_end('unload')
+                self._track_gate_statistics('unloads', self.gate_selected)
+            if not extruder_only:
                 self._set_action(current_action)
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
