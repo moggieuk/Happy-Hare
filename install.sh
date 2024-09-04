@@ -783,7 +783,7 @@ read_previous_config() {
                 variable_pin_park_dist="${variable_pin_park_x_dist}"
             fi
             if [ ! "${variable_pin_loc_x_compressed}" == "" ]; then
-                variable_pin_loc_compressed="${variable_pin_loc_x_dist}"
+                variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
             fi
             if [ ! "${variable_safe_margin_x}" == "" ]; then
                 variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
