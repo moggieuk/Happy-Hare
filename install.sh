@@ -759,7 +759,7 @@ read_previous_config() {
         fi
     fi
 
-    # TODO Remove mmu_variables once everybody has upgraded
+    # TODO Remove mmu_variables from list once everybody has upgraded
     for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
@@ -801,6 +801,12 @@ read_previous_config() {
             fi
             if [ ! "${variable_pin_loc_x}" == "" ]; then
                 variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
+            fi
+            if [ ! "${variable_pin_park_x_dist}" == "" ]; then
+                variable_pin_park_dist="${variable_pin_park_x_dist}"
+            fi
+            if [ ! "${variable_pin_loc_x_compressed}" == "" ]; then
+                variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
             fi
             if [ ! "${variable_safe_margin_x}" == "" ]; then
                 variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
