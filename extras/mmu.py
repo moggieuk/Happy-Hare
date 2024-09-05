@@ -1452,7 +1452,7 @@ class Mmu:
                 goto_pos = [11, 11]
                 self._set_next_position(goto_pos)
             self.test_force_in_print = 1
-            self._save_toolhead_position_and_lift("change_tool", z_hop_height=z_hop, next_pos=goto_pos)
+            self._save_toolhead_position_and_lift('change_tool', z_hop_height=z_hop, next_pos=goto_pos)
             with self._wrap_track_time('total'):
                 with self._wrap_track_time('unload'):
                     with self._wrap_track_time('pre_unload'):
@@ -1468,7 +1468,7 @@ class Mmu:
                     else:
                         with self._wrap_track_time('post_load'):
                             self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
-                        self._restore_toolhead_position("change_tool")
+                        self._restore_toolhead_position('change_tool')
                         self.test_force_in_print = 0
 
         if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
@@ -3631,7 +3631,7 @@ class Mmu:
                 self.reactor.update_timer(self.heater_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
-                self._save_toolhead_position_and_lift("mmu_pause", z_hop_height=self.z_hop_height_error, force_in_print=force_in_print)
+                self._save_toolhead_position_and_lift('mmu_pause', z_hop_height=self.z_hop_height_error, force_in_print=force_in_print)
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
@@ -3648,7 +3648,7 @@ class Mmu:
 
             # Handle case where we pause (error) whilst toolchanging. Make sure the resume point is the
             # intended position rather then the current positon
-            if self.saved_toolhead_position == 'change_tool':
+            if self.saved_toolhead_position in ['change_tool', 'load', 'unload', 'runout']:
                 if self.TOOLHEAD_POSITION_STATE in self.gcode_move.saved_states:
                     self.gcode_move.saved_states['PAUSE_STATE'] = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
 
@@ -6434,7 +6434,7 @@ class Mmu:
                     if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed: # Will be done later if not homed
                         self._recover_filament_pos(message=True)
 
-                    self._save_toolhead_position_and_lift("change_tool", z_hop_height=self.z_hop_height_toolchange, next_pos=next_pos)
+                    self._save_toolhead_position_and_lift('change_tool', z_hop_height=self.z_hop_height_toolchange, next_pos=next_pos)
 
                     if self._has_encoder():
                         self.encoder_sensor.update_clog_detection_length()
@@ -6463,7 +6463,9 @@ class Mmu:
                 # If actively printing then we must restore toolhead position, if paused, mmu_resume will do this
                 if self._is_printing():
                     self._check_runout() # Can throw MmuError
-                    self._continue_printing("change_tool") # Continue printing...
+                    self._continue_printing('change_tool') # Continue printing...
+                else:
+                    self._restore_toolhead_position('change_tool')
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
 
@@ -6480,7 +6482,13 @@ class Mmu:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
                     if not extruder_only:
+                        self._save_toolhead_position_and_lift('load', z_hop_height=self.z_hop_height_toolchange)
                         self._select_and_load_tool(self.tool_selected) # This could change gate tool is mapped to
+                        if self._is_printing():
+                            self._check_runout() # Can throw MmuError
+                            self._continue_printing('change_tool') # Continue printing...
+                        else:
+                            self._restore_toolhead_position('change_tool')
                     elif extruder_only and self.filament_pos != self.FILAMENT_POS_LOADED:
                         self._load_sequence(bowden_move=0., extruder_only=True)
                     else:
@@ -6508,7 +6516,13 @@ class Mmu:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
                     if not extruder_only:
+                        self._save_toolhead_position_and_lift('unload', z_hop_height=self.z_hop_height_toolchange)
                         self._unload_tool(form_tip=form_tip)
+                        if self._is_printing():
+                            self._check_runout() # Can throw MmuError
+                            self._continue_printing('change_tool') # Continue printing...
+                        else:
+                            self._restore_toolhead_position('change_tool')
                     elif extruder_only and self.filament_pos != self.FILAMENT_POS_UNLOADED:
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
                         self._unload_sequence(bowden_move=0., form_tip=form_tip, extruder_only=True)
@@ -7096,7 +7110,7 @@ class Mmu:
 
     def _runout(self, force_runout=False):
         self.is_handling_runout = force_runout # Best starting assumption
-        self._save_toolhead_position_and_lift("runout", z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift('runout', z_hop_height=self.z_hop_height_toolchange)
 
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
