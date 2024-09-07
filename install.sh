@@ -840,13 +840,16 @@ read_previous_config() {
         variable_park_lift_speed="${variable_lift_speed}"
     fi
     if [ "${variable_enable_park}" == "False" ]; then
-        variable_enable_park_printing="/'/'"
+        variable_enable_park_printing="''"
         if [ "${variable_enable_park_runout}" == "True" ]; then
-            variable_enable_park_runout="'runout'"
+            variable_enable_park_printing="'runout'"
         fi
     fi
     if [ "${variable_enable_park_standalone}" == "False" ]; then
-        variable_enable_park_standalone="/'/'"
+        variable_enable_park_standalone="''"
+    fi
+    if [ "${variable_enable_park_standalone}" == "True" ]; then
+        variable_enable_park_standalone="'toolchange,load,unload'"
     fi
 
 

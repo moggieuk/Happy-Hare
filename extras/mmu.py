@@ -488,12 +488,7 @@ class Mmu:
         self.print_start_detection = config.getint('print_start_detection', 1, minval=0, maxval=1)
         self.show_error_dialog = config.getint('show_error_dialog', 1, minval=0, maxval=1)
 
-# PAUL        # Toolchange blob and stringing control
-# PAUL        self.z_hop_height_toolchange = config.getfloat('z_hop_height_toolchange', 0.4, minval=0.)
-# PAUL        self.z_hop_height_error = config.getfloat('z_hop_height_error', 2., minval=0.)
-# PAUL        self.z_hop_ramp = config.getfloat('z_hop_ramp', 15., minval=0.)
-# PAUL        self.restore_position_speed = config.getfloat('restore_position_speed', 150., minval=1.)
-# PAUL        self.restore_position_accel = config.getint('restore_position_accel', self._toolhead_max_accel, minval=1)
+        # Retraction/blobbing control
         self.toolchange_retract = config.getfloat('toolchange_retract', 2., minval=0., maxval=5.)
         self.toolchange_retract_speed = config.getfloat('toolchange_retract_speed', 20, minval=1.)
         self.toolchange_unretract_speed = config.getfloat('toolchange_unretract_speed', self.toolchange_retract_speed, minval=1.)
@@ -1420,13 +1415,9 @@ class Mmu:
             self.log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
 
         if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
+            error = gcmd.get_int('ERROR', 0, minval=0, maxval=1)
             if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
                 self._set_print_state("printing")
-                self.test_force_in_print = 1
-            else:
-                self._set_print_state("idle")
-                self.test_force_in_print = 0
-
             with self._wrap_track_time('total'):
                 with self._wrap_track_time('unload'):
                     with self._wrap_track_time('pre_unload'):
@@ -1439,10 +1430,12 @@ class Mmu:
                         self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
                     with self._wrap_track_time('post_load'):
                         self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
+                        if error:
+                            self._wrap_gcode_command("MMU_PAUSE")
             self.log_info("Statistics:%s" % self.last_statistics)
+            self._set_print_state("idle")
 
         if gcmd.get_int('RUN_CHANGE_SEQUENCE', 0, minval=0, maxval=1):
-            z_hop = gcmd.get_int('Z_HOP', 0, minval=0, maxval=50)
             pause = gcmd.get_int('PAUSE', 0, minval=0, maxval=1)
             next_pos = gcmd.get('NEXT_POS', "last")
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
@@ -1450,8 +1443,9 @@ class Mmu:
             if next_pos == 'next':
                 goto_pos = [11, 11]
                 self._set_next_position(goto_pos)
-            self.test_force_in_print = 1
-            self._save_toolhead_position_and_lift('toolchange', z_hop_height=z_hop, next_pos=goto_pos)
+            if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
+                self._set_print_state("printing")
+            self._save_toolhead_position_and_lift('toolchange', next_pos=goto_pos)
             with self._wrap_track_time('total'):
                 with self._wrap_track_time('unload'):
                     with self._wrap_track_time('pre_unload'):
@@ -1463,12 +1457,14 @@ class Mmu:
                     with self._wrap_track_time('pre_load'):
                         self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
                     if pause:
-                        self._handle_mmu_error("TEST")
+                        self._handle_mmu_error("TEST ERROR")
                     else:
                         with self._wrap_track_time('post_load'):
                             self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
                         self._restore_toolhead_position('toolchange')
                         self.test_force_in_print = 0
+            self.log_info("Statistics:%s" % self.last_statistics)
+            self._set_print_state("idle")
 
         if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
             self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
@@ -3573,7 +3569,7 @@ class Mmu:
                 self.reactor.update_timer(self.heater_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
-                self._save_toolhead_position_and_lift('mmu_error', z_hop_height=self.z_hop_height_error, force_in_print=force_in_print)
+                self._save_toolhead_position_and_lift('mmu_error', force_in_print=force_in_print)
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
@@ -3665,7 +3661,7 @@ class Mmu:
         if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
             self._wrap_gcode_command(self.clear_position_macro)
 
-    def _save_toolhead_position_and_lift(self, operation, z_hop_height=None, force_in_print=False, next_pos=None):
+    def _save_toolhead_position_and_lift(self, operation, force_in_print=False, next_pos=None):
         # Pull configuration from sequence macro (because it is cleaner and more intuitive for the user to define there)
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if not sequence_vars_macro:
@@ -3677,7 +3673,7 @@ class Mmu:
             if self._is_in_print(force_in_print)
             else sequence_vars_macro.variables.get('enable_park_standalone', '')
         )
-        park_travel_speed = sequence_vars_macro.variables.get('park_travel_speed', self.toolhead.max_speed)
+        park_travel_speed = sequence_vars_macro.variables.get('park_travel_speed', self.toolhead.max_velocity)
         park_travel_accel = sequence_vars_macro.variables.get('park_travel_accel', self.toolhead.max_accel) # Not currently exposed
         park_lift_speed = sequence_vars_macro.variables.get('park_lift_speed', 15)
         z_hop_height = (
@@ -3686,23 +3682,22 @@ class Mmu:
             else sequence_vars_macro.variables.get('z_hop_height_error', 0)
         )
         z_hop_ramp = sequence_vars_macro.variables.get('z_hop_ramp', 0)
-#PAUL        toolchange_retract = sequence_vars_macro.variables.get('toolchange_retract', 0)
-#PAUL        toolchange_retract_speed = sequence_vars_macro.variables.get('toolchange_unretract_speed', 15)
+        self.log_error("PAUL: z_hop_toolchange=%s, z_hop_error=%s, park_on=%s" % (sequence_vars_macro.variables.get('z_hop_height_toolchange', -1), sequence_vars_macro.variables.get('z_hop_height_error', -1), park_on))
 
+        eventtime = self.reactor.monotonic()
+        homed = self.toolhead.get_status(eventtime)['homed_axes']
         if not self.save_toolhead_operation:
-            self.movequeues_wait()
-            eventtime = self.reactor.monotonic()
-            homed = self.toolhead.get_status(eventtime)['homed_axes']
-
+            # PAULself.movequeues_wait()
             # Handle extruder retraction if in print
-            if self._is_in_print(force_in_print) and self.toolchange_retract_length > 0 and self.toolhead.get_extruder().get_heater().can_extrude and operation not in ['load']:
-                self.log_debug("Retracting %.1fmm" % self.toolchange_retract_length)
+            if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude and operation not in ['load']:
+                self.log_debug("Retracting %.1fmm" % self.toolchange_retract)
                 self.gcode.run_script_from_command("M83")
-                self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.toolchange_retract_length, self.toolchange_retract_speed * 60))
+                self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.toolchange_retract, self.toolchange_retract_speed * 60))
                 self._has_retracted = True
 
             # Save toolhead position
             if 'xyz' in homed:
+                self.log_error("PAUL: HOMED")
                 gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self.log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
@@ -3744,6 +3739,7 @@ class Mmu:
         else:
             self.log_trace("Asked to save toolhead position for %s but it is already saved for %s. Checking z_hop height" % (operation, self.save_toolhead_operation))
             if 'xyz' in homed:
+                gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 if operation in park_on and z_hop_height > 0:
                     axis_maximum = self.toolhead.get_status(eventtime)['axis_maximum']
                     cur_z = gcode_pos.z
@@ -3776,16 +3772,14 @@ class Mmu:
             # Pull configuration from sequence macro (because it is cleaner and more intuitive for the user to define there)
             sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
             if sequence_vars_macro:
-                park_travel_speed = sequence_vars_macro.variables.get('park_travel_speed', self.toolhead.max_speed)
-# PAUL                toolchange_retract = sequence_vars_macro.variables.get('toolchange_retract', 0)
-# PAUL                toolchange_unretract_speed = sequence_vars_macro.variables.get('toolchange_unretract_speed', 15)
+                park_travel_speed = sequence_vars_macro.variables.get('park_travel_speed', self.toolhead.max_velocity)
 
                 # Undo extruder retraction if in print
                 if self._has_retracted and self.toolhead.get_extruder().get_heater().can_extrude:
                     self.log_debug("Un-retracting %.1fmm" % self.toolchange_retract)
                     self.gcode.run_script_from_command("M83")
                     self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, toolchange_unretract_speed * 60))
-                    self._has_retracted = False # PAUL unecessary, dont in clear_saved_toolhead_position()
+                    self._has_retracted = False
 
                 gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
                 display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
@@ -3794,23 +3788,6 @@ class Mmu:
                 self.log_debug("Restored gcode state and position (%s) after %s" % (display_gcode_pos, operation))
 
         self._clear_saved_toolhead_position()
-
-# PAUL
-#    def _retract(self, length, speed, force_in_print=False):
-#        # Retract to prevent blob
-#        if self._is_in_print(force_in_print) and length > 0 and self.toolhead.get_extruder().get_heater().can_extrude:
-#            self.log_debug("Retracting %.1fmm" % length)
-#            self.gcode.run_script_from_command("M83")
-#            self.gcode.run_script_from_command("G1 E-%.2f F%d" % (length, speed * 60))
-#            self._has_retracted = True
-#
-#    def _unretract(self, length, speed):
-#        # Un-retract if in print
-#        if self._has_retracted and self.toolhead.get_extruder().get_heater().can_extrude:
-#            self.log_debug("Un-retracting %.1fmm" % length)
-#            self.gcode.run_script_from_command("M83")
-#            self.gcode.run_script_from_command("G1 E%.2f F%d" % (length, speed * 60))
-#            self._has_retracted = False
 
     def _clear_saved_toolhead_position(self):
         self.save_toolhead_operation = ''
@@ -6435,7 +6412,7 @@ class Mmu:
                     if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed: # Will be done later if not homed
                         self._recover_filament_pos(message=True)
 
-                    self._save_toolhead_position_and_lift('toolchange', z_hop_height=self.z_hop_height_toolchange, next_pos=next_pos)
+                    self._save_toolhead_position_and_lift('toolchange', next_pos=next_pos)
 
                     if self._has_encoder():
                         self.encoder_sensor.update_clog_detection_length()
@@ -6478,7 +6455,7 @@ class Mmu:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
                     if not extruder_only:
-                        self._save_toolhead_position_and_lift('load', z_hop_height=self.z_hop_height_toolchange)
+                        self._save_toolhead_position_and_lift('load')
                         self._select_and_load_tool(self.tool_selected) # This could change gate tool is mapped to
                         self._persist_gate_statistics()
                     elif extruder_only and self.filament_pos != self.FILAMENT_POS_LOADED:
@@ -6508,7 +6485,7 @@ class Mmu:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
                     if not extruder_only:
-                        self._save_toolhead_position_and_lift('unload', z_hop_height=self.z_hop_height_toolchange)
+                        self._save_toolhead_position_and_lift('unload')
                         self._unload_tool(form_tip=form_tip)
                         self._persist_gate_statistics()
                     elif extruder_only and self.filament_pos != self.FILAMENT_POS_UNLOADED:
@@ -6604,7 +6581,7 @@ class Mmu:
         if self.is_enabled:
             self._fix_started_state() # Get out of 'started' state before transistion to pause
             self.log_debug("MMU PAUSE wrapper called")
-            self._save_toolhead_position_and_lift("pause", z_hop_height=self.z_hop_height_error)
+            self._save_toolhead_position_and_lift("pause")
         self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
@@ -6624,7 +6601,7 @@ class Mmu:
             self._fix_started_state() # Get out of 'started' state before transistion to cancelled
             self.log_debug("MMU_CANCEL_PRINT wrapper called")
             self._clear_mmu_error_dialog()
-            self._save_toolhead_position_and_lift("cancel", z_hop_height=self.z_hop_height_error) # PAUL new
+            self._save_toolhead_position_and_lift("cancel")
             self._wrap_gcode_command("__CANCEL_PRINT", None)
             self._on_print_end("cancelled")
             self._clear_macro_state()
@@ -7035,13 +7012,6 @@ class Mmu:
             msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
             msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
 
-# PAUL
-#            msg += "\n\nBLOB/STRINGING:"
-#            msg += "\nz_hop_height_toolchange = %.1f" % self.z_hop_height_toolchange
-#            msg += "\nz_hop_height_error = %.1f" % self.z_hop_height_error
-#            msg += "\nz_hop_ramp = %.1f" % self.z_hop_ramp
-#            msg += "\nrestore_position_speed = %.1f" % self.restore_position_speed
-#            msg += "\nrestore_position_accel = %d" % self.restore_position_accel
             msg += "\n\nRETRACTION::"
             msg += "\ntoolchange_retract = %.1f" % self.toolchange_retract
             msg += "\ntoolchange_retract_speed = %.1f" % self.toolchange_retract_speed
@@ -7100,7 +7070,7 @@ class Mmu:
 
     def _runout(self, force_runout=False):
         self.is_handling_runout = force_runout # Best starting assumption
-        self._save_toolhead_position_and_lift('runout', z_hop_height=self.z_hop_height_toolchange)
+        self._save_toolhead_position_and_lift('runout')
 
         if self.tool_selected < 0:
             raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
