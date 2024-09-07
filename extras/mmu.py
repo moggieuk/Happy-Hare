@@ -1447,22 +1447,24 @@ class Mmu:
                 self._set_print_state("printing")
             self._save_toolhead_position_and_lift('toolchange', next_pos=goto_pos)
             with self._wrap_track_time('total'):
-                with self._wrap_track_time('unload'):
-                    with self._wrap_track_time('pre_unload'):
-                        self._wrap_gcode_command(self.pre_unload_macro, exception=False, wait=True)
-                    self._wrap_gcode_command(self.post_form_tip_macro, exception=False, wait=True)
-                    with self._wrap_track_time('post_unload'):
-                        self._wrap_gcode_command(self.post_unload_macro, exception=False, wait=True)
-                with self._wrap_track_time('load'):
-                    with self._wrap_track_time('pre_load'):
-                        self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
-                    if pause:
-                        self._handle_mmu_error("TEST ERROR")
-                    else:
-                        with self._wrap_track_time('post_load'):
-                            self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
-                        self._restore_toolhead_position('toolchange')
-                        self.test_force_in_print = 0
+                try:
+                    with self._wrap_track_time('unload'):
+                        with self._wrap_track_time('pre_unload'):
+                            self._wrap_gcode_command(self.pre_unload_macro, exception=False, wait=True)
+                        self._wrap_gcode_command(self.post_form_tip_macro, exception=False, wait=True)
+                        with self._wrap_track_time('post_unload'):
+                            self._wrap_gcode_command(self.post_unload_macro, exception=False, wait=True)
+                    with self._wrap_track_time('load'):
+                        with self._wrap_track_time('pre_load'):
+                            self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
+                        if pause:
+                            raise MmuError("TEST ERROR")
+                        else:
+                            with self._wrap_track_time('post_load'):
+                                self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
+                            self._restore_toolhead_position('toolchange')
+                except MmuError as ee:
+                    self._handle_mmu_error(str(ee))
             self.log_info("Statistics:%s" % self.last_statistics)
             self._set_print_state("idle")
 
@@ -3697,7 +3699,6 @@ class Mmu:
 
             # Save toolhead position
             if 'xyz' in homed:
-                self.log_error("PAUL: HOMED")
                 gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self.log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
@@ -3739,6 +3740,7 @@ class Mmu:
         else:
             self.log_trace("Asked to save toolhead position for %s but it is already saved for %s. Checking z_hop height" % (operation, self.save_toolhead_operation))
             if 'xyz' in homed:
+                self.save_toolhead_operation = operation # Update operation
                 gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 if operation in park_on and z_hop_height > 0:
                     axis_maximum = self.toolhead.get_status(eventtime)['axis_maximum']
@@ -3748,10 +3750,16 @@ class Mmu:
                     max_z -= self.gcode_move.get_status(eventtime)['homing_origin'].z
                     safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
                     if act_z + safe_z > cur_z:
-                        self.log_debug("Lifting toolhead %.1fmm (speed:%d, accel:%d)" % (z_hop_height, park_lift_speed, park_travel_accel))
+                        self.log_debug("Lifting toolhead %.1fmm from print (speed:%d, accel:%d)" % (z_hop_height, park_lift_speed, park_travel_accel))
                         self.gcode.run_script_from_command("G90")
                         self.gcode.run_script_from_command("M204 S%d" % park_travel_accel)
                         self.gcode.run_script_from_command("G1 Z%.4f F%d" % (act_z + safe_z, park_lift_speed * 60)) # Increase z_hop
+                        # Make sure sequence macro knows about this adjustment so it adjust toolchange plane
+                        park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None)
+                        if park_macro:
+                            saved_xyz = list(park_macro.variables.get('saved_xyz'))
+                            saved_xyz[2] = act_z + safe_z
+                            self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=saved_xyz VALUE=\"%s, %s, %s\"" % tuple(saved_xyz))
 
     # For z_hop_ramp. Return new position along move vector (towards center unless at center then towards origin)
     def _move_towards_center(self, x, y, w, h, d):
@@ -6538,8 +6546,8 @@ class Mmu:
     def cmd_MMU_UNLOCK(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        self._clear_mmu_error_dialog()
         if self._is_mmu_paused_and_locked():
-            self._clear_mmu_error_dialog()
             self._mmu_unlock()
 
     # Not a user facing command - used in automatic wrapper
