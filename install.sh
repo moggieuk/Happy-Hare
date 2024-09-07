@@ -662,81 +662,9 @@ read_previous_config() {
     else
         echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
         parse_file "${dest_cfg}" "" "_param_"
-
-        # Upgrade / map / force old parameters
-        if [ "${_param_form_tip_macro}" == "_MMU_FORM_TIP_STANDALONE" ]; then
-            _param_form_tip_macro="_MMU_FORM_TIP"
-        fi
-        if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
-            _param_gate_unload_buffer=${_param_encoder_unload_buffer}
-        fi
-        if [ ! "${_param_encoder_unload_max}" == "" ]; then
-            _param_gate_homing_max=${_param_encoder_unload_max}
-        fi
-        if [ ! "${_param_encoder_load_retries}" == "" ]; then
-            _param_gate_load_retries=${_param_encoder_load_retries}
-        fi
-        if [ "${_param_toolhead_ignore_load_error}" == "1" ]; then
-            _param_toolhead_move_error_tolerance=100
-        fi
-        if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
-            _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
-        fi
-        if [ ! "${_param_extruder_homing_current}" == "" ]; then
-            _param_extruder_collision_homing_current=${_param_extruder_homing_current}
-        fi
-        if [ "${_param_log_visual}" == "2" ]; then
-            _param_log_visual=1
-        fi
-        if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
-            if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
-                _param_servo_buzz_gear_on_down=0
-            else
-                _param_servo_buzz_gear_on_down=3
-            fi
-        fi
-        if [ "${_param_gate_parking_distance}" == "" ]; then
-            if [ ! "${_param_mmu_version}" == "1.1" ]; then
-                _param_gate_parking_distance=23
-            else
-                _param_gate_parking_distance=13
-            fi
-        fi
-        if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
-            _param_gate_endstop_to_encoder=0
-        fi
-
-        if [ ! "${_param_servo_up_angle}" == "" ]; then
-            _param_servo_up_angle=$(echo "$_param_servo_up_angle" | awk '{print int($1)}')
-        fi
-        if [ ! "${_param_servo_down_angle}" == "" ]; then
-            _param_servo_down_angle=$(echo "$_param_servo_down_angle" | awk '{print int($1)}')
-        fi
-        if [ ! "${_param_servo_move_angle}" == "" ]; then
-            _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
-        fi
-        if [ "${_param_servo_always_active}" == "" ]; then
-            _param_servo_always_active=0
-        fi
-        if [ "${_param_toolhead_post_load_tighten}" == "1" ]; then
-            # Old Boolean -> New Percent
-            _param_toolhead_post_load_tighten=60
-        fi
-
-        if [ "${_param_log_file_level}" -gt 2 ]; then
-            _param_log_file_level=2
-        fi
-
-        if [ ! "${_param_enable_spoolman}" == "" ]; then
-            if [ ! "${_param_enable_spoolman}" == "1" ]; then
-                _param_spoolman_support="readonly"
-            else
-                _param_spoolman_support="off"
-            fi
-        fi
     fi
 
-    # TODO Remove mmu_variables from list once everybody has upgraded
+    # TODO Remove 'mmu_variables' from list once everybody has upgraded
     for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
@@ -750,48 +678,6 @@ read_previous_config() {
                 parse_file "${dest_cfg}" "variable_|filename"
             else
                 parse_file "${dest_cfg}" "variable_"
-            fi
-
-            if [ ! "${variable_enable_park}" == "" ]; then
-                variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
-            fi
-            if [ ! "${variable_ramming_volume}" == "" ]; then
-                variable_ramming_volume_standalone=${variable_ramming_volume}
-            fi
-            if [ ! "${variable_auto_home}" == "" ]; then
-                variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
-            fi
-            if [ ! "${variable_park_after_form_tip}" == "" ]; then
-                variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
-            fi
-            if [ ! "${variable_restore_position}" == "" ]; then
-                variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
-            fi
-            if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
-                variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
-            fi
-            if [ ! "${variable_use_skinnydip}" == "" ]; then
-                variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
-            fi
-            if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
-                variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
-            fi
-            if [ ! "${variable_pin_loc_x}" == "" ]; then
-                variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
-            fi
-            if [ ! "${variable_pin_park_x_dist}" == "" ]; then
-                variable_pin_park_dist="${variable_pin_park_x_dist}"
-            fi
-            if [ ! "${variable_pin_loc_x_compressed}" == "" ]; then
-                variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
-            fi
-            if [ ! "${variable_safe_margin_x}" == "" ]; then
-                variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
-            fi
-            if [ "${variable_restore_xy_pos}" == "True" ]; then
-                variable_restore_xy_pos="\"last\""
-            elif [ "${variable_restore_xy_pos}" == "False" ]; then
-                variable_restore_xy_pos="\"none\""
             fi
         fi
     done
@@ -808,6 +694,161 @@ read_previous_config() {
             fi
         done
     fi
+
+    # Upgrade / map / force old parameters
+    if [ "${_param_form_tip_macro}" == "_MMU_FORM_TIP_STANDALONE" ]; then
+        _param_form_tip_macro="_MMU_FORM_TIP"
+    fi
+    if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
+        _param_gate_unload_buffer=${_param_encoder_unload_buffer}
+    fi
+    if [ ! "${_param_encoder_unload_max}" == "" ]; then
+        _param_gate_homing_max=${_param_encoder_unload_max}
+    fi
+    if [ ! "${_param_encoder_load_retries}" == "" ]; then
+        _param_gate_load_retries=${_param_encoder_load_retries}
+    fi
+    if [ "${_param_toolhead_ignore_load_error}" == "1" ]; then
+        _param_toolhead_move_error_tolerance=100
+    fi
+    if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
+        _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
+    fi
+    if [ ! "${_param_extruder_homing_current}" == "" ]; then
+        _param_extruder_collision_homing_current=${_param_extruder_homing_current}
+    fi
+    if [ "${_param_log_visual}" == "2" ]; then
+        _param_log_visual=1
+    fi
+    if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
+        if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
+            _param_servo_buzz_gear_on_down=0
+        else
+            _param_servo_buzz_gear_on_down=3
+        fi
+    fi
+    if [ "${_param_gate_parking_distance}" == "" ]; then
+        if [ ! "${_param_mmu_version}" == "1.1" ]; then
+            _param_gate_parking_distance=23
+        else
+            _param_gate_parking_distance=13
+        fi
+    fi
+    if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
+        _param_gate_endstop_to_encoder=0
+    fi
+    if [ ! "${_param_servo_up_angle}" == "" ]; then
+        _param_servo_up_angle=$(echo "$_param_servo_up_angle" | awk '{print int($1)}')
+    fi
+    if [ ! "${_param_servo_down_angle}" == "" ]; then
+        _param_servo_down_angle=$(echo "$_param_servo_down_angle" | awk '{print int($1)}')
+    fi
+    if [ ! "${_param_servo_move_angle}" == "" ]; then
+        _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
+    fi
+    if [ "${_param_servo_always_active}" == "" ]; then
+        _param_servo_always_active=0
+    fi
+    if [ "${_param_toolhead_post_load_tighten}" == "1" ]; then
+        # Old Boolean -> New Percent
+        _param_toolhead_post_load_tighten=60
+    fi
+    if [ "${_param_log_file_level}" -gt 2 ]; then
+        _param_log_file_level=2
+    fi
+    if [ ! "${_param_enable_spoolman}" == "" ]; then
+        if [ ! "${_param_enable_spoolman}" == "1" ]; then
+            _param_spoolman_support="readonly"
+        else
+            _param_spoolman_support="off"
+        fi
+    fi
+    if [ ! "${variable_enable_park}" == "" ]; then
+        variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
+    fi
+    if [ ! "${variable_ramming_volume}" == "" ]; then
+        variable_ramming_volume_standalone=${variable_ramming_volume}
+    fi
+    if [ ! "${variable_auto_home}" == "" ]; then
+        variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
+    fi
+    if [ ! "${variable_park_after_form_tip}" == "" ]; then
+        variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
+    fi
+    if [ ! "${variable_restore_position}" == "" ]; then
+        variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
+    fi
+    if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
+        variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
+    fi
+    if [ ! "${variable_use_skinnydip}" == "" ]; then
+        variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
+    fi
+    if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
+        variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
+    fi
+    if [ ! "${variable_pin_loc_x}" == "" ]; then
+        variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
+    fi
+    if [ ! "${variable_safe_margin_x}" == "" ]; then
+        variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
+    fi
+    if [ "${variable_restore_xy_pos}" == "True" ]; then
+        variable_restore_xy_pos="\"last\""
+    elif [ "${variable_restore_xy_pos}" == "False" ]; then
+        variable_restore_xy_pos="\"none\""
+    fi
+
+    # v2.7.1
+    if [ ! "${variable_pin_park_x_dist}" == "" ]; then
+        variable_pin_park_dist="${variable_pin_park_x_dist}"
+    fi
+    if [ ! "${variable_pin_loc_x_compressed}" == "" ]; then
+        variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
+    fi
+    if [ ! "${variable_park_xy}" == "" ]; then
+        variable_park_xy_toolchange="${variable_park_xy}"
+        variable_park_xy_error="${variable_park_xy}"
+    fi
+    # Find largest existing z_hop value
+    if [ ! "${_param_z_hop_height_toolchange}" == "" ]; then
+        variable_z_hop_height_toolchange="${_param_z_hop_height_toolchange}"
+        if [ ! "${variable_park_z_hop}" == "" ]; then
+            if [ "${variable_park_z_hop}" -gt "${_param_z_hop_height_toolchange}" ]; then
+                variable_z_hop_height_toolchange="${variable_park_z_hop}"
+            fi
+        fi
+    fi
+    if [ ! "${_param_z_hop_height_error}" == "" ]; then
+        variable_z_hop_height_error="${_param_z_hop_height_error}"
+        if [ ! "${variable_park_z_hop}" == "" ]; then
+            if [ "${variable_park_z_hop}" -gt "${_param_z_hop_height_error}" ]; then
+                variable_z_hop_height_error="${variable_park_z_hop}"
+            fi
+        fi
+    fi
+    if [ ! "${_param_z_hop_speed}" == "" ]; then
+        _param_restore_position_speed=${_param_z_hop_speed}
+        if [ "${_param_restore_position_speed}" -lt "100" ]; then
+            _param_restore_position_speed=100
+        fi
+    fi
+    if [ ! "${_param_z_hop_ramp}" == "" ]; then
+        variable_z_hop_ramp="${_param_z_hop_ramp}"
+    fi
+    if [ ! "${variable_lift_speed}" == "" ]; then
+        variable_park_lift_speed="${variable_lift_speed}"
+    fi
+    if [ "${variable_enable_park}" == "False" ]; then
+        variable_enable_park_printing="/'/'"
+        if [ "${variable_enable_park_runout}" == "True" ]; then
+            variable_enable_park_runout="'runout'"
+        fi
+    fi
+    if [ "${variable_enable_park_standalone}" == "False" ]; then
+        variable_enable_park_standalone="/'/'"
+    fi
+
 
     if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
         mmu_num_gates=$_param_mmu_num_gates
