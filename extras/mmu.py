@@ -508,6 +508,7 @@ class Mmu:
         self.load_sequence_macro = config.get('load_sequence_macro', '_MMU_LOAD_SEQUENCE')
         self.error_dialog_macro = config.get('error_dialog_macro', '_MMU_ERROR_DIALOG') # Not exposed
         self.clear_position_macro = config.get('clear_position_macro', '_MMU_CLEAR_POSITION') # Not exposed
+        self.restore_position_macro = config.get('restore_position_macro', '_MMU_RESTORE_POSITION') # Not exposed
 
         # User MMU setup
         self.mmu_num_gates = config.getint('mmu_num_gates')
@@ -3581,6 +3582,10 @@ class Mmu:
                 recover_pos = self.filament_recovery_on_pause
         else:
             self.log_error("MMU issue: %s" % reason)
+            # Must restore toolhead position in case user has parking enabled because we will
+            # never have a resume to do that. If parking is not enabled this will be a no-op
+            self._restore_macro_position() # Will also clear macro state
+            self._restore_toolhead_position(self.save_toolhead_operation)
 
         # Be deliberate about order of these tasks
         if run_pause_macro:
@@ -3662,6 +3667,10 @@ class Mmu:
     def _clear_macro_state(self):
         if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
             self._wrap_gcode_command(self.clear_position_macro)
+
+    def _restore_macro_position(self):
+        if self.printer.lookup_object('gcode_macro %s' % self.restore_position_macro, None) is not None:
+            self._wrap_gcode_command(self.restore_position_macro)
 
     def _save_toolhead_position_and_lift(self, operation, force_in_print=False, next_pos=None):
         # Pull configuration from sequence macro (because it is cleaner and more intuitive for the user to define there)
@@ -3786,7 +3795,7 @@ class Mmu:
                 if self._has_retracted and self.toolhead.get_extruder().get_heater().can_extrude:
                     self.log_debug("Un-retracting %.1fmm" % self.toolchange_retract)
                     self.gcode.run_script_from_command("M83")
-                    self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, toolchange_unretract_speed * 60))
+                    self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, self.toolchange_unretract_speed * 60))
                     self._has_retracted = False
 
                 gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
