@@ -3693,12 +3693,11 @@ class Mmu:
             else sequence_vars_macro.variables.get('z_hop_height_error', 0)
         )
         z_hop_ramp = sequence_vars_macro.variables.get('z_hop_ramp', 0)
-        self.log_error("PAUL: z_hop_toolchange=%s, z_hop_error=%s, park_on=%s" % (sequence_vars_macro.variables.get('z_hop_height_toolchange', -1), sequence_vars_macro.variables.get('z_hop_height_error', -1), park_on))
 
         eventtime = self.reactor.monotonic()
         homed = self.toolhead.get_status(eventtime)['homed_axes']
         if not self.save_toolhead_operation:
-            # PAULself.movequeues_wait()
+            #self.movequeues_wait(mmu_toolhead=False)
             # Handle extruder retraction if in print
             if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude and operation not in ['load']:
                 self.log_debug("Retracting %.1fmm" % self.toolchange_retract)
