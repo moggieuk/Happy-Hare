@@ -1078,7 +1078,7 @@ class Mmu:
         self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
         self._setup_sync_feedback()
 
-        self._setup_heater_off_timer()
+        self._setup_hotend_off_timer()
         self._setup_pending_spool_id_timer()
         self._clear_saved_toolhead_position()
 
@@ -1439,9 +1439,9 @@ class Mmu:
         if gcmd.get_int('RUN_CHANGE_SEQUENCE', 0, minval=0, maxval=1):
             pause = gcmd.get_int('PAUSE', 0, minval=0, maxval=1)
             next_pos = gcmd.get('NEXT_POS', "last")
-            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
             goto_pos = None
             if next_pos == 'next':
+                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
                 goto_pos = [11, 11]
                 self._set_next_position(goto_pos)
             if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
@@ -3274,12 +3274,13 @@ class Mmu:
 # MMU STATE FUNCTIONS #
 #######################
 
-    def _setup_heater_off_timer(self):
-        self.heater_off_timer = self.reactor.register_timer(self._heater_off_handler, self.reactor.NEVER)
+    def _setup_hotend_off_timer(self):
+        self.hotend_off_timer = self.reactor.register_timer(self._hotend_off_handler, self.reactor.NEVER)
 
-    def _heater_off_handler(self, eventtime):
-        self.log_info("Disabled extruder heater")
-        self.gcode.run_script_from_command("M104 S0")
+    def _hotend_off_handler(self, eventtime):
+        if not self._is_printing():
+            self.log_info("Disabled extruder heater")
+            self.gcode.run_script_from_command("M104 S0")
         return self.reactor.NEVER
 
     def _setup_pending_spool_id_timer(self):
@@ -3510,7 +3511,7 @@ class Mmu:
             self._clear_saved_toolhead_position()
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
-            self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self.is_handling_runout = False
             self._clear_slicer_tool_map()
             self._enable_runout() # Enable runout/clog detection while printing
@@ -3546,7 +3547,7 @@ class Mmu:
             self._clear_saved_toolhead_position()
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
-            self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._disable_runout() # Disable runout/clog detection after print
 
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
@@ -3569,7 +3570,7 @@ class Mmu:
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
                 self._track_pause_start()
                 self.log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
-                self.reactor.update_timer(self.heater_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
+                self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._save_toolhead_position_and_lift('mmu_error', force_in_print=force_in_print)
@@ -3626,7 +3627,7 @@ class Mmu:
     def _mmu_unlock(self):
         if self._is_mmu_paused():
             self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
-            self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER)
+            self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
 
             # Important to wait for stable temperature to resume exactly how we paused
             if self.paused_extruder_temp:
@@ -4171,7 +4172,7 @@ class Mmu:
         if not self.is_enabled: return
         self._initialize_state()
         self._disable_runout()
-        self.reactor.update_timer(self.heater_off_timer, self.reactor.NEVER)
+        self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.is_enabled = False
         self.printer.send_event("mmu:disabled")
