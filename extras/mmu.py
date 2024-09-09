@@ -3692,9 +3692,13 @@ class Mmu:
         z_hop_height = (
             sequence_vars_macro.variables.get('z_hop_height_toolchange', 0)
             if operation in ['toolchange', 'load', 'unload', 'runout']
+            else sequence_vars_macro.variables.get('z_hop_height_mmu_error', 0)
+            if operation in ['mmu_error']
             else sequence_vars_macro.variables.get('z_hop_height_cancel', 0)
             if operation in ['cancel']
             else sequence_vars_macro.variables.get('z_hop_height_pause', 0)
+            if operation in ['pause']
+            else 0
         )
         z_hop_ramp = (
             sequence_vars_macro.variables.get('z_hop_ramp', 0)
