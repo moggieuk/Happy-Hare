@@ -1177,7 +1177,6 @@ class Mmu:
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
         self._clear_slicer_tool_map()
         self.pending_spool_id = None # For automatic assignment of spool_id if set perhaps by rfid reader
-        self._has_retracted = False
 
     def _clear_slicer_tool_map(self):
         self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': []}
@@ -3575,6 +3574,7 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._save_toolhead_position_and_lift('mmu_error', force_in_print=force_in_print)
+                self._wrap_gcode_command("_MMU_ERROR")
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
@@ -3586,17 +3586,11 @@ class Mmu:
             self.log_error("MMU issue: %s" % reason)
             # Must restore toolhead position in case user has parking enabled because we will
             # never have a resume to do that. If parking is not enabled this will be a no-op
-            self._restore_macro_position() # Will also clear macro state
             self._restore_toolhead_position(self.save_toolhead_operation)
 
         # Be deliberate about order of these tasks
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
-
-            # Make sure the pause/resume resume point is the intended position rather then the current positon
-            if self.save_toolhead_operation:
-                if self.TOOLHEAD_POSITION_STATE in self.gcode_move.saved_states:
-                    self.gcode_move.saved_states['PAUSE_STATE'] = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
 
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
@@ -3661,7 +3655,6 @@ class Mmu:
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
 
         # Restore print position as final step
-        self._clear_macro_state()
         self._restore_toolhead_position(operation)
 
         # Ready to continue printing...
@@ -3670,55 +3663,10 @@ class Mmu:
         if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
             self._wrap_gcode_command(self.clear_position_macro)
 
-    def _restore_macro_position(self):
-        if self.printer.lookup_object('gcode_macro %s' % self.restore_position_macro, None) is not None:
-            self._wrap_gcode_command(self.restore_position_macro)
-
     def _save_toolhead_position_and_lift(self, operation, force_in_print=False, next_pos=None):
-        # Pull configuration from sequence macro (because it is cleaner and more intuitive for the user to define there)
-        sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-        if not sequence_vars_macro:
-            self.log_error("_MMU_SEQUENCE_VARS macro not found. Skipping toolhead lift/park")
-            return
-
-        park_on = (
-            sequence_vars_macro.variables.get('enable_park_printing', '')
-            if self._is_in_print(force_in_print)
-            else sequence_vars_macro.variables.get('enable_park_standalone', '')
-        )
-        park_travel_speed = sequence_vars_macro.variables.get('park_travel_speed', self.toolhead.max_velocity)
-        park_travel_accel = sequence_vars_macro.variables.get('park_travel_accel', self.toolhead.max_accel) # Not currently exposed
-        park_lift_speed = sequence_vars_macro.variables.get('park_lift_speed', 15)
-        z_hop_height = (
-            sequence_vars_macro.variables.get('z_hop_height_toolchange', 0)
-            if operation in ['toolchange', 'load', 'unload', 'runout']
-            else sequence_vars_macro.variables.get('z_hop_height_mmu_error', 0)
-            if operation in ['mmu_error']
-            else sequence_vars_macro.variables.get('z_hop_height_cancel', 0)
-            if operation in ['cancel']
-            else sequence_vars_macro.variables.get('z_hop_height_pause', 0)
-            if operation in ['pause']
-            else 0
-        )
-        z_hop_ramp = (
-            sequence_vars_macro.variables.get('z_hop_ramp', 0)
-            if operation in ['toolchange', 'load', 'unload', 'runout'] and self._is_in_print(force_in_print)
-            else 0
-        )
-        self.toolchange_retract = sequence_vars_macro.variables.get('retract', 0)
-        retract_speed = sequence_vars_macro.variables.get('retract_speed', 0)
-
         eventtime = self.reactor.monotonic()
         homed = self.toolhead.get_status(eventtime)['homed_axes']
         if not self.save_toolhead_operation:
-            #self.movequeues_wait(mmu_toolhead=False)
-            # Handle extruder retraction
-            if self._is_in_print(force_in_print) and self.toolchange_retract > 0 and self.toolhead.get_extruder().get_heater().can_extrude and operation not in ['load']:
-                self.log_debug("Retracting %.1fmm" % self.toolchange_retract)
-                self.gcode.run_script_from_command("M83")
-                self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.toolchange_retract, retract_speed * 60))
-                self._has_retracted = True
-
             # Save toolhead position
             if 'xyz' in homed:
                 gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
@@ -3727,6 +3675,7 @@ class Mmu:
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
                 self.save_toolhead_operation = operation
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
+                self.saved_toolhead_speed = self.gcode_move.get_status(eventtime)['speed']
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
                 if next_pos:
@@ -3738,50 +3687,21 @@ class Mmu:
                     self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
-                # Lift toolhead off print the specified z-hop if configured. We do this here (in python) to avoid any possible delay
-                if operation in park_on and z_hop_height > 0:
+                # Calculate z_ramp coordinates to help macro
+                sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+                if sequence_vars_macro:
+                    z_hop_ramp = sequence_vars_macro.variables.get('z_hop_ramp', 0)
                     axis_maximum = self.toolhead.get_status(eventtime)['axis_maximum']
-                    act_z = gcode_pos.z
-                    max_z = axis_maximum.z
-                    max_z -= self.gcode_move.get_status(eventtime)['homing_origin'].z
-                    safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
-
-                    # Factor z_hop_ramp
-                    current_x, current_y = gcode_pos.x, gcode_pos.y
-                    new_x, new_y = self._move_towards_center(current_x, current_y, axis_maximum.x, axis_maximum.y, z_hop_ramp)
-
-                    speed = park_travel_speed if z_hop_ramp > 0 else park_lift_speed
-                    self.log_debug("Lifting toolhead %.1fmm with %.1fmm ramp (speed:%d, accel:%d)" % (z_hop_height, z_hop_ramp, speed, park_travel_accel))
-                    self.gcode.run_script_from_command("G90")
-                    self.gcode.run_script_from_command("M204 S%d" % park_travel_accel)
-                    self.gcode.run_script_from_command("G1 X%.4f Y%.4f Z%.4f F%d" % (new_x, new_y, act_z + safe_z, speed * 60)) # Ramp
-                    self.gcode.run_script_from_command("G1 X%.4f Y%.4f F%d" % (current_x, current_y, speed * 60)) # Restore x,y
+                    new_x, new_y = self._move_towards_center(gcode_pos.x, gcode_pos.y, axis_maximum.x, axis_maximum.y, z_hop_ramp)
+                    self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=z_hop_ramp_xy VALUE=%s,%s" % (new_x, new_y))
             else:
                 self.log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
         else:
             self.log_trace("Asked to save toolhead position for %s but it is already saved for %s. Checking z_hop height" % (operation, self.save_toolhead_operation))
             if 'xyz' in homed:
-                self.save_toolhead_operation = operation # Update operation
-                gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
-                if operation in park_on and z_hop_height > 0:
-                    axis_maximum = self.toolhead.get_status(eventtime)['axis_maximum']
-                    cur_z = gcode_pos.z
-                    act_z = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][2]
-                    max_z = axis_maximum.z
-                    max_z -= self.gcode_move.get_status(eventtime)['homing_origin'].z
-                    safe_z = z_hop_height if (act_z < (max_z - z_hop_height)) else (max_z - act_z)
-                    if act_z + safe_z > cur_z:
-                        self.log_debug("Lifting toolhead %.1fmm from print (speed:%d, accel:%d)" % (z_hop_height, park_lift_speed, park_travel_accel))
-                        self.gcode.run_script_from_command("G90")
-                        self.gcode.run_script_from_command("M204 S%d" % park_travel_accel)
-                        self.gcode.run_script_from_command("G1 Z%.4f F%d" % (act_z + safe_z, park_lift_speed * 60)) # Increase z_hop
-                        # Make sure sequence macro knows about this adjustment so it adjust toolchange plane
-                        park_macro = self.printer.lookup_object("gcode_macro _MMU_PARK", None)
-                        if park_macro:
-                            saved_xyz = list(park_macro.variables.get('saved_xyz'))
-                            saved_xyz[2] = act_z + safe_z
-                            self.gcode.run_script_from_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=saved_xyz VALUE=\"%s, %s, %s\"" % tuple(saved_xyz))
+                if self.save_toolhead_operation != 'mmu_error':
+                    self.save_toolhead_operation = operation # Update operation
 
     # For z_hop_ramp. Return new position along move vector (towards center unless at center then towards origin)
     def _move_towards_center(self, x, y, w, h, d):
@@ -3799,28 +3719,15 @@ class Mmu:
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
-            # Pull configuration from sequence macro (because it is cleaner and more intuitive for the user to define there)
-            sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-            if not sequence_vars_macro:
-                self.log_error("_MMU_SEQUENCE_VARS macro not found. Skipping toolhead lift/park")
-                return
+            # This should restore print position
+            self._wrap_gcode_command(self.restore_position_macro)
 
-            park_travel_speed = sequence_vars_macro.variables.get('park_travel_speed', self.toolhead.max_velocity)
-            self.toolchange_retract = sequence_vars_macro.variables.get('retract', 0)
-            unretract_speed = sequence_vars_macro.variables.get('unretract_speed', 0)
-
-            # Undo extruder retraction
-            if self._has_retracted and self.toolhead.get_extruder().get_heater().can_extrude:
-                self.log_debug("Un-retracting %.1fmm" % self.toolchange_retract)
-                self.gcode.run_script_from_command("M83")
-                self.gcode.run_script_from_command("G1 E%.2f F%d" % (self.toolchange_retract, unretract_speed * 60))
-                self._has_retracted = False
-
+            # No matter what ensure position is good
             gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
             display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
             self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
-            self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, park_travel_speed))
-            self.log_debug("Restored gcode state and position (%s) after %s" % (display_gcode_pos, operation))
+            self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.saved_toolhead_speed))
+            self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
 
         self._clear_saved_toolhead_position()
 
@@ -3828,7 +3735,6 @@ class Mmu:
         self.save_toolhead_operation = ''
         self.saved_toolhead_height = -1.
         self.saved_toolhead_max_accel = 0
-        self._has_retracted = False
 
     def _disable_runout(self):
         enabled = self.runout_enabled
@@ -6558,6 +6464,8 @@ class Mmu:
         msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", UI_SPACE)
         if gcmd.get_int('ERROR', 0, minval=0, maxval=1):
             self.log_error(msg)
+        elif gcmd.get_int('DEBUG', 0, minval=0, maxval=1):
+            self.log_debug(msg)
         else:
             self.log_info(msg)
 
@@ -6603,6 +6511,11 @@ class Mmu:
                 self.log_always("Automatically set filament state to LOADED based on toolhead sensor")
             if self.filament_pos not in [self.FILAMENT_POS_UNLOADED, self.FILAMENT_POS_LOADED]:
                 raise MmuError("Cannot resume because filament position not indicated as fully loaded (or unloaded). Ensure filament is loaded/unloaded and run:\n MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER\nto reset state, then RESUME again")
+
+            # Prevent BASE_RESUME from moving toolhead
+            if self.TOOLHEAD_POSITION_STATE in self.gcode_move.saved_states:
+                gcode_pos = self.gcode_move.get_status(self.reactor.monotonic())['gcode_position']
+                self.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = gcode_pos[:3]
 
             self._wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())))
             self._continue_after("resume", force_in_print=force_in_print)

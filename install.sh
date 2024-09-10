@@ -800,6 +800,9 @@ read_previous_config() {
     fi
 
     # v2.7.1
+    if [ ! "${variable_retract}" == "" ]; then
+        variable_retract_length="${variable_retract}"
+    fi
     if [ ! "${variable_pin_park_x_dist}" == "" ]; then
         variable_pin_park_dist="${variable_pin_park_x_dist}"
     fi
