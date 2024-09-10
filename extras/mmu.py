@@ -5924,6 +5924,7 @@ class Mmu:
         else:
             msg = "Tool change requested, from %s to T%d" % (initial_tool_string, tool)
             m117_msg = ("%s > T%d" % (initial_tool_string, tool))
+
         # Important to always inform user in case there is an error and manual recovery is necessary
         self._last_toolchange = m117_msg
         self.gcode.run_script_from_command("M117 %s" % m117_msg)
