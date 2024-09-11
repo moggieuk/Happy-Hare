@@ -1744,7 +1744,7 @@ class Mmu:
                 'reason_for_pause': self.reason_for_pause if self._is_mmu_paused() else "",
                 'extruder_filament_remaining': self.filament_remaining,
                 'extruder_residual_filament': self.toolhead_ooze_reduction,
-                'toolchange_retract': self.toolchange_retract, # Legacy
+                'toolchange_retract': self.toolchange_retract, # Legacy but useful
                 'spoolman_support': self.spoolman_support,
                 'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
         }
@@ -3521,7 +3521,7 @@ class Mmu:
         if not pre_start_only and self.print_state not in ["printing"]:
             self.log_trace("_on_print_start(->printing)")
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
-            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=min_lifted_z VALUE=0")
+            self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=min_lifted_z VALUE=0") # Sequential printing movement "floor"
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE=False")
             msg = "Happy Hare initialized ready for print"
             if self.filament_pos == self.FILAMENT_POS_LOADED:
