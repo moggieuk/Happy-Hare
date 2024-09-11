@@ -3686,14 +3686,6 @@ class Mmu:
                     mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
                     self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
-
-                # Calculate z_ramp coordinates to help macro
-                sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-                if sequence_vars_macro:
-                    z_hop_ramp = sequence_vars_macro.variables.get('z_hop_ramp', 0)
-                    axis_maximum = self.toolhead.get_status(eventtime)['axis_maximum']
-                    new_x, new_y = self._move_towards_center(gcode_pos.x, gcode_pos.y, axis_maximum.x, axis_maximum.y, z_hop_ramp)
-                    self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=z_hop_ramp_xy VALUE=%s,%s" % (new_x, new_y))
             else:
                 self.log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
@@ -3702,14 +3694,6 @@ class Mmu:
             if 'xyz' in homed:
                 if self.save_toolhead_operation != 'mmu_error':
                     self.save_toolhead_operation = operation # Update operation
-
-    # For z_hop_ramp. Return new position along move vector (towards center unless at center then towards origin)
-    def _move_towards_center(self, x, y, w, h, d):
-        cx, cy = w / 2.0, h / 2.0
-        target_x, target_y = (0, 0) if (x, y) == (cx, cy) else (cx, cy)
-        dx, dy = target_x - x, target_y - y
-        length = math.hypot(dx, dy)
-        return x + d * dx / length, y + d * dy / length
 
     def _restore_toolhead_position(self, operation):
         if self.save_toolhead_operation:
