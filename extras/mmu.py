@@ -504,7 +504,9 @@ class Mmu:
         self.load_sequence_macro = config.get('load_sequence_macro', '_MMU_LOAD_SEQUENCE')
         self.error_dialog_macro = config.get('error_dialog_macro', '_MMU_ERROR_DIALOG') # Not exposed
         self.clear_position_macro = config.get('clear_position_macro', '_MMU_CLEAR_POSITION') # Not exposed
+        self.save_position_macro = config.get('save_position_macro', '_MMU_SAVE_POSITION') # Not exposed
         self.restore_position_macro = config.get('restore_position_macro', '_MMU_RESTORE_POSITION') # Not exposed
+        self.park_macro = config.get('park_macro', '_MMU_PARK') # Not exposed
 
         # User MMU setup
         self.mmu_num_gates = config.getint('mmu_num_gates')
@@ -3573,7 +3575,7 @@ class Mmu:
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
-                self._save_toolhead_position_and_lift('mmu_error', force_in_print=force_in_print)
+                self._save_toolhead_position_and_lift('mmu_error')
                 self._wrap_gcode_command("_MMU_ERROR")
                 run_pause_macro = not self._is_printer_paused()
                 self._set_print_state("pause_locked")
@@ -3584,9 +3586,6 @@ class Mmu:
                 recover_pos = self.filament_recovery_on_pause
         else:
             self.log_error("MMU issue: %s" % reason)
-            # Must restore toolhead position in case user has parking enabled because we will
-            # never have a resume to do that. If parking is not enabled this will be a no-op
-            self._restore_toolhead_position(self.save_toolhead_operation)
 
         # Be deliberate about order of these tasks
         if run_pause_macro:
@@ -3663,12 +3662,13 @@ class Mmu:
         if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
             self._wrap_gcode_command(self.clear_position_macro)
 
-    def _save_toolhead_position_and_lift(self, operation, force_in_print=False, next_pos=None):
+    def _save_toolhead_position_and_lift(self, operation, next_pos=None):
         eventtime = self.reactor.monotonic()
         homed = self.toolhead.get_status(eventtime)['homed_axes']
         if not self.save_toolhead_operation:
             # Save toolhead position
             if 'xyz' in homed:
+                # This is paranoia so I can be absolutely sure that Happy Hare leaves toolhead the same way
                 gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self.log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
@@ -3686,6 +3686,10 @@ class Mmu:
                     mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
                     self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60.
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
+
+                # This will save the print position in the macro and apply park
+                self._wrap_gcode_command(self.save_position_macro)
+                self._wrap_gcode_command(self.park_macro)
             else:
                 self.log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
@@ -3703,10 +3707,10 @@ class Mmu:
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
-            # This should restore print position
+            # This should restore the macro recorded print position
             self._wrap_gcode_command(self.restore_position_macro)
 
-            # No matter what ensure position is good
+            # Paranoia, no matter what ensure position is good
             gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
             display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
             self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
