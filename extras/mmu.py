@@ -6449,7 +6449,6 @@ class Mmu:
 
     cmd_MMU_LOG_help = "Logs messages in MMU log"
     def cmd_MMU_LOG(self, gcmd):
-        #self._log_to_file(gcmd.get_commandline())
         msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", UI_SPACE)
         if gcmd.get_int('ERROR', 0, minval=0, maxval=1):
             self.log_error(msg)
