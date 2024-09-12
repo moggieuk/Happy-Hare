@@ -2372,7 +2372,7 @@ class Mmu:
         self.servo_angle = self.SERVO_UNKNOWN_STATE
 
     def _servo_set_angle(self, angle):
-        self.servo.set_value(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
+        self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
         self.servo_angle = angle
         self.servo_state = self.SERVO_UNKNOWN_STATE
 
@@ -2390,7 +2390,7 @@ class Mmu:
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self.log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
         self.movequeues_wait()
-        self.servo.set_value(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
+        self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             for i in range(self.servo_buzz_gear_on_down):
                 self._trace_filament_move(None, 0.8, speed=25, accel=self.gear_buzz_accel, encoder_dwell=None)
@@ -2406,7 +2406,7 @@ class Mmu:
         self.log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self.movequeues_wait()
-            self.servo.set_value(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
+            self.servo.set_position(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
             self.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = self.SERVO_MOVE_STATE
@@ -2420,7 +2420,7 @@ class Mmu:
             self.movequeues_wait()
             if measure:
                 initial_encoder_position = self._get_encoder_distance(dwell=None)
-            self.servo.set_value(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
+            self.servo.set_position(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
             self.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter
@@ -2442,7 +2442,7 @@ class Mmu:
 
     # De-energize servo if 'servo_always_active' or 'servo_active_down' are being used
     def _servo_off(self):
-        self.servo.set_value(width=0, duration=None)
+        self.servo.set_position(width=0, duration=None)
 
     def _motors_off(self, motor="all"):
         stepper_enable = self.printer.lookup_object('stepper_enable')
@@ -2526,11 +2526,11 @@ class Mmu:
             large=max(self.servo_angles['down'], self.servo_angles['up'])
             mid=(self.servo_angles['down'] + self.servo_angles['up'])/2
             duration=None if self.servo_always_active else self.servo_duration
-            self.servo.set_value(angle=mid, duration=duration)
+            self.servo.set_position(angle=mid, duration=duration)
             self.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-            self.servo.set_value(angle=abs(mid+small)/2, duration=duration)
+            self.servo.set_position(angle=abs(mid+small)/2, duration=duration)
             self.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-            self.servo.set_value(angle=abs(mid+large)/2, duration=duration)
+            self.servo.set_position(angle=abs(mid+large)/2, duration=duration)
             self.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
             self.movequeues_wait()
             if old_state == self.SERVO_DOWN_STATE:
