@@ -2035,7 +2035,7 @@ class Mmu:
                 status = UI_EMOTICONS[6] if t == 'emoticon' else "Poor"
             else:
                 status = UI_EMOTICONS[7] if t == 'emoticon' else "Terrible"
-            msg += "#%d: %s" % (gate, status)
+            msg += "%d:%s" % (gate, status)
             msg += ", " if gate < (self.mmu_num_gates - 1) else ""
             dbg += "\nGate %d: " % gate
             dbg += "Load: (monitored: %.1fmm slippage: %.1f%%)" % (rounded['load_distance'], load_slip_percent)
@@ -3457,14 +3457,14 @@ class Mmu:
                 elif new_state in ["complete", "error"] and event_type == "ready":
                     self.log_trace("Automatically detected JOB %s, print_stats=%s, current mmu print_state=%s" % (new_state.upper(), new_state, self.print_state))
                     if new_state == "error":
-                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=error"))
+                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=error AUTOMATIC=1"))
                     else:
-                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=complete"))
+                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=complete AUTOMATIC=1"))
                 self.last_print_stats = dict(new_ps)
 
         # Capture transition to standby
         if event_type == "idle" and self.print_state != "standby":
-            self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=standby"))
+            self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=standby AUTOMATIC=1"))
 
     def _print_event(self, command):
         try:
@@ -3515,13 +3515,13 @@ class Mmu:
             self.log_info(msg)
             self._set_print_state("printing")
 
-    # Hack: Force state transistion to printing for any early moves if _MMU_PRINT_STATE not yet run
+    # Hack: Force state transistion to printing for any early moves if _MMU_PRINT_START not yet run
     def _fix_started_state(self):
         if self._is_printer_printing() and not self._is_in_print():
             self._wrap_gcode_command("MMU_PRINT_START")
 
     # If this is called automatically it will occur after the user's print ends.
-    # Therefore don't do anything that requires operating kinematics or execute gcode
+    # Therefore don't do anything that requires operating kinematics
     def _on_print_end(self, state="complete"):
         if not self._is_in_endstate():
             self.log_trace("_on_print_end(%s)" % state)
@@ -3538,6 +3538,7 @@ class Mmu:
             self._sync_gear_to_extruder(False, servo=True)
         if state == "standby" and not self._is_in_standby():
             self._set_print_state(state)
+        self._clear_macro_state()
 
     def _handle_mmu_error(self, reason, force_in_print=False):
         self._fix_started_state() # Get out of 'started' state before transistion to pause
@@ -6406,13 +6407,15 @@ class Mmu:
             self._on_print_start()
             self._clear_macro_state()
 
-    cmd_MMU_PRINT_END_help = "Forces clean up of state after after print end (usually automatic)"
+    cmd_MMU_PRINT_END_help = "Forces clean up of state after after print end"
     def cmd_MMU_PRINT_END(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
+        automatic = gcmd.get_int('AUTOMATIC', 0, minval=0, maxval=1)
         end_state = gcmd.get('STATE', "complete")
         if end_state in ["complete", "error", "cancelled", "ready", "standby"]:
+            if not automatic and end_state in ["complete"]:
+                self._save_toolhead_position_and_lift("complete")
             self._on_print_end(end_state)
-            self._clear_macro_state()
         else:
             raise gcmd.error("Unknown endstate '%s'" % end_state)
 
@@ -6509,7 +6512,6 @@ class Mmu:
             self._save_toolhead_position_and_lift("cancel")
             self._wrap_gcode_command("__CANCEL_PRINT", None)
             self._on_print_end("cancelled")
-            self._clear_macro_state()
         else:
             self._wrap_gcode_command("__CANCEL_PRINT", None) # User defined or Klipper default behavior
 
