@@ -1359,8 +1359,8 @@ class Mmu:
             msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % fversion(self.config_version)
             self.log_always(msg, color=True)
 
-            if self.log_startup_status > 0:
-                self.log_always(self._ttg_map_to_string(summary=self.log_startup_status == 1))
+            if self.log_startup_status:
+                self.log_always(self._mmu_visual_to_string() if self.log_startup_status == 1 else self._ttg_map_to_string())
                 self._display_visual_state(silent=self.persistence_level < 4)
             self._set_print_state("initialized")
             if self._has_encoder():
@@ -2304,11 +2304,13 @@ class Mmu:
             if not config:
                 msg += ", for configuration add 'SHOWCONFIG=1'"
 
-        msg += "\n\n%s" % self._ttg_map_to_string(summary=True)
+        msg += "\n\n%s" % self._mmu_visual_to_string()
         msg += "\n\n%s" % self._state_to_string()
 
         if detail:
-            msg += "\n\n%s" % self._ttg_map_to_string(title="TTG Map & EndlessSpool Groups")
+            msg += "\n\n%s" % self._ttg_map_to_string()
+            if self.enable_endless_spool:
+                msg += "\n\n%s" % self._es_groups_to_string()
             msg += "\n\n%s" % self._gate_map_to_string()
 
         self.log_always(msg, color=True)
@@ -7053,60 +7055,69 @@ class Mmu:
         else:
             return "?"
 
-    def _ttg_map_to_string(self, title=None, summary=False, tool=None, show_groups=True):
-        msg = "%s:\n" % title if title else "TTG Map:\n" # String used to filter in KS-HH
-        if not summary:
-            num_tools = self.mmu_num_gates
-            tools = range(num_tools) if tool is None else [tool]
-            for i in tools:
-                gate = self.ttg_map[i]
-                filament_char = self._get_filament_char(gate, show_source=False)
-                msg += "\n" if i and tool is None else ""
-
-                if self.enable_endless_spool and show_groups:
-                    msg += "T{:<2}".format(i)
-                else:
-                    msg += "T{:<2}-> Gate{:>2}({})".format(i, gate, filament_char)
-
-                if self.enable_endless_spool:
-                    group = self.endless_spool_groups[gate]
-                    es = ""
-                    if show_groups:
-                        msg += " in EndlessSpool Group %s :" % chr(ord('A') + group)
-                        gates_in_group = [(j + gate) % num_tools for j in range(num_tools)]
-                    else:
-                        es = " >"
-                        gates_in_group = [(j + gate + 1) % num_tools for j in range(num_tools - 1)]
-
-                    gs = " >".join("{:>2}({})".format(g, self._get_filament_char(g, show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
-                    if gs:
-                        msg += (es + gs)
-
-                if i == self.tool_selected:
-                    msg += " [SELECTED]"
+    def _ttg_map_to_string(self, tool=None, show_groups=True):
+        if show_groups:
+            msg = "TTG Map & EndlessSpool Groups:\n"
         else:
-            multi_tool = False
-            num_gates = self.mmu_num_gates
-            gate_indices = range(num_gates)
-            msg_gates = "Gates: " + "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g) for g in gate_indices) + "|"
-            msg_avail = "Avail: " + "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True) for g in gate_indices) + "|"
-            tool_strings = []
-            for g in gate_indices:
-                tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
-                multi_tool |= len(tool_str) > 2
-                tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
-            msg_tools = "Tools: " + "".join(tool_strings) + "|"
-            #msg_tools += " Some gates support multiple tools!" if multi_tool else ""
-            select_strings = ["|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----" for g in gate_indices]
-            for i, g in enumerate(gate_indices):
-                if self.gate_selected == g:
-                    select_strings[i] = "| %s " % self._get_filament_char(g, no_space=True)
-            msg_selct = "Selct: " + "".join(select_strings) + ("|" if self.gate_selected == num_gates - 1 else "-")
-            msg = "\n".join([msg_gates, msg_tools, msg_avail, msg_selct])
-            if self.selector.is_homed:
-                msg += " " + self._selected_tool_string()
+            msg = "TTG Map:\n" # String used to filter in KS-HH
+        num_tools = self.mmu_num_gates
+        tools = range(num_tools) if tool is None else [tool]
+        for i in tools:
+            gate = self.ttg_map[i]
+            filament_char = self._get_filament_char(gate, show_source=False)
+            msg += "\n" if i and tool is None else ""
+            msg += "T{:<2}-> Gate{:>2}({})".format(i, gate, filament_char)
+
+            if show_groups and self.enable_endless_spool:
+                group = self.endless_spool_groups[gate]
+                msg += " Group %s:" % chr(ord('A') + group)
+                gates_in_group = [(j + gate) % num_tools for j in range(num_tools)]
+                #msg += " >".join("{:>2}({})".format(g, self._get_filament_char(g, show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
+                msg += " >".join("{:>2}".format(g) for g in gates_in_group if self.endless_spool_groups[g] == group)
+
+            if i == self.tool_selected:
+                msg += " [SELECTED]"
+        return msg
+
+    def _mmu_visual_to_string(self):
+        multi_tool = False
+        num_gates = self.mmu_num_gates
+        gate_indices = range(num_gates)
+        msg_gates = "Gates: " + "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g) for g in gate_indices) + "|"
+        msg_avail = "Avail: " + "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True) for g in gate_indices) + "|"
+        tool_strings = []
+        for g in gate_indices:
+            tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
+            multi_tool |= len(tool_str) > 2
+            tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
+        msg_tools = "Tools: " + "".join(tool_strings) + "|"
+        #msg_tools += " Some gates support multiple tools!" if multi_tool else ""
+        select_strings = ["|---" if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.gate_selected == (g - 1) else "----" for g in gate_indices]
+        for i, g in enumerate(gate_indices):
+            if self.gate_selected == g:
+                select_strings[i] = "| %s " % self._get_filament_char(g, no_space=True)
+        msg_selct = "Selct: " + "".join(select_strings) + ("|" if self.gate_selected == num_gates - 1 else "-")
+        msg = "\n".join([msg_gates, msg_tools, msg_avail, msg_selct])
+        if self.selector.is_homed:
+            msg += " " + self._selected_tool_string()
+        else:
+            msg += " NOT HOMED"
+        return msg
+
+    def _es_groups_to_string(self, title=None):
+        msg = "%s:\n" % title if title else "EndlessSpool Groups:\n"
+        groups = {}
+        for i in range(self.mmu_num_gates):
+            gate = self.ttg_map[i]
+            group = self.endless_spool_groups[gate]
+            if group not in groups:
+                groups[group] = [gate]
             else:
-                msg += " NOT HOMED"
+                groups[group].append(gate)
+        msg += "\n".join(
+            "Group %s: Gates: %s" % (chr(ord('A') + group), ", ".join(map(str, gates)))
+            for group, gates in groups.items()
+        )
         return msg
 
     def _gate_map_to_string(self, detail=False):
@@ -7447,6 +7458,7 @@ class Mmu:
         if self._check_is_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         ttg_map = gcmd.get('MAP', "!")
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_num_gates - 1)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu_num_gates - 1)
@@ -7477,7 +7489,10 @@ class Mmu:
         else:
             quiet = False # Display current TTG map
         if not quiet:
-            self.log_info(self._ttg_map_to_string(show_groups=False))
+            msg = self._ttg_map_to_string(show_groups=detail)
+            if not detail and self.enable_endless_spool:
+                msg += "\nDETAIL=1 to see EndlessSpool map"
+            self.log_info(msg)
 
     cmd_MMU_GATE_MAP_help = "Display or define the type and color of filaments on each gate"
     def cmd_MMU_GATE_MAP(self, gcmd):
@@ -7626,7 +7641,7 @@ class Mmu:
             quiet = False # Display current map
 
         if not quiet:
-            self.log_info(self._ttg_map_to_string(title="EndlessSpool Groups"))
+            self.log_info(self._es_groups_to_string())
 
     cmd_MMU_TOOL_OVERRIDES_help = "Displays, sets or clears tool speed and extrusion factors (M220 & M221)"
     def cmd_MMU_TOOL_OVERRIDES(self, gcmd):
@@ -7872,7 +7887,7 @@ class Mmu:
                             self._select_tool(tool_selected)
 
                         if not quiet:
-                            self.log_info(self._ttg_map_to_string(summary=True))
+                            self.log_info(self._mmu_visual_to_string())
 
                         self._servo_auto()
         except MmuError as ee:
