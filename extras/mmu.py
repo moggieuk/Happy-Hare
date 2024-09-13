@@ -1428,7 +1428,7 @@ class Mmu:
                     with self._wrap_track_time('pre_load'):
                         self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
                     with self._wrap_track_time('post_load'):
-                        self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
+                        self._wrap_gcode_command(self.post_load_macro, exception=False, wait=False)
                         if error:
                             self._wrap_gcode_command("MMU_PAUSE")
             self.log_info("Statistics:%s" % self.last_statistics)
