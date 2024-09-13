@@ -790,7 +790,7 @@ class Mmu:
         self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
 
         # Initializer tasks
-        self.gcode.register_command('__MMU_BOOTUP_TASKS', self.cmd_MMU_BOOTUP_TASKS, desc = self.cmd_MMU_BOOTUP_TASKS_help) # Bootup tasks
+        self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
 
         # Timer too close mitigation
         if self.update_trsync:
@@ -1348,15 +1348,10 @@ class Mmu:
 
     def _schedule_mmu_bootup_tasks(self, delay=0.):
         waketime = self.reactor.monotonic() + delay
-        self.reactor.register_callback(self._mmu_bootup_tasks, waketime)
+        self.reactor.register_callback(lambda pt: self._print_event("__MMU_BOOTUP"), waketime)
 
-    def _mmu_bootup_tasks(self, eventtime):
-        self.log_trace("_bootup_tasks()")
-        self._exec_gcode("__MMU_BOOTUP_TASKS")
-        self._mmu_macro_event(self.MACRO_EVENT_RESTART)
-
-    cmd_MMU_BOOTUP_TASKS_help = "Internal commands to complete bootup of MMU"
-    def cmd_MMU_BOOTUP_TASKS(self, gcmd):
+    cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
+    def cmd_MMU_BOOTUP(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
         try:
@@ -1383,6 +1378,7 @@ class Mmu:
             self._spoolman_sync() # Delay as long as possible to maximize the chance it is contactable after reboot
         except Exception as e:
             self.log_error('Warning: Error booting up MMU: %s' % str(e))
+        self._mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     cmd_MMU_TEST_help = "Internal Happy Hare development tests"
     def cmd_MMU_TEST(self, gcmd):
@@ -3457,40 +3453,24 @@ class Mmu:
                         self.log_trace("Automaticaly detected JOB START, print_status:print_stats=%s, current mmu print_state=%s" % (new_state, self.print_state))
                         if self.print_state not in ["started", "printing"]:
                             self._on_print_start(pre_start_only=True)
-                            self.reactor.register_callback(self._print_start_event_handler)
+                            self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_START"))
                 elif new_state in ["complete", "error"] and event_type == "ready":
                     self.log_trace("Automatically detected JOB %s, print_stats=%s, current mmu print_state=%s" % (new_state.upper(), new_state, self.print_state))
                     if new_state == "error":
-                        self.reactor.register_callback(self._print_error_event_handler)
+                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=error"))
                     else:
-                        self.reactor.register_callback(self._print_complete_event_handler)
+                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=complete"))
                 self.last_print_stats = dict(new_ps)
 
         # Capture transition to standby
         if event_type == "idle" and self.print_state != "standby":
-            self.reactor.register_callback(self._print_standby_event_handler)
+            self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=standby"))
 
-    def _exec_gcode(self, command):
+    def _print_event(self, command):
         try:
-            self.gcode.run_script(command)
+            self.gcode.run_script_from_command(command)
         except Exception:
-            logging.exception("Error running job state initializer/finalizer or bootup tasks")
-
-    def _print_start_event_handler(self, eventtime):
-        self.log_trace("_print_start_event_handler()")
-        self._exec_gcode("MMU_PRINT_START")
-
-    def _print_complete_event_handler(self, eventtime):
-        self.log_trace("_print_complete_event_handler()")
-        self._exec_gcode("MMU_PRINT_END STATE=complete")
-
-    def _print_error_event_handler(self, eventtime):
-        self.log_trace("_print_error_event_handler()")
-        self._exec_gcode("MMU_PRINT_END STATE=error")
-
-    def _print_standby_event_handler(self, eventtime):
-        self.log_trace("_print_standby_event_handler()")
-        self._exec_gcode("MMU_PRINT_END STATE=standby")
+            logging.exception("Error running job state initializer/finalizer")
 
     # MMU job state machine: initialized|ready|started|printing|complete|cancelled|error|pause_locked|paused|standby
     def _set_print_state(self, print_state, call_macro=True):
@@ -4123,12 +4103,10 @@ class Mmu:
         testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
         slicer = gcmd.get_int('SLICER', 0, minval=0, maxval=1)
         callbacks = gcmd.get_int('CALLBACKS', 0, minval=0, maxval=1)
-        macros = gcmd.get_int('MACROS', 0, minval=0, maxval=1)
         steps = gcmd.get_int('STEPS', 0, minval=0, maxval=1)
-        msg = "Happy Hare MMU commands: (use MMU_HELP SLICER=1 MACROS=1 CALLBACKS=1 TESTING=1 STEPS=1 for full command set)\n"
+        msg = "Happy Hare MMU commands: (use MMU_HELP SLICER=1 CALLBACKS=1 TESTING=1 STEPS=1 for full command set)\n"
         tesing_msg = "\nCalibration and testing commands:\n"
         slicer_msg = "\nPrint start/end or slicer macros (defined in mmu_software.cfg\n"
-        macro_msg = "\nOther misc macros\n"
         callback_msg = "\nCallbacks (defined in mmu_sequence.cfg, mmu_state.cfg)\n"
         seq_msg = "\nAdvanced load/unload sequence and steps:\n"
         cmds = list(self.gcode.ready_gcode_handlers.keys())
@@ -4140,12 +4118,6 @@ class Mmu:
 
             if (c.startswith("MMU_START") or c.startswith("MMU_END") or c in ["MMU_UPDATE_HEIGHT"]) and c not in ["MMU_ENDLESS_SPOOL"]:
                 slicer_msg += "%s : %s\n" % (c.upper(), d) # Print start/end macros
-
-            elif c in ["_MMU_PRINT_END", "_MMU_PRINT_START", "MMU_PRINT_END", "MMU_PRINT_START"]:
-                slicer_msg += "%s : %s\n" % (c.upper(), d) # More commands intended for slicer control
-
-            elif c in ["_MMU_DUMP_TOOLHEAD"]:
-                tesing_msg += "%s : %s\n" % (c.upper(), d) # Testing and calibration commands
 
             elif c.startswith("MMU") and not c.startswith("MMU__"):
                 if any(substring in c for substring in ["_CALIBRATE", "_TEST", "_SOAKTEST", "MMU_COLD_PULL"]):
@@ -4159,13 +4131,10 @@ class Mmu:
                     seq_msg += "%s : %s\n" % (c.upper(), d) # Invidual sequence step commands
                 elif c.startswith("_MMU_PRE_") or c.startswith("_MMU_POST_") or c in ["_MMU_ACTION_CHANGED", "_MMU_EVENT", "_MMU_PRINT_STATE_CHANGED"]:
                     callback_msg += "%s : %s\n" % (c.upper(), d) # Callbacks
-                elif not c.endswith("_VARS") and c not in ["_MMU_AUTO_HOME", "_MMU_CLEAR_POSITION", "_MMU_PARK", "_MMU_RESTORE_POSITION", "_MMU_SAVE_POSITION", "_MMU_SET_LED", "_MMU_LED_ACTION_CHANGED", "_MMU_LED_GATE_MAP_CHANGED", "_MMU_LED_PRINT_STATE_CHANGED", "_MMU_TEST", "_MMU_ERROR_DIALOG", "_MMU_RUN_MARKERS"]: # Remove internal helpers
-                        macro_msg += "%s : %s\n" % (c.upper(), d) # Core command macros
 
         msg += slicer_msg if slicer else ""
-        msg += tesing_msg if testing else ""
         msg += callback_msg if callbacks else ""
-        msg += macro_msg if macros else ""
+        msg += tesing_msg if testing else ""
         msg += seq_msg if steps else ""
         self.log_always(msg)
 
