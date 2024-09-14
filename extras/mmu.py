@@ -1742,7 +1742,6 @@ class Mmu:
                 'reason_for_pause': self.reason_for_pause if self._is_mmu_paused() else "",
                 'extruder_filament_remaining': self.filament_remaining,
                 'extruder_residual_filament': self.toolhead_ooze_reduction,
-                'toolchange_retract': self.toolchange_retract, # Legacy but useful
                 'spoolman_support': self.spoolman_support,
                 'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
         }
