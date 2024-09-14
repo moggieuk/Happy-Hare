@@ -6611,14 +6611,14 @@ class Mmu:
         if self._check_is_loaded(): return
         if self._check_is_calibrated(): return
         loops = gcmd.get_int('LOOP', 10)
-        random = gcmd.get_int('RANDOM', 0)
+        rand = gcmd.get_int('RANDOM', 0)
         to_nozzle = gcmd.get_int('FULL', 0)
         try:
             for l in range(loops):
                 self.log_always("Testing loop %d / %d" % (l, loops))
                 for t in range(self.mmu_num_gates):
                     tool = t
-                    if random == 1:
+                    if rand == 1:
                         tool = random.randint(0, self.mmu_num_gates - 1)
                     gate = self.ttg_map[tool]
                     if self.gate_status[gate] == self.GATE_EMPTY:
