@@ -745,7 +745,7 @@ FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
 # Detection for next pos processing
-T_PATTERN  = r'^T(\d+)$'
+T_PATTERN  = r'^T(\d+)\s*(?:;.*)?$'
 G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
 
 def gcode_processed_already(file_path):
