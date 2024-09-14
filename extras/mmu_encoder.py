@@ -213,8 +213,7 @@ class MmuEncoder:
 
     def _exec_gcode(self, command):
         try:
-            #PAULself.gcode.run_script(command)
-            self.gcode.run_script_from_command(command)
+            self.gcode.run_script(command)
         except Exception:
             logging.exception("Error running mmu encoder handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
