@@ -1708,7 +1708,7 @@ class Mmu:
                 'last_tool': self._last_tool,
                 'last_toolchange': self._last_toolchange,
                 'runout': self.is_handling_runout, # Deprecated (use operation)
-                'operation': self.save_toolhead_operation,
+                'operation': self.saved_toolhead_operation,
                 'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
                             "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
                             "Unknown",
@@ -2224,7 +2224,7 @@ class Mmu:
         msg += "\nPrint state is %s" % self.print_state.upper()
         msg += ". Selector is %s" % ("HOMED" if self.selector.is_homed else "NOT HOMED")
         msg += ". Tool %s selected on gate %s" % (self._selected_tool_string(), self._selected_gate_string())
-        msg += ". Toolhead position saved" if self.save_toolhead_operation else ""
+        msg += ". Toolhead position saved" if self.saved_toolhead_operation else ""
         msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
         if self.sync_feedback_enable and self.sync_feedback_operational:
             msg += "\nSync feedback indicates filament in bowden is: %s" % self._get_sync_feedback_string().upper()
@@ -3478,9 +3478,9 @@ class Mmu:
     def _set_print_state(self, print_state, call_macro=True):
         if print_state != self.print_state:
             idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
-            self.log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved: %s, z_height saved: %.2fmm, pause_resume: %s, Idle timeout: %.2fs)"
+            self.log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved for: %s, pause_resume: %s, Idle timeout: %.2fs)"
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
-                        self.resume_to_state, self.save_toolhead_operation, self.saved_toolhead_height, self._is_printer_paused(), idle_timeout))
+                        self.resume_to_state, self.saved_toolhead_operation, self._is_printer_paused(), idle_timeout))
             if call_macro:
                 if self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro, None) is not None:
                     self._wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.print_state_changed_macro, print_state, self.print_state))
@@ -3648,7 +3648,7 @@ class Mmu:
     def _save_toolhead_position_and_lift(self, operation, next_pos=None):
         eventtime = self.reactor.monotonic()
         homed = self.toolhead.get_status(eventtime)['homed_axes']
-        if not self.save_toolhead_operation:
+        if not self.saved_toolhead_operation:
             # Save toolhead position
             if 'xyz' in homed:
                 # This is paranoia so I can be absolutely sure that Happy Hare leaves toolhead the same way
@@ -3656,7 +3656,7 @@ class Mmu:
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self.log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
-                self.save_toolhead_operation = operation
+                self.saved_toolhead_operation = operation
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
                 self.saved_toolhead_speed = self.gcode_move.get_status(eventtime)['speed']
 
@@ -3677,13 +3677,18 @@ class Mmu:
                 self.log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
         else:
-            self.log_trace("Asked to save toolhead position for %s but it is already saved for %s. Checking z_hop height" % (operation, self.save_toolhead_operation))
             if 'xyz' in homed:
-                if self.save_toolhead_operation != 'mmu_error':
-                    self.save_toolhead_operation = operation # Update operation
+                # Re-apply parking if not handling error or we cancel print
+                if operation == 'cancel' or self.saved_toolhead_operation != 'mmu_error':
+                    self.log_trace("Adjusting toolhead park operation from %s to %s" % (self.saved_toolhead_operation, operation))
+                    self.saved_toolhead_operation = operation # Update operation in progress
+                    # Force re-park now because user may not be using HH client_macros. This can
+                    # result in duplicate calls to parking macro but when HH is emabled it is itempotent
+                    # based on saved_toolhead_operation
+                    self._wrap_gcode_command(self.park_macro)
 
     def _restore_toolhead_position(self, operation):
-        if self.save_toolhead_operation:
+        if self.saved_toolhead_operation:
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
                 mmu_state = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]
@@ -3703,8 +3708,7 @@ class Mmu:
         self._clear_saved_toolhead_position()
 
     def _clear_saved_toolhead_position(self):
-        self.save_toolhead_operation = ''
-        self.saved_toolhead_height = -1.
+        self.saved_toolhead_operation = ''
         self.saved_toolhead_max_accel = 0
 
     def _disable_runout(self):
@@ -6965,10 +6969,10 @@ class Mmu:
         self._save_toolhead_position_and_lift('runout')
 
         if self.tool_selected < 0:
-            raise MmuError("Filament runout or clog on an unknown or bypass tool - manual intervention is required")
+            raise MmuError("Filament runout or clog on an unknown or bypass tool\nManual intervention is required")
 
         if self.filament_pos != self.FILAMENT_POS_LOADED and not force_runout:
-            raise MmuError("Filament runout or clog occured but filament is not fully loaded! - manual intervention is required")
+            raise MmuError("Filament runout or clog occured but filament is marked as not loaded(?)\nManual intervention is required")
 
         self.log_info("Issue on tool T%d" % self.tool_selected)
 
