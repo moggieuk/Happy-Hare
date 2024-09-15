@@ -318,102 +318,12 @@ verify_home_dirs() {
     fi
 }
 
-# Silently cleanup legacy ERCF-Software-V3 files...
-cleanup_old_ercf() {
-    # Printer configuration files...
-    ercf_files=$(cd ${KLIPPER_CONFIG_HOME}; ls ercf_*.cfg 2>/dev/null | wc -l || true)
-    if [ "${ercf_files}" -ne 0 ]; then
-        echo -e "${INFO}Cleaning up old Happy Hare v1 installation"
-        if [ ! -d "${KLIPPER_CONFIG_HOME}/ercf.uninstalled" ]; then
-            mkdir ${KLIPPER_CONFIG_HOME}/ercf.uninstalled
-        fi
-        for file in `cd ${KLIPPER_CONFIG_HOME} ; ls ercf_*.cfg 2>/dev/null`; do
-            mv ${KLIPPER_CONFIG_HOME}/${file} ${KLIPPER_CONFIG_HOME}/ercf.uninstalled/${file}
+# Silently cleanup any potentially old klippy modules
+cleanup_old_klippy_modules() {
+    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
+        for file in mmu_config_setup.py; do
+            rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
         done
-        if [ -f "${KLIPPER_CONFIG_HOME}/client_macros.cfg" ]; then
-            mv ${KLIPPER_CONFIG_HOME}/client_macros.cfg ${KLIPPER_CONFIG_HOME}/ercf.uninstalled/client_macros.cfg
-        fi
-    fi
-
-    # Klipper modules...
-    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        rm -f "${KLIPPER_HOME}/klippy/extras/ercf*.py"
-    fi
-
-    # Old klipper logs...
-    if [ -d "${KLIPPER_LOGS_HOME}" ]; then
-        rm -f "${KLIPPER_LOGS_HOME}/ercf*"
-    fi
-
-    # Moonraker update manager...
-    file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
-    if [ -f "${file}" ]; then
-        v1_section=$(grep -c '\[update_manager ercf-happy_hare\]' ${file} || true)
-        if [ "${v1_section}" -ne 0 ]; then
-            cat "${file}" | sed -e " \
-                /\[update_manager ercf-happy_hare\]/,+6 d; \
-                    " > "${file}.update" && mv "${file}.update" "${file}"
-	fi
-    fi
-
-    # printer.cfg includes...
-    dest=${KLIPPER_CONFIG_HOME}/${PRINTER_CONFIG}
-    if test -f $dest; then
-        next_dest="$(nextfilename "$dest")"
-        v1_includes=$(grep -c '\[include ercf_parameters.cfg\]' ${dest} || true)
-        if [ "${v1_includes}" -ne 0 ]; then
-            cp ${dest} ${next_dest}
-            cat "${dest}" | sed -e " \
-                /\[include ercf_software.cfg\]/ d; \
-                /\[include ercf_parameters.cfg\]/ d; \
-                /\[include ercf_hardware.cfg\]/ d; \
-                /\[include ercf_menu.cfg\]/ d; \
-                /\[include client_macros.cfg\]/ d; \
-                    " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
-        fi
-    fi
-}
-
-# TEMPORARY: Upgrade to mmu-toolhead version from manual_stepper
-cleanup_manual_stepper_version() {
-    # Legacy klipper modules...
-    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        rm -f "${KLIPPER_HOME}/klippy/extras/manual_mh_stepper.py"
-        rm -f "${KLIPPER_HOME}/klippy/extras/manual_extruder_stepper.py"
-        # Used as upgrade reminder rm -f "${KLIPPER_HOME}/klippy/extras/mmu_config_setup.py"
-    fi
-
-    # Upgrade mmu_hardware.cfg...
-    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_manual_stepper=$(grep -E -c "\[mmu_config_setup\]|\[manual_extruder_stepper extruder\]" ${hardware_cfg} || true)
-    if [ "${found_manual_stepper}" -ne 0 ]; then
-        cat "${hardware_cfg}" | sed -e " \
-            /\[mmu_config_setup\]/ d; \
-            /^velocity: .*/ d; \
-            /^accel: .*/ d; \
-            s%\[\(.*\) manual_extruder_stepper extruder\]%# REMOVE/MOVE THIS SECTION vvv\n\[\1 manual_extruder_stepper extruder\]%; \
-            s%\[manual_extruder_stepper extruder\]%# REMOVE/MOVE THIS SECTION vvv\n\[manual_extruder_stepper extruder\]%; \
-            s%\[\(.*\) manual_extruder_stepper gear_stepper\]%\[\1 stepper_mmu_gear\]%; \
-            s%\[manual_extruder_stepper gear_stepper\]%\[stepper_mmu_gear\]%; \
-            s%\[\(.*\) manual_mh_stepper selector_stepper\]%\[\1 stepper_mmu_selector\]%; \
-            s%\[manual_mh_stepper selector_stepper\]%\[stepper_mmu_selector\]%; \
-            s%: \(.*\)_gear_stepper:virtual_endstop%: \1_stepper_mmu_gear:virtual_endstop%; \
-            s%: \(.*\)_selector_stepper:virtual_endstop%: \1_stepper_mmu_selector:virtual_endstop%; \
-                " > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
-
-        echo -e "${WARNING}"
-        echo "------------------------- IMPORTANT INFO ON NEW MMU TOOLHEAD DEFINITION - READ ME --------------------------"
-        echo "  This version of Happy Hare no longer requires the move of the [extruder] definition into mmu_hardware.cfg"
-        echo "  You need to restore the sections marked in your mmu_hardware.cfg back to your original extruder config"
-        echo "  and delete those sections from mmu_hardware.cfg.  Also note that the gear are selector stepper definitions"
-        echo "  have been modified to be compatible with the new MMU toolhead feature of this version"
-        echo
-        echo "  If you see an error similar to:"
-        echo -e "${ERROR}  Option 'microsteps' in section 'manual_extruder_stepper extruder' must be specified"
-        echo -e "${WARNING}"
-        echo "  Edit mmu_hardware.cfg and restart Klipper to complete the upgrade"
-        echo "------------------------------------------------------------------------------------------------------------"
-        echo
     fi
 }
 
@@ -798,11 +708,12 @@ read_previous_config() {
     elif [ "${variable_restore_xy_pos}" == "False" ]; then
         variable_restore_xy_pos="\"none\""
     fi
+    if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
+        mmu_num_gates=$_param_mmu_num_gates
+        mmu_num_leds=$(expr $mmu_num_gates + 1)
+    fi
 
     # v2.7.1
-    if [ ! "${variable_retract}" == "" ]; then
-        variable_retract_length="${variable_retract}"
-    fi
     if [ ! "${variable_pin_park_x_dist}" == "" ]; then
         variable_pin_park_dist="${variable_pin_park_x_dist}"
     fi
@@ -810,34 +721,8 @@ read_previous_config() {
         variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
     fi
     if [ ! "${variable_park_xy}" == "" ]; then
-        variable_park_xy_toolchange="${variable_park_xy}"
-        variable_park_xy_error="${variable_park_xy}"
-    fi
-    # Find largest existing z_hop value
-    if [ ! "${_param_z_hop_height_toolchange}" == "" ]; then
-        variable_z_hop_height_toolchange="${_param_z_hop_height_toolchange}"
-        if [ ! "${variable_park_z_hop}" == "" ]; then
-            if [ "${variable_park_z_hop}" -gt "${_param_z_hop_height_toolchange}" ]; then
-                variable_z_hop_height_toolchange="${variable_park_z_hop}"
-            fi
-        fi
-    fi
-    if [ ! "${_param_z_hop_height_error}" == "" ]; then
-        variable_z_hop_height_error="${_param_z_hop_height_error}"
-        if [ ! "${variable_park_z_hop}" == "" ]; then
-            if [ "${variable_park_z_hop}" -gt "${_param_z_hop_height_error}" ]; then
-                variable_z_hop_height_error="${variable_park_z_hop}"
-            fi
-        fi
-    fi
-    if [ ! "${_param_z_hop_speed}" == "" ]; then
-        _param_restore_position_speed=${_param_z_hop_speed}
-        if [ "${_param_restore_position_speed}" -lt "100" ]; then
-            _param_restore_position_speed=100
-        fi
-    fi
-    if [ ! "${_param_z_hop_ramp}" == "" ]; then
-        variable_z_hop_ramp="${_param_z_hop_ramp}"
+        variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0"
+        variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0"
     fi
     if [ ! "${variable_lift_speed}" == "" ]; then
         variable_park_lift_speed="${variable_lift_speed}"
@@ -850,15 +735,6 @@ read_previous_config() {
     fi
     if [ "${variable_enable_park_standalone}" == "False" ]; then
         variable_enable_park_standalone="''"
-    fi
-    if [ "${variable_enable_park_standalone}" == "True" ]; then
-        variable_enable_park_standalone="'toolchange,load,unload'"
-    fi
-
-
-    if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
-        mmu_num_gates=$_param_mmu_num_gates
-        mmu_num_leds=$(expr $mmu_num_gates + 1)
     fi
 }
 
@@ -1842,7 +1718,7 @@ verify_not_root
 check_octoprint
 verify_home_dirs
 check_klipper
-cleanup_old_ercf
+cleanup_old_klippy_modules
 if [ "$UNINSTALL" -eq 0 ]; then
 
     # Set in memory parameters from default file
@@ -1880,7 +1756,6 @@ if [ "$UNINSTALL" -eq 0 ]; then
     copy_config_files
 
     # Temp upgrades
-    cleanup_manual_stepper_version
     upgrade_mmu_sensors
     upgrade_led_effects
 
