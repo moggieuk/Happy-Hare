@@ -47,15 +47,15 @@ class MmuToolHead(toolhead.ToolHead, object):
             self.buffer_time_start = config.getfloat('buffer_time_start', 0.250, above=0.)
             self.move_flush_time = config.getfloat('move_flush_time', 0.050, above=0.)
             self.last_kin_flush_time = self.force_flush_time = self.last_kin_move_time = 0.
-
             time_high = self.buffer_time_high
 
         if hasattr(toolhead, 'LookAheadQueue'):
-            self.lookahead = toolhead.LookAheadQueue(self) # Happy Hare: Use base class LookAheadQueue
-            self.lookahead.set_flush_time(time_high) # Happy Hare: Use base class
+            self.lookahead = toolhead.LookAheadQueue(self)
+            self.lookahead.set_flush_time(time_high)
         else:
-            self.move_queue = toolhead.MoveQueue(self) # Happy Hare: Use base class MoveQueue (older klipper)
-            self.move_queue.set_flush_time(time_high) # Happy Hare: Use base class (older klipper)
+            # Klipper backward compatibility
+            self.move_queue = toolhead.MoveQueue(self)
+            self.move_queue.set_flush_time(time_high)
         self.commanded_pos = [0., 0., 0., 0.]
 
         # MMU velocity and acceleration control
@@ -429,10 +429,10 @@ class MmuKinematics:
             move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel or self.gear_max_accel))
 
     def get_status(self, eventtime):
-        # Legacy method only used in old Klipper
+        axes = [a for a, (l, h) in zip("xy", self.limits) if l <= h]
         return {
+            'homed_axes': "".join(axes),
             'selector_homed': self.limits[0][0] <= self.limits[0][1],
-            'homed_axes': '' # Required for Creality K1 series printers
         }
 
 

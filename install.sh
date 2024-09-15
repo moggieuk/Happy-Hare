@@ -3,7 +3,9 @@
 # Installer / Updater script
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
-# Modified      2024  hamyy <oudy_1999@hotmail.com>
+#
+# Creality K1 Support
+#               2024  hamyy <oudy_1999@hotmail.com>
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
