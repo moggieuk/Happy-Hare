@@ -20,7 +20,7 @@ ARGS=( "$@" )
 # Creality K1 series printers run on MIPS, with a limited instruction set and different default klipper directories
 # Checking for machine type is the easiest way so far to spot them (will be set to 1 if on MIPS):
 IS_MIPS=0
-if [[$(uname -m) = "mips"]]; then
+if [ $(uname -m) = "mips" ]; then
     IS_MIPS=1
 fi
 
@@ -33,7 +33,7 @@ OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 SENSORS_SECTION="FILAMENT SENSORS"
 LED_SECTION="MMU OPTIONAL NEOPIXEL"
 
-if [ "$IS_MIPS" -eq 1]; then
+if [ "$IS_MIPS" -eq 1 ]; then
     KLIPPER_HOME="/usr/share/klipper"
     MOONRAKER_HOME="/usr/data/moonraker/moonraker"
     KLIPPER_CONFIG_HOME="/usr/data/printer_data/config"
@@ -289,7 +289,7 @@ function nextsuffix {
 }
 
 verify_not_root() {
-    if [ "$IS_MIPS" -ne 1]; then
+    if [ "$IS_MIPS" -ne 1 ]; then
         if [ "$EUID" -eq 0 ]; then
             echo -e "${ERROR}This script must not run as root"
             exit -1
@@ -301,7 +301,7 @@ verify_not_root() {
 
 check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
-        if [ "$IS_MIPS" -ne 1]; then
+        if [ "$IS_MIPS" -ne 1 ]; then
             if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
                 echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
             else
@@ -313,7 +313,7 @@ check_klipper() {
             running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/usr/share/klipper/klippy/klippy.py | awk '{print $1}')
             KLIPPER_PID_FILE=/var/run/klippy.pid
 
-            if [[ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]]; then
+            if [ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]; then
                 echo -e "${INFO}Klipper service found"
             else
                 echo -e "${ERROR}Klipper service not found! Please install Klipper first"
@@ -324,9 +324,9 @@ check_klipper() {
 }
 
 check_octoprint() {
-    if [ "$IS_MIPS" -eq 1]; then
+    if [ "$IS_MIPS" -eq 1 ]; then
         OCTOPRINT=0 # Octoprint can not be set up on MIPS
-    elif [ "$NOSERVICE" -ne 1]; then
+    elif [ "$NOSERVICE" -ne 1 ]; then
         if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
             echo -e "${INFO}OctoPrint service found"
             OCTOPRINT=1
@@ -773,13 +773,17 @@ read_previous_config() {
         variable_park_lift_speed="${variable_lift_speed}"
     fi
     if [ "${variable_enable_park}" == "False" ]; then
-        variable_enable_park_printing="''"
+        variable_enable_park_printing="'pause,cancel'"
         if [ "${variable_enable_park_runout}" == "True" ]; then
-            variable_enable_park_printing="'runout'"
+            variable_enable_park_printing="'toolchange,load,unload,runout,pause,cancel'"
         fi
+    else
+        variable_enable_park_printing="'toolchange,load,unload,pause,cancel'"
     fi
     if [ "${variable_enable_park_standalone}" == "False" ]; then
-        variable_enable_park_standalone="''"
+        variable_enable_park_standalone="'pause,cancel'"
+    else
+        variable_enable_park_standalone="'toolchange,load,unload,runout,pause,cancel'"
     fi
 }
 
@@ -1204,7 +1208,7 @@ restart_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Klipper..."
 
-        if [ "$IS_MIPS" -ne 1]; then
+        if [ "$IS_MIPS" -ne 1 ]; then
             sudo systemctl restart ${KLIPPER_SERVICE}
         else
             set +e
@@ -1220,7 +1224,7 @@ restart_moonraker() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Moonraker..."
 
-        if [ "$IS_MIPS" -ne 1]; then
+        if [ "$IS_MIPS" -ne 1 ]; then
             sudo systemctl restart moonraker
         else
             set +e
