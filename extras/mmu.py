@@ -5515,7 +5515,7 @@ class Mmu:
 
         # Independent motors. Unsynced move
         elif motor == "both":
-            with self._wrap_sync_mode():
+            with self._wrap_sync_mode(None):
                 if homing_move != 0:
                     self.log_error("Not possible to perform homing move on two independent steppers")
                 else:
