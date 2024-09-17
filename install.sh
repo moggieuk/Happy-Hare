@@ -4,13 +4,25 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.70 # Important: Keep synced with mmy.py
+# Creality K1 Support
+#               2024  hamyy <oudy_1999@hotmail.com>
+#               2024  Unsweeticetea <iamzevle@gmail.com>
+#               2024  Dmitry Kychanov <k1-801@mail.ru>
+#
+VERSION=2.71 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
 SCRIPTPATH="$(dirname "$SCRIPT")"
 SCRIPTNAME="$0"
 ARGS=( "$@" )
+
+# Creality K1 series printers run on MIPS, with a limited instruction set and different default klipper directories
+# Checking for machine type is the easiest way so far to spot them (will be set to 1 if on MIPS):
+IS_MIPS=0
+if [ $(uname -m) = "mips" ]; then
+    IS_MIPS=1
+fi
 
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"
@@ -20,6 +32,14 @@ KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 SENSORS_SECTION="FILAMENT SENSORS"
 LED_SECTION="MMU OPTIONAL NEOPIXEL"
+
+if [ "$IS_MIPS" -eq 1 ]; then
+    KLIPPER_HOME="/usr/share/klipper"
+    MOONRAKER_HOME="/usr/data/moonraker/moonraker"
+    KLIPPER_CONFIG_HOME="/usr/data/printer_data/config"
+    unset OCTOPRINT_KLIPPER_CONFIG_HOME
+    unset OLD_KLIPPER_CONFIG_HOME
+fi
 
 set -e # Exit immediately on error
 
@@ -193,7 +213,13 @@ self_update() {
     cd "$SCRIPTPATH"
 
     set +e
-    BRANCH=$(timeout 3s git branch --show-current)
+    # timeout is unavailable on MIPS
+    if ["$IS_MIPS" -ne 1]; then
+        BRANCH=$(git branch --show-current)
+    else
+        BRANCH=$(timeout 3s git branch --show-current)
+    fi
+
     if [ $? -ne 0 ]; then
         echo -e "${ERROR}Error updating from github"
         echo -e "${ERROR}You might have an old version of git"
@@ -263,25 +289,44 @@ function nextsuffix {
 }
 
 verify_not_root() {
-    if [ "$EUID" -eq 0 ]; then
-        echo -e "${ERROR}This script must not run as root"
-        exit -1
+    if [ "$IS_MIPS" -ne 1 ]; then
+        if [ "$EUID" -eq 0 ]; then
+            echo -e "${ERROR}This script must not run as root"
+            exit -1
+        fi
+    else
+        echo -e "${WARNING}This script is running on a MIPS system, so we expect it to be run as root"
     fi
 }
 
 check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
-        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
-            echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
+        if [ "$IS_MIPS" -ne 1 ]; then
+            if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
+                echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
+            else
+                echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
+                exit -1
+            fi
         else
-            echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
-            exit -1
+            # There is no systemd on MIPS, we can only check the running processes
+            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/usr/share/klipper/klippy/klippy.py | awk '{print $1}')
+            KLIPPER_PID_FILE=/var/run/klippy.pid
+
+            if [ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]; then
+                echo -e "${INFO}Klipper service found"
+            else
+                echo -e "${ERROR}Klipper service not found! Please install Klipper first"
+                exit -1
+            fi
         fi
     fi
 }
 
 check_octoprint() {
-    if [ "$NOSERVICE" -ne 1 ]; then
+    if [ "$IS_MIPS" -eq 1 ]; then
+        OCTOPRINT=0 # Octoprint can not be set up on MIPS
+    elif [ "$NOSERVICE" -ne 1 ]; then
         if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
             echo -e "${INFO}OctoPrint service found"
             OCTOPRINT=1
@@ -318,102 +363,12 @@ verify_home_dirs() {
     fi
 }
 
-# Silently cleanup legacy ERCF-Software-V3 files...
-cleanup_old_ercf() {
-    # Printer configuration files...
-    ercf_files=$(cd ${KLIPPER_CONFIG_HOME}; ls ercf_*.cfg 2>/dev/null | wc -l || true)
-    if [ "${ercf_files}" -ne 0 ]; then
-        echo -e "${INFO}Cleaning up old Happy Hare v1 installation"
-        if [ ! -d "${KLIPPER_CONFIG_HOME}/ercf.uninstalled" ]; then
-            mkdir ${KLIPPER_CONFIG_HOME}/ercf.uninstalled
-        fi
-        for file in `cd ${KLIPPER_CONFIG_HOME} ; ls ercf_*.cfg 2>/dev/null`; do
-            mv ${KLIPPER_CONFIG_HOME}/${file} ${KLIPPER_CONFIG_HOME}/ercf.uninstalled/${file}
+# Silently cleanup any potentially old klippy modules
+cleanup_old_klippy_modules() {
+    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
+        for file in mmu_config_setup.py; do
+            rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
         done
-        if [ -f "${KLIPPER_CONFIG_HOME}/client_macros.cfg" ]; then
-            mv ${KLIPPER_CONFIG_HOME}/client_macros.cfg ${KLIPPER_CONFIG_HOME}/ercf.uninstalled/client_macros.cfg
-        fi
-    fi
-
-    # Klipper modules...
-    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        rm -f "${KLIPPER_HOME}/klippy/extras/ercf*.py"
-    fi
-
-    # Old klipper logs...
-    if [ -d "${KLIPPER_LOGS_HOME}" ]; then
-        rm -f "${KLIPPER_LOGS_HOME}/ercf*"
-    fi
-
-    # Moonraker update manager...
-    file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
-    if [ -f "${file}" ]; then
-        v1_section=$(grep -c '\[update_manager ercf-happy_hare\]' ${file} || true)
-        if [ "${v1_section}" -ne 0 ]; then
-            cat "${file}" | sed -e " \
-                /\[update_manager ercf-happy_hare\]/,+6 d; \
-                    " > "${file}.update" && mv "${file}.update" "${file}"
-	fi
-    fi
-
-    # printer.cfg includes...
-    dest=${KLIPPER_CONFIG_HOME}/${PRINTER_CONFIG}
-    if test -f $dest; then
-        next_dest="$(nextfilename "$dest")"
-        v1_includes=$(grep -c '\[include ercf_parameters.cfg\]' ${dest} || true)
-        if [ "${v1_includes}" -ne 0 ]; then
-            cp ${dest} ${next_dest}
-            cat "${dest}" | sed -e " \
-                /\[include ercf_software.cfg\]/ d; \
-                /\[include ercf_parameters.cfg\]/ d; \
-                /\[include ercf_hardware.cfg\]/ d; \
-                /\[include ercf_menu.cfg\]/ d; \
-                /\[include client_macros.cfg\]/ d; \
-                    " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
-        fi
-    fi
-}
-
-# TEMPORARY: Upgrade to mmu-toolhead version from manual_stepper
-cleanup_manual_stepper_version() {
-    # Legacy klipper modules...
-    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        rm -f "${KLIPPER_HOME}/klippy/extras/manual_mh_stepper.py"
-        rm -f "${KLIPPER_HOME}/klippy/extras/manual_extruder_stepper.py"
-        # Used as upgrade reminder rm -f "${KLIPPER_HOME}/klippy/extras/mmu_config_setup.py"
-    fi
-
-    # Upgrade mmu_hardware.cfg...
-    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_manual_stepper=$(grep -E -c "\[mmu_config_setup\]|\[manual_extruder_stepper extruder\]" ${hardware_cfg} || true)
-    if [ "${found_manual_stepper}" -ne 0 ]; then
-        cat "${hardware_cfg}" | sed -e " \
-            /\[mmu_config_setup\]/ d; \
-            /^velocity: .*/ d; \
-            /^accel: .*/ d; \
-            s%\[\(.*\) manual_extruder_stepper extruder\]%# REMOVE/MOVE THIS SECTION vvv\n\[\1 manual_extruder_stepper extruder\]%; \
-            s%\[manual_extruder_stepper extruder\]%# REMOVE/MOVE THIS SECTION vvv\n\[manual_extruder_stepper extruder\]%; \
-            s%\[\(.*\) manual_extruder_stepper gear_stepper\]%\[\1 stepper_mmu_gear\]%; \
-            s%\[manual_extruder_stepper gear_stepper\]%\[stepper_mmu_gear\]%; \
-            s%\[\(.*\) manual_mh_stepper selector_stepper\]%\[\1 stepper_mmu_selector\]%; \
-            s%\[manual_mh_stepper selector_stepper\]%\[stepper_mmu_selector\]%; \
-            s%: \(.*\)_gear_stepper:virtual_endstop%: \1_stepper_mmu_gear:virtual_endstop%; \
-            s%: \(.*\)_selector_stepper:virtual_endstop%: \1_stepper_mmu_selector:virtual_endstop%; \
-                " > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
-
-        echo -e "${WARNING}"
-        echo "------------------------- IMPORTANT INFO ON NEW MMU TOOLHEAD DEFINITION - READ ME --------------------------"
-        echo "  This version of Happy Hare no longer requires the move of the [extruder] definition into mmu_hardware.cfg"
-        echo "  You need to restore the sections marked in your mmu_hardware.cfg back to your original extruder config"
-        echo "  and delete those sections from mmu_hardware.cfg.  Also note that the gear are selector stepper definitions"
-        echo "  have been modified to be compatible with the new MMU toolhead feature of this version"
-        echo
-        echo "  If you see an error similar to:"
-        echo -e "${ERROR}  Option 'microsteps' in section 'manual_extruder_stepper extruder' must be specified"
-        echo -e "${WARNING}"
-        echo "  Edit mmu_hardware.cfg and restart Klipper to complete the upgrade"
-        echo "------------------------------------------------------------------------------------------------------------"
-        echo
     fi
 }
 
@@ -662,81 +617,9 @@ read_previous_config() {
     else
         echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
         parse_file "${dest_cfg}" "" "_param_"
-
-        # Upgrade / map / force old parameters
-        if [ "${_param_form_tip_macro}" == "_MMU_FORM_TIP_STANDALONE" ]; then
-            _param_form_tip_macro="_MMU_FORM_TIP"
-        fi
-        if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
-            _param_gate_unload_buffer=${_param_encoder_unload_buffer}
-        fi
-        if [ ! "${_param_encoder_unload_max}" == "" ]; then
-            _param_gate_homing_max=${_param_encoder_unload_max}
-        fi
-        if [ ! "${_param_encoder_load_retries}" == "" ]; then
-            _param_gate_load_retries=${_param_encoder_load_retries}
-        fi
-        if [ "${_param_toolhead_ignore_load_error}" == "1" ]; then
-            _param_toolhead_move_error_tolerance=100
-        fi
-        if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
-            _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
-        fi
-        if [ ! "${_param_extruder_homing_current}" == "" ]; then
-            _param_extruder_collision_homing_current=${_param_extruder_homing_current}
-        fi
-        if [ "${_param_log_visual}" == "2" ]; then
-            _param_log_visual=1
-        fi
-        if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
-            if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
-                _param_servo_buzz_gear_on_down=0
-            else
-                _param_servo_buzz_gear_on_down=3
-            fi
-        fi
-        if [ "${_param_gate_parking_distance}" == "" ]; then
-            if [ ! "${_param_mmu_version}" == "1.1" ]; then
-                _param_gate_parking_distance=23
-            else
-                _param_gate_parking_distance=13
-            fi
-        fi
-        if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
-            _param_gate_endstop_to_encoder=0
-        fi
-
-        if [ ! "${_param_servo_up_angle}" == "" ]; then
-            _param_servo_up_angle=$(echo "$_param_servo_up_angle" | awk '{print int($1)}')
-        fi
-        if [ ! "${_param_servo_down_angle}" == "" ]; then
-            _param_servo_down_angle=$(echo "$_param_servo_down_angle" | awk '{print int($1)}')
-        fi
-        if [ ! "${_param_servo_move_angle}" == "" ]; then
-            _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
-        fi
-        if [ "${_param_servo_always_active}" == "" ]; then
-            _param_servo_always_active=0
-        fi
-        if [ "${_param_toolhead_post_load_tighten}" == "1" ]; then
-            # Old Boolean -> New Percent
-            _param_toolhead_post_load_tighten=60
-        fi
-
-        if [ "${_param_log_file_level}" -gt 2 ]; then
-            _param_log_file_level=2
-        fi
-
-        if [ ! "${_param_enable_spoolman}" == "" ]; then
-            if [ ! "${_param_enable_spoolman}" == "1" ]; then
-                _param_spoolman_support="readonly"
-            else
-                _param_spoolman_support="off"
-            fi
-        fi
     fi
 
-    # TODO Remove mmu_variables once everybody has upgraded
+    # TODO Remove 'mmu_variables' from list once everybody has upgraded
     for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
@@ -750,42 +633,6 @@ read_previous_config() {
                 parse_file "${dest_cfg}" "variable_|filename"
             else
                 parse_file "${dest_cfg}" "variable_"
-            fi
-
-            if [ ! "${variable_enable_park}" == "" ]; then
-                variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
-            fi
-            if [ ! "${variable_ramming_volume}" == "" ]; then
-                variable_ramming_volume_standalone=${variable_ramming_volume}
-            fi
-            if [ ! "${variable_auto_home}" == "" ]; then
-                variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
-            fi
-            if [ ! "${variable_park_after_form_tip}" == "" ]; then
-                variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
-            fi
-            if [ ! "${variable_restore_position}" == "" ]; then
-                variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
-            fi
-            if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
-                variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
-            fi
-            if [ ! "${variable_use_skinnydip}" == "" ]; then
-                variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
-            fi
-            if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
-                variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
-            fi
-            if [ ! "${variable_pin_loc_x}" == "" ]; then
-                variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
-            fi
-            if [ ! "${variable_safe_margin_x}" == "" ]; then
-                variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
-            fi
-            if [ "${variable_restore_xy_pos}" == "True" ]; then
-                variable_restore_xy_pos="\"last\""
-            elif [ "${variable_restore_xy_pos}" == "False" ]; then
-                variable_restore_xy_pos="\"none\""
             fi
         fi
     done
@@ -803,9 +650,140 @@ read_previous_config() {
         done
     fi
 
+    # Upgrade / map / force old parameters
+    if [ "${_param_form_tip_macro}" == "_MMU_FORM_TIP_STANDALONE" ]; then
+        _param_form_tip_macro="_MMU_FORM_TIP"
+    fi
+    if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
+        _param_gate_unload_buffer=${_param_encoder_unload_buffer}
+    fi
+    if [ ! "${_param_encoder_unload_max}" == "" ]; then
+        _param_gate_homing_max=${_param_encoder_unload_max}
+    fi
+    if [ ! "${_param_encoder_load_retries}" == "" ]; then
+        _param_gate_load_retries=${_param_encoder_load_retries}
+    fi
+    if [ "${_param_toolhead_ignore_load_error}" == "1" ]; then
+        _param_toolhead_move_error_tolerance=100
+    fi
+    if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
+        _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
+    fi
+    if [ ! "${_param_extruder_homing_current}" == "" ]; then
+        _param_extruder_collision_homing_current=${_param_extruder_homing_current}
+    fi
+    if [ "${_param_log_visual}" == "2" ]; then
+        _param_log_visual=1
+    fi
+    if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
+        if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
+            _param_servo_buzz_gear_on_down=0
+        else
+            _param_servo_buzz_gear_on_down=3
+        fi
+    fi
+    if [ "${_param_gate_parking_distance}" == "" ]; then
+        if [ ! "${_param_mmu_version}" == "1.1" ]; then
+            _param_gate_parking_distance=23
+        else
+            _param_gate_parking_distance=13
+        fi
+    fi
+    if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
+        _param_gate_endstop_to_encoder=0
+    fi
+    if [ ! "${_param_servo_up_angle}" == "" ]; then
+        _param_servo_up_angle=$(echo "$_param_servo_up_angle" | awk '{print int($1)}')
+    fi
+    if [ ! "${_param_servo_down_angle}" == "" ]; then
+        _param_servo_down_angle=$(echo "$_param_servo_down_angle" | awk '{print int($1)}')
+    fi
+    if [ ! "${_param_servo_move_angle}" == "" ]; then
+        _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
+    fi
+    if [ "${_param_servo_always_active}" == "" ]; then
+        _param_servo_always_active=0
+    fi
+    if [ "${_param_toolhead_post_load_tighten}" == "1" ]; then
+        # Old Boolean -> New Percent
+        _param_toolhead_post_load_tighten=60
+    fi
+    if [ "${_param_log_file_level}" -gt 2 ]; then
+        _param_log_file_level=2
+    fi
+    if [ ! "${_param_enable_spoolman}" == "" ]; then
+        if [ ! "${_param_enable_spoolman}" == "1" ]; then
+            _param_spoolman_support="readonly"
+        else
+            _param_spoolman_support="off"
+        fi
+    fi
+    if [ ! "${variable_enable_park}" == "" ]; then
+        variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
+    fi
+    if [ ! "${variable_ramming_volume}" == "" ]; then
+        variable_ramming_volume_standalone=${variable_ramming_volume}
+    fi
+    if [ ! "${variable_auto_home}" == "" ]; then
+        variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
+    fi
+    if [ ! "${variable_park_after_form_tip}" == "" ]; then
+        variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
+    fi
+    if [ ! "${variable_restore_position}" == "" ]; then
+        variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
+    fi
+    if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
+        variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
+    fi
+    if [ ! "${variable_use_skinnydip}" == "" ]; then
+        variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
+    fi
+    if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
+        variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
+    fi
+    if [ ! "${variable_pin_loc_x}" == "" ]; then
+        variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
+    fi
+    if [ ! "${variable_safe_margin_x}" == "" ]; then
+        variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
+    fi
+    if [ "${variable_restore_xy_pos}" == "True" ]; then
+        variable_restore_xy_pos="\"last\""
+    elif [ "${variable_restore_xy_pos}" == "False" ]; then
+        variable_restore_xy_pos="\"none\""
+    fi
     if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
         mmu_num_gates=$_param_mmu_num_gates
         mmu_num_leds=$(expr $mmu_num_gates + 1)
+    fi
+
+    # v2.7.1
+    if [ ! "${variable_pin_park_x_dist}" == "" ]; then
+        variable_pin_park_dist="${variable_pin_park_x_dist}"
+    fi
+    if [ ! "${variable_pin_loc_x_compressed}" == "" ]; then
+        variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
+    fi
+    if [ ! "${variable_park_xy}" == "" ]; then
+        variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0"
+        variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0"
+    fi
+    if [ ! "${variable_lift_speed}" == "" ]; then
+        variable_park_lift_speed="${variable_lift_speed}"
+    fi
+    if [ "${variable_enable_park}" == "False" ]; then
+        variable_enable_park_printing="'pause,cancel'"
+        if [ "${variable_enable_park_runout}" == "True" ]; then
+            variable_enable_park_printing="'toolchange,load,unload,runout,pause,cancel'"
+        fi
+    else
+        variable_enable_park_printing="'toolchange,load,unload,pause,cancel'"
+    fi
+    if [ "${variable_enable_park_standalone}" == "False" ]; then
+        variable_enable_park_standalone="'pause,cancel'"
+    else
+        variable_enable_park_standalone="'toolchange,load,unload,runout,pause,cancel'"
     fi
 }
 
@@ -1229,7 +1207,14 @@ uninstall_update_manager() {
 restart_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Klipper..."
-        sudo systemctl restart ${KLIPPER_SERVICE}
+
+        if [ "$IS_MIPS" -ne 1 ]; then
+            sudo systemctl restart ${KLIPPER_SERVICE}
+        else
+            set +e
+            /etc/init.d/*klipper_service restart
+            set -e
+        fi
     else
         echo -e "${WARNING}Klipper restart suppressed - Please restart ${KLIPPER_SERVICE} by hand"
     fi
@@ -1238,7 +1223,14 @@ restart_klipper() {
 restart_moonraker() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Moonraker..."
-        sudo systemctl restart moonraker
+
+        if [ "$IS_MIPS" -ne 1 ]; then
+            sudo systemctl restart moonraker
+        else
+            set +e
+            /etc/init.d/*moonraker_service restart
+            set -e
+        fi
     else
         echo -e "${WARNING}Moonraker restart suppressed - Please restart by hand"
     fi
@@ -1789,7 +1781,7 @@ verify_not_root
 check_octoprint
 verify_home_dirs
 check_klipper
-cleanup_old_ercf
+cleanup_old_klippy_modules
 if [ "$UNINSTALL" -eq 0 ]; then
 
     # Set in memory parameters from default file
@@ -1827,7 +1819,6 @@ if [ "$UNINSTALL" -eq 0 ]; then
     copy_config_files
 
     # Temp upgrades
-    cleanup_manual_stepper_version
     upgrade_mmu_sensors
     upgrade_led_effects
 

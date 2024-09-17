@@ -3,7 +3,7 @@
 #   - "drip" homing and movement without pauses
 #   - bi-directional syncing of extruder to gear rail or gear rail to extruder
 #   - extra "standby" endstops
-#   - extruder endstops
+#   - extruder homing and endstops
 #
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
@@ -36,12 +36,26 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
         self.mcu = self.all_mcus[0]
-        if hasattr(toolhead, 'LookAheadQueue'):
-            self.lookahead = toolhead.LookAheadQueue(self) # Happy Hare: Use base class LookAheadQueue
-            self.lookahead.set_flush_time(toolhead.BUFFER_TIME_HIGH) # Happy Hare: Use base class
+
+        if hasattr(toolhead, 'BUFFER_TIME_HIGH'):
+            time_high = toolhead.BUFFER_TIME_HIGH
         else:
-            self.move_queue = toolhead.MoveQueue(self) # Happy Hare: Use base class MoveQueue (older klipper)
-            self.move_queue.set_flush_time(toolhead.BUFFER_TIME_HIGH) # Happy Hare: Use base class (older klipper)
+            # Backward compatibility for older klipper, like on Sovol or Creality K1 series printers
+            # On Creality K1, these attributes are expected to exist in any Toolhead
+            self.buffer_time_low = config.getfloat('buffer_time_low', 1.000, above=0.)
+            self.buffer_time_high = config.getfloat('buffer_time_high', 2.000, above=self.buffer_time_low)
+            self.buffer_time_start = config.getfloat('buffer_time_start', 0.250, above=0.)
+            self.move_flush_time = config.getfloat('move_flush_time', 0.050, above=0.)
+            self.last_kin_flush_time = self.force_flush_time = self.last_kin_move_time = 0.
+            time_high = self.buffer_time_high
+
+        if hasattr(toolhead, 'LookAheadQueue'):
+            self.lookahead = toolhead.LookAheadQueue(self)
+            self.lookahead.set_flush_time(time_high)
+        else:
+            # Klipper backward compatibility
+            self.move_queue = toolhead.MoveQueue(self)
+            self.move_queue.set_flush_time(time_high)
         self.commanded_pos = [0., 0., 0., 0.]
 
         # MMU velocity and acceleration control
@@ -415,7 +429,9 @@ class MmuKinematics:
             move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel or self.gear_max_accel))
 
     def get_status(self, eventtime):
+        axes = [a for a, (l, h) in zip("xy", self.limits) if l <= h]
         return {
+            'homed_axes': "".join(axes),
             'selector_homed': self.limits[0][0] <= self.limits[0][1],
         }
 

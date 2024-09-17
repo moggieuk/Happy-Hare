@@ -167,6 +167,7 @@ gcode:
         operation not in ['load']
     ) %}
 
+    MMU_LOG MSG="PAUL _MMU_PARK operation={operation}, park_operation={park_operation}, should_park={should_park}, should_ramp={should_ramp}, should_retract={should_retract}(retract={retract}), PARK=(x={x}, y={y}, park_z_hop={park_z_hop}, z_hop_ramp={z_hop_ramp}), starting_z={starting_z}, z_hop_floor={z_hop_floor}, min_lifted_z={min_lifted_z}, toolchange_z={toolchange_z}, min_toolchange_z={min_toolchange_z}, is_printing={is_printing}, force_park={force_park}, saved_pos={saved_pos}, saved_xyx={saved_xyz}, pos.z={pos.z}" DEBUG=1
     {% if should_park %}
         {% if should_retract %}
             _MMU_RETRACT LENGTH={retract}
@@ -224,6 +225,7 @@ gcode:
         {% if x != pos.x or y != pos.y %}
             MMU_LOG MSG="Warning: Klipper reported out of range gcode position (x:{pos.x}, y:{pos.y})! Adjusted to (x:{x}, y:{y}) to prevent move failure" ERROR=1
         {% endif %}
+        MMU_LOG MSG="PAUL _MMU_SAVE_POSITION x,y,z={x},{y},{pos.z}" DEBUG=1
         SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=saved_xyz VALUE="{x}, {y}, {pos.z}"
         SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=saved_pos VALUE={True}
     {% endif %}
@@ -250,6 +252,7 @@ gcode:
         park_vars.park_operation not in ['load', 'unload', 'cancel', 'complete']
     ) %}
 
+    MMU_LOG MSG="PAUL _MMU_RESTORE_POSITION should_lower={should_lower}, should_unretract={should_unretract}, saved_pos={park_vars.saved_pos}(x,y,z={x},{y},{z}), restore_xy_pos={restore_xy_pos}, next_pos={park_vars.next_pos}(x,y={nx},{ny})" DEBUG=1
     G90							# Absolute
     {% if park_vars.saved_pos %}
         MMU_LOG MSG="Restoring toolhead position to (x:{x|round(1)}, y:{y|round(1)}, z:{z|round(1) if should_lower else "n/a"})"
@@ -318,6 +321,7 @@ gcode:
 [gcode_macro _MMU_CLEAR_POSITION]
 description: Clear previously recorded toolhead position
 gcode:
+    MMU_LOG MSG="PAUL _MMU_CLEAR_POSITION" DEBUG=1
     SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=saved_pos VALUE={False}
     SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=next_pos VALUE={False}
     SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=toolchange_z VALUE=-1
