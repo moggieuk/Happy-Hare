@@ -3635,7 +3635,7 @@ class Mmu:
             # Restablish syncing state and servo position
             self._sync_gear_to_extruder(self.sync_to_extruder, servo=True, current=True)
 
-        # Restore print position as final step
+        # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
 
         # Ready to continue printing...
@@ -3650,7 +3650,7 @@ class Mmu:
         if not self.saved_toolhead_operation:
             # Save toolhead position
             if 'xyz' in homed:
-                # This is paranoia so I can be absolutely sure that Happy Hare leaves toolhead the same way
+                # This is paranoia so I can be absolutely sure that Happy Hare leaves toolhead the same way when we are done
                 gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                 self.log_debug("Saving toolhead gcode state and position (%s) for %s" % (toolhead_gcode_pos, operation))
@@ -3678,9 +3678,8 @@ class Mmu:
             if 'xyz' in homed:
                 # Re-apply parking for new operation. This will not change the saved position in macro
                 self.saved_toolhead_operation = operation # Update operation in progress
-                # Force re-park now because user may not be using HH client_macros. This can
-                # result in duplicate calls to parking macro but when HH is emabled it is itempotent
-                # based on saved_toolhead_operation
+                # Force re-park now because user may not be using HH client_macros. This can result
+                # in duplicate calls to parking macro but it is itempotent and will ignore
                 self._wrap_gcode_command(self.park_macro)
 
     def _restore_toolhead_position(self, operation, restore=True):
@@ -6209,7 +6208,7 @@ class Mmu:
             tool = gcmd.get_int('TOOL', 0, minval=0, maxval=self.mmu_num_gates - 1)
             force_unload = gcmd.get_int('FORCE_UNLOAD', -1, minval=0, maxval=1)
         try:
-            with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
+            with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                 self._home(tool, force_unload)
                 if tool == -1:
                     self.log_always("Homed")
@@ -6314,12 +6313,12 @@ class Mmu:
 
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
-                with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
+                self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
+                with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                     form_tip = self.FORM_TIP_SLICER if (self._is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
+
                     if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed: # Will be done later if not homed
                         self._recover_filament_pos(message=True)
-
-                    self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
 
                     if self._has_encoder():
                         self.encoder_sensor.update_clog_detection_length()
@@ -6345,7 +6344,7 @@ class Mmu:
                 self._persist_swap_statistics()
                 self._persist_gate_statistics()
 
-                self._continue_after('toolchange') # Deliberately resync outside _wrap_gear_synced_to_extruder() so there is no delay after restoring position
+                self._continue_after('toolchange') # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no delay after restoring position
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
 
@@ -6360,9 +6359,9 @@ class Mmu:
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
-                with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
+                self._save_toolhead_position_and_park('load')
+                with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                     if not extruder_only:
-                        self._save_toolhead_position_and_park('load')
                         self._select_and_load_tool(self.tool_selected) # This could change gate tool is mapped to
                         self._persist_gate_statistics()
                     elif extruder_only and self.filament_pos != self.FILAMENT_POS_LOADED:
@@ -6391,9 +6390,9 @@ class Mmu:
 
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
+                self._save_toolhead_position_and_park('unload')
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
                     if not extruder_only:
-                        self._save_toolhead_position_and_park('unload')
                         self._unload_tool(form_tip=form_tip)
                         self._persist_gate_statistics()
                     elif extruder_only and self.filament_pos != self.FILAMENT_POS_UNLOADED:
@@ -6533,7 +6532,7 @@ class Mmu:
         strict = gcmd.get_int('STRICT', 0, minval=0, maxval=1)
 
         try:
-            with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
+            with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                 if (tool == self.TOOL_GATE_BYPASS or mod_gate == self.TOOL_GATE_BYPASS) and self.bypass_offset == 0:
                     self.log_always("Bypass not configured")
                     return
@@ -7792,7 +7791,7 @@ class Mmu:
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during gate check
                 with self._wrap_action(self.ACTION_CHECKING):
-                    with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
+                    with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                         tool_selected = self.tool_selected
                         filament_pos = self.filament_pos
                         self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
@@ -7912,7 +7911,7 @@ class Mmu:
         self.log_always("Preloading filament in %s" % (("Gate %d" % gate) if gate >= 0 else "current gate"))
         try:
             with self._wrap_action(self.ACTION_CHECKING):
-                with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
+                with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                     with self._wrap_suppress_visual_log():
                         # If gate not specified assume current gate
                         if gate == -1:
