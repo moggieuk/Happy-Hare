@@ -49,7 +49,8 @@ class VirtualSelector():
         pass
 
     def handle_connect(self):
-        self.mmu_toolhead = mmu.mmu_toolhead
+        self.mmu_toolhead = self.mmu.mmu_toolhead
+        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def handle_ready(self):
         pass

@@ -247,8 +247,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._reconfigure_rail(None)
 
     def _reconfigure_rail(self, selected_steppers):
-        sync_direction = self.sync_direction
-        if sync_direction:
+        sync_mode = self.sync_mode
+        if sync_mode:
             self.unsync()
         else:
             self.printer_toolhead.flush_step_generation()
@@ -282,8 +282,8 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         # Restore previous synchronization state if any with new gear steppers
         # TODO: Not sure of practical usefulness of resyncing but it will not handle the extruder_only case
-        if sync_direction:
-            self._sync(sync_direction)
+        if sync_mode:
+            self._sync(sync_mode)
 
     def is_synced(self):
         return self.sync_mode is not None
