@@ -70,7 +70,8 @@ class MmuRunoutHelper:
         # Pausing from inside an event requires that the pause portion of pause_resume execute immediately.
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
-        self.printer.get_reactor().pause(eventtime + self.pause_delay)
+        if self.pause_delay:
+            self.printer.get_reactor().pause(eventtime + self.pause_delay)
         self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1")
 
     def _exec_gcode(self, command):
@@ -140,7 +141,7 @@ class MmuSensors:
         self.printer = config.get_printer()
 
         event_delay = config.get('event_delay', 1.)
-        pause_delay = config.get('pause_delay', 0.1)
+        pause_delay = config.get('pause_delay', 0)
 
         # Setup and pre-gate sensors that are defined...
         for gate in range(23):

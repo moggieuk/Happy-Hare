@@ -31,7 +31,7 @@ SELECTOR_STEPPER_CONFIG = "stepper_mmu_selector"
 GEAR_STEPPER_CONFIG     = "stepper_mmu_gear"
 
 SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
-OTHER_STEPPER_PARAMS     = [ 'step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
+OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
 
 SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
 
@@ -43,14 +43,14 @@ class MmuMachine():
         # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of jus the extruder is not possible.
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, 'LinearSelector')
 
         # PAUL WIP for config validation
-        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
-        self.filament_clamp = "servo"
-        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
-        self.multigear = False
+#PAUL        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
+# PAUL        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
+        self.multigear = False
         for i in range(1, 24): # Don't allow "_0" or it is confusing with unprefixed initial stepper
             section = "%s_%d" % (GEAR_STEPPER_CONFIG, i)
             if not config.has_section(section):
@@ -91,12 +91,26 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
         self.mcu = self.all_mcus[0]
-        if hasattr(toolhead, 'LookAheadQueue'):
-            self.lookahead = toolhead.LookAheadQueue(self) # Happy Hare: Use base class LookAheadQueue
-            self.lookahead.set_flush_time(toolhead.BUFFER_TIME_HIGH) # Happy Hare: Use base class
+
+        if hasattr(toolhead, 'BUFFER_TIME_HIGH'):
+            time_high = toolhead.BUFFER_TIME_HIGH
         else:
-            self.move_queue = toolhead.MoveQueue(self) # Happy Hare: Use base class MoveQueue (older klipper)
-            self.move_queue.set_flush_time(toolhead.BUFFER_TIME_HIGH) # Happy Hare: Use base class (older klipper)
+            # Backward compatibility for older klipper, like on Sovol or Creality K1 series printers
+            # On Creality K1, these attributes are expected to exist in any Toolhead
+            self.buffer_time_low = config.getfloat('buffer_time_low', 1.000, above=0.)
+            self.buffer_time_high = config.getfloat('buffer_time_high', 2.000, above=self.buffer_time_low)
+            self.buffer_time_start = config.getfloat('buffer_time_start', 0.250, above=0.)
+            self.move_flush_time = config.getfloat('move_flush_time', 0.050, above=0.)
+            self.last_kin_flush_time = self.force_flush_time = self.last_kin_move_time = 0.
+            time_high = self.buffer_time_high
+
+        if hasattr(toolhead, 'LookAheadQueue'):
+            self.lookahead = toolhead.LookAheadQueue(self)
+            self.lookahead.set_flush_time(time_high)
+        else:
+            # Klipper backward compatibility
+            self.move_queue = toolhead.MoveQueue(self)
+            self.move_queue.set_flush_time(time_high)
         self.commanded_pos = [0., 0., 0., 0.]
 
         # MMU velocity and acceleration control
@@ -518,7 +532,9 @@ class MmuKinematics:
             move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel or self.gear_max_accel))
 
     def get_status(self, eventtime):
+        axes = [a for a, (l, h) in zip("xy", self.limits) if l <= h]
         return {
+            'homed_axes': "".join(axes),
             'selector_homed': self.limits[0][0] <= self.limits[0][1],
         }
 
