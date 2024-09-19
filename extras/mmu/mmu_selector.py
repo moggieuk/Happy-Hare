@@ -370,7 +370,7 @@ class LinearSelector():
             else:
                 self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_error(str(ee))
 
     cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
     def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
@@ -388,7 +388,7 @@ class LinearSelector():
                 self.mmu.log_always("Testing loop %d / %d" % (l + 1, loops))
                 tool = random.randint(0, self.mmu.num_gates)
                 if tool == self.mmu.num_gates:
-                    self._select_bypass()
+                    self.mmu._select_bypass()
                 else:
                     if random.randint(0, 10) == 0 and home:
                         self.home(tool)
@@ -397,7 +397,7 @@ class LinearSelector():
                 if servo:
                     self.selector.filament_drive()
         except MmuError as ee:
-            self.mmu._handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
+            self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
     def _get_max_selector_movement(self, gate=-1):
         n = gate if gate >= 0 else self.mmu.num_gates - 1
@@ -553,7 +553,7 @@ class LinearSelector():
 
             self.home(0, force_unload=0)
         except MmuError as ee:
-            self.mmu._handle_mmu_error(str(ee))
+            self.mmu.handle_mmu_error(str(ee))
             self.mmu._motors_off()
         finally:
             self.mmu.calibrating = False

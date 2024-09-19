@@ -1300,7 +1300,7 @@ class Mmu:
                                 self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
                             self._restore_toolhead_position('toolchange')
                 except MmuError as ee:
-                    self._handle_mmu_error(str(ee))
+                    self.handle_mmu_errorstr(ee))
             self.log_info("Statistics:%s" % self.last_statistics)
             self._set_print_state("idle")
 
@@ -2027,7 +2027,7 @@ class Mmu:
                         msg = "Count %s (%d) above limit %d" % (counter, metric['count'], metric['limit'])
                         msg += "\nUse 'MMU_STATS COUNTER=%s RESET=1' to reset" % counter
                         if metric.get('pause', False):
-                            self._handle_mmu_error("%s\n%s" % (warn, msg))
+                            self.handle_mmu_error"%s\n%s" % (warn, msg))
                         else:
                             self.log_error(warn)
                             self.log_always(msg)
@@ -2621,7 +2621,7 @@ class Mmu:
             with self._require_encoder():
                 self._calibrate_encoder(length, repeats, speed, min_speed, max_speed, accel, save)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
         finally:
             self.calibrating = False
 
@@ -2659,7 +2659,7 @@ class Mmu:
                 with self._require_encoder():
                     self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats, save)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
         finally:
             self.calibrating = False
 
@@ -2692,7 +2692,7 @@ class Mmu:
                 else:
                     self._calibrate_gate(gate, length, repeats, save=(save and gate != 0))
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
         finally:
             self.calibrating = False
 
@@ -2792,7 +2792,7 @@ class Mmu:
             self._unload_bowden(self.calibrated_bowden_length)
             self._unload_gate()
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
         finally:
             self.calibrating = False
 
@@ -3069,7 +3069,7 @@ class Mmu:
             self._set_print_state(state)
         self._clear_macro_state()
 
-    def _handle_mmu_error(self, reason, force_in_print=False):
+    def handle_mmu_errorself, reason, force_in_print=False):
         self._fix_started_state() # Get out of 'started' state before transistion to pause
 
         run_pause_macro = recover_pos = send_event = False
@@ -3848,7 +3848,7 @@ class Mmu:
         try:
             self._load_gate()
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_LOAD_GATE: %s" % str(ee))
 
     cmd_MMU_STEP_UNLOAD_GATE_help = "User composable unloading step: Move filament from start of bowden and park in the gate"
     def cmd_MMU_STEP_UNLOAD_GATE(self, gcmd):
@@ -3857,7 +3857,7 @@ class Mmu:
         try:
             self._unload_gate(homing_max=self.calibrated_bowden_length if full else None)
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
 
     cmd_MMU_STEP_LOAD_BOWDEN_help = "User composable loading step: Smart loading of bowden"
     def cmd_MMU_STEP_LOAD_BOWDEN(self, gcmd):
@@ -3869,7 +3869,7 @@ class Mmu:
             else:
                 self._load_bowden(False, length=length)
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
 
     cmd_MMU_STEP_UNLOAD_BOWDEN_help = "User composable unloading step: Smart unloading of bowden"
     def cmd_MMU_STEP_UNLOAD_BOWDEN(self, gcmd):
@@ -3878,7 +3878,7 @@ class Mmu:
         try:
             self._unload_bowden(length)
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
 
     cmd_MMU_STEP_HOME_EXTRUDER_help = "User composable loading step: Home to extruder sensor or entrance through collision detection"
     def cmd_MMU_STEP_HOME_EXTRUDER(self, gcmd):
@@ -3886,7 +3886,7 @@ class Mmu:
         try:
             self._home_to_extruder(self.extruder_homing_max)
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
 
     cmd_MMU_STEP_LOAD_TOOLHEAD_help = "User composable loading step: Toolhead loading"
     def cmd_MMU_STEP_LOAD_TOOLHEAD(self, gcmd):
@@ -3895,7 +3895,7 @@ class Mmu:
         try:
             self._load_extruder(extruder_only)
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
 
     cmd_MMU_STEP_UNLOAD_TOOLHEAD_help = "User composable unloading step: Toolhead unloading"
     def cmd_MMU_STEP_UNLOAD_TOOLHEAD(self, gcmd):
@@ -3911,7 +3911,7 @@ class Mmu:
 
             self._unload_extruder(extruder_only = extruder_only)
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
 
     cmd_MMU_STEP_HOMING_MOVE_help = "User composable loading step: Generic homing move"
     def cmd_MMU_STEP_HOMING_MOVE(self, gcmd):
@@ -3919,7 +3919,7 @@ class Mmu:
         try:
             self._homing_move_cmd(gcmd, "User defined step homing move")
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
     cmd_MMU_STEP_MOVE_help = "User composable loading step: Generic move"
     def cmd_MMU_STEP_MOVE(self, gcmd):
@@ -3927,7 +3927,7 @@ class Mmu:
         try:
             self._move_cmd(gcmd, "User defined step move")
         except MmuError as ee:
-            self._handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
+            self.handle_mmu_error"_MMU_STEP_MOVE: %s" % str(ee))
 
     cmd_MMU_STEP_SET_FILAMENT_help = "User composable loading step: Set filament position state"
     def cmd_MMU_STEP_SET_FILAMENT(self, gcmd):
@@ -5699,7 +5699,7 @@ class Mmu:
                 if tool == -1:
                     self.log_always("Homed")
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_SELECT_help = "Select the specified logical tool (following TTG map) or physical gate"
     def cmd_MMU_SELECT(self, gcmd):
@@ -5719,7 +5719,7 @@ class Mmu:
         try:
             self._select(bypass, tool, gate)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_SELECT_BYPASS_help = "Select the filament bypass"
     def cmd_MMU_SELECT_BYPASS(self, gcmd):
@@ -5733,7 +5733,7 @@ class Mmu:
         try:
             self._select(1, -1, -1)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     def _select(self, bypass, tool, gate):
         try:
@@ -5832,7 +5832,7 @@ class Mmu:
 
                 self._continue_after('toolchange') # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no delay after restoring position
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTRUDER_ONLY=1)"
     def cmd_MMU_LOAD(self, gcmd):
@@ -5856,7 +5856,7 @@ class Mmu:
                         self.log_always("Filament already loaded")
                 self._continue_after('load')
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
             if self.tool_selected == self.TOOL_GATE_BYPASS:
                 self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
 
@@ -5891,7 +5891,7 @@ class Mmu:
                         self.log_always("Filament not loaded")
                 self._continue_after('unload', restore=restore)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_PRINT_START_help = "Forces initialization of MMU state ready for print (usually automatic)"
     def cmd_MMU_PRINT_START(self, gcmd):
@@ -5928,7 +5928,7 @@ class Mmu:
         if self._check_is_disabled(): return
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
         msg = gcmd.get('MSG',"MMU_PAUSE macro was directly called")
-        self._handle_mmu_error(msg, force_in_print)
+        self.handle_mmu_errormsg, force_in_print)
 
     cmd_MMU_UNLOCK_help = "Wakeup the MMU prior to resume to restore temperatures and timeouts"
     def cmd_MMU_UNLOCK(self, gcmd):
@@ -5973,7 +5973,7 @@ class Mmu:
             self._wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())))
             self._continue_after("resume", force_in_print=force_in_print)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     # Not a user facing command - used in automatic wrapper
     cmd_PAUSE_help = "Wrapper around default PAUSE macro"
@@ -6057,7 +6057,7 @@ class Mmu:
                 self._recover_filament_pos(strict=strict, message=True)
                 self._auto_filament_grip()
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
 
 ### GCODE COMMANDS INTENDED FOR TESTING #####################################
@@ -6087,7 +6087,7 @@ class Mmu:
 #                if servo:
 #                    self.selector.filament_drive()
 #        except MmuError as ee:
-#            self._handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
+#            self.handle_mmu_error"Soaktest abandoned because of error: %s" % str(ee))
 
     cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help = "Soak test tool load/unload sequence"
     def cmd_MMU_SOAKTEST_LOAD_SEQUENCE(self, gcmd):
@@ -6121,7 +6121,7 @@ class Mmu:
                             self._unload_tool()
             self._select_tool(0)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_TEST_GRIP_help = "Test the MMU grip for a Tool"
     def cmd_MMU_TEST_GRIP(self, gcmd):
@@ -6164,7 +6164,7 @@ class Mmu:
                     self.log_info("Gear/Encoder : %05.2f / %05.2f mm %s" % (moved, measured, drift_str))
             self._unload_tool()
         except MmuError as ee:
-            self._handle_mmu_error("Tracking test failed: %s" % str(ee))
+            self.handle_mmu_error"Tracking test failed: %s" % str(ee))
 
     cmd_MMU_TEST_LOAD_help = "For quick testing filament loading from gate to the extruder"
     def cmd_MMU_TEST_LOAD(self, gcmd):
@@ -6181,7 +6181,7 @@ class Mmu:
                 length = gcmd.get_float('LENGTH', 100., minval=10., maxval=self.calibrated_bowden_length)
                 self._load_sequence(bowden_move=length, skip_extruder=True)
         except MmuError as ee:
-            self._handle_mmu_error("Load test failed: %s" % str(ee))
+            self.handle_mmu_error"Load test failed: %s" % str(ee))
 
     cmd_MMU_TEST_MOVE_help = "Test filament move to help debug setup / options"
     def cmd_MMU_TEST_MOVE(self, gcmd):
@@ -6827,7 +6827,7 @@ class Mmu:
         if errors:
             reason = ["Error during automapping"]
             if self._is_printing():
-                self._handle_mmu_error("\n".join(reason+errors))
+                self.handle_mmu_error"\n".join(reason+errors))
             else:
                 self.log_error(reason[0])
                 for e in errors:
@@ -6874,7 +6874,7 @@ class Mmu:
         try:
             self._runout(True)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_ENCODER_RUNOUT_help = "Internal encoder filament runout handler"
     def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
@@ -6886,7 +6886,7 @@ class Mmu:
             self.log_debug("Filament runout/clog detected by MMU encoder")
             self._runout()
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_ENCODER_INSERT_help = "Internal encoder filament insert detection handler"
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
@@ -6925,7 +6925,7 @@ class Mmu:
                     self.log_debug("Assertion failure: runout detected but not in print or occured on unexpected gate. Ignored")
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     # This callback is not protected by klipper "is printing" check so be careful
     cmd_MMU_GATE_INSERT_help = "Internal MMU filament detection handler"
@@ -6943,7 +6943,7 @@ class Mmu:
                 if not self._is_in_print() and self.gate_autoload:
                     self.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_M400_help = "Wait on both move queues"
     def cmd_MMU_M400(self, gcmd):
@@ -7389,7 +7389,7 @@ class Mmu:
 
                         self._auto_filament_grip()
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self.handle_mmu_errorstr(ee))
 
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
     def cmd_MMU_PRELOAD(self, gcmd):
@@ -7428,7 +7428,7 @@ class Mmu:
                         self._initialize_encoder() # Encoder 0000
                         self._auto_filament_grip()
         except MmuError as ee:
-            self._handle_mmu_error("Filament preload for Gate %d failed: %s" % (gate, str(ee)))
+            self.handle_mmu_error"Filament preload for Gate %d failed: %s" % (gate, str(ee)))
 
 def load_config(config):
     return Mmu(config)
