@@ -562,12 +562,6 @@ class Mmu:
             self.tool_extrusion_multipliers.append(1.)
             self.tool_speed_multipliers.append(1.)
 
-# PAUL: DONE Moved last in sequence
-#        # Initialize state and statistics variables
-#        self.reinit()
-#        self._reset_statistics()
-#        self.counters = {}
-
         # Register GCODE commands
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
@@ -1989,7 +1983,8 @@ class Mmu:
         visual = "".join((t_str, g_str, gs_str, en_str, bowden1, bowden2, es_str, ex_str, ts_str, nz_str, summary, counter))
         return visual
 
-### LOGGING AND STATISTICS FUNCTIONS GCODE FUNCTIONS
+
+### LOGGING AND STATISTICS FUNCTIONS GCODE FUNCTIONS #############################
 
     cmd_MMU_STATS_help = "Dump and optionally reset the MMU statistics"
     def cmd_MMU_STATS(self, gcmd):
@@ -2218,7 +2213,8 @@ class Mmu:
             self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
             self.selector.disable_motors()
 
-### SERVO AND MOTOR GCODE FUNCTIONS
+
+### SERVO AND MOTOR GCODE FUNCTIONS ##############################################
 
     cmd_MMU_MOTORS_OFF_help = "Turn off both MMU motors"
     def cmd_MMU_MOTORS_OFF(self, gcmd):
@@ -2553,7 +2549,7 @@ class Mmu:
         return toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle, toolhead_entry_to_extruder
 
 
-### CALIBRATION GCODE COMMANDS
+### CALIBRATION GCODE COMMANDS ###################################################
 
     cmd_MMU_CALIBRATE_GEAR_help = "Calibration routine for gear stepper rotational distance"
     def cmd_MMU_CALIBRATE_GEAR(self, gcmd):
@@ -3617,7 +3613,7 @@ class Mmu:
             raise MmuError("Randomized testing failure")
 
 
-### STATE GCODE COMMANDS
+### STATE GCODE COMMANDS #########################################################
 
     cmd_MMU_help = "Enable/Disable functionality and reset state"
     def cmd_MMU(self, gcmd):
@@ -4664,6 +4660,7 @@ class Mmu:
                 movement = self.selector.filament_release(measure=True)
                 if movement > self.encoder_min:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
+                    self.log_debug("Encoder moved %.1fmm when filament was released!")
                     raise MmuError("It may be time to get the pliers out! Filament appears to be stuck somewhere")
             else:
                 self.selector.filament_release()
@@ -5344,7 +5341,7 @@ class Mmu:
 
         with self._wrap_track_time('pre_load'):
             self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
-        self.select_tool(tool, move_grip=False) # PAUL don't move grip (servo) because we move it in load_sequence
+        self.select_tool(tool, move_servo=False) # PAUL don't move servo because we move it in load_sequence
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
@@ -5430,7 +5427,7 @@ class Mmu:
         self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
         self._auto_filament_grip()
 
-    def select_tool(self, tool, move_grip=True):
+    def select_tool(self, tool, move_servo=True):
         if tool < 0 or tool >= self.num_gates:
             self.log_always("Tool %d does not exist" % tool)
             return
@@ -5442,7 +5439,7 @@ class Mmu:
         self.log_debug("Selecting tool T%d on Gate %d..." % (tool, gate))
         self.selector.select_gate(gate)
         self.set_tool_selected(tool)
-        if move_grip:
+        if move_servo:
             self._auto_filament_grip()
         self.log_info("Tool T%d enabled%s" % (tool, (" on Gate %d" % gate) if tool != gate else ""))
 
@@ -6056,7 +6053,7 @@ class Mmu:
             self.handle_mmu_error(str(ee))
 
 
-### GCODE COMMANDS INTENDED FOR TESTING #####################################
+### GCODE COMMANDS INTENDED FOR TESTING ##########################################
 
     cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help = "Soak test tool load/unload sequence"
     def cmd_MMU_SOAKTEST_LOAD_SEQUENCE(self, gcmd):
@@ -6834,7 +6831,7 @@ class Mmu:
                     t_vars.pop('color', None)
                 t_macro.variables = t_vars
 
-### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################################
+### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################
 
     cmd_MMU_TEST_RUNOUT_help = "Manually invoke the clog/runout detection logic for testing"
     def cmd_MMU_TEST_RUNOUT(self, gcmd):

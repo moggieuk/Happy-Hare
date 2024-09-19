@@ -283,10 +283,10 @@ class LinearSelector():
         elif self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS:
             self.set_position(self.bypass_offset)
 
-    def filament_drive(self, buzz_gear=True): # PAUL aka servo_down
+    def filament_drive(self, buzz_gear=True):
         self.servo.servo_down(buzz_gear=buzz_gear)
 
-    def filament_release(self, measure=False): # PAUL aka servo_up
+    def filament_release(self, measure=False):
         self.servo.servo_up(measure=measure)
 
     def filament_hold(self): # AKA position for selector movement
@@ -392,7 +392,7 @@ class LinearSelector():
                     if random.randint(0, 10) == 0 and home:
                         self.home(tool)
                     else:
-                        self.mmu.select_tool(tool, move_grip=servo) # PAUL select tool or gate?
+                        self.mmu.select_tool(tool, move_servo=servo)
                 if servo:
                     self.filament_drive()
         except MmuError as ee:
@@ -831,7 +831,7 @@ class LinearSelectorServo():
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
         self.servo_angle = self.servo_angles['down']
         self.servo_state = self.SERVO_DOWN_STATE
-        self.mmu.mmu_macro_event(self.mmu.MACRO_EVENT_FILAMENT_GRIPPED) # PAUL move up to selector
+        self.mmu.mmu_macro_event(self.mmu.MACRO_EVENT_FILAMENT_GRIPPED)
 
     def servo_move(self): # Position servo for selector movement
         if self.mmu.internal_test: return # Save servo while testing
