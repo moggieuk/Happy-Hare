@@ -7571,14 +7571,19 @@ class Mmu:
             gate_ids = []
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
-                material = "".join(gcmd.get('MATERIAL', self.gate_material[gate]).split()).replace('#', '').upper()
-                color = "".join(gcmd.get('COLOR', self.gate_color[gate]).split()).replace('#', '').lower()
-                spool_id = gcmd.get_int('SPOOLID', self.gate_spool_id[gate], minval=-1)
-                name = gcmd.get('NAME', self.gate_filament_name[gate])
                 speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
+                material = gcmd.get('MATERIAL', None)
+                color = gcmd.get('COLOR', None)
+                spool_id = gcmd.get_int('SPOOLID', None, minval=-1)
+                name = gcmd.get('NAME', None)
 
-                if not self.spoolman_support == self.SPOOLMAN_PULL:
-                    # Local gate map
+                if self.spoolman_support != self.SPOOLMAN_PULL:
+                    # Local gate map, can update attributes
+                    material = (material or self.gate_material[gate]).upper()
+                    color = (color or self.gate_color[gate]).lower()
+                    spool_id = spool_id or self.gate_spool_id[gate]
+                    name = name or self.gate_filament_name[gate]
+
                     if spool_id != self.gate_spool_id[gate]:
                         if spool_id in self.gate_spool_id:
                             old_gate = self.gate_spool_id.index(spool_id)
@@ -7595,10 +7600,13 @@ class Mmu:
                     self.gate_status[gate] = available
                     self.gate_spool_id[gate] = spool_id
                     self.gate_speed_override[gate] = speed_override
+
                 else:
-                    # Remote (spoolman) gate map
+                    # Remote (spoolman) gate map, don't update attributes that are available from spoolman
                     self.gate_status[gate] = available
                     self.gate_speed_override[gate] = speed_override
+                    if any(x is not None for x in [material, color, spool_id, name]):
+                        raise gcmd.error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % self.SPOOLMAN_PULL)
 
             self._update_gate_color(self.gate_color)
             self._persist_gate_map(sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
