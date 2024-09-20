@@ -75,10 +75,11 @@ class MmuRunoutHelper:
         self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1")
 
     def _exec_gcode(self, command):
-        try:
-            self.gcode.run_script(command)
-        except Exception:
-            logging.exception("Error running mmu sensor handler: `%s`" % command)
+        if command:
+            try:
+                self.gcode.run_script(command)
+            except Exception:
+                logging.exception("Error running mmu sensor handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def note_filament_present(self, is_filament_present):
@@ -143,10 +144,9 @@ class MmuSensors:
         event_delay = config.get('event_delay', 1.)
         pause_delay = config.get('pause_delay', 0)
 
-        # Setup and pre-gate sensors that are defined...
+        # Setup "mmu_pre_gate" sensors...
         for gate in range(23):
             switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
-
             if switch_pin is None or self._is_empty_pin(switch_pin):
                 continue
 
@@ -165,23 +165,16 @@ class MmuSensors:
             fs.runout_helper = gate_helper
             fs.get_status = gate_helper.get_status
 
-        # Setup gate sensor...
+        # Setup "mmu_gate" sensor(s)...
         switch_pin = config.get('gate_switch_pin', None)
+        logging.info("PAUL: switch_pin=%s" % switch_pin)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
-            # Automatically create necessary filament_switch_sensors
-            name = "%s_sensor" % self.ENDSTOP_GATE
-            section = "filament_switch_sensor %s" % name
-            config.fileconfig.add_section(section)
-            config.fileconfig.set(section, "switch_pin", switch_pin)
-            config.fileconfig.set(section, "pause_on_runout", "False")
-            fs = self.printer.load_object(config, section)
-
-            # Replace with custom runout_helper because limited operation is possible during print
-            insert_gcode = "__MMU_GATE_INSERT"
-            runout_gcode = "__MMU_GATE_RUNOUT"
-            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
-            fs.runout_helper = gate_helper
-            fs.get_status = gate_helper.get_status
+            self._create_gate_sensor(config, None, switch_pin, event_delay, pause_delay)
+        else:
+            for gate in range(23):
+                switch_pin = config.get(f'gate_switch_pin_{gate}', None)
+                if switch_pin is not None and not self._is_empty_pin(switch_pin):
+                    self._create_gate_sensor(config, gate, switch_pin, event_delay, pause_delay)
 
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
@@ -220,6 +213,22 @@ class MmuSensors:
             buttons.register_buttons([switch_pin], self._sync_compression_callback)
             self.has_compression_switch = True
             self.compression_switch_state = 0
+
+    def _create_gate_sensor(self, config, gate, switch_pin, event_delay, pause_delay):
+        name = "%s_%d" % (self.ENDSTOP_GATE, gate) if gate is not None else "%s_sensor" % self.ENDSTOP_GATE
+        logging.info("PAUL: name=%s" % name)
+        section = "filament_switch_sensor %s" % name
+        config.fileconfig.add_section(section)
+        config.fileconfig.set(section, "switch_pin", switch_pin)
+        config.fileconfig.set(section, "pause_on_runout", "False")
+        fs = self.printer.load_object(config, section)
+
+        # Replace with custom runout_helper because limited operation is possible during print
+        insert_gcode = None
+        runout_gcode = f"__MMU_GATE_RUNOUT GATE={gate}" if gate is not None else "__MMU_GATE_RUNOUT"
+        gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+        fs.runout_helper = gate_helper
+        fs.get_status = gate_helper.get_status
 
     def _is_empty_pin(self, switch_pin):
         if switch_pin == '': return True

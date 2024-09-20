@@ -17,7 +17,8 @@ import random
 import extras.mmu_machine as mmu_machine
 from .mmu_shared import MmuError
 
-class MmuTest():
+class MmuTest:
+
     def __init__(self, mmu):
         self.mmu = mmu
         mmu.gcode.register_command('_MMU_TEST', self.cmd_MMU_TEST, desc = self.cmd_MMU_TEST_help) # Internal for testing

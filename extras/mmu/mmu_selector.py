@@ -38,7 +38,7 @@ FILAMENT_HOLD_STATE    = 2
 # Implements selector for type-B MMU's with gear driver per gate
 ################################################################################
 
-class VirtualSelector():
+class VirtualSelector:
     def __init__(self, mmu):
         self.mmu = mmu
         self.is_homed = True
@@ -109,7 +109,7 @@ class VirtualSelector():
 # rail[0] on mmu toolhead
 ################################################################################
 
-class LinearSelector():
+class LinearSelector:
 
     # mmu_vars.cfg variables
     VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
@@ -713,7 +713,7 @@ class LinearSelector():
 # Implements servo control for typical linear selector
 ################################################################################
 
-class LinearSelectorServo():
+class LinearSelectorServo:
 
     # mmu_vars.cfg variables
     VARS_MMU_SERVO_ANGLES = "mmu_servo_angles"

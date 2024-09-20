@@ -37,7 +37,8 @@ SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense
 
 # Wrapper object to delay loading of toolhead implementation until Happy Hare ready
 # TODO Really needs to move logic around to avoid this
-class MmuMachine():
+class MmuMachine:
+
     def __init__(self, config):
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on
         # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
