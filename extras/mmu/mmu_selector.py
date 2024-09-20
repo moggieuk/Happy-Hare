@@ -63,7 +63,8 @@ class VirtualSelector():
         self.mmu.set_gate_selected(gate)
 
     def restore_gate(self):
-        pass
+        if self.mmu.gate_selected >= 0:
+            self.mmu.mmu_toolhead.select_gear_stepper(self.mmu.gate_selected) # Select correct drive stepper
 
     def filament_drive(self):
         pass

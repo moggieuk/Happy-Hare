@@ -24,12 +24,13 @@ import extras.mmu_machine as mmu_machine
 from extras.mmu_machine import MmuToolHead
 from extras.mmu_leds import MmuLeds
 
-# Subcomponent clases
+# MMU subcomponent clases
 from .mmu_logger import MmuLogger
 from .mmu_selector import VirtualSelector, LinearSelector
 from .mmu_shared import MmuError
+from .mmu_test import MmuTest
 
-# Default to no unicode on Python2. Not worth the hassle!
+# Default to use unicode on Python2. Not worth the hassle until klipper drops py2 support!
 UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = ' ', '.', '-', '^', '*', '-'
 UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '+', '+', '+', '+'
 UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '+', '+', '+', '+'
@@ -86,7 +87,7 @@ class Mmu:
     # Calibration steps
     CALIBRATED_GEAR     = 0b00001
     CALIBRATED_ENCODER  = 0b00010
-    CALIBRATED_SELECTOR = 0b00100
+    CALIBRATED_SELECTOR = 0b00100 # Defaults true with VirtualSelector
     CALIBRATED_BOWDEN   = 0b01000
     CALIBRATED_GATES    = 0b10000
     CALIBRATED_ALL      = 0b01111 # Calibrated gates is optional
@@ -147,8 +148,8 @@ class Mmu:
     ENDSTOP_TOOLHEAD            = "toolhead"
     ENDSTOP_EXTRUDER_TOUCH      = "mmu_ext_touch"
 
-    ENDSTOP_SELECTOR_TOUCH      = "mmu_sel_touch"
-    ENDSTOP_SELECTOR_HOME       = "mmu_sel_home"
+    ENDSTOP_SELECTOR_TOUCH      = "mmu_sel_touch" # PAUL move to mmu_selector?
+    ENDSTOP_SELECTOR_HOME       = "mmu_sel_home" # PAUL move to mmu_selector?
     PRE_GATE_SENSOR_PREFIX      = "mmu_pre_gate"
 
     EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER_ENTRY, ENDSTOP_EXTRUDER_NONE]
@@ -189,6 +190,7 @@ class Mmu:
 
     # Name used to save gcode state
     TOOLHEAD_POSITION_STATE = 'MMU_state'
+
     # mmu_vars.cfg variables
     VARS_MMU_REVISION                = "mmu__revision"
     VARS_MMU_CALIB_CLOG_LENGTH       = "mmu_calibration_clog_length"
@@ -214,8 +216,8 @@ class Mmu:
     VARS_MMU_ENCODER_RESOLUTION      = "mmu_encoder_resolution"
     VARS_MMU_GEAR_ROTATION_DISTANCES = "mmu_gear_rotation_distances"
 
-    VARS_MMU_GEAR_ROTATION_DISTANCE  = "mmu_gear_rotation_distance" # Deprecated
-    VARS_MMU_CALIB_PREFIX            = "mmu_calibration_"           # Deprecated
+    VARS_MMU_GEAR_ROTATION_DISTANCE  = "mmu_gear_rotation_distance" # Deprecated (for upgrade only)
+    VARS_MMU_CALIB_PREFIX            = "mmu_calibration_"           # Deprecated (for upgrade only)
 
     # Mainsail/Fluid visualization of extruder colors and other attributes
     T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled
@@ -223,7 +225,7 @@ class Mmu:
     T_MACRO_COLOR_SLICER   = 'slicer'   # Color from slicer tool map
     T_MACRO_COLOR_OPTIONS  = [T_MACRO_COLOR_GATEMAP, T_MACRO_COLOR_SLICER, T_MACRO_COLOR_ALLGATES]
 
-    # Spoolman integration modes of operation
+    # Spoolman integration - modes of operation
     SPOOLMAN_OFF           = 'off'      # Spoolman disabled
     SPOOLMAN_READONLY      = 'readonly' # Get filament attributes only
     SPOOLMAN_PUSH          = 'push'     # Local gatemap is the source or truth
@@ -241,7 +243,7 @@ class Mmu:
     AUTOMAP_OPTIONS        = [AUTOMAP_NONE, AUTOMAP_FILAMENT_NAME, AUTOMAP_SPOOL_ID, AUTOMAP_MATERIAL, AUTOMAP_CLOSEST_COLOR, AUTOMAP_COLOR]
 
     EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'servo_retries': 0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
-# PAUL? deprecate or rename servo
+# PAUL? deprecate or rename servo, just call "retries"? Would need upgrade..
 
     W3C_COLORS = [('aliceblue','#F0F8FF'), ('antiquewhite','#FAEBD7'), ('aqua','#00FFFF'), ('aquamarine','#7FFFD4'), ('azure','#F0FFFF'), ('beige','#F5F5DC'),
                   ('bisque','#FFE4C4'), ('black','#000000'), ('blanchedalmond','#FFEBCD'), ('blue','#0000FF'), ('blueviolet','#8A2BE2'), ('brown','#A52A2A'),
@@ -278,7 +280,6 @@ class Mmu:
         self.config = config
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self.estimated_print_time = None
         self.calibration_status = 0b0
         self.calibrated_bowden_length = -1
         self.encoder_force_validation = False
@@ -347,7 +348,7 @@ class Mmu:
         elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure 'cad' dimensions (see doc)")
 
-        # Allow vendor driven config to be customized
+        # Still allow vendor driven config to be customized
         self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
         self.variable_gate_ratios = config.getfloat('variable_gate_ratios', self.variable_gate_ratios)
 
@@ -510,15 +511,15 @@ class Mmu:
         self.console_gate_stat = config.getchoice('console_gate_stat', {o: o for o in self.GATE_STATS_TYPES}, self.GATE_STATS_STRING)
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
+        # Turn off splash bling for boring people
+        self.serious = config.getint('serious', 0, minval=0, maxval=1)
+
         # Currently hidden and testing options
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
 
-        # Turn off splash bling
-        self.serious = config.getint('serious', 0, minval=0, maxval=1)
-
-        # The following lists are the defaults (when reset) and will be overriden by values in mmu_vars.cfg...
+        # The following lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
 
         # Endless spool groups
         self.enable_endless_spool = self.default_enable_endless_spool
@@ -529,7 +530,7 @@ class Mmu:
             self.default_endless_spool_groups = list(range(self.num_gates))
         self.endless_spool_groups = list(self.default_endless_spool_groups)
 
-        # Components of the gate map (status, material, color, spool_id and speed override)
+        # Components of the gate map (status, material, color, spool_id, filament name and speed override)
         self.gate_map_vars = [ (self.VARS_MMU_GATE_STATUS, 'gate_status', self.GATE_UNKNOWN),
                                (self.VARS_MMU_GATE_MATERIAL, 'gate_material', ""),
                                (self.VARS_MMU_GATE_COLOR, 'gate_color', ""),
@@ -585,11 +586,6 @@ class Mmu:
 
         # Core MMU functionality
         self.gcode.register_command('MMU', self.cmd_MMU, desc = self.cmd_MMU_help)
-
-        # Endstops for print start / stop. Automatically called if printing from virtual SD-card
-        self.gcode.register_command('MMU_PRINT_START', self.cmd_MMU_PRINT_START, desc = self.cmd_MMU_PRINT_START_help)
-        self.gcode.register_command('MMU_PRINT_END', self.cmd_MMU_PRINT_END, desc = self.cmd_MMU_PRINT_END_help)
-
         self.gcode.register_command('MMU_LOG', self.cmd_MMU_LOG, desc = self.cmd_MMU_LOG_help)
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
@@ -609,6 +605,10 @@ class Mmu:
         self.gcode.register_command('MMU_UNLOCK', self.cmd_MMU_UNLOCK, desc = self.cmd_MMU_UNLOCK_help)
         self.gcode.register_command('MMU_RECOVER', self.cmd_MMU_RECOVER, desc = self.cmd_MMU_RECOVER_help)
 
+        # Endstops for print start / stop. Automatically called if printing from virtual SD-card
+        self.gcode.register_command('MMU_PRINT_START', self.cmd_MMU_PRINT_START, desc = self.cmd_MMU_PRINT_START_help)
+        self.gcode.register_command('MMU_PRINT_END', self.cmd_MMU_PRINT_END, desc = self.cmd_MMU_PRINT_END_help)
+
         # User Setup and Testing
         self.gcode.register_command('MMU_TEST_BUZZ_MOTOR', self.cmd_MMU_TEST_BUZZ_MOTOR, desc=self.cmd_MMU_TEST_BUZZ_MOTOR_help)
         self.gcode.register_command('MMU_TEST_GRIP', self.cmd_MMU_TEST_GRIP, desc = self.cmd_MMU_TEST_GRIP_help)
@@ -619,7 +619,6 @@ class Mmu:
         self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
         self.gcode.register_command('MMU_TEST_RUNOUT', self.cmd_MMU_TEST_RUNOUT, desc = self.cmd_MMU_TEST_RUNOUT_help)
         self.gcode.register_command('MMU_TEST_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help)
-        self.gcode.register_command('_MMU_TEST', self.cmd_MMU_TEST, desc = self.cmd_MMU_TEST_help) # Internal for testing
 
         # Soak Testing
         self.gcode.register_command('MMU_SOAKTEST_LOAD_SEQUENCE', self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE, desc = self.cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help)
@@ -654,6 +653,9 @@ class Mmu:
 
         # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
+
+        # Load development tests
+        _ = MmuTest(self)
 
         # Timer too close mitigation
         if self.update_trsync:
@@ -701,7 +703,7 @@ class Mmu:
         self.gear_stepper = self.gear_rail.steppers[0]
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
 
-        # Setup filament homing sensors ------
+        # Setup filament homing sensors
         for name in [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER_ENTRY]:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
@@ -727,10 +729,10 @@ class Mmu:
                 if self.homing_extruder:
                     mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
 
-        # Get optional encoder setup -----
+        # Get optional encoder setup
         self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
         if not self.encoder_sensor:
-            # MMU logging not set up so use main klippy logger
+            # MMU logging not set up yet so use main klippy logger
             logging.warn("No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
 
     def _setup_logging(self):
@@ -887,6 +889,7 @@ class Mmu:
         self.selector.handle_disconnect()
 
     def handle_ready(self):
+        # Pull retraction length from macro config
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:
             park_toolchange = sequence_vars_macro.variables.get('park_toolchange',(0))
@@ -897,7 +900,7 @@ class Mmu:
         if not self.homing_extruder:
             self.log_debug("Warning: Using original klipper extruder stepper. Homing not possible")
 
-        # Restore state if fully calibrated
+        # Restore state only if fully calibrated
         if not self.check_is_calibrated(silent=True):
             self._load_persisted_state()
 
@@ -975,7 +978,7 @@ class Mmu:
         else:
             self.log_error("LEDs macro _MMU_SET_LED not available")
 
-        # Override user configuration based on h/w setup
+        # Override user configuration based on actual h/w setup
         led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
         if led_vars_macro:
             variables = led_vars_macro.variables
@@ -983,8 +986,6 @@ class Mmu:
             led_vars['led_enable'] = variables.get('led_enable', True) & self.has_leds
             led_vars['led_animation'] = variables.get('led_animation', True) & self.has_led_animation
             led_vars_macro.variables.update(led_vars)
-
-        self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
 
         # Sub components
         self.selector.handle_ready()
@@ -1073,8 +1074,8 @@ class Mmu:
 
     # Helper for finding the closest color
     # Example:
-    # color_list = ['123456', 'abcdef', '789abc', '4a7d9f', '010203']
-    # _find_closest_color('4b7d8e', color_list) returns '4a7d9f'
+    #   color_list = ['123456', 'abcdef', '789abc', '4a7d9f', '010203']
+    #   _find_closest_color('4b7d8e', color_list) returns '4a7d9f'
     def _find_closest_color(self, ref_color, color_list):
         weighted_euclidean_distance = lambda color1, color2, weights=(0.3, 0.59, 0.11): (
             sum(weights[i] * (a - b) ** 2 for i, (a, b) in enumerate(zip(color1, color2)))
@@ -1211,245 +1212,6 @@ class Mmu:
         except Exception as e:
             self.log_error('Warning: Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
-
-    cmd_MMU_TEST_help = "Internal Happy Hare development tests"
-    def cmd_MMU_TEST(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-
-        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-            self.log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
-            self.log_info("DUMP_UNICODE=1 : Display special characters used in display")
-            self.log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
-            self.log_info("GET_POS=1 : Fetch the current filament position")
-            self.log_info("SET_POS=<pos> : Set the current filament position")
-            self.log_info("SYNC_LOAD_TEST=1 : Hammer stepper syncing and movement. Parama: LOOP|HOME")
-            self.log_info("SEL_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP")
-            self.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
-            self.log_info("SEL_LOAD_TEST=1 : Load test selector movements. Params: HOME|LOOP")
-            self.log_info("TTC_TEST=1 : Provoke known TTC condition. Parms: LOOP")
-            self.log_info("SYNC_G2E=1 : Sync gear to extruder")
-            self.log_info("SYNC_E2G=1 : Sync extruder to gear. Params: EXTRUDER_ONLY")
-            self.log_info("UNSYNC=1 : Unsync")
-
-        feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
-        if feedback is not None:
-            self.log_info("Sending 'mmu:sync_feedback %.2f' event" % feedback)
-            self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), feedback)
-
-        if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
-            self.log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s, UI_CASCADE=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE))
-            self.log_info("{}{}{}{}".format(UI_BOX_TL, UI_BOX_T, UI_BOX_H, UI_BOX_TR))
-            self.log_info("{}{}{}{}".format(UI_BOX_L,  UI_BOX_M, UI_BOX_H, UI_BOX_R))
-            self.log_info("{}{}{}{}".format(UI_BOX_V,  UI_BOX_V, UI_SPACE, UI_BOX_V))
-            self.log_info("{}{}{}{}".format(UI_BOX_BL, UI_BOX_B, UI_BOX_H, UI_BOX_BR))
-            self.log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
-
-        if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
-            error = gcmd.get_int('ERROR', 0, minval=0, maxval=1)
-            if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
-                self._set_print_state("printing")
-            with self._wrap_track_time('total'):
-                with self._wrap_track_time('unload'):
-                    with self._wrap_track_time('pre_unload'):
-                        self._wrap_gcode_command(self.pre_unload_macro, exception=False, wait=True)
-                    self._wrap_gcode_command(self.post_form_tip_macro, exception=False, wait=True)
-                    with self._wrap_track_time('post_unload'):
-                        self._wrap_gcode_command(self.post_unload_macro, exception=False, wait=True)
-                with self._wrap_track_time('load'):
-                    with self._wrap_track_time('pre_load'):
-                        self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
-                    with self._wrap_track_time('post_load'):
-                        self._wrap_gcode_command(self.post_load_macro, exception=False, wait=False)
-                        if error:
-                            self._wrap_gcode_command("MMU_PAUSE")
-            self.log_info("Statistics:%s" % self.last_statistics)
-            self._set_print_state("idle")
-
-        if gcmd.get_int('RUN_CHANGE_SEQUENCE', 0, minval=0, maxval=1):
-            pause = gcmd.get_int('PAUSE', 0, minval=0, maxval=1)
-            next_pos = gcmd.get('NEXT_POS', "last")
-            goto_pos = None
-            if next_pos == 'next':
-                self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
-                goto_pos = [11, 11]
-                self._set_next_position(goto_pos)
-            if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
-                self._set_print_state("printing")
-            self._save_toolhead_position_and_park('toolchange', next_pos=goto_pos)
-            with self._wrap_track_time('total'):
-                try:
-                    with self._wrap_track_time('unload'):
-                        with self._wrap_track_time('pre_unload'):
-                            self._wrap_gcode_command(self.pre_unload_macro, exception=False, wait=True)
-                        self._wrap_gcode_command(self.post_form_tip_macro, exception=False, wait=True)
-                        with self._wrap_track_time('post_unload'):
-                            self._wrap_gcode_command(self.post_unload_macro, exception=False, wait=True)
-                    with self._wrap_track_time('load'):
-                        with self._wrap_track_time('pre_load'):
-                            self._wrap_gcode_command(self.pre_load_macro, exception=False, wait=True)
-                        if pause:
-                            raise MmuError("TEST ERROR")
-                        else:
-                            with self._wrap_track_time('post_load'):
-                                self._wrap_gcode_command(self.post_load_macro, exception=False, wait=True)
-                            self._restore_toolhead_position('toolchange')
-                except MmuError as ee:
-                    self.handle_mmu_error(str(ee))
-            self.log_info("Statistics:%s" % self.last_statistics)
-            self._set_print_state("idle")
-
-        if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
-            self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
-
-        if gcmd.get_int('SYNC_E2G', 0, minval=0, maxval=1):
-            extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
-            self.mmu_toolhead.sync(MmuToolHead.EXTRUDER_ONLY_ON_GEAR if extruder_only else MmuToolHead.EXTRUDER_SYNCED_TO_GEAR)
-
-        if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
-            self.mmu_toolhead.unsync()
-
-        pos = gcmd.get_float('SET_POS', -1, minval=0)
-        if pos >= 0:
-            self._set_filament_position(pos)
-
-        if gcmd.get_int('GET_POS', 0, minval=0, maxval=1):
-            self.log_info("Filament position: %s" % self._get_filament_position())
-
-        if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
-            try:
-                self.internal_test = True
-                endstop = gcmd.get('ENDSTOP', 'extruder')
-                loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
-                self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
-                self._initialize_filament_position()
-                total = 0.
-                for i in range(loop):
-                    move_type = random.randint(0, 11)
-                    move = random.randint(0, 100) - 50
-                    speed = random.uniform(50, 200)
-                    accel = random.randint(50, 1000)
-                    homing = random.randint(0, 1)
-                    extruder_only = random.randint(0, 1)
-                    motor = random.choice(["gear", "gear+extruder", "extruder"])
-                    if move_type == 0 or move_type == 1:
-                        self.log_info("Loop: %d - Synced gear to extruder movement: %.1fmm" % (i, move))
-                        self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
-                        self.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
-                    elif move_type == 2:
-                        self.log_info("Loop: %d - Unsynced extruder movement: %.1fmm" % (i, move))
-                        self.mmu_toolhead.unsync()
-                        self.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
-                    elif move_type == 3:
-                        self.log_info("Loop: %d - Regular move: %.1fmm, MOTOR=%s" %  (i, move, motor))
-                        self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=%.2f SPEED=%d" % (motor, move, speed))
-                        total += move
-                    elif move_type == 4 or move_type == 5 or move_type == 6:
-                        self.log_info("Loop: %d - HOMING MOVE: %.1fmm, MOTOR=%s" % (i, move, motor))
-                        self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=%.2f SPEED=%d ENDSTOP=%s STOP_ON_ENDSTOP=1" % (motor, move, speed, endstop))
-                        total += move
-                    elif move_type == 7:
-                        if random.randint(0, 1):
-                            new_pos = random.uniform(0, 300)
-                            self.log_info("Loop: %d - Set filament position" % i)
-                            self._set_filament_position(new_pos)
-                            total = new_pos
-                        else:
-                            self.log_info("Loop: %d - Initialized filament position" % i)
-                            self._initialize_filament_position()
-                            total = 0.
-                    elif move_type == 8:
-                        self.log_info("Loop: %d - Save gcode state" % i)
-                        self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
-                    elif move_type == 9:
-                        self.log_info("Loop: %d - Restore gcode state" % i)
-                        self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=mmu_test")
-                    elif move_type == 10:
-                        self.log_info("Loop: %d - legacy 'synced' movement: %.1fmm" % (i, move))
-                        self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d" % (move, speed))
-                    else:
-                        self.log_info("Loop: %d - legacy 'both' movement: %.1fmm" % (i, move))
-                        self.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=both MOVE=%.2f SPEED=%d" % (move, speed))
-                        total += move
-
-                        sync = "---" if self.mmu_toolhead.sync_mode is None else "E2G" if self.mmu_toolhead.sync_mode == MmuToolHead.EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER else "Ext"
-                        self.movequeues_wait()
-                        tracking = abs(self._get_filament_position() - total) < 0.1
-                        self.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, self._get_filament_position(), total))
-                        if not tracking:
-                            self.log_error(">>>>>> Position tracking error")
-                            break
-                self.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD")
-                self.log_info("Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" % (total, self._get_filament_position()))
-            finally:
-                self.internal_test = True
-
-        if gcmd.get_int('SEL_MOVE', 0, minval=0, maxval=1):
-            move = gcmd.get_float('MOVE', 10.)
-            speed = gcmd.get_float('SPEED', None)
-            accel = gcmd.get_float('ACCEL', None)
-            wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
-            loop = gcmd.get_int('LOOP', 1, minval=1)
-            for i in range(loop):
-                pos = self.mmu_toolhead.get_position()[0]
-                actual = self.selector.move("Test move", pos + move, speed=speed, accel=accel, wait=wait)
-                self.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
-                if actual != pos + move:
-                    self.log_always("Off target position by: %.4f" % (actual - (pos + move)))
-
-        if gcmd.get_int('SEL_HOMING_MOVE', 0, minval=0, maxval=1):
-            move = gcmd.get_float('MOVE', 10.)
-            speed = gcmd.get_float('SPEED', None)
-            accel = gcmd.get_float('ACCEL', None)
-            wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
-            loop = gcmd.get_int('LOOP', 1, minval=1)
-            endstop = gcmd.get('ENDSTOP', self.ENDSTOP_SELECTOR_TOUCH if self.selector.use_touch_move() else self.ENDSTOP_SELECTOR_HOME)
-            for i in range(loop):
-                pos = self.mmu_toolhead.get_position()[0]
-                self.log_always("Rail starting pos: %s" % pos)
-                actual,homed = self.selector.homing_move("Test homing move", pos + move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
-                self.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
-                if actual != pos + move:
-                    self.log_always("Off target position by: %.4f" % (actual - (pos + move)))
-
-        if gcmd.get_int('SEL_LOAD_TEST', 0, minval=0, maxval=1):
-            loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
-            if gcmd.get_int('HOME', 0, minval=0, maxval=1):
-                self.gcode.run_script_from_command("MMU_HOME")
-            for i in range(loop):
-                move_type = random.randint(0, 2)
-                move = random.randint(10, 100)
-                speed = random.uniform(50, 200)
-                accel = random.randint(50, 2000)
-                homing = random.randint(0, 2)
-                wait = random.randint(0, 1)
-                pos = self.mmu_toolhead.get_position()[0]
-                if move_type == 2 or move_type == 1:
-                    endstop = "mmu_sel_touch" if move_type == 2 else "mmu_sel_home"
-                    actual,homed = self.selector.homing_move("Test homing move", move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
-                    self.log_always("%d. Homing move: Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
-                else:
-                    actual = self.selector.move("Test move", move, speed=speed, accel=accel, wait=wait)
-                    self.log_always("%d. Move: Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
-
-        if gcmd.get_int('TTC_TEST', 0, minval=0, maxval=1):
-            loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
-            for i in range(loop):
-                stop_on_endstop = random.randint(0, 1) * 2 - 1
-                self.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d" % stop_on_endstop)
-                self.mmu_toolhead.get_last_move_time() # Try to provoke TTC
-
-        if gcmd.get_int('AUTO_CALIBRATE', 0, minval=0, maxval=1):
-            gate = gcmd.get_int('GATE', 0, minval=-2, maxval=8)
-            direction = gcmd.get_int('DIRECTION', 1, minval=-1, maxval=1)
-            ratio = gcmd.get_float('RATIO', 1., minval=-1, maxval=2)
-            homing_movement = gcmd.get_float('HOMING', None, minval=0, maxval=100)
-            self.gate_selected = gate
-            self._auto_calibrate(direction, ratio, homing_movement)
-
-        select_gate = gcmd.get_int('GATE_MOTOR', -99, minval=self.TOOL_GATE_BYPASS, maxval=self.num_gates)
-        if not select_gate == -99:
-            self.mmu_toolhead.select_gear_stepper(select_gate)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
@@ -5341,7 +5103,7 @@ class Mmu:
 
         with self._wrap_track_time('pre_load'):
             self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
-        self.select_tool(tool, move_servo=False) # PAUL don't move servo because we move it in load_sequence
+        self.select_tool(tool, move_servo=False)
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
@@ -5779,7 +5541,7 @@ class Mmu:
                     next_pos = [x, y]
                 except (ValueError, KeyError, TypeError) as ee:
                     # If something goes wrong it is better to ignore next pos completely
-                    self.log_info("Error parsing NEXT_POS: %s" % str(ee))
+                    self.log_error("Error parsing NEXT_POS: %s" % str(ee))
 
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)

@@ -41,7 +41,7 @@ class MmuMachine():
     def __init__(self, config):
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on
         # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
-        # can lead to several mm of error depending on speed. Also homing of jus the extruder is not possible.
+        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, 'LinearSelector')
 
