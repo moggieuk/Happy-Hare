@@ -766,8 +766,8 @@ read_previous_config() {
         variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
     fi
     if [ ! "${variable_park_xy}" == "" ]; then
-        variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0"
-        variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0"
+        variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0, 2"
+        variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0, 2"
     fi
     if [ ! "${variable_lift_speed}" == "" ]; then
         variable_park_lift_speed="${variable_lift_speed}"
