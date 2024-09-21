@@ -7271,12 +7271,12 @@ class Mmu:
             # 'standard' exactly matching fields
             if strategy != self.AUTOMAP_CLOSEST_COLOR:
                 for gn, gate_feature in enumerate(search_in):
-                    if self.gate_spool_id[gn] not in [-1, 0, '']: # COOPER : could be removed if names, colors ... are cleared locally when clearing a gate
-                        if tool_to_remap[tool_field] == gate_feature:
-                            remaps.append("T%s --> G%s (%s)" % (tool, gn, gate_feature))
-                            self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
+                    if tool_to_remap[tool_field] == gate_feature:
+                        remaps.append("T%s --> G%s (%s)" % (tool, gn, gate_feature))
+                        self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
                 if not len(remaps):
                     errors.append("No gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
+
             # 'colors' search for closest
             elif strategy == self.AUTOMAP_CLOSEST_COLOR:
                 if tool_to_remap['material'] == "unknown":
@@ -7286,33 +7286,31 @@ class Mmu:
                 if not errors:
                     color_list = []
                     for gn, color in enumerate(search_in):
-                        if self.gate_spool_id[gn] not in [-1, 0]: # COOPER : could be removed if names, colors ... are cleared locally when clearing a gate
-                            gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
-                            if gm == tool_to_remap['material']:
-                                color_list.append(color)
+                        gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
+                        if gm == tool_to_remap['material']:
+                            color_list.append(color)
                     if not color_list:
                         errors.append("Gates with %s are mssing color information..." % tool_to_remap['material'])
+
                 if not errors:
                     closest, distance = self._find_closest_color(tool_to_remap['color'], color_list)
                     for gn, color in enumerate(search_in):
-                        if self.gate_spool_id[gn] not in [-1, 0]:
-                            gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
-                            if gm == tool_to_remap['material']:
-                                if closest == color:
-                                    t = self.console_gate_stat
-                                    if distance > 0.5:
-                                        warnings.append("Color matching is significantly different ! %s" % (UI_EMOTICONS[7] if t == 'emoticon' else ''))
-                                    elif distance > 0.2:
-                                        warnings.append("Color matching might be noticebly different %s" % (UI_EMOTICONS[5] if t == 'emoticon' else ''))
-                                    elif distance > 0.05:
-                                        warnings.append("Color matching seems quite good %s" % (UI_EMOTICONS[3] if t == 'emoticon' else ''))
-                                    elif distance > 0.02:
-                                        warnings.append("Color matching is excellent %s" % (UI_EMOTICONS[2] if t == 'emoticon' else ''))
-                                    elif distance < 0.02:
-                                        warnings.append("Color matching is perfect %s" % (UI_EMOTICONS[1] if t == 'emoticon' else ''))
-
-                                    remaps.append("T%s --> G%s (%s with closest color: %s)" % (tool, gn, gm, color))
-                                    self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
+                        gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
+                        if gm == tool_to_remap['material']:
+                            if closest == color:
+                                t = self.console_gate_stat
+                                if distance > 0.5:
+                                    warnings.append("Color matching is significantly different ! %s" % (UI_EMOTICONS[7] if t == 'emoticon' else ''))
+                                elif distance > 0.2:
+                                    warnings.append("Color matching might be noticebly different %s" % (UI_EMOTICONS[5] if t == 'emoticon' else ''))
+                                elif distance > 0.05:
+                                    warnings.append("Color matching seems quite good %s" % (UI_EMOTICONS[3] if t == 'emoticon' else ''))
+                                elif distance > 0.02:
+                                    warnings.append("Color matching is excellent %s" % (UI_EMOTICONS[2] if t == 'emoticon' else ''))
+                                elif distance < 0.02:
+                                    warnings.append("Color matching is perfect %s" % (UI_EMOTICONS[1] if t == 'emoticon' else ''))
+                                remaps.append("T%s --> G%s (%s with closest color: %s)" % (tool, gn, gm, color))
+                                self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
 
                 if not len(remaps):
                     errors.append("Unable to find a suitable color for tool %s (color: %s)" % (tool, tool_to_remap['color']))
