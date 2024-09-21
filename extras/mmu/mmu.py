@@ -704,17 +704,19 @@ class Mmu:
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
 
         # Setup filament homing sensors
+# PAUL need to add all mmu_gate_X sensors as endstops
         for name in [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER_ENTRY]:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
-                # With MMU toolhead, sensors must not accidentally pause nor call user defined macros
-                # This is done in [mmu_sensors] but legacy setups may have discrete [filament_switch_sensors])
-                # so we ensure correct setup here
-                if name not in [self.ENDSTOP_GATE]:
-                    self.sensors[name].runout_helper.runout_pause = False
-                    self.sensors[name].runout_helper.runout_gcode = None
-                    self.sensors[name].runout_helper.insert_gcode = None
+# PAUL remove?
+#                # With MMU toolhead, sensors must not accidentally pause nor call user defined macros
+#                # This is done in [mmu_sensors] but legacy setups may have discrete [filament_switch_sensors])
+#                # so we ensure correct setup here
+#                if name not in [self.ENDSTOP_GATE]:
+#                    self.sensors[name].runout_helper.runout_pause = False
+#                    self.sensors[name].runout_helper.runout_gcode = None
+#                    self.sensors[name].runout_helper.insert_gcode = None
 
                 # Add sensor pin as an extra endstop for gear rail
                 sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
