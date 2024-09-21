@@ -3454,7 +3454,7 @@ class Mmu:
                         self.log_trace("Automaticaly detected JOB START, print_status:print_stats=%s, current mmu print_state=%s" % (new_state, self.print_state))
                         if self.print_state not in ["started", "printing"]:
                             self._on_print_start(pre_start_only=True)
-                            self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_START"))
+                            self.reactor.register_callback(lambda pt: self._print_start_event("MMU_PRINT_START"))
                 elif new_state in ["complete", "error"] and event_type == "ready":
                     self.log_trace("Automatically detected JOB %s, print_stats=%s, current mmu print_state=%s" % (new_state.upper(), new_state, self.print_state))
                     if new_state == "error":
@@ -3467,9 +3467,15 @@ class Mmu:
         if event_type == "idle" and self.print_state != "standby":
             self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=standby AUTOMATIC=1"))
 
-    def _print_event(self, command):
+    def _print_start_event(self, command):
         try:
             self.gcode.run_script(command)
+        except Exception:
+            logging.exception("Error running job state initializer/finalizer")
+
+    def _print_event(self, command):
+        try:
+            self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
         except Exception:
             logging.exception("Error running job state initializer/finalizer")
 
@@ -7319,7 +7325,7 @@ class Mmu:
 
         # Display messages while automapping
         if remaps:
-            remaps.insert(0, "Automatically mapped tool %s based on %s:" % (tool, strategy_str))
+            remaps.insert(0, "Automatically mapped tool %s based on %s" % (tool, strategy_str))
             for msg in remaps:
                 self.log_always(msg)
         if messages:
