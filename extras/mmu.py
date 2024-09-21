@@ -3206,10 +3206,11 @@ class Mmu:
 
     def _check_pending_spool_id(self, gate):
         if self.pending_spool_id is not None:
+            self.gcode.run_script_from_command("MMU_GATE_MAP GATE=%d SPOOLID=%d" % (gate, self.pending_spool_id))
             self.log_info("Spool ID: %s automatically applied to Gate %d" % (self.pending_spool_id, gate))
-            self.gate_spool_id[gate] = self.pending_spool_id
+                                                            
             self._pending_spool_id_handler(0) # Prevent resue
-            self._spoolman_update_filaments(gate) # Request update of material & color from Spoolman
+                                                                                                    
 
     def _handle_idle_timeout_printing(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "printing")
@@ -7062,7 +7063,7 @@ class Mmu:
         self._update_t_macros()
 
         # Also persist to spoolman db if pushing updates for visability
-        if sync and self.spoolman_support == self.SPOOLMAN_PUSH:
+        if sync and self.spoolman_support in [self.SPOOLMAN_PUSH, self.SPOOLMAN_PULL]:
             if gate_ids is None:
                 gate_ids = [(gate, spool_id) for gate, spool_id in enumerate(self.gate_spool_id)]
             if gate_ids:
@@ -7427,28 +7428,28 @@ class Mmu:
                 name = gcmd.get('NAME', self.gate_filament_name[gate])
                 speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
 
-                if not self.spoolman_support == self.SPOOLMAN_PULL:
-                    # Local gate map
-                    if spool_id != self.gate_spool_id[gate]:
-                        if spool_id in self.gate_spool_id:
-                            old_gate = self.gate_spool_id.index(spool_id)
-                            if old_gate != gate:
-                                self.gate_spool_id[old_gate] = -1
-                                gate_ids.append((old_gate, -1))
-                        gate_ids.append((gate, spool_id))
-                    color = self._validate_color(color)
-                    if color is None:
-                        raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
-                    self.gate_material[gate] = material
-                    self.gate_color[gate] = color
-                    self.gate_filament_name[gate] = name
-                    self.gate_status[gate] = available
-                    self.gate_spool_id[gate] = spool_id
-                    self.gate_speed_override[gate] = speed_override
-                else:
-                    # Remote (spoolman) gate map
-                    self.gate_status[gate] = available
-                    self.gate_speed_override[gate] = speed_override
+                                                                   
+                                    
+                if spool_id != self.gate_spool_id[gate]:
+                    if spool_id in self.gate_spool_id:
+                        old_gate = self.gate_spool_id.index(spool_id)
+                        if old_gate != gate:
+                            self.gate_spool_id[old_gate] = -1
+                            gate_ids.append((old_gate, -1))
+                    gate_ids.append((gate, spool_id))
+                color = self._validate_color(color)
+                if color is None:
+                    raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
+                self.gate_material[gate] = material
+                self.gate_color[gate] = color
+                self.gate_filament_name[gate] = name
+                self.gate_status[gate] = available
+                self.gate_spool_id[gate] = spool_id
+                                                                   
+                     
+                                                
+                                                      
+                self.gate_speed_override[gate] = speed_override
 
             self._update_gate_color(self.gate_color)
             self._persist_gate_map(sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
