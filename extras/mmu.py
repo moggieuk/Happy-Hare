@@ -3469,7 +3469,7 @@ class Mmu:
 
     def _print_event(self, command):
         try:
-            self.gcode.run_script_from_command(command)
+            self.gcode.run_script(command)
         except Exception:
             logging.exception("Error running job state initializer/finalizer")
 
