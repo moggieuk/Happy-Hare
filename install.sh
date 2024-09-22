@@ -783,7 +783,7 @@ read_previous_config() {
     if [ "${variable_enable_park_standalone}" == "False" ]; then
         variable_enable_park_standalone="'pause,cancel'"
     else
-        variable_enable_park_standalone="'toolchange,load,unload,runout,pause,cancel'"
+        variable_enable_park_standalone="'toolchange,load,unload,pause,cancel'"
     fi
 }
 
