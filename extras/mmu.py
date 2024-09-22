@@ -3710,10 +3710,12 @@ class Mmu:
                     self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
                     self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.saved_toolhead_speed))
                     self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
-                self._clear_saved_toolhead_position()
-        else:
-            self._wrap_gcode_command(self.clear_position_macro)
-            self._clear_saved_toolhead_position()
+                    self._clear_saved_toolhead_position()
+                    return
+
+        # Ensure all saved state is cleared
+        self._wrap_gcode_command(self.clear_position_macro)
+        self._clear_saved_toolhead_position()
 
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_operation = ''
