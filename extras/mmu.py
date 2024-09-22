@@ -936,7 +936,9 @@ class Mmu:
 
         # Sanity check to see that mmu_vars.cfg is included. This will verify path because default deliberately has single entry
         self.save_variables = self.printer.lookup_object('save_variables', None)
-        if not self.save_variables or (self.save_variables.allVariables.get("%s_0" % self.VARS_MMU_CALIB_PREFIX, None) is None and self.save_variables.allVariables.get(self.VARS_MMU_REVISION, None) is None):
+        rd_var = self.save_variables.allVariables.get("%s_0" % self.VARS_MMU_GEAR_ROTATION_DISTANCES, None)
+        revision_var = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, None)
+        if not self.save_variables or (rd_var is None and revision_var is None):
             raise self.config.error("Calibration settings file (mmu_vars.cfg) not found. Check [save_variables] section in mmu_macro_vars.cfg\nAlso ensure you only have a single [save_variables] section defined in your printer config and it defines a file that contains the necessary Happy Hare configuration")
 
         # Remember user setting of idle_timeout so it can be restored (if not overridden)
