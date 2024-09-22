@@ -3695,7 +3695,7 @@ class Mmu:
 
             # Only allow resume to restore position if in mmu error/paused state
             if not (self._is_mmu_paused() or self._is_printer_paused()) or (operation == "resume" and (self._is_mmu_paused() or self._is_printer_paused())):
-                # The only case we don't restore is on final unload when 'MMU_EJECT RECOVER=0' is called
+                # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final eject)
                 if restore:
                     self._wrap_gcode_command(self.restore_position_macro) # Restore macro position and clear saved
 
@@ -3710,7 +3710,7 @@ class Mmu:
                     self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
                     self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.saved_toolhead_speed))
                     self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
-                    self._clear_saved_toolhead_position()
+                self._clear_saved_toolhead_position()
         else:
             self._wrap_gcode_command(self.clear_position_macro)
             self._clear_saved_toolhead_position()
@@ -6292,6 +6292,7 @@ class Mmu:
         self.last_statistics = {}
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
+        restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
 
         # Handle "next_pos" option for toolhead position restoration
         next_pos = None
@@ -6354,7 +6355,7 @@ class Mmu:
                 self._persist_swap_statistics()
                 self._persist_gate_statistics()
 
-                self._continue_after('toolchange') # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no delay after restoring position
+                self._continue_after('toolchange', restore) # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no delay after restoring position
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
 
@@ -6367,6 +6368,7 @@ class Mmu:
 
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
+        restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
                 self._save_toolhead_position_and_park('load')
@@ -6378,7 +6380,7 @@ class Mmu:
                         self._load_sequence(bowden_move=0., extruder_only=True)
                     else:
                         self.log_always("Filament already loaded")
-                self._continue_after('load')
+                self._continue_after('load', restore=restore)
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
             if self.tool_selected == self.TOOL_GATE_BYPASS:
