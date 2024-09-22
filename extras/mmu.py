@@ -3685,6 +3685,7 @@ class Mmu:
                 self._wrap_gcode_command(self.park_macro)
 
     def _restore_toolhead_position(self, operation, restore=True):
+        eventtime = self.reactor.monotonic()
         if self.saved_toolhead_operation:
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
@@ -3698,7 +3699,12 @@ class Mmu:
                 if restore:
                     self._wrap_gcode_command(self.restore_position_macro) # Restore macro position and clear saved
 
-                    # Paranoia: no matter what macros do ensure position and state is good
+                    # Paranoia: no matter what macros do ensure position and state is good. Either last, next or none (current x,y)
+                    sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+                    if sequence_vars_macro and sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none':
+                        # Don't change x,y position
+                        current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
+                        self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
                     gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
                     display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                     self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
