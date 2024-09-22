@@ -214,7 +214,7 @@ self_update() {
 
     set +e
     # timeout is unavailable on MIPS
-    if ["$IS_MIPS" -ne 1]; then
+    if [ "$IS_MIPS" -ne 1 ]; then
         BRANCH=$(git branch --show-current)
     else
         BRANCH=$(timeout 3s git branch --show-current)
