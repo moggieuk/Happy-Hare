@@ -4313,6 +4313,8 @@ class Mmu:
             try:
                 self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print))
                 _,_,_ = self._do_form_tip(test=True)
+            except MmuError as ee:
+                self._handle_mmu_error(str(ee))
             finally:
                 self._sync_gear_to_extruder(False, servo=True)
 
