@@ -3701,8 +3701,8 @@ class Mmu:
 
                     # Paranoia: no matter what macros do ensure position and state is good. Either last, next or none (current x,y)
                     sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-                    if sequence_vars_macro and sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none':
-                        # Don't change x,y position
+                    if sequence_vars_macro and sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
+                        # Don't change x,y position on toolchange
                         current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                         self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
                     gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
