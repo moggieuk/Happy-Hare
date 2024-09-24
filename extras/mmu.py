@@ -3568,8 +3568,12 @@ class Mmu:
             else:
                 self.log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
                 recover_pos = self.filament_recovery_on_pause
-        else:
+
+        else: # Not in a print (standalone operation)
             self.log_error("MMU issue: %s" % reason)
+            # Restore original position if parked
+            if self.saved_toolhead_operation:
+                self._restore_toolhead_position(self.saved_toolhead_operation)
 
         # Be deliberate about order of these tasks
         if run_pause_macro:
@@ -3578,7 +3582,7 @@ class Mmu:
         if recover_pos:
             self._recover_filament_pos(strict=False, message=True)
 
-        # Default to unsynced during pause. Will be restored on resume/continue_printing
+        # Default to unsynced on error. Will be restored on resume/continue_printing
         self._sync_gear_to_extruder(False, servo=True)
 
         if send_event:
@@ -5180,30 +5184,31 @@ class Mmu:
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
     def _recover_filament_pos(self, strict=False, message=False):
-        if message:
-            self.log_info("Attempting to recover filament position...")
-        ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
-        if ts is None: # Not installed
-            if self._check_filament_in_mmu():
-                if self._check_filament_still_in_extruder():
-                    self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
-                else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
-            else:
-                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-        elif ts: # Filament detected in toolhead
-            self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
-        else: # Filament not detected in toolhead
-            if self._check_filament_in_mmu():
-                if self.strict_filament_recovery or strict:
+        with self._wrap_sync_gear_to_extruder():
+            if message:
+                self.log_info("Attempting to recover filament position...")
+            ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
+            if ts is None: # Not installed
+                if self._check_filament_in_mmu():
                     if self._check_filament_still_in_extruder():
-                        self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                     else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
                 else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # Slight risk of it still being gripped by extruder
-            else:
-                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+            elif ts: # Filament detected in toolhead
+                self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
+            else: # Filament not detected in toolhead
+                if self._check_filament_in_mmu():
+                    if self.strict_filament_recovery or strict:
+                        if self._check_filament_still_in_extruder():
+                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                        else:
+                            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+                    else:
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # Slight risk of it still being gripped by extruder
+                else:
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
 
         # If filament is found then ensure gate status is correct
         if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.filament_pos >= self.FILAMENT_POS_START_BOWDEN and self.gate_status[self.gate_selected] == self.GATE_EMPTY:
@@ -5880,56 +5885,17 @@ class Mmu:
         with self._wrap_track_time('post_unload'):
             self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
-    # This is the main function for initiating a tool change, it will handle unload if necessary
-    def _change_tool(self, tool, form_tip, next_pos=None):
-        self.log_debug("Tool change initiated %s" % ("with slicer tip forming" if form_tip == self.FORM_TIP_SLICER else "with standalone MMU tip forming" if form_tip == self.FORM_TIP_STANDALONE else "without tip forming"))
-        self._track_time_start('total')
-        skip_unload = False
-        initial_tool_string = self._selected_tool_string()
-        if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
-            self.log_always("Tool T%d is already loaded" % tool)
-            return False
-
-        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-            skip_unload = True
-            msg = "Tool change requested: T%d" % tool
-            m117_msg = ("> T%d" % tool)
-        elif self.tool_selected == tool:
-            msg = "Reloading: T%d" % tool
-            m117_msg = ("> T%d" % tool)
-        else:
-            msg = "Tool change requested, from %s to T%d" % (initial_tool_string, tool)
-            m117_msg = ("%s > T%d" % (initial_tool_string, tool))
-
-        # Important to always inform user in case there is an error and manual recovery is necessary
-        self._last_toolchange = m117_msg
-        self.gcode.run_script_from_command("M117 %s" % m117_msg)
-        self.log_always(msg)
-
-        # Check TTG map. We might be mapped to same gate
-        if self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
-            self._select_tool(tool)
-            self.gcode.run_script_from_command("M117 T%s" % tool)
-            return False
-
-        # Identify the unitialized startup use case and make it easy for user
+    def _auto_home(self, tool=0):
         if not self.selector.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
             self.log_info("MMU not homed, homing it before continuing...")
             self._home(tool)
-            skip_unload = True
+        elif self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed:
+            self._recover_filament_pos(message=True)
 
-        # Notify start of actual toolchange operation
-        self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
-
-        if not skip_unload:
-            self._unload_tool(form_tip=form_tip)
-
-        self._set_next_position(next_pos)
-        self._select_and_load_tool(tool)
-        self._track_swap_completed()
-        self._track_time_end('total')
-        self.gcode.run_script_from_command("M117 T%s" % tool)
-        return True
+    # Important to always inform use of "toolchange" operation is case there is an error and manual recovery is necessary
+    def _note_toolchange(self, m117_msg):
+        self._last_toolchange = m117_msg
+        self.gcode.run_script_from_command("M117 %s" % m117_msg)
 
     # Tell the sequence macros about where to move to next
     def _set_next_position(self, next_pos):
@@ -6315,6 +6281,7 @@ class Mmu:
                     # If something goes wrong it is better to ignore next pos completely
                     self.log_info("Error parsing NEXT_POS: %s" % str(ee))
 
+        # To support Tx commands linked directly (currently not used because of Mainsail visibility which requires macros)
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)
         if match:
@@ -6326,23 +6293,56 @@ class Mmu:
 
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
+                self._auto_home(tool=tool)
+
+                if self._has_encoder():
+                    self.encoder_sensor.update_clog_detection_length()
+
+                form_tip = self.FORM_TIP_SLICER if (self._is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
+                self.log_debug("Tool change initiated %s" % ("with slicer tip forming" if form_tip == self.FORM_TIP_SLICER else "with standalone MMU tip forming" if form_tip == self.FORM_TIP_STANDALONE else "without tip forming"))
+                current_tool_string = self._selected_tool_string()
+
+                # Check if we are already loaded
+                if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
+                    self.log_always("Tool T%d is already loaded" % tool)
+                    return
+
+                # Load only case
+                if self.filament_pos == self.FILAMENT_POS_UNLOADED:
+                    msg = "Tool change requested: T%d" % tool
+                    m117_msg = ("> T%d" % tool)
+                elif self.tool_selected == tool:
+                    msg = "Reloading: T%d" % tool
+                    m117_msg = ("> T%d" % tool)
+                else:
+                    # Normal toolchange case
+                    msg = "Tool change requested, from %s to T%d" % (current_tool_string, tool)
+                    m117_msg = ("%s > T%d" % (current_tool_string, tool))
+
+                self._note_toolchange(m117_msg)
+                self.log_always(msg)
+
+                # Check if new tool is mapped to current gate
+                if self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
+                    self._select_tool(tool)
+                    self._note_toolchange("T%s" % tool)
+                    return
+
+                # Ok, now ready to park and perform the swap
+                self._next_tool = tool # Valid only during the change process
                 self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
-                    form_tip = self.FORM_TIP_SLICER if (self._is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
+                    self._track_time_start('total')
+                    self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
 
-                    if self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed: # Will be done later if not homed
-                        self._recover_filament_pos(message=True)
-
-                    if self._has_encoder():
-                        self.encoder_sensor.update_clog_detection_length()
-
-                    self._next_tool = tool
                     attempts = 2 if self.retry_tool_change_on_error and (self._is_printing() or standalone) else 1 # TODO: replace with inattention timer
                     try:
                         for i in range(attempts):
                             try:
-                                if self._change_tool(tool, form_tip, next_pos=next_pos):
-                                    self._dump_statistics(job=not quiet, gate=not quiet)
+                                if self.filament_pos != self.FILAMENT_POS_UNLOADED:
+                                    self._unload_tool(form_tip=form_tip)
+                                self._set_next_position(next_pos)
+                                self._select_and_load_tool(tool)
                                 continue
                             except MmuError as ee:
                                 if i == attempts - 1:
@@ -6350,14 +6350,20 @@ class Mmu:
                                 self.log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), self._last_toolchange))
                                 # Try again but recover_filament_pos will ensure conservative treatment of unload
                                 self._recover_filament_pos()
+
+                        self._track_swap_completed()
+                        self._track_time_end('total')
+                        self.gcode.run_script_from_command("M117 T%s" % tool)
                     finally:
                         self._next_tool = self.TOOL_GATE_UNKNOWN
 
                 # Updates swap statistics
+                self._dump_statistics(job=not quiet, gate=not quiet)
                 self._persist_swap_statistics()
                 self._persist_gate_statistics()
 
-                self._continue_after('toolchange', restore) # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no delay after restoring position
+                # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
+                self._continue_after('toolchange', restore)
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
 
@@ -6368,23 +6374,28 @@ class Mmu:
         if self._check_not_homed(): return
         self._fix_started_state()
 
+        self.last_statistics = {}
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
+                if self.filament_pos != self.FILAMENT_POS_UNLOADED:
+                    self.log_always("Filament already loaded")
+                    return
+
                 self._save_toolhead_position_and_park('load')
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                     if not extruder_only:
+                        self._note_toolchange("> T%d" % self.tool_selected)
                         self._select_and_load_tool(self.tool_selected) # This could change gate tool is mapped to
                         self._persist_gate_statistics()
-                    elif extruder_only and self.filament_pos != self.FILAMENT_POS_LOADED:
-                        self._load_sequence(bowden_move=0., extruder_only=True)
                     else:
-                        self.log_always("Filament already loaded")
+                        self._note_toolchange("> Bypass")
+                        self._load_sequence(bowden_move=0., extruder_only=True)
                 self._continue_after('load', restore=restore)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self._handle_mmu_error("%s.\nOccured when loading tool: %s" % (str(ee), self._last_toolchange))
             if self.tool_selected == self.TOOL_GATE_BYPASS:
                 self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
 
@@ -6404,22 +6415,24 @@ class Mmu:
 
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
+                if self.filament_pos == self.FILAMENT_POS_UNLOADED:
+                    self.log_always("Filament not loaded")
+                    return
                 self._save_toolhead_position_and_park('unload')
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
+                    self._note_toolchange("")
                     if not extruder_only:
                         self._unload_tool(form_tip=form_tip)
                         self._persist_gate_statistics()
-                    elif extruder_only and self.filament_pos != self.FILAMENT_POS_UNLOADED:
+                    else:
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
                         self._unload_sequence(bowden_move=0., form_tip=form_tip, extruder_only=True)
                         if in_bypass:
                             self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                             self.log_always("Please pull the filament out clear of the MMU selector")
-                    else:
-                        self.log_always("Filament not loaded")
                 self._continue_after('unload', restore=restore)
         except MmuError as ee:
-            self._handle_mmu_error(str(ee))
+            self._handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
 
     cmd_MMU_PRINT_START_help = "Forces initialization of MMU state ready for print (usually automatic)"
     def cmd_MMU_PRINT_START(self, gcmd):
@@ -6561,8 +6574,8 @@ class Mmu:
                     if mod_gate >= 0:
                         gate = mod_gate
                     if gate >= 0:
-                        self._remap_tool(tool, gate, loaded)
                         self._set_gate_selected(gate)
+                        self._remap_tool(tool, gate, loaded)
                         self.selector.set_position(self.selector_offsets[self.gate_selected]) # In case selector stepper was turned off
                 elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
                     # This is to be able to get out of "stuck in bypass" state
