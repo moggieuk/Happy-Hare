@@ -3697,7 +3697,7 @@ class Mmu:
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
-            # Only allow resume to restore position if in mmu error/paused state
+            # Allow resume to restore position if in mmu error/paused state
             if not (self._is_mmu_paused() or self._is_printer_paused()) or (operation == "resume" and (self._is_mmu_paused() or self._is_printer_paused())):
                 # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final eject)
                 if restore:
@@ -3716,10 +3716,10 @@ class Mmu:
                     self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
                     self._clear_saved_toolhead_position()
                     return
-
-        # Ensure all saved state is cleared
-        self._wrap_gcode_command(self.clear_position_macro)
-        self._clear_saved_toolhead_position()
+        else:
+            # Ensure all saved state is cleared
+            self._wrap_gcode_command(self.clear_position_macro)
+            self._clear_saved_toolhead_position()
 
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_operation = ''
