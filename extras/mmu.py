@@ -3689,6 +3689,7 @@ class Mmu:
                 self._wrap_gcode_command(self.park_macro)
 
     def _restore_toolhead_position(self, operation, restore=True):
+        #self.log_error("PAUL: _restore_toolhead_position, operation=%s, saved_toolhead_operation=%s, restore=%s" % (operation, self.saved_toolhead_operation, restore))
         eventtime = self.reactor.monotonic()
         if self.saved_toolhead_operation:
             # Inject speed/extruder overrides into gcode state restore data
@@ -3716,6 +3717,12 @@ class Mmu:
                     self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
                     self._clear_saved_toolhead_position()
                     return
+                else:
+                    # Not restoring so clear all saved state
+                    self._wrap_gcode_command(self.clear_position_macro)
+                    self._clear_saved_toolhead_position()
+            else:
+                pass # Resume will handle restore so don't clear
         else:
             # Ensure all saved state is cleared
             self._wrap_gcode_command(self.clear_position_macro)
@@ -4639,7 +4646,7 @@ class Mmu:
                 _,_,_,delta = self._trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size)
                 if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                    raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder")
+                    raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded")
                 length -= self.encoder_move_step_size
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
