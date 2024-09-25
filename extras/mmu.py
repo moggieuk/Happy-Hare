@@ -2624,8 +2624,6 @@ class Mmu:
         finally:
             if mean == 0:
                 self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
-            else:
-                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
     # Calibrated bowden length is always from chosen gate homing point to the entruder gears
     # It can be adjusted if sensor setup changes post calibration, must consider:
@@ -2645,7 +2643,7 @@ class Mmu:
             for i in range(repeats):
                 self._initialize_filament_position(dwell=True)
                 self._load_gate(allow_retry=False)
-                self._load_bowden(False, length=approximate_length)
+                self._load_bowden(approximate_length)
                 self.log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
                 actual = self._get_filament_position()
@@ -3071,15 +3069,16 @@ class Mmu:
         min_speed = gcmd.get_float('MINSPEED', speed, above=0.)
         max_speed = gcmd.get_float('MAXSPEED', speed, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        advance = 60. # Ensure filament is in encoder even if not loaded by user
         try:
             with self._require_encoder():
                 self._servo_down()
                 self.calibrating = True
-                _,_,measured,_ = self._trace_filament_move("Checking for filament", 60)
+                _,_,measured,_ = self._trace_filament_move("Checking for filament", advance)
                 if measured < self.encoder_min:
                     raise MmuError("Filament not detected in encoder. Ensure filament is available and try again")
                 self._calibrate_encoder(length, repeats, speed, min_speed, max_speed, accel, save)
-                _,_,_,_ = self._trace_filament_move("Parking filament", -60)
+                _,_,_,_ = self._trace_filament_move("Parking filament", -advance)
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
         finally:
@@ -3210,7 +3209,7 @@ class Mmu:
             self.calibrating = True
             self._initialize_filament_position(dwell=True)
             self._load_gate(allow_retry=False)
-            self._load_bowden(True)
+            self._load_bowden()
             self._home_to_extruder(self.extruder_homing_max)
 
             if cut:
@@ -4362,10 +4361,7 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         length = gcmd.get_float('LENGTH', None, minval=0.)
         try:
-            if length is None:
-                self._load_bowden(True)
-            else:
-                self._load_bowden(False, length=length)
+            self._load_bowden(length)
         except MmuError as ee:
             self._handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
 
@@ -4568,13 +4564,12 @@ class Mmu:
     # Note that filament position will be measured from the gate "parking position" and so will be the gate_parking_distance
     # plus any overshoot. The start of the bowden move is from the parking homing point.
     # Returns ratio of measured movement to real movement IF it is "clean" and could be used for auto-calibration else 0
-    def _load_bowden(self, full, length=0.):
-        if full:
+    def _load_bowden(self, length=None):
+        if length is None:
             length = self.calibrated_bowden_length
-        else:
-            if self.calibrated_bowden_length > 0 and not self.calibrating:
-                # Cannot exceed calibrated distance
-                length = min(length, self.calibrated_bowden_length)
+        if self.calibrated_bowden_length > 0 and not self.calibrating:
+            length = min(length, self.calibrated_bowden_length) # Cannot exceed calibrated distance
+        full = length == self.calibrated_bowden_length
         if length <= 0: return
 
         # Compensate for distance already moved (e.g. overshoot after encoder homing)
@@ -4628,10 +4623,12 @@ class Mmu:
 
     # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (gate_unload_buffer away)
     def _unload_bowden(self, length=None):
-        length = length or self.calibrated_bowden_length
+        if length is None:
+            length = self.calibrated_bowden_length
         if self.calibrated_bowden_length > 0 and not self.calibrating:
             length = min(length, self.calibrated_bowden_length) # Cannot exceed calibrated distance
         full = length == self.calibrated_bowden_length
+        if length <= 0: return
 
         # Shorten move by buffer used to ensure we don't overshoot
         length -= self.gate_unload_buffer
@@ -4803,7 +4800,7 @@ class Mmu:
                     # Servo will already be down
                     pullback = self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100 # % of current clog detection length
                     _,_,measured,delta = self._trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
-                self.log_info("Filament tightened by %.1fmm" % pullback)
+                self.log_info("Filament tightened by %.1fmm to prevent false clog detection" % pullback)
 
             self._random_failure() # Testing
             self.movequeues_wait()
@@ -4981,14 +4978,14 @@ class Mmu:
 # LOAD / UNLOAD SEQUENCES AND FILAMENT TESTS #
 ##############################################
 
-    def _load_sequence(self, bowden_move=-1, skip_extruder=False, extruder_only=False):
+    def _load_sequence(self, bowden_move=None, skip_extruder=False, extruder_only=False):
         self.movequeues_wait()
 
-        full = bowden_move < 0 or bowden_move >= self.calibrated_bowden_length
+        if bowden_move is None:
+            bowden_move = self.calibrated_bowden_length
         if bowden_move > self.calibrated_bowden_length:
             self.log_info("Warning: Restricting bowden load length to calibrated value of %.1fmm" % self.calibrated_bowden_length)
-        if full:
-            bowden_move = self.calibrated_bowden_length
+        full = bowden_move == self.calibrated_bowden_length
 
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._initialize_filament_position(dwell=None)
@@ -5031,7 +5028,7 @@ class Mmu:
                     self._load_gate()
 
                 if start_filament_pos < self.FILAMENT_POS_END_BOWDEN:
-                    bowden_move_ratio = self._load_bowden(full, length=bowden_move)
+                    bowden_move_ratio = self._load_bowden(bowden_move)
 
                 if start_filament_pos < self.FILAMENT_POS_HOMED_EXTRUDER and home:
                     hm = self._home_to_extruder(self.extruder_homing_max)
@@ -5066,14 +5063,14 @@ class Mmu:
             if not self._is_printing():
                 self._servo_up()
 
-    def _unload_sequence(self, bowden_move=-1, check_state=False, form_tip=None, extruder_only=False, runout=False):
+    def _unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False, runout=False):
         self.movequeues_wait()
 
-        full = bowden_move < 0 or bowden_move > self.calibrated_bowden_length
-        if bowden_move > self.calibrated_bowden_length:
-            self.log_info("Restricting bowden unload length to calibrated value of %.1fmm" % self.calibrated_bowden_length)
-        if full:
+        if bowden_move is None:
             bowden_move = self.calibrated_bowden_length
+        if bowden_move > self.calibrated_bowden_length:
+            self.log_info("Warning: Restricting bowden unload length to calibrated value of %.1fmm" % self.calibrated_bowden_length)
+        full = bowden_move == self.calibrated_bowden_length
 
         self._set_filament_direction(self.DIRECTION_UNLOAD)
         self._initialize_filament_position(dwell=None)
