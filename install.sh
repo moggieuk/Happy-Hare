@@ -1274,7 +1274,7 @@ questionaire() {
     gate_endstop_to_encoder=0
     servo_buzz_gear_on_down=0
     servo_always_active=0
-    servo_duration=0.4
+    servo_duration=0.3
 
     # mmu_hardware.cfg only...
     gear_gear_ratio="80:20"

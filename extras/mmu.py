@@ -3072,10 +3072,14 @@ class Mmu:
         max_speed = gcmd.get_float('MAXSPEED', speed, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         try:
-            self._servo_down()
-            self.calibrating = True
             with self._require_encoder():
+                self._servo_down()
+                self.calibrating = True
+                _,_,measured,_ = self._trace_filament_move("Checking for filament", 60)
+                if measured < self.encoder_min:
+                    raise MmuError("Filament not detected in encoder. Ensure filament is available and try again")
                 self._calibrate_encoder(length, repeats, speed, min_speed, max_speed, accel, save)
+                _,_,_,_ = self._trace_filament_move("Parking filament", -60)
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
         finally:
@@ -3263,7 +3267,7 @@ class Mmu:
                     self.toolhead_entry_to_extruder = round(tete, 1)
 
             # Unload and park filament
-            self._unload_bowden(self.calibrated_bowden_length)
+            self._unload_bowden()
             self._unload_gate()
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
@@ -3689,7 +3693,6 @@ class Mmu:
                 self._wrap_gcode_command(self.park_macro)
 
     def _restore_toolhead_position(self, operation, restore=True):
-        #self.log_error("PAUL: _restore_toolhead_position, operation=%s, saved_toolhead_operation=%s, restore=%s" % (operation, self.saved_toolhead_operation, restore))
         eventtime = self.reactor.monotonic()
         if self.saved_toolhead_operation:
             # Inject speed/extruder overrides into gcode state restore data
@@ -4624,13 +4627,11 @@ class Mmu:
         return ratio # For auto-calibration
 
     # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (gate_unload_buffer away)
-    def _unload_bowden(self, full, length=0.):
-        if full:
-            length = self.calibrated_bowden_length
-        else:
-            if self.calibrated_bowden_length > 0 and not self.calibrating:
-                length = min(length, self.calibrated_bowden_length) # Cannot exceed calibrated distance
-        if length <= 0: return
+    def _unload_bowden(self, length=None):
+        length = length or self.calibrated_bowden_length
+        if self.calibrated_bowden_length > 0 and not self.calibrating:
+            length = min(length, self.calibrated_bowden_length) # Cannot exceed calibrated distance
+        full = length == self.calibrated_bowden_length
 
         # Shorten move by buffer used to ensure we don't overshoot
         length -= self.gate_unload_buffer
@@ -4992,18 +4993,19 @@ class Mmu:
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._initialize_filament_position(dwell=None)
 
-        home = False
-        if not extruder_only:
-            self._display_visual_state()
-            if full:
-                self._track_time_start('load')
-                home = self._must_home_to_extruder()
-            else:
-                skip_extruder = True
-            current_action = self._set_action(self.ACTION_LOADING)
-
         try:
             self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
+
+            home = False
+            if not extruder_only:
+                self._display_visual_state()
+                if full:
+                    self._track_time_start('load')
+                    home = self._must_home_to_extruder()
+                else:
+                    skip_extruder = True
+                current_action = self._set_action(self.ACTION_LOADING)
+
             homing_movement = None # Track how much homing is done for calibrated bowden length optimization
             bowden_move_ratio = 0. # Track mismatch in moved vs measured bowden distance
             start_filament_pos = self.filament_pos
@@ -5090,8 +5092,8 @@ class Mmu:
 
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
-                self._track_time_start('unload')
                 self._display_visual_state()
+                self._track_time_start('unload')
 
             park_pos = 0.
             if form_tip is None:
@@ -5144,7 +5146,7 @@ class Mmu:
 
                 if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN:
                     # Fast unload of bowden, then unload encoder
-                    bowden_move_ratio = self._unload_bowden(full, length=bowden_move)
+                    bowden_move_ratio = self._unload_bowden(bowden_move)
                     homing_movement = self._unload_gate()
 
                 elif start_filament_pos >= self.FILAMENT_POS_HOMED_GATE:
@@ -6826,6 +6828,7 @@ class Mmu:
         self.toolhead_sensor_to_nozzle = gcmd.get_float('TOOLHEAD_SENSOR_TO_NOZZLE', self.toolhead_sensor_to_nozzle, minval=0.)
         self.toolhead_extruder_to_nozzle = gcmd.get_float('TOOLHEAD_EXTRUDER_TO_NOZZLE', self.toolhead_extruder_to_nozzle, minval=0.)
         self.toolhead_ooze_reduction = gcmd.get_float('TOOLHEAD_OOZE_REDUCTION', self.toolhead_ooze_reduction, minval=0.)
+        self.toolhead_unload_safety_margin = gcmd.get_float('TOOLHEAD_UNLOAD_SAFETY_MARGIN', self.toolhead_unload_safety_margin, minval=0.)
         self.toolhead_post_load_tighten = gcmd.get_int('TOOLHEAD_POST_LOAD_TIGHTEN', self.toolhead_post_load_tighten, minval=0, maxval=100)
         self.gcode_load_sequence = gcmd.get_int('GCODE_LOAD_SEQUENCE', self.gcode_load_sequence, minval=0, maxval=1)
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
@@ -6939,6 +6942,7 @@ class Mmu:
             if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
                 msg += "\ntoolhead_entry_to_extruder = %.1f" % self.toolhead_entry_to_extruder
             msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
+            msg += "\ntoolhead_unload_safety_margin = %d" % self.toolhead_unload_safety_margin
             msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
             msg += "\ngcode_load_sequence = %d" % self.gcode_load_sequence
             msg += "\ngcode_unload_sequence = %d" % self.gcode_unload_sequence
