@@ -6348,7 +6348,7 @@ class Mmu:
                                     self._unload_tool(form_tip=form_tip)
                                 self._set_next_position(next_pos)
                                 self._select_and_load_tool(tool)
-                                continue
+                                break
                             except MmuError as ee:
                                 if i == attempts - 1:
                                     raise MmuError("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
