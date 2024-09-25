@@ -214,7 +214,7 @@ self_update() {
 
     set +e
     # timeout is unavailable on MIPS
-    if ["$IS_MIPS" -ne 1]; then
+    if [ "$IS_MIPS" -ne 1 ]; then
         BRANCH=$(git branch --show-current)
     else
         BRANCH=$(timeout 3s git branch --show-current)
@@ -780,8 +780,8 @@ read_previous_config() {
         variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
     fi
     if [ ! "${variable_park_xy}" == "" ]; then
-        variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0"
-        variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0"
+        variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0, 2"
+        variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0, 2"
     fi
     if [ ! "${variable_lift_speed}" == "" ]; then
         variable_park_lift_speed="${variable_lift_speed}"
@@ -797,7 +797,7 @@ read_previous_config() {
     if [ "${variable_enable_park_standalone}" == "False" ]; then
         variable_enable_park_standalone="'pause,cancel'"
     else
-        variable_enable_park_standalone="'toolchange,load,unload,runout,pause,cancel'"
+        variable_enable_park_standalone="'toolchange,load,unload,pause,cancel'"
     fi
 }
 
@@ -1288,7 +1288,7 @@ questionaire() {
     gate_endstop_to_encoder=0
     servo_buzz_gear_on_down=0
     servo_always_active=0
-    servo_duration=0.2
+    servo_duration=0.3
 
     # mmu_hardware.cfg only...
     gear_gear_ratio="80:20"
