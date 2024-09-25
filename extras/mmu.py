@@ -2646,7 +2646,7 @@ class Mmu:
                 self._load_bowden(approximate_length)
                 self.log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
-                actual = self._get_filament_position()
+                actual = self._get_filament_position() - self.gate_parking_distance
                 measured = self._get_encoder_distance(dwell=True) + self._get_encoder_dead_space()
                 spring = self._servo_up(measure=True) if self._has_encoder() else 0.
                 reference = actual - spring
@@ -2655,8 +2655,7 @@ class Mmu:
                 if not (endstop == self.ENDSTOP_EXTRUDER_COLLISION and spring == 0.):
                     msg = "Pass #%d: Filament homed to extruder after %.1fmm movement" % (i+1, actual)
                     if self._has_encoder():
-                        msg += "\n(encoder measured %.1fmm, filament sprung back %.1fmm)" % (measured, spring)
-                    msg += "\n- Bowden calibration based on this pass is %.1f" % reference
+                        msg += "\n(encoder measured %.1fmm, filament sprung back %.1fmm)" % (measured - self.gate_parking_distance, spring)
                     self.log_always(msg)
                     reference_sum += reference
                     spring_max = max(spring, spring_max)
@@ -2671,7 +2670,7 @@ class Mmu:
 
             if successes > 0:
                 average_reference = reference_sum / successes
-                detection_length = (average_reference * 2.) / 100. + spring_max # 2% of bowden length plus spring seems to be good starting point
+                detection_length = (average_reference * 2) / 100. + spring_max # 2% of bowden length plus spring seems to be good starting point
                 msg = "Recommended calibration bowden length is %.1fmm" % average_reference
                 if self._has_encoder() and self.enable_clog_detection:
                     msg += ". Clog detection length: %.1fmm" % detection_length
