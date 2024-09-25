@@ -2668,7 +2668,7 @@ class Mmu:
                     self.log_always("Failed to detect a reliable home position on this attempt")
 
                 self._initialize_filament_position(True)
-                self._unload_bowden(reference)
+                self._unload_bowden(False, length=reference)
                 self._unload_gate()
 
             if successes > 0:
@@ -3263,7 +3263,7 @@ class Mmu:
                     self.toolhead_entry_to_extruder = round(tete, 1)
 
             # Unload and park filament
-            self._unload_bowden(self.calibrated_bowden_length)
+            self._unload_bowden(False, self.calibrated_bowden_length)
             self._unload_gate()
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
