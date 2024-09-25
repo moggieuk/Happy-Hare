@@ -6697,9 +6697,9 @@ class Mmu:
                 # Ready MMU for test if not already setup
                 self._unload_tool()
                 self._load_sequence(bowden_move=100. if direction == self.DIRECTION_LOAD else 200., skip_extruder=True)
+                self._servo_down()
             with self._require_encoder():
                 self._initialize_filament_position()
-                self._servo_down()
                 for i in range(1, int(100 / step)):
                     self._trace_filament_move(None, direction * step, encoder_dwell=None)
                     measured = self._get_encoder_distance()

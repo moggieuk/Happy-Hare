@@ -1,10 +1,10 @@
 # Happy Hare MMU Software
 # Moonraker support for a file-preprocessor that injects MMU metadata into gcode files
 #
-# Copyright (C) 2023  Kieran Eglin <@kierantheman (discord)>, <kieran.eglin@gmail.com>
-#
-# Spoolman integration, colors & temp extension
 # Copyright (C) 2023  moggieuk#6538 (discord) moggieuk@hotmail.com
+#
+# Original slicer parsing
+# Copyright (C) 2023  Kieran Eglin <@kierantheman (discord)>, <kieran.eglin@gmail.com>
 #
 # (\_/)
 # ( *,*)
@@ -758,8 +758,8 @@ METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 COLORS_REGEX = {
     'PrusaSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;*.*)$",
     'SuperSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;*.*)$",
-    'OrcaSlicer' : r"^;\s*filament_colour\s*=\s*(#.*;*.*)$",
-    'BambuStudio' : r"^;\s*filament_colour\s*=\s*(#.*;*.*)$"
+    'OrcaSlicer'  : r"^;\s*filament_colour\s*=\s*(#.*;*.*)$",
+    'BambuStudio' : r"^;\s*filament_colour\s*=\s*(#.*;*.*)$",
 }
 METADATA_COLORS = "!colors!"
 
