@@ -4328,11 +4328,12 @@ class Mmu:
         self.log_always(msg)
 
         if run:
-            self._ensure_safe_extruder_temperature(wait=False)
+            self._ensure_safe_extruder_temperature(wait=True)
             # Mimick in print if requested
             try:
                 self._sync_gear_to_extruder(self.sync_form_tip and self._is_in_print(force_in_print), servo=True, current=self._is_in_print(force_in_print))
                 _,_,_ = self._do_form_tip(test=True)
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
             except MmuError as ee:
                 self._handle_mmu_error(str(ee))
             finally:
@@ -4816,6 +4817,7 @@ class Mmu:
         with self._wrap_action(self.ACTION_UNLOADING_EXTRUDER):
             self.log_debug("Extracting filament from extruder")
             self._set_filament_direction(self.DIRECTION_UNLOAD)
+
             self._ensure_safe_extruder_temperature(wait=False)
 
             synced = self.servo_state == self.SERVO_DOWN_STATE and not extruder_only
@@ -5266,7 +5268,8 @@ class Mmu:
         with self._wrap_action(self.ACTION_FORMING_TIP):
             synced = self.sync_form_tip and not extruder_only
             self._sync_gear_to_extruder(synced, servo=True, current=False)
-            self._ensure_safe_extruder_temperature(wait=False)
+            self._ensure_safe_extruder_temperature(wait=True)
+
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self._get_encoder_distance()
             park_pos, remaining, reported = self._do_form_tip()
