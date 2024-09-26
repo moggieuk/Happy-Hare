@@ -7644,7 +7644,8 @@ class Mmu:
                     self.gate_status[gate] = available
                     self.gate_speed_override[gate] = speed_override
                     if any(x is not None for x in [material, color, spool_id, name]):
-                        raise gcmd.error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % self.SPOOLMAN_PULL)
+                        self.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % self.SPOOLMAN_PULL)
+                        return
 
             self._update_gate_color(self.gate_color)
             self._persist_gate_map(sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
