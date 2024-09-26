@@ -3612,11 +3612,12 @@ class Mmu:
         self.log_always(msg)
 
         if run:
-            self._ensure_safe_extruder_temperature(wait=False)
+            self._ensure_safe_extruder_temperature(wait=True)
             # Mimick in print if requested
             try:
                 self._sync_gear_to_extruder(self.sync_form_tip and self.is_in_print(force_in_print), grip=True, current=self.is_in_print(force_in_print))
                 _,_,_ = self._do_form_tip(test=True)
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
             except MmuError as ee:
                 self._handle_mmu_error(str(ee))
             finally:
@@ -4100,6 +4101,7 @@ class Mmu:
         with self.wrap_action(self.ACTION_UNLOADING_EXTRUDER):
             self.log_debug("Extracting filament from extruder")
             self._set_filament_direction(self.DIRECTION_UNLOAD)
+
             self._ensure_safe_extruder_temperature(wait=False)
 
             synced = self.selector.get_filament_grip_state() == mmu_selector.FILAMENT_DRIVE_STATE and not extruder_only
@@ -4550,7 +4552,8 @@ class Mmu:
         with self.wrap_action(self.ACTION_FORMING_TIP):
             synced = self.sync_form_tip and not extruder_only
             self._sync_gear_to_extruder(synced, grip=True, current=False)
-            self._ensure_safe_extruder_temperature(wait=False)
+            self._ensure_safe_extruder_temperature(wait=True)
+
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
             park_pos, remaining, reported = self._do_form_tip()
@@ -5591,7 +5594,7 @@ class Mmu:
                                     self._unload_tool(form_tip=form_tip)
                                 self._set_next_position(next_pos)
                                 self._select_and_load_tool(tool)
-                                continue
+                                break
                             except MmuError as ee:
                                 if i == attempts - 1:
                                     raise MmuError("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
@@ -5910,6 +5913,7 @@ class Mmu:
                 # Ready MMU for test if not already setup
                 self._unload_tool()
                 self._load_sequence(bowden_move=100. if direction == self.DIRECTION_LOAD else 200., skip_extruder=True)
+                self._servo_down()
             with self._require_encoder():
                 self._initialize_filament_position()
                 for i in range(1, int(100 / step)):
