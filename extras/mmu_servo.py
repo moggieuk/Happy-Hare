@@ -74,7 +74,7 @@ class MmuServo:
             # Translate duration to ticks to avoid any secondary mcu clock skew(?)
             cmd_clock = mcu.print_time_to_clock(pwm_start_time)
             burst = int(duration / SERVO_SIGNAL_PERIOD) * SERVO_SIGNAL_PERIOD
-            cmd_clock += mcu.seconds_to_clock(max(PIN_MIN_TIME, burst) + self.pwm_period_safe_offset)
+            cmd_clock += mcu.seconds_to_clock(max(SERVO_SIGNAL_PERIOD, burst) + self.pwm_period_safe_offset)
             pwm_end_time = mcu.clock_to_print_time(cmd_clock)
             # Schedule PWM burst
             self.mcu_servo.set_pwm(pwm_start_time, value)
@@ -108,7 +108,7 @@ class MmuServo:
         self.set_position(width, angle, duration)
 
     def set_position(self, width=None, angle=None, duration=None):
-        duration = max(duration, PIN_MIN_TIME) if duration else None
+        duration = max(duration, SERVO_SIGNAL_PERIOD) if duration else None
         if width is not None or angle is not None:
             value = self._get_pwm_from_pulse_width(width) if width is not None else self._get_pwm_from_angle(angle)
             pt = self.printer.lookup_object('toolhead').get_last_move_time()
