@@ -60,18 +60,15 @@ class MmuServo:
         if value == self.last_value:
             return
 
+        print_time = max(print_time, self.last_value_time + PIN_MIN_TIME)
+        pwm_start_time = self._get_synced_print_time(print_time)
         if duration is None:
-            print_time = max(print_time, self.last_value_time + PIN_MIN_TIME)
-            pwm_start_time = self._get_synced_print_time(print_time)
             self.mcu_servo.set_pwm(pwm_start_time, value)
             self.last_value = value
             self.last_value_time = pwm_start_time
         else:
-            print_time = max(print_time, self.last_value_time + PIN_MIN_TIME)
-            pwm_start_time = self._get_synced_print_time(print_time)
-
+            # Translate duration to ticks to avoid any secondary mcu clock skew
             mcu = self.mcu_servo.get_mcu()
-            # Translate duration to ticks to avoid any secondary mcu clock skew(?)
             cmd_clock = mcu.print_time_to_clock(pwm_start_time)
             burst = int(duration / SERVO_SIGNAL_PERIOD) * SERVO_SIGNAL_PERIOD
             cmd_clock += mcu.seconds_to_clock(max(SERVO_SIGNAL_PERIOD, burst) + self.pwm_period_safe_offset)
@@ -111,10 +108,10 @@ class MmuServo:
         duration = max(duration, SERVO_SIGNAL_PERIOD) if duration else None
         if width is not None or angle is not None:
             value = self._get_pwm_from_pulse_width(width) if width is not None else self._get_pwm_from_angle(angle)
-            pt = self.printer.lookup_object('toolhead').get_last_move_time()
-            self._set_pwm(pt, value, duration)
-            #toolhead = self.printer.lookup_object('toolhead')
-            #toolhead.register_lookahead_callback((lambda pt: self._set_pwm(pt, value, duration)))
+            #pt = self.printer.lookup_object('toolhead').get_last_move_time()
+            #self._set_pwm(pt, value, duration)
+            toolhead = self.printer.lookup_object('toolhead')
+            toolhead.register_lookahead_callback((lambda pt: self._set_pwm(pt, value, duration)))
 
 def load_config_prefix(config):
     return MmuServo(config)
