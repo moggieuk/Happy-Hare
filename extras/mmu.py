@@ -13,7 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import sys # To detect python2 or python3
-import random, logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
+import random, logging, logging.handlers, threading, queue, atexit, time, contextlib, math, os.path, re
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.homing import Homing, HomingMove
 from extras.mmu_leds import MmuLeds
@@ -37,28 +37,50 @@ if sys.version_info[0] >= 3:
     # UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 
-# Forward all messages through a queue (polled by background thread)
+
+class MmuLogger:
+    def __init__(self, logfile_path):
+        name = os.path.splitext(os.path.basename(logfile_path))[0]
+        handler = logging.handlers.TimedRotatingFileHandler(logfile_path, when='midnight', backupCount=3)
+        handler.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S'))
+
+        self.queue_listener = QueueListener(handler)
+        queue_handler = QueueHandler(self.queue_listener.bg_queue)
+
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.INFO)
+        self.logger.addHandler(queue_handler)
+        self.logger.propagate = False
+
+        # Ensure we shutdown on exit
+        atexit.register(self.shutdown)
+
+    def log(self, message):
+        self.logger.info(message)
+
+    def shutdown(self):
+        self.logger.info("Shutting down the MMU logger")
+        if self.queue_listener is not None:
+            self.queue_listener.stop()
+
+# Poll log queue on background thread and log each message to logfile
 class QueueHandler(logging.Handler):
-    def __init__(self, queue):
-        logging.Handler.__init__(self)
-        self.queue = queue
+    def __init__(self, log_queue):
+        super(QueueHandler, self).__init__()
+        self.queue = log_queue
 
     def emit(self, record):
         try:
-            self.format(record)
-            record.msg = record.message
-            record.args = None
-            record.exc_info = None
             self.queue.put_nowait(record)
         except Exception:
             self.handleError(record)
 
-# Poll log queue on background thread and log each message to logfile
-class QueueListener(logging.handlers.TimedRotatingFileHandler):
-    def __init__(self, filename):
-        logging.handlers.TimedRotatingFileHandler.__init__(self, filename, when='midnight', backupCount=5)
+class QueueListener:
+    def __init__(self, handler):
         self.bg_queue = queue.Queue()
+        self.handler = handler
         self.bg_thread = threading.Thread(target=self._bg_thread)
+        self.bg_thread.daemon = True
         self.bg_thread.start()
 
     def _bg_thread(self):
@@ -66,7 +88,7 @@ class QueueListener(logging.handlers.TimedRotatingFileHandler):
             record = self.bg_queue.get(True)
             if record is None:
                 break
-            self.handle(record)
+            self.handler.handle(record)
 
     def stop(self):
         self.bg_queue.put_nowait(None)
@@ -76,8 +98,12 @@ class QueueListener(logging.handlers.TimedRotatingFileHandler):
 class MultiLineFormatter(logging.Formatter):
     def format(self, record):
         indent = ' ' * 9
-        lines = super(MultiLineFormatter, self).format(record)
-        return lines.replace('\n', '\n' + indent)
+        formatted_message = super(MultiLineFormatter, self).format(record)
+        if record.exc_text:
+            # Don't modify exception stack traces
+            return formatted_message
+        return formatted_message.replace('\n', '\n' + indent)
+
 
 # Mmu exception error class
 class MmuError(Exception):
@@ -341,7 +367,6 @@ class Mmu:
         self._can_write_variables = True
 
         # Logging
-        self.queue_listener = None
         self.mmu_logger = None
 
         # Event handlers
@@ -874,13 +899,9 @@ class Mmu:
                 mmu_log = '/tmp/mmu.log'
             else:
                 mmu_log = dirname + '/mmu.log'
-            self.log_debug("mmu_log=%s" % mmu_log)
-            self.queue_listener = QueueListener(mmu_log)
-            self.queue_listener.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S'))
-            queue_handler = QueueHandler(self.queue_listener.bg_queue)
-            self.mmu_logger = logging.getLogger('mmu')
-            self.mmu_logger.setLevel(logging.INFO)
-            self.mmu_logger.addHandler(queue_handler)
+            logging.info("MMU Log: %s" % mmu_log)
+            self.mmu_logger = MmuLogger(mmu_log)
+            self.mmu_logger.log("\n\n\nMMU Startup -----------------------------------------------\n")
 
     def handle_connect(self):
         self._setup_logging()
@@ -1053,8 +1074,8 @@ class Mmu:
 
     def handle_disconnect(self):
         self.log_debug('Klipper disconnected! MMU Shutdown')
-        if self.queue_listener is not None:
-            self.queue_listener.stop()
+        if self.mmu_logger:
+            self.mmu_logger.stop()
 
     def handle_ready(self):
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
@@ -2072,45 +2093,45 @@ class Mmu:
     def _log_to_file(self, msg, prefix='> '):
         msg = "%s%s" % (prefix, msg)
         if self.mmu_logger:
-            self.mmu_logger.info(msg)
+            self.mmu_logger.log(msg)
 
     def log_error(self, msg, color=False):
         html_msg, msg = self._color_message(msg) if color else (msg, msg)
         if self.mmu_logger:
-            self.mmu_logger.info(msg)
+            self.mmu_logger.log(msg)
         self.gcode.respond_raw("!! %s" % html_msg)
 
     def log_always(self, msg, color=False):
         html_msg, msg = self._color_message(msg) if color else (msg, msg)
         if self.mmu_logger:
-            self.mmu_logger.info(msg)
+            self.mmu_logger.log(msg)
         self.gcode.respond_info(html_msg)
 
     def log_info(self, msg, color=False):
         html_msg, msg = self._color_message(msg) if color else (msg, msg)
         if self.mmu_logger and self.log_file_level > 0:
-            self.mmu_logger.info(msg)
+            self.mmu_logger.log(msg)
         if self.log_level > 0:
             self.gcode.respond_info(html_msg)
 
     def log_debug(self, msg):
         msg = "%s DEBUG: %s" % (UI_SEPARATOR, msg)
         if self.mmu_logger and self.log_file_level > 1:
-            self.mmu_logger.info(msg)
+            self.mmu_logger.log(msg)
         if self.log_level > 1:
             self.gcode.respond_info(msg)
 
     def log_trace(self, msg):
         msg = "%s %s TRACE: %s" % (UI_SEPARATOR, UI_SEPARATOR, msg)
         if self.mmu_logger and self.log_file_level > 2:
-            self.mmu_logger.info(msg)
+            self.mmu_logger.log(msg)
         if self.log_level > 2:
             self.gcode.respond_info(msg)
 
     def log_stepper(self, msg):
         msg = "%s %s %s STEPPER: %s" % (UI_SEPARATOR, UI_SEPARATOR, UI_SEPARATOR, msg)
         if self.mmu_logger and self.log_file_level > 3:
-            self.mmu_logger.info(msg)
+            self.mmu_logger.log(msg)
         if self.log_level > 3:
             self.gcode.respond_info(msg)
 
