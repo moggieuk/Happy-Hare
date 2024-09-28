@@ -166,7 +166,7 @@ class LinearSelector:
                 if "s" in self.mmu.mmu_version_string:
                     self.cad_last_gate_offset = 1.2 # Springy has additional bump stops
 
-        elif self.mmu_vendor.lower() == self.mmu.VENDOR_TRADRACK.lower():
+        elif self.mmu.mmu_vendor.lower() == self.mmu.VENDOR_TRADRACK.lower():
             self.cad_gate0_pos = 2.5
             self.cad_gate_width = 17.
             self.cad_bypass_offset = 0     # Doesn't have bypass
@@ -295,7 +295,7 @@ class LinearSelector:
         self.servo.servo_move()
 
     def get_filament_grip_state(self):
-        return self.servo.get_filament_grip_state(self)
+        return self.servo.get_filament_grip_state()
 
     def disable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
@@ -371,7 +371,7 @@ class LinearSelector:
             else:
                 self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
         except MmuError as ee:
-            self.handle_mmu_error(str(ee))
+            self.mmu.handle_mmu_error(str(ee))
 
     cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
     def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):

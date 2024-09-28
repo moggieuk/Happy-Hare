@@ -15,7 +15,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-from .mmu import Mmu as Mmu
+from .mmu import Mmu
 
 def load_config(config):
     return Mmu(config)
