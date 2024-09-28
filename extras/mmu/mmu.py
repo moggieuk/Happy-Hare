@@ -292,6 +292,7 @@ class Mmu:
         self._toolhead_max_accel = self.config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
         self.internal_test = False # True while running QA tests
         self.toolchange_retract = 0. # Set from mmu_macro_vars
+        self._can_write_variables = True # PAUL
 
         # Logging
         self.mmu_logger = None
@@ -428,6 +429,7 @@ class Mmu:
         self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
         self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
         self.gate_autoload = config.getint('gate_autoload', 1, minval=0, maxval=1)
+        self.bypass_autoload = config.getint('bypass_autoload', 1, minval=0, maxval=1)
         self.encoder_dwell = config.getfloat('encoder_dwell', 0.1, minval=0., maxval=2.) # Not exposed
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.) # Not exposed
 
@@ -650,6 +652,8 @@ class Mmu:
         self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
         self.gcode.register_command('__MMU_GATE_RUNOUT', self.cmd_MMU_GATE_RUNOUT, desc = self.cmd_MMU_GATE_RUNOUT_help)
         self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
+        self.gcode.register_command('__MMU_EXTRUDER_RUNOUT', self.cmd_MMU_EXTRUDER_RUNOUT, desc = self.cmd_MMU_EXTRUDER_RUNOUT_help)
+        self.gcode.register_command('__MMU_EXTRUDER_INSERT', self.cmd_MMU_EXTRUDER_INSERT, desc = self.cmd_MMU_EXTRUDER_INSERT_help)
 
         # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
@@ -709,14 +713,6 @@ class Mmu:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
                 self.sensors[name] = sensor
-# PAUL remove?
-#                # With MMU toolhead, sensors must not accidentally pause nor call user defined macros
-#                # This is done in [mmu_sensors] but legacy setups may have discrete [filament_switch_sensors])
-#                # so we ensure correct setup here
-#                if name not in [self.ENDSTOP_GATE]:
-#                    self.sensors[name].runout_helper.runout_pause = False
-#                    self.sensors[name].runout_helper.runout_gcode = None
-#                    self.sensors[name].runout_helper.insert_gcode = None
 
                 # Add sensor pin as an extra endstop for gear rail
                 sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
@@ -3044,6 +3040,9 @@ class Mmu:
         sensor = self.sensors.get(self.ENDSTOP_GATE, None)
         if sensor is not None:
             sensor.runout_helper.enable_runout(restore and (self.gate_selected != self.TOOL_GATE_UNKNOWN))
+        sensor = self.sensors.get(self.ENDSTOP_EXTRUDER_ENTRY, None)
+        if sensor is not None:
+            sensor.runout_helper.enable_runout(restore)
 
     def _check_runout(self):
         if self.is_mmu_paused() and not self.resume_to_state == "printing": return
@@ -3051,6 +3050,8 @@ class Mmu:
             raise MmuError("Runout check failed. Pre-gate sensor for gate %d does not detect filament" % self.gate_selected)
         if self._check_sensor(self.ENDSTOP_GATE) is False:
             raise MmuError("Runout check failed. %s sensor does not detect filament" % self.ENDSTOP_GATE)
+        if self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY) is False:
+            raise MmuError("Runout check failed. %s sensor does not detect filament" % self.ENDSTOP_EXTRUDER_ENTRY)
 
     @contextlib.contextmanager
     def _wrap_suspend_runout(self):
@@ -3392,9 +3393,21 @@ class Mmu:
         if write:
             self.write_variables()
 
-    def write_variables(self):
-        mmu_vars_revision = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, 0) + 1
         self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_REVISION, mmu_vars_revision))
+
+    def _write_variables(self):
+        if self._can_write_variables:
+            mmu_vars_revision = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, 0) + 1
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_REVISION, mmu_vars_revision))
+
+    @contextlib.contextmanager
+    def _wrap_suspend_write_variables(self):
+        self._can_write_variables = False
+        try:
+            yield self
+        finally:
+            self._can_write_variables = True
+            self._write_variables()
 
     def _random_failure(self):
         if self.test_random_failures and random.randint(0, 10) == 0:
@@ -4265,7 +4278,7 @@ class Mmu:
 # LOAD / UNLOAD SEQUENCES AND FILAMENT TESTS #
 ##############################################
 
-    def _load_sequence(self, bowden_move=None, skip_extruder=False, extruder_only=False):
+    def load_sequence(self, bowden_move=None, skip_extruder=False, extruder_only=False):
         self.movequeues_wait()
 
         if bowden_move is None:
@@ -4303,11 +4316,11 @@ class Mmu:
                 if start_filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
                     self._load_extruder(extruder_only=True)
                 else:
-                    self.log_debug("Assertion failure: Unexpected state %d in _load_sequence(extruder_only=True)" % start_filament_pos)
+                    self.log_debug("Assertion failure: Unexpected state %d in load_sequence(extruder_only=True)" % start_filament_pos)
                     raise MmuError("Cannot load extruder because already in extruder. Unload first")
 
             elif start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                self.log_debug("Assertion failure: Unexpected state %d in _load_sequence()" % start_filament_pos)
+                self.log_debug("Assertion failure: Unexpected state %d in load_sequence()" % start_filament_pos)
                 raise MmuError("Cannot load because already in extruder. Unload first")
 
             else:
@@ -5133,7 +5146,7 @@ class Mmu:
         with self._wrap_track_time('pre_load'):
             self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
         self.select_tool(tool, move_servo=False)
-        self._load_sequence()
+        self.load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
         with self._wrap_track_time('post_load'):
@@ -5637,16 +5650,15 @@ class Mmu:
                     self.log_always("Filament already loaded")
                     return
 
-                self._save_toolhead_position_and_park('load')
+                self._note_toolchange("> %s" % self._selected_tool_string())
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                     if not extruder_only:
-                        self._note_toolchange("> T%d" % self.tool_selected)
+                        self._save_toolhead_position_and_park('load')
                         self._select_and_load_tool(self.tool_selected) # This could change gate tool is mapped to
                         self._persist_gate_statistics()
+                        self._continue_after('load', restore=restore)
                     else:
-                        self._note_toolchange("> Bypass")
-                        self._load_sequence(bowden_move=0., extruder_only=True)
-                self._continue_after('load', restore=restore)
+                        self.load_sequence(bowden_move=0., extruder_only=True)
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when loading tool: %s" % (str(ee), self._last_toolchange))
             if self.tool_selected == self.TOOL_GATE_BYPASS:
@@ -5671,19 +5683,20 @@ class Mmu:
                 if self.filament_pos == self.FILAMENT_POS_UNLOADED:
                     self.log_always("Filament not loaded")
                     return
-                self._save_toolhead_position_and_park('unload')
+
+                self._note_toolchange("")
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing if called in print
-                    self._note_toolchange("")
                     if not extruder_only:
+                        self._save_toolhead_position_and_park('unload')
                         self._unload_tool(form_tip=form_tip)
                         self._persist_gate_statistics()
+                        self._continue_after('unload', restore=restore)
                     else:
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
                         self.unload_sequence(bowden_move=0., form_tip=form_tip, extruder_only=True)
                         if in_bypass:
                             self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                             self.log_always("Please pull the filament out clear of the MMU selector")
-                self._continue_after('unload', restore=restore)
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
 
@@ -5881,7 +5894,7 @@ class Mmu:
                         self.log_always("Testing tool %d of %d (Gate %d)" % (tool, self.num_gates, gate))
                         if not to_nozzle:
                             self.select_tool(tool)
-                            self._load_sequence(bowden_move=100., skip_extruder=True)
+                            self.load_sequence(bowden_move=100., skip_extruder=True)
                             self.unload_sequence(bowden_move=100.)
                         else:
                             self._select_and_load_tool(tool)
@@ -5914,7 +5927,7 @@ class Mmu:
             if not self.filament_pos in [self.FILAMENT_POS_START_BOWDEN, self.FILAMENT_POS_IN_BOWDEN]:
                 # Ready MMU for test if not already setup
                 self._unload_tool()
-                self._load_sequence(bowden_move=100. if direction == self.DIRECTION_LOAD else 200., skip_extruder=True)
+                self.load_sequence(bowden_move=100. if direction == self.DIRECTION_LOAD else 200., skip_extruder=True)
                 self._servo_down()
             with self._require_encoder():
                 self._initialize_filament_position()
@@ -5944,10 +5957,10 @@ class Mmu:
         full = gcmd.get_int('FULL', 0, minval=0, maxval=1)
         try:
             if full:
-                self._load_sequence(skip_extruder=True)
+                self.load_sequence(skip_extruder=True)
             else:
                 length = gcmd.get_float('LENGTH', 100., minval=10., maxval=self.calibrated_bowden_length)
-                self._load_sequence(bowden_move=length, skip_extruder=True)
+                self.load_sequence(bowden_move=length, skip_extruder=True)
         except MmuError as ee:
             self.handle_mmu_error("Load test failed: %s" % str(ee))
 
@@ -6033,6 +6046,8 @@ class Mmu:
 
         self.gate_endstop_to_encoder = gcmd.get_float('GATE_ENDSTOP_TO_ENCODER', self.gate_endstop_to_encoder)
         self.gate_parking_distance = gcmd.get_float('GATE_PARKING_DISTANCE', self.gate_parking_distance)
+        self.gate_autoload = gcmd.get_int('GATE_AUTOLOAD', self.gate_autoload, minval=0, maxval=1)
+        self.bypass_autoload = gcmd.get_int('BYPASS_AUTOLOAD', self.bypass_autoload, minval=0, maxval=1)
         self.bowden_apply_correction = gcmd.get_int('BOWDEN_APPLY_CORRECTION', self.bowden_apply_correction, minval=0, maxval=1)
         self.bowden_allowable_unload_delta = self.bowden_allowable_load_delta = gcmd.get_float('BOWDEN_ALLOWABLE_LOAD_DELTA', self.bowden_allowable_load_delta, minval=1., maxval=50.)
         self.bowden_pre_unload_test = gcmd.get_int('BOWDEN_PRE_UNLOAD_TEST', self.bowden_pre_unload_test, minval=0, maxval=1)
@@ -6149,6 +6164,9 @@ class Mmu:
             if self.gate_homing_endstop == self.ENDSTOP_GATE and self._has_encoder():
                 msg += "\ngate_endstop_to_encoder = %s" % self.gate_endstop_to_encoder
             msg += "\ngate_parking_distance = %s" % self.gate_parking_distance
+            msg += "\ngate_autoload = %s" % self.gate_autoload
+            if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+                msg += "\nbypass_autoload = %s" % self.bypass_autoload
             if self._has_encoder():
                 msg += "\nbowden_apply_correction = %d" % self.bowden_apply_correction
                 msg += "\nbowden_allowable_load_delta = %d" % self.bowden_allowable_load_delta
@@ -6651,7 +6669,6 @@ class Mmu:
         self._fix_started_state()
 
         try:
-            self.log_debug("Filament runout/clog detected by MMU encoder")
             self._runout()
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -6661,9 +6678,7 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
-
-        self.log_trace("Filament insertion detected by encoder")
-        # TODO Future bypass preload feature - make gate act like bypass
+        # TODO Possible future bypass preload feature - make gate act like bypass
 
     # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate
     # sensor that fired.  This is not protected by klipper "is printing" check so be careful when
@@ -6712,6 +6727,42 @@ class Mmu:
                     self.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
+
+    # Callback to handle filament sensor at extruder entrance
+    # This is not protected by klipper "is printing" check
+    cmd_MMU_EXTRUDER_RUNOUT_help = "Internal extruder filament runout handler"
+    def cmd_MMU_EXTRUDER_RUNOUT(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if not self.is_enabled: return
+        self._fix_started_state()
+        # TODO Extruder runout feature - just pause print as precaution
+
+    # Callback to handle filament sensor at extruder entrance
+    # This is not protected by klipper "is not printing" check
+    cmd_MMU_EXTRUDER_INSERT_help = "Internal extruder filament insertion handler"
+    def cmd_MMU_EXTRUDER_INSERT(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if not self.is_enabled: return
+        self._fix_started_state()
+
+        try:
+            if self.gate_selected != self.TOOL_GATE_BYPASS:
+                msg = "bypass not selected"
+            elif self._is_printing():
+                msg = "actively printing"
+            elif self.filament_pos != self.FILAMENT_POS_UNLOADED :
+                msg = "extruder cannot be verified as unloaded"
+            elif not self.bypass_autoload:
+                msg = "bypass autoload is disabled"
+            else:
+                self.log_debug("Autoloading extruder")
+                with self._wrap_suspend_runout():
+                    self._note_toolchange("> Bypass")
+                    self.load_sequence(bowden_move=0., extruder_only=True)
+                return
+            self.log_debug("Ignoring extruder insertion because %s" % msg)
+        except MmuError as ee:
+            self._handle_mmu_error(str(ee))
 
     cmd_MMU_M400_help = "Wait on both move queues"
     def cmd_MMU_M400(self, gcmd):
@@ -7060,111 +7111,148 @@ class Mmu:
 
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during gate check
-                with self.wrap_action(self.ACTION_CHECKING):
-                    with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
-                        tool_selected = self.tool_selected
-                        filament_pos = self.filament_pos
-                        self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
-                        gates_tools = []
-                        if tools != "!":
-                            # Tools used in print (may be empty list)
-                            try:
-                                for tool in tools.split(','):
-                                    if not tool == "":
-                                        tool = int(tool)
-                                        if tool >= 0 and tool < self.num_gates:
-                                            gate = self.ttg_map[tool]
-                                            gates_tools.append([gate, tool])
-                                if len(gates_tools) == 0:
-                                    self.log_debug("No tools to check, assuming default tool is already loaded")
-                                    self._auto_filament_grip()
-                                    return
-                            except ValueError as ve:
-                                raise MmuError("Invalid TOOLS parameter: %s" % tools)
-                        elif gates != "!":
-                            # List of gates
-                            try:
-                                for gate in gates.split(','):
-                                    gate = int(gate)
-                                    if gate >= 0 and gate < self.num_gates:
-                                        gates_tools.append([gate, -1])
-                            except ValueError as ve:
-                                raise MmuError("Invalid GATES parameter: %s" % tools)
-                        elif tool >= 0:
-                            # Individual tool
-                            gate = self.ttg_map[tool]
-                            gates_tools.append([gate, tool])
-                        elif gate >= 0:
-                            # Individual gate
-                            gates_tools.append([gate, -1])
-                        elif all_gates:
-                            for gate in range(self.num_gates):
-                                gates_tools.append([gate, -1])
-                        elif self.gate_selected >= 0:
-                            # No parameters means current gate
-                            gates_tools.append([self.gate_selected, -1])
-                        else:
-                            raise MmuError("Current gate is invalid")
-
-                        # Force initial eject
-                        if not filament_pos == self.FILAMENT_POS_UNLOADED:
-                            self.log_info("Unloading current tool prior to checking gates")
-                            self._unload_tool() # Can throw MmuError
-
-                        if len(gates_tools) > 1:
-                            self.log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
-                        with self.wrap_suppress_visual_log():
-                            for gate, tool in gates_tools:
+                with self._wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
+                    with self.wrap_action(self.ACTION_CHECKING):
+                        with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
+                            tool_selected = self.tool_selected
+                            filament_pos = self.filament_pos
+                            self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
+                            gates_tools = []
+                            if tools != "!":
+                                # Tools used in print (may be empty list)
                                 try:
-                                    self.selector.select_gate(gate)
-                                    self.log_info("Checking Gate %d..." % gate)
-                                    self._load_gate(allow_retry=False, adjust_grip_on_error=False)
-                                    if tool >= 0:
-                                        self.log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
-                                    else:
-                                        self.log_info("Gate %d - Filament detected. Marked available" % gate)
-                                    self._set_gate_status(gate, max(self.gate_status[gate], self.GATE_AVAILABLE))
+                                    for tool in tools.split(','):
+                                        if not tool == "":
+                                            tool = int(tool)
+                                            if tool >= 0 and tool < self.num_gates:
+                                                gate = self.ttg_map[tool]
+                                                gates_tools.append([gate, tool])
+                                    if len(gates_tools) == 0:
+                                        self.log_debug("No tools to check, assuming default tool is already loaded")
+                                        self._auto_filament_grip()
+                                        return
+                                except ValueError as ve:
+                                    raise MmuError("Invalid TOOLS parameter: %s" % tools)
+                            elif gates != "!":
+                                # List of gates
+                                try:
+                                    for gate in gates.split(','):
+                                        gate = int(gate)
+                                        if gate >= 0 and gate < self.num_gates:
+                                            gates_tools.append([gate, -1])
+                                except ValueError as ve:
+                                    raise MmuError("Invalid GATES parameter: %s" % tools)
+                            elif tool >= 0:
+                                # Individual tool
+                                gate = self.ttg_map[tool]
+                                gates_tools.append([gate, tool])
+                            elif gate >= 0:
+                                # Individual gate
+                                gates_tools.append([gate, -1])
+                            elif all_gates:
+                                for gate in range(self.num_gates):
+                                    gates_tools.append([gate, -1])
+                            elif self.gate_selected >= 0:
+                                # No parameters means current gate
+                                gates_tools.append([self.gate_selected, -1])
+                            else:
+                                raise MmuError("Current gate is invalid")
+
+                            # Force initial eject
+                            if not filament_pos == self.FILAMENT_POS_UNLOADED:
+                                self.log_info("Unloading current tool prior to checking gates")
+                                self._unload_tool() # Can throw MmuError
+
+                            if len(gates_tools) > 1:
+                                self.log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
+                            with self.wrap_suppress_visual_log():
+                                for gate, tool in gates_tools:
                                     try:
-                                        self._unload_gate()
+                                        self.selector.select_gate(gate)
+                                        self.log_info("Checking Gate %d..." % gate)
+                                        self._load_gate(allow_retry=False, adjust_grip_on_error=False)
+                                        if tool >= 0:
+                                            self.log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
+                                        else:
+                                            self.log_info("Gate %d - Filament detected. Marked available" % gate)
+                                        self._set_gate_status(gate, max(self.gate_status[gate], self.GATE_AVAILABLE))
+                                        try:
+                                            self._select_gate(gate)
+                                            self.log_info("Checking Gate %d..." % gate)
+                                            self._load_gate(allow_retry=False, adjust_servo_on_error=False)
+                                            if tool >= 0:
+                                                self.log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
+                                            else:
+                                                self.log_info("Gate %d - Filament detected. Marked available" % gate)
+                                            self._set_gate_status(gate, max(self.gate_status[gate], self.GATE_AVAILABLE))
+                                            try:
+                                                self._unload_gate()
+                                            except MmuError as ee:
+                                                raise MmuError("Failure during check Gate %d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
+                                        except MmuError as ee:
+                                            self._set_gate_status(gate, self.GATE_EMPTY)
+                                            self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
+                                            if tool >= 0:
+                                                msg = "Tool T%d on Gate %d marked EMPTY" % (tool, gate)
+                                            else:
+                                                msg = "Gate %d marked EMPTY" % gate
+                                            self.log_debug("Gate marked empty because: %s" % str(ee))
+                                            if self._is_in_print():
+                                                raise MmuError("%s%s" % ("Required " if self._is_printing() else "", msg))
+                                            else:
+                                                self.log_always(msg)
+                                        finally:
+                                            self._initialize_encoder() # Encoder 0000
+
+                                # If not printing select original tool and load filament if necessary
+                                # We don't do this when printing because this is expected to preceed the loading initial tool
+                                if not self._is_printing():
+                                    try:
+                                        if tool_selected == self.TOOL_GATE_BYPASS:
+                                            self._select_bypass()
+                                        elif tool_selected != self.TOOL_GATE_UNKNOWN:
+                                            if filament_pos == self.FILAMENT_POS_LOADED:
+                                                self.log_info("Restoring tool loaded prior to checking gates")
+                                                self._select_and_load_tool(tool_selected)
+                                            else:
+                                                self._select_tool(tool_selected)
                                     except MmuError as ee:
-                                        raise MmuError("Failure during check Gate %d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
+                                        self._set_gate_status(gate, self.GATE_EMPTY)
+                                        self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
+                                        if tool >= 0:
+                                            msg = "Tool T%d on Gate %d marked EMPTY" % (tool, gate)
+                                        else:
+                                            msg = "Gate %d marked EMPTY" % gate
+                                        self.log_debug("Gate marked empty because: %s" % str(ee))
+                                        if self.is_in_print():
+                                            raise MmuError("%s%s" % ("Required " if self.is_printing() else "", msg))
+                                        else:
+                                            self.log_always(msg)
+                                    finally:
+                                        self._initialize_encoder() # Encoder 0000
+
+                            # If not printing select original tool and load filament if necessary
+                            # We don't do this when printing because this is expected to preceed the loading initial tool
+                            if not self.is_printing():
+                                try:
+                                    if tool_selected == self.TOOL_GATE_BYPASS:
+                                        self.select_bypass()
+                                    elif tool_selected != self.TOOL_GATE_UNKNOWN:
+                                        if filament_pos == self.FILAMENT_POS_LOADED:
+                                            self.log_info("Restoring tool loaded prior to checking gates")
+                                            self._select_and_load_tool(tool_selected)
+                                        else:
+                                            self.select_tool(tool_selected)
                                 except MmuError as ee:
-                                    self._set_gate_status(gate, self.GATE_EMPTY)
-                                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
-                                    if tool >= 0:
-                                        msg = "Tool T%d on Gate %d marked EMPTY" % (tool, gate)
-                                    else:
-                                        msg = "Gate %d marked EMPTY" % gate
-                                    self.log_debug("Gate marked empty because: %s" % str(ee))
-                                    if self.is_in_print():
-                                        raise MmuError("%s%s" % ("Required " if self.is_printing() else "", msg))
-                                    else:
-                                        self.log_always(msg)
-                                finally:
-                                    self._initialize_encoder() # Encoder 0000
+                                    raise MmuError("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
+                            else:
+                                # At least restore the selected tool, but don't re-load filament
+                                self.select_tool(tool_selected)
 
-                        # If not printing select original tool and load filament if necessary
-                        # We don't do this when printing because this is expected to preceed the loading initial tool
-                        if not self.is_printing():
-                            try:
-                                if tool_selected == self.TOOL_GATE_BYPASS:
-                                    self.select_bypass()
-                                elif tool_selected != self.TOOL_GATE_UNKNOWN:
-                                    if filament_pos == self.FILAMENT_POS_LOADED:
-                                        self.log_info("Restoring tool loaded prior to checking gates")
-                                        self._select_and_load_tool(tool_selected)
-                                    else:
-                                        self.select_tool(tool_selected)
-                            except MmuError as ee:
-                                raise MmuError("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
-                        else:
-                            # At least restore the selected tool, but don't re-load filament
-                            self.select_tool(tool_selected)
+                            if not quiet:
+                                self.log_info(self._mmu_visual_to_string())
 
-                        if not quiet:
-                            self.log_info(self._mmu_visual_to_string())
-
-                        self._auto_filament_grip()
+                            self._auto_filament_grip()
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 

@@ -48,7 +48,7 @@ class MmuRunoutHelper:
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
-        # We are going to replace previous runout_helper mux commands with ours
+        # Replace previous runout_helper mux commands with ours
         prev = self.gcode.mux_commands.get("QUERY_FILAMENT_SENSOR")
         prev_key, prev_values = prev
         prev_values[self.name] = self.cmd_QUERY_FILAMENT_SENSOR
@@ -131,10 +131,11 @@ class MmuRunoutHelper:
 
 class MmuSensors:
 
-    ENDSTOP_PRE_GATE  = 'mmu_pre_gate'
-    ENDSTOP_GATE      = 'mmu_gate'
-    ENDSTOP_EXTRUDER  = 'extruder'
-    ENDSTOP_TOOLHEAD  = 'toolhead'
+    # TODO Use Mmu class definitions
+    ENDSTOP_PRE_GATE       = 'mmu_pre_gate'
+    ENDSTOP_GATE           = 'mmu_gate'
+    ENDSTOP_EXTRUDER_ENTRY = "extruder"       # Extruder entry sensor
+    ENDSTOP_TOOLHEAD       = 'toolhead'
     SWITCH_SYNC_FEEDBACK_TENSION     = 'sync_feedback_tension'
     SWITCH_SYNC_FEEDBACK_COMPRESSION = 'sync_feedback_compression'
 
@@ -161,9 +162,9 @@ class MmuSensors:
             # Replace with custom runout_helper because limited operation is possible during print
             insert_gcode = "__MMU_GATE_INSERT GATE=%d" % gate
             runout_gcode = "__MMU_GATE_RUNOUT GATE=%d" % gate
-            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
-            fs.runout_helper = gate_helper
-            fs.get_status = gate_helper.get_status
+            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            fs.runout_helper = mmu_runout_helper
+            fs.get_status = mmu_runout_helper.get_status
 
         # Setup "mmu_gate" sensor(s)...
         switch_pin = config.get('gate_switch_pin', None)
@@ -180,17 +181,26 @@ class MmuSensors:
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
-            section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_EXTRUDER
+            name = "%s_sensor" % self.ENDSTOP_EXTRUDER_ENTRY
+            section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
+            # Replace with custom runout_helper because of limited operation
+            insert_gcode = "__MMU_EXTRUDER_INSERT"
+            runout_gcode = "__MMU_EXTRUDER_RUNOUT"
+            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            fs.runout_helper = mmu_runout_helper
+            fs.get_status = mmu_runout_helper.get_status
+
         # Setup toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
-            section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_TOOLHEAD
+            name = "%s_sensor" % self.ENDSTOP_TOOLHEAD
+            section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
