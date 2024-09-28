@@ -741,8 +741,9 @@ class Mmu:
                 mmu_log = '/tmp/mmu.log'
             else:
                 mmu_log = dirname + '/mmu.log'
-            self.log_debug("mmu_log=%s" % mmu_log)
+            logging.info("MMU Log: %s" % mmu_log)
             self.mmu_logger = MmuLogger(mmu_log)
+            self.mmu_logger.log("\n\n\nMMU Startup -----------------------------------------------\n")
 
     def handle_connect(self):
         self._setup_logging()
