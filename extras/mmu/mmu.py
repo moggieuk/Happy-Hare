@@ -292,7 +292,7 @@ class Mmu:
         self._toolhead_max_accel = self.config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
         self.internal_test = False # True while running QA tests
         self.toolchange_retract = 0. # Set from mmu_macro_vars
-        self._can_write_variables = True # PAUL
+        self._can_write_variables = True
 
         # Logging
         self.mmu_logger = None
