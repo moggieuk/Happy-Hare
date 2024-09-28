@@ -338,7 +338,7 @@ class Mmu:
         self._toolhead_max_accel = self.config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
         self.internal_test = False # True while running QA tests
         self.toolchange_retract = 0. # Set from mmu_macro_vars
-        self._can_write_variables = True # PAUL
+        self._can_write_variables = True
 
         # Logging
         self.queue_listener = None
@@ -529,7 +529,7 @@ class Mmu:
         self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
         self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
         self.gate_autoload = config.getint('gate_autoload', 1, minval=0, maxval=1)
-        self.bypass_autoload = config.getint('bypass_autoload', 1, minval=0, maxval=1) # PAUL new, not exposed in v2.7.1
+        self.bypass_autoload = config.getint('bypass_autoload', 1, minval=0, maxval=1)
         self.encoder_move_step_size = config.getfloat('encoder_move_step_size', 15., minval=5., maxval=25.) # Not exposed
         self.encoder_dwell = config.getfloat('encoder_dwell', 0.1, minval=0., maxval=2.) # Not exposed
         self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
@@ -4111,7 +4111,7 @@ class Mmu:
             self._write_variables()
 
     def _write_variables(self):
-        if self._can_write_variables: # PAUL
+        if self._can_write_variables:
             mmu_vars_revision = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, 0) + 1
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_REVISION, mmu_vars_revision))
 
@@ -7933,12 +7933,12 @@ class Mmu:
                                 gates_tools.append([self.gate_selected, -1])
                             else:
                                 raise MmuError("Current gate is invalid")
-    
+
                             # Force initial eject
                             if not filament_pos == self.FILAMENT_POS_UNLOADED:
                                 self.log_info("Unloading current tool prior to checking gates")
                                 self._unload_tool() # Can throw MmuError
-    
+
                             if len(gates_tools) > 1:
                                 self.log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
                             with self._wrap_suppress_visual_log():
@@ -7970,7 +7970,7 @@ class Mmu:
                                             self.log_always(msg)
                                     finally:
                                         self._initialize_encoder() # Encoder 0000
-    
+
                             # If not printing select original tool and load filament if necessary
                             # We don't do this when printing because this is expected to preceed the loading initial tool
                             if not self._is_printing():
@@ -7988,10 +7988,10 @@ class Mmu:
                             else:
                                 # At least restore the selected tool, but don't re-load filament
                                 self._select_tool(tool_selected)
-    
+
                             if not quiet:
                                 self.log_info(self._mmu_visual_to_string())
-    
+
                             self._servo_auto()
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
