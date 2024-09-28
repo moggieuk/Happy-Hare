@@ -24,6 +24,7 @@ class MmuLogger:
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.INFO)
         self.logger.addHandler(queue_handler)
+        self.logger.propagate = False
 
         # Ensure we shutdown on exit
         atexit.register(self.shutdown)
