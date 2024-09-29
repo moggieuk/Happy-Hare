@@ -13,7 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import sys # To detect python2 or python3
-import random, logging, logging.handlers, threading, queue, time, contextlib, math, os.path, re
+import random, logging, time, contextlib, math, os.path, re
 
 # Klipper imports
 import chelper, ast
@@ -77,6 +77,7 @@ class DebugStepperMovement:
             self.mmu.log_always("Gear steps: %d = %.4fmm, commanded movement: %.4fmm" % (g_steps1 - self.g_steps0, (g_steps1 - self.g_steps0) * self.mmu.gear_stepper.get_step_dist(), g_pos1 - self.g_pos0))
             self.mmu.log_always("Extruder steps: %d = %.4fmm, commanded movement: %.4fmm" % (e_steps1 - self.e_steps0, (e_steps1 - self.e_steps0) * self.mmu.mmu_extruder_stepper.stepper.get_step_dist(), e_pos1 - self.e_pos0))
             self.mmu.log_always("Rail movement: %.4fmm" % (rail_pos1 - self.rail_pos0))
+
 
 # Main klipper module
 class Mmu:
@@ -3393,8 +3394,6 @@ class Mmu:
         self.save_variables.allVariables[variable] = value
         if write:
             self._write_variables()
-
-        self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_REVISION, mmu_vars_revision))
 
     def _write_variables(self):
         if self._can_write_variables:
