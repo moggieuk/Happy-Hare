@@ -26,6 +26,7 @@ UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '+', '+', '+', '+'
 UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '+', '+', '+', '+'
 UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '+', '-', '|'
 UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
+UI_SQUARE, UI_CUBE = '^2', '^3'
 
 
 if sys.version_info[0] >= 3:
@@ -36,6 +37,7 @@ if sys.version_info[0] >= 3:
     # UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
     # UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
+    UI_SQUARE, UI_CUBE = '\u00B3', '\u00B2'
 
 
 class MmuLogger:
@@ -1299,14 +1301,18 @@ class Mmu:
     # Helper to determine purge volume for toolchange
     def _get_purge_volume(self, from_tool, to_tool):
         # TODO .. augment with color calculated value
-        purge_volumes = self.slicer_tool_map['purge_volumes']
-        if purge_volumes:
+        fil_diameter = 1.75
+        volume = 0.
+        slicer_purge_volumes = self.slicer_tool_map['purge_volumes']
+        if slicer_purge_volumes:
             if from_tool >= 0:
-                return purge_volumes[from_tool][tool]
+                volume = slicer_purge_volumes[from_tool][to_tool]
             else:
                 # Assume worse case because we don't know from_tool
-                return max(row[to_tool] for row in purge_volumes)
-        return 0.
+                volume = max(row[to_tool] for row in slicer_purge_volumes)
+        # Add volume of residual filament
+        volume += math.pi * ((fil_diameter / 2) ** 2) * (self.filament_remaining + self.toolhead_residual_filament)
+        return volume
 
     def _load_persisted_state(self):
         self.log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
@@ -1449,7 +1455,13 @@ class Mmu:
             self.log_info("{}{}{}{}".format(UI_BOX_BL, UI_BOX_B, UI_BOX_H, UI_BOX_BR))
             self.log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
 
-        if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
+        if gcmd.get_int('PURGE_VOLUME', 0, minval=0, maxval=1):
+            from_tool = gcmd.get_int('FROM', 0)
+            to_tool = gcmd.get_int('TO', 0)
+            purge_volume = self._get_purge_volume(from_tool, to_tool)
+            self.log_info("Purge volume from T%s to T%s: %.1fmm%s" % (from_tool, to_tool, purge_volume, UI_CUBE))
+
+        elif gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
             error = gcmd.get_int('ERROR', 0, minval=0, maxval=1)
             if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
                 self._set_print_state("printing")
