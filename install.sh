@@ -9,7 +9,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=2.71 # Important: Keep synced with mmy.py
+VERSION=2.72 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
@@ -784,6 +784,12 @@ read_previous_config() {
         variable_enable_park_standalone="'pause,cancel'"
     else
         variable_enable_park_standalone="'toolchange,load,unload,pause,cancel'"
+    fi
+
+    # v2.7.2
+    if [ "${_param_toolhead_residual_filament}" == "0" -a ! "${_param_toolhead_ooze_reduction}" == "0" ]; then
+        _param_toolhead_residual_filament=$_param_toolhead_ooze_reduction
+        _param_toolhead_ooze_reduction=0
     fi
 }
 
