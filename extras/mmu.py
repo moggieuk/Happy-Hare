@@ -1300,18 +1300,18 @@ class Mmu:
 
     # Helper to determine purge volume for toolchange
     def _get_purge_volume(self, from_tool, to_tool):
-        # TODO .. augment with color calculated value
         fil_diameter = 1.75
         volume = 0.
-        slicer_purge_volumes = self.slicer_tool_map['purge_volumes']
-        if slicer_purge_volumes:
-            if from_tool >= 0:
-                volume = slicer_purge_volumes[from_tool][to_tool]
-            else:
-                # Assume worse case because we don't know from_tool
-                volume = max(row[to_tool] for row in slicer_purge_volumes)
-        # Add volume of residual filament
-        volume += math.pi * ((fil_diameter / 2) ** 2) * (self.filament_remaining + self.toolhead_residual_filament)
+        if to_tool >= 0:
+            slicer_purge_volumes = self.slicer_tool_map['purge_volumes']
+            if slicer_purge_volumes:
+                if from_tool >= 0:
+                    volume = slicer_purge_volumes[from_tool][to_tool]
+                else:
+                    # Assume worse case because we don't know from_tool
+                    volume = max(row[to_tool] for row in slicer_purge_volumes)
+            # Add volume of residual filament
+            volume += math.pi * ((fil_diameter / 2) ** 2) * (self.filament_remaining + self.toolhead_residual_filament)
         return volume
 
     def _load_persisted_state(self):
