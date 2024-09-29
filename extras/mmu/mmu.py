@@ -36,6 +36,7 @@ UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '+', '+', '+', '+'
 UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '+', '+', '+', '+'
 UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '+', '-', '|'
 UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
+UI_SQUARE, UI_CUBE = '^2', '^3'
 
 
 if sys.version_info[0] >= 3:
@@ -46,6 +47,7 @@ if sys.version_info[0] >= 3:
     # UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
     # UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
+    UI_SQUARE, UI_CUBE = '\u00B3', '\u00B2'
 
 
 # Internal testing class for debugging synced movement
@@ -81,7 +83,7 @@ class DebugStepperMovement:
 
 # Main klipper module
 class Mmu:
-    VERSION = 2.71 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 2.72 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
@@ -294,6 +296,7 @@ class Mmu:
         self.internal_test = False # True while running QA tests
         self.toolchange_retract = 0. # Set from mmu_macro_vars
         self._can_write_variables = True
+        self.toolchange_purge_volume = 0.
 
         # Logging
         self.mmu_logger = None
@@ -451,7 +454,8 @@ class Mmu:
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
-        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-10., maxval=50.) # +ve value = reduction of load length
+        self.toolhead_residual_filament = config.getfloat('toolhead_residual_filament', 0., minval=0., maxval=50.) # +ve value = reduction of load length
+        self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-5., maxval=20.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
         self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 60, minval=0, maxval=100) # Whether to apply filament tightening move after load (if not synced)
@@ -1111,6 +1115,22 @@ class Mmu:
         self._update_t_macros()
         self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1") # Cheat to force LED update
 
+    # Helper to determine purge volume for toolchange
+    def _get_purge_volume(self, from_tool, to_tool):
+        fil_diameter = 1.75
+        volume = 0.
+        if to_tool >= 0:
+            slicer_purge_volumes = self.slicer_tool_map['purge_volumes']
+            if slicer_purge_volumes:
+                if from_tool >= 0:
+                    volume = slicer_purge_volumes[from_tool][to_tool]
+                else:
+                    # Assume worse case because we don't know from_tool
+                    volume = max(row[to_tool] for row in slicer_purge_volumes)
+            # Add volume of residual filament
+            volume += math.pi * ((fil_diameter / 2) ** 2) * (self.filament_remaining + self.toolhead_residual_filament)
+        return volume
+
     def _load_persisted_state(self):
         self.log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
         errors = []
@@ -1305,8 +1325,9 @@ class Mmu:
             'tool': self.tool_selected,
             'gate': self.gate_selected,
             'active_filament': self.active_filament,
-            'next_tool': self._next_tool,
             'last_tool': self._last_tool,
+            'next_tool': self._next_tool,
+            'toolchange_purge_volume': self.toolchange_purge_volume,
             'last_toolchange': self._last_toolchange,
             'runout': self.is_handling_runout, # Deprecated (use operation)
             'operation': self.saved_toolhead_operation,
@@ -1337,9 +1358,7 @@ class Mmu:
             'endless_spool': self.enable_endless_spool,
             'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
-            'extruder_filament_remaining': self.filament_remaining,
-            'extruder_residual_filament': self.toolhead_ooze_reduction,
-            'toolchange_retract': self.toolchange_retract,
+            'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
             'spoolman_support': self.spoolman_support,
             'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
         }
@@ -1845,9 +1864,9 @@ class Mmu:
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY:
                         msg += " and then moves %s to extruder extrance" % self._f_calc("toolhead_entry_to_extruder")
             if self._has_sensor(self.ENDSTOP_TOOLHEAD):
-                msg += "\n- Extruder (synced) loads by homing a maximum of %s to TOOLHEAD SENSOR before moving the last %s to the nozzle" % (self._f_calc("toolhead_homing_max"), self._f_calc("toolhead_sensor_to_nozzle - toolhead_ooze_reduction - toolchange_retract"))
+                msg += "\n- Extruder (synced) loads by homing a maximum of %s to TOOLHEAD SENSOR before moving the last %s to the nozzle" % (self._f_calc("toolhead_homing_max"), self._f_calc("toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining"))
             else:
-                msg += "\n- Extruder (synced) loads by moving %s to the nozzle" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_ooze_reduction - toolchange_retract")
+                msg += "\n- Extruder (synced) loads by moving %s to the nozzle" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining")
             if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
                 msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, self.toolhead_post_load_tighten)
 
@@ -1855,12 +1874,12 @@ class Mmu:
             msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), " after initial retraction of %s" % self._f_calc("toolchange_retract")))
             msg += " and tip forming extruder current is %d%%" % self.extruder_form_tip_current
 
-            msg += "\n- An estimated %s of filament is left in the hotend plus any tip-cutting reported fragment" % self._f_calc("toolhead_ooze_reduction")
+            msg += "\n- An estimated %s of filament is left in extruder (filament_remaining = tip-cutting fragment)" % self._f_calc("toolhead_residual_filament + filament_remaining")
 
             if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
-                msg += "\n- Extruder (synced) unloads by reverse homing a maximum of %s to EXTRUDER SENSOR" % self._f_calc("toolhead_entry_to_extruder + toolhead_extruder_to_nozzle - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
+                msg += "\n- Extruder (synced) unloads by reverse homing a maximum of %s to EXTRUDER SENSOR" % self._f_calc("toolhead_entry_to_extruder + toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
             elif self._has_sensor(self.ENDSTOP_TOOLHEAD):
-                msg += "\n- Extruder (optionally synced) unloads by reverse homing a maximum %s to TOOLHEAD SENSOR" % self._f_calc("toolhead_sensor_to_nozzle - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
+                msg += "\n- Extruder (optionally synced) unloads by reverse homing a maximum %s to TOOLHEAD SENSOR" % self._f_calc("toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
                 msg += ", then unloads by moving %s to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle + toolhead_unload_safety_margin")
             else:
                 msg += "\n- Extruder (optionally synced) unloads by moving %s less tip-cutting reported park position to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
@@ -2475,7 +2494,7 @@ class Mmu:
 
         msg = "Reminder:\n"
         msg += "1) 'CLEAN=1' with clean extruder for: toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder)\n"
-        msg += "2) No flags with dirty extruder (no cut tip) for: toolhead_ooze_reduction (and toolhead_entry_to_extruder)\n"
+        msg += "2) No flags with dirty extruder (no cut tip) for: toolhead_residual_filament (and toolhead_entry_to_extruder)\n"
         msg += "3) 'CUT=1' holding blade in for: variable_blade_pos\n"
         msg += "Desired gate should be selected but the filament unloaded\n"
         self.log_always(msg)
@@ -2501,12 +2520,12 @@ class Mmu:
                 # Blade position is the difference between empty and extruder with full cut measurements for sensor to nozzle
                 vbp = self.toolhead_sensor_to_nozzle - tstn
                 msg = line
-                if abs(vbp - self.toolhead_ooze_reduction) < 5:
+                if abs(vbp - self.toolhead_residual_filament) < 5:
                     self.log_error("Measurements did not make sense. Looks like probing went past the blade pos!\nAre you holding the blade closed or have cut filament in the extruder?")
                 else:
                     msg += "Calibration Results (cut tip):\n"
                     msg += "> variable_blade_pos: %.1f (currently: %.1f)\n" % (vbp, gcode_vars.variables['blade_pos'])
-                    msg += "> variable_retract_length: %.1f-%.1f, recommend: %.1f (currently: %.1f)\n" % (self.toolhead_ooze_reduction + self.toolchange_retract, vbp, vbp - 5., gcode_vars.variables['retract_length'])
+                    msg += "> variable_retract_length: %.1f-%.1f, recommend: %.1f (currently: %.1f)\n" % (self.toolhead_residual_filament + self.toolchange_retract, vbp, vbp - 5., gcode_vars.variables['retract_length'])
                     msg += line
                     self.log_always(msg)
                     if save:
@@ -2538,14 +2557,14 @@ class Mmu:
                 tor = self.toolhead_sensor_to_nozzle - tstn
                 msg = line
                 msg += "Calibration Results (dirty nozzle):\n"
-                msg += "> toolhead_ooze_reduction: %.1f (currently: %.1f)\n" % (tor, self.toolhead_ooze_reduction)
+                msg += "> toolhead_residual_filament: %.1f (currently: %.1f)\n" % (tor, self.toolhead_residual_filament)
                 if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
                     msg += "> toolhead_entry_to_extruder: %.1f (currently: %.1f)\n" % (tete, self.toolhead_entry_to_extruder)
                 msg += line
                 self.log_always(msg)
                 if save:
                     self.log_always("New calibrated ooze reduction active until restart. Update mmu_parameters.cfg to persist")
-                    self.toolhead_ooze_reduction = round(tor, 1)
+                    self.toolhead_residual_filament = round(tor, 1)
                     self.toolhead_entry_to_extruder = round(tete, 1)
 
             # Unload and park filament
@@ -4076,7 +4095,7 @@ class Mmu:
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
             d = self.toolhead_sensor_to_nozzle if self._has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
-            length = max(d - self.filament_remaining - self.toolhead_ooze_reduction - (self.toolchange_retract if self.is_in_print() else 0), 0)
+            length = max(d - self.filament_remaining - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract, 0)
             self._set_filament_remaining(0.)
             self.log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
@@ -4141,7 +4160,7 @@ class Mmu:
                         self.log_info("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload")
                         fhomed = True # Assumption
                 else:
-                    hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin - self.toolhead_ooze_reduction - (self.toolchange_retract if self.is_in_print() else 0)
+                    hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract
                     self.log_debug("Reverse homing up to %.1fmm to extruder sensor (synced) to exit extruder" % hlength)
                     _,fhomed,_,_ = self.trace_filament_move("Reverse homing to extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.ENDSTOP_EXTRUDER_ENTRY)
 
@@ -4164,7 +4183,7 @@ class Mmu:
                         self.log_info("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload")
                         fhomed = True # Assumption
                     else:
-                        hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin - self.toolhead_ooze_reduction - (self.toolchange_retract if self.is_in_print() else 0)
+                        hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract
                         self.log_debug("Reverse homing up to %.1fmm to toolhead sensor%s" % (hlength, (" (synced)" if synced else "")))
                         _,fhomed,_,_ = self.trace_filament_move("Reverse homing to toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.ENDSTOP_TOOLHEAD)
                     if not fhomed:
@@ -4627,7 +4646,7 @@ class Mmu:
                 # Use stepper movement
                 reported = False
                 filament_remaining = 0.
-                park_pos = stepper_movement + self.toolhead_ooze_reduction + (self.toolchange_retract if self.is_in_print() else 0)
+                park_pos = stepper_movement + self.toolhead_residual_filament + self.toolchange_retract
                 msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1fmm (encoder measured %.1fmm)" % (stepper_movement, park_pos, measured)
                 if test:
                     self.log_always(msg)
@@ -4636,7 +4655,7 @@ class Mmu:
             else:
                 # Means the macro reported it (usually for filament cutting)
                 reported = True
-                filament_remaining = park_pos - stepper_movement - self.toolhead_ooze_reduction - (self.toolchange_retract if self.is_in_print() else 0)
+                filament_remaining = park_pos - stepper_movement - self.toolhead_residual_filament - self.toolchange_retract
                 msg = "After tip forming, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
                 if test:
                     self.log_always(msg)
@@ -5556,79 +5575,87 @@ class Mmu:
 
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
-                self._auto_home(tool=tool)
+                with self._wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
+                    self._auto_home(tool=tool)
 
-                if self._has_encoder():
-                    self.encoder_sensor.update_clog_detection_length()
+                    if self._has_encoder():
+                        self.encoder_sensor.update_clog_detection_length()
 
-                form_tip = self.FORM_TIP_SLICER if (self.is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
-                self.log_debug("Tool change initiated %s" % ("with slicer tip forming" if form_tip == self.FORM_TIP_SLICER else "with standalone MMU tip forming" if form_tip == self.FORM_TIP_STANDALONE else "without tip forming"))
-                current_tool_string = self._selected_tool_string()
+                    form_tip = self.FORM_TIP_SLICER if (self._is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
+                    self.log_debug("Tool change initiated %s" % ("with slicer tip forming" if form_tip == self.FORM_TIP_SLICER else "with standalone MMU tip forming" if form_tip == self.FORM_TIP_STANDALONE else "without tip forming"))
+                    current_tool_string = self._selected_tool_string()
 
-                # Check if we are already loaded
-                if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
-                    self.log_always("Tool T%d is already loaded" % tool)
-                    return
+                    # Check if we are already loaded
+                    if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
+                        self.log_always("Tool T%d is already loaded" % tool)
+                        return
 
-                # Load only case
-                if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-                    msg = "Tool change requested: T%d" % tool
-                    m117_msg = "> T%d" % tool
-                elif self.tool_selected == tool:
-                    msg = "Reloading: T%d" % tool
-                    m117_msg = "> T%d" % tool
-                else:
-                    # Normal toolchange case
-                    msg = "Tool change requested, from %s to T%d" % (current_tool_string, tool)
-                    m117_msg = "%s > T%d" % (current_tool_string, tool)
+                    # Load only case
+                    if self.filament_pos == self.FILAMENT_POS_UNLOADED:
+                        msg = "Tool change requested: T%d" % tool
+                        m117_msg = ("> T%d" % tool)
+                    elif self.tool_selected == tool:
+                        msg = "Reloading: T%d" % tool
+                        m117_msg = ("> T%d" % tool)
+                    else:
+                        # Normal toolchange case
+                        msg = "Tool change requested, from %s to T%d" % (current_tool_string, tool)
+                        m117_msg = ("%s > T%d" % (current_tool_string, tool))
 
-                self._note_toolchange(m117_msg)
-                self.log_always(msg)
+                    self._note_toolchange(m117_msg)
+                    self.log_always(msg)
 
-                # Check if new tool is mapped to current gate
-                if self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
-                    self.select_tool(tool)
-                    self._note_toolchange("T%s" % tool)
-                    return
+                    # Check if new tool is mapped to current gate
+                    if self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
+                        self.select_tool(tool)
+                        self._note_toolchange("T%s" % tool)
+                        return
 
-                # Ok, now ready to park and perform the swap
-                self._next_tool = tool # Valid only during the change process
-                self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
-                with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
-                    self._track_time_start('total')
-                    self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
+                    # Determine purge volume for current toolchange. Valid only during toolchange operation
+                    self.toolchange_purge_volume = self._get_purge_volume(self.tool_selected, tool)
 
-                    attempts = 2 if self.retry_tool_change_on_error and (self.is_printing() or standalone) else 1 # TODO: replace with inattention timer
-                    try:
-                        for i in range(attempts):
-                            try:
-                                if self.filament_pos != self.FILAMENT_POS_UNLOADED:
-                                    self._unload_tool(form_tip=form_tip)
-                                self._set_next_position(next_pos)
-                                self._select_and_load_tool(tool)
-                                break
-                            except MmuError as ee:
-                                if i == attempts - 1:
-                                    raise MmuError("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
-                                self.log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), self._last_toolchange))
-                                # Try again but recover_filament_pos will ensure conservative treatment of unload
-                                self._recover_filament_pos()
+                    # Ok, now ready to park and perform the swap
+                    self._next_tool = tool # Valid only during the change process
+                    self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
+                    with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
+                        self._track_time_start('total')
+                        self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
 
-                        self._track_swap_completed()
-                        self._track_time_end('total')
-                        self.gcode.run_script_from_command("M117 T%s" % tool)
-                    finally:
-                        self._next_tool = self.TOOL_GATE_UNKNOWN
+                        attempts = 2 if self.retry_tool_change_on_error and (self.is_printing() or standalone) else 1 # TODO: replace with inattention timer
+                        try:
+                            for i in range(attempts):
+                                try:
+                                    if self.filament_pos != self.FILAMENT_POS_UNLOADED:
+                                        self._unload_tool(form_tip=form_tip)
+                                    self._set_next_position(next_pos)
+                                    self._select_and_load_tool(tool)
+                                    break
+                                except MmuError as ee:
+                                    if i == attempts - 1:
+                                        raise MmuError("%s.\nOccured when changing tool: %s" % (str(ee), self._last_toolchange))
+                                    self.log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), self._last_toolchange))
+                                    # Try again but recover_filament_pos will ensure conservative treatment of unload
+                                    self._recover_filament_pos()
 
-                # Updates swap statistics
-                self._dump_statistics(job=not quiet, gate=not quiet)
-                self._persist_swap_statistics()
-                self._persist_gate_statistics()
+                            self._track_swap_completed()
+                            self._track_time_end('total')
+                            self.gcode.run_script_from_command("M117 T%s" % tool)
+                        finally:
+                            self._next_tool = self.TOOL_GATE_UNKNOWN
 
-                # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
-                self._continue_after('toolchange', restore)
+                    # Updates swap statistics
+                    self._dump_statistics(job=not quiet, gate=not quiet)
+                    self._persist_swap_statistics()
+                    self._persist_gate_statistics()
+
+                    # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
+                    self._continue_after('toolchange', restore)
+
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
+
+        finally:
+            self.toolchange_purge_volume = 0.
 
     cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTRUDER_ONLY=1)"
     def cmd_MMU_LOAD(self, gcmd):
@@ -6061,7 +6088,8 @@ class Mmu:
         self.toolhead_entry_to_extruder = gcmd.get_float('TOOLHEAD_ENTRY_TO_EXTRUDER', self.toolhead_entry_to_extruder, minval=0.)
         self.toolhead_sensor_to_nozzle = gcmd.get_float('TOOLHEAD_SENSOR_TO_NOZZLE', self.toolhead_sensor_to_nozzle, minval=0.)
         self.toolhead_extruder_to_nozzle = gcmd.get_float('TOOLHEAD_EXTRUDER_TO_NOZZLE', self.toolhead_extruder_to_nozzle, minval=0.)
-        self.toolhead_ooze_reduction = gcmd.get_float('TOOLHEAD_OOZE_REDUCTION', self.toolhead_ooze_reduction, minval=0.)
+        self.toolhead_residual_filament = gcmd.get_float('TOOLHEAD_RESIDUAL_FILAMENT', self.toolhead_residual_filament, minval=0.)
+        self.toolhead_ooze_reduction = gcmd.get_float('TOOLHEAD_OOZE_REDUCTION', self.toolhead_ooze_reduction, minval=-5., maxval=20.)
         self.toolhead_unload_safety_margin = gcmd.get_float('TOOLHEAD_UNLOAD_SAFETY_MARGIN', self.toolhead_unload_safety_margin, minval=0.)
         self.toolhead_post_load_tighten = gcmd.get_int('TOOLHEAD_POST_LOAD_TIGHTEN', self.toolhead_post_load_tighten, minval=0, maxval=100)
         self.gcode_load_sequence = gcmd.get_int('GCODE_LOAD_SEQUENCE', self.gcode_load_sequence, minval=0, maxval=1)
@@ -6177,6 +6205,7 @@ class Mmu:
                 msg += "\ntoolhead_homing_max = %.1f" % self.toolhead_homing_max
             if self._has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
                 msg += "\ntoolhead_entry_to_extruder = %.1f" % self.toolhead_entry_to_extruder
+            msg += "\ntoolhead_residual_filament = %.1f" % self.toolhead_residual_filament
             msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
             msg += "\ntoolhead_unload_safety_margin = %d" % self.toolhead_unload_safety_margin
             msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
