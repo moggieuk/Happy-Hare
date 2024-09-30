@@ -12,42 +12,22 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import sys # To detect python2 or python3
-import random, logging, time, contextlib, math, os.path, re
+import ast, random, logging, time, contextlib, math, os.path, re
 
 # Klipper imports
-import chelper, ast
+import chelper
 from extras.homing import Homing, HomingMove
 
 # Happy Hare imports
-import extras.mmu_machine as mmu_machine
+from extras import mmu_machine
 from extras.mmu_machine import MmuToolHead
 from extras.mmu_leds import MmuLeds
 
 # MMU subcomponent clases
 from .mmu_logger import MmuLogger
 from .mmu_selector import VirtualSelector, LinearSelector
-from .mmu_shared import MmuError
+from .mmu_shared import *
 from .mmu_test import MmuTest
-
-# Default to use unicode on Python2. Not worth the hassle until klipper drops py2 support!
-UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = ' ', '.', '-', '^', '*', '-'
-UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '+', '+', '+', '+'
-UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '+', '+', '+', '+'
-UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '+', '-', '|'
-UI_EMOTICONS = ['?', 'A+', 'A', 'B', 'C', 'C-', 'D', 'F']
-UI_SQUARE, UI_CUBE = '^2', '^3'
-
-
-if sys.version_info[0] >= 3:
-    # Use (common) unicode for improved formatting and klipper layout
-    UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = '\u00A0', '\u00A0', '\u2014', '\u00B0', '\u2588', '\u2514'
-    # Not all character sets include these so best to use defaults above
-    # UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '\u250C', '\u2514', '\u2510', '\u2518'
-    # UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
-    # UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
-    UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
-    UI_SQUARE, UI_CUBE = '\u00B3', '\u00B2'
 
 
 # Internal testing class for debugging synced movement
@@ -676,7 +656,7 @@ class Mmu:
         # Neopixel update mitigation
         if self.update_bit_max_time:
             try:
-                import extras.neopixel as neopixel
+                from extras import neopixel
                 neopixel.BIT_MAX_TIME = max(neopixel.BIT_MAX_TIME, 0.000030)
             except Exception as e:
                 self.log_error("Unable to update BIT_MAX_TIME: %s" % str(e))
@@ -1718,6 +1698,14 @@ class Mmu:
             self.mmu_logger.log(msg)
         if self.log_level > 1:
             self.gcode.respond_info(msg)
+
+# PAUL
+#    def log_debug(self, fmt, *args):
+#        lazy_msg = lazy_format("%s DEBUG: " + fmt, UI_SEPARATOR, *args)
+#        if self.mmu_logger and self.log_file_level > 1:
+#            self.mmu_logger.log(str(lazy_msg))
+#        if self.log_level > 1:
+#            self.gcode.respond_info(str(lazy_msg))
 
     def log_trace(self, msg):
         msg = "%s %s TRACE: %s" % (UI_SEPARATOR, UI_SEPARATOR, msg)
@@ -4747,7 +4735,7 @@ class Mmu:
                 accel = accel or self.extruder_accel
 
         else:
-            self.log_error("Assertion failure: Invalid motor specification '%'" % motor)
+            self.log_error("Assertion failure: Invalid motor specification '%s'" % motor)
             return null_rtn
 
         # Apply pre-gate speed override
@@ -4783,7 +4771,7 @@ class Mmu:
                                     homed = False
                         except self.printer.command_error as e:
                             # CANbus mcu's often seen to exhibit "Communication timeout" so surface errors to user
-                            if abs(trig_pos[1] - dist) > 0. and not "after full movement" in str(e):
+                            if abs(trig_pos[1] - dist) > 0. and "after full movement" not in str(e):
                                 if 'communication timeout' in str(e).lower():
                                     got_comms_timeout = True
                                     speed *= 0.8 # Reduce speed by 20%
@@ -5593,14 +5581,14 @@ class Mmu:
                     # Load only case
                     if self.filament_pos == self.FILAMENT_POS_UNLOADED:
                         msg = "Tool change requested: T%d" % tool
-                        m117_msg = ("> T%d" % tool)
+                        m117_msg = "> T%d" % tool
                     elif self.tool_selected == tool:
                         msg = "Reloading: T%d" % tool
-                        m117_msg = ("> T%d" % tool)
+                        m117_msg = "> T%d" % tool
                     else:
                         # Normal toolchange case
                         msg = "Tool change requested, from %s to T%d" % (current_tool_string, tool)
-                        m117_msg = ("%s > T%d" % (current_tool_string, tool))
+                        m117_msg = "%s > T%d" % (current_tool_string, tool)
 
                     self._note_toolchange(m117_msg)
                     self.log_always(msg)
@@ -5948,7 +5936,7 @@ class Mmu:
         sensitivity = gcmd.get_float('SENSITIVITY', self.encoder_resolution, minval=0.1, maxval=10)
         if direction == 0: return
         try:
-            if not self.filament_pos in [self.FILAMENT_POS_START_BOWDEN, self.FILAMENT_POS_IN_BOWDEN]:
+            if self.filament_pos not in [self.FILAMENT_POS_START_BOWDEN, self.FILAMENT_POS_IN_BOWDEN]:
                 # Ready MMU for test if not already setup
                 self._unload_tool()
                 self.load_sequence(bowden_move=100. if direction == self.DIRECTION_LOAD else 200., skip_extruder=True)
@@ -6581,7 +6569,7 @@ class Mmu:
                     if tool_to_remap[tool_field] == gate_feature:
                         remaps.append("T%s --> G%s (%s)" % (tool, gn, gate_feature))
                         self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
-                if not len(remaps):
+                if not remaps:
                     errors.append("No gates found for tool %s with %s %s" % (tool, strategy_str, tool_to_remap[tool_field]))
 
             # 'colors' search for closest
@@ -6619,7 +6607,7 @@ class Mmu:
                                 remaps.append("T%s --> G%s (%s with closest color: %s)" % (tool, gn, gm, color))
                                 self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
 
-                if not len(remaps):
+                if not remaps:
                     errors.append("Unable to find a suitable color for tool %s (color: %s)" % (tool, tool_to_remap['color']))
             if len(remaps) > 1:
                 warnings.append("Multiple gates found for tool %s with %s '%s'" % (tool, strategy_str, tool_to_remap[tool_field]))
@@ -6900,7 +6888,7 @@ class Mmu:
                         gate = int(gate)
                         if gate >= 0 and gate < self.num_gates:
                             gatelist.append(gate)
-                except ValueError as ve:
+                except ValueError:
                     raise gcmd.error("Invalid GATES parameter: %s" % gates)
             else:
                 # Specifying one gate (filament)
@@ -7138,11 +7126,11 @@ class Mmu:
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during gate check
                 with self._wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
-                    with self._wrap_action(self.ACTION_CHECKING):
+                    with self.wrap_action(self.ACTION_CHECKING):
                         with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                             tool_selected = self.tool_selected
                             filament_pos = self.filament_pos
-                            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
+                            self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
                             gates_tools = []
                             if tools != "!":
                                 # Tools used in print (may be empty list)
@@ -7150,21 +7138,21 @@ class Mmu:
                                     for tool in tools.split(','):
                                         if not tool == "":
                                             tool = int(tool)
-                                            if tool >= 0 and tool < self.mmu_num_gates:
+                                            if 0 <= tool < self.num_gates:
                                                 gate = self.ttg_map[tool]
                                                 gates_tools.append([gate, tool])
                                     if len(gates_tools) == 0:
                                         self.log_debug("No tools to check, assuming default tool is already loaded")
                                         self._auto_filament_grip()
                                         return
-                                except ValueError as ve:
+                                except ValueError:
                                     raise MmuError("Invalid TOOLS parameter: %s" % tools)
                             elif gates != "!":
                                 # List of gates
                                 try:
                                     for gate in gates.split(','):
                                         gate = int(gate)
-                                        if gate >= 0 and gate < self.mmu_num_gates:
+                                        if 0 <= gate < self.num_gates:
                                             gates_tools.append([gate, -1])
                                 except ValueError as ve:
                                     raise MmuError("Invalid GATES parameter: %s" % tools)
@@ -7176,7 +7164,7 @@ class Mmu:
                                 # Individual gate
                                 gates_tools.append([gate, -1])
                             elif all_gates:
-                                for gate in range(self.mmu_num_gates):
+                                for gate in range(self.num_gates):
                                     gates_tools.append([gate, -1])
                             elif self.gate_selected >= 0:
                                 # No parameters means current gate
@@ -7185,7 +7173,7 @@ class Mmu:
                                 raise MmuError("Current gate is invalid")
 
                             # Force initial eject
-                            if not filament_pos == self.FILAMENT_POS_UNLOADED:
+                            if filament_pos != self.FILAMENT_POS_UNLOADED:
                                 self.log_info("Unloading current tool prior to checking gates")
                                 self._unload_tool() # Can throw MmuError
 
@@ -7266,7 +7254,7 @@ class Mmu:
                             gate = self.gate_selected
                         else:
                             self.selector.select_gate(gate)
-                        for i in range(self.preload_attempts):
+                        for _ in range(self.preload_attempts):
                             self.log_always("Loading...")
                             try:
                                 self._load_gate(allow_retry=False, adjust_grip_on_error=False)

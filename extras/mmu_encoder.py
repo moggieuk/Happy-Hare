@@ -55,7 +55,6 @@ class MmuEncoder:
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
         self.event_delay = config.getfloat('event_delay', 2., above=0.)
         self.pause_delay = config.getfloat('pause_delay', 0, above=0.)
-        gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.runout_gcode = '__MMU_ENCODER_RUNOUT'
         self.insert_gcode = '__MMU_ENCODER_INSERT'
         self._enabled = True # Runout/Clog functionality
@@ -230,7 +229,7 @@ class MmuEncoder:
         self._update_detection_length()
 
     def set_mode(self, mode):
-        if mode >= self.RUNOUT_DISABLED and mode <= self.RUNOUT_AUTOMATIC:
+        if self.RUNOUT_DISABLED <= mode <= self.RUNOUT_AUTOMATIC:
             self.detection_mode = mode
 
     def set_extruder(self, extruder_name):

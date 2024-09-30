@@ -2,7 +2,7 @@
 # Wrapper around led_effect klipper module to replicate any effect on entire strip as well
 # as on each individual LED for per-gate effects. The implements the shared definition for
 # intuitive configuration and minimising errors
-# 
+#
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
 #
@@ -34,7 +34,7 @@ class MmuLeds:
             logging.warning("Happy Hare LED support cannot be loaded. Led strip '%s' not defined" % led_strip)
         else:
             try:
-                pixels = config.get_printer().load_object(config, led_strip.replace(':', ' '))
+                _ = config.get_printer().load_object(config, led_strip.replace(':', ' '))
                 MmuLeds.led_strip = led_strip
             except Exception as e:
                 raise config.error("Unable to load LED strip '%s': %s" % (led_strip, str(e)))
@@ -67,11 +67,10 @@ class MmuLeds:
             MmuLeds.chains = {}
         else:
             try:
-                led_effects = config.get_printer().load_object(config, 'led_effect')
+                _ = config.get_printer().load_object(config, 'led_effect')
                 MmuLeds.led_effect_module = True
             except Exception:
                 MmuLeds.led_effect_module = False
 
 def load_config(config):
     return MmuLeds(config)
-

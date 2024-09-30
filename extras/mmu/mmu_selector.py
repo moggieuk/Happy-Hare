@@ -25,7 +25,7 @@ import random, logging, math, re
 from extras.homing import Homing, HomingMove
 
 # Happy Hare imports
-import extras.mmu_machine as mmu_machine
+from extras import mmu_machine
 from .mmu_shared import MmuError
 
 FILAMENT_UNKNOWN_STATE = -1
@@ -661,7 +661,7 @@ class LinearSelector:
                             homed = True
                     else:
                         homed = True
-            except self.mmu.printer.command_error as e:
+            except self.mmu.printer.command_error:
                 homed = False
             finally:
                 self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
@@ -697,7 +697,7 @@ class LinearSelector:
             homing_state.set_axes([0])
             self.mmu.mmu_kinematics.home(homing_state)
             homed = True
-        except Exception as e:
+        except Exception:
             pass # Home not found
         mcu_position = self.selector_stepper.get_mcu_position()
         traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
@@ -827,7 +827,7 @@ class LinearSelectorServo:
         self.mmu.movequeues_wait()
         self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
-            for i in range(self.servo_buzz_gear_on_down):
+            for _ in range(self.servo_buzz_gear_on_down):
                 self.mmu.trace_filament_move(None, 0.8, speed=25, accel=self.mmu.gear_buzz_accel, encoder_dwell=None)
                 self.mmu.trace_filament_move(None, -0.8, speed=25, accel=self.mmu.gear_buzz_accel, encoder_dwell=None)
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
@@ -897,11 +897,11 @@ class LinearSelectorServo:
         large=max(self.servo_angles['down'], self.servo_angles['up'])
         mid=(self.servo_angles['down'] + self.servo_angles['up'])/2
         duration=None if self.servo_always_active else self.servo_duration
-        self.set_value(angle=mid, duration=duration)
+        self.set_position(angle=mid, duration=duration)
         self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-        self.set_value(angle=abs(mid+small)/2, duration=duration)
+        self.set_position(angle=abs(mid+small)/2, duration=duration)
         self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-        self.set_value(angle=abs(mid+large)/2, duration=duration)
+        self.set_position(angle=abs(mid+large)/2, duration=duration)
         self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
         self.mmu.movequeues_wait()
         if old_state == self.SERVO_DOWN_STATE:

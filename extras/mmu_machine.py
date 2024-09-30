@@ -168,14 +168,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.extruder = DummyExtruder(self.printer)
 
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
-        
+
         # Create MMU kinematics
         try:
             self.kin = MmuKinematics(self, config)
             self.all_gear_rail_steppers = self.kin.rails[1].get_steppers()
-        except config.error as e:
+        except config.error:
             raise
-        except self.printer.lookup_object('pins').error as e:
+        except self.printer.lookup_object('pins').error:
             raise
         except:
             msg = "Error loading MMU kinematics"
@@ -382,7 +382,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             pos = [0., self.mmu_toolhead.get_position()[1], 0.]
 
         else:
-            raise Exception("Invalid sync_mode: %d" % sync_mode)
+            raise Exception("Invalid sync_mode: %d" % self.sync_mode)
 
         for i, s in enumerate(following_steppers):
             s.set_stepper_kinematics(self._prev_sk[i])
@@ -477,7 +477,7 @@ class MmuKinematics:
         self.gear_max_velocity, self.gear_max_accel = toolhead.get_gear_limits()
         self.move_accel = None
         self.limits = [(1.0, -1.0)] * len(self.rails)
-    
+
     def get_steppers(self):
         return [s for rail in self.rails for s in rail.get_steppers()]
 
@@ -546,7 +546,7 @@ class MmuHoming(Homing, object):
     def __init__(self, printer, mmu_toolhead):
         super(MmuHoming, self).__init__(printer)
         self.toolhead = mmu_toolhead # Override default toolhead
-    
+
     def home_rails(self, rails, forcepos, movepos):
         # Notify of upcoming homing operation
         self.printer.send_event("homing:home_rails_begin", self, rails)
@@ -666,11 +666,11 @@ class MmuPrinterRail(stepper.PrinterRail, object):
 
     # Returns the mcu_endstop of given name
     def get_extra_endstop(self, name):
-         matches = [x for x in self.extra_endstops if x[1] == name]
-         if matches:
-             return list(matches)
-         else:
-             return None
+        matches = [x for x in self.extra_endstops if x[1] == name]
+        if matches:
+            return list(matches)
+        else:
+            return None
 
     def is_endstop_virtual(self, name):
         return name in self.virtual_endstops if name else False

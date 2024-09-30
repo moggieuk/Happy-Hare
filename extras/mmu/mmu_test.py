@@ -14,15 +14,15 @@
 import random
 
 # Happy Hare imports
-import extras.mmu_machine as mmu_machine
-from .mmu_shared import MmuError
+from extras import mmu_machine
+from extras.mmu_machine import MmuToolHead
+from .mmu_shared import *
 
 class MmuTest:
 
     def __init__(self, mmu):
         self.mmu = mmu
         mmu.gcode.register_command('_MMU_TEST', self.cmd_MMU_TEST, desc = self.cmd_MMU_TEST_help) # Internal for testing
-
 
     cmd_MMU_TEST_help = "Internal Happy Hare development tests"
     def cmd_MMU_TEST(self, gcmd):
@@ -156,7 +156,7 @@ class MmuTest:
                         self.mmu.log_info("Loop: %d - Regular move: %.1fmm, MOTOR=%s" %  (i, move, motor))
                         self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=%.2f SPEED=%d" % (motor, move, speed))
                         total += move
-                    elif move_type == 4 or move_type == 5 or move_type == 6:
+                    elif move_type in (4, 5, 6):
                         self.mmu.log_info("Loop: %d - HOMING MOVE: %.1fmm, MOTOR=%s" % (i, move, motor))
                         self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=%.2f SPEED=%d ENDSTOP=%s STOP_ON_ENDSTOP=1" % (motor, move, speed, endstop))
                         total += move
