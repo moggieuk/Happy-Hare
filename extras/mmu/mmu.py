@@ -5246,12 +5246,11 @@ class Mmu:
 
     def _set_rotation_distance(self, rd):
         if rd <= 0:
-            rd = self.default_rotation_distance
-            self.log_debug("Falling back to default hardware configured default rotation distance: %.6f" % rd)
-            self.gear_stepper.set_rotation_distance(rd)
+            rd = self.rotation_distances[0] if self.rotation_distances[0] > 0 else self.default_rotation_distance
+            self.log_debug("Gate not calibrated, falling back to: %.6f" % rd)
         else:
             self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
-            self.gear_stepper.set_rotation_distance(rd)
+        self.gear_stepper.set_rotation_distance(rd)
 
     def _get_rotation_distance(self, gate):
         return self.rotation_distances[gate if gate >= 0 and self.variable_gate_ratios else 0]
