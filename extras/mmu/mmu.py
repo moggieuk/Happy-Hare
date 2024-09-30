@@ -1194,22 +1194,22 @@ class Mmu:
             # Splash...
             msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % fversion(self.config_version)
             self.log_always(msg, color=True)
+            self._set_print_state("initialized")
+
+            self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
+            self._recover_filament_pos(can_heat=False, message=False, silent=True) # Sanity check filament pos
 
             if self.log_startup_status:
                 self.log_always(self._mmu_visual_to_string() if self.log_startup_status == 1 else self._ttg_map_to_string())
                 self._display_visual_state(silent=self.persistence_level < 4)
-            self._set_print_state("initialized")
 
             if self._has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_runout() # Initially disable clog/runout detection
 
             self.selector.filament_hold()
-            self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
-            self._recover_filament_pos(can_heat=False, message=True) # Sanity check filament pos
-
             self.movequeues_wait()
-            self._spoolman_sync() # Delay as long as possible to maximize the chance it is contactable after reboot
+            self._spoolman_sync() # Delay as long as possible to maximize the chance it is contactable after startup/reboot
         except Exception as e:
             self.log_error('Warning: Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
@@ -1854,7 +1854,7 @@ class Mmu:
             else:
                 msg += "\n- Extruder (synced) loads by moving %s to the nozzle" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining")
             if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
-                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, self.toolhead_post_load_tighten)
+                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (max(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 30), self.toolhead_post_load_tighten)
 
             msg += "\n\nUnload Sequence:"
             msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), " after initial retraction of %s" % self._f_calc("toolchange_retract")))
@@ -1874,15 +1874,18 @@ class Mmu:
                 msg += "\n- Bowden is unloaded with a short %s validation move before %s fast move" % (self._f_calc("encoder_move_step_size"), self._f_calc("calibrated_bowden_length - gate_unload_buffer - encoder_move_step_size"))
             else:
                 msg += "\n- Bowden is unloaded with a fast %s move" % self._f_calc("calibrated_bowden_length - gate_unload_buffer")
-            msg += "\n- Filament is stored by homing a maximum of %s to %s and parking %s in the gate" % (self._f_calc("gate_homing_max"), self._gate_homing_string(), self._f_calc("gate_parking_distance"))
+            msg += "\n- Filament is stored by homing a maximum of %s to %s and parking %s in the gate\n" % (self._f_calc("gate_homing_max"), self._gate_homing_string(), self._f_calc("gate_parking_distance"))
 
-            msg += "\n\nNote that toolchange_retract is always 0 when not in print"
             if self.sync_form_tip or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
-                msg += ("Print (at %d%% current %s sync feedback)" % (self.sync_gear_current, "with" if self.sync_feedback_enable else "without")) if self.sync_to_extruder else ""
-                msg += " and tip forming" if self.sync_form_tip else ""
+                m = []
+                if self.sync_to_extruder:
+                    m.append("Print (at %d%% current %s sync feedback)" % (self.sync_gear_current, "with" if self.sync_feedback_enable else "without"))
+                if self.sync_form_tip:
+                    m.append("Tip forming")
+                msg += ",".join(m)
 
-            msg += "\n\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector.use_touch_move() else ("DISABLED", "is not"))
+            msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector.use_touch_move() else ("DISABLED", "is not"))
             p = self.persistence_level
             msg += "\nPersistence: %s state is persisted across restarts" % ("All" if p == 4 else "Gate status, TTG map & EndlessSpool groups" if p == 3 else "TTG map & EndlessSpool groups" if p == 2 else "EndlessSpool groups" if p == 1 else "No")
             if self._has_encoder():
@@ -4101,7 +4104,7 @@ class Mmu:
             if self._can_use_encoder() and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
                 with self._wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
                     # Servo will already be down
-                    pullback = self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100 # % of current clog detection length
+                    pullback = max(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 30) # % of current clog detection length
                     _,_,measured,delta = self.trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
                     self.log_info("Filament tightened by %.1fmm to prevent false clog detection" % pullback)
 
@@ -4493,7 +4496,7 @@ class Mmu:
                 self._set_action(current_action)
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
-    def _recover_filament_pos(self, strict=False, can_heat=True, message=False):
+    def _recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
         with self._wrap_sync_gear_to_extruder():
             if message:
                 self.log_info("Attempting to recover filament position...")
@@ -4501,24 +4504,24 @@ class Mmu:
             if ts is None: # Not installed
                 if self._check_filament_in_mmu():
                     if can_heat and self._check_filament_still_in_extruder():
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent)
                     else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # This prevents fast unload move
                 else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
             elif ts: # Filament detected in toolhead
-                self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
+                self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=silent)
             else: # Filament not detected in toolhead
                 if self._check_filament_in_mmu():
                     if self.strict_filament_recovery or strict:
                         if can_heat and self._check_filament_still_in_extruder():
-                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
                         else:
-                            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+                            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent)
                     else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # Slight risk of it still being gripped by extruder
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Slight risk of it still being gripped by extruder
                 else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
 
         # If filament is found then ensure gate status is correct
         if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.filament_pos >= self.FILAMENT_POS_START_BOWDEN and self.gate_status[self.gate_selected] == self.GATE_EMPTY:
