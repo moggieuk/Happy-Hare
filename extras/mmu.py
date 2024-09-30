@@ -3800,12 +3800,14 @@ class Mmu:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_%d" % (self.PRE_GATE_SENSOR_PREFIX, gate), None)
             if sensor:
                 sensor.runout_helper.enable_runout(restore and (gate == self.gate_selected))
+
         sensor = self.sensors.get(self.ENDSTOP_GATE, None)
         if sensor is not None:
             sensor.runout_helper.enable_runout(restore and (self.gate_selected != self.TOOL_GATE_UNKNOWN))
+
         sensor = self.sensors.get(self.ENDSTOP_EXTRUDER_ENTRY, None)
         if sensor is not None:
-            sensor.runout_helper.enable_runout(restore)
+            sensor.runout_helper.enable_runout(restore and (self.gate_selected != self.TOOL_GATE_UNKNOWN))
 
     def _check_runout(self):
         if self._is_mmu_paused() and not self.resume_to_state == "printing": return
@@ -5916,6 +5918,7 @@ class Mmu:
     # Primary method to select and loads tool. Assumes we are unloaded.
     def _select_and_load_tool(self, tool):
         self.log_debug('Loading tool T%d...' % tool)
+        self._select_tool(tool, move_servo=False)
         gate = self.ttg_map[tool]
         if self.gate_status[gate] == self.GATE_EMPTY:
             if self.enable_endless_spool and self.endless_spool_on_load:
@@ -5923,14 +5926,14 @@ class Mmu:
                 next_gate, checked_gates = self._get_next_endless_spool_gate(tool, gate)
                 if next_gate == -1:
                     raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
-                self.log_info("Remapping T%d to Gate %d" % (tool, next_gate))
-                gate = self._remap_tool(tool, next_gate)
+                self.log_info("Remapping T%d to next EndlessSpool Gate %d" % (tool, next_gate))
+                self._remap_tool(tool, next_gate)
+                self._select_tool(tool, move_servo=False)
             else:
                 raise MmuError("Gate %d is empty!\nUse 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % (gate, gate, gate))
 
         with self._wrap_track_time('pre_load'):
             self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
-        self._select_tool(tool, move_servo=False)
         self._load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
@@ -6463,7 +6466,7 @@ class Mmu:
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                     if not extruder_only:
                         self._save_toolhead_position_and_park('load')
-                        self._select_and_load_tool(self.tool_selected) # This could change gate tool is mapped to
+                        self._select_and_load_tool(self.tool_selected)
                         self._persist_gate_statistics()
                         self._continue_after('load', restore=restore)
                     else:
@@ -7126,7 +7129,7 @@ class Mmu:
 
     def _get_next_endless_spool_gate(self, tool, gate):
         group = self.endless_spool_groups[gate]
-        self.log_info("EndlessSpool checking for additional gates in Group_%d for T%d..." % (group, tool))
+        self.log_info("Checking for additional gates for T%d in EndlessSpool Group %s..." % (tool, chr(ord('A') + group)))
         next_gate = -1
         checked_gates = []
         for i in range(self.mmu_num_gates - 1):
@@ -7283,7 +7286,6 @@ class Mmu:
         self._update_slicer_color() # Indexed by gate
         if available is not None:
             self._set_gate_status(gate, available)
-        return gate
 
     # Find a tool that maps to gate (for recovery)
     def _ensure_ttg_match(self):
