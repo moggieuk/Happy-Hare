@@ -695,7 +695,7 @@ class Mmu:
 # PAUL need to add all mmu_gate_X sensors as endstops
         for name in [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER_ENTRY]:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
-            if sensor is not None:
+            if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
                 self.sensors[name] = sensor
 
                 # Add sensor pin as an extra endstop for gear rail
@@ -1199,17 +1199,15 @@ class Mmu:
                 self.log_always(self._mmu_visual_to_string() if self.log_startup_status == 1 else self._ttg_map_to_string())
                 self._display_visual_state(silent=self.persistence_level < 4)
             self._set_print_state("initialized")
+
             if self._has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_runout() # Initially disable clog/runout detection
 
-            # Sanity check filament pos if toolhead sensor available
-            ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
-            if ts is True and self.filament_pos != self.FILAMENT_POS_LOADED or ts is False and self.filament_pos != self.FILAMENT_POS_UNLOADED:
-                self._recover_filament_pos(message=True)
-
             self.selector.filament_hold()
             self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
+            self._recover_filament_pos(can_heat=False, message=True) # Sanity check filament pos
+
             self.movequeues_wait()
             self._spoolman_sync() # Delay as long as possible to maximize the chance it is contactable after reboot
         except Exception as e:
@@ -2873,7 +2871,7 @@ class Mmu:
             self._wrap_gcode_command(self.pause_macro)
 
         if recover_pos:
-            self._recover_filament_pos(strict=False, message=True)
+            self._recover_filament_pos(message=True)
 
         # Default to unsynced on error. Will be restored on resume/continue_printing
         self._sync_gear_to_extruder(False, grip=True)
@@ -3046,12 +3044,14 @@ class Mmu:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_%d" % (self.PRE_GATE_SENSOR_PREFIX, gate), None)
             if sensor:
                 sensor.runout_helper.enable_runout(restore and (gate == self.gate_selected))
+
         sensor = self.sensors.get(self.ENDSTOP_GATE, None)
         if sensor is not None:
             sensor.runout_helper.enable_runout(restore and (self.gate_selected != self.TOOL_GATE_UNKNOWN))
+
         sensor = self.sensors.get(self.ENDSTOP_EXTRUDER_ENTRY, None)
         if sensor is not None:
-            sensor.runout_helper.enable_runout(restore)
+            sensor.runout_helper.enable_runout(restore and (self.gate_selected != self.TOOL_GATE_UNKNOWN))
 
     def _check_runout(self):
         if self.is_mmu_paused() and not self.resume_to_state == "printing": return
@@ -4493,14 +4493,14 @@ class Mmu:
                 self._set_action(current_action)
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
-    def _recover_filament_pos(self, strict=False, message=False):
+    def _recover_filament_pos(self, strict=False, can_heat=True, message=False):
         with self._wrap_sync_gear_to_extruder():
             if message:
                 self.log_info("Attempting to recover filament position...")
             ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
             if ts is None: # Not installed
                 if self._check_filament_in_mmu():
-                    if self._check_filament_still_in_extruder():
+                    if can_heat and self._check_filament_still_in_extruder():
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                     else:
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN) # This prevents fast unload move
@@ -4511,7 +4511,7 @@ class Mmu:
             else: # Filament not detected in toolhead
                 if self._check_filament_in_mmu():
                     if self.strict_filament_recovery or strict:
-                        if self._check_filament_still_in_extruder():
+                        if can_heat and self._check_filament_still_in_extruder():
                             self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                         else:
                             self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
@@ -5135,6 +5135,7 @@ class Mmu:
     # Primary method to select and loads tool. Assumes we are unloaded.
     def _select_and_load_tool(self, tool):
         self.log_debug('Loading tool T%d...' % tool)
+        self._select_tool(tool, move_servo=False)
         gate = self.ttg_map[tool]
         if self.gate_status[gate] == self.GATE_EMPTY:
             if self.enable_endless_spool and self.endless_spool_on_load:
@@ -5142,14 +5143,14 @@ class Mmu:
                 next_gate, checked_gates = self._get_next_endless_spool_gate(tool, gate)
                 if next_gate == -1:
                     raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
-                self.log_info("Remapping T%d to Gate %d" % (tool, next_gate))
-                gate = self._remap_tool(tool, next_gate)
+                self.log_info("Remapping T%d to next EndlessSpool Gate %d" % (tool, next_gate))
+                self._remap_tool(tool, next_gate)
+                self._select_tool(tool, move_servo=False)
             else:
                 raise MmuError("Gate %d is empty!\nUse 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % (gate, gate, gate))
 
         with self._wrap_track_time('pre_load'):
             self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
-        self.select_tool(tool, move_servo=False)
         self.load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
@@ -5666,7 +5667,7 @@ class Mmu:
                 with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                     if not extruder_only:
                         self._save_toolhead_position_and_park('load')
-                        self._select_and_load_tool(self.tool_selected) # This could change gate tool is mapped to
+                        self._select_and_load_tool(self.tool_selected)
                         self._persist_gate_statistics()
                         self._continue_after('load', restore=restore)
                     else:
@@ -6309,7 +6310,7 @@ class Mmu:
 
     def _get_next_endless_spool_gate(self, tool, gate):
         group = self.endless_spool_groups[gate]
-        self.log_info("EndlessSpool checking for additional gates in Group_%d for T%d..." % (group, tool))
+        self.log_info("Checking for additional gates for T%d in EndlessSpool Group %s..." % (tool, chr(ord('A') + group)))
         next_gate = -1
         checked_gates = []
         for i in range(self.num_gates - 1):
@@ -6466,7 +6467,6 @@ class Mmu:
         self._update_slicer_color() # Indexed by gate
         if available is not None:
             self._set_gate_status(gate, available)
-        return gate
 
     # Find a tool that maps to gate (for recovery)
     def _ensure_ttg_match(self):
