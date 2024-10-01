@@ -1407,7 +1407,10 @@ class Mmu:
             self._set_print_state("initialized")
 
             self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
-            self._recover_filament_pos(can_heat=False, message=False, silent=True) # Sanity check filament pos
+            # Sanity check filament pos if toolhead sensor available
+            ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
+            if ts is True and self.filament_pos != self.FILAMENT_POS_LOADED or ts is False and self.filament_pos != self.FILAMENT_POS_UNLOADED:
+                self._recover_filament_pos(can_heat=False, message=True, silent=True)
 
             if self.log_startup_status:
                 self.log_always(self._mmu_visual_to_string() if self.log_startup_status == 1 else self._ttg_map_to_string())
