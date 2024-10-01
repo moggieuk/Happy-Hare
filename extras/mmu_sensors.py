@@ -164,14 +164,13 @@ class MmuSensors:
 
         # Setup "mmu_gate" sensor(s)...
         switch_pin = config.get('gate_switch_pin', None)
-        logging.info("PAUL: switch_pin=%s" % switch_pin)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
-            self._create_gate_sensor(config, None, switch_pin, event_delay, pause_delay)
+            self._create_gate_sensor(config, None, switch_pin, event_delay)
         else:
             for gate in range(23):
                 switch_pin = config.get(f'gate_switch_pin_{gate}', None)
                 if switch_pin is not None and not self._is_empty_pin(switch_pin):
-                    self._create_gate_sensor(config, gate, switch_pin, event_delay, pause_delay)
+                    self._create_gate_sensor(config, gate, switch_pin, event_delay)
 
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
@@ -220,9 +219,8 @@ class MmuSensors:
             self.has_compression_switch = True
             self.compression_switch_state = 0
 
-    def _create_gate_sensor(self, config, gate, switch_pin, event_delay, pause_delay):
+    def _create_gate_sensor(self, config, gate, switch_pin, event_delay):
         name = "%s_%d" % (self.ENDSTOP_GATE, gate) if gate is not None else "%s_sensor" % self.ENDSTOP_GATE
-        logging.info("PAUL: name=%s" % name)
         section = "filament_switch_sensor %s" % name
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
@@ -232,7 +230,7 @@ class MmuSensors:
         # Replace with custom runout_helper because limited operation is possible during print
         insert_gcode = None
         runout_gcode = f"__MMU_GATE_RUNOUT GATE={gate}" if gate is not None else "__MMU_GATE_RUNOUT"
-        gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+        gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
         fs.runout_helper = gate_helper
         fs.get_status = gate_helper.get_status
 
