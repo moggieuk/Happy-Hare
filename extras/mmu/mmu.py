@@ -696,7 +696,7 @@ class Mmu:
         for name in [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER_ENTRY]:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
             if sensor is not None:
-                if isinstance(sensor.runout_helper, MmuRunoutHelper):
+                if name == self.ENDSTOP_TOOLHEAD or isinstance(sensor.runout_helper, MmuRunoutHelper):
                     self.sensors[name] = sensor
 
                     # Add sensor pin as an extra endstop for gear rail
