@@ -7510,8 +7510,11 @@ class Mmu:
     def cmd_MMU_EXTRUDER_RUNOUT(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
-        self._fix_started_state()
-        # TODO Extruder runout feature - just pause print as precaution
+
+        do_runout = gcmd.get_int('DO_RUNOUT', 0)
+        if do_runout:
+            # TODO Future extruder runout feature - just pause print as precaution
+            self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
     # Callback to handle filament sensor at extruder entrance
     # This is not protected by klipper "is not printing" check
