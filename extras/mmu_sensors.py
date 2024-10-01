@@ -142,7 +142,7 @@ class MmuSensors:
         self.printer = config.get_printer()
 
         event_delay = config.get('event_delay', 1.)
-        pause_delay = config.get('pause_delay', 0)
+        pause_delay = config.get('pause_delay', 0) # TODO - delete me throughout. It is silly to delay pause
 
         # Setup and pre-gate sensors that are defined...
         for gate in range(23):

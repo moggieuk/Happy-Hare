@@ -870,21 +870,24 @@ class Mmu:
         # Setup filament homing sensors ------
         for name in [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER_ENTRY]:
             sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
-            if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
-                self.sensors[name] = sensor
+            if sensor is not None:
+                if isinstance(sensor.runout_helper, MmuRunoutHelper):
+                    self.sensors[name] = sensor
 
-                # Add sensor pin as an extra endstop for gear rail
-                sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
-                ppins = self.printer.lookup_object('pins')
-                pin_params = ppins.parse_pin(sensor_pin, True, True)
-                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-                ppins.allow_multi_use_pin(share_name)
-                mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
+                    # Add sensor pin as an extra endstop for gear rail
+                    sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
+                    ppins = self.printer.lookup_object('pins')
+                    pin_params = ppins.parse_pin(sensor_pin, True, True)
+                    share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+                    ppins.allow_multi_use_pin(share_name)
+                    mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
 
-                # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-                # otherwise the extruder can continue to move a small (speed dependent) distance
-                if self.homing_extruder:
-                    mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
+                    # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
+                    # otherwise the extruder can continue to move a small (speed dependent) distance
+                    if self.homing_extruder and name == self.ENDSTOP_TOOLHEAD:
+                        mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
+                else:
+                    logging.warn("Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
 
         # Get servo and (optional) encoder setup -----
         self.servo = self.printer.lookup_object('mmu_servo mmu_servo', None)
@@ -2296,7 +2299,7 @@ class Mmu:
             else:
                 msg += "\n- Extruder (synced) loads by moving %s to the nozzle" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining")
             if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
-                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (max(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 30), self.toolhead_post_load_tighten)
+                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 20), self.toolhead_post_load_tighten)
 
             msg += "\n\nUnload Sequence:"
             msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), " after initial retraction of %s" % self._f_calc("toolchange_retract")))
@@ -4863,7 +4866,7 @@ class Mmu:
             if self._can_use_encoder() and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
                 with self._wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
                     # Servo will already be down
-                    pullback = max(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 30) # % of current clog detection length
+                    pullback = min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 20) # % of current clog detection length
                     _,_,measured,delta = self._trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
                 self.log_info("Filament tightened by %.1fmm to prevent false clog detection" % pullback)
 
@@ -7512,7 +7515,6 @@ class Mmu:
     def cmd_MMU_ENCODER_INSERT(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
-        self._fix_started_state()
         # TODO Possible future bypass preload feature - make gate act like bypass
 
     # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate
@@ -7569,8 +7571,11 @@ class Mmu:
     def cmd_MMU_EXTRUDER_RUNOUT(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
-        self._fix_started_state()
-        # TODO Extruder runout feature - just pause print as precaution
+
+        do_runout = gcmd.get_int('DO_RUNOUT', 0)
+        if do_runout:
+            # TODO Future extruder runout feature - just pause print as precaution
+            self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
     # Callback to handle filament sensor at extruder entrance
     # This is not protected by klipper "is not printing" check
