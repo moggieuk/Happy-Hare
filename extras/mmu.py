@@ -118,7 +118,7 @@ class MmuError(Exception):
 #    <synced_move>
 class DebugStepperMovement:
     def __init__(self, mmu, debug=False):
-        self.mmu = mmu 
+        self.mmu = mmu
         self.debug = debug
 
     def __enter__(self):
@@ -2299,7 +2299,7 @@ class Mmu:
             else:
                 msg += "\n- Extruder (synced) loads by moving %s to the nozzle" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining")
             if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
-                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 20), self.toolhead_post_load_tighten)
+                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
 
             msg += "\n\nUnload Sequence:"
             msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), " after initial retraction of %s" % self._f_calc("toolchange_retract")))
@@ -4866,7 +4866,7 @@ class Mmu:
             if self._can_use_encoder() and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
                 with self._wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
                     # Servo will already be down
-                    pullback = min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 20) # % of current clog detection length
+                    pullback = min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15) # % of current clog detection length
                     _,_,measured,delta = self._trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
                 self.log_info("Filament tightened by %.1fmm to prevent false clog detection" % pullback)
 
@@ -4970,8 +4970,7 @@ class Mmu:
                     elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
                         msg = "suffient"
                     if msg:
-                        self.log_error("Encoder not sensing %s movement:\nConcluding filament either stuck in the extruder or tip forming erroneously completely ejected filament" % msg)
-                        self.log_info("Will attempt to continue...")
+                        self.log_error("Encoder not sensing %s movement\nConcluding filament either stuck in the extruder or tip forming erroneously completely ejected filament\nWill attempt to continue..." % msg)
                 self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
 
             self._random_failure() # Testing
@@ -5232,10 +5231,11 @@ class Mmu:
                 movement = self._servo_up(measure=True)
                 if movement > self.encoder_min:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
-                    raise MmuError("It may be time to get the pliers out! Filament appears to be stuck somewhere")
+                    raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament to be stuck somewhere")
             else:
                 self._servo_up()
 
+            self.movequeues_wait()
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
                 msg += " (encoder measured %.1fmm)" % self._get_encoder_distance(dwell=False)
@@ -7505,7 +7505,6 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
-
         try:
             self._runout()
         except MmuError as ee:
@@ -7525,7 +7524,6 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
-
         try:
             gate = gcmd.get_int('GATE', None)
             do_runout = gcmd.get_int('DO_RUNOUT', 0)
@@ -7553,7 +7551,6 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
-
         try:
             gate = gcmd.get_int('GATE', None)
             if gate is not None:
@@ -7584,7 +7581,6 @@ class Mmu:
         self._log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
-
         try:
             if self.gate_selected != self.TOOL_GATE_BYPASS:
                 msg = "bypass not selected"
@@ -7897,7 +7893,7 @@ class Mmu:
                     [
                         calc(x,y) if should_calc(x,y) else 0
                         for y in range(self.mmu_num_gates)
-                    ] 
+                    ]
                     for x in range(self.mmu_num_gates)
                 ]
             except ValueError as e:

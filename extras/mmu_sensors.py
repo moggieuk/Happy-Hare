@@ -33,14 +33,13 @@
 import logging, time
 
 class MmuRunoutHelper:
-    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay, pause_delay):
+    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay):
         self.printer, self.name = printer, name
         self.insert_gcode, self.runout_gcode = insert_gcode, runout_gcode
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
         self.min_event_systime = self.reactor.NEVER
-        self.pause_delay = pause_delay # Time to wait after pause
         self.event_delay = event_delay # Time between generated events
         self.filament_present = False
         self.sensor_enabled = True
@@ -70,8 +69,6 @@ class MmuRunoutHelper:
         # Pausing from inside an event requires that the pause portion of pause_resume execute immediately.
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
-        if self.pause_delay:
-            self.printer.get_reactor().pause(eventtime + self.pause_delay)
         self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1")
 
     def _exec_gcode(self, command):
@@ -94,15 +91,15 @@ class MmuRunoutHelper:
         # Let Happy Hare decide what processing is possible based on printing state
         if is_filament_present: # Insert detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
+            #logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._insert_event_handler)
         else: # Runout detected
             self.min_event_systime = self.reactor.NEVER
             if self.runout_suspended: # Just a remove event
-                logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
+                #logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._remove_event_handler)
             else: # True runout
-                logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
+                #logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._runout_event_handler)
 
     def enable_runout(self, restore):
@@ -142,7 +139,6 @@ class MmuSensors:
         self.printer = config.get_printer()
 
         event_delay = config.get('event_delay', 1.)
-        pause_delay = config.get('pause_delay', 0) # TODO - delete me throughout. It is silly to delay pause
 
         # Setup and pre-gate sensors that are defined...
         for gate in range(23):
@@ -162,7 +158,7 @@ class MmuSensors:
             # Replace with custom runout_helper because limited operation is possible during print
             insert_gcode = "__MMU_GATE_INSERT GATE=%d" % gate
             runout_gcode = "__MMU_GATE_RUNOUT GATE=%d" % gate
-            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
             fs.runout_helper = mmu_runout_helper
             fs.get_status = mmu_runout_helper.get_status
 
@@ -180,7 +176,7 @@ class MmuSensors:
             # Replace with custom runout_helper because limited operation is possible during print
             insert_gcode = "__MMU_GATE_INSERT"
             runout_gcode = "__MMU_GATE_RUNOUT"
-            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
             fs.runout_helper = mmu_runout_helper
             fs.get_status = mmu_runout_helper.get_status
 
@@ -198,7 +194,7 @@ class MmuSensors:
             # Replace with custom runout_helper because of limited operation
             insert_gcode = "__MMU_EXTRUDER_INSERT"
             runout_gcode = "__MMU_EXTRUDER_RUNOUT"
-            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
+            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
             fs.runout_helper = mmu_runout_helper
             fs.get_status = mmu_runout_helper.get_status
 
