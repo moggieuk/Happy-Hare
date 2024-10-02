@@ -3452,16 +3452,16 @@ class Mmu:
         self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string())
 
     def _is_printer_printing(self):
-        return self.print_stats and self.print_stats.state == "printing"
+        return bool(self.print_stats and self.print_stats.state == "printing")
 
     def _is_printer_paused(self):
         return self.pause_resume.is_paused
 
     def _is_printing(self, force_in_print=False): # Actively printing and not paused
-        return self.print_state in ["started", "printing"] or force_in_print or self.test_force_in_print
+        return bool(self.print_state in ["started", "printing"] or force_in_print or self.test_force_in_print)
 
     def _is_in_print(self, force_in_print=False): # Printing or paused
-        return self.print_state in ["printing", "pause_locked", "paused"] or force_in_print or self.test_force_in_print
+        return bool(self.print_state in ["printing", "pause_locked", "paused"] or force_in_print or self.test_force_in_print)
 
     def _is_mmu_paused(self): # The MMU is paused
         return self.print_state in ["pause_locked", "paused"]
