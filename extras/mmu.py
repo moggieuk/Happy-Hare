@@ -5933,15 +5933,16 @@ class Mmu:
         gate = self.ttg_map[tool]
         if self.gate_status[gate] == self.GATE_EMPTY:
             if self.enable_endless_spool and self.endless_spool_on_load:
-                self.log_info("Gate %d is empty!" % gate)
-                next_gate, checked_gates = self._get_next_endless_spool_gate(tool, gate)
+                next_gate, msg = self._get_next_endless_spool_gate(tool, gate)
                 if next_gate == -1:
-                    raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
-                self.log_info("Remapping T%d to next EndlessSpool Gate %d" % (tool, next_gate))
+                    raise MmuError("Gate %d is empty!\nNo alternatives gates available after checking %s" % (gate, msg))
+
+                self.log_error("Gate %d is empty! Checking for alternative gates %s" % (gate, msg))
+                self.log_info("Remapping T%d to Gate %d" % (tool, next_gate))
                 self._remap_tool(tool, next_gate)
                 self._select_tool(tool, move_servo=False)
             else:
-                raise MmuError("Gate %d is empty!\nUse 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % (gate, gate, gate))
+                raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
 
         with self._wrap_track_time('pre_load'):
             self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
@@ -7091,55 +7092,53 @@ class Mmu:
 ###########################################
 
     def _runout(self, force_runout=False):
-        self.is_handling_runout = force_runout # Best starting assumption
-        self._save_toolhead_position_and_park('runout')
+        with self._wrap_suspend_runout(): # Don't want runout accidently triggering during handling
+            self.is_handling_runout = force_runout # Best starting assumption
+            self._save_toolhead_position_and_park('runout')
 
-        if self.tool_selected < 0:
-            raise MmuError("Filament runout or clog on an unknown or bypass tool\nManual intervention is required")
+            if self.tool_selected < 0:
+                raise MmuError("Filament runout or clog on an unknown or bypass tool\nManual intervention is required")
 
-        if self.filament_pos != self.FILAMENT_POS_LOADED and not force_runout:
-            raise MmuError("Filament runout or clog occured but filament is marked as not loaded(?)\nManual intervention is required")
+            if self.filament_pos != self.FILAMENT_POS_LOADED and not force_runout:
+                raise MmuError("Filament runout or clog occured but filament is marked as not loaded(?)\nManual intervention is required")
 
-        self.log_info("Issue on tool T%d" % self.tool_selected)
+            self.log_debug("Issue on tool T%d" % self.tool_selected)
 
-        # Check for clog by looking for filament at the gate (or in the encoder)
-        if not force_runout:
-            self.log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)
-            if self._check_filament_at_gate():
-                if self._has_encoder():
-                    self.encoder_sensor.update_clog_detection_length()
-                self.is_handling_runout = False
-                raise MmuError("A clog has been detected and requires manual intervention")
+            # Check for clog by looking for filament at the gate (or in the encoder)
+            if not force_runout:
+                self.log_debug("Checking if this is a clog or a runout (state %d)..." % self.filament_pos)
+                if self._check_filament_at_gate():
+                    if self._has_encoder():
+                        self.encoder_sensor.update_clog_detection_length()
+                    self.is_handling_runout = False
+                    raise MmuError("A clog has been detected and requires manual intervention")
 
-        # We definitely have a filament runout
-        with self._wrap_suspend_runout(): # Don't want runout accidently triggering during swap
-            self.log_error("A runout has been detected")
+            # We definitely have a filament runout
             self.is_handling_runout = True # Will remain true until complete and continue or resume after error
-
             if self.enable_endless_spool:
                 self._set_gate_status(self.gate_selected, self.GATE_EMPTY) # Indicate current gate is empty
-                next_gate, checked_gates = self._get_next_endless_spool_gate(self.tool_selected, self.gate_selected)
-
+                next_gate, msg = self._get_next_endless_spool_gate(self.tool_selected, self.gate_selected)
                 if next_gate == -1:
-                    raise MmuError("No EndlessSpool alternatives available after reviewing gates: %s" % checked_gates)
+                    raise MmuError("Runout detected\nNo alternative gates available after checking %s" % msg)
+
+                self.log_error("A runout has been detected. Checking for alternative gates %s" % msg)
                 self.log_info("Remapping T%d to Gate %d" % (self.tool_selected, next_gate))
 
                 if self.endless_spool_eject_gate > 0:
-                    self.log_info("Ejecting filament to designated waste gate %d" % self.endless_spool_eject_gate)
+                    self.log_info("Ejecting filament remains to designated waste gate %d" % self.endless_spool_eject_gate)
                     self._select_gate(self.endless_spool_eject_gate)
                 self._unload_tool(runout=True)
                 self._select_gate(next_gate) # Necessary if unloaded to waste gate
                 self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
             else:
-                raise MmuError("EndlessSpool mode is off - manual intervention is required")
+                raise MmuError("Runout detected\nEndlessSpool mode is off - manual intervention is required")
 
         self._continue_after("endless_spool")
         self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
     def _get_next_endless_spool_gate(self, tool, gate):
         group = self.endless_spool_groups[gate]
-        self.log_info("Checking for additional gates for T%d in EndlessSpool Group %s..." % (tool, chr(ord('A') + group)))
         next_gate = -1
         checked_gates = []
         for i in range(self.mmu_num_gates - 1):
@@ -7149,7 +7148,8 @@ class Mmu:
                 if self.gate_status[check] != self.GATE_EMPTY:
                     next_gate = check
                     break
-        return next_gate, checked_gates
+        msg = "for T%d in EndlessSpool Group %s %s" % (tool, chr(ord('A') + group), checked_gates)
+        return next_gate, msg
 
     def _set_gate_status(self, gate, state):
         if gate >= 0:
@@ -7305,7 +7305,7 @@ class Mmu:
             possible_tools = [tool for tool in range(self.mmu_num_gates) if self.ttg_map[tool] == self.gate_selected]
             if possible_tools:
                 if self.tool_selected not in possible_tools:
-                    self.log_info("Resetting tool selected to match current gate")
+                    self.log_debug("Resetting tool selected to match current gate")
                     self._set_tool_selected(possible_tools[0])
             else:
                 self.log_info("Resetting tool selected to unknown because current gate isn't associated with tool")
