@@ -3719,7 +3719,6 @@ class Mmu:
                 self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=%s" % self.TOOLHEAD_POSITION_STATE)
                 self.saved_toolhead_operation = operation
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
-                self.saved_toolhead_speed = self.gcode_move.get_status(eventtime)['speed']
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
                 if next_pos:
@@ -3753,7 +3752,7 @@ class Mmu:
                 mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60.
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
-            # Allow resume to restore position if in mmu error/paused state
+            # If this is the final "restore toolhead position" call then allow macro to restore position, then sanity check
             if not (self._is_mmu_paused() or self._is_printer_paused()) or (operation == "resume" and (self._is_mmu_paused() or self._is_printer_paused())):
                 # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final eject)
                 if restore:
@@ -3761,23 +3760,26 @@ class Mmu:
 
                     # Paranoia: no matter what macros do ensure position and state is good. Either last, next or none (current x,y)
                     sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-                    if sequence_vars_macro and sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
-                        # Don't change x,y position on toolchange
-                        current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
-                        self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
+                    travel_speed = 200
+                    if sequence_vars_macro:
+                        if sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
+                            # Don't change x,y position on toolchange
+                            current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
+                            self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
+                        travel_speed = sequence_vars_macro.variables.get('park_travel_speed', travel_speed)
                     gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
                     display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
                     self.gcode.run_script_from_command("M204 S%d" % self.saved_toolhead_max_accel)
-                    self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, self.saved_toolhead_speed))
+                    self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, travel_speed))
                     self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
                     self._clear_saved_toolhead_position()
                     return
                 else:
-                    # Not restoring so clear all saved state
+                    # Special case of not restoring so just clear all saved state
                     self._wrap_gcode_command(self.clear_position_macro)
                     self._clear_saved_toolhead_position()
             else:
-                pass # Resume will handle restore so don't clear
+                pass # Resume will call here again shortly so we can ignore for now
         else:
             # Ensure all saved state is cleared
             self._wrap_gcode_command(self.clear_position_macro)
