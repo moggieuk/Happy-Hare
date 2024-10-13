@@ -4959,8 +4959,8 @@ class Mmu:
         return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
 
     # This is used to protect the in print synchronization state and is used as an outermost wrapper for
-    # calls back into Happy Hare during a print. It fully ensures that grip (servo) and current are correctly
-    # restored, but like the rest of Happy Hare it employs lazy grip (servo) movement to reduce "flutter"
+    # calls back into Happy Hare during a print. It ensures that grip (servo) and current are correctly restored,
+    # but like the rest of Happy Hare it employs lazy grip (servo) movement to reduce "flutter"
     @contextlib.contextmanager
     def _wrap_sync_gear_to_extruder(self):
         prev_gear_synced = self._sync_gear_to_extruder(False, grip=False, current=True)
@@ -5650,7 +5650,7 @@ class Mmu:
 
                     # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
                     self._continue_after('toolchange', restore)
-
+                    self._continue_after('toolchange', restore=restore)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 

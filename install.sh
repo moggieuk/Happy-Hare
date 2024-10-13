@@ -215,9 +215,9 @@ self_update() {
     set +e
     # timeout is unavailable on MIPS
     if [ "$IS_MIPS" -ne 1 ]; then
-        BRANCH=$(git branch --show-current)
-    else
         BRANCH=$(timeout 3s git branch --show-current)
+    else
+        BRANCH=$(git branch --show-current)
     fi
 
     if [ $? -ne 0 ]; then
@@ -1156,6 +1156,11 @@ install_update_manager() {
                 echo -e "${line}" >> "${file}"
             done < "${SRCDIR}/moonraker_update.txt"
             echo "" >> "${file}"
+            # The path for Happy-Hare on MIPS is /usr/data/Happy-Hare
+            if [ "$IS_MIPS" -eq 1 ]; then
+                sed -i 's|path: ~/Happy-Hare|path: /usr/data/Happy-Hare|' "${file}"
+                echo -e "${INFO}Update Happy-Hare path for MIPS architecture."
+            fi
             restart=1
         else
             echo -e "${WARNING}[update_manager happy-hare] already exists in moonraker.conf - skipping install"
