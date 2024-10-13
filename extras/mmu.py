@@ -1230,8 +1230,8 @@ class Mmu:
         a = unicodedata.normalize('NFKC', a)
         b = unicodedata.normalize('NFKC', b)
         if case_insensitive:
-            a = unicodedata.normalize('NFKC', a.casefold())
-            b = unicodedata.normalize('NFKC', b.casefold())
+            a = unicodedata.normalize('NFKC', a.lower())
+            b = unicodedata.normalize('NFKC', b.lower())
         return a == b
 
     # This retuns the hex color format without leading '#' E.g. ff00e0
