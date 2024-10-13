@@ -4025,7 +4025,7 @@ class Mmu:
         if not (self.calibration_status & required == required):
             steps = []
             if self.CALIBRATED_GEAR & required and not self.calibration_status & self.CALIBRATED_GEAR:
-                    steps.append("MMU_CALIBRATE_GEAR")
+                steps.append("MMU_CALIBRATE_GEAR")
             if self.CALIBRATED_ENCODER & required and not self.calibration_status & self.CALIBRATED_ENCODER:
                 steps.append("MMU_CALIBRATE_ENCODER")
             if self.CALIBRATED_SELECTOR & required and not self.calibration_status & self.CALIBRATED_SELECTOR:
@@ -5743,8 +5743,8 @@ class Mmu:
         return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
 
     # This is used to protect the in print synchronization state and is used as an outermost wrapper for
-    # calls back into Happy Hare during a print. It fully ensures that servo and current are correctly
-    # restored, but like the rest of Happy Hare it employs lazy servo movement to reduce "flutter"
+    # calls back into Happy Hare during a print. It ensures that servo and current are correctly restored,
+    # but like the rest of Happy Hare it employs lazy servo movement to reduce "flutter"
     @contextlib.contextmanager
     def _wrap_sync_gear_to_extruder(self):
         prev_gear_synced = self._sync_gear_to_extruder(False, servo=False, current=True)
@@ -6449,7 +6449,7 @@ class Mmu:
                     self._persist_gate_statistics()
 
                     # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
-                    self._continue_after('toolchange', restore)
+                    self._continue_after('toolchange', restore=restore)
         except MmuError as ee:
             self._handle_mmu_error(str(ee))
 
@@ -6642,6 +6642,7 @@ class Mmu:
     def cmd_MMU_RECOVER(self, gcmd):
         self._log_to_file(gcmd.get_commandline())
         if self._check_is_disabled(): return
+        self._fix_started_state()
         tool = gcmd.get_int('TOOL', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.mmu_num_gates - 1)
         mod_gate = gcmd.get_int('GATE', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.mmu_num_gates - 1)
         loaded = gcmd.get_int('LOADED', -1, minval=0, maxval=1)
@@ -8146,13 +8147,13 @@ class MmuSelector():
                         self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
                         self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
 
-                        # See if we can detect filament in the encoder
+                        # See if we can detect filament at the gate
                         found = self.mmu._check_filament_at_gate()
                         if not found:
-                            # Push filament into view of the gate endstop
+                            # Push filament into view of the gate endstop / encoder
                             self.mmu._servo_down()
                             _,_,measured,delta = self.mmu._trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
-                            if measured < self.mmu.encoder_min:
+                            if self.mmu._has_encoder() and measured < self.mmu.encoder_min:
                                 raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
 
                         # Try a full unload sequence
