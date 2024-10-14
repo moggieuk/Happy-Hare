@@ -265,10 +265,11 @@ class MmuServer:
     def _get_filament_attr(self, spool_info) -> dict:
         spool_id = spool_info["id"]
         filament = spool_info["filament"]
+        name = filament.get('name', '')
         material = filament.get('material', '')
         color_hex = filament.get('color_hex', '')[:6].lower() # Strip alpha channel if it exists
-        name = filament.get('name', '')
-        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name}
+        temp = filament.get('settings_extruder_temp', '')
+        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp}
 
     async def _build_spool_location_cache(self, fix=False, silent=False) -> bool:
         '''
@@ -400,7 +401,7 @@ class MmuServer:
         Retrieve filament attributes for list of (gate, spool_id) tuples
         Pass back to Happy Hare.
 
-        If not mmu backend has been detected, ignore the request
+        If no mmu backend has been detected, ignore the request
         '''
         if self._mmu_backend_enabled():
             gate_dict = {

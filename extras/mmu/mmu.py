@@ -22,6 +22,7 @@ from extras.homing import Homing, HomingMove
 from extras import mmu_machine
 from extras.mmu_machine import MmuToolHead
 from extras.mmu_leds import MmuLeds
+from extras.mmu_sensors import MmuRunoutHelper
 
 # MMU subcomponent clases
 from .mmu_logger import MmuLogger
@@ -184,6 +185,7 @@ class Mmu:
     VARS_MMU_GATE_MATERIAL           = "mmu_state_gate_material"
     VARS_MMU_GATE_COLOR              = "mmu_state_gate_color"
     VARS_MMU_GATE_FILAMENT_NAME      = "mmu_state_gate_filament_name"
+    VARS_MMU_GATE_TEMPERATURE        = "mmu_state_gate_temperature"
     VARS_MMU_GATE_SPOOL_ID           = "mmu_state_gate_spool_id"
     VARS_MMU_GATE_SPEED_OVERRIDE     = "mmu_state_gate_speed_override"
     VARS_MMU_GATE_SELECTED           = "mmu_state_gate_selected"
@@ -399,9 +401,10 @@ class Mmu:
         self.num_gates = config.getint('mmu_num_gates')
         self.default_ttg_map = list(config.getintlist('tool_to_gate_map', []))
         self.default_gate_status = list(config.getintlist('gate_status', []))
+        self.default_gate_filament_name = list(config.getlist('gate_filament_name', []))
         self.default_gate_material = list(config.getlist('gate_material', []))
         self.default_gate_color = list(config.getlist('gate_color', []))
-        self.default_gate_filament_name = list(config.getlist('gate_filament_name', []))
+        self.default_gate_temperature = list(config.getintlist('gate_temperature', []))
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
         self.default_gate_speed_override = list(config.getintlist('gate_speed_override', []))
 
@@ -517,12 +520,13 @@ class Mmu:
             self.default_endless_spool_groups = list(range(self.num_gates))
         self.endless_spool_groups = list(self.default_endless_spool_groups)
 
-        # Components of the gate map (status, material, color, spool_id, filament name and speed override)
+        # Components of the gate map (status, material, color, spool_id, filament name, temperature, and speed override)
         self.gate_map_vars = [ (self.VARS_MMU_GATE_STATUS, 'gate_status', self.GATE_UNKNOWN),
+                               (self.VARS_MMU_GATE_FILAMENT_NAME, 'gate_filament_name', ""),
                                (self.VARS_MMU_GATE_MATERIAL, 'gate_material', ""),
                                (self.VARS_MMU_GATE_COLOR, 'gate_color', ""),
+                               (self.VARS_MMU_GATE_TEMPERATURE, 'gate_temperature', int(self.default_extruder_temp)),
                                (self.VARS_MMU_GATE_SPOOL_ID, 'gate_spool_id', -1),
-                               (self.VARS_MMU_GATE_FILAMENT_NAME, 'gate_filament_name', ""),
                                (self.VARS_MMU_GATE_SPEED_OVERRIDE, 'gate_speed_override', 100) ]
 
         for var, attr, default in self.gate_map_vars:
@@ -1323,10 +1327,11 @@ class Mmu:
             'filament_direction': self.filament_direction,
             'ttg_map': list(self.ttg_map),
             'gate_status': list(self.gate_status),
+            'gate_filament_name': list(self.gate_filament_name),
             'gate_material': list(self.gate_material),
             'gate_color': list(self.gate_color),
+            'gate_temperature': list(self.gate_temperature),
             'gate_color_rgb': self.gate_color_rgb,
-            'gate_filament_name': list(self.gate_filament_name),
             'gate_spool_id': list(self.gate_spool_id),
             'slicer_color_rgb': self.slicer_color_rgb,
             'endless_spool_groups': list(self.endless_spool_groups),
@@ -3304,7 +3309,8 @@ class Mmu:
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
-        self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, self.default_extruder_temp, source))
+        default_extruder_temp = self.gate_temperature[self.current_gate] if self.current_gate >= 0 else self.default_extruder_temp
+        self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, default_extruder_temp, source))
 
         if source == "pause":
             new_target_temp = self.paused_extruder_temp if self.paused_extruder_temp is not None else current_temp # Pause temp should not be None
@@ -3326,15 +3332,15 @@ class Mmu:
                     new_target_temp = current_target_temp
                     source = "current"
                 else:
-                    new_target_temp = self.default_extruder_temp
+                    new_target_temp = default_extruder_temp
                     source = "default"
 
             if new_target_temp < klipper_minimum_temp:
                 # If, for some reason, the target temp is below Klipper's minimum, set to minimum
                 # set the target to Happy Hare's default. This strikes a balance between utility
-                # and safety since Klipper's min is truly a bare minimum but our min should be
+                # and safety since Klipper's min is truly a bare minimum but our default should be
                 # a more realistic temperature for safe operation.
-                new_target_temp = self.default_extruder_temp
+                new_target_temp = default_extruder_temp
                 source = "minimum"
 
         if new_target_temp > current_target_temp:
@@ -3576,11 +3582,15 @@ class Mmu:
         self.save_variable(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
         self.ttg_map = list(self.default_ttg_map)
         self.save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
+
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
+        self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
-        self.gate_filament_name = list(self.default_gate_filament_name)
+        self.gate_temperature = list(self.default_gate_temperature)
         self.gate_spool_id = list(self.default_gate_spool_id)
+        self.gate_speed_override = list(self.default_gate_speed_override)
+
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
         self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
         self.save_variable(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
@@ -6441,10 +6451,11 @@ class Mmu:
         }
 
         for g in range(self.num_gates):
-            material = self.gate_material[g] or "n/a"
-            color = self.gate_color[g] or "n/a"
             available = available_status[self.gate_status[g]]
             name = self.gate_filament_name[g] or "n/a"
+            material = self.gate_material[g] or "n/a"
+            color = self.gate_color[g] or "n/a"
+            temperature = self.gate_temperature[g] or "n/a"
 
             gate_detail = ""
             if detail:
@@ -6460,12 +6471,12 @@ class Mmu:
             speed_option = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
             spool_option = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
             if self.spoolman_support == self.SPOOLMAN_OFF:
-                msg += ", Material: {}, Color: {}, Name: {}{}".format(material, color, name, speed_option)
+                msg += ", Material: {}, Color: {}, Name: {}, Temp: {}{}".format(material, color, name, temperature, speed_option)
             elif self.gate_spool_id[g] <= 0 and self.spoolman_support == self.SPOOLMAN_PUSH:
-                msg += ", SpoolId: {}, Material: {}, Color: {}, Name: {}{}".format(spool_option, material, color, name, speed_option)
+                msg += ", SpoolId: {}, Material: {}, Color: {}, Name: {}, Temp: {}{}".format(spool_option, material, color, name, temperature, speed_option)
             else:
                 if self.gate_spool_id[g] > 0:
-                    msg += ", SpoolId: {} --> Material: {}, Color: {}, Name: {}{}".format(spool_option, material, color, name, speed_option)
+                    msg += ", SpoolId: {} --> Material: {}, Color: {}, Name: {}, Temp: {}{}".format(spool_option, material, color, name, temperature, speed_option)
                 else:
                     msg += ", SpoolId: n/a{}".format(speed_option)
         return msg
@@ -6504,9 +6515,10 @@ class Mmu:
 
     def _persist_gate_map(self, sync=False, gate_ids=None):
         self.save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status)
+        self.save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
         self.save_variable(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
         self.save_variable(self.VARS_MMU_GATE_COLOR, self.gate_color)
-        self.save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
+        self.save_variable(self.VARS_MMU_GATE_TEMPERATURE, self.gate_temperature)
         self.save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
         self.save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
         self._write_variables()
@@ -6525,9 +6537,10 @@ class Mmu:
     def _reset_gate_map(self):
         self.log_debug("Resetting gate map")
         self.gate_status = self._validate_gate_status(list(self.default_gate_status))
+        self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_material = list(self.default_gate_material)
         self._update_gate_color(list(self.default_gate_color))
-        self.gate_filament_name = list(self.default_gate_filament_name)
+        self.gate_temperature = list(self.default_gate_temperature)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
         self._persist_gate_map(sync=True)
@@ -6865,22 +6878,25 @@ class Mmu:
                 for gate, fil in gate_map.items():
                     self.gate_spool_id[gate] = fil['spool_id']
                     if fil['spool_id'] >= 0:
+                        self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
-                        self.gate_filament_name[gate] = fil.get('name', '')
+                        self.gate_temperature[gate] = fil.get('temp', int(self.default_extruder_temp))
                     else:
                         # Clear attributes (should only get here in spoolman "pull" mode)
+                        self.gate_filament_name[gate] = ''
                         self.gate_material[gate] = ''
                         self.gate_color[gate] = ''
-                        self.gate_filament_name[gate] = ''
+                        self.gate_temperature[gate] = int(self.default_extruder_temp)
                         self.gate_speed_override[gate] = 100
             else:
                 # Update map
                 for gate, fil in gate_map.items():
                     if fil and self.gate_spool_id[gate] == fil.get('spool_id', None):
+                        self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
-                        self.gate_filament_name[gate] = fil.get('name', '')
+                        self.gate_temperature[gate] = fil.get('temp', int(self.default_extruder_temp))
                     else:
                         self.log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Attributes=%s" % (gate, fil))
 
@@ -6905,18 +6921,20 @@ class Mmu:
             gate_ids = []
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
-                speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
+                name = gcmd.get('NAME', None)
                 material = gcmd.get('MATERIAL', None)
                 color = gcmd.get('COLOR', None)
                 spool_id = gcmd.get_int('SPOOLID', None, minval=-1)
-                name = gcmd.get('NAME', None)
+                temperature = gcmd.get_int('TEMP', int(self.default_extruder_temp))
+                speed_override = gcmd.get_int('SPEED', self.gate_speed_override[gate], minval=10, maxval=150)
 
                 if self.spoolman_support != self.SPOOLMAN_PULL:
                     # Local gate map, can update attributes
+                    name = name or self.gate_filament_name[gate]
                     material = (material or self.gate_material[gate]).upper()
                     color = (color or self.gate_color[gate]).lower()
+                    temperature = temperature or self.gate_temperature
                     spool_id = spool_id or self.gate_spool_id[gate]
-                    name = name or self.gate_filament_name[gate]
 
                     if spool_id != self.gate_spool_id[gate]:
                         if spool_id in self.gate_spool_id:
@@ -6928,10 +6946,11 @@ class Mmu:
                     color = self._validate_color(color)
                     if color is None:
                         raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
+                    self.gate_status[gate] = available
+                    self.gate_filament_name[gate] = name
                     self.gate_material[gate] = material
                     self.gate_color[gate] = color
-                    self.gate_filament_name[gate] = name
-                    self.gate_status[gate] = available
+                    self.gate_temperature[gate] = temperature
                     self.gate_spool_id[gate] = spool_id
                     self.gate_speed_override[gate] = speed_override
 
