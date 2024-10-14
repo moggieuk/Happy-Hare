@@ -794,8 +794,8 @@ read_previous_config() {
     # Blobifer update - Oct 13th 20204
     if [ ! "${variable_iteration_z_raise}" == "" ]; then
         echo -e "${INFO}Setting Blobifier variable_z_raise and variable_purge_length_maximum from previous settings"
-        variable_z_raise=$((variable_iteration_z_raise * variable_max_iterations_per_blob - $(triangular $variable_iteration) * variable_iteration_z_change))
-        variable_purge_length_maximum=$((variable_iteration_z_raise * max_iterations_per_blob))
+        variable_z_raise=$(python -c "print(${variable_iteration_z_raise} * ${variable_max_iterations_per_blob} - $(triangular $((variable_max_iterations_per_blob - 1))) * ${variable_iteration_z_change})")
+        variable_purge_length_maximum=$(python -c "print(${variable_max_iteration_length} * ${variable_max_iterations_per_blob})")
     fi
 }
 
