@@ -114,6 +114,9 @@ class MmuToolHead(toolhead.ToolHead, object):
             self.move_queue.set_flush_time(time_high)
         self.commanded_pos = [0., 0., 0., 0.]
 
+        # For Creality Ender3v3 series (custom klipper)
+        self.gap_auto_comp = None
+
         # MMU velocity and acceleration control
         self.gear_max_velocity = config.getfloat('gear_max_velocity', 300, above=0.)
         self.gear_max_accel = config.getfloat('gear_max_accel', 500, above=0.)
