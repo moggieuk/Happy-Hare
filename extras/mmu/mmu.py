@@ -1305,53 +1305,56 @@ class Mmu:
     def get_status(self, eventtime):
         status = {
             'enabled': self.is_enabled,
-            'num_gates': self.num_gates,
-            'is_paused': self.is_mmu_paused(),
-            'is_locked': self.is_mmu_paused(), # Alias for is_paused (deprecated)
-            'is_homed': self.selector.is_homed,
-            'is_in_print': self.is_in_print(),
-            'tool': self.tool_selected,
-            'gate': self.gate_selected,
-            'active_filament': self.active_filament,
-            'last_tool': self._last_tool,
-            'next_tool': self._next_tool,
-            'toolchange_purge_volume': self.toolchange_purge_volume,
-            'last_toolchange': self._last_toolchange,
-            'runout': self.is_handling_runout, # Deprecated (use operation)
-            'operation': self.saved_toolhead_operation,
-            'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
-                        "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
-                        "Unknown",
-            'filament_position': self.mmu_toolhead.get_position()[1],
-            'filament_pos': self.filament_pos,
-            'filament_direction': self.filament_direction,
-            'ttg_map': list(self.ttg_map),
-            'gate_status': list(self.gate_status),
-            'gate_filament_name': list(self.gate_filament_name),
-            'gate_material': list(self.gate_material),
-            'gate_color': list(self.gate_color),
-            'gate_temperature': list(self.gate_temperature),
-            'gate_color_rgb': self.gate_color_rgb,
-            'gate_spool_id': list(self.gate_spool_id),
-            'slicer_color_rgb': self.slicer_color_rgb,
-            'endless_spool_groups': list(self.endless_spool_groups),
-            'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
-            'tool_speed_multipliers': self.tool_speed_multipliers,
-            'slicer_tool_map': self.slicer_tool_map,
-            'action': self._get_action_string(),
-            'has_bypass': self.selector.has_bypass(),
-            'sync_drive': self.mmu_toolhead.is_synced(),
-            'sync_feedback_state': self._get_sync_feedback_string(),
-            'print_state': self.print_state,
-            'clog_detection': self.enable_clog_detection,
-            'endless_spool': self.enable_endless_spool,
-            'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
-            'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
-            'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
-            'spoolman_support': self.spoolman_support,
-            'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
         }
-        status.update(self.selector.get_status())
+        if self.is_enabled:
+            status.update({
+                'num_gates': self.num_gates,
+                'is_paused': self.is_mmu_paused(),
+                'is_locked': self.is_mmu_paused(), # Alias for is_paused (deprecated)
+                'is_homed': self.selector.is_homed,
+                'is_in_print': self.is_in_print(),
+                'tool': self.tool_selected,
+                'gate': self.gate_selected,
+                'active_filament': self.active_filament,
+                'last_tool': self._last_tool,
+                'next_tool': self._next_tool,
+                'toolchange_purge_volume': self.toolchange_purge_volume,
+                'last_toolchange': self._last_toolchange,
+                'runout': self.is_handling_runout, # Deprecated (use operation)
+                'operation': self.saved_toolhead_operation,
+                'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
+                            "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
+                            "Unknown",
+                'filament_position': self.mmu_toolhead.get_position()[1],
+                'filament_pos': self.filament_pos,
+                'filament_direction': self.filament_direction,
+                'ttg_map': list(self.ttg_map),
+                'gate_status': list(self.gate_status),
+                'gate_filament_name': list(self.gate_filament_name),
+                'gate_material': list(self.gate_material),
+                'gate_color': list(self.gate_color),
+                'gate_temperature': list(self.gate_temperature),
+                'gate_color_rgb': self.gate_color_rgb,
+                'gate_spool_id': list(self.gate_spool_id),
+                'slicer_color_rgb': self.slicer_color_rgb,
+                'endless_spool_groups': list(self.endless_spool_groups),
+                'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
+                'tool_speed_multipliers': self.tool_speed_multipliers,
+                'slicer_tool_map': self.slicer_tool_map,
+                'action': self._get_action_string(),
+                'has_bypass': self.selector.has_bypass(),
+                'sync_drive': self.mmu_toolhead.is_synced(),
+                'sync_feedback_state': self._get_sync_feedback_string(),
+                'print_state': self.print_state,
+                'clog_detection': self.enable_clog_detection,
+                'endless_spool': self.enable_endless_spool,
+                'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
+                'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
+                'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
+                'spoolman_support': self.spoolman_support,
+                'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
+            })
+            status.update(self.selector.get_status())
         return status
 
     def _reset_statistics(self):
