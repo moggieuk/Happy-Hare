@@ -6881,7 +6881,7 @@ class Mmu:
                         self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
-                        self.gate_temperature[gate] = fil.get('temp', int(self.default_extruder_temp))
+                        self.gate_temperature[gate] = fil.get('temp', '') or int(self.default_extruder_temp)
                     else:
                         # Clear attributes (should only get here in spoolman "pull" mode)
                         self.gate_filament_name[gate] = ''
@@ -6896,7 +6896,7 @@ class Mmu:
                         self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
-                        self.gate_temperature[gate] = fil.get('temp', int(self.default_extruder_temp))
+                        self.gate_temperature[gate] = fil.get('temp', '') or int(self.default_extruder_temp)
                     else:
                         self.log_debug("Assertion failure: Spool_id changed for Gate %d in MMU_GATE_MAP. Attributes=%s" % (gate, fil))
 
