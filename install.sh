@@ -801,8 +801,7 @@ read_previous_config() {
 
 
 triangular() {
-  local n=$1
-  echo $((n * (n + 1) / 2))
+    awk "BEGIN {print ($1 * ($1 + 1)) / 2}"
 }
 
 convert_to_boolean_string() {
