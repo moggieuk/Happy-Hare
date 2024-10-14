@@ -791,6 +791,18 @@ read_previous_config() {
         _param_toolhead_residual_filament=$_param_toolhead_ooze_reduction
         _param_toolhead_ooze_reduction=0
     fi
+    # Blobifer update - Oct 13th 20204
+    if [ ! "${variable_iteration_z_raise}" == "" ]; then
+        echo -e "${INFO}Setting Blobifier variable_z_raise and variable_purge_length_maximum from previous settings"
+        variable_z_raise=$((variable_iteration_z_raise * variable_max_iterations_per_blob - $(triangular $variable_iteration) * variable_iteration_z_change))
+        variable_purge_length_maximum=$((variable_iteration_z_raise * max_iterations_per_blob))
+    fi
+}
+
+
+triangular() {
+  local n=$1
+  echo $((n * (n + 1) / 2))
 }
 
 convert_to_boolean_string() {
