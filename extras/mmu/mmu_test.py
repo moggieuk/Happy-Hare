@@ -16,6 +16,8 @@ import random
 # Happy Hare imports
 from extras import mmu_machine
 from extras.mmu_machine import MmuToolHead
+
+# MMU subcomponent clases
 from .mmu_shared import *
 
 class MmuTest:
@@ -50,12 +52,12 @@ class MmuTest:
             self.mmu.printer.send_event("mmu:sync_feedback", self.mmu.reactor.monotonic(), feedback)
 
         if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
-            self.mmu.log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s, UI_CASCADE=%s" % (Mmu.UI_SPACE, Mmu.UI_SEPARATOR, Mmu.UI_DASH, Mmu.UI_DEGREE, Mmu.UI_BLOCK, Mmu.UI_CASCADE))
-            self.mmu.log_info("{}{}{}{}".format(Mmu.UI_BOX_TL, Mmu.UI_BOX_T, Mmu.UI_BOX_H, Mmu.UI_BOX_TR))
-            self.mmu.log_info("{}{}{}{}".format(Mmu.UI_BOX_L,  Mmu.UI_BOX_M, Mmu.UI_BOX_H, Mmu.UI_BOX_R))
-            self.mmu.log_info("{}{}{}{}".format(Mmu.UI_BOX_V,  Mmu.UI_BOX_V, Mmu.UI_SPACE, Mmu.UI_BOX_V))
-            self.mmu.log_info("{}{}{}{}".format(Mmu.UI_BOX_BL, Mmu.UI_BOX_B, Mmu.UI_BOX_H, Mmu.UI_BOX_BR))
-            self.mmu.log_info("UI_EMOTICONS=%s" % Mmu.UI_EMOTICONS)
+            self.mmu.log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s, UI_CASCADE=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE))
+            self.mmu.log_info("{}{}{}{}".format(UI_BOX_TL, UI_BOX_T, UI_BOX_H, UI_BOX_TR))
+            self.mmu.log_info("{}{}{}{}".format(UI_BOX_L,  UI_BOX_M, UI_BOX_H, UI_BOX_R))
+            self.mmu.log_info("{}{}{}{}".format(UI_BOX_V,  UI_BOX_V, UI_SPACE, UI_BOX_V))
+            self.mmu.log_info("{}{}{}{}".format(UI_BOX_BL, UI_BOX_B, UI_BOX_H, UI_BOX_BR))
+            self.mmu.log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
 
         if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
             error = gcmd.get_int('ERROR', 0, minval=0, maxval=1)
@@ -144,7 +146,7 @@ class MmuTest:
                     homing = random.randint(0, 1)
                     extruder_only = random.randint(0, 1)
                     motor = random.choice(["gear", "gear+extruder", "extruder"])
-                    if move_type == 0 or move_type == 1:
+                    if move_type in (0, 1):
                         self.mmu.log_info("Loop: %d - Synced gear to extruder movement: %.1fmm" % (i, move))
                         self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
                         self.mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
@@ -236,7 +238,7 @@ class MmuTest:
                 homing = random.randint(0, 2)
                 wait = random.randint(0, 1)
                 pos = self.mmu.mmu_toolhead.get_position()[0]
-                if move_type == 2 or move_type == 1:
+                if move_type in (1, 2):
                     endstop = "mmu_sel_touch" if move_type == 2 else "mmu_sel_home"
                     actual,homed = self.mmu.selector.homing_move("Test homing move", move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
                     self.mmu.log_always("%d. Homing move: Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))

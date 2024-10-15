@@ -17,7 +17,7 @@
 #
 # sync feedback sensor:
 #   Creates simple button and publishes events based on state change
-# 
+#
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
 #
@@ -49,11 +49,11 @@ class MmuRunoutHelper:
 
         # Replace previous runout_helper mux commands with ours
         prev = self.gcode.mux_commands.get("QUERY_FILAMENT_SENSOR")
-        prev_key, prev_values = prev
+        _, prev_values = prev
         prev_values[self.name] = self.cmd_QUERY_FILAMENT_SENSOR
 
         prev = self.gcode.mux_commands.get("SET_FILAMENT_SENSOR")
-        prev_key, prev_values = prev
+        _, prev_values = prev
         prev_values[self.name] = self.cmd_SET_FILAMENT_SENSOR
 
     def _handle_ready(self):

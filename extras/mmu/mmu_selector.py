@@ -26,12 +26,10 @@ from extras.homing import Homing, HomingMove
 
 # Happy Hare imports
 from extras import mmu_machine
+
+# MMU subcomponent clases
 from .mmu_shared import MmuError
 
-FILAMENT_UNKNOWN_STATE = -1
-FILAMENT_RELEASE_STATE = 0
-FILAMENT_DRIVE_STATE   = 1
-FILAMENT_HOLD_STATE    = 2
 
 ################################################################################
 # Virtual Selector
@@ -316,7 +314,7 @@ class LinearSelector:
             self.move(None, pos - 5, wait=False)
             self.move(None, pos, wait=False)
         elif motor == "servo":
-            self.servo.buzz_motor(motor)
+            self.servo.buzz_motor()
         else:
             return False
         return True
@@ -592,7 +590,7 @@ class LinearSelector:
                             # Push filament into view of the gate endstop
                             self.servo_down()
                             _,_,measured,delta = self.mmu.trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
-                            if self.mmu._has_encoder() and measured < self.mmu.encoder_min:
+                            if self.mmu.has_encoder() and measured < self.mmu.encoder_min:
                                 raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
 
                         # Try a full unload sequence
@@ -718,14 +716,14 @@ class LinearSelectorServo:
     # mmu_vars.cfg variables
     VARS_MMU_SERVO_ANGLES = "mmu_servo_angles"
 
-    # Servo states
-    SERVO_MOVE_STATE      = FILAMENT_HOLD_STATE
-    SERVO_DOWN_STATE      = FILAMENT_DRIVE_STATE
-    SERVO_UP_STATE        = FILAMENT_RELEASE_STATE
-    SERVO_UNKNOWN_STATE   = FILAMENT_UNKNOWN_STATE
-
     def __init__(self, mmu):
         self.mmu = mmu
+
+        # Servo states
+        self.SERVO_MOVE_STATE      = mmu.FILAMENT_HOLD_STATE
+        self.SERVO_DOWN_STATE      = mmu.FILAMENT_DRIVE_STATE
+        self.SERVO_UP_STATE        = mmu.FILAMENT_RELEASE_STATE
+        self.SERVO_UNKNOWN_STATE   = mmu.FILAMENT_UNKNOWN_STATE
 
         # Process config
         self.servo_angles = {}
@@ -897,11 +895,11 @@ class LinearSelectorServo:
         large=max(self.servo_angles['down'], self.servo_angles['up'])
         mid=(self.servo_angles['down'] + self.servo_angles['up'])/2
         duration=None if self.servo_always_active else self.servo_duration
-        self.set_position(angle=mid, duration=duration)
+        self.servo.set_position(angle=mid, duration=duration)
         self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-        self.set_position(angle=abs(mid+small)/2, duration=duration)
+        self.servo.set_position(angle=abs(mid+small)/2, duration=duration)
         self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
-        self.set_position(angle=abs(mid+large)/2, duration=duration)
+        self.servo.set_position(angle=abs(mid+large)/2, duration=duration)
         self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
         self.mmu.movequeues_wait()
         if old_state == self.SERVO_DOWN_STATE:

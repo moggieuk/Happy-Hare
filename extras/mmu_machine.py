@@ -18,9 +18,11 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, importlib, math, os, time
+
+# Klipper imports
 import stepper, chelper, toolhead
-from extras.homing import Homing, HomingMove
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
+from extras.homing import Homing, HomingMove
 
 
 # TMC chips to search for
@@ -338,7 +340,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             pos = [self.printer_toolhead.get_position()[3], 0., 0.]
 
         else:
-            raise Exception("Invalid sync_mode: %d" % new_sync_mode)
+            raise ValueError("Invalid sync_mode: %d" % new_sync_mode)
 
         self._prev_sk, self._prev_rd = [], []
         for s in following_steppers:
@@ -385,7 +387,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             pos = [0., self.mmu_toolhead.get_position()[1], 0.]
 
         else:
-            raise Exception("Invalid sync_mode: %d" % self.sync_mode)
+            raise ValueError("Invalid sync_mode: %d" % self.sync_mode)
 
         for i, s in enumerate(following_steppers):
             s.set_stepper_kinematics(self._prev_sk[i])
@@ -527,7 +529,7 @@ class MmuKinematics:
 
     def check_move(self, move):
         limits = self.limits
-        xpos, ypos = move.end_pos[:2]
+        xpos, _ = move.end_pos[:2]
         if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
             raise move.move_error()
         if move.axes_d[0]: # Selector

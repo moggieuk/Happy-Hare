@@ -16,7 +16,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, time
-from . import pulse_counter
+
+# Klipper imports
+from extras import pulse_counter
 
 class MmuEncoder:
     CHECK_MOVEMENT_TIMEOUT = 0.250
@@ -262,16 +264,16 @@ class MmuEncoder:
         self.extrusion_flowrate = (self.extrusion_flowrate + new_extrusion_flowrate) / 2.
 
     # Callback for MCU_counter
-    def _counter_callback(self, time, count, count_time):
+    def _counter_callback(self, print_time, count, count_time):
         if self._last_time is None:  # First sample
-            self._last_time = time
+            self._last_time = print_time
         elif count_time > self._last_time:
             self._last_time = count_time
             new_counts = count - self._last_count
             self._counts += new_counts
             self._movement = new_counts > 0
         else:  # No counts since last sample
-            self._last_time = time
+            self._last_time = print_time
         self._last_count = count
 
     def set_resolution(self, resolution):

@@ -13,6 +13,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging
+
+# Klipper imports
 from extras.mmu_leds import MmuLeds
 
 class MmuLedEffect:
@@ -26,7 +28,7 @@ class MmuLedEffect:
         if define_on and not all(e in MmuLeds.SEGMENTS for e in define_on):
             raise config.error("Unknown LED segment name specified in '%s'" % define_on_str)
         config.fileconfig.set(config.get_name(), 'frame_rate', config.get('frame_rate', MmuLeds.frame_rate))
-        layers = config.get('layers')
+        _ = config.get('layers')
         led_effect_section = config.get_name()[4:]
 
         # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed

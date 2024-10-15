@@ -89,5 +89,3 @@ class MultiLineFormatter(logging.Formatter):
 #
 #def lazy_format(fmt, *args):
 #    return LazyFormat(fmt, *args)
-
-
