@@ -19,47 +19,17 @@ import chelper
 from extras.homing import Homing, HomingMove
 
 # Happy Hare imports
-from extras import mmu_machine
+from extras             import mmu_machine
 from extras.mmu_machine import MmuToolHead
-from extras.mmu_leds import MmuLeds
+from extras.mmu_leds    import MmuLeds
 from extras.mmu_sensors import MmuRunoutHelper
 
 # MMU subcomponent clases
-from .mmu_shared import *
-from .mmu_logger import MmuLogger
+from .mmu_shared   import *
+from .mmu_logger   import MmuLogger
 from .mmu_selector import VirtualSelector, LinearSelector
-from .mmu_test import MmuTest
-
-
-# Internal testing class for debugging synced movement
-# Add this around move logic:
-# with DebugStepperMovement(self):
-#    <synced_move>
-class DebugStepperMovement:
-    def __init__(self, mmu, debug=False):
-        self.mmu = mmu
-        self.debug = debug
-
-    def __enter__(self):
-        if self.debug:
-            self.g_steps0 = self.mmu.gear_stepper.get_mcu_position()
-            self.g_pos0 = self.mmu.gear_stepper.get_commanded_position()
-            self.e_steps0 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
-            self.e_pos0 = self.mmu.mmu_extruder_stepper.stepper.get_commanded_position()
-            self.rail_pos0 = self.mmu.mmu_toolhead.get_position()[1]
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.debug:
-            self.mmu.log_always("Waiting for movement to complete...")
-            self.mmu.movequeues_wait()
-            g_steps1 = self.mmu.gear_stepper.get_mcu_position()
-            g_pos1 = self.mmu.gear_stepper.get_commanded_position()
-            e_steps1 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
-            e_pos1 = self.mmu.mmu_extruder_stepper.stepper.get_commanded_position()
-            rail_pos1 = self.mmu.mmu_toolhead.get_position()[1]
-            self.mmu.log_always("Gear steps: %d = %.4fmm, commanded movement: %.4fmm" % (g_steps1 - self.g_steps0, (g_steps1 - self.g_steps0) * self.mmu.gear_stepper.get_step_dist(), g_pos1 - self.g_pos0))
-            self.mmu.log_always("Extruder steps: %d = %.4fmm, commanded movement: %.4fmm" % (e_steps1 - self.e_steps0, (e_steps1 - self.e_steps0) * self.mmu.mmu_extruder_stepper.stepper.get_step_dist(), e_pos1 - self.e_pos0))
-            self.mmu.log_always("Rail movement: %.4fmm" % (rail_pos1 - self.rail_pos0))
+from .mmu_test     import MmuTest
+from .mmu_utils    import DebugStepperMovement, PurgeVolCalculator
 
 
 # Main klipper module
@@ -1123,6 +1093,18 @@ class Mmu:
             # Add volume of residual filament
             volume += math.pi * ((fil_diameter / 2) ** 2) * (self.filament_remaining + self.toolhead_residual_filament)
         return volume
+
+# PAUL
+    # Generate purge matrix based on filament colors
+    def _generate_purge_matrix(self, tool_colors):
+        colors = tool_colors.split(',')
+        result = []
+        purge_vol_calc = PurgeVolCalculator(0, 800, 1.0)
+        for from_color in colors:
+            for to_color in colors:
+                volume = purge_vol_calc.calc_purge_vol_by_hex(from_color, to_color)
+                result.append(str(volume))
+        return ",".join(result)
 
     def _load_persisted_state(self):
         self.log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)

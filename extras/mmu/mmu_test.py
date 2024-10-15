@@ -19,6 +19,7 @@ from extras.mmu_machine import MmuToolHead
 
 # MMU subcomponent clases
 from .mmu_shared import *
+from .mmu_utils import PurgeVolCalculator
 
 class MmuTest:
 
@@ -264,3 +265,16 @@ class MmuTest:
         select_gate = gcmd.get_int('GATE_MOTOR', -99, minval=self.mmu.TOOL_GATE_BYPASS, maxval=self.mmu.num_gates)
         if not select_gate == -99:
             self.mmu.mmu_toolhead.select_gear_stepper(select_gate)
+
+        if gcmd.get_int('CALC_PURGE', 0, minval=0, maxval=1):
+            purge_vol_calc = PurgeVolCalculator(0, 800, 1.0)
+
+            purge_vol = purge_vol_calc.calc_purge_vol_by_rgb(192, 192, 192, 247, 35, 35)
+            self.mmu.log_always("The purge vol from RGB color 192, 192, 192 to 247, 35, 35 is: {}".format(purge_vol))
+
+            purge_vol = purge_vol_calc.calc_purge_vol_by_hex("#C0C0C0", "#F72323")
+            self.mmu.log_always("The purge vol from hex color #C0C0C0 to #F72323 is: {}".format(purge_vol))
+
+            tool_colors = "FFFF00,80FFFF,FFFFFF,FF8000"
+            purge_volumes = self.mmu._generate_purge_matrix(tool_colors)
+            self.mmu.log_always("\ntool_colors={}\npurge_volumes={}".format(tool_colors, purge_volumes))
