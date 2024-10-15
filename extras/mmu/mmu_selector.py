@@ -48,6 +48,7 @@ class VirtualSelector:
 
     def handle_connect(self):
         self.mmu_toolhead = self.mmu.mmu_toolhead
+        self.gear_rail = self.mmu_toolhead.get_kinematics().rails[1]
         self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def handle_ready(self):
@@ -57,6 +58,7 @@ class VirtualSelector:
         pass
 
     def select_gate(self, gate):
+        if gate == self.mmu.gate_selected: return
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper
         self.mmu.set_gate_selected(gate)
 
@@ -73,13 +75,13 @@ class VirtualSelector:
     def filament_hold(self):
         pass
 
-    def disable_motors(self): # PAUL TODO loop
+    def disable_motors(self):
         pass
 
-    def enable_motors(self): # PAUL TODO loop
+    def enable_motors(self):
         pass
 
-    def buzz_motor(self, motor): # PAUL TODO loop
+    def buzz_motor(self, motor):
         pass
 
     def has_bypass(self):
@@ -883,7 +885,7 @@ class LinearSelectorServo:
     def disable_motors(self):
         self.servo_move()
         self.servo_off()
-        self.reinit()
+        self.reinit() # Reset state
 
     def enable_motors(self):
         self.servo_move()

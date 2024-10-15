@@ -247,12 +247,13 @@ class MmuToolHead(toolhead.ToolHead, object):
         if not self.mmu_machine.multigear: return
         if gate == 0:
             self._reconfigure_rail([GEAR_STEPPER_CONFIG])
-        if gate > 0:
+        elif gate > 0:
             self._reconfigure_rail(["%s_%d" % (GEAR_STEPPER_CONFIG, gate)])
         else:
             self._reconfigure_rail(None)
 
     def _reconfigure_rail(self, selected_steppers):
+        logging.info("PAUL: _reconfigure_rail(%s)" % selected_steppers)
         sync_mode = self.sync_mode
         if sync_mode:
             self.unsync()

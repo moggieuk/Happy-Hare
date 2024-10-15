@@ -1191,7 +1191,9 @@ class Mmu:
             self.log_always(msg, color=True)
             self._set_print_state("initialized")
 
-            self.gate_status = self._validate_gate_status(self.gate_status) # Delayed to allow for correct initial state
+            # Delayed to allow for correct initial state
+            self.gate_status = self._validate_gate_status(self.gate_status)
+
             # Sanity check filament pos if toolhead sensor available
             ts = self._check_sensor(self.ENDSTOP_TOOLHEAD)
             if ts is True and self.filament_pos != self.FILAMENT_POS_LOADED or ts is False and self.filament_pos != self.FILAMENT_POS_UNLOADED:
@@ -1697,7 +1699,7 @@ class Mmu:
         if self.log_level > 1:
             self.gcode.respond_info(msg)
 
-# PAUL
+# PAUL lazy logging idea
 #    def log_debug(self, fmt, *args):
 #        lazy_msg = lazy_format("%s DEBUG: " + fmt, UI_SEPARATOR, *args)
 #        if self.mmu_logger and self.log_file_level > 1:
@@ -1885,7 +1887,8 @@ class Mmu:
                     m.append("Tip forming")
                 msg += ",".join(m)
 
-            msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector.use_touch_move() else ("DISABLED", "is not"))
+            if hasattr(self.selector, 'use_touch_move'):
+                msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector.use_touch_move() else ("DISABLED", "is not"))
             p = self.persistence_level
             msg += "\nPersistence: %s state is persisted across restarts" % ("All" if p == 4 else "Gate status, TTG map & EndlessSpool groups" if p == 3 else "TTG map & EndlessSpool groups" if p == 2 else "EndlessSpool groups" if p == 1 else "No")
             if self.has_encoder():
@@ -1977,11 +1980,13 @@ class Mmu:
             self.selector.filament_release()
 
     def motors_off(self, motor="all"):
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        if motor in ["all", "gear"]:
+        if motor in ["all", "gear", "gears"]:
             self.mmu_toolhead.unsync()
-            ge = stepper_enable.lookup_enable(self.gear_stepper.get_name())
-            ge.motor_disable(self.mmu_toolhead.get_last_move_time())
+            stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
+            steppers = self.gear_rail.steppers if motor == "gears" else [self.gear_stepper]
+            for stepper in steppers:
+                se = stepper_enable.lookup_enable(stepper.get_name())
+                se.motor_disable(self.mmu_toolhead.get_last_move_time())
         if motor in ["all", "selector"]:
             self.set_gate_selected(self.TOOL_GATE_UNKNOWN)
             self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
@@ -1990,12 +1995,11 @@ class Mmu:
 
 ### SERVO AND MOTOR GCODE FUNCTIONS ##############################################
 
-    cmd_MMU_MOTORS_OFF_help = "Turn off both MMU motors"
+    cmd_MMU_MOTORS_OFF_help = "Turn off all MMU motors and servos"
     def cmd_MMU_MOTORS_OFF(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_is_disabled(): return
         self.motors_off()
-        self.selector.motors_off()
 
     cmd_MMU_TEST_BUZZ_MOTOR_help = "Simple buzz the selected motor (default gear) for setup testing"
     def cmd_MMU_TEST_BUZZ_MOTOR(self, gcmd):
@@ -2004,8 +2008,18 @@ class Mmu:
         if self.check_in_bypass(): return
         motor = gcmd.get('MOTOR', "gear")
         if motor == "gear":
-            found = self._buzz_gear_motor()
-            self.log_info("Filament %s by gear motor buzz" % ("detected" if found else "not detected"))
+            found = self.buzz_gear_motor()
+            if found is not None:
+                self.log_info("Filament %s by gear motor buzz" % ("detected" if found else "not detected"))
+        elif motor == "gears":
+            try:
+                for gate in range(self.num_gates):
+                    self.mmu_toolhead.select_gear_stepper(gate)
+                    found = self.buzz_gear_motor()
+                    if found is not None:
+                        self.log_info("Filament %s in gate %d by gear motor buzz" % ("detected" if found else "not detected", gate))
+            finally:
+                self.mmu_toolhead.select_gear_stepper(self.gate_selected)
         elif not self.selector.buzz_motor(motor):
             raise gcmd.error("Motor '%s' not known" % motor)
 
@@ -4899,7 +4913,7 @@ class Mmu:
             return True
         elif not self._has_sensor(self.ENDSTOP_GATE) and self.has_encoder():
             self.selector.filament_drive()
-            found = self._buzz_gear_motor()
+            found = self.buzz_gear_motor()
             self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
             return found
         self.log_debug("Filament not detected by sensors: %s" % ', '.join([key for key, value in self._check_all_sensors().items()]))
@@ -4914,7 +4928,7 @@ class Mmu:
             return detected
         elif self.has_encoder():
             self.selector.filament_drive()
-            found = self._buzz_gear_motor()
+            found = self.buzz_gear_motor()
             self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if found else "not detected"))
             return found
         self.log_debug("No sensors configured!")
@@ -4934,15 +4948,20 @@ class Mmu:
             return detected
         return False
 
-    def _buzz_gear_motor(self):
-        with self._require_encoder():
-            initial_encoder_position = self.get_encoder_distance()
-            self.trace_filament_move(None, 2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
-            self.trace_filament_move(None, -2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
-            measured = self.get_encoder_distance() - initial_encoder_position
-            self.log_trace("After buzzing gear motor, encoder measured %.2f" % measured)
-            self.set_encoder_distance(initial_encoder_position, dwell=None)
-            return measured > self.encoder_min
+    def buzz_gear_motor(self):
+        if self.has_encoder():
+            with self._require_encoder():
+                initial_encoder_position = self.get_encoder_distance()
+                self.trace_filament_move(None, 2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
+                self.trace_filament_move(None, -2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
+                measured = self.get_encoder_distance() - initial_encoder_position
+                self.log_trace("After buzzing gear motor, encoder measured %.2f" % measured)
+                self.set_encoder_distance(initial_encoder_position, dwell=None)
+                return measured > self.encoder_min
+        else:
+            self.trace_filament_move(None, 5, accel=self.gear_buzz_accel)
+            self.trace_filament_move(None, -5 * self.encoder_resolution, accel=self.gear_buzz_accel)
+        return None
 
     # Sync/unsync gear motor with extruder, handle filament engagement and current control
     # servo: True=move, False=don't mess
