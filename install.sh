@@ -439,10 +439,6 @@ link_mmu_plugins() {
                 ln -sf "$file" "${KLIPPER_HOME}/klippy/${dir}/$(basename "$file")"
             done
         done
-#        for file in `cd ${SRCDIR}/extras ; ls *.py`; do
-#            ln -sf "${SRCDIR}/extras/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
-#        done
-#        ln -sf "${SRCDIR}/extras/mmu" "${KLIPPER_HOME}/klippy/extras/mmu"
     else
         echo -e "${WARNING}Klipper extensions not installed because Klipper 'extras' directory not found!"
     fi
@@ -465,9 +461,6 @@ unlink_mmu_plugins() {
                 rm -f "${KLIPPER_HOME}/klippy/${dir}/$(basename "$file")"
             done
         done
-#        for file in `cd ${SRCDIR}/extras ; ls *.py`; do
-#            rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
-#        done
         rm -rf "${KLIPPER_HOME}/klippy/extras/mmu"
     else
         echo -e "${WARNING}MMU modules not uninstalled because Klipper 'extras' directory not found!"
@@ -964,7 +957,7 @@ copy_config_files() {
             echo "" >> $dest
             echo "# SUPPLEMENTAL USER CONFIG retained after upgrade --------------------------------------------------------------------" >> $dest
             echo "#" >> $dest
-            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance gate_parking_distance variable_gate_ratios encoder_default_resolution gate_material gate_color gate_spool_id gate_status gate_filament_name gate_speed_override endless_spool_groups tool_to_gate_map"
+            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance gate_parking_distance variable_gate_ratios encoder_default_resolution gate_material gate_color gate_spool_id gate_status gate_filament_name gate_temperature gate_speed_override endless_spool_groups tool_to_gate_map"
             hidden_params="virtual_selector homing_extruder test_random_failures test_random_failures test_disable_encoder test_force_in_print serious mitigate_ttc"
             for var in $(set | grep '^_param_' | cut -d'=' -f1 | sort); do
                 param=${var#_param_}
