@@ -59,10 +59,11 @@ class VirtualSelector:
 
     def select_gate(self, gate):
         if gate == self.mmu.gate_selected: return
+        self.mmu.log_error("PAUL: selector.select_gate(%d)" % gate)
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper
-        self.mmu.set_gate_selected(gate)
 
-    def restore_gate(self):
+    def restore_gate_position(self):
+        self.mmu.log_error("PAUL: selector.restore_gate_position")
         if self.mmu.gate_selected >= 0:
             self.mmu.mmu_toolhead.select_gear_stepper(self.mmu.gate_selected) # Select correct drive stepper
 
@@ -248,26 +249,26 @@ class LinearSelector:
         # Sub components
         self.servo.handle_ready()
 
-    def home(self, tool = -1, force_unload = -1):
+    def home(self, force_unload = None):
         if self.mmu.check_in_bypass(): return
         with self.mmu.wrap_action(self.mmu.ACTION_HOMING):
             self.mmu.log_info("Homing MMU...")
 
-            if force_unload != -1:
-                self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload == 1 else "not unload"))
-            if force_unload == 1:
+            if force_unload is not None:
+                self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
+            if force_unload is True:
                 # Forced unload case for recovery
                 self.mmu.unload_sequence(check_state=True)
-            elif force_unload == -1 and self.mmu.filament_pos != self.mmu.FILAMENT_POS_UNLOADED:
+            elif force_unload is False and self.mmu.filament_pos != self.mmu.FILAMENT_POS_UNLOADED:
                 # Automatic unload case
                 self.mmu.unload_sequence()
 
-            self.mmu.unselect_tool()
+#PAUL            self.mmu.unselect_tool() # PAUL don't think we need this
             self._home_selector()
-            if tool >= 0:
-                self.mmu.select_tool(tool)
 
+    # Physically move selector to correct gate position
     def select_gate(self, gate):
+        self.mmu.log_error("PAUL: selector.select_gate(%d)" % gate)
         if gate == self.mmu.gate_selected: return
 
         with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
@@ -276,10 +277,11 @@ class LinearSelector:
                 offset = self.bypass_offset
             else:
                 offset = self.selector_offsets[gate]
-            self.position(offset)
-            self.mmu.set_gate_selected(gate)
+            self._position(offset)
 
-    def restore_gate(self):
+    # Correct rail position for selector
+    def restore_gate_position(self):
+        self.mmu.log_error("PAUL: selector.restore_gate_position")
         if self.mmu.gate_selected >= 0:
             self.set_position(self.selector_offsets[self.mmu.gate_selected])
         elif self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS:
@@ -392,7 +394,7 @@ class LinearSelector:
                     self.mmu.select_bypass()
                 else:
                     if random.randint(0, 10) == 0 and home:
-                        self.home(tool)
+                        self.mmu.home(tool=tool)
                     else:
                         self.mmu.select_tool(tool, move_servo=servo)
                 if servo:
@@ -552,7 +554,7 @@ class LinearSelector:
                 self.mmu.log_always("Selector calibration has been saved")
                 self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
 
-            self.home(0, force_unload=0)
+            self.mmu.home(tool=0, force_unload=False)
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
             self.mmu.motors_off()
@@ -569,10 +571,9 @@ class LinearSelector:
             self.mmu.mmu_kinematics.home(homing_state)
             self.is_homed = True
         except Exception as e: # Homing failed
-            self.mmu.set_tool_selected(self.mmu.TOOL_GATE_UNKNOWN)
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
 
-    def position(self, target):
+    def _position(self, target):
         if not self.use_touch_move():
             self.move("Positioning selector", target)
         else:
@@ -602,16 +603,16 @@ class LinearSelector:
                             raise MmuError("Unblocking selector failed because: %s" % (str(ee)))
 
                         # Check if selector can now reach proper target
-                        self._home_selector()
+                        self._home_selector() # PAUL TODO can throw exception.. need to handle as failed to home
                         halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=self.mmu.ENDSTOP_SELECTOR_TOUCH)
                         if homed: # Positioning move was not successful
                             self.is_homed = False
-                            self.mmu.unselect_tool()
+#PAUL                            self.mmu.unselect_tool() # PAUL move up the stack?
                             raise MmuError("Unblocking selector recovery failed. Path is probably internally blocked")
 
                     else: # Selector path is blocked, probably externally
                         self.is_homed = False
-                        self.mmu.unselect_tool()
+#PAUL                        self.mmu.unselect_gate() # PAUL move up the stack?
                         raise MmuError("Selector is externally blocked perhaps by filament in another gate")
 
     def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):

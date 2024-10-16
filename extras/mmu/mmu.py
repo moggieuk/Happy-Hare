@@ -1094,12 +1094,12 @@ class Mmu:
             volume += math.pi * ((fil_diameter / 2) ** 2) * (self.filament_remaining + self.toolhead_residual_filament)
         return volume
 
-# PAUL
+# PAUL new
     # Generate purge matrix based on filament colors
     def _generate_purge_matrix(self, tool_colors):
         colors = tool_colors.split(',')
         result = []
-        purge_vol_calc = PurgeVolCalculator(0, 800, 1.0)
+        purge_vol_calc = PurgeVolCalculator(0, 800, 1.0) # PAUL parms should be passed in
         for from_color in colors:
             for to_color in colors:
                 volume = purge_vol_calc.calc_purge_vol_by_hex(from_color, to_color)
@@ -1148,10 +1148,10 @@ class Mmu:
             tool_selected = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
             gate_selected = self.save_variables.allVariables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
             if gate_selected < self.num_gates and tool_selected < self.num_gates:
-                self.set_tool_selected(tool_selected)
-                self.set_gate_selected(gate_selected)
+                self._set_tool_selected(tool_selected)
+                self._set_gate_selected(gate_selected)
                 self._ensure_ttg_match() # Ensure tool/gate consistency
-                self.selector.restore_gate()
+                self.selector.restore_gate_position()
             else:
                 errors.append("Invalid tool or gate specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
 
@@ -1187,7 +1187,7 @@ class Mmu:
         fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
         try:
             # Splash...
-            msg = r'{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % fversion(self.config_version)
+            msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % fversion(self.config_version)
             self.log_always(msg, color=True)
             self._set_print_state("initialized")
 
@@ -1927,7 +1927,7 @@ class Mmu:
 
     def _f_calc(self, formula):
         format_var = lambda p: p + ':' + "%.1f" % vars(self).get(p.lower())
-        terms = re.split(r'(\+|\-)', formula)
+        terms = re.split('(\+|\-)', formula)
         result = eval(formula, {}, vars(self))
         formatted_formula = "%.1fmm (" % result
         for term in terms:
@@ -1982,14 +1982,14 @@ class Mmu:
     def motors_off(self, motor="all"):
         if motor in ["all", "gear", "gears"]:
             self.mmu_toolhead.unsync()
-            stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
+            stepper_enable = self.printer.lookup_object('stepper_enable')
             steppers = self.gear_rail.steppers if motor == "gears" else [self.gear_stepper]
             for stepper in steppers:
                 se = stepper_enable.lookup_enable(stepper.get_name())
                 se.motor_disable(self.mmu_toolhead.get_last_move_time())
         if motor in ["all", "selector"]:
-            self.set_gate_selected(self.TOOL_GATE_UNKNOWN)
-            self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
+            self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
+            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
             self.selector.disable_motors()
 
 
@@ -5206,7 +5206,7 @@ class Mmu:
     def _auto_home(self, tool=0):
         if not self.selector.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
             self.log_info("MMU not homed, homing it before continuing...")
-            self.selector.home(tool)
+            self.home(tool)
         elif self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed:
             self._recover_filament_pos(message=True)
 
@@ -5223,9 +5223,28 @@ class Mmu:
         else:
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.park_macro)
 
-    def unselect_tool(self):
-        self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
-        self._auto_filament_grip()
+
+### TOOL AND GATE SELECTION ######################################################
+
+    def home(self, tool, force_unload = None):
+        if self.check_in_bypass(): return
+        self.unselect_tool()
+        self.selector.home(force_unload=force_unload)
+        if tool >= 0:
+            self.select_tool(tool)
+        elif tool == self.TOOL_GATE_BYPASS:
+            self.select_bypass()
+
+    def select_gate(self, gate):
+        try:
+            self.selector.select_gate(gate)
+            self._set_gate_selected(gate)
+        except MmuError as ee:
+            self.unselect_gate()
+            raise ee
+
+    def unselect_gate(self):
+        self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
 
     def select_tool(self, tool, move_servo=True):
         if tool < 0 or tool >= self.num_gates:
@@ -5237,8 +5256,8 @@ class Mmu:
             return
 
         self.log_debug("Selecting tool T%d on Gate %d..." % (tool, gate))
-        self.selector.select_gate(gate)
-        self.set_tool_selected(tool)
+        self.select_gate(gate)
+        self._set_tool_selected(tool)
         if move_servo:
             self._auto_filament_grip()
         self.log_info("Tool T%d enabled%s" % (tool, (" on Gate %d" % gate) if tool != gate else ""))
@@ -5249,29 +5268,38 @@ class Mmu:
             self.log_always("Bypass not configured")
             return
         self.log_info("Selecting filament bypass...")
-        self.selector.select_gate(self.TOOL_GATE_BYPASS)
+        self.select_gate(self.TOOL_GATE_BYPASS)
+        self._set_tool_selected(self.TOOL_GATE_BYPASS)
         self._set_filament_direction(self.DIRECTION_LOAD)
-        self.set_tool_selected(self.TOOL_GATE_BYPASS)
         self.log_info("Bypass enabled")
 
-    def set_tool_selected(self, tool):
+    def unselect_tool(self):
+        self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
+        self._auto_filament_grip()
+
+    def _set_tool_selected(self, tool):
+        self.log_error("PAUL: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
 
-    def set_gate_selected(self, gate):
+    def _set_gate_selected(self, gate):
+        self.log_error("PAUL: _set_gate_selected(%d)" % gate)
         if gate != self.gate_selected:
             self.gate_selected = gate
             self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self._set_rotation_distance(self._get_rotation_distance(gate))
         self._update_sync_multiplier()
         self.active_filament = {
+            'filament_name': self.gate_filament_name[gate],
             'material': self.gate_material[gate],
             'color': self.gate_color[gate],
-            'spool_id': self.gate_spool_id[gate]
+            'spool_id': self.gate_spool_id[gate],
+            'temperature': self.gate_temperature[gate],
         } if gate >= 0 else {}
 
     def _set_rotation_distance(self, rd):
+        self.log_error("PAUL: _set_rotation_distance(%s)" % rd)
         if rd <= 0:
             rd = self.rotation_distances[0] if self.rotation_distances[0] > 0 else self.default_rotation_distance
             self.log_debug("Gate not calibrated, falling back to: %.6f" % rd)
@@ -5471,7 +5499,6 @@ class Mmu:
 
 ### CORE GCODE COMMANDS ##########################################################
 
-#PAUL maybe should be moved to mmu_selector??
     cmd_MMU_HOME_help = "Home the MMU selector"
     def cmd_MMU_HOME(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -5484,10 +5511,10 @@ class Mmu:
             force_unload = 0
         else:
             tool = gcmd.get_int('TOOL', 0, minval=0, maxval=self.num_gates - 1)
-            force_unload = gcmd.get_int('FORCE_UNLOAD', -1, minval=0, maxval=1)
+            force_unload = gcmd.get_int('FORCE_UNLOAD', None, minval=0, maxval=1)
         try:
             with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
-                self.selector.home(tool, force_unload)
+                self.home(tool, force_unload=force_unload)
                 if tool == -1:
                     self.log_always("Homed")
         except MmuError as ee:
@@ -5534,7 +5561,7 @@ class Mmu:
             elif tool != -1:
                 self.select_tool(tool)
             else:
-                self.selector.select_gate(gate)
+                self.select_gate(gate)
                 # Find the first tool that maps to this gate or current tool if it maps
                 # (Remember multiple tools can map to the same gate)
                 if self.tool_selected >= 0 and self.ttg_map[self.tool_selected] == gate:
@@ -5545,7 +5572,7 @@ class Mmu:
                             self.select_tool(t)
                             break
                     else:
-                        self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
+                        self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
         finally:
             self._auto_filament_grip()
 
@@ -5873,18 +5900,18 @@ class Mmu:
                     return
 
                 if tool == self.TOOL_GATE_BYPASS:
-                    self.set_gate_selected(self.TOOL_GATE_BYPASS)
-                    self.set_tool_selected(self.TOOL_GATE_BYPASS)
-                    self.selector.restore_gate()
+                    self._set_gate_selected(self.TOOL_GATE_BYPASS)
+                    self._set_tool_selected(self.TOOL_GATE_BYPASS)
+                    self.selector.restore_gate_position()
                 elif tool >= 0: # If tool is specified then use and optionally override the gate
-                    self.set_tool_selected(tool)
+                    self._set_tool_selected(tool)
                     gate = self.ttg_map[tool]
                     if mod_gate >= 0:
                         gate = mod_gate
                     if gate >= 0:
-                        self.set_gate_selected(gate)
+                        self._set_gate_selected(gate)
                         self._remap_tool(tool, gate, loaded)
-                        self.selector.restore_gate()
+                        self.selector.restore_gate_position()
                 elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
                     # This is to be able to get out of "stuck in bypass" state
                     self.log_info("Warning: Making assumption that bypass is unloaded")
@@ -6325,9 +6352,9 @@ class Mmu:
 
                 if self.endless_spool_eject_gate > 0:
                     self.log_info("Ejecting filament remains to designated waste gate %d" % self.endless_spool_eject_gate)
-                    self.selector.select_gate(self.endless_spool_eject_gate)
+                    self.select_gate(self.endless_spool_eject_gate)
                 self._unload_tool(runout=True)
-                self.selector.select_gate(next_gate) # Necessary if unloaded to waste gate
+                self.select_gate(next_gate) # Necessary if unloaded to waste gate
                 self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
             else:
@@ -6500,16 +6527,16 @@ class Mmu:
     # Find a tool that maps to gate (for recovery)
     def _ensure_ttg_match(self):
         if self.gate_selected in [self.TOOL_GATE_UNKNOWN, self.TOOL_GATE_BYPASS]:
-            self.set_tool_selected(self.gate_selected)
+            self._set_tool_selected(self.gate_selected)
         elif not self.is_in_print():
             possible_tools = [tool for tool in range(self.num_gates) if self.ttg_map[tool] == self.gate_selected]
             if possible_tools:
                 if self.tool_selected not in possible_tools:
                     self.log_debug("Resetting tool selected to match current gate")
-                    self.set_tool_selected(possible_tools[0])
+                    self._set_tool_selected(possible_tools[0])
             else:
                 self.log_info("Resetting tool selected to unknown because current gate isn't associated with tool")
-                self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
+                self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
 
     def _persist_ttg_map(self):
         self.save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
@@ -7165,7 +7192,7 @@ class Mmu:
                         with self._wrap_sync_gear_to_extruder(): # Don't undo syncing state if called in print
                             tool_selected = self.tool_selected
                             filament_pos = self.filament_pos
-                            self.set_tool_selected(self.TOOL_GATE_UNKNOWN)
+                            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                             gates_tools = []
                             if tools != "!":
                                 # Tools used in print (may be empty list)
@@ -7217,7 +7244,7 @@ class Mmu:
                             with self.wrap_suppress_visual_log():
                                 for gate, tool in gates_tools:
                                     try:
-                                        self.selector.select_gate(gate)
+                                        self.select_gate(gate)
                                         self.log_info("Checking Gate %d..." % gate)
                                         self._load_gate(allow_retry=False, adjust_grip_on_error=False)
                                         if tool >= 0:
@@ -7288,7 +7315,7 @@ class Mmu:
                         if gate == -1:
                             gate = self.gate_selected
                         else:
-                            self.selector.select_gate(gate)
+                            self.select_gate(gate)
                         for _ in range(self.preload_attempts):
                             self.log_always("Loading...")
                             try:
