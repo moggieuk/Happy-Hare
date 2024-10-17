@@ -32,6 +32,7 @@
 #
 import logging, time
 
+
 class MmuRunoutHelper:
     def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay):
         self.printer, self.name = printer, name
@@ -128,17 +129,10 @@ class MmuRunoutHelper:
 
 class MmuSensors:
 
-    # TODO Use Mmu class definitions
-    ENDSTOP_PRE_GATE       = 'mmu_pre_gate'
-    ENDSTOP_GATE           = 'mmu_gate'
-    ENDSTOP_EXTRUDER_ENTRY = "extruder"       # Extruder entry sensor
-    ENDSTOP_TOOLHEAD       = 'toolhead'
-    SWITCH_SYNC_FEEDBACK_TENSION     = 'sync_feedback_tension'
-    SWITCH_SYNC_FEEDBACK_COMPRESSION = 'sync_feedback_compression'
-
     def __init__(self, config):
-        self.printer = config.get_printer()
+        from extras.mmu import Mmu # For sensor names
 
+        self.printer = config.get_printer()
         event_delay = config.get('event_delay', 1.)
 
         # Setup "mmu_pre_gate" sensors...
@@ -148,7 +142,7 @@ class MmuSensors:
                 continue
 
             # Automatically create necessary filament_switch_sensors
-            name = "%s_%d" % (self.ENDSTOP_PRE_GATE, gate)
+            name = "%s_%d" % (Mmu.ENDSTOP_PRE_GATE, gate)
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
@@ -165,18 +159,19 @@ class MmuSensors:
         # Setup "mmu_gate" sensor(s)...
         switch_pin = config.get('gate_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
-            self._create_gate_sensor(config, None, switch_pin, event_delay)
+            self._create_gate_sensor(config, Mmu.ENDSTOP_GATE, None, switch_pin, event_delay)
         else:
+            # Setup "mmu_post_gate" sensors...
             for gate in range(23):
-                switch_pin = config.get(f'gate_switch_pin_{gate}', None)
+                switch_pin = config.get(f'post_gate_switch_pin_{gate}', None)
                 if switch_pin is not None and not self._is_empty_pin(switch_pin):
-                    self._create_gate_sensor(config, gate, switch_pin, event_delay)
+                    self._create_gate_sensor(config, Mmu.ENDSTOP_POST_GATE, gate, switch_pin, event_delay)
 
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
-            name = "%s_sensor" % self.ENDSTOP_EXTRUDER_ENTRY
+            name = "%s_sensor" % Mmu.ENDSTOP_EXTRUDER_ENTRY
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
@@ -194,7 +189,7 @@ class MmuSensors:
         switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
-            name = "%s_sensor" % self.ENDSTOP_TOOLHEAD
+            name = "%s_sensor" % Mmu.ENDSTOP_TOOLHEAD
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
@@ -219,8 +214,8 @@ class MmuSensors:
             self.has_compression_switch = True
             self.compression_switch_state = 0
 
-    def _create_gate_sensor(self, config, gate, switch_pin, event_delay):
-        name = "%s_%d" % (self.ENDSTOP_GATE, gate) if gate is not None else "%s_sensor" % self.ENDSTOP_GATE
+    def _create_gate_sensor(self, config, name_prefix, gate, switch_pin, event_delay):
+        name = "%s_%d" % (name_prefix, gate) if gate is not None else "%s_sensor" % name_prefix
         section = "filament_switch_sensor %s" % name
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
@@ -259,8 +254,8 @@ class MmuSensors:
 
     def get_status(self, eventtime):
         return {
-            self.SWITCH_SYNC_FEEDBACK_TENSION: self.tension_switch_state,
-            self.SWITCH_SYNC_FEEDBACK_COMPRESSION: self.compression_switch_state,
+            "sync_feedback_tension": self.tension_switch_state,
+            "sync_feedback_compression": self.compression_switch_state,
         }
 
 def load_config(config):

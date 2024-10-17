@@ -37,20 +37,20 @@ OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 
 
 SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
 
-# Wrapper object to delay loading of toolhead implementation until Happy Hare ready
-# TODO Really needs to move logic around to avoid this
+
+# Define type/style of MMU and expand configuration for convenience
 class MmuMachine:
 
     def __init__(self, config):
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on
-        # certain set-ups if can be disabled. Homing moves will still work, but the delay in mcu to mcu comms
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
+        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, 'LinearSelector')
 
         # PAUL WIP for config validation
 #PAUL        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
-# PAUL        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
+#PAUL        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
@@ -406,7 +406,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     def is_selector_homed(self):
         return self.kin.get_status(self.reactor.monotonic())["selector_homed"]
 
-    def get_status(self, eventtime): # PAUL may not need this. Duplicates mmu.get_status()
+    def get_status(self, eventtime):
         res = super(MmuToolHead, self).get_status(eventtime)
         res.update(dict(self.get_kinematics().get_status(eventtime)))
         res.extend({
@@ -467,12 +467,17 @@ class MmuKinematics:
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
         self.toolhead = toolhead
+        self.mmu_machine = self.printer.lookup_object('mmu_machine')
 
         # Setup "axis" rails
-        self.axes = [('x', 'selector', True, SELECTOR_STEPPER_CONFIG), ('y', 'gear', False, GEAR_STEPPER_CONFIG)]
-        self.rails = [MmuLookupMultiRail(config.getsection(n), need_position_minmax=mm, default_position_endstop=0.) for a, s, mm, n in self.axes]
-        for rail, axis in zip(self.rails, 'xy'):
-            rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
+        self.rails = []
+        if self.mmu_machine.selector_type == 'LinearSelector':
+            self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
+            self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
+        else:
+            self.rails.append(DummyRail())
+        self.rails.append(MmuLookupMultiRail(config.getsection(GEAR_STEPPER_CONFIG), need_position_minmax=False, default_position_endstop=0.))
+        self.rails[1].setup_itersolve('cartesian_stepper_alloc', b'y')
 
         for s in self.get_steppers():
             s.set_trapq(toolhead.get_trapq())
@@ -689,7 +694,6 @@ class MmuPrinterRail(stepper.PrinterRail, object):
 
 # Wrapper for multiple stepper motor support
 def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
-    logging.info("PAUL: MmuLookupMultiRail")
     rail = MmuPrinterRail(config, need_position_minmax=need_position_minmax, default_position_endstop=default_position_endstop, units_in_radians=units_in_radians)
     for i in range(1, 24): # Don't allow "_0" or it is confusing with unprefixed initial stepper
         section_name = "%s_%d" % (config.get_name(), i)
@@ -718,6 +722,19 @@ class MmuExtruderStepper(ExtruderStepper, object):
         if endstop_pin:
             mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=True)
             mcu_endstop.add_stepper(self.stepper)
+
+class DummyRail:
+    def __init__(self):
+        self.steppers = []
+        self.endstops = []
+        self.extra_endstops = []
+        self.rail_name = "Dummy"
+
+    def get_steppers(self):
+        return self.steppers
+
+    def get_endstops(self):
+        return self.endstops
 
 
 def load_config(config):

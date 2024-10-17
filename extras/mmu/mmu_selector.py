@@ -262,14 +262,12 @@ class LinearSelector:
             elif force_unload is False and self.mmu.filament_pos != self.mmu.FILAMENT_POS_UNLOADED:
                 # Automatic unload case
                 self.mmu.unload_sequence()
-
-#PAUL            self.mmu.unselect_tool() # PAUL don't think we need this
             self._home_selector()
 
     # Physically move selector to correct gate position
     def select_gate(self, gate):
-        self.mmu.log_error("PAUL: selector.select_gate(%d)" % gate)
         if gate == self.mmu.gate_selected: return
+        self.mmu.log_error("PAUL: selector.select_gate(%d)" % gate)
 
         with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
             self.filament_hold()
@@ -603,16 +601,14 @@ class LinearSelector:
                             raise MmuError("Unblocking selector failed because: %s" % (str(ee)))
 
                         # Check if selector can now reach proper target
-                        self._home_selector() # PAUL TODO can throw exception.. need to handle as failed to home
+                        self._home_selector()
                         halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=self.mmu.ENDSTOP_SELECTOR_TOUCH)
                         if homed: # Positioning move was not successful
                             self.is_homed = False
-#PAUL                            self.mmu.unselect_tool() # PAUL move up the stack?
                             raise MmuError("Unblocking selector recovery failed. Path is probably internally blocked")
 
                     else: # Selector path is blocked, probably externally
                         self.is_homed = False
-#PAUL                        self.mmu.unselect_gate() # PAUL move up the stack?
                         raise MmuError("Selector is externally blocked perhaps by filament in another gate")
 
     def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):

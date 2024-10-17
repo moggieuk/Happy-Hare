@@ -93,6 +93,8 @@ class Mmu:
     # Standard sensor and endstop or pseudo endstop names
     ENDSTOP_ENCODER             = "encoder"        # Fake Gate endstop
     ENDSTOP_GATE                = "mmu_gate"       # Gate
+    ENDSTOP_PRE_GATE            = "mmu_pre_gate"
+    ENDSTOP_POST_GATE           = "mmu_post_gate"
 
     ENDSTOP_EXTRUDER_NONE       = "none"           # Fake Extruder endstop aka don't attempt home
     ENDSTOP_EXTRUDER_COLLISION  = "collision"      # Fake Extruder endstop
@@ -127,10 +129,12 @@ class Mmu:
     SYNC_STATE_EXPANDED = -1.
 
     # Vendor MMU's supported
-    VENDOR_ERCF     = "ERCF"
-    VENDOR_TRADRACK = "Tradrack"
-    VENDOR_PRUSA    = "Prusa"
-    VENDOR_OTHER    = "Other"
+    VENDOR_ERCF         = "ERCF"
+    VENDOR_TRADRACK     = "Tradrack"
+    VENDOR_PRUSA        = "Prusa"
+    VENDOR_ANGRY_BEAVER = "AngryBeaver"
+    VENDOR_TURTLE_BOX   = "TurtleBox"
+    VENDOR_OTHER        = "Other"
 
     VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_OTHER]
 
@@ -203,8 +207,7 @@ class Mmu:
     AUTOMAP_COLOR          = 'color'
     AUTOMAP_OPTIONS        = [AUTOMAP_NONE, AUTOMAP_FILAMENT_NAME, AUTOMAP_SPOOL_ID, AUTOMAP_MATERIAL, AUTOMAP_CLOSEST_COLOR, AUTOMAP_COLOR]
 
-    EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'servo_retries': 0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
-# PAUL? deprecate or rename servo, just call "retries"? Would need upgrade..
+    EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
     W3C_COLORS = [('aliceblue','#F0F8FF'), ('antiquewhite','#FAEBD7'), ('aqua','#00FFFF'), ('aquamarine','#7FFFD4'), ('azure','#F0FFFF'), ('beige','#F5F5DC'),
                   ('bisque','#FFE4C4'), ('black','#000000'), ('blanchedalmond','#FFEBCD'), ('blue','#0000FF'), ('blueviolet','#8A2BE2'), ('brown','#A52A2A'),
@@ -270,7 +273,7 @@ class Mmu:
             raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.config_version, self.VERSION, self.UPGRADE_REMINDER))
 
         # MMU hardware (steppers, encoder and optional sensors)
-        self.gear_stepper = self.mmu_extruder_stepper = self.encoder_sensor = None
+        self.mmu_extruder_stepper = self.encoder_sensor = None
         self.sensors = {}
         bmg_circ = 23.
 
@@ -653,6 +656,7 @@ class Mmu:
         self._reset_statistics()
         self.counters = {}
 
+    # Initialize MMU hardare. Note that logging not set up yet so use main klippy logger
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
         self.has_leds = self.has_led_animation = False
@@ -669,7 +673,6 @@ class Mmu:
 
         rails = self.mmu_toolhead.get_kinematics().rails
         self.gear_rail = rails[1]
-        self.gear_stepper = self.gear_rail.steppers[0]
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
 
         # Setup filament homing sensors
@@ -698,7 +701,6 @@ class Mmu:
         # Get optional encoder setup
         self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
         if not self.encoder_sensor:
-            # MMU logging not set up yet so use main klippy logger
             logging.warning("No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
 
     def _setup_logging(self):
@@ -784,7 +786,7 @@ class Mmu:
             self.save_variables.allVariables.pop("%s0" % self.VARS_MMU_CALIB_PREFIX, None)
 
         # Configure gear stepper calibration (set with MMU_CALIBRATE_GEAR)
-        self.default_rotation_distance = self.gear_stepper.get_rotation_distance()[0] # TODO should be per gear in case they are disimilar
+        self.default_rotation_distance = self.gear_rail.steppers[0].get_rotation_distance()[0] # TODO should be per gear in case they are disimilar
         self.rotation_distances = self.save_variables.allVariables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCES, None)
         if self.rotation_distances:
             if len(self.rotation_distances) == self.num_gates:
@@ -1182,6 +1184,7 @@ class Mmu:
         # Auto upgrade old names
         key_map = {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause"}
         swap_stats = {key_map.get(key, key): swap_stats[key] for key in swap_stats}
+        swap_stats.pop('servo_retries', None) # Deprecated
 
         self.statistics.update(swap_stats)
         for gate in range(self.num_gates):
@@ -1309,7 +1312,7 @@ class Mmu:
         status = {
             'enabled': self.is_enabled,
         }
-        if True: # if self.is_enabled:
+        if True: # TODO is the copy of lists a long-term perf problem? Maybe: if self.is_enabled:
             status.update({
                 'num_gates': self.num_gates,
                 'is_paused': self.is_mmu_paused(),
@@ -1654,7 +1657,7 @@ class Mmu:
             dbg += "\nGate %d: " % gate
             dbg += "Load: (monitored: %.1fmm slippage: %.1f%%)" % (rounded['load_distance'], load_slip_percent)
             dbg += "; Unload: (monitored: %.1fmm slippage: %.1f%%)" % (rounded['unload_distance'], unload_slip_percent)
-            dbg += "; Failures: (servo: %d load: %d unload: %d pauses: %d)" % (rounded['servo_retries'], rounded['load_failures'], rounded['unload_failures'], rounded['pauses']) # PAUL rename servo?
+            dbg += "; Failures: (load: %d unload: %d pauses: %d)" % (rounded['load_failures'], rounded['unload_failures'], rounded['pauses'])
             dbg += "; Quality: %.1f%%" % ((rounded['quality'] * 100.) if rounded['quality'] >= 0. else 0.)
         return msg, dbg
 
@@ -1711,14 +1714,6 @@ class Mmu:
             self.mmu_logger.log(msg)
         if self.log_level > 1:
             self.gcode.respond_info(msg)
-
-# PAUL lazy logging idea
-#    def log_debug(self, fmt, *args):
-#        lazy_msg = lazy_format("%s DEBUG: " + fmt, UI_SEPARATOR, *args)
-#        if self.mmu_logger and self.log_file_level > 1:
-#            self.mmu_logger.log(str(lazy_msg))
-#        if self.log_level > 1:
-#            self.gcode.respond_info(str(lazy_msg))
 
     def log_trace(self, msg):
         msg = "%s %s TRACE: %s" % (UI_SEPARATOR, UI_SEPARATOR, msg)
@@ -1996,7 +1991,7 @@ class Mmu:
         if motor in ["all", "gear", "gears"]:
             self.mmu_toolhead.unsync()
             stepper_enable = self.printer.lookup_object('stepper_enable')
-            steppers = self.gear_rail.steppers if motor == "gears" else [self.gear_stepper]
+            steppers = self.gear_rail.steppers if motor == "gears" else [self.gear_rail.steppers[0]]
             for stepper in steppers:
                 se = stepper_enable.lookup_enable(stepper.get_name())
                 se.motor_disable(self.mmu_toolhead.get_last_move_time())
@@ -2245,7 +2240,7 @@ class Mmu:
             mean_neg = self._sample_stats(neg_values)['mean']
             mean = (float(mean_pos) + float(mean_neg)) / 2
             ratio = mean / length
-            current_rd = self.gear_stepper.get_rotation_distance()[0]
+            current_rd = self.gear_rail.steppers[0].get_rotation_distance()[0]
             new_rd = round(ratio * current_rd, 6)
 
             self.log_always("Calibration move of %d x %.1fmm, average encoder measurement: %.1fmm - Ratio is %.6f" % (repeats * 2, length, mean, ratio))
@@ -2367,7 +2362,7 @@ class Mmu:
             self.calibration_status &= ~self.CALIBRATED_GEAR
 
         elif measured > 0:
-            current_rd = self.gear_stepper.get_rotation_distance()[0]
+            current_rd = self.gear_rail.steppers[0].get_rotation_distance()[0]
             new_rd = round(current_rd * measured / length, 6)
             self.log_always("Gear stepper 'rotation_distance' calculated to be %.6f (currently: %.6f" % (new_rd, current_rd))
             if save:
@@ -3801,7 +3796,6 @@ class Mmu:
                     else:
                         self.log_debug("Error loading filament - filament motion was not detected by the encoder. %s" % ("Retrying..." if i < retries - 1 else ""))
                         if i < retries - 1:
-                            self._track_gate_statistics('servo_retries', self.gate_selected)
                             self.selector.filament_release()
                             self.selector.filament_drive()
         else:
@@ -3818,7 +3812,6 @@ class Mmu:
                 else:
                     self.log_debug("Error loading filament - filament did not reach gate homing sensor. %s" % ("Retrying..." if i < retries - 1 else ""))
                     if i < retries - 1:
-                        self._track_gate_statistics('servo_retries', self.gate_selected)
                         self.selector.filament_release()
                         self.selector.filament_drive()
 
@@ -4271,7 +4264,7 @@ class Mmu:
             if self.auto_calibrate_gates and self.gate_selected > 0 and bowden_move_ratio > 0 and homing_movement > 0:
                 if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:
                     # Encoder based automatic calibration of gate's gear rotation_distance aka MMU_CALIBRATE_GATES
-                    current_rd = self.gear_stepper.get_rotation_distance()[0]
+                    current_rd = self.gear_rail.steppers[0].get_rotation_distance()[0]
                     new_rd = round(bowden_move_ratio * current_rd, 6)
                     gate0_rd = self.rotation_distances[0]
                     tolerance_range = (gate0_rd - gate0_rd * 0.1, gate0_rd + gate0_rd * 0.1) # Allow max 10% variation from gate 0 for autotune
@@ -5121,9 +5114,6 @@ class Mmu:
             self.selector.filament_release()
         else:
             self.selector.filament_drive()
-# PAUL this doesn't appear to be needed
-#            if self.gear_rail.is_endstop_virtual(endstop):
-#                self.movequeues_dwell(1, toolhead=False) # TMC needs time to settle after gear buzz
         self.log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
         return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop, sync=sync)
 
@@ -5318,7 +5308,7 @@ class Mmu:
             self.log_debug("Gate not calibrated, falling back to: %.6f" % rd)
         else:
             self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
-        self.gear_stepper.set_rotation_distance(rd)
+        self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_rotation_distance(self, gate):
         return self.rotation_distances[gate if gate >= 0 and self.variable_gate_ratios else 0]

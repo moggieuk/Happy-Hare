@@ -77,15 +77,3 @@ class MultiLineFormatter(logging.Formatter):
             # Don't modify exception stack traces
             return formatted_message
         return formatted_message.replace('\n', '\n' + indent)
-
-# PAUL
-#class LazyFormat:
-#    def __init__(self, fmt, *args):
-#        self.fmt = fmt
-#        self.args = args
-#
-#    def __str__(self):
-#        return self.fmt % self.args
-#
-#def lazy_format(fmt, *args):
-#    return LazyFormat(fmt, *args)
