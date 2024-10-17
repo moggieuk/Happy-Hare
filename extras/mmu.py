@@ -13,7 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import sys # To detect python2 or python3
-import random, logging, logging.handlers, threading, queue, atexit, time, contextlib, math, os.path, re
+import random, logging, logging.handlers, threading, queue, atexit, time, contextlib, math, os.path, re, unicodedata
 from extras.mmu_toolhead import MmuToolHead, MmuHoming
 from extras.mmu_sensors import MmuRunoutHelper
 from extras.homing import Homing, HomingMove
@@ -1224,6 +1224,15 @@ class Mmu:
                 return int(s)
             except ValueError:
                 return s
+
+    # Compare unicode strings with optional case insensitivity
+    def _compare_unicode(self, a, b, case_insensitive=True):
+        a = unicodedata.normalize('NFKC', a)
+        b = unicodedata.normalize('NFKC', b)
+        if case_insensitive:
+            a = a.lower()
+            b = b.lower()
+        return a == b
 
     # This retuns the hex color format without leading '#' E.g. ff00e0
     def _color_to_rgb_hex(self, color):
@@ -7396,7 +7405,12 @@ class Mmu:
             # 'standard' exactly matching fields
             if strategy != self.AUTOMAP_CLOSEST_COLOR:
                 for gn, gate_feature in enumerate(search_in):
-                    if tool_to_remap[tool_field] == gate_feature:
+                    # When matching by name normalize possible unicode characters and match case-insensitive
+                    if strategy == self.AUTOMAP_FILAMENT_NAME:
+                        equal = self._compare_unicode(tool_to_remap[tool_field], gate_feature)
+                    else:
+                        equal = tool_to_remap[tool_field] == gate_feature
+                    if equal:
                         remaps.append("T%s --> G%s (%s)" % (tool, gn, gate_feature))
                         self._wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
                 if not len(remaps):
