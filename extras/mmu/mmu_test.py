@@ -275,6 +275,8 @@ class MmuTest:
             purge_vol = purge_vol_calc.calc_purge_vol_by_hex("#C0C0C0", "#F72323")
             self.mmu.log_always("The purge vol from hex color #C0C0C0 to #F72323 is: {}".format(purge_vol))
 
-            tool_colors = "FFFF00,80FFFF,FFFFFF,FF8000"
-            purge_volumes = self.mmu._generate_purge_matrix(tool_colors)
+            tool_colors = ["FFFF00","80FFFF","FFFFFF","FF8000"]
+            purge_volumes = self.mmu._generate_purge_matrix(tool_colors, 0, 800, 1.0)
+            self.mmu.log_always("\ntool_colors={}\npurge_volumes={}".format(tool_colors, purge_volumes))
+            purge_volumes = self.mmu._generate_purge_matrix(tool_colors, 0, 800, 0.5)
             self.mmu.log_always("\ntool_colors={}\npurge_volumes={}".format(tool_colors, purge_volumes))

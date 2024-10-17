@@ -102,8 +102,8 @@ class Mmu:
     ENDSTOP_TOOLHEAD            = "toolhead"
     ENDSTOP_EXTRUDER_TOUCH      = "mmu_ext_touch"
 
-    ENDSTOP_SELECTOR_TOUCH      = "mmu_sel_touch" # PAUL move to mmu_selector?
-    ENDSTOP_SELECTOR_HOME       = "mmu_sel_home" # PAUL move to mmu_selector?
+    ENDSTOP_SELECTOR_TOUCH      = "mmu_sel_touch"  # For LinearSelector
+    ENDSTOP_SELECTOR_HOME       = "mmu_sel_home"   # For LinearSelector
     PRE_GATE_SENSOR_PREFIX      = "mmu_pre_gate"
 
     EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER_ENTRY, ENDSTOP_EXTRUDER_NONE]
@@ -596,6 +596,7 @@ class Mmu:
         self.gcode.register_command('MMU_CHECK_GATE', self.cmd_MMU_CHECK_GATE, desc = self.cmd_MMU_CHECK_GATE_help)
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
         self.gcode.register_command('MMU_SLICER_TOOL_MAP', self.cmd_MMU_SLICER_TOOL_MAP, desc = self.cmd_MMU_SLICER_TOOL_MAP_help)
+        self.gcode.register_command('MMU_CALC_PURGE_VOLUMES', self.cmd_MMU_CALC_PURGE_VOLUMES, desc = self.cmd_MMU_CALC_PURGE_VOLUMES_help)
         self.gcode.register_command('MMU_SPOOLMAN', self.cmd_MMU_SPOOLMAN, desc = self.cmd_MMU_SPOOLMAN_help)
 
         # For use in user controlled load and unload macros
@@ -1094,17 +1095,20 @@ class Mmu:
             volume += math.pi * ((fil_diameter / 2) ** 2) * (self.filament_remaining + self.toolhead_residual_filament)
         return volume
 
-# PAUL new
     # Generate purge matrix based on filament colors
-    def _generate_purge_matrix(self, tool_colors):
-        colors = tool_colors.split(',')
-        result = []
-        purge_vol_calc = PurgeVolCalculator(0, 800, 1.0) # PAUL parms should be passed in
-        for from_color in colors:
-            for to_color in colors:
-                volume = purge_vol_calc.calc_purge_vol_by_hex(from_color, to_color)
-                result.append(str(volume))
-        return ",".join(result)
+    def _generate_purge_matrix(self, tool_colors, purge_min, purge_max, multiplier):
+        purge_vol_calc = PurgeVolCalculator(purge_min, purge_max, multiplier)
+
+        # Build purge volume map (x=to_tool, y=from_tool)
+        should_calc = lambda x,y: x < len(tool_colors) and y < len(tool_colors) and x != y
+        purge_volumes = [
+            [
+                purge_vol_calc.calc_purge_vol_by_hex(tool_colors[y], tool_colors[x]) if should_calc(x,y) else 0
+                for y in range(self.num_gates)
+            ]
+            for x in range(self.num_gates)
+        ]
+        return purge_volumes
 
     def _load_persisted_state(self):
         self.log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
@@ -5205,7 +5209,7 @@ class Mmu:
 
     def _auto_home(self, tool=0):
         if not self.selector.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
-            self.log_info("MMU not homed, homing it before continuing...")
+            self.log_info("MMU not homed, will home before continuing")
             self.home(tool)
         elif self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed:
             self._recover_filament_pos(message=True)
@@ -7167,6 +7171,39 @@ class Mmu:
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volume map"
             self.log_always(msg)
+
+    cmd_MMU_CALC_PURGE_VOLUMES_help = "Calculate purge volume matrix based on filament color overriding slicer tool map import"
+    def cmd_MMU_CALC_PURGE_VOLUMES(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_is_disabled(): return
+        self._fix_started_state()
+
+        min_purge = gcmd.get_int('MIN', 0, minval=0)
+        max_purge = gcmd.get_int('MAX', 800, minval=1)
+        multiplier = gcmd.get_float('MULTIPLIER', 1., above=0.)
+        source = gcmd.get('SOURCE', 'gatemap')
+        if source not in ['gatemap', 'slicer']:
+            raise gcmd.error("Invalid color source: %s. Options are: gatemap, slicer" % source)
+        if min_purge >= max_purge:
+            raise gcmd.error("MAX purge volume must be greater than MIN")
+
+        tool_rgb_colors = []
+        if source == 'slicer':
+            # Pull colors from existing slicer map
+            for tool in range(self.num_gates):
+                tool_info = self.slicer_tool_map['tools'].get(str(tool))
+                if tool_info:
+                    tool_rgb_colors.append(self._color_to_rgb_hex(tool_info.get('color', '')))
+                else:
+                    tool_rgb_colors.append(self._color_to_rgb_hex(''))
+        else:
+            # Logic to use tools mapped to gate colors with current ttg map
+            for tool in range(self.num_gates):
+                gate = self.ttg_map[tool]
+                tool_rgb_colors.append(self._color_to_rgb_hex(self.gate_color[gate]))
+
+        self.slicer_tool_map['purge_volumes'] = self._generate_purge_matrix(tool_rgb_colors, min_purge, max_purge, multiplier)
+        self.log_always("Purge map updated. Use 'MMU_SLICER_TOOL_MAP DETAIL=1' to view")
 
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
     def cmd_MMU_CHECK_GATE(self, gcmd):

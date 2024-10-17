@@ -63,7 +63,7 @@ class VirtualSelector:
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper
 
     def restore_gate_position(self):
-        self.mmu.log_error("PAUL: selector.restore_gate_position")
+        self.mmu.log_error("PAUL: selector.restore_gate_position()")
         if self.mmu.gate_selected >= 0:
             self.mmu.mmu_toolhead.select_gear_stepper(self.mmu.gate_selected) # Select correct drive stepper
 
@@ -71,7 +71,7 @@ class VirtualSelector:
         pass
 
     def filament_release(self):
-        pass
+        return 0. # Encoder movement
 
     def filament_hold(self):
         pass
@@ -281,7 +281,7 @@ class LinearSelector:
 
     # Correct rail position for selector
     def restore_gate_position(self):
-        self.mmu.log_error("PAUL: selector.restore_gate_position")
+        self.mmu.log_error("PAUL: selector.restore_gate_position()")
         if self.mmu.gate_selected >= 0:
             self.set_position(self.selector_offsets[self.mmu.gate_selected])
         elif self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS:
@@ -291,7 +291,7 @@ class LinearSelector:
         self.servo.servo_down(buzz_gear=buzz_gear)
 
     def filament_release(self, measure=False):
-        self.servo.servo_up(measure=measure)
+        return self.servo.servo_up(measure=measure)
 
     def filament_hold(self): # AKA position for selector movement
         self.servo.servo_move()
