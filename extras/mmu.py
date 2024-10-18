@@ -5282,7 +5282,11 @@ class Mmu:
                     if can_heat and self._check_filament_still_in_extruder():
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent)
                     else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # This prevents fast unload move
+                        es = self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
+                        if es is not None and es: # Installed and triggered
+                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
+                        else:
+                            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # This prevents fast unload move
                 else:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
             elif ts: # Filament detected in toolhead
@@ -5293,9 +5297,18 @@ class Mmu:
                         if can_heat and self._check_filament_still_in_extruder():
                             self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
                         else:
-                            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent)
+                            es = self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
+                            if es is not None and es: # Installed and triggered
+                                self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
+                            else:
+                                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Slight risk of it still being gripped by extruder
+                                
                     else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Slight risk of it still being gripped by extruder
+                        es = self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
+                        if es is not None and es: # Installed and triggered
+                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
+                        else:
+                            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Slight risk of it still being gripped by extruder
                 else:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
 
