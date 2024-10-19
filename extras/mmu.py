@@ -7247,8 +7247,7 @@ class Mmu:
     def _es_groups_to_string(self, title=None):
         msg = "%s:\n" % title if title else "EndlessSpool Groups:\n"
         groups = {}
-        for i in range(self.mmu_num_gates):
-            gate = self.ttg_map[i]
+        for gate in range(self.mmu_num_gates):
             group = self.endless_spool_groups[gate]
             if group not in groups:
                 groups[group] = [gate]
