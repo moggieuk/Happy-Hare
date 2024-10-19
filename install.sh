@@ -1052,11 +1052,27 @@ prompt_123() {
     prompt=$1
     max=$2
     while true; do
-        read -p "${prompt} (1-${max})? " -n 1 number
-        if [[ "$number" =~ [1-${max}] ]]; then
-            echo ${number}
-            break
+        if [ -z "${max}" ]; then
+            read -ep "${prompt}? " number
+        elif [[ "${max}" -lt 10 ]]; then
+            read -ep "${prompt} (1-${max})? " -n1 number
+        else
+            read -ep "${prompt} (1-${max})? " number
         fi
+        if ! [[ "$number" =~ ^-?[0-9]+$ ]] ; then
+            echo -e "Invalid value." >&2
+            continue
+        fi
+        if [ "$number" -lt 1 ]; then
+            echo -e "Value must be greater than 0." >&2
+            continue
+        fi
+        if [ -n "$max" ] && [ "$number" -gt "$max" ]; then
+            echo -e "Value must be less than $((max+1))." >&2
+            continue
+        fi
+        echo ${number}
+        break
     done
 }
 
@@ -1340,14 +1356,7 @@ questionaire() {
 
     echo
     echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
-    while true; do
-        read -p "Number of gates? " _hw_num_gates
-        if ! [ "${_hw_num_gates}" -ge 1 ] 2> /dev/null ;then
-            echo -e "${INFO}Positive integer value only"
-      else
-           break
-       fi
-    done
+    _hw_num_gates=$(prompt_123 "Number of gates")
 
     _hw_brd_type="unknown"
     echo
