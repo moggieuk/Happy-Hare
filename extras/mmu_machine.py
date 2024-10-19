@@ -516,7 +516,7 @@ class MmuKinematics:
 
     def home(self, homing_state):
         for axis in homing_state.get_axes():
-            if not axis == 0: # Saftey: Only selector (axis[0]) can be homed
+            if not axis == 0: # Saftey: Only selector (axis[0]) can be homed TODO: make dependent on exact configuration
                 continue
             rail = self.rails[axis]
             position_min, position_max = rail.get_range()

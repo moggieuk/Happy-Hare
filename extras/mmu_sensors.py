@@ -142,7 +142,7 @@ class MmuSensors:
                 continue
 
             # Automatically create necessary filament_switch_sensors
-            name = "%s_%d" % (Mmu.ENDSTOP_PRE_GATE, gate)
+            name = "%s_%d_sensor" % (Mmu.PRE_GATE_SENSOR_PREFIX, gate)
             section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
@@ -160,12 +160,12 @@ class MmuSensors:
         switch_pin = config.get('gate_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             self._create_gate_sensor(config, Mmu.ENDSTOP_GATE, None, switch_pin, event_delay)
-        else:
-            # Setup "mmu_post_gate" sensors...
-            for gate in range(23):
-                switch_pin = config.get(f'post_gate_switch_pin_{gate}', None)
-                if switch_pin is not None and not self._is_empty_pin(switch_pin):
-                    self._create_gate_sensor(config, Mmu.ENDSTOP_POST_GATE, gate, switch_pin, event_delay)
+
+        # Setup "mmu_post_gate" sensors...
+        for gate in range(23):
+            switch_pin = config.get(f'post_gate_switch_pin_{gate}', None)
+            if switch_pin is not None and not self._is_empty_pin(switch_pin):
+                self._create_gate_sensor(config, Mmu.ENDSTOP_POST_GATE_PREFIX, gate, switch_pin, event_delay)
 
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
@@ -215,7 +215,7 @@ class MmuSensors:
             self.compression_switch_state = 0
 
     def _create_gate_sensor(self, config, name_prefix, gate, switch_pin, event_delay):
-        name = "%s_%d" % (name_prefix, gate) if gate is not None else "%s_sensor" % name_prefix
+        name = "%s_%d_sensor" % (name_prefix, gate) if gate is not None else "%s_sensor" % name_prefix
         section = "filament_switch_sensor %s" % name
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)

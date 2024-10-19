@@ -280,3 +280,32 @@ class MmuTest:
             self.mmu.log_always("\ntool_colors={}\npurge_volumes={}".format(tool_colors, purge_volumes))
             purge_volumes = self.mmu._generate_purge_matrix(tool_colors, 0, 800, 0.5)
             self.mmu.log_always("\ntool_colors={}\npurge_volumes={}".format(tool_colors, purge_volumes))
+
+        runout = gcmd.get_int('RUNOUT', -1, minval=0, maxval=1)
+        if runout == 1:
+            self.mmu._enable_runout()
+        elif runout == 0:
+            self.mmu._disable_runout()
+
+        if gcmd.get_int('SENSOR', 0, minval=0, maxval=1):
+            pos = gcmd.get_int('POS', 0, minval=-1)
+            gate = gcmd.get_int('GATE', 0, minval=-2, maxval=8)
+            loading = bool(gcmd.get_int('LOADING', 1, minval=0, maxval=1))
+            loop = gcmd.get_int('LOOP', 0, minval=0, maxval=1)
+
+            if not loop:
+                sensors = self.mmu.sensor_manager._get_sensors_before(pos, gate, loading=loading)
+                self.mmu.log_always("check_all_sensors_before(%s,%s)=%s" % (pos, gate, self.mmu.sensor_manager.check_all_sensors_before(pos, gate, loading=loading)))
+                self.mmu.log_always("sensors before=%s" % sensors)
+
+                sensors = self.mmu.sensor_manager._get_sensors_after(pos, gate, loading=loading)
+                self.mmu.log_always("check_all_sensors_after(%s,%s)=%s" % (pos, gate, self.mmu.sensor_manager.check_all_sensors_after(pos, gate, loading=loading)))
+                self.mmu.log_always("sensors after=%s" % sensors)
+            else:
+                for pos in range(-1,11):
+                    self.mmu.log_always("check_all_sensors_before(%s,%s)=%s" % (pos, gate, self.mmu.sensor_manager.check_all_sensors_before(pos, gate, loading=loading)))
+                self.mmu.log_always("")
+                for pos in range(-1,11):
+                    self.mmu.log_always("check_all_sensors_after(%s,%s)=%s" % (pos, gate, self.mmu.sensor_manager.check_all_sensors_after(pos, gate, loading=loading)))
+            self.mmu.log_always("check_any_sensors_in_path()=%s" % self.mmu.sensor_manager.check_any_sensors_in_path())
+            self.mmu.log_always("check_for_runout()=%s" % self.mmu.sensor_manager.check_for_runout())

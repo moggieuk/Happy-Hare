@@ -69,7 +69,7 @@ class PurgeVolCalculator:
         hs_dist = self.DeltaHS_BBS(from_hsv_h, from_hsv_s, from_hsv_v, to_hsv_h, to_hsv_s, to_hsv_v)
         from_lumi = self.get_luminance(src_r_f, src_g_f, src_b_f)
         to_lumi = self.get_luminance(dst_r_f, dst_g_f, dst_b_f)
-        
+
         lumi_purge = 0.0
         if to_lumi >= from_lumi:
             lumi_purge = math.pow(to_lumi - from_lumi, 0.7) * 560.0
