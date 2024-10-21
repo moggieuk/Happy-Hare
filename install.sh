@@ -867,7 +867,7 @@ copy_config_files() {
         fi
 
         # Hardware files: Special token substitution -----------------------------------------
-	if [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
+	    if [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
             cp ${src} ${dest}
 
             # Correct shared uart_address for EASY-BRD
@@ -943,11 +943,11 @@ copy_config_files() {
                     " > ${dest}.tmp && mv ${dest}.tmp ${dest}
 
             # Handle LED option - Comment out if disabled
-	    if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" -eq 0 ]; then
+	        if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" -eq 0 ]; then
                 sed "/${LED_SECTION}/,\$s/^/#/" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-        # Conifguration parameters -----------------------------------------------------------
+        # Configuration parameters -----------------------------------------------------------
         elif [ "${file}" == "mmu_parameters.cfg" ]; then
             update_copy_file "$src" "$dest" "" "_param_"
 
@@ -1009,7 +1009,7 @@ copy_config_files() {
         # Everything else is read-only symlink ------------------------------------------------
         else
             ln -sf ${src} ${dest}
-	fi
+	    fi
     done
 
     # Handle deprecated files -----------------------------------------------------------------
@@ -1285,12 +1285,42 @@ prompt_123() {
     prompt=$1
     max=$2
     while true; do
-        read -p "${prompt} (1-${max})? " -n 1 number
-        if [[ "$number" =~ [1-${max}] ]]; then
-            echo ${number}
-            break
+        if [ -z "${max}" ]; then
+            read -ep "${prompt}? " number
+        elif [[ "${max}" -lt 10 ]]; then
+            read -ep "${prompt} (1-${max})? " -n1 number
+        else
+            read -ep "${prompt} (1-${max})? " number
         fi
+        if ! [[ "$number" =~ ^-?[0-9]+$ ]] ; then
+            echo -e "Invalid value." >&2
+            continue
+        fi
+        if [ "$number" -lt 1 ]; then
+            echo -e "Value must be greater than 1." >&2
+            continue
+        fi
+        if [ -n "$max" ] && [ "$number" -gt "$max" ]; then
+            echo -e "Value must be less than $((max+1))." >&2
+            continue
+        fi
+        echo ${number}
+        break
     done
+}
+
+prompt_option() {
+    local var_name="$1"
+    local query="$2"
+    shift 2
+    local i=0
+    for val in "$@"; do
+        i=$((i+1))
+        echo "$i) $val"
+    done
+    REPLY=$(prompt_123 "$query" "$#")
+    echo
+    declare -g $var_name="${!REPLY}"
 }
 
 questionaire() {
@@ -1321,13 +1351,15 @@ questionaire() {
     echo -e "(Note that all this script does is set a lot of the time consuming parameters in the config"
     echo
     echo -e "${PROMPT}${SECTION}What type of MMU are you running?${INPUT}"
-    echo -e "1) ERCF v1.1 (inc TripleDecky, Springy, Binky mods)"
-    echo -e "2) ERCF v2.0"
-    echo -e "3) Tradrack v1.0"
-    echo -e "4) Other (or just want starter config files)"
-    num=$(prompt_123 "MMU Type?" 4)
-    echo
-    case $num in
+    options=(
+        'ERCF v1.1 (inc TripleDecky, Springy, Binky mods)'
+        'ERCF v2.0'
+        'Tradrack v1.0'
+        'ArmoredTurtle BoxTurtle Beta'
+        'Other (or just want starter config files)'
+    )
+    prompt_option opt 'MMU Type' "${options[@]}"
+    case $REPLY in
         1)
             HAS_ENCODER=yes
             mmu_vendor="ERCF"
@@ -1394,6 +1426,14 @@ questionaire() {
             esac
             ;;
         4)
+            HAS_ENCODER=no
+            mmu_vendor="ArmoredTurtle"
+            mmu_version="Box Turtle Beta"
+            extruder_homing_endstop="none"
+            gate_homing_endstop="mmu_gate"
+            gate_parking_distance=17.5
+            ;;
+        *)
             HAS_ENCODER=yes
             echo
             echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU you will need to setup some CAD dimensions and other key parameters... See doc"
@@ -1404,7 +1444,7 @@ questionaire() {
     echo
     echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
     while true; do
-        read -p "Number of gates? " mmu_num_gates
+        mmu_num_gates=$(prompt_123 "Number of gates")
         if ! [ "${mmu_num_gates}" -ge 1 ] 2> /dev/null ;then
             echo -e "${INFO}Positive integer value only"
       else
@@ -1416,18 +1456,21 @@ questionaire() {
     brd_type="unknown"
     echo
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
-    echo -e " 1) BTT MMB v1.0 (with CANbus)"
-    echo -e " 2) BTT MMB v1.1 (with CANbus)"
-    echo -e " 3) Fysetc Burrows ERB v1"
-    echo -e " 4) Fysetc Burrows ERB v2"
-    echo -e " 5) Standard EASY-BRD (with SAMD21)"
-    echo -e " 6) EASY-BRD with RP2040"
-    echo -e " 7) Mellow EASY-BRD v1.x (with CANbus)"
-    echo -e " 8) Mellow EASY-BRD v2.x (with CANbus)"
-    echo -e " 9) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 9)
-    echo
-    case $num in
+    # Perhaps consider just supporting the BTT MMB (and eventually AFC) when mmu_vendor is BoxTurtle
+    # as many of these other boards may not work (due lack of exposed gpio)
+    options=(
+        'BTT MMB v1.0 (with CANbus)'
+        'BTT MMB v1.1 (with CANbus)'
+        'Fysetc Burrows ERB v1'
+        'Fysetc Burrows ERB v2'
+        'Standard EASY-BRD (with SAMD21)'
+        'EASY-BRD with RP2040'
+        'Mellow EASY-BRD v1.x (with CANbus)'
+        'Mellow EASY-BRD v2.x (with CANbus)'
+        'Not in list / Unknown'
+    )
+    prompt_option opt 'MCU Type' "${options[@]}"
+    case $REPLY in
         1)
             brd_type="MMB10"
             pattern="Klipper_stm32"
@@ -1460,7 +1503,7 @@ questionaire() {
             brd_type="MELLOW-EASY-BRD-CANv2"
             pattern="Klipper_rp2040"
             ;;
-        9)
+        *)
             brd_type="unknown"
             pattern="Klipper_"
             ;;
@@ -1537,14 +1580,15 @@ questionaire() {
         maximum_pulse_width=0.00215
 
         echo
-        echo -e "${PROMPT}${SECTION}Which servo are you using?"
-        echo -e "1) MG-90S"
-        echo -e "2) Savox SH0255MG"
-        echo -e "3) GDW DS041MG"
-        echo -e "4) Not listed / Other${INPUT}"
-        num=$(prompt_123 "Servo?" 4)
-        echo
-        case $num in
+        echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
+        options=(
+            'MG-90S'
+            'Savox SH0255MG'
+            'GDW DS041MG'
+            'Not listed / Other'
+        )
+        prompt_option opt 'Servo' "${options[@]}"
+        case $REPLY in
             1)
                 # MG-90S
                 servo_up_angle=30
@@ -1586,12 +1630,13 @@ questionaire() {
         maximum_pulse_width=0.00220
 
         echo
-        echo -e "${PROMPT}${SECTION}Which servo are you using?"
-        echo -e "1) PS-1171MG or FT1117M (Tradrack)"
-        echo -e "2) Not listed / Other${INPUT}"
-        num=$(prompt_123 "Servo?" 2)
-        echo
-        case $num in
+        echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
+        options=(
+            'PS-1171MG or FT1117M (Tradrack)'
+            'Not listed / Other'
+        )
+        prompt_option opt 'Servo' "${options[@]}"
+        case $REPLY in
             1)
                 servo_up_angle=145
                 servo_move_angle=${servo_up_angle}
