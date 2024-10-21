@@ -103,6 +103,7 @@ class MmuMachine:
         # PAUL TODO WIP Idea for config validation/cleaning
 #        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
 #        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
+# add validation here based on num_gates & vendor / virtual selector..
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
