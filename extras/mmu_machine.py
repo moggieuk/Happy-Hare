@@ -48,13 +48,13 @@ class MmuMachine:
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, 'LinearSelector')
 
-        # PAUL WIP for config validation
-#PAUL        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
-#PAUL        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
+        # PAUL WIP Idea for config validation/cleaning
+#        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
+#        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
-        for i in range(1, 24): # Don't allow "_0" or it is confusing with unprefixed initial stepper
+        for i in range(1, 23): # Don't allow "_0" or it is confusing with unprefixed initial stepper
             section = "%s_%d" % (GEAR_STEPPER_CONFIG, i)
             if not config.has_section(section):
                 break
@@ -253,7 +253,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._reconfigure_rail(None)
 
     def _reconfigure_rail(self, selected_steppers):
-        logging.info("PAUL: _reconfigure_rail(%s)" % selected_steppers)
         sync_mode = self.sync_mode
         if sync_mode:
             self.unsync()
@@ -264,11 +263,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Activate only the desired gear steppers
         gear_rail = self.get_kinematics().rails[1]
         pos = [0., self.mmu_toolhead.get_position()[1], 0.]
-        logging.info("PAUL: pos=%s" % pos)
         gear_rail.steppers = []
 
         for s in self.all_gear_rail_steppers:
-            logging.info("PAUL: s.get_name()=%s" % s.get_name())
             if selected_steppers and s.get_name() in selected_steppers:
                 gear_rail.steppers.append(s)
                 if s.generate_steps not in self.mmu_toolhead.step_generators:
@@ -281,11 +278,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         if selected_steppers:
             if not gear_rail.steppers:
                 raise self.printer.command_error("None of these `%s` gear steppers where found!" % selected_steppers)
-            logging.info("PAUL: set_position(%s)" % pos)
             gear_rail.set_position(pos)
         elif not gear_rail.steppers:
             # No steppers on rail is ok, because Rail keeps separate reference for the first stepper added
-            logging.info("PAUL: no steppers on rail. Bypass/unknown case")
+            pass
 
         # Restore previous synchronization state if any with new gear steppers
         # TODO: Not sure of practical usefulness of resyncing but it will not handle the extruder_only case
@@ -695,11 +691,10 @@ class MmuPrinterRail(stepper.PrinterRail, object):
 # Wrapper for multiple stepper motor support
 def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
     rail = MmuPrinterRail(config, need_position_minmax=need_position_minmax, default_position_endstop=default_position_endstop, units_in_radians=units_in_radians)
-    for i in range(1, 24): # Don't allow "_0" or it is confusing with unprefixed initial stepper
+    for i in range(1, 23): # Don't allow "_0" or it is confusing with unprefixed initial stepper
         section_name = "%s_%d" % (config.get_name(), i)
         if not config.has_section(section_name):
             break
-        logging.info("PAUL: section_name=%s. add_extra_stepper()" % section_name)
         rail.add_extra_stepper(config.getsection(section_name))
     return rail
 
