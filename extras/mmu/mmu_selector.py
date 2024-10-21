@@ -42,8 +42,8 @@ class VirtualSelector:
         self.mmu = mmu
         self.is_homed = True
 
-        # Nullify all controller parameters related to selector or servo to stop klipper complaining.
-        # This is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
+        # Read all controller parameters related to selector or servo to stop klipper complaining. This
+        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
         for option in ['selector_', 'servo_', 'cad_']:
             for key in mmu.config.get_prefix_options(option):
                 _ = mmu.config.get(key)
