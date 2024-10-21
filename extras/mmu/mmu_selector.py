@@ -37,6 +37,7 @@ from .mmu_shared import MmuError
 ################################################################################
 
 class VirtualSelector:
+
     def __init__(self, mmu):
         self.mmu = mmu
         self.is_homed = True
@@ -47,8 +48,7 @@ class VirtualSelector:
         pass
 
     def handle_connect(self):
-        self.mmu_toolhead = self.mmu.mmu_toolhead
-        self.gear_rail = self.mmu_toolhead.get_kinematics().rails[1]
+        self.mmu_toolhead = self.mmu.mmu_toolhead # PAUL get from mmu_machine?
         self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def handle_ready(self):
@@ -148,8 +148,8 @@ class LinearSelector:
         self.cad_selector_tolerance = 15.
 
         # Specific vendor build parameters / tuning.
-        if self.mmu.mmu_vendor.lower() == self.mmu.VENDOR_ERCF.lower():
-            if self.mmu.mmu_version >= 2.0: # V2 community edition
+        if self.mmu.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_ERCF.lower():
+            if self.mmu.mmu_machine.mmu_version >= 2.0: # V2 community edition
                 self.cad_gate0_pos = 4.0
                 self.cad_gate_width = 23.
                 self.cad_bypass_offset = 0.72
@@ -160,20 +160,20 @@ class LinearSelector:
                 #  t = TripleDecky filament blocks
                 #  s = Springy sprung servo selector
                 #  b = Binky encoder upgrade
-                if "t" in self.mmu.mmu_version_string:
+                if "t" in self.mmu.mmu_machine.mmu_version_string:
                     self.cad_gate_width = 23. # Triple Decky is wider filament block
                     self.cad_block_width = 0. # Bearing blocks are not used
 
-                if "s" in self.mmu.mmu_version_string:
+                if "s" in self.mmu.mmu_machine.mmu_version_string:
                     self.cad_last_gate_offset = 1.2 # Springy has additional bump stops
 
-        elif self.mmu.mmu_vendor.lower() == self.mmu.VENDOR_TRADRACK.lower():
+        elif self.mmu.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_TRADRACK.lower():
             self.cad_gate0_pos = 2.5
             self.cad_gate_width = 17.
             self.cad_bypass_offset = 0     # Doesn't have bypass
             self.cad_last_gate_offset = 0. # Doesn't have reliable hard stop at limit of travel
 
-        # Allow all CAD parameters to be customized
+        # But still allow all CAD parameters to be customized
         self.cad_gate0_pos = mmu.config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
         self.cad_gate_width = mmu.config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
         self.cad_bypass_offset = mmu.config.getfloat('cad_bypass_offset', self.cad_bypass_offset, minval=0.)
@@ -213,16 +213,16 @@ class LinearSelector:
         # Configure selector calibration (set with MMU_CALIBRATE_SELECTOR)
         selector_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
         if selector_offsets:
-            if len(selector_offsets) == self.mmu.num_gates:
+            if len(selector_offsets) == self.mmu.mmu_machine.num_gates:
                 self.selector_offsets = selector_offsets
                 self.mmu.log_debug("Loaded saved selector offsets: %s" % selector_offsets)
                 self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
             else:
                 self.mmu.log_error("Incorrect number of gates specified in %s" % self.VARS_MMU_SELECTOR_OFFSETS)
-                self.selector_offsets = [0.] * self.mmu.num_gates
+                self.selector_offsets = [0.] * self.mmu.mmu_machine.num_gates
         else:
             self.mmu.log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
-            self.selector_offsets = [0.] * self.mmu.num_gates
+            self.selector_offsets = [0.] * self.mmu.mmu_machine.num_gates
         self.bypass_offset = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS, 0)
         if self.bypass_offset:
             self.mmu.log_debug("Loaded saved bypass offset: %s" % self.bypass_offset)
@@ -361,7 +361,7 @@ class LinearSelector:
         if self.mmu.check_is_disabled(): return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.num_gates - 1)
+        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.mmu_machine.num_gates - 1)
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = self.mmu.TOOL_GATE_BYPASS
 
@@ -403,9 +403,9 @@ class LinearSelector:
     def _get_max_selector_movement(self, gate=-1):
         n = gate if gate >= 0 else self.mmu.num_gates - 1
 
-        if self.mmu.mmu_vendor.lower() == self.mmu.VENDOR_ERCF.lower():
+        if self.mmu.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_ERCF.lower():
             # ERCF Designs
-            if self.mmu.mmu_version >= 2.0 or "t" in self.mmu.mmu_version_string:
+            if self.mmu.mmu_machine.mmu_version >= 2.0 or "t" in self.mmu.mmu_machine.mmu_version_string:
                 max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
             else:
                 max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
@@ -512,7 +512,7 @@ class LinearSelector:
             self.mmu.log_debug("Results: gate0_pos=%.1f, last_gate_pos=%.1f, length=%.1f" % (gate0_pos, last_gate_pos, length))
             selector_offsets = []
 
-            if self.mmu.mmu_vendor.lower() == self.mmu.VENDOR_ERCF.lower() and self.mmu.mmu_version == 1.1:
+            if self.mmu.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_ERCF.lower() and self.mmu.mmu_machine.mmu_version == 1.1:
                 # ERCF v1.1 special case
                 num_gates = adj_gate_width = int(round(length / (self.cad_gate_width + self.cad_block_width / 3))) + 1
                 num_blocks = (num_gates - 1) // 3

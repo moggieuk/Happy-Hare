@@ -1,4 +1,8 @@
 # Happy Hare MMU Software
+#
+# Definition of basic physical characteristics of MMU (including type/style)
+#   - allows for hardware configuration validation
+#
 # Implementation of "MMU Toolhead" to allow for:
 #   - "drip" homing and movement without pauses
 #   - bi-directional syncing of extruder to gear rail or gear rail to extruder
@@ -17,7 +21,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, importlib, math, os, time
+import logging, importlib, math, os, time, re
 
 # Klipper imports
 import stepper, chelper, toolhead
@@ -29,13 +33,23 @@ from extras.homing import Homing, HomingMove
 TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
 
 # Stepper config sections
-SELECTOR_STEPPER_CONFIG = "stepper_mmu_selector"
+SELECTOR_STEPPER_CONFIG = "stepper_mmu_selector" # Optional
 GEAR_STEPPER_CONFIG     = "stepper_mmu_gear"
 
 SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
 OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
 
 SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
+
+# Vendor MMU's supported
+VENDOR_ERCF           = "ERCF"
+VENDOR_TRADRACK       = "Tradrack"
+VENDOR_PRUSA          = "Prusa"
+VENDOR_ANGRY_BEAVER   = "AngryBeaver"
+VENDOR_ARMORED_TURTLE = "ArmoredTurtle"
+VENDOR_OTHER          = "Other"
+
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_ARMORED_TURTLE, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience
@@ -46,11 +60,19 @@ class MmuMachine:
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+
+        # Selector type
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, 'LinearSelector')
 
-        # PAUL WIP Idea for config validation/cleaning
-#        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
-#        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
+        # Essential information for validation and setup
+        self.num_gates = config.getint('mmu_num_gates')
+        self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS})
+        self.mmu_version_string = config.get('mmu_version')
+        version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
+        try:
+            self.mmu_version = float(version)
+        except ValueError:
+            raise self.config.error("Invalid version parameter")
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
@@ -77,6 +99,10 @@ class MmuMachine:
                             base_value = config.fileconfig.get(base_tmc, key)
                             if base_value:
                                 config.fileconfig.set(tmc_section, key, base_value)
+
+        # PAUL TODO WIP Idea for config validation/cleaning
+#        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
+#        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"

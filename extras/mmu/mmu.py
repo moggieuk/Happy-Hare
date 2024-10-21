@@ -19,17 +19,18 @@ import chelper
 from extras.homing import Homing, HomingMove
 
 # Happy Hare imports
-from extras             import mmu_machine
-from extras.mmu_machine import MmuToolHead
-from extras.mmu_leds    import MmuLeds
-from extras.mmu_sensors import MmuRunoutHelper
+from extras              import mmu_machine
+from extras.mmu_machine  import MmuToolHead
+from extras.mmu_leds     import MmuLeds
+from extras.mmu_sensors  import MmuRunoutHelper
 
 # MMU subcomponent clases
-from .mmu_shared   import *
-from .mmu_logger   import MmuLogger
-from .mmu_selector import VirtualSelector, LinearSelector
-from .mmu_test     import MmuTest
-from .mmu_utils    import DebugStepperMovement, PurgeVolCalculator
+from .mmu_shared         import *
+from .mmu_logger         import MmuLogger
+from .mmu_selector       import VirtualSelector, LinearSelector
+from .mmu_test           import MmuTest
+from .mmu_utils          import DebugStepperMovement, PurgeVolCalculator
+from .mmu_sensor_manager import MmuSensorManager
 
 
 # Main klipper module
@@ -126,16 +127,6 @@ class Mmu:
     SYNC_STATE_NEUTRAL = 0
     SYNC_STATE_COMPRESSED = 1.
     SYNC_STATE_EXPANDED = -1.
-
-    # Vendor MMU's supported
-    VENDOR_ERCF         = "ERCF"
-    VENDOR_TRADRACK     = "Tradrack"
-    VENDOR_PRUSA        = "Prusa"
-    VENDOR_ANGRY_BEAVER = "AngryBeaver"
-    VENDOR_TURTLE_BOX   = "TurtleBox"
-    VENDOR_OTHER        = "Other"
-
-    VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_OTHER]
 
     # Levels of logging
     LOG_ESSENTIAL = 0
@@ -246,8 +237,8 @@ class Mmu:
         self.calibration_status = 0b0
         self.calibrated_bowden_length = -1
         self.encoder_force_validation = False
-        self.sync_feedback_last_state = 0. # Neutral
-        self.sync_feedback_last_direction = 0 # Extruder not moving
+        self.sync_feedback_last_state = 0. # 0 = Neutral
+        self.sync_feedback_last_direction = 0 # 0 = Extruder not moving
         self.sync_feedback_operational = False
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
@@ -257,9 +248,7 @@ class Mmu:
         self.toolchange_retract = 0. # Set from mmu_macro_vars
         self._can_write_variables = True
         self.toolchange_purge_volume = 0.
-
-        # Logging
-        self.mmu_logger = None
+        self.mmu_logger = None # Setup on connect
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -271,30 +260,26 @@ class Mmu:
         if self.config_version is not None and self.config_version < self.VERSION:
             raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.config_version, self.VERSION, self.UPGRADE_REMINDER))
 
-        # MMU hardware (steppers, encoder and optional sensors)
-        self.mmu_extruder_stepper = self.encoder_sensor = None
-        bmg_circ = 23.
+        # We setup MMU hardware during configuration since some hardware like endstop requires
+        # configuration during the MCU config phase, which happens before klipper connection
+        # This assumes that the hardware definition appears before the '[mmu]' section.
+        # The default recommended install will guarantee this order
+        self._setup_mmu_hardware(config)
 
-        self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in self.VENDORS}, self.VENDOR_ERCF)
-        self.mmu_version_string = config.get('mmu_version', "1.1")
-        version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
-        try:
-            self.mmu_version = float(version)
-        except ValueError:
-            raise self.config.error("Invalid mmu_version parameter")
-
+# PAUL vvvv this probably belongs in mmu_machine or mmu_encoder
+        # Read all tunable params ---------------------------------------------------------------------------
         # To simplfy config some design related parameters are set based on vendor and version setting
-        #
         # These are default for ERCFv1.1 - the first MMU supported by Happy Hare
         #  encoder_default_resolution - resolution of a single encoder "count"
         #  variable_gate_ratios       - whether gear rotation_distance of each gate can be different and needs separate calibration
         #
+        bmg_circ = 23.
         self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
         self.variable_gate_ratios = 1 # Whether gear rotation_distance of each gate can be different and needs separate calibration
 
         # Specific vendor build parameters / tuning.
-        if self.mmu_vendor.lower() == self.VENDOR_ERCF.lower():
-            if self.mmu_version >= 2.0: # V2 community edition
+        if self.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_ERCF.lower():
+            if self.mmu_machine.mmu_version >= 2.0: # V2 community edition
                 self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
             else: # V1.1 original
@@ -302,37 +287,19 @@ class Mmu:
                 #  t = TripleDecky filament blocks
                 #  s = Springy sprung servo selector
                 #  b = Binky encoder upgrade
-                if "b" in self.mmu_version_string:
+                if "b" in self.mmu_machine.mmu_version_string:
                     self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
 
-        elif self.mmu_vendor.lower() == self.VENDOR_TRADRACK.lower():
+        elif self.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_TRADRACK.lower():
             self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
             self.variable_gate_ratios = 0
 
-        elif self.mmu_vendor.lower() == self.VENDOR_PRUSA.lower():
+        elif self.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_PRUSA.lower():
             raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure 'cad' dimensions (see doc)")
 
         # Still allow vendor driven config to be customized
         self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
         self.variable_gate_ratios = config.getfloat('variable_gate_ratios', self.variable_gate_ratios)
-
-        # Klipper tuning (aka hacks) vvv -------------
-        # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing
-        # operations especially so with CANbus connected mcus. Happy Hare using many homing moves for reliable extruder loading
-        # and unloading and enabling this option affords klipper more tolerance and avoids this dreaded error.
-        self.update_trsync = config.getint('update_trsync', 0, minval=0, maxval=1)
-
-        # Some CANbus boards are prone to this but it have been seen on regular USB boards where a comms
-        # timeout will kill the print. Since it seems to occur only on homing moves perhaps because of too
-        # high a microstep setting or speed. They can be safely retried to workaround.
-        # This has been working well in practice.
-        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
-
-        # Older neopixels have very finiky timing and can generate lots of "Unable to obtain 'neopixel_result' response"
-        # errors in klippy.log. This has been linked to subsequent Timer too close errors. An often cited workaround is
-        # to increase BIT_MAX_TIME in neopixel.py. This option does that automatically for you to save dirtying klipper.
-        self.update_bit_max_time = config.getint('update_bit_max_time', 0, minval=0, maxval=1)
-        # Klipper tuning (aka hacks) ^^^ -------------
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -375,7 +342,6 @@ class Mmu:
         self.park_macro = config.get('park_macro', '_MMU_PARK') # Not exposed
 
         # User MMU setup
-        self.num_gates = config.getint('mmu_num_gates')
         self.default_ttg_map = list(config.getintlist('tool_to_gate_map', []))
         self.default_gate_status = list(config.getintlist('gate_status', []))
         self.default_gate_filament_name = list(config.getlist('gate_filament_name', []))
@@ -486,7 +452,26 @@ class Mmu:
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
 
-        # The following lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
+        # Klipper tuning (aka hacks)
+        # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing
+        # operations especially so with CANbus connected mcus. Happy Hare using many homing moves for reliable extruder loading
+        # and unloading and enabling this option affords klipper more tolerance and avoids this dreaded error.
+        self.update_trsync = config.getint('update_trsync', 0, minval=0, maxval=1)
+
+        # Some CANbus boards are prone to this but it have been seen on regular USB boards where a comms
+        # timeout will kill the print. Since it seems to occur only on homing moves perhaps because of too
+        # high a microstep setting or speed. They can be safely retried to workaround.
+        # This has been working well in practice.
+        self.canbus_comms_retries = config.getint('canbus_comms_retries', 3, minval=1, maxval=10)
+
+        # Older neopixels have very finiky timing and can generate lots of "Unable to obtain 'neopixel_result' response"
+        # errors in klippy.log. This has been linked to subsequent Timer too close errors. An often cited workaround is
+        # to increase BIT_MAX_TIME in neopixel.py. This option does that automatically for you to save dirtying klipper.
+        self.update_bit_max_time = config.getint('update_bit_max_time', 0, minval=0, maxval=1)
+
+
+        # Establish defaults for "reset" operation ----------------------------------------------------------
+        # These lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
 
         # Endless spool groups
         self.enable_endless_spool = self.default_enable_endless_spool
@@ -530,7 +515,7 @@ class Mmu:
         self.tool_extrusion_multipliers.extend([1.] * self.num_gates)
         self.tool_speed_multipliers.extend([1.] * self.num_gates)
 
-        # Register GCODE commands
+        # Register GCODE commands ---------------------------------------------------------------------------
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
@@ -624,30 +609,23 @@ class Mmu:
         # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
 
-        # Load development tests
+        # Load development test commands
         _ = MmuTest(self)
 
-        # Timer too close mitigation
-        if self.update_trsync:
+        # Apply Klipper hacks -------------------------------------------------------------------------------
+        if self.update_trsync: # Timer too close mitigation
             try:
                 import mcu
                 mcu.TRSYNC_TIMEOUT = max(mcu.TRSYNC_TIMEOUT, 0.05)
             except Exception as e:
                 self.log_error("Unable to update TRSYNC_TIMEOUT: %s" % str(e))
 
-        # Neopixel update mitigation
-        if self.update_bit_max_time:
+        if self.update_bit_max_time: # Neopixel update mitigation
             try:
                 from extras import neopixel
                 neopixel.BIT_MAX_TIME = max(neopixel.BIT_MAX_TIME, 0.000030)
             except Exception as e:
                 self.log_error("Unable to update BIT_MAX_TIME: %s" % str(e))
-
-        # We setup MMU hardware during configuration since some hardware like endstop requires
-        # configuration during the MCU config phase, which happens before klipper connection
-        # This assumes that the hardware configuartion appears before the '[mmu]' section.
-        # The default recommended install will guarantee this order
-        self._setup_mmu_hardware(config)
 
         # Initialize state and statistics variables
         self.reinit()
@@ -657,21 +635,19 @@ class Mmu:
     # Initialize MMU hardare. Note that logging not set up yet so use main klippy logger
     def _setup_mmu_hardware(self, config):
         logging.info("MMU Hardware Initialization -------------------------------")
-        self.has_leds = self.has_led_animation = False
 
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
-        self.homing_extruder = self.mmu_machine.homing_extruder
+        self.num_gates = self.mmu_machine.num_gates
+        self.has_leds = self.has_led_animation = False
 
         # Dynamically instantiate the selector class
         self.selector = globals()[self.mmu_machine.selector_type](self)
 
         # Now we can instantiate the MMU toolhead
         self.mmu_toolhead = MmuToolHead(config, self)
-        self.mmu_kinematics = self.mmu_toolhead.get_kinematics()
-
         rails = self.mmu_toolhead.get_kinematics().rails
         self.gear_rail = rails[1]
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
+        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.mmu_machine.homing_extruder' is True
 
         # Setup filament sensors used for homing (endstops)
         for name in (
@@ -692,7 +668,7 @@ class Mmu:
                     # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                     # otherwise the extruder can continue to move a small (speed dependent) distance
                     mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
-                    if self.homing_extruder and name == self.ENDSTOP_TOOLHEAD:
+                    if self.mmu_machine.homing_extruder and name == self.ENDSTOP_TOOLHEAD:
                         mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
                 else:
                     logging.warning("Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
@@ -738,7 +714,7 @@ class Mmu:
             if self.extruder_tmc is None:
                 self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, self.extruder_name), None)
                 if self.extruder_tmc is not None:
-                    self.log_debug("Found %s on extruder. Current control enabled. %s" % (chip, "Stallguard 'touch' homing possible." if self.homing_extruder else ""))
+                    self.log_debug("Found %s on extruder. Current control enabled. %s" % (chip, "Stallguard 'touch' homing possible." if self.mmu_machine.homing_extruder else ""))
         if self.gear_tmc is None:
             self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
         if self.extruder_tmc is None:
@@ -757,7 +733,11 @@ class Mmu:
         if self.pause_resume is None:
             raise self.config.error("MMU requires [pause_resume] to work, please add it to your config!")
 
-        # Sanity check to see that mmu_vars.cfg is included. This will verify path because default deliberately has single entry
+        # Remember user setting of idle_timeout so it can be restored (if not overridden)
+        if self.default_idle_timeout < 0:
+            self.default_idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
+
+        # Sanity check to see that mmu_vars.cfg is included. This will verify path because default deliberately has 'mmu_revision' entry
         self.save_variables = self.printer.lookup_object('save_variables', None)
         rd_var = self.save_variables.allVariables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCE, None)
         revision_var = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, None)
@@ -765,10 +745,6 @@ class Mmu:
             self.save_variables.allVariables[self.VARS_MMU_REVISION] = 0
         if not self.save_variables or (rd_var is None and revision_var is None):
             raise self.config.error("Calibration settings file (mmu_vars.cfg) not found. Check [save_variables] section in mmu_macro_vars.cfg\nAlso ensure you only have a single [save_variables] section defined in your printer config and it contains the line: mmu__revision = 0. If not, add this line and restart")
-
-        # Remember user setting of idle_timeout so it can be restored (if not overridden)
-        if self.default_idle_timeout < 0:
-            self.default_idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
 
         # Upgrade legacy gate 0 rotation distance and individual ratios to new rotation distances list
         rotation_distance = self.save_variables.allVariables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCE, None)
@@ -825,11 +801,8 @@ class Mmu:
         else:
             self.calibration_status |= self.CALIBRATED_ENCODER # Pretend we are calibrated to avoid warnings
 
-        # The threshold (mm) that determines real encoder movement (set to 1.5 pulses of encoder. i.e. allow one rougue pulse)
+        # The threshold (mm) that determines real encoder movement (set to 1.5 pulses of encoder. i.e. to allow one rougue pulse)
         self.encoder_min = 1.5 * self.encoder_resolution
-
-        # Sub components
-        self.selector.handle_connect()
 
         # Set bowden length from calibration
         bowden_length = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
@@ -847,6 +820,9 @@ class Mmu:
             self.calibration_status |= self.CALIBRATED_BOWDEN
         else:
             self.log_always("Warning: Reference bowden length not found in mmu_vars.cfg. Probably not calibrated")
+
+        # Sub components
+        self.selector.handle_connect()
 
     def _ensure_list_size(self, lst, size, default_value=None):
         lst = lst[:size] # Truncate if too long
@@ -870,7 +846,7 @@ class Mmu:
 
         # Reference correct extruder stepper which will definitely be available now
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
-        if not self.homing_extruder:
+        if not self.mmu_machine.homing_extruder:
             self.log_debug("Warning: Using original klipper extruder stepper. Homing not possible")
 
         # Restore state only if fully calibrated
@@ -1828,7 +1804,7 @@ class Mmu:
         on_off = lambda x: "ON" if x else "OFF"
 
         fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
-        msg = "MMU: Happy Hare %s running %s v%s" % (fversion(self.config_version), self.mmu_vendor, self.mmu_version_string)
+        msg = "MMU: Happy Hare %s running %s v%s" % (fversion(self.config_version), self.mmu_machine.mmu_vendor, self.mmu_machine.mmu_version_string)
         msg += " with %d gates" % (self.num_gates)
         msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_mmu_paused() else "OPERATIONAL")
         msg += self.selector.get_mmu_status_config()
@@ -4745,7 +4721,7 @@ class Mmu:
                             ext_actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
 
                             # Support setup where a non-homing extruder is being used
-                            if motor == "extruder" and not self.homing_extruder:
+                            if motor == "extruder" and not self.mmu_machine.homing_extruder:
                                 # This isn't super accurate if extruder isn't (homing) MmuExtruder because doesn't have required endstop, thus this will
                                 # overrun and even move slightly even if already homed. We can only correct the actual gear rail position.
                                 halt_pos[1] += ext_actual
@@ -4830,11 +4806,11 @@ class Mmu:
 
     @contextlib.contextmanager
     def wrap_accel(self, accel):
-        self.mmu_kinematics.set_accel_limit(accel)
+        self.mmu_toolhead.get_kinematics().set_accel_limit(accel)
         try:
             yield self
         finally:
-            self.mmu_kinematics.set_accel_limit(None)
+            self.mmu_toolhead.get_kinematics().set_accel_limit(None)
 
 
 ##############################################
@@ -7354,151 +7330,3 @@ class Mmu:
 
 def load_config(config):
     return Mmu(config)
-
-
-# TODO Probably doesn't need to be in this module, perhaps mmu_sensors.py
-class MmuSensorManager:
-    def __init__(self, mmu):
-        self.mmu = mmu
-        self.sensors = {}
-
-        for name in (
-            [self.mmu.ENDSTOP_TOOLHEAD, self.mmu.ENDSTOP_GATE, self.mmu.ENDSTOP_EXTRUDER_ENTRY] +
-            ["%s_%d" % (self.mmu.PRE_GATE_SENSOR_PREFIX, i) for i in range(self.mmu.num_gates)] +
-            ["%s_%d" % (self.mmu.ENDSTOP_POST_GATE_PREFIX, i) for i in range(self.mmu.num_gates)]
-        ):
-            sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
-            if sensor is not None:
-                if name == self.mmu.ENDSTOP_TOOLHEAD or isinstance(sensor.runout_helper, MmuRunoutHelper):
-                    self.sensors[name] = sensor
-
-    # Return dict of all sensor states (or None if sensor disabled)
-    def get_all_sensors(self):
-        result = {}
-        for name, sensor in self.sensors.items():
-            result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-        return result
-
-    def has_sensor(self, name):
-        return self.sensors[name].runout_helper.sensor_enabled if name in self.sensors else False
-
-    def has_gate_sensor(self, name, gate):
-        return self.sensors["%s_%d" % (name, gate)].runout_helper.sensor_enabled if name in self.sensors else False
-
-    # Return sensor state or None if not installed
-    def check_sensor(self, name):
-        sensor = self.sensors.get(name, None)
-        if sensor is not None and sensor.runout_helper.sensor_enabled:
-            detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_trace("(%s sensor %s filament)" % (name, "detects" if detected else "does not detect"))
-            return detected
-        else:
-            return None
-
-    # Return per-gate sensor state or None if not installed
-    def check_gate_sensor(self, name, gate):
-        sensor = self.sensors.get("%s_%d" % (name, gate), None)
-        if sensor is not None and sensor.runout_helper.sensor_enabled:
-            detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_trace("(%s_%d sensor %s filament)" % (name, gate, "detects" if detected else "does not detect"))
-            return detected
-        else:
-            return None
-
-    # Returns True if ALL sensors before position detect filament
-    #         None if NO sensors available (disambiguate from non-triggered sensor)
-    # Can be used as a "filament continuity test"
-    def check_all_sensors_before(self, pos, gate, loading=True):
-        sensors = self._get_sensors_before(pos, gate, loading)
-        if all(state is None for state in sensors.values()):
-            return None
-        return all(state is not False for state in sensors.values())
-
-    # Returns True if ANY sensor before position detects filament
-    #         None if NO sensors available (disambiguate from non-triggered sensor)
-    # Can be used as a filament visibility test over a portion of the travel
-    def check_any_sensors_before(self, pos, gate, loading=True):
-        sensors = self._get_sensors_before(pos, gate, loading)
-        if all(state is None for state in sensors.values()):
-            return None
-        return any(state is True for state in sensors.values())
-
-    # Returns True if ANY sensor after position detects filament
-    #         None if no sensors available (disambiguate from non-triggered sensor)
-    # Can be used to validate position
-    def check_any_sensors_after(self, pos, gate, loading=True):
-        sensors = self._get_sensors_after(pos, gate, loading)
-        if all(state is None for state in sensors.values()):
-            return None
-        return any(state is True for state in sensors.values())
-
-    # Returns True is any sensors in current filament path are triggered (EXCLUDES pre-gate)
-    #         None if no sensors available (disambiguate from non-triggered sensor)
-    def check_any_sensors_in_path(self):
-        sensors = self._get_all_sensors_for_gate(self.mmu.gate_selected)
-        if all(state is None for state in sensors.values()):
-            return None
-        return any(state is True for state in sensors.values())
-
-    # Returns True is any sensors in filament path are not triggered
-    #         None if no sensors available (disambiguate from non-triggered sensor)
-    # Can be used to spot failure in "continuity" i.e. runout
-    def check_for_runout(self):
-        sensors = self._get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
-        if all(state is None for state in sensors.values()):
-            return None
-        return any(state is False for state in sensors.values())
-
-    # Error with explanation if any filament sensors don't detect filament
-    def confirm_loaded(self):
-        sensors = self._get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
-        if any(state is False for state in sensors.values()):
-            MmuError("Loaded check failed:\nFilament not detected by sensors: %s" % ', '.join([name for name, state in sensors.items() if state is False]))
-
-    def get_sensor_summary(self, include_disabled=False):
-        summary = ""
-        sensors = self.get_all_sensors()
-        for name, state in sensors.items():
-            if state is not None or include_disabled:
-                summary += "%s: %s\n" % (name, 'TRIGGERED' if state is True else 'open' if state is False else '(disabled)')
-        return summary
-
-    def enable_runout(self, gate):
-        self._set_sensor_runout(True, gate)
-
-    def disable_runout(self, gate):
-        self._set_sensor_runout(False, gate)
-
-    def _set_sensor_runout(self, enable, gate):
-        for name, sensor in self.sensors.items():
-            if isinstance(sensor.runout_helper, MmuRunoutHelper):
-                per_gate = re.search(r'_(\d+)$', name)
-                if per_gate:
-                    sensor.runout_helper.enable_runout(enable and (int(per_gate.group(1)) == gate))
-                else:
-                    sensor.runout_helper.enable_runout(enable and (gate != self.mmu.TOOL_GATE_UNKNOWN))
-
-    def _get_sensors(self, pos, gate, position_condition):
-        result = {}
-        sensor_selection = [
-            ("%s_%d" % (self.mmu.PRE_GATE_SENSOR_PREFIX, gate), None),
-            ("%s_%d" % (self.mmu.ENDSTOP_POST_GATE_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE),
-            (self.mmu.ENDSTOP_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
-            (self.mmu.ENDSTOP_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
-            (self.mmu.ENDSTOP_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
-        ]
-        for name, position_check in sensor_selection:
-            sensor = self.sensors.get(name, None)
-            if sensor and position_condition(pos, position_check):
-                result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-        self.mmu.log_debug("Sensors: %s" % result)
-        return result
-
-    def _get_sensors_before(self, pos, gate, loading=True):
-        return self._get_sensors(pos, gate, lambda p, pc: pc is None or (loading and p >= pc) or (not loading and p > pc))
-
-    def _get_sensors_after(self, pos, gate, loading=True):
-        return self._get_sensors(pos, gate, lambda p, pc: pc is not None and ((loading and p < pc) or (not loading and p <= pc)))
-
-    def _get_all_sensors_for_gate(self,  gate):
-        return self._get_sensors(-1, gate, lambda p, pc: pc is not None)
