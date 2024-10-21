@@ -52,7 +52,7 @@ VENDOR_OTHER          = "Other"
 VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_ARMORED_TURTLE, VENDOR_OTHER]
 
 
-# Define type/style of MMU and expand configuration for convenience
+# Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
 class MmuMachine:
 
     def __init__(self, config):
@@ -66,8 +66,8 @@ class MmuMachine:
 
         # Essential information for validation and setup
         self.num_gates = config.getint('mmu_num_gates')
-        self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS})
-        self.mmu_version_string = config.get('mmu_version')
+        self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
+        self.mmu_version_string = config.get('mmu_version', "1.0")
         version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
         try:
             self.mmu_version = float(version)
