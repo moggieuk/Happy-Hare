@@ -11,6 +11,7 @@
 #
 VERSION=3.00 # Important: Keep synced with mmy.py
 
+F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
 SCRIPTPATH="$(dirname "$SCRIPT")"
@@ -39,12 +40,15 @@ if [ "$IS_MIPS" -eq 1 ]; then
     unset OLD_KLIPPER_CONFIG_HOME
 fi
 
+clear
 set -e # Exit immediately on error
 
 declare -A PIN 2>/dev/null || {
     echo "Please run this script with bash $0"
     exit 1
 }
+
+# PAUL TODO ... define all pins for all boards..
 
 # Pins for original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
 # Note: uart pin is shared on original EASY-BRD (with different uart addresses)
@@ -206,11 +210,11 @@ PIN[MMB10,post_gate_3_pin]="PB10";                         PIN[MMB11,post_gate_3
 
 # These pins will usually be on main mcu for wiring simplification
 #
-PIN[toolhead_sensor_pin]="TOOLHEAD_SENSOR"
-PIN[extruder_sensor_pin]="EXTRUDER_SENSOR"
-PIN[gantry_servo_pin]="GANTRY_SERVO"
-PIN[sync_feedback_tension_pin]="FEEDBACK_TENSION"
-PIN[sync_feedback_compression_pin]="FEEDBACK_COMPRESSION"
+_hw_toolhead_sensor_pin=""
+_hw_extruder_sensor_pin=""
+_hw_gantry_servo_pin=""
+_hw_sync_feedback_tension_pin=""
+_hw_sync_feedback_compression_pin=""
 
 # Screen Colors
 OFF='\033[0m'             # Text Reset
@@ -239,6 +243,28 @@ PROMPT="${CYAN}"
 DIM="${PURPLE}"
 INPUT="${OFF}"
 SECTION="----------\n"
+
+get_logo() {
+    caption=$1
+    logo=$(cat <<EOF
+${INFO}
+(\_/)
+( *,*)
+(")_(") ${caption}
+${OFF}
+EOF
+    )
+    echo -e "$logo"
+}
+
+sad_logo=$(cat <<EOF
+${INFO}
+(\_/)
+( v,v)
+(")^(") Very Unhappy Hare
+${OFF}
+EOF
+)
 
 self_update() {
     [ "$UPDATE_GUARD" ] && return
@@ -615,7 +641,7 @@ read_previous_config() {
     cfg="mmu_hardware.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
     if [ -f "${dest_cfg}" ]; then
-        _hw_num_gates=$(awk -F '[: ]+' '/num_gates:/ {print $2}' "${dest_cfg}")
+        _hw_num_gates=$(awk -F '[: ]+' '/num_gates:/ {gsub(/[[:space:]]*#.*/, "", $2); print $2}' "${dest_cfg}")
     fi
 
     # TODO namespace config in third-party addons separately
@@ -711,10 +737,27 @@ copy_config_files() {
         mkdir -p ${mmu_dir}/addons
     fi
 
-# PAUL ??
-#    if [ ! "${_param_mmu_num_gates}" == "" ]; then
-#        mmu_num_gates=${_param_mmu_num_gates}
-#    fi 
+    # Now substitute tokens using given brd_type and "questionaire" starting values
+    _hw_num_leds=$(expr $_hw_num_gates \* 2 + 1)
+    _hw_num_leds_minus1=$(expr $_hw_num_leds - 1)
+    _hw_num_gates_plus1=$(expr $_hw_num_gates + 1)
+
+    # Find all variables that start with _hw_
+    for var in $(compgen -v | grep '^_hw_'); do
+        value=${!var}
+        pattern="{${var#_hw_}}"
+        sed_expr="${sed_expr}s|${pattern}|${value}|g; "
+    done
+
+    # Find all variables in the form of PIN[$_hw_brd_type,*]
+    for key in "${!PIN[@]}"; do
+        if [[ $key == "$_hw_brd_type"* ]]; then
+            value="${PIN[$key]}"
+            pin_var=$(echo "$key" | sed "s/^$_hw_brd_type,//")
+            pattern="{${pin_var}}"
+            sed_expr="${sed_expr}s|${pattern}|${value}|g; "
+        fi
+    done
 
     for file in `cd ${SRCDIR}/config/base ; ls *.cfg`; do
         src=${SRCDIR}/config/base/${file}
@@ -762,62 +805,8 @@ copy_config_files() {
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-            # Now substitute tokens using given brd_type and "questionaire" starting values
-            _hw_num_leds=$(expr $_hw_num_gates \* 2 + 1)
-            _hw_num_leds_minus1=$(expr $_hw_num_leds - 1)
-            _hw_num_gates_plus1=$(expr $_hw_num_gates + 1)
-            cat ${dest} | sed -e "\
-                s/{brd_type}/${_hw_brd_type}/; \
-                s%{serial}%${_hw_serial}%; \
-                s/{num_gates}/${_hw_num_gates}/; \
-                s/{mmu_vendor}/${_hw_mmu_vendor}/; \
-                s/{mmu_version}/${_hw_mmu_version}/; \
-                s/{num_leds}/${_hw_num_leds}/; \
-                s/{num_leds_minus1}/${_hw_num_leds_minus1}/; \
-                s/{num_gates_plus1}/${_hw_num_gates_plus1}/; \
-                s/{encoder_resolution}/${_hw_encoder_resolution}/; \
-                s/{gear_gear_ratio}/${_hw_gear_gear_ratio}/; \
-                s/{gear_run_current}/${_hw_gear_run_current}/; \
-                s/{gear_hold_current}/${_hw_gear_hold_current}/; \
-                s/{sel_run_current}/${_hw_sel_run_current}/; \
-                s/{sel_hold_current}/${_hw_sel_hold_current}/; \
-                s/{maximum_servo_angle}/${_hw_maximum_servo_angle}/; \
-                s/{minimum_pulse_width}/${_hw_minimum_pulse_width}/; \
-                s/{maximum_pulse_width}/${_hw_maximum_pulse_width}/; \
-                s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
-                s/{extruder_sensor_pin}/${PIN[extruder_sensor_pin]}/; \
-                s/{gantry_servo_pin}/${PIN[gantry_servo_pin]}/; \
-                s/{sync_feedback_tension_pin}/${PIN[sync_feedback_tension_pin]}/; \
-                s/{sync_feedback_compression_pin}/${PIN[sync_feedback_compression_pin]}/; \
-                s/{gate_sensor_pin}/${PIN[$_hw_brd_type,gate_sensor_pin]}/; \
-                s/{pre_gate_0_pin}/${PIN[$_hw_brd_type,pre_gate_0_pin]}/; \
-                s/{pre_gate_1_pin}/${PIN[$_hw_brd_type,pre_gate_1_pin]}/; \
-                s/{pre_gate_2_pin}/${PIN[$_hw_brd_type,pre_gate_2_pin]}/; \
-                s/{pre_gate_3_pin}/${PIN[$_hw_brd_type,pre_gate_3_pin]}/; \
-                s/{pre_gate_4_pin}/${PIN[$_hw_brd_type,pre_gate_4_pin]}/; \
-                s/{pre_gate_5_pin}/${PIN[$_hw_brd_type,pre_gate_5_pin]}/; \
-                s/{pre_gate_6_pin}/${PIN[$_hw_brd_type,pre_gate_6_pin]}/; \
-                s/{pre_gate_7_pin}/${PIN[$_hw_brd_type,pre_gate_7_pin]}/; \
-                s/{pre_gate_8_pin}/${PIN[$_hw_brd_type,pre_gate_8_pin]}/; \
-                s/{pre_gate_9_pin}/${PIN[$_hw_brd_type,pre_gate_9_pin]}/; \
-                s/{pre_gate_10_pin}/${PIN[$_hw_brd_type,pre_gate_10_pin]}/; \
-                s/{pre_gate_11_pin}/${PIN[$_hw_brd_type,pre_gate_11_pin]}/; \
-                s/{gear_gear_ratio}/${_hw_gear_gear_ratio}/; \
-                s/{gear_uart_pin}/${PIN[$_hw_brd_type,gear_uart_pin]}/; \
-                s/{gear_step_pin}/${PIN[$_hw_brd_type,gear_step_pin]}/; \
-                s/{gear_dir_pin}/${PIN[$_hw_brd_type,gear_dir_pin]}/; \
-                s/{gear_enable_pin}/${PIN[$_hw_brd_type,gear_enable_pin]}/; \
-                s/{gear_diag_pin}/${PIN[$_hw_brd_type,gear_diag_pin]}/; \
-                s/{selector_uart_pin}/${PIN[$_hw_brd_type,selector_uart_pin]}/; \
-                s/{selector_step_pin}/${PIN[$_hw_brd_type,selector_step_pin]}/; \
-                s/{selector_dir_pin}/${PIN[$_hw_brd_type,selector_dir_pin]}/; \
-                s/{selector_enable_pin}/${PIN[$_hw_brd_type,selector_enable_pin]}/; \
-                s/{selector_diag_pin}/${PIN[$_hw_brd_type,selector_diag_pin]}/; \
-                s/{selector_endstop_pin}/${PIN[$_hw_brd_type,selector_endstop_pin]}/; \
-                s/{servo_pin}/${PIN[$_hw_brd_type,servo_pin]}/; \
-                s/{encoder_pin}/${PIN[$_hw_brd_type,encoder_pin]}/; \
-                s/{neopixel_pin}/${PIN[$_hw_brd_type,neopixel_pin]}/; \
-                    " > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            # Do all the token substitution
+            cat ${dest} | sed -e "$sed_expr" "${dest}" > "${dest}.tmp" > ${dest}.tmp && mv ${dest}.tmp ${dest}
 
             # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
             if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" == "no" ]; then
@@ -1278,8 +1267,11 @@ questionaire() {
             HAS_SELECTOR=no
             _hw_mmu_vendor="AngryBeaver"
             _hw_mmu_version="1.0"
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.5
+            _hw_gear_hold_current=0.1
             echo
-            echo -e "${WARNING}    TODO-Implement me!"
+            echo -e "${WARNING}    TODO-Complete me!"
             ;;
 
         5) # Amored Turtle v1.0
@@ -1287,8 +1279,11 @@ questionaire() {
             HAS_SELECTOR=no
             _hw_mmu_vendor="AmoredTurtle"
             _hw_mmu_version="1.0"
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.5
+            _hw_gear_hold_current=0.1
             echo
-            echo -e "${WARNING}    TODO-Implement me!"
+            echo -e "${WARNING}    TODO-Complete me!"
             ;;
 
         6) # Other / Custom
@@ -1296,6 +1291,11 @@ questionaire() {
             HAS_SELECTOR=yes
             _hw_mmu_vendor="Other"
             _hw_mmu_version="1.0"
+            _hw_gear_gear_ratio="20:10"
+            _hw_gear_run_current=0.5
+            _hw_gear_hold_current=0.1
+            _hw_sel_run_current=0.5
+            _hw_sel_hold_current=0.1
             echo
             echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU you will need to setup some CAD dimensions and other key parameters... See doc"
             ;;
@@ -1609,44 +1609,46 @@ questionaire() {
             ;;
         n)
             INSTALL_PRINTER_INCLUDES=no
-            echo
-            echo -e "${WARNING}Make sure you that you add this near the top of your printer.cfg:"
-            echo -e "${EMPHASIZE}# Happy Hare"
-            echo -e "[include mmu/base/*.cfg]"
-            echo -e "[include mmu/optional/client_macros.cfg]"
-            echo -e "[include mmu/addons/blobifier.cfg]"
-            echo -e "[include mmu/addons/mmu_erec_cutter.cfg]"
-            echo
             ;;
     esac
+
+# Too verbose..
+#    echo -e "${EMPHASIZE}"
+#    echo -e "Summary of hardware config set by questionaire:${INFO}"
+#    for var in $(set | grep '^_hw_' | cut -d '=' -f 1); do
+#        short_name=$(echo "$var" | sed 's/^_hw_//')
+#        eval "echo -e \"$short_name: \${$var}\""
+#    done
 
     echo -e "${INFO}"
     echo "    vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
     echo
     echo "    NOTES:"
-    echo "     What still needs to be done:"
+    echo "    What still needs to be done:"
+    echo "    Edit mmu.cfg and mmu_hardware.cfg to get hardware correctly setup"
     if [ "${_hw_brd_type}" == "unknown" ]; then
-        echo "         * Edit *.cfg files and substitute all missing pins"
+        echo "        * Edit *.cfg files and substitute all missing pins"
     else
-        echo "         * Review all pin configuration and change to match your mcu"
+        echo "        * Review all pin configuration and change to match your mcu"
     fi
-    echo "         * Verify motor current, especially if using non BOM motors"
-    echo "         * Adjust motor direction with '!' on pin if necessary. No way to know here"
-    echo "         * Adjust your config for loading and unloading preferences"
-    echo 
+    echo "        * Verify motor current, especially if using non BOM motors"
+    echo "        * Adjust motor direction with '!' on pin if necessary. No way to know here"
+    echo "        * Adjust your config for loading and unloading preferences"
+    echo -e "${WARNING}"
+    echo "    Make sure you that you have these near the top of your printer.cfg:"
+    echo "        # Happy Hare"
+    echo "        [include mmu/base/*.cfg]"
+    echo "        [include mmu/optional/client_macros.cfg]"
+    echo "        [include mmu/addons/blobifier.cfg]"
+    echo "        [include mmu/addons/mmu_erec_cutter.cfg]"
+    echo -e "${INFO}"
     echo "    Later:"
-    echo "         * Tweak configurations like speed and distance in mmu/base/mmu_parameter.cfg"
+    echo "        * Tweak configurations like speed and distance in mmu_parameters.cfg"
+    echo "        * Configure your operational preferences in mmu_macro_vars.cfg"
     echo 
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."
     echo
     echo "    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
-
-    echo -e "${EMPHASIZE}"
-    echo -e "Hardware config set by questionaire:${INFO}"
-    for var in $(set | grep '^_hw_' | cut -d '=' -f 1); do
-        short_name=$(echo "$var" | sed 's/^_hw_//')
-        eval "echo -e \"$short_name: \${$var}\""
-    done
     echo
 }
 
@@ -1727,7 +1729,7 @@ cleanup_old_klippy_modules
 
 if [ "$UNINSTALL" -eq 0 ]; then
     if [ "${INSTALL}" -eq 1 ]; then
-        echo -e "${TITLE}Running interactive install"
+        echo -e "${TITLE}$(get_logo "Happy Hare interactive installer...")"
         read_default_config  # Parses template file parameters into memory
         questionaire         # Update in memory parameters from questionaire
 
@@ -1737,7 +1739,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
     else
         hardware_config="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
         if [ -f "${hardware_config}" ]; then
-            # Upgrade
+            echo -e "${TITLE}$(get_logo "Happy Hare upgrading previous install...")"
             read_default_config  # Parses template file parameters into memory
             read_previous_config # Update in memory parameters from previous install
         elif [ "${STARTER}" -eq 0 ]; then
@@ -1745,6 +1747,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
             usage
         else
             # Starter blank install
+            echo -e "${TITLE}$(get_logo "Happy Hare generating skeletal config...")"
             read_default_config  # Parses template file parameters into memory
         fi
     fi
@@ -1805,16 +1808,8 @@ fi
 if [ "$UNINSTALL" -eq 1 ]; then
     echo -e "${EMPHASIZE}"
     echo "Done.  Sad to see you go (but maybe you'll be back)..."
-    echo -e "${INFO}"
-    echo '(\_/)'
-    echo '( v,v)'
-    echo '(")^(") Very Unhappy Hare'
-    echo
+    echo -e "${sad_logo}"
 else
     echo -e "${TITLE}Done."
-    echo -e "${INFO}"
-    echo '(\_/)'
-    echo '( *,*)'
-    echo '(")_(") Happy Hare Ready'
-    echo
+    echo -e "$(get_logo "Happy Hare ${F_VERSION} Ready...")"
 fi
