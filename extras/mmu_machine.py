@@ -56,14 +56,6 @@ VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VEND
 class MmuMachine:
 
     def __init__(self, config):
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
-        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
-        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
-
-        # Selector type
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, 'LinearSelector')
-
         # Essential information for validation and setup
         self.num_gates = config.getint('mmu_num_gates')
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
@@ -73,6 +65,42 @@ class MmuMachine:
             self.mmu_version = float(version)
         except ValueError:
             raise self.config.error("Invalid version parameter")
+
+        # MMU design for control purposes can be broken down into the following choices:
+        #  - Selector type or no selector
+        #  -  Does each gate of the MMU have different BMG drive gears (or similar). I.e. drive rotation distance is variable
+        #  -  Does each gate of the MMU have different bowden path
+        selector_type = 'LinearSelector'
+        variable_rotation_distance = 1
+        variable_bowden_length = 0
+
+        if self.mmu_vendor == VENDOR_ERCF:
+            selector_type = 'LinearSelector'
+            variable_rotation_distance = 1
+            variable_bowden_length = 0
+
+        elif self.mmu_vendor == VENDOR_TRADRACK:
+            selector_type = 'LinearSelector'
+            variable_rotation_distance = 0
+            variable_bowden_length = 0
+
+        elif self.mmu_vendor == VENDOR_PRUSA:
+            raise self.config.error("Prusa MMU is not yet supported")
+
+        elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distance = 1
+            variable_bowden_length = 0
+
+        elif self.mmu_vendor == VENDOR_ARMORED_TURTLE:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distance = 1
+            variable_bowden_length = 1
+
+        # Still allow MMU design attributes to be altered or set for custom MMU
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, selector_type)
+        self.variable_rotation_distance = bool(config.getint('variable_rotation_distance', variable_rotation_distance))
+        self.variable_bowden_length = bool(config.getint('variable_bowden_length', variable_bowden_length))
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
@@ -100,10 +128,31 @@ class MmuMachine:
                             if base_value:
                                 config.fileconfig.set(tmc_section, key, base_value)
 
-        # PAUL TODO WIP Idea for config validation/cleaning
-#        self.virtual_selector = bool(config.getint('virtual_selector', 0, minval=0, maxval=1))
-#        self.mmu_type = config.get('mmu_type', "A") # PAUL should be config list
+
+# PAUL TODO
 # add validation here based on num_gates & vendor / virtual selector..
+# Checks .. log messages if removed
+#if VirtualSelector:
+#if config.has_section(section_to_remove)
+#    config.remove_section("mmu_servo selector_servo")
+#    config.remove_section("stepper_mmu_selector") & "tmc2209 stepper_mmu_selector" where TMC is dynamic
+#elif LinearSelector:
+#    check for:
+#        config.has_section("mmu_servo selector_servo")
+#        config.has_section("stepper_mmu_selector") & "tmc2209 stepper_mmu_selector" where TMC is dynamic
+#        config.has_section("gear_mmu_gear") & "tmc2209 stepper_mmu_gear" where TMC is dynamic
+#        no "gear_mmu_gear_%d") & "tmc2209 stepper_mmu_gear_%d" where TMC is dynamic
+#ERCF, Tradrack
+#   + encoder or gate_sensor
+#   + LinearSelector
+#   + one gear, one selector
+#   + selector_servo
+#AngryBeaver
+#   + pre-gate xN
+#   + extruder_entry
+#AmoredTurtle
+#   + pre-gate xN
+#   + post-gate xN
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
@@ -215,9 +264,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             raise config.error(msg)
 
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
-        self.homing_extruder = self.mmu_machine.homing_extruder
         self.mmu_extruder_stepper = None
-        if self.homing_extruder:
+        if self.mmu.homing_extruder:
             # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
             self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
 
@@ -243,7 +291,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
 
         printer_extruder = self.printer_toolhead.get_extruder()
-        if self.homing_extruder:
+        if self.mmu.homing_extruder:
             # Restore original extruder options in case user macros reference them
             for key in self.old_ext_options:
                 value = self.old_ext_options[key]

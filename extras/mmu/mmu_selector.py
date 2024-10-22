@@ -741,9 +741,9 @@ class LinearSelectorServo:
         self.servo_dwell = mmu.config.getfloat('servo_dwell', 0.4, minval=0.1)
         self.servo_buzz_gear_on_down = mmu.config.getint('servo_buzz_gear_on_down', 3, minval=0, maxval=10)
 
-        self.servo = mmu.printer.lookup_object('mmu_servo mmu_servo', None)
+        self.servo = mmu.printer.lookup_object('mmu_servo selector_servo', None)
         if not self.servo:
-            raise mmu.config.error("No [mmu_servo] definition found in mmu_hardware.cfg")
+            raise mmu.config.error("No [mmu_servo selector_servo] definition found in mmu_hardware.cfg")
 
         # Register GCODE commands specific to this module
         gcode = self.mmu.printer.lookup_object('gcode')

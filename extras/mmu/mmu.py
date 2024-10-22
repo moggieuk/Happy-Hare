@@ -164,7 +164,7 @@ class Mmu:
     VARS_MMU_FILAMENT_POS            = "mmu_state_filament_pos"
     VARS_MMU_FILAMENT_REMAINING      = "mmu_state_filament_remaining"
     VARS_MMU_CALIB_BOWDEN_LENGTH     = "mmu_calibration_bowden_length"
-    VARS_MMU_CALIB_BOWDEN_HOME       = "mmu_calibration_bowden_home" # Was encoder or gate sensor used as reference point
+    VARS_MMU_CALIB_BOWDEN_HOME       = "mmu_calibration_bowden_home" # Was encoder, gate or post-gate sensor used as reference point
     VARS_MMU_GATE_STATISTICS_PREFIX  = "mmu_statistics_gate_"
     VARS_MMU_SWAP_STATISTICS         = "mmu_statistics_swaps"
     VARS_MMU_COUNTERS                = "mmu_statistics_counters"
@@ -260,46 +260,18 @@ class Mmu:
         if self.config_version is not None and self.config_version < self.VERSION:
             raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.config_version, self.VERSION, self.UPGRADE_REMINDER))
 
+        # Setup remaining hardware like MMU toolhead --------------------------------------------------------
+        #
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
+        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
+        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
         # This assumes that the hardware definition appears before the '[mmu]' section.
         # The default recommended install will guarantee this order
         self._setup_mmu_hardware(config)
-
-# PAUL vvvv this probably belongs in mmu_machine or mmu_encoder
-        # Read all tunable params ---------------------------------------------------------------------------
-        # To simplfy config some design related parameters are set based on vendor and version setting
-        # These are default for ERCFv1.1 - the first MMU supported by Happy Hare
-        #  encoder_default_resolution - resolution of a single encoder "count"
-        #  variable_gate_ratios       - whether gear rotation_distance of each gate can be different and needs separate calibration
-        #
-        bmg_circ = 23.
-        self.encoder_default_resolution = bmg_circ / (2 * 17) # TRCT5000 based sensor
-        self.variable_gate_ratios = 1 # Whether gear rotation_distance of each gate can be different and needs separate calibration
-
-        # Specific vendor build parameters / tuning.
-        if self.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_ERCF.lower():
-            if self.mmu_machine.mmu_version >= 2.0: # V2 community edition
-                self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
-
-            else: # V1.1 original
-                # Modifications:
-                #  t = TripleDecky filament blocks
-                #  s = Springy sprung servo selector
-                #  b = Binky encoder upgrade
-                if "b" in self.mmu_machine.mmu_version_string:
-                    self.encoder_default_resolution = bmg_circ / (2 * 12) # Binky 12 tooth disc with BMG gear
-
-        elif self.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_TRADRACK.lower():
-            self.encoder_default_resolution = bmg_circ / (2 * 12) # If fitted, assumed to by Binky
-            self.variable_gate_ratios = 0
-
-        elif self.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_PRUSA.lower():
-            raise self.config.error("Support for Prusa systems is comming soon! You can try with vendor=Other and configure 'cad' dimensions (see doc)")
-
-        # Still allow vendor driven config to be customized
-        self.encoder_default_resolution = config.getfloat('encoder_default_resolution', self.encoder_default_resolution)
-        self.variable_gate_ratios = config.getfloat('variable_gate_ratios', self.variable_gate_ratios)
 
         # Printer interaction config
         self.extruder_name = config.get('extruder', 'extruder')
@@ -468,7 +440,6 @@ class Mmu:
         # errors in klippy.log. This has been linked to subsequent Timer too close errors. An often cited workaround is
         # to increase BIT_MAX_TIME in neopixel.py. This option does that automatically for you to save dirtying klipper.
         self.update_bit_max_time = config.getint('update_bit_max_time', 0, minval=0, maxval=1)
-
 
         # Establish defaults for "reset" operation ----------------------------------------------------------
         # These lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
@@ -647,7 +618,7 @@ class Mmu:
         self.mmu_toolhead = MmuToolHead(config, self)
         rails = self.mmu_toolhead.get_kinematics().rails
         self.gear_rail = rails[1]
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.mmu_machine.homing_extruder' is True
+        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
 
         # Setup filament sensors used for homing (endstops)
         for name in (
@@ -668,7 +639,7 @@ class Mmu:
                     # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                     # otherwise the extruder can continue to move a small (speed dependent) distance
                     mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
-                    if self.mmu_machine.homing_extruder and name == self.ENDSTOP_TOOLHEAD:
+                    if self.homing_extruder and name == self.ENDSTOP_TOOLHEAD:
                         mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
                 else:
                     logging.warning("Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
@@ -714,7 +685,7 @@ class Mmu:
             if self.extruder_tmc is None:
                 self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, self.extruder_name), None)
                 if self.extruder_tmc is not None:
-                    self.log_debug("Found %s on extruder. Current control enabled. %s" % (chip, "Stallguard 'touch' homing possible." if self.mmu_machine.homing_extruder else ""))
+                    self.log_debug("Found %s on extruder. Current control enabled. %s" % (chip, "Stallguard 'touch' homing possible." if self.homing_extruder else ""))
         if self.gear_tmc is None:
             self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
         if self.extruder_tmc is None:
@@ -774,8 +745,8 @@ class Mmu:
             self.log_always("Warning: Gear rotation_distances not found in mmu_vars.cfg. Probably not calibrated")
             self.rotation_distances = [0.] * self.num_gates
 
-        # Ensure they are identical if variable_gate_ratios is False
-        if not self.variable_gate_ratios:
+        # Ensure they are identical if variable_rotation_distance is False
+        if not self.mmu_machine.variable_rotation_distance:
             self.rotation_distances = [self.rotation_distances[0]] * self.num_gates
 
         # Finally update and set calibration status
@@ -784,8 +755,9 @@ class Mmu:
             self.calibration_status |= self.CALIBRATED_GEAR
 
         # Configure encoder calibration (set with MMU_CALIBRATE_ENCODER)
-        self.encoder_resolution = self.encoder_default_resolution
+        self.encoder_resolution = 1.0
         if self.has_encoder():
+            self.encoder_resolution = self.encoder_sensor.get_resolution()
             self.encoder_sensor.set_logger(self.log_debug) # Combine with MMU log
             self.encoder_sensor.set_extruder(self.extruder_name)
             self.encoder_sensor.set_mode(self.enable_clog_detection)
@@ -846,7 +818,7 @@ class Mmu:
 
         # Reference correct extruder stepper which will definitely be available now
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
-        if not self.mmu_machine.homing_extruder:
+        if not self.homing_extruder:
             self.log_debug("Warning: Using original klipper extruder stepper. Homing not possible")
 
         # Restore state only if fully calibrated
@@ -2062,7 +2034,7 @@ class Mmu:
             self.log_always(msg)
 
             # Sanity check to ensure all teeth are reflecting / being counted. 20% tolerance
-            if (abs(resolution - self.encoder_default_resolution) / self.encoder_default_resolution) > 0.2:
+            if (abs(resolution - self.encoder_sensor.get_resolution()) / self.encoder_sensor.get_resolution()) > 0.2:
                 self.log_always("Warning: Encoder is not detecting the expected number of counts based on CAD parameters which may indicate an issue")
 
             msg = "Before calibration measured length: %.2fmm" % old_result
@@ -2350,7 +2322,7 @@ class Mmu:
             self.log_always("Gear stepper 'rotation_distance' calculated to be %.6f (currently: %.6f" % (new_rd, current_rd))
             if save:
                 all_gates = False
-                if not self.variable_gate_ratios or (gate == 0 and self.rotation_distances[0] == 0.):
+                if not self.mmu_machine.variable_rotation_distance or (gate == 0 and self.rotation_distances[0] == 0.):
                     # Initial calibration on gate 0 sets all gates as auto calibration starting point
                     self.rotation_distances = [new_rd] * self.num_gates
                     all_gates = True
@@ -2372,7 +2344,7 @@ class Mmu:
     def cmd_MMU_CALIBRATE_ENCODER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_is_disabled(): return
-        if self._checkhas_encoder(): return
+        if self._check_has_encoder(): return
         if self.check_in_bypass(): return
         if self.check_is_calibrated(self.CALIBRATED_GEAR): return
 
@@ -3074,7 +3046,7 @@ class Mmu:
     def _can_use_encoder(self):
         return self.encoder_sensor is not None and (self.encoder_move_validation or self.encoder_force_validation)
 
-    def _checkhas_encoder(self):
+    def _check_has_encoder(self):
         if not self.has_encoder():
             self.log_error("No encoder fitted to MMU")
             return True
@@ -3434,7 +3406,7 @@ class Mmu:
     cmd_MMU_ENCODER_help = "Display encoder position and stats or enable/disable runout detection logic in encoder"
     def cmd_MMU_ENCODER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self._checkhas_encoder(): return
+        if self._check_has_encoder(): return
         if self.check_is_disabled(): return
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
@@ -4916,7 +4888,7 @@ class Mmu:
                 return measured > self.encoder_min
         else:
             self.trace_filament_move(None, 5, accel=self.gear_buzz_accel)
-            self.trace_filament_move(None, -5 * self.encoder_resolution, accel=self.gear_buzz_accel)
+            self.trace_filament_move(None, -5, accel=self.gear_buzz_accel)
         return None
 
     # Sync/unsync gear motor with extruder, handle filament engagement and current control
@@ -5261,7 +5233,9 @@ class Mmu:
         self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_rotation_distance(self, gate):
-        return self.rotation_distances[gate if gate >= 0 and self.variable_gate_ratios else 0]
+        return self.rotation_distances[gate if gate >= 0 and self.mmu_machine.variable_rotation_distance else 0]
+
+# PAUL TODO mmu_machine_variable_bowden_length
 
 
 ### SPOOLMAN INTEGRATION #########################################################
@@ -5936,7 +5910,7 @@ class Mmu:
     cmd_MMU_TEST_TRACKING_help = "Test the tracking of gear feed and encoder sensing"
     def cmd_MMU_TEST_TRACKING(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self._checkhas_encoder(): return
+        if self._check_has_encoder(): return
         if self.check_is_disabled(): return
         if self.check_in_bypass(): return
         if self._check_not_homed(): return
