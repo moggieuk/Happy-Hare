@@ -167,14 +167,50 @@ PIN[MMB10,pre_gate_8_pin]="";                              PIN[MMB11,pre_gate_8_
 PIN[MMB10,pre_gate_9_pin]="";                              PIN[MMB11,pre_gate_9_pin]="";
 PIN[MMB10,pre_gate_10_pin]="";                             PIN[MMB11,pre_gate_10_pin]="";
 PIN[MMB10,pre_gate_11_pin]="";                             PIN[MMB11,pre_gate_11_pin]="";
+#
+# Common Type-B MMU pin utilization
+#
+PIN[MMB10,gear_uart_pin]="PA10";                           PIN[MMB11,gear_uart_pin]="PA10";       # M1
+PIN[MMB10,gear_step_pin]="PB15";                           PIN[MMB11,gear_step_pin]="PB15";
+PIN[MMB10,gear_dir_pin]="PB14";                            PIN[MMB11,gear_dir_pin]="PB14";
+PIN[MMB10,gear_enable_pin]="PA8";                          PIN[MMB11,gear_enable_pin]="PB8";
+PIN[MMB10,gear_diag_pin]="PA3";                            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1
+PIN[MMB10,gear_1_uart_pin]="PC7";                          PIN[MMB11,gear_1_uart_pin]="PC7";      # M2
+PIN[MMB10,gear_1_step_pin]="PD2";                          PIN[MMB11,gear_1_step_pin]="PD2";
+PIN[MMB10,gear_1_dir_pin]="PB13";                          PIN[MMB11,gear_1_dir_pin]="PB13";
+PIN[MMB10,gear_1_enable_pin]="PD1";                        PIN[MMB11,gear_1_enable_pin]="PD1";
+PIN[MMB10,gear_1_diag_pin]="PA4";                          PIN[MMB11,gear_1_diag_pin]="PA4";      # Aka STP2
+PIN[MMB10,gear_2_uart_pin]="PC6";                          PIN[MMB11,gear_2_uart_pin]="PC6";      # M3
+PIN[MMB10,gear_2_step_pin]="PD0";                          PIN[MMB11,gear_2_step_pin]="PD0";
+PIN[MMB10,gear_2_dir_pin]="PD3";                           PIN[MMB11,gear_2_dir_pin]="PD3";
+PIN[MMB10,gear_2_enable_pin]="PA15";                       PIN[MMB11,gear_2_enable_pin]="PA15";
+PIN[MMB10,gear_2_diag_pin]="PB9";                          PIN[MMB11,gear_2_diag_pin]="PB9";      # Aka STP3
+PIN[MMB10,gear_3_uart_pin]="PA9";                          PIN[MMB11,gear_3_uart_pin]="PA9";      # M4
+PIN[MMB10,gear_3_step_pin]="PB6";                          PIN[MMB11,gear_3_step_pin]="PB6";
+PIN[MMB10,gear_3_dir_pin]="PB7";                           PIN[MMB11,gear_3_dir_pin]="PB7";
+PIN[MMB10,gear_3_enable_pin]="PB5";                        PIN[MMB11,gear_3_enable_pin]="PB5";
+PIN[MMB10,gear_3_diag_pin]="PB8";                          PIN[MMB11,gear_3_diag_pin]="PB8";      # Aka STP4
+#PIN[MMB10,selector_endstop_pin]="PB2";                     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
+#PIN[MMB10,servo_pin]="PA0";                                PIN[MMB11,servo_pin]="PA0";
+#PIN[MMB10,encoder_pin]="PA1";                              PIN[MMB11,encoder_pin]="PA1";
+PIN[MMB10,neopixel_pin]="PA2";                             PIN[MMB11,neopixel_pin]="PA2";
+PIN[MMB10,gate_sensor_pin]="PA3";                          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
+PIN[MMB10,pre_gate_0_pin]="PB9";                           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3
+PIN[MMB10,pre_gate_1_pin]="PB8";                           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4
+PIN[MMB10,pre_gate_2_pin]="PC15";                          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5
+PIN[MMB10,pre_gate_3_pin]="PC13";                          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6
+PIN[MMB10,post_gate_0_pin]="PC14";                         PIN[MMB11,post_gate_0_pin]="PC14";      # STP7
+PIN[MMB10,post_gate_1_pin]="PB12";                         PIN[MMB11,post_gate_1_pin]="PB12";      # STP8
+PIN[MMB10,post_gate_2_pin]="PB11";                         PIN[MMB11,post_gate_2_pin]="PB11";      # STP9
+PIN[MMB10,post_gate_3_pin]="PB10";                         PIN[MMB11,post_gate_3_pin]="PB10";      # STP10
 
 # These pins will usually be on main mcu for wiring simplification
 #
-PIN[toolhead_sensor_pin]=""
-PIN[extruder_sensor_pin]=""
-PIN[gantry_servo_pin]=""
-PIN[sync_feedback_tension_pin]=""
-PIN[sync_feedback_compression_pin]=""
+PIN[toolhead_sensor_pin]="TOOLHEAD_SENSOR"
+PIN[extruder_sensor_pin]="EXTRUDER_SENSOR"
+PIN[gantry_servo_pin]="GANTRY_SERVO"
+PIN[sync_feedback_tension_pin]="FEEDBACK_TENSION"
+PIN[sync_feedback_compression_pin]="FEEDBACK_COMPRESSION"
 
 # Screen Colors
 OFF='\033[0m'             # Text Reset
@@ -200,6 +236,7 @@ EMPHASIZE="${B_CYAN}"
 ERROR="${B_RED}"
 WARNING="${B_YELLOW}"
 PROMPT="${CYAN}"
+DIM="${PURPLE}"
 INPUT="${OFF}"
 SECTION="----------\n"
 
@@ -301,7 +338,7 @@ check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         if [ "$IS_MIPS" -ne 1 ]; then
             if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
-                echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
+                echo -e "${DIM}Klipper ${KLIPPER_SERVICE} systemd service found"
             else
                 echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
                 exit -1
@@ -312,7 +349,7 @@ check_klipper() {
             KLIPPER_PID_FILE=/var/run/klippy.pid
 
             if [ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]; then
-                echo -e "${INFO}Klipper service found"
+                echo -e "${DIM}Klipper service found"
             else
                 echo -e "${ERROR}Klipper service not found! Please install Klipper first"
                 exit -1
@@ -326,7 +363,7 @@ check_octoprint() {
         OCTOPRINT=0 # Octoprint can not be set up on MIPS
     elif [ "$NOSERVICE" -ne 1 ]; then
         if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
-            echo -e "${INFO}OctoPrint service found"
+            echo -e "${DIM}OctoPrint service found"
             OCTOPRINT=1
         else
             OCTOPRINT=0
@@ -350,7 +387,7 @@ verify_home_dirs() {
             KLIPPER_CONFIG_HOME="${OLD_KLIPPER_CONFIG_HOME}"
         fi
     fi
-    echo -e "${INFO}Klipper config directory (${KLIPPER_CONFIG_HOME}) found"
+    echo -e "${DIM}Klipper config directory (${KLIPPER_CONFIG_HOME}) found"
 
     if [ ! -d "${MOONRAKER_HOME}" ]; then
         if [ "${OCTOPRINT}" -eq 0 ]; then
@@ -542,8 +579,6 @@ read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""                   "_param_" "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_|filename" ""        "checkdup"
-    echo "PAUL: f1=${variable_filename}"
-    echo "PAUL: f2=${filename}"
     for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw" | grep -v "my_"`; do
         parse_file "${SRCDIR}/config/addons/${file}"      "variable_"          ""        "checkdup"
     done
@@ -575,8 +610,6 @@ read_previous_config() {
             fi
         fi
     done
-    echo "PAUL: f3=${variable_filename}"
-    echo "PAUL: f4=${filename}"
 
     # Get number of gates stored in mmu_hardware.cfg if available
     cfg="mmu_hardware.cfg"
@@ -732,16 +765,16 @@ copy_config_files() {
             # Now substitute tokens using given brd_type and "questionaire" starting values
             _hw_num_leds=$(expr $_hw_num_gates \* 2 + 1)
             _hw_num_leds_minus1=$(expr $_hw_num_leds - 1)
-            _hw_num_gates_minus1=$(expr $_hw_num_gates - 1)
+            _hw_num_gates_plus1=$(expr $_hw_num_gates + 1)
             cat ${dest} | sed -e "\
                 s/{brd_type}/${_hw_brd_type}/; \
                 s%{serial}%${_hw_serial}%; \
                 s/{num_gates}/${_hw_num_gates}/; \
-                s/{mmu_vendor}/${_hw_vendor}/; \
-                s/{mmu_version}/${_hw_version}/; \
+                s/{mmu_vendor}/${_hw_mmu_vendor}/; \
+                s/{mmu_version}/${_hw_mmu_version}/; \
                 s/{num_leds}/${_hw_num_leds}/; \
                 s/{num_leds_minus1}/${_hw_num_leds_minus1}/; \
-                s/{num_gates_minus1}/${_hw_num_gates_minus1}/; \
+                s/{num_gates_plus1}/${_hw_num_gates_plus1}/; \
                 s/{encoder_resolution}/${_hw_encoder_resolution}/; \
                 s/{gear_gear_ratio}/${_hw_gear_gear_ratio}/; \
                 s/{gear_run_current}/${_hw_gear_run_current}/; \
@@ -756,50 +789,64 @@ copy_config_files() {
                 s/{gantry_servo_pin}/${PIN[gantry_servo_pin]}/; \
                 s/{sync_feedback_tension_pin}/${PIN[sync_feedback_tension_pin]}/; \
                 s/{sync_feedback_compression_pin}/${PIN[sync_feedback_compression_pin]}/; \
-                s/{gate_sensor_pin}/${PIN[$brd_type,gate_sensor_pin]}/; \
-                s/{pre_gate_0_pin}/${PIN[$brd_type,pre_gate_0_pin]}/; \
-                s/{pre_gate_1_pin}/${PIN[$brd_type,pre_gate_1_pin]}/; \
-                s/{pre_gate_2_pin}/${PIN[$brd_type,pre_gate_2_pin]}/; \
-                s/{pre_gate_3_pin}/${PIN[$brd_type,pre_gate_3_pin]}/; \
-                s/{pre_gate_4_pin}/${PIN[$brd_type,pre_gate_4_pin]}/; \
-                s/{pre_gate_5_pin}/${PIN[$brd_type,pre_gate_5_pin]}/; \
-                s/{pre_gate_6_pin}/${PIN[$brd_type,pre_gate_6_pin]}/; \
-                s/{pre_gate_7_pin}/${PIN[$brd_type,pre_gate_7_pin]}/; \
-                s/{pre_gate_8_pin}/${PIN[$brd_type,pre_gate_8_pin]}/; \
-                s/{pre_gate_9_pin}/${PIN[$brd_type,pre_gate_9_pin]}/; \
-                s/{pre_gate_10_pin}/${PIN[$brd_type,pre_gate_10_pin]}/; \
-                s/{pre_gate_11_pin}/${PIN[$brd_type,pre_gate_11_pin]}/; \
+                s/{gate_sensor_pin}/${PIN[$_hw_brd_type,gate_sensor_pin]}/; \
+                s/{pre_gate_0_pin}/${PIN[$_hw_brd_type,pre_gate_0_pin]}/; \
+                s/{pre_gate_1_pin}/${PIN[$_hw_brd_type,pre_gate_1_pin]}/; \
+                s/{pre_gate_2_pin}/${PIN[$_hw_brd_type,pre_gate_2_pin]}/; \
+                s/{pre_gate_3_pin}/${PIN[$_hw_brd_type,pre_gate_3_pin]}/; \
+                s/{pre_gate_4_pin}/${PIN[$_hw_brd_type,pre_gate_4_pin]}/; \
+                s/{pre_gate_5_pin}/${PIN[$_hw_brd_type,pre_gate_5_pin]}/; \
+                s/{pre_gate_6_pin}/${PIN[$_hw_brd_type,pre_gate_6_pin]}/; \
+                s/{pre_gate_7_pin}/${PIN[$_hw_brd_type,pre_gate_7_pin]}/; \
+                s/{pre_gate_8_pin}/${PIN[$_hw_brd_type,pre_gate_8_pin]}/; \
+                s/{pre_gate_9_pin}/${PIN[$_hw_brd_type,pre_gate_9_pin]}/; \
+                s/{pre_gate_10_pin}/${PIN[$_hw_brd_type,pre_gate_10_pin]}/; \
+                s/{pre_gate_11_pin}/${PIN[$_hw_brd_type,pre_gate_11_pin]}/; \
                 s/{gear_gear_ratio}/${_hw_gear_gear_ratio}/; \
-                s/{gear_uart_pin}/${PIN[$brd_type,gear_uart_pin]}/; \
-                s/{gear_step_pin}/${PIN[$brd_type,gear_step_pin]}/; \
-                s/{gear_dir_pin}/${PIN[$brd_type,gear_dir_pin]}/; \
-                s/{gear_enable_pin}/${PIN[$brd_type,gear_enable_pin]}/; \
-                s/{gear_diag_pin}/${PIN[$brd_type,gear_diag_pin]}/; \
-                s/{selector_uart_pin}/${PIN[$brd_type,selector_uart_pin]}/; \
-                s/{selector_step_pin}/${PIN[$brd_type,selector_step_pin]}/; \
-                s/{selector_dir_pin}/${PIN[$brd_type,selector_dir_pin]}/; \
-                s/{selector_enable_pin}/${PIN[$brd_type,selector_enable_pin]}/; \
-                s/{selector_diag_pin}/${PIN[$brd_type,selector_diag_pin]}/; \
-                s/{selector_endstop_pin}/${PIN[$brd_type,selector_endstop_pin]}/; \
-                s/{servo_pin}/${PIN[$brd_type,servo_pin]}/; \
-                s/{encoder_pin}/${PIN[$brd_type,encoder_pin]}/; \
-                s/{neopixel_pin}/${PIN[$brd_type,neopixel_pin]}/; \
+                s/{gear_uart_pin}/${PIN[$_hw_brd_type,gear_uart_pin]}/; \
+                s/{gear_step_pin}/${PIN[$_hw_brd_type,gear_step_pin]}/; \
+                s/{gear_dir_pin}/${PIN[$_hw_brd_type,gear_dir_pin]}/; \
+                s/{gear_enable_pin}/${PIN[$_hw_brd_type,gear_enable_pin]}/; \
+                s/{gear_diag_pin}/${PIN[$_hw_brd_type,gear_diag_pin]}/; \
+                s/{selector_uart_pin}/${PIN[$_hw_brd_type,selector_uart_pin]}/; \
+                s/{selector_step_pin}/${PIN[$_hw_brd_type,selector_step_pin]}/; \
+                s/{selector_dir_pin}/${PIN[$_hw_brd_type,selector_dir_pin]}/; \
+                s/{selector_enable_pin}/${PIN[$_hw_brd_type,selector_enable_pin]}/; \
+                s/{selector_diag_pin}/${PIN[$_hw_brd_type,selector_diag_pin]}/; \
+                s/{selector_endstop_pin}/${PIN[$_hw_brd_type,selector_endstop_pin]}/; \
+                s/{servo_pin}/${PIN[$_hw_brd_type,servo_pin]}/; \
+                s/{encoder_pin}/${PIN[$_hw_brd_type,encoder_pin]}/; \
+                s/{neopixel_pin}/${PIN[$_hw_brd_type,neopixel_pin]}/; \
                     " > ${dest}.tmp && mv ${dest}.tmp ${dest}
 
             # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
-            if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" != "yes" ]; then
+            if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" == "no" ]; then
                 sed "/^# MMU OPTIONAL NEOPIXEL/,$ {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
             # Handle Encoder option - Delete if not required (section is 25 lines long)
-            if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_ENCODER" != "yes" ]; then
+            if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_ENCODER" == "no" ]; then
                 sed "/^# ENCODER/,+24 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-            # Handle Selector options - Delete if not required (sections are 9 and 37 lines respectively)
-            if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_SELECTOR" != "yes" ]; then
-                sed "/^# SELECTOR SERVO/,+8 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                sed "/^# SELECTOR STEPPER/,+36 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
+            if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_SELECTOR" == "no" ]; then
+                sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                sed "/^# SELECTOR STEPPER/,+35 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+                # Expand out the additional filament drive for each gate
+                additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
+                awk '{ print } /^# ADDITIONAL FILAMENT DRIVE/ { for (i=1; i<=11; i++) { getline; print }; exit }' ${dest} > ${dest}.tmp
+                for (( i=2; i<=$(expr $_hw_num_gates - 1); i++ ))
+                do
+                    echo "$(echo "${additional_gear_section}" | sed "s/_1/_$i/g")" >> ${dest}.tmp
+                    echo >> ${dest}.tmp
+                done
+                awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+            else
+                # Delete additional gear drivers template section
+                sed "/^# ADDITIONAL FILAMENT DRIVE/,+10 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
         # Conifguration parameters -----------------------------------------------------------
@@ -1228,7 +1275,7 @@ questionaire() {
 
         4) # Angry Beaver v1.0
             HAS_ENCODER=no
-            HAS_SELECTOR=yes
+            HAS_SELECTOR=no
             _hw_mmu_vendor="AngryBeaver"
             _hw_mmu_version="1.0"
             echo
@@ -1237,7 +1284,7 @@ questionaire() {
 
         5) # Amored Turtle v1.0
             HAS_ENCODER=no
-            HAS_SELECTOR=yes
+            HAS_SELECTOR=no
             _hw_mmu_vendor="AmoredTurtle"
             _hw_mmu_version="1.0"
             echo
@@ -1246,7 +1293,7 @@ questionaire() {
 
         6) # Other / Custom
             HAS_ENCODER=yes
-            HAS_SELECTOR=no
+            HAS_SELECTOR=yes
             _hw_mmu_vendor="Other"
             _hw_mmu_version="1.0"
             echo
@@ -1562,28 +1609,17 @@ questionaire() {
             ;;
         n)
             INSTALL_PRINTER_INCLUDES=no
-            echo -e "${INFO}Make sure you that you add this near the top of your printer.cfg:"
-            echo -e "# Happy Hare"
+            echo
+            echo -e "${WARNING}Make sure you that you add this near the top of your printer.cfg:"
+            echo -e "${EMPHASIZE}# Happy Hare"
             echo -e "[include mmu/base/*.cfg]"
             echo -e "[include mmu/optional/client_macros.cfg]"
-            echo -e "#[include mmu/optional/mmu_menu.cfg]"
-            echo -e "#[include mmu/addons/blobifier.cfg]"
-            echo -e "#[include mmu/addons/mmu_erec_cutter.cfg]"
+            echo -e "[include mmu/addons/blobifier.cfg]"
+            echo -e "[include mmu/addons/mmu_erec_cutter.cfg]"
+            echo
             ;;
     esac
 
-    echo -e "${WARNING}Parameters set by questionaire:"
-    for var in $(set | grep '^_param_' | cut -d '=' -f 1); do
-        short_name=$(echo "$var" | sed 's/^_param_//')
-        eval "echo -e \"$short_name: \${$var}\""
-    done
-    echo -e "${WARNING}Hardware config set by questionaire:"
-    for var in $(set | grep '^_hw_' | cut -d '=' -f 1); do
-        short_name=$(echo "$var" | sed 's/^_hw_//')
-        eval "echo -e \"$short_name: \${$var}\""
-    done
-
-    echo
     echo -e "${INFO}"
     echo "    vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
     echo
@@ -1604,6 +1640,13 @@ questionaire() {
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."
     echo
     echo "    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+
+    echo -e "${EMPHASIZE}"
+    echo -e "Hardware config set by questionaire:${INFO}"
+    for var in $(set | grep '^_hw_' | cut -d '=' -f 1); do
+        short_name=$(echo "$var" | sed 's/^_hw_//')
+        eval "echo -e \"$short_name: \${$var}\""
+    done
     echo
 }
 
@@ -1684,6 +1727,7 @@ cleanup_old_klippy_modules
 
 if [ "$UNINSTALL" -eq 0 ]; then
     if [ "${INSTALL}" -eq 1 ]; then
+        echo -e "${TITLE}Running interactive install"
         read_default_config  # Parses template file parameters into memory
         questionaire         # Update in memory parameters from questionaire
 
