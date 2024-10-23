@@ -567,12 +567,14 @@ class MmuKinematics:
         positions = []
         for i, r in enumerate(self.rails):
             #logging.info("DEBUG: * %d. rail=%s, initial_stepper_name=%s", i, r.get_name(), r.steppers[0].get_name())
+            stepper = None
             if i == 1:
                 stepper = next((s for s in r.steppers if s not in self.toolhead.inactive_gear_steppers), None)
-                if stepper:
-                    positions.append(stepper_positions[stepper.get_name()])
-                else:
-                    positions.append(stepper_positions[r.get_name()])
+
+            if stepper:
+                positions.append(stepper_positions[stepper.get_name()])
+            elif isinstance(r, DummyRail):
+                positions.append(0.)
             else:
                 positions.append(stepper_positions[r.get_name()])
         return positions
@@ -805,6 +807,9 @@ class DummyRail:
 
     def get_endstops(self):
         return self.endstops
+    
+    def set_position(self, newpos):
+        pass
 
 
 def load_config(config):
