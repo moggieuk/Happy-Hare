@@ -109,6 +109,9 @@ class VirtualSelector:
     def get_test_config(self):
         return ""
 
+    def get_filament_grip_state(self):
+        return self.mmu.FILAMENT_DRIVE_STATE
+
 
 ################################################################################
 # Linear Selector
