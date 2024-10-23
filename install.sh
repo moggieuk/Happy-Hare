@@ -1,5 +1,6 @@
 #!/bin/bash
 # Happy Hare MMU Software
+#
 # Installer / Updater script
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
@@ -1145,6 +1146,8 @@ questionaire() {
         6) # Other / Custom
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
+            SETUP_LED=yes
+            SETUP_SELECTOR_TOUCH=no
             _hw_mmu_vendor="Other"
             _hw_mmu_version="1.0"
             _hw_gear_gear_ratio="1:1"

@@ -1,5 +1,6 @@
 #!/bin/bash
 # Happy Hare MMU Software
+#
 # Pin definitions for Installer script. Includes complete set of definitions for each board type
 # so impossible setups have blank pins rather than placeholder tokens. Each MCU defines a setup
 # for type-A and type-B MMU styles.
