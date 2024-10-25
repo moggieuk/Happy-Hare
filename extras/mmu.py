@@ -5284,7 +5284,7 @@ class Mmu:
                     else:
                         es = self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
                         if es is not None and es: # Installed and triggered
-                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
+                            self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY, silent=silent)
                         else:
                             self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # This prevents fast unload move
                 else:
@@ -5299,14 +5299,14 @@ class Mmu:
                         else:
                             es = self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
                             if es is not None and es: # Installed and triggered
-                                self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
+                                self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY, silent=silent)
                             else:
                                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Slight risk of it still being gripped by extruder
                                 
                     else:
                         es = self._check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
                         if es is not None and es: # Installed and triggered
-                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
+                            self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY, silent=silent)
                         else:
                             self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Slight risk of it still being gripped by extruder
                 else:
