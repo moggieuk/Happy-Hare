@@ -82,6 +82,9 @@ class VirtualSelector:
     def filament_hold(self):
         pass
 
+    def get_filament_grip_state(self):
+        return self.mmu.FILAMENT_DRIVE_STATE
+
     def disable_motors(self):
         pass
 
@@ -108,9 +111,6 @@ class VirtualSelector:
 
     def get_test_config(self):
         return ""
-
-    def get_filament_grip_state(self):
-        return self.mmu.FILAMENT_DRIVE_STATE
 
 
 ################################################################################

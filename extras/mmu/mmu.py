@@ -56,14 +56,14 @@ class Mmu:
     GATE_AVAILABLE_FROM_BUFFER = 2
 
     FILAMENT_POS_UNKNOWN = -1
-    FILAMENT_POS_UNLOADED = 0
+    FILAMENT_POS_UNLOADED = 0       # Parked in gate
     FILAMENT_POS_HOMED_GATE = 1     # Homed at either gate or post-gate sensor (currently assumed mutually exclusive sensors)
-    FILAMENT_POS_START_BOWDEN = 2
-    FILAMENT_POS_IN_BOWDEN = 3
-    FILAMENT_POS_END_BOWDEN = 4
+    FILAMENT_POS_START_BOWDEN = 2   # Point of fast load portion
+    FILAMENT_POS_IN_BOWDEN = 3      # Some unknown position in the bowden
+    FILAMENT_POS_END_BOWDEN = 4     # End of fast load portion
     FILAMENT_POS_HOMED_ENTRY = 5    # Homed at entry sensor
-    FILAMENT_POS_HOMED_EXTRUDER = 6 # Collision homing case
-    FILAMENT_POS_EXTRUDER_ENTRY = 7 # Past extruder entry
+    FILAMENT_POS_HOMED_EXTRUDER = 6 # Collision homing case at extruder gear entry
+    FILAMENT_POS_EXTRUDER_ENTRY = 7 # Past extruder gear entry
     FILAMENT_POS_HOMED_TS = 8       # Homed at toolhead sensor
     FILAMENT_POS_IN_EXTRUDER = 9    # In extruder past toolhead sensor
     FILAMENT_POS_LOADED = 10        # Homed to nozzle

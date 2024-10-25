@@ -553,7 +553,6 @@ class MmuKinematics:
             stepper = None
             if i == 1:
                 stepper = next((s for s in r.steppers if s not in self.toolhead.inactive_gear_steppers), None)
-
             if stepper:
                 positions.append(stepper_positions[stepper.get_name()])
             elif isinstance(r, DummyRail):
