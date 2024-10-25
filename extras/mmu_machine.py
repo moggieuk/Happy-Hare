@@ -112,7 +112,7 @@ class MmuMachine:
             self.multigear = True
 
             for key in SHAREABLE_STEPPER_PARAMS:
-                if not config.fileconfig.has_option(section, key):
+                if not config.fileconfig.has_option(section, key) and config.fileconfig.has_option(GEAR_STEPPER_CONFIG, key):
                     base_value = config.fileconfig.get(GEAR_STEPPER_CONFIG, key)
                     if base_value:
                         config.fileconfig.set(section, key, base_value)
