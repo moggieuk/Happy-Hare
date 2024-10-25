@@ -57,7 +57,7 @@ class MmuMachine:
 
     def __init__(self, config):
         # Essential information for validation and setup
-        self.num_gates = config.getint('mmu_num_gates')
+        self.num_gates = config.getint('num_gates')
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
         self.mmu_version_string = config.get('mmu_version', "1.0")
         version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
@@ -71,36 +71,36 @@ class MmuMachine:
         #  -  Does each gate of the MMU have different BMG drive gears (or similar). I.e. drive rotation distance is variable
         #  -  Does each gate of the MMU have different bowden path
         selector_type = 'LinearSelector'
-        variable_rotation_distance = 1
-        variable_bowden_length = 0
+        variable_rotation_distances = 1
+        variable_bowden_lengths = 0
 
         if self.mmu_vendor == VENDOR_ERCF:
             selector_type = 'LinearSelector'
-            variable_rotation_distance = 1
-            variable_bowden_length = 0
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
 
         elif self.mmu_vendor == VENDOR_TRADRACK:
             selector_type = 'LinearSelector'
-            variable_rotation_distance = 0
-            variable_bowden_length = 0
+            variable_rotation_distances = 0
+            variable_bowden_lengths = 0
 
         elif self.mmu_vendor == VENDOR_PRUSA:
             raise self.config.error("Prusa MMU is not yet supported")
 
         elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
             selector_type = 'VirtualSelector'
-            variable_rotation_distance = 1
-            variable_bowden_length = 0
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 1
 
         elif self.mmu_vendor == VENDOR_ARMORED_TURTLE:
             selector_type = 'VirtualSelector'
-            variable_rotation_distance = 1
-            variable_bowden_length = 1
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 1
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, selector_type)
-        self.variable_rotation_distance = bool(config.getint('variable_rotation_distance', variable_rotation_distance))
-        self.variable_bowden_length = bool(config.getint('variable_bowden_length', variable_bowden_length))
+        self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
+        self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
@@ -128,31 +128,14 @@ class MmuMachine:
                             if base_value:
                                 config.fileconfig.set(tmc_section, key, base_value)
 
-
-# PAUL TODO
-# add validation here based on num_gates & vendor / virtual selector..
-# Checks .. log messages if removed
-#if VirtualSelector:
-#if config.has_section(section_to_remove)
-#    config.remove_section("mmu_servo selector_servo")
-#    config.remove_section("stepper_mmu_selector") & "tmc2209 stepper_mmu_selector" where TMC is dynamic
-#elif LinearSelector:
-#    check for:
-#        config.has_section("mmu_servo selector_servo")
-#        config.has_section("stepper_mmu_selector") & "tmc2209 stepper_mmu_selector" where TMC is dynamic
-#        config.has_section("gear_mmu_gear") & "tmc2209 stepper_mmu_gear" where TMC is dynamic
-#        no "gear_mmu_gear_%d") & "tmc2209 stepper_mmu_gear_%d" where TMC is dynamic
-#ERCF, Tradrack
-#   + encoder or gate_sensor
-#   + LinearSelector
-#   + one gear, one selector
-#   + selector_servo
-#AngryBeaver
-#   + pre-gate xN
-#   + extruder_entry
-#AmoredTurtle
-#   + pre-gate xN
-#   + post-gate xN
+        # TODO add h/w validation here based on num_gates & vendor, virtual selector, etc
+        # TODO would allow for easier to understand error messages for conflicting or missing
+        # TODO hardware definitions.
+        # TODO Can also automatically remove config sections that aren't required. E.g. if VirtualSelector
+        # TODO then remove like:
+        # TODO if config.has_section(section_to_remove):
+        # TODO     config.remove_section("mmu_servo selector_servo")
+        # TODO     config.remove_section("stepper_mmu_selector") & "tmc2209 stepper_mmu_selector" where TMC is dynamic
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"

@@ -27,7 +27,7 @@ class MmuLeds:
 
     def __init__(self, config):
         led_strip = config.get('led_strip')
-        MmuLeds.num_gates = config.getsection("mmu_machine").getint("mmu_num_gates")
+        MmuLeds.num_gates = config.getsection("mmu_machine").getint("num_gates")
         MmuLeds.frame_rate = config.getint('frame_rate', MmuLeds.frame_rate)
 
         if config.get_printer().lookup_object(led_strip.replace(':', ' '), None) is None:

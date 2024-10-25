@@ -3,9 +3,12 @@
 #
 # Pin definitions for Installer script. Includes complete set of definitions for each board type
 # so impossible setups have blank pins rather than placeholder tokens. Each MCU defines a setup
-# for type-A and type-B MMU styles.
+# for type-A and some for type-B MMU styles.
 #
-# Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
+# The defined pin tokens allow for up to 12 gates on type-A MMU's and 4 gates on type-B. No MCU
+# can currently support beyond these limits
+#
+# Copyright (C) 2022-2024  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
 
 # Pins for original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
@@ -37,7 +40,7 @@ PIN[EASY-BRD,selector_dir_pin]="PB8";                      PIN[EASY-BRD-RP2040,s
 PIN[EASY-BRD,selector_enable_pin]="PA11";                  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
 PIN[EASY-BRD,selector_diag_pin]="PA7";                     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
 PIN[EASY-BRD,selector_endstop_pin]="PB9";                  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
-PIN[EASY-BRD,servo_pin]="PA5";                             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
+PIN[EASY-BRD,selector_servo_pin]="PA5";                    PIN[EASY-BRD-RP2040,selector_servo_pin]="gpio4"
 PIN[EASY-BRD,encoder_pin]="PA6";                           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
 PIN[EASY-BRD,neopixel_pin]="";                             PIN[EASY-BRD-RP2040,neopixel_pin]=""
 PIN[EASY-BRD,gate_sensor_pin]="PA6";                       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
@@ -65,6 +68,10 @@ PIN[EASY-BRD,post_gate_8_pin]="";                          PIN[EASY-BRD-RP2040,p
 PIN[EASY-BRD,post_gate_9_pin]="";                          PIN[EASY-BRD-RP2040,post_gate_9_pin]="";
 PIN[EASY-BRD,post_gate_10_pin]="";                         PIN[EASY-BRD-RP2040,post_gate_10_pin]="";
 PIN[EASY-BRD,post_gate_11_pin]="";                         PIN[EASY-BRD-RP2040,post_gate_10_pin]="";
+#
+# Common Type-B MMU pin utilization
+#
+# TODO
 
 
 # Pins for Mellow EASY-BRD with CANbus (original v1.x and v2)
@@ -95,7 +102,7 @@ PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";         PIN[MELLOW-EASY-BRD-C
 PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";      PIN[MELLOW-EASY-BRD-CANv2,selector_enable_pin]="gpio5";
 PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";       PIN[MELLOW-EASY-BRD-CANv2,selector_diag_pin]="gpio20";     # v2: Dup with endstop (gpio20)
 PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";    PIN[MELLOW-EASY-BRD-CANv2,selector_endstop_pin]="gpio20";  # Endstop
-PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";               PIN[MELLOW-EASY-BRD-CANv2,servo_pin]="gpio21";             # Servo
+PIN[MELLOW-EASY-BRD-CAN,selector_servo_pin]="gpio21";      PIN[MELLOW-EASY-BRD-CANv2,selector_servo_pin]="gpio21";             # Servo
 PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";             PIN[MELLOW-EASY-BRD-CANv2,encoder_pin]="gpio15";           # Encoder
 PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";            PIN[MELLOW-EASY-BRD-CANv2,neopixel_pin]="gpio14";          # v1: Extra  / v2: RGB
 PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";         PIN[MELLOW-EASY-BRD-CANv2,gate_sensor_pin]="gpio15";       # Encoder (Alt)
@@ -123,6 +130,10 @@ PIN[MELLOW-EASY-BRD-CAN,post_gate_8_pin]="";               PIN[MELLOW-EASY-BRD-C
 PIN[MELLOW-EASY-BRD-CAN,post_gate_9_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,post_gate_9_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,post_gate_10_pin]="";              PIN[MELLOW-EASY-BRD-CANv2,post_gate_10_pin]="";
 PIN[MELLOW-EASY-BRD-CAN,post_gate_11_pin]="";              PIN[MELLOW-EASY-BRD-CANv2,post_gate_10_pin]="";
+#
+# Common Type-B MMU pin utilization
+#
+# TODO
 
 
 # Pins for Fysetc Burrows ERB board (original v1 and v2)
@@ -153,7 +164,7 @@ PIN[ERB,selector_dir_pin]="gpio15";                        PIN[ERBv2,selector_di
 PIN[ERB,selector_enable_pin]="gpio14";                     PIN[ERBv2,selector_enable_pin]="gpio14";
 PIN[ERB,selector_diag_pin]="gpio19";                       PIN[ERBv2,selector_diag_pin]="gpio19";
 PIN[ERB,selector_endstop_pin]="gpio24";                    PIN[ERBv2,selector_endstop_pin]="gpio24";
-PIN[ERB,servo_pin]="gpio23";                               PIN[ERBv2,servo_pin]="gpio23";
+PIN[ERB,selector_servo_pin]="gpio23";                      PIN[ERBv2,selector_servo_pin]="gpio23";
 PIN[ERB,encoder_pin]="gpio22";                             PIN[ERBv2,encoder_pin]="gpio22";
 PIN[ERB,neopixel_pin]="gpio21";                            PIN[ERBv2,neopixel_pin]="gpio21";
 PIN[ERB,gate_sensor_pin]="gpio22";                         PIN[ERBv2,gate_sensor_pin]="gpio25";  # Hall Effect
@@ -181,6 +192,10 @@ PIN[ERB,post_gate_8_pin]="";                               PIN[ERBv2,post_gate_8
 PIN[ERB,post_gate_9_pin]="";                               PIN[ERBv2,post_gate_9_pin]="";
 PIN[ERB,post_gate_10_pin]="";                              PIN[ERBv2,post_gate_10_pin]="";
 PIN[ERB,post_gate_11_pin]="";                              PIN[ERBv2,post_gate_10_pin]="";
+#
+# Common Type-B MMU pin utilization
+#
+# TODO
 
 
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
@@ -212,7 +227,7 @@ PIN[MMB10,selector_dir_pin]="PB13";                        PIN[MMB11,selector_di
 PIN[MMB10,selector_enable_pin]="PD1";                      PIN[MMB11,selector_enable_pin]="PD1";
 PIN[MMB10,selector_diag_pin]="PA4";                        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2
 PIN[MMB10,selector_endstop_pin]="PB2";                     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
-PIN[MMB10,servo_pin]="PA0";                                PIN[MMB11,servo_pin]="PA0";
+PIN[MMB10,selector_servo_pin]="PA0";                       PIN[MMB11,selector_servo_pin]="PA0";
 PIN[MMB10,encoder_pin]="PA1";                              PIN[MMB11,encoder_pin]="PA1";
 PIN[MMB10,neopixel_pin]="PA2";                             PIN[MMB11,neopixel_pin]="PA2";
 PIN[MMB10,gate_sensor_pin]="PA3";                          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
@@ -263,8 +278,13 @@ PIN[B,MMB10,gear_3_step_pin]="PB6";                        PIN[B,MMB11,gear_3_st
 PIN[B,MMB10,gear_3_dir_pin]="PB7";                         PIN[B,MMB11,gear_3_dir_pin]="PB7";
 PIN[B,MMB10,gear_3_enable_pin]="PB5";                      PIN[B,MMB11,gear_3_enable_pin]="PB5";
 PIN[B,MMB10,gear_3_diag_pin]="PB8";                        PIN[B,MMB11,gear_3_diag_pin]="PB8";      # Aka STP4
+PIN[B,MMB10,selector_uart_pin]="";                         PIN[MMB11,selector_uart_pin]="";
+PIN[B,MMB10,selector_step_pin]="";                         PIN[MMB11,selector_step_pin]="";
+PIN[B,MMB10,selector_dir_pin]="";                          PIN[MMB11,selector_dir_pin]="";
+PIN[B,MMB10,selector_enable_pin]="";                       PIN[MMB11,selector_enable_pin]="";
+PIN[B,MMB10,selector_diag_pin]="";                         PIN[MMB11,selector_diag_pin]="";
 PIN[B,MMB10,selector_endstop_pin]="";                      PIN[B,MMB11,selector_endstop_pin]="";
-PIN[B,MMB10,servo_pin]="";                                 PIN[B,MMB11,servo_pin]="";
+PIN[B,MMB10,selector_servo_pin]="";                        PIN[B,MMB11,selector_servo_pin]="";
 PIN[B,MMB10,encoder_pin]="PA1";                            PIN[B,MMB11,encoder_pin]="PA1";
 PIN[B,MMB10,neopixel_pin]="PA2";                           PIN[B,MMB11,neopixel_pin]="PA2";
 PIN[B,MMB10,gate_sensor_pin]="PB11";                       PIN[B,MMB11,gate_sensor_pin]="PB11";     # STP9

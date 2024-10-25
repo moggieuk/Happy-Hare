@@ -721,7 +721,7 @@ copy_config_files() {
         # Variables macro ---------------------------------------------------------------------
         elif [ "${file}" == "mmu_macro_vars.cfg" ]; then
             tx_macros=""
-            if [ "$_hw_num_gates" != "" -a "$_hw_num_gates" != "{num_gates}" ]; then
+            if [ "$_hw_num_gates" == "" -o "$_hw_num_gates" == "{num_gates}" ]; then
                 _hw_num_gates=12
             fi
             for (( i=0; i<=$(expr $_hw_num_gates - 1); i++ ))
@@ -1004,16 +1004,6 @@ prompt_123() {
 }
 
 questionaire() {
-
-    # Set default substitution tokens
-    _param_extruder_homing_endstop="collision"
-    _param_gate_homing_endstop="encoder"
-    _param_gate_parking_distance=23.0
-    _param_gate_endstop_to_encoder=0
-    _param_servo_buzz_gear_on_down=0
-    _param_servo_always_active=0
-    _param_servo_duration=0.4
-
     echo
     echo -e "${INFO}Let me see if I can get you started with initial configuration"
     echo -e "You will still have some manual editing to perform but I will explain that later"
@@ -1034,6 +1024,9 @@ questionaire() {
             HAS_SELECTOR=yes
             _hw_mmu_vendor="ERCF"
             _hw_mmu_version="1.1"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
             _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.5
             _hw_gear_hold_current=0.1
@@ -1044,6 +1037,9 @@ questionaire() {
             _param_gate_homing_endstop="encoder"
             _param_gate_parking_distance=23
             _param_servo_buzz_gear_on_down=3
+            _param_servo_duration=0.4
+            _param_servo_always_active=0
+            _param_servo_buzz_gear_on_down=1
 
             echo
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
@@ -1075,6 +1071,9 @@ questionaire() {
             HAS_SELECTOR=yes
             _hw_mmu_vendor="ERCF"
             _hw_mmu_version="2.0"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
             _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.5
             _hw_gear_hold_current=0.1
@@ -1085,6 +1084,9 @@ questionaire() {
             _param_gate_homing_endstop="encoder"
             _param_gate_parking_distance=13 # ThumperBlocks is 11
             _param_servo_buzz_gear_on_down=3
+            _param_servo_duration=0.4
+            _param_servo_always_active=0
+            _param_servo_buzz_gear_on_down=1
             ;;
 
         3) # Tradrack v1.0
@@ -1092,6 +1094,9 @@ questionaire() {
             HAS_SELECTOR=yes
             _hw_mmu_vendor="Tradrack"
             _hw_mmu_version="1.0"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
             _hw_gear_gear_ratio="50:17"
             _hw_gear_run_current=1.27
             _hw_gear_hold_current=0.2
@@ -1101,6 +1106,7 @@ questionaire() {
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_parking_distance=17.5
             _param_servo_buzz_gear_on_down=0
+            _param_servo_always_active=1
 
             echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
@@ -1122,11 +1128,14 @@ questionaire() {
             HAS_SELECTOR=no
             _hw_mmu_vendor="AngryBeaver"
             _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="extruder"
-            _param_gate_homing_endstop="extruder"
+            _param_gate_homing_endstop="mmu_gate"
             _param_gate_parking_distance=25
             ;;
 
@@ -1135,6 +1144,9 @@ questionaire() {
             HAS_SELECTOR=no
             _hw_mmu_vendor="AmoredTurtle"
             _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=1
+            _hw_variable_rotation_distances=1
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
@@ -1150,6 +1162,9 @@ questionaire() {
             SETUP_SELECTOR_TOUCH=no
             _hw_mmu_vendor="Other"
             _hw_mmu_version="1.0"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
@@ -1185,28 +1200,43 @@ questionaire() {
                     ;;
                 3)
                     HAS_SELECTOR=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
                 4)
                     HAS_SELECTOR=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
                 5)
                     HAS_SELECTOR=no
                     HAS_ENCODER=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
                 6)
                     HAS_SELECTOR=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
                     _param_gate_homing_endstop="post_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
                 7)
                     HAS_SELECTOR=no
                     HAS_ENCODER=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
                     _param_gate_homing_endstop="post_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
@@ -1571,18 +1601,21 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-a <kiauh_alternate_klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <repetier_server stub>] [-i] [-e] [-d] [-z] [-s]"
+    echo "Usage: $0 [-i] [-e] [-d] [-z] [-s]"
+    echo "                    [-b <branch>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
+    echo "                    [-a <kiauh_alternate_klipper>] [-r <repetier_server stub>]"
     echo
     echo "-i for interactive install"
-    echo "-d for uninstall"
     echo "-e for install of default starter config files for manual configuration"
-    echo "-b to switch to specified feature branch (sticky)"
+    echo "-d for uninstall"
+    echo "-z skip github update check (nullifies -b <branch>)"
     echo "-s to skip restart of services"
-    echo "-z skip github check (nullifies -b <branch>)"
+    echo "-b to switch to specified feature branch (sticky)"
+    echo "-k <dir> to specify location of non-default klipper home directory"
+    echo "-c <dir> to specify location of non-default klipper config directory"
+    echo "-m <dir> to specify location of non-default moonraker home directory"
     echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "-a <name> to specify alternative klipper-service-name when installed with Kiauh"
-    echo "-c <dir> to specify location of non-default klipper config directory"
-    echo "-k <dir> to specify location of non-default klipper home directory"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
@@ -1595,8 +1628,11 @@ SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/ && pwd )"
 _hw_brd_type="unknown"
 _hw_serial="/dev/serial/by-id/XXX"
 _hw_num_gates=12
-_hw_vendor=Custom
-_hw_version=1.0
+_hw_mmu_vendor=Custom
+_hw_mmu_version=1.0
+_hw_selector_type=LinearSelector
+_hw_variable_bowden_lengths=1
+_hw_variable_rotation_distances=1
 _hw_encoder_resolution=1.0
 SETUP_SELECTOR_TOUCH=no
 SETUP_LED=yes

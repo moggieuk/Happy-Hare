@@ -170,6 +170,14 @@ class MmuSensors:
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
+
+            # Allow pin sharing for special case of "no bowden MMU designs" where gate sensor is same as extruder entry sensor
+            if switch_pin == config.get('gate_switch_pin', None):
+                ppins = self.printer.lookup_object('pins')
+                pin_params = ppins.parse_pin(switch_pin, True, True)
+                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+                ppins.allow_multi_use_pin(share_name)
+
             # Automatically create necessary filament_switch_sensors
             name = "%s_sensor" % Mmu.ENDSTOP_EXTRUDER_ENTRY
             section = "filament_switch_sensor %s" % name

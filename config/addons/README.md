@@ -38,3 +38,21 @@ https://github.com/Dendrowen/Blobifier
 1. Optionally set `variable_user_pre_unload_extension : "BLOBIFIER_PARK"` in `mmu_macro_vars.cfg` to park the nozzle on the tray during a swap
 
 <hr>
+
+## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Blobifier
+
+An addon used to control a DC motor based respooler that is active when the MMU is unloaded
+
+<img src="https://github.com/moggieuk/Happy-Hare/wiki/Addon-Feature-Setup/TODO.png" width=60%>
+
+### Compatibility
+**MMU:** _Any_<br>
+**Printer:** _Any_
+### Github
+
+### Config
+1. Add `[include mmu/addons/respooler.cfg]` to your `printer.cfg`
+1. Set `variable_user_pre_unload_extension : "_MMU_RESPOOL_START"` in `mmu_macro_vars.cfg` to start respooler movement
+1. Set `variable_user_post_unload_extension : "_MMU_RESPOOL_STOP"` in `mmu_macro_vars.cfg` to stop respooler movement
+
+<hr>
