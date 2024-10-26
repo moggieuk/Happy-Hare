@@ -542,6 +542,11 @@ read_previous_config() {
         variable_z_raise=$(python -c "print(${variable_iteration_z_raise} * ${variable_max_iterations_per_blob} - $(triangular $((variable_max_iterations_per_blob - 1))) * ${variable_iteration_z_change})")
         variable_purge_length_maximum=$(python -c "print(${variable_max_iteration_length} * ${variable_max_iterations_per_blob})")
     fi
+
+    # v3.0.0
+    if [ "${_param_persistence_level}" != "" -a "${_param_persistence_level}" -lt 4 ]; then
+        _param_home_on_startup=1
+    fi
 }
 
 triangular() {

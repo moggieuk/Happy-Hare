@@ -128,7 +128,6 @@ class LinearSelector:
     def __init__(self, mmu):
         self.mmu = mmu
         self.is_homed = False
-        self.bypass_offset = 0
 
         # Process config
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
@@ -219,21 +218,25 @@ class LinearSelector:
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
 
-        # Configure selector calibration (set with MMU_CALIBRATE_SELECTOR)
-        selector_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
-        if selector_offsets:
-            if len(selector_offsets) == self.mmu.mmu_machine.num_gates:
-                self.selector_offsets = selector_offsets
-                self.mmu.log_debug("Loaded saved selector offsets: %s" % selector_offsets)
-                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+        # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
+        self.selector_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
+        if self.selector_offsets:
+            # Ensure list size
+            if len(self.selector_offsets) == self.mmu.num_gates:
+                self.mmu.log_debug("Loaded saved selector offsets: %s" % self.selector_offsets)
             else:
-                self.mmu.log_error("Incorrect number of gates specified in %s" % self.VARS_MMU_SELECTOR_OFFSETS)
-                self.selector_offsets = [0.] * self.mmu.mmu_machine.num_gates
+                self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_SELECTOR_OFFSETS)
+                self.selector_offsets = self._ensure_list_size(self.selector_offsets, self.mmu.num_gates, default_value=-1)
+
+            if not any(x == -1 for x in self.selector_offsets):
+                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
         else:
             self.mmu.log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
-            self.selector_offsets = [0.] * self.mmu.mmu_machine.num_gates
-        self.bypass_offset = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS, 0)
-        if self.bypass_offset:
+            self.selector_offsets = [-1] * self.mmu.num_gates
+        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_OFFSETS] = self.selector_offsets
+
+        self.bypass_offset = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS, -1)
+        if self.bypass_offset >= 0:
             self.mmu.log_debug("Loaded saved bypass offset: %s" % self.bypass_offset)
 
         # See if we have a TMC controller capable of current control for filament collision detection and syncing
@@ -250,6 +253,11 @@ class LinearSelector:
         # Sub components
         self.servo.handle_connect()
 
+    def _ensure_list_size(self, lst, size, default_value=None):
+        lst = lst[:size] 
+        lst.extend([default_value] * (size - len(lst))) 
+        return lst
+
     def handle_disconnect(self):
         # Sub components
         self.servo.handle_connect()
@@ -259,7 +267,7 @@ class LinearSelector:
         self.servo.handle_ready()
 
     def home(self, force_unload = None):
-        if self.mmu.check_in_bypass(): return
+        if self.mmu.check_if_bypass(): return
         with self.mmu.wrap_action(self.mmu.ACTION_HOMING):
             self.mmu.log_info("Homing MMU...")
 
@@ -367,7 +375,7 @@ class LinearSelector:
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_is_disabled(): return
+        if self.mmu.check_if_disabled(): return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.mmu_machine.num_gates - 1)
@@ -385,9 +393,9 @@ class LinearSelector:
     cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
     def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_is_disabled(): return
-        if self.mmu.check_is_loaded(): return
-        if self.mmu.check_is_calibrated(self.mmu.CALIBRATED_SELECTOR): return
+        if self.mmu.check_if_disabled(): return
+        if self.mmu.check_if_loaded(): return
+        if self.mmu.check_if_not_calibrated(self.mmu.CALIBRATED_SELECTOR): return
         loops = gcmd.get_int('LOOP', 100)
         servo = bool(gcmd.get_int('SERVO', 0))
         home = bool(gcmd.get_int('HOME', 1))
@@ -508,7 +516,7 @@ class LinearSelector:
             if self.cad_bypass_offset > 0:
                 bypass_pos = traveled - self.cad_bypass_offset
             else:
-                bypass_pos = 0.
+                bypass_pos = -1
             if self.cad_last_gate_offset > 0:
                 # This allows the error to be averaged
                 last_gate_pos = traveled - self.cad_last_gate_offset
@@ -525,7 +533,7 @@ class LinearSelector:
                 # ERCF v1.1 special case
                 num_gates = adj_gate_width = int(round(length / (self.cad_gate_width + self.cad_block_width / 3))) + 1
                 num_blocks = (num_gates - 1) // 3
-                bypass_offset = 0.
+                bypass_offset = -1
                 if num_gates > 1:
                     if v1_bypass_block >= 0:
                         adj_gate_width = (length - (num_blocks - 1) * self.cad_block_width - self.cad_bypass_block_width) / (num_gates - 1)
@@ -777,7 +785,7 @@ class LinearSelectorServo:
     cmd_MMU_SERVO_help = "Move MMU servo to position specified position or angle"
     def cmd_MMU_SERVO(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_is_disabled(): return
+        if self.mmu.check_if_disabled(): return
         save = gcmd.get_int('SAVE', 0)
         pos = gcmd.get('POS', "").lower()
         if pos == "off":
@@ -793,7 +801,7 @@ class LinearSelectorServo:
             else:
                 self.servo_move()
         elif pos == "down":
-            if self.mmu.check_in_bypass(): return
+            if self.mmu.check_if_bypass(): return
             if save:
                 self._servo_save_pos(pos)
             else:
@@ -801,7 +809,7 @@ class LinearSelectorServo:
         elif save:
             self.mmu.log_error("Servo position not specified for save")
         elif pos == "":
-            if self.mmu.check_in_bypass(): return
+            if self.mmu.check_if_bypass(): return
             angle = gcmd.get_int('ANGLE', None)
             if angle is not None:
                 self.mmu.log_debug("Setting servo to angle: %d" % angle)

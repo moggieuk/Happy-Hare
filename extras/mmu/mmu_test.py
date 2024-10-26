@@ -30,7 +30,7 @@ class MmuTest:
     cmd_MMU_TEST_help = "Internal Happy Hare development tests"
     def cmd_MMU_TEST(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_is_disabled(): return
+        if self.mmu.check_if_disabled(): return
 
         if gcmd.get_int('HELP', 0, minval=0, maxval=1):
             self.mmu.log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
