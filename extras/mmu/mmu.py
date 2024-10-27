@@ -348,7 +348,7 @@ class Mmu:
 
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
-        self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_COLLISION)
+        self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_NONE)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.) # Extruder homing max
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # Toolhead sensor homing max
@@ -3478,7 +3478,6 @@ class Mmu:
             self.encoder_sensor.set_mode(self.enable_clog_detection)
         elif enable == 0:
             self.encoder_sensor.set_mode(self.encoder_sensor.RUNOUT_DISABLED)
-            return
         elif value >= 0.:
             self.set_encoder_distance(value)
             return
@@ -3804,32 +3803,34 @@ class Mmu:
         full = homing_max == self._get_bowden_length(self.gate_selected)
         homing_max = homing_max or self.gate_homing_max
 
-        # Safety step because this method is used as a defensive way to unload the entire bowden from unkown position
-        # It handles the small window where filament is between extruder entrance and toolhead sensor
-        if full and self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
-            length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle
+        if full: # Means recovery operation
+            # Safety step because this method is used as a defensive way to unload the entire bowden from unknown position
+            # It handles the cases of filament still in extruder with not toolhead sensor or the small window where filament
+            # is between extruder entrance and toolhead sensor (if toolhead sensor is available)
+            length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
+            length = min(length + self.toolhead_unload_safety_margin, homing_max)
             self.log_debug("Performing safety synced pre-unload bowden move")
-            _,_,_,_ = self.trace_filament_move("Bowden pre-unload move", -length, motor="gear+extruder")
-            homing_max -= length
+            _,_,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder")
+            #homing_max -= length # PAUL should we reduce homing max?
 
         if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             with self._require_encoder():
                 if full:
                     self.log_info("Slowly unloading bowden because unsure of filament position...")
                 else:
-                    self.log_debug("Slow unload of the encoder")
+                    self.log_trace("Unloading gate using the encoder")
+                success = self._reverse_home_to_encoder(homing_max)
+                if success:
+                    actual,park,_ = success
+                    _,_,measured,_ = self.trace_filament_move("Final parking", -park)
+                    # We don't expect any movement of the encoder unless it is free-spinning
+                    if measured > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
+                        self.log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                    return max(actual - self.gate_unload_buffer, 0)
+                msg = "did not clear the encoder after moving %.1fmm" % homing_max
 
-                    success = self._reverse_home_to_encoder(homing_max)
-                    if success:
-                        actual,park,_ = success
-                        _,_,measured,_ = self.trace_filament_move("Final parking", -park)
-                        # We don't expect any movement of the encoder unless it is free-spinning
-                        if measured > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
-                            self.log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
-                        self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-                        return max(actual - self.gate_unload_buffer, 0)
-
-        else: # Gate sensor... ENDSTOP_GATE is shared, but ENDSTOP_POST_GATE_PREFIX is specific
+        else: # Using mmu_gate or mmu_post_gate sensor
             actual,homed,_,_ = self.trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self._get_gate_endstop_name())
             if homed:
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
@@ -3837,9 +3838,9 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                 return max(actual - self.gate_unload_buffer, 0)
             else:
-                self.log_debug("Did not home to gate sensor %s" % self.gate_homing_endstop)
+                msg = "did not home to gate sensor %s after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
 
-        raise MmuError("Unloading gate failed")
+        raise MmuError("Failed to unload gate because %s" % msg)
 
     # Shared with manual bowden calibration routine
     def _reverse_home_to_encoder(self, homing_max):
@@ -3902,7 +3903,7 @@ class Mmu:
 
             # Encoder based validation test
             if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
-                raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
+                raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
             # Encoder based validation test
             if self._can_use_encoder() and delta >= self.bowden_allowable_load_delta and not self.calibrating:
@@ -3919,9 +3920,9 @@ class Mmu:
                             break
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
                     if delta >= self.bowden_allowable_load_delta:
-                        self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder delta %.1fmm. See mmu.log for more details"% (length, delta))
+                        self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details"% (length, length - delta))
                 else:
-                    self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder delta %.1fmm. See mmu.log for more details" % (length, delta))
+                    self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
 
                 if delta >= self.bowden_allowable_load_delta:
                     self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
@@ -3981,7 +3982,7 @@ class Mmu:
                 if self._can_use_encoder() and delta >= self.bowden_allowable_unload_delta and not self.calibrating:
                     ratio = 0.
                     # Only a warning because _unload_gate() will deal with it
-                    self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
+                    self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
             self._random_failure() # Testing
             self.movequeues_wait()
@@ -4504,7 +4505,7 @@ class Mmu:
                 movement = self.selector.filament_release(measure=True)
                 if movement > self.encoder_min:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
-                    self.log_trace("Encoder moved %.1fmm when filament was released!")
+                    self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
                     raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
             else:
                 self.selector.filament_release()
@@ -4512,8 +4513,8 @@ class Mmu:
             self.movequeues_wait()
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
-                msg += " (encoder measured %.1fmm)" % self.get_encoder_distance(dwell=False)
-            self.log_info(msg)
+                msg += " {1}(encoder measured %.1fmm){0}" % self.get_encoder_distance(dwell=None)
+            self.log_info(msg, color=True)
 
             # Finally autotune calibrated bowden length
             if full and not extruder_only and not self.gcode_unload_sequence:
@@ -4880,28 +4881,37 @@ class Mmu:
         with self._wrap_sync_gear_to_extruder():
             if message:
                 self.log_info("Attempting to recover filament position...")
+
             ts = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
-            if ts is None: # Not installed
-                if self.check_filament_in_mmu():
-                    if can_heat and self._check_filament_still_in_extruder():
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent)
-                    else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # This prevents fast unload move
-                else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
-            elif ts: # Filament detected in toolhead
+            es = self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
+            gs = self.sensor_manager.check_sensor(self._get_gate_endstop_name())
+            filament_detected = self.sensor_manager.check_any_sensors_in_path()
+            if not filament_detected:
+                filament_detected = self.check_filament_in_mmu() # Include encoder detection method
+
+            # Loaded
+            if ts:
                 self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=silent)
-            else: # Filament not detected in toolhead
-                if self.check_filament_in_mmu():
-                    if self.strict_filament_recovery or strict:
-                        if can_heat and self._check_filament_still_in_extruder():
-                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
-                        else:
-                            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent)
-                    else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Slight risk of it still being gripped by extruder
-                else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
+
+            # Somewhere in extruder
+            elif filament_detected and can_heat and self._check_filament_still_in_extruder(): # Encoder based
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
+            elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self._check_filament_still_in_extruder():
+                # This case adds an additional encoder based test to see if filament is still being gripped by extruder
+                # even though TS doesn't see it. It's a pedantic option so turned off by strict flag
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
+
+            # At extruder entry
+            elif es:
+                self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY, silent=silent) # Allows for fast bowden unload move
+
+            # Somewhere in bowden
+            elif gs or filament_detected:
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Prevents fast bowden unload move
+
+            # Unloaded
+            else:
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
 
         # If filament is found then ensure gate status is correct
         if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.filament_pos >= self.FILAMENT_POS_START_BOWDEN and self.gate_status[self.gate_selected] == self.GATE_EMPTY:
