@@ -544,9 +544,6 @@ read_previous_config() {
     fi
 
     # v3.0.0
-    if [ "${_param_persistence_level}" != "" -a "${_param_persistence_level}" -lt 4 ]; then
-        _param_home_on_startup=1
-    fi
     if [ "${_param_auto_calibrate_gates}" != "" ]; then
         _param_autotune_rotation_distance=${_param_auto_calibrate_gates}
     fi
@@ -570,12 +567,14 @@ convert_to_boolean_string() {
     fi
 }
 
-# TEMPORARY: Upgrade mmu_servo mmu_hardware.cfg
 upgrade_mmu_hardware() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_mmu_servo=$(grep -E -c "[mmu_servo mmu_servo]" ${hardware_cfg} || true)
-    if [ "${found_mmu_servo}" -eq 0 ]; then
-        sed "s/\[mmu_servo mmu_servo\]/\[mmu_servo selector_servo\]/g" "${SRCDIR}/config/base/mmu_hardware.cfg" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+
+    # TEMPORARY: Upgrade mmu_servo mmu_hardware.cfg
+    found_mmu_servo=$(grep -E -c "^\[mmu_servo mmu_servo\]" ${hardware_cfg} || true)
+    echo found_mmu_servo=${found_mmu_servo}
+    if [ "${found_mmu_servo}" -eq 1 ]; then
+        sed "s/\[mmu_servo mmu_servo\]/\[mmu_servo selector_servo\]/g" "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
         echo -e "${INFO}Updated [mmu_servo mmu_servo] in mmu_hardware.cfg..."
     fi
 }  
@@ -1744,7 +1743,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
 
     copy_config_files        # Copy config files updating from in memory parmameters or h/w settings
 
-    # Temp upgrades
+    # Temp upgrades of mmu_hardware.cfg
     upgrade_mmu_hardware
 
     # Link in new components
