@@ -103,6 +103,7 @@ class MmuRunoutHelper:
                 self.reactor.register_callback(self._runout_event_handler)
 
     def enable_runout(self, restore):
+        self.min_event_systime = self.reactor.monotonic()
         self.runout_suspended = not restore
 
     def get_status(self, eventtime):

@@ -7548,11 +7548,11 @@ class Mmu:
             do_runout = gcmd.get_int('DO_RUNOUT', 0)
 
             if gate is not None:
-                # Ignore pre-gate runout if endless_spool_eject_gate feature is active
-                if self.enable_endless_spool and self.endless_spool_eject_gate > 0:
+                # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
+                if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
+                    self._set_gate_status(gate, self.GATE_EMPTY)
+                else:
                     self.log_trace("Ignoring pre-gate sensor runout on gate %d because endless_spool_eject_gate is active" % gate)
-                    return
-                self._set_gate_status(gate, self.GATE_EMPTY)
 
             if do_runout:
                 if self._is_in_print() and (gate is None or gate == self.gate_selected):
