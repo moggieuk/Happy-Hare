@@ -225,7 +225,7 @@ class MmuSensors:
 
     def _create_gate_sensor(self, config, name_prefix, gate, switch_pin, event_delay):
         name = "%s_%d" % (name_prefix, gate) if gate is not None else "%s" % name_prefix
-        sensor = "%s_sensor" % name)
+        sensor = "%s_sensor" % name
         section = "filament_switch_sensor %s" % sensor
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
