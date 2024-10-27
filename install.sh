@@ -570,6 +570,16 @@ convert_to_boolean_string() {
     fi
 }
 
+# TEMPORARY: Upgrade mmu_servo mmu_hardware.cfg
+upgrade_mmu_hardware() {
+    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    found_mmu_servo=$(grep -E -c "[mmu_servo mmu_servo]" ${hardware_cfg} || true)
+    if [ "${found_mmu_servo}" -eq 0 ]; then
+        sed "s/\[mmu_servo mmu_servo\]/\[mmu_servo selector_servo\]/g" "${SRCDIR}/config/base/mmu_hardware.cfg" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+        echo -e "${INFO}Updated [mmu_servo mmu_servo] in mmu_hardware.cfg..."
+    fi
+}  
+
 copy_config_files() {
     mmu_dir="${KLIPPER_CONFIG_HOME}/mmu"
     next_mmu_dir="$(nextfilename "${mmu_dir}")"
@@ -1733,6 +1743,9 @@ if [ "$UNINSTALL" -eq 0 ]; then
     _param_happy_hare_version=${VERSION}
 
     copy_config_files        # Copy config files updating from in memory parmameters or h/w settings
+
+    # Temp upgrades
+    upgrade_mmu_hardware
 
     # Link in new components
     link_mmu_plugins
