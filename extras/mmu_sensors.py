@@ -139,23 +139,8 @@ class MmuSensors:
         # Setup "mmu_pre_gate" sensors...
         for gate in range(23):
             switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
-            if switch_pin is None or self._is_empty_pin(switch_pin):
-                continue
-
-            # Automatically create necessary filament_switch_sensors
-            name = "%s_%d_sensor" % (Mmu.PRE_GATE_SENSOR_PREFIX, gate)
-            section = "filament_switch_sensor %s" % name
-            config.fileconfig.add_section(section)
-            config.fileconfig.set(section, "switch_pin", switch_pin)
-            config.fileconfig.set(section, "pause_on_runout", "False")
-            fs = self.printer.load_object(config, section)
-
-            # Replace with custom runout_helper because limited operation is possible during print
-            insert_gcode = "__MMU_GATE_INSERT GATE=%d" % gate
-            runout_gcode = "__MMU_GATE_RUNOUT GATE=%d" % gate
-            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
-            fs.runout_helper = mmu_runout_helper
-            fs.get_status = mmu_runout_helper.get_status
+            if switch_pin is not None and not self._is_empty_pin(switch_pin):
+                self._create_gate_sensor(config, Mmu.PRE_GATE_SENSOR_PREFIX, gate, switch_pin, event_delay, insert=True)
 
         # Setup "mmu_gate" sensor...
         switch_pin = config.get('gate_switch_pin', None)
@@ -164,7 +149,7 @@ class MmuSensors:
 
         # Setup "mmu_post_gate" sensors...
         for gate in range(23):
-            switch_pin = config.get(f'post_gate_switch_pin_{gate}', None)
+            switch_pin = config.get('post_gate_switch_pin_%d' % gate, None)
             if switch_pin is not None and not self._is_empty_pin(switch_pin):
                 self._create_gate_sensor(config, Mmu.ENDSTOP_POST_GATE_PREFIX, gate, switch_pin, event_delay)
 
@@ -223,7 +208,7 @@ class MmuSensors:
             self.has_compression_switch = True
             self.compression_switch_state = 0
 
-    def _create_gate_sensor(self, config, name_prefix, gate, switch_pin, event_delay):
+    def _create_gate_sensor(self, config, name_prefix, gate, switch_pin, event_delay, insert=False):
         name = "%s_%d" % (name_prefix, gate) if gate is not None else "%s" % name_prefix
         sensor = "%s_sensor" % name
         section = "filament_switch_sensor %s" % sensor
@@ -234,6 +219,9 @@ class MmuSensors:
 
         # Replace with custom runout_helper because limited operation is possible during print
         insert_gcode = None
+        if insert:
+            insert_gcode = ("__MMU_GATE_INSERT SENSOR=%s" % name) if insert else None
+            insert_gcode += (" GATE=%d" % gate) if gate is not None else ""
         runout_gcode = "__MMU_GATE_RUNOUT SENSOR=%s" % name
         runout_gcode += (" GATE=%d" % gate) if gate is not None else ""
         gate_helper = MmuRunoutHelper(self.printer, sensor, insert_gcode, runout_gcode, event_delay)

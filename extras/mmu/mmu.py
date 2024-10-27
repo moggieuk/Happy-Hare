@@ -314,6 +314,7 @@ class Mmu:
         self.save_position_macro = config.get('save_position_macro', '_MMU_SAVE_POSITION') # Not exposed
         self.restore_position_macro = config.get('restore_position_macro', '_MMU_RESTORE_POSITION') # Not exposed
         self.park_macro = config.get('park_macro', '_MMU_PARK') # Not exposed
+        self.error_macro = config.get('error_macro', '_MMU_ERROR') # Not exposed
 
         # User MMU setup
         self.default_ttg_map = list(config.getintlist('tool_to_gate_map', []))
@@ -2864,13 +2865,14 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._save_toolhead_position_and_park('pause') # if already paused this is a no-op
-                self._wrap_gcode_command("_MMU_ERROR") # PAUL make variable
+                self._wrap_gcode_command(self.error_macro)
                 run_pause_macro = not self.is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
                 recover_pos = self.filament_recovery_on_pause
             else:
                 self.log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
+                self._wrap_gcode_command(self.error_macro)
                 recover_pos = self.filament_recovery_on_pause
 
         else: # Not in a print (standalone operation)
@@ -6794,18 +6796,19 @@ class Mmu:
         if not self.is_enabled: return
         # TODO Possible future bypass preload feature - make gate act like bypass
 
-    # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate or post-gate
-    # sensor. This is not protected by klipper "is printing" check so be careful when handling
+    # Callback to handle gate filament sensors on MMU.
+    # SENSOR will contain sensor name,
+    # GATE will be set if specific pre-gate or post-gate sensor.
+    # This is not protected by klipper "is printing" check so be careful when handling
     cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
+        gate = gcmd.get_int('GATE', None)
+        do_runout = gcmd.get_int('DO_RUNOUT', 0) # Treat as runout or "remove"
+        sensor = gcmd.get('SENSOR', "")
         try:
-            gate = gcmd.get_int('GATE', None)
-            do_runout = gcmd.get_int('DO_RUNOUT', 0)
-            sensor = gcmd.get('SENSOR', "")
-
             if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
                 # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
                 if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
@@ -6814,7 +6817,6 @@ class Mmu:
                     self.log_trace("Ignoring runout detected by %s because endless_spool_eject_gate is active" % sensor)
 
             if do_runout:
-# PAUL...
                 if self.is_in_print() and (gate is None or gate == self.gate_selected):
                     self.log_debug("Handling runout detected by MMU %s sensor" % sensor)
                     self._runout(True)
@@ -6830,10 +6832,11 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
+        sensor = gcmd.get('SENSOR', "")
+        gate = gcmd.get_int('GATE', None)
         try:
-            gate = gcmd.get_int('GATE', None)
-            if gate is not None:
-                self.log_debug("Handling insertion detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
+            if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
+                self.log_debug("Handling insertion detected by MMU %s sensor" % sensor)
                 self._set_gate_status(gate, self.GATE_UNKNOWN)
                 self._check_pending_spool_id(gate) # Have spool_id ready?
                 if not self.is_in_print() and self.gate_autoload:
