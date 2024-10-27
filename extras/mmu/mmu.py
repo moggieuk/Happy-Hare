@@ -723,7 +723,7 @@ class Mmu:
         bowden_length = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
         if bowden_length:
             self.log_debug("Upgrading %s variable" % (self.VARS_MMU_CALIB_BOWDEN_LENGTH))
-            bowden_lengths = self._ensure_list_size([round(bowden_length, 1)], self.num_gates, default_value=-1)
+            bowden_lengths = self._ensure_list_size([round(bowden_length, 1)], self.num_gates)
             self.save_variables.allVariables.pop(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
             # Can't write file now so we let this occur naturally on next write
             self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_LENGTHS] = bowden_lengths
@@ -753,7 +753,7 @@ class Mmu:
                 self.log_debug("Loaded saved bowden lengths: %s" % self.bowden_lengths)
             else:
                 self.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_CALIB_BOWDEN_LENGTHS)
-                self.bowden_lengths = self._ensure_list_size(self.bowden_lengths, self.num_gates, default_value=-1)
+                self.bowden_lengths = self._ensure_list_size(self.bowden_lengths, self.num_gates)
 
             # Ensure they are identical (just for optics) if variable_bowden_lengths is False
             if not self.mmu_machine.variable_bowden_lengths:
@@ -778,7 +778,7 @@ class Mmu:
                 self.log_debug("Loaded saved gear rotation distances: %s" % self.rotation_distances)
             else:
                 self.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_GEAR_ROTATION_DISTANCES)
-                self.rotation_distances = self._ensure_list_size(self.rotation_distances, self.num_gates, default_value=-1)
+                self.rotation_distances = self._ensure_list_size(self.rotation_distances, self.num_gates)
 
             # Ensure they are identical (just for optics) if variable_rotation_distances is False
             if not self.mmu_machine.variable_rotation_distances:
@@ -818,7 +818,7 @@ class Mmu:
         # Sub components
         self.selector.handle_connect()
 
-    def _ensure_list_size(self, lst, size, default_value=None):
+    def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
         lst.extend([default_value] * (size - len(lst)))
         return lst
@@ -2864,7 +2864,7 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._save_toolhead_position_and_park('pause') # if already paused this is a no-op
-                self._wrap_gcode_command("_MMU_ERROR")
+                self._wrap_gcode_command("_MMU_ERROR") # PAUL make variable
                 run_pause_macro = not self.is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
@@ -6794,9 +6794,8 @@ class Mmu:
         if not self.is_enabled: return
         # TODO Possible future bypass preload feature - make gate act like bypass
 
-    # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate
-    # sensor that fired.  This is not protected by klipper "is printing" check so be careful when
-    # runout handle_logic is fired
+    # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate or post-gate
+    # sensor. This is not protected by klipper "is printing" check so be careful when handling
     cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
     def cmd_MMU_GATE_RUNOUT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -6805,20 +6804,22 @@ class Mmu:
         try:
             gate = gcmd.get_int('GATE', None)
             do_runout = gcmd.get_int('DO_RUNOUT', 0)
+            sensor = gcmd.get('SENSOR', "")
 
-            if gate is not None:
-                # Ignore pre-gate runout if endless_spool_eject_gate feature is active
-                if self.enable_endless_spool and self.endless_spool_eject_gate > 0:
-                    self.log_trace("Ignoring pre-gate sensor runout on gate %d because endless_spool_eject_gate is active" % gate)
-                    return
-                self._set_gate_status(gate, self.GATE_EMPTY)
+            if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
+                # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
+                if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
+                    self._set_gate_status(gate, self.GATE_EMPTY)
+                else:
+                    self.log_trace("Ignoring runout detected by %s because endless_spool_eject_gate is active" % sensor)
 
             if do_runout:
+# PAUL...
                 if self.is_in_print() and (gate is None or gate == self.gate_selected):
-                    self.log_debug("Handling runout detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
+                    self.log_debug("Handling runout detected by MMU %s sensor" % sensor)
                     self._runout(True)
                 else:
-                    self.log_debug("Assertion failure: runout detected but not in print or occured on unexpected gate. Ignored")
+                    self.log_debug("Assertion failure: runout detected by %s but not in print or occured on unexpected gate. Ignored" % sensor)
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -6849,7 +6850,7 @@ class Mmu:
 
         do_runout = gcmd.get_int('DO_RUNOUT', 0)
         if do_runout:
-            # TODO Future extruder runout feature - just pause print as precaution
+            # TODO Future extruder runout feature - just pause print as precaution?
             self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
     # Callback to handle filament sensor at extruder entrance

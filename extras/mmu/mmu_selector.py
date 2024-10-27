@@ -226,7 +226,7 @@ class LinearSelector:
                 self.mmu.log_debug("Loaded saved selector offsets: %s" % self.selector_offsets)
             else:
                 self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_SELECTOR_OFFSETS)
-                self.selector_offsets = self._ensure_list_size(self.selector_offsets, self.mmu.num_gates, default_value=-1)
+                self.selector_offsets = self._ensure_list_size(self.selector_offsets, self.mmu.num_gates)
 
             if not any(x == -1 for x in self.selector_offsets):
                 self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
@@ -256,7 +256,7 @@ class LinearSelector:
         # Sub components
         self.servo.handle_connect()
 
-    def _ensure_list_size(self, lst, size, default_value=None):
+    def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
         lst.extend([default_value] * (size - len(lst)))
         return lst
