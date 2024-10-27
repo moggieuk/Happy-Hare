@@ -4,13 +4,25 @@
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
 #
-VERSION=2.51 # Important: Keep synced with mmy.py
+# Creality K1 Support
+#               2024  hamyy <oudy_1999@hotmail.com>
+#               2024  Unsweeticetea <iamzevle@gmail.com>
+#               2024  Dmitry Kychanov <k1-801@mail.ru>
+#
+VERSION=2.72 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
 SCRIPTPATH="$(dirname "$SCRIPT")"
 SCRIPTNAME="$0"
 ARGS=( "$@" )
+
+# Creality K1 series printers run on MIPS, with a limited instruction set and different default klipper directories
+# Checking for machine type is the easiest way so far to spot them (will be set to 1 if on MIPS):
+IS_MIPS=0
+if [ $(uname -m) = "mips" ]; then
+    IS_MIPS=1
+fi
 
 KLIPPER_HOME="${HOME}/klipper"
 MOONRAKER_HOME="${HOME}/moonraker"
@@ -20,6 +32,14 @@ KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 SENSORS_SECTION="FILAMENT SENSORS"
 LED_SECTION="MMU OPTIONAL NEOPIXEL"
+
+if [ "$IS_MIPS" -eq 1 ]; then
+    KLIPPER_HOME="/usr/share/klipper"
+    MOONRAKER_HOME="/usr/data/moonraker/moonraker"
+    KLIPPER_CONFIG_HOME="/usr/data/printer_data/config"
+    unset OCTOPRINT_KLIPPER_CONFIG_HOME
+    unset OLD_KLIPPER_CONFIG_HOME
+fi
 
 set -e # Exit immediately on error
 
@@ -31,126 +51,124 @@ declare -A PIN 2>/dev/null || {
 # Pins for original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
 # Note: uart pin is shared on original EASY-BRD (with different uart addresses)
 #
-PIN[EASY-BRD,gear_uart_pin]="PA8";         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
-PIN[EASY-BRD,gear_step_pin]="PA4";         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
-PIN[EASY-BRD,gear_dir_pin]="PA10";         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
-PIN[EASY-BRD,gear_enable_pin]="PA2";       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
-PIN[EASY-BRD,gear_diag_pin]="";            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
-PIN[EASY-BRD,selector_uart_pin]="PA8";     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
-PIN[EASY-BRD,selector_step_pin]="PA9";     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
-PIN[EASY-BRD,selector_dir_pin]="PB8";      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
-PIN[EASY-BRD,selector_enable_pin]="PA11";  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
-PIN[EASY-BRD,selector_diag_pin]="PA7";     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
-PIN[EASY-BRD,selector_endstop_pin]="PB9";  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
-PIN[EASY-BRD,servo_pin]="PA5";             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
-PIN[EASY-BRD,encoder_pin]="PA6";           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
-PIN[EASY-BRD,neopixel_pin]="";             PIN[EASY-BRD-RP2040,neopixel_pin]=""
-PIN[EASY-BRD,gate_sensor_pin]="PA6";       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
-PIN[EASY-BRD,pre_gate_0_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
-PIN[EASY-BRD,pre_gate_1_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
-PIN[EASY-BRD,pre_gate_2_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
-PIN[EASY-BRD,pre_gate_3_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
-PIN[EASY-BRD,pre_gate_4_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
-PIN[EASY-BRD,pre_gate_5_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
-PIN[EASY-BRD,pre_gate_6_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
-PIN[EASY-BRD,pre_gate_7_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
-PIN[EASY-BRD,pre_gate_8_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
-PIN[EASY-BRD,pre_gate_9_pin]="";           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
-PIN[EASY-BRD,pre_gate_10_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
-PIN[EASY-BRD,pre_gate_11_pin]="";          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
+PIN[EASY-BRD,gear_uart_pin]="PA8";                         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
+PIN[EASY-BRD,gear_step_pin]="PA4";                         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
+PIN[EASY-BRD,gear_dir_pin]="PA10";                         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
+PIN[EASY-BRD,gear_enable_pin]="PA2";                       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
+PIN[EASY-BRD,gear_diag_pin]="";                            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
+PIN[EASY-BRD,selector_uart_pin]="PA8";                     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
+PIN[EASY-BRD,selector_step_pin]="PA9";                     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
+PIN[EASY-BRD,selector_dir_pin]="PB8";                      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
+PIN[EASY-BRD,selector_enable_pin]="PA11";                  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
+PIN[EASY-BRD,selector_diag_pin]="PA7";                     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
+PIN[EASY-BRD,selector_endstop_pin]="PB9";                  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
+PIN[EASY-BRD,servo_pin]="PA5";                             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
+PIN[EASY-BRD,encoder_pin]="PA6";                           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
+PIN[EASY-BRD,neopixel_pin]="";                             PIN[EASY-BRD-RP2040,neopixel_pin]=""
+PIN[EASY-BRD,gate_sensor_pin]="PA6";                       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
+PIN[EASY-BRD,pre_gate_0_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
+PIN[EASY-BRD,pre_gate_1_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
+PIN[EASY-BRD,pre_gate_2_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
+PIN[EASY-BRD,pre_gate_3_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
+PIN[EASY-BRD,pre_gate_4_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
+PIN[EASY-BRD,pre_gate_5_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
+PIN[EASY-BRD,pre_gate_6_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
+PIN[EASY-BRD,pre_gate_7_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
+PIN[EASY-BRD,pre_gate_8_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
+PIN[EASY-BRD,pre_gate_9_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
+PIN[EASY-BRD,pre_gate_10_pin]="";                          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
+PIN[EASY-BRD,pre_gate_11_pin]="";                          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
 
-# Pins for Mellow EASY-BRD with CANbus
+# Pins for Mellow EASY-BRD with CANbus (original v1.x and v2)
 #
-PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="gpio9";
-PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="gpio7";
-PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="gpio8";
-PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="gpio6";
-PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="gpio23";
-PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="gpio0";
-PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";
-PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";
-PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";
-PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";
-PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";	# Endstop
-PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";		# Servo
-PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";		# Encoder
-PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		# Extra
-PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";	# Encoder (Alt)
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	# Exp 5
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	# Exp 6
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	# Exp 7
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	# Exp 8
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	# Exp 9
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	# Exp 10
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	# Exp 11
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	# Exp 12
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	# Exp 13
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	# Exp 14
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";
+PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="gpio9";            PIN[MELLOW-EASY-BRD-CANv2,gear_uart_pin]="gpio9";
+PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="gpio7";            PIN[MELLOW-EASY-BRD-CANv2,gear_step_pin]="gpio7";
+PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="gpio8";             PIN[MELLOW-EASY-BRD-CANv2,gear_dir_pin]="gpio8";
+PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="gpio6";          PIN[MELLOW-EASY-BRD-CANv2,gear_enable_pin]="gpio6";
+PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="gpio23";           PIN[MELLOW-EASY-BRD-CANv2,gear_diag_pin]="";               # v2: Dup with encoder (gpio15)
+PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="gpio0";        PIN[MELLOW-EASY-BRD-CANv2,selector_uart_pin]="gpio2";
+PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";        PIN[MELLOW-EASY-BRD-CANv2,selector_step_pin]="gpio4";
+PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";         PIN[MELLOW-EASY-BRD-CANv2,selector_dir_pin]="gpio3";
+PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";      PIN[MELLOW-EASY-BRD-CANv2,selector_enable_pin]="gpio5";
+PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";       PIN[MELLOW-EASY-BRD-CANv2,selector_diag_pin]="gpio20";     # v2: Dup with endstop (gpio20)
+PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";	   PIN[MELLOW-EASY-BRD-CANv2,selector_endstop_pin]="gpio20";  # Endstop
+PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";		   PIN[MELLOW-EASY-BRD-CANv2,servo_pin]="gpio21";             # Servo
+PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";		   PIN[MELLOW-EASY-BRD-CANv2,encoder_pin]="gpio15";           # Encoder
+PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		   PIN[MELLOW-EASY-BRD-CANv2,neopixel_pin]="gpio14";          # v1: Extra  / v2: RGB
+PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";	   PIN[MELLOW-EASY-BRD-CANv2,gate_sensor_pin]="gpio15";       # Encoder (Alt)
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_0_pin]="gpio24";        # v1: Exp 5  / v2: Exp 3
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_1_pin]="gpio22";        # v1: Exp 6  / v2: Exp 4
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_2_pin]="gpio25";        # v1: Exp 7  / v2: Exp 5
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_3_pin]="gpio23";        # v1: Exp 8  / v2: Exp 6
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_4_pin]="gpio13";        # v1: Exp 9  / v2: Exp 7
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_5_pin]="gpio26";        # v1: Exp 10 / v2: Exp 8
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_6_pin]="gpio12";        # v1: Exp 11 / v2: Exp 9
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_7_pin]="gpio27";        # v1: Exp 12 / v2: Exp 10
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_8_pin]="gpio11";        # v1: Exp 13 / v2: Exp 11
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_9_pin]="gpio28";        # v1: Exp 14 / v2: Exp 12
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_10_pin]="gpio10";       #              v2: Exp 13
+PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_11_pin]="gpio29";       #              v2: Exp 14
 
 # Pins for Fysetc Burrows ERB board (original v1 and v2)
 #
-PIN[ERB,gear_uart_pin]="gpio20";           PIN[ERBv2,gear_uart_pin]="gpio20";
-PIN[ERB,gear_step_pin]="gpio10";           PIN[ERBv2,gear_step_pin]="gpio10";
-PIN[ERB,gear_dir_pin]="gpio9";             PIN[ERBv2,gear_dir_pin]="gpio9";
-PIN[ERB,gear_enable_pin]="gpio8";          PIN[ERBv2,gear_enable_pin]="gpio8";
-PIN[ERB,gear_diag_pin]="gpio13";           PIN[ERBv2,gear_diag_pin]="gpio13";
-PIN[ERB,selector_uart_pin]="gpio17";       PIN[ERBv2,selector_uart_pin]="gpio17";
-PIN[ERB,selector_step_pin]="gpio16";       PIN[ERBv2,selector_step_pin]="gpio16";
-PIN[ERB,selector_dir_pin]="gpio15";        PIN[ERBv2,selector_dir_pin]="gpio15";
-PIN[ERB,selector_enable_pin]="gpio14";     PIN[ERBv2,selector_enable_pin]="gpio14";
-PIN[ERB,selector_diag_pin]="gpio19";       PIN[ERBv2,selector_diag_pin]="gpio19";
-PIN[ERB,selector_endstop_pin]="gpio24";    PIN[ERBv2,selector_endstop_pin]="gpio24";
-PIN[ERB,servo_pin]="gpio23";               PIN[ERBv2,servo_pin]="gpio23";
-PIN[ERB,encoder_pin]="gpio22";             PIN[ERBv2,encoder_pin]="gpio22";
-PIN[ERB,neopixel_pin]="gpio21";            PIN[ERBv2,neopixel_pin]="gpio21";
-PIN[ERB,gate_sensor_pin]="gpio22";         PIN[ERBv2,gate_sensor_pin]="gpio25";  # Hall Effect
-PIN[ERB,pre_gate_0_pin]="gpio0";           PIN[ERBv2,pre_gate_0_pin]="gpio12";
-PIN[ERB,pre_gate_1_pin]="gpio1";           PIN[ERBv2,pre_gate_1_pin]="gpio18";
-PIN[ERB,pre_gate_2_pin]="gpio2";           PIN[ERBv2,pre_gate_2_pin]="gpio2";
-PIN[ERB,pre_gate_3_pin]="gpio3";           PIN[ERBv2,pre_gate_3_pin]="gpio3";
-PIN[ERB,pre_gate_4_pin]="gpio4";           PIN[ERBv2,pre_gate_4_pin]="gpio4";
-PIN[ERB,pre_gate_5_pin]="gpio5";           PIN[ERBv2,pre_gate_5_pin]="gpio5";
-PIN[ERB,pre_gate_6_pin]="gpio6";           PIN[ERBv2,pre_gate_6_pin]="gpio6";
-PIN[ERB,pre_gate_7_pin]="gpio7";           PIN[ERBv2,pre_gate_7_pin]="gpio7";
-PIN[ERB,pre_gate_8_pin]="gpio26";          PIN[ERBv2,pre_gate_8_pin]="gpio26";
-PIN[ERB,pre_gate_9_pin]="gpio27";          PIN[ERBv2,pre_gate_9_pin]="gpio27";
-PIN[ERB,pre_gate_10_pin]="gpio28";         PIN[ERBv2,pre_gate_10_pin]="gpio28";
-PIN[ERB,pre_gate_11_pin]="gpio29";         PIN[ERBv2,pre_gate_11_pin]="gpio29";
-
+PIN[ERB,gear_uart_pin]="gpio20";                           PIN[ERBv2,gear_uart_pin]="gpio11";
+PIN[ERB,gear_step_pin]="gpio10";                           PIN[ERBv2,gear_step_pin]="gpio10";
+PIN[ERB,gear_dir_pin]="gpio9";                             PIN[ERBv2,gear_dir_pin]="gpio9";
+PIN[ERB,gear_enable_pin]="gpio8";                          PIN[ERBv2,gear_enable_pin]="gpio8";
+PIN[ERB,gear_diag_pin]="gpio13";                           PIN[ERBv2,gear_diag_pin]="gpio13";
+PIN[ERB,selector_uart_pin]="gpio17";                       PIN[ERBv2,selector_uart_pin]="gpio17";
+PIN[ERB,selector_step_pin]="gpio16";                       PIN[ERBv2,selector_step_pin]="gpio16";
+PIN[ERB,selector_dir_pin]="gpio15";                        PIN[ERBv2,selector_dir_pin]="gpio15";
+PIN[ERB,selector_enable_pin]="gpio14";                     PIN[ERBv2,selector_enable_pin]="gpio14";
+PIN[ERB,selector_diag_pin]="gpio19";                       PIN[ERBv2,selector_diag_pin]="gpio19";
+PIN[ERB,selector_endstop_pin]="gpio24";                    PIN[ERBv2,selector_endstop_pin]="gpio24";
+PIN[ERB,servo_pin]="gpio23";                               PIN[ERBv2,servo_pin]="gpio23";
+PIN[ERB,encoder_pin]="gpio22";                             PIN[ERBv2,encoder_pin]="gpio22";
+PIN[ERB,neopixel_pin]="gpio21";                            PIN[ERBv2,neopixel_pin]="gpio21";
+PIN[ERB,gate_sensor_pin]="gpio22";                         PIN[ERBv2,gate_sensor_pin]="gpio25";  # Hall Effect
+PIN[ERB,pre_gate_0_pin]="gpio0";                           PIN[ERBv2,pre_gate_0_pin]="gpio12";
+PIN[ERB,pre_gate_1_pin]="gpio1";                           PIN[ERBv2,pre_gate_1_pin]="gpio18";
+PIN[ERB,pre_gate_2_pin]="gpio2";                           PIN[ERBv2,pre_gate_2_pin]="gpio2";
+PIN[ERB,pre_gate_3_pin]="gpio3";                           PIN[ERBv2,pre_gate_3_pin]="gpio3";
+PIN[ERB,pre_gate_4_pin]="gpio4";                           PIN[ERBv2,pre_gate_4_pin]="gpio4";
+PIN[ERB,pre_gate_5_pin]="gpio5";                           PIN[ERBv2,pre_gate_5_pin]="gpio5";
+PIN[ERB,pre_gate_6_pin]="gpio6";                           PIN[ERBv2,pre_gate_6_pin]="gpio6";
+PIN[ERB,pre_gate_7_pin]="gpio7";                           PIN[ERBv2,pre_gate_7_pin]="gpio7";
+PIN[ERB,pre_gate_8_pin]="gpio26";                          PIN[ERBv2,pre_gate_8_pin]="gpio26";
+PIN[ERB,pre_gate_9_pin]="gpio27";                          PIN[ERBv2,pre_gate_9_pin]="gpio27";
+PIN[ERB,pre_gate_10_pin]="gpio28";                         PIN[ERBv2,pre_gate_10_pin]="gpio28";
+PIN[ERB,pre_gate_11_pin]="gpio29";                         PIN[ERBv2,pre_gate_11_pin]="gpio29";
 
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
 # Note BTT MMB v1.1 Board switched gear_enable and pre_gate_1 pins
 #
-PIN[MMB10,gear_uart_pin]="PA10";           PIN[MMB11,gear_uart_pin]="PA10";       # M1
-PIN[MMB10,gear_step_pin]="PB15";           PIN[MMB11,gear_step_pin]="PB15";
-PIN[MMB10,gear_dir_pin]="PB14";            PIN[MMB11,gear_dir_pin]="PB14";
-PIN[MMB10,gear_enable_pin]="PA8";          PIN[MMB11,gear_enable_pin]="PB8";
-PIN[MMB10,gear_diag_pin]="PA3";            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1
-PIN[MMB10,selector_uart_pin]="PC7";        PIN[MMB11,selector_uart_pin]="PC7";    # M2
-PIN[MMB10,selector_step_pin]="PD2";        PIN[MMB11,selector_step_pin]="PD2";
-PIN[MMB10,selector_dir_pin]="PB13";        PIN[MMB11,selector_dir_pin]="PB13";
-PIN[MMB10,selector_enable_pin]="PD1";      PIN[MMB11,selector_enable_pin]="PD1";
-PIN[MMB10,selector_diag_pin]="PA4";        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2
-PIN[MMB10,selector_endstop_pin]="PB2";     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
-PIN[MMB10,servo_pin]="PA0";                PIN[MMB11,servo_pin]="PA0";
-PIN[MMB10,encoder_pin]="PA1";              PIN[MMB11,encoder_pin]="PA1";
-PIN[MMB10,neopixel_pin]="PA2";             PIN[MMB11,neopixel_pin]="PA2";
-PIN[MMB10,gate_sensor_pin]="PA3";          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
-PIN[MMB10,pre_gate_0_pin]="PB9";           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3
-PIN[MMB10,pre_gate_1_pin]="PB8";           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4
-PIN[MMB10,pre_gate_2_pin]="PC15";          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5
-PIN[MMB10,pre_gate_3_pin]="PC13";          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6
-PIN[MMB10,pre_gate_4_pin]="PC14";          PIN[MMB11,pre_gate_4_pin]="PC14";      # STP7
-PIN[MMB10,pre_gate_5_pin]="PB12";          PIN[MMB11,pre_gate_5_pin]="PB12";      # STP8
-PIN[MMB10,pre_gate_6_pin]="PB11";          PIN[MMB11,pre_gate_6_pin]="PB11";      # STP9
-PIN[MMB10,pre_gate_7_pin]="PB10";          PIN[MMB11,pre_gate_7_pin]="PB10";      # STP10
-PIN[MMB10,pre_gate_8_pin]="";              PIN[MMB11,pre_gate_8_pin]="";
-PIN[MMB10,pre_gate_9_pin]="";              PIN[MMB11,pre_gate_9_pin]="";
-PIN[MMB10,pre_gate_10_pin]="";             PIN[MMB11,pre_gate_10_pin]="";
-PIN[MMB10,pre_gate_11_pin]="";             PIN[MMB11,pre_gate_11_pin]="";
-
+PIN[MMB10,gear_uart_pin]="PA10";                           PIN[MMB11,gear_uart_pin]="PA10";       # M1
+PIN[MMB10,gear_step_pin]="PB15";                           PIN[MMB11,gear_step_pin]="PB15";
+PIN[MMB10,gear_dir_pin]="PB14";                            PIN[MMB11,gear_dir_pin]="PB14";
+PIN[MMB10,gear_enable_pin]="PA8";                          PIN[MMB11,gear_enable_pin]="PB8";
+PIN[MMB10,gear_diag_pin]="PA3";                            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1
+PIN[MMB10,selector_uart_pin]="PC7";                        PIN[MMB11,selector_uart_pin]="PC7";    # M2
+PIN[MMB10,selector_step_pin]="PD2";                        PIN[MMB11,selector_step_pin]="PD2";
+PIN[MMB10,selector_dir_pin]="PB13";                        PIN[MMB11,selector_dir_pin]="PB13";
+PIN[MMB10,selector_enable_pin]="PD1";                      PIN[MMB11,selector_enable_pin]="PD1";
+PIN[MMB10,selector_diag_pin]="PA4";                        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2
+PIN[MMB10,selector_endstop_pin]="PB2";                     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
+PIN[MMB10,servo_pin]="PA0";                                PIN[MMB11,servo_pin]="PA0";
+PIN[MMB10,encoder_pin]="PA1";                              PIN[MMB11,encoder_pin]="PA1";
+PIN[MMB10,neopixel_pin]="PA2";                             PIN[MMB11,neopixel_pin]="PA2";
+PIN[MMB10,gate_sensor_pin]="PA3";                          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
+PIN[MMB10,pre_gate_0_pin]="PB9";                           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3
+PIN[MMB10,pre_gate_1_pin]="PB8";                           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4
+PIN[MMB10,pre_gate_2_pin]="PC15";                          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5
+PIN[MMB10,pre_gate_3_pin]="PC13";                          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6
+PIN[MMB10,pre_gate_4_pin]="PC14";                          PIN[MMB11,pre_gate_4_pin]="PC14";      # STP7
+PIN[MMB10,pre_gate_5_pin]="PB12";                          PIN[MMB11,pre_gate_5_pin]="PB12";      # STP8
+PIN[MMB10,pre_gate_6_pin]="PB11";                          PIN[MMB11,pre_gate_6_pin]="PB11";      # STP9
+PIN[MMB10,pre_gate_7_pin]="PB10";                          PIN[MMB11,pre_gate_7_pin]="PB10";      # STP10
+PIN[MMB10,pre_gate_8_pin]="";                              PIN[MMB11,pre_gate_8_pin]="";
+PIN[MMB10,pre_gate_9_pin]="";                              PIN[MMB11,pre_gate_9_pin]="";
+PIN[MMB10,pre_gate_10_pin]="";                             PIN[MMB11,pre_gate_10_pin]="";
+PIN[MMB10,pre_gate_11_pin]="";                             PIN[MMB11,pre_gate_11_pin]="";
 
 # These pins will usually be on main mcu for wiring simplification
 #
@@ -195,7 +213,13 @@ self_update() {
     cd "$SCRIPTPATH"
 
     set +e
-    BRANCH=$(timeout 3s git branch --show-current)
+    # timeout is unavailable on MIPS
+    if [ "$IS_MIPS" -ne 1 ]; then
+        BRANCH=$(timeout 3s git branch --show-current)
+    else
+        BRANCH=$(git branch --show-current)
+    fi
+
     if [ $? -ne 0 ]; then
         echo -e "${ERROR}Error updating from github"
         echo -e "${ERROR}You might have an old version of git"
@@ -249,9 +273,9 @@ self_update() {
 function nextfilename {
     local name="$1"
     if [ -d "${name}" ]; then
-        printf "%s-%s" ${name%%.*} $(date '+%Y%m%d_%H%M%S')
+        printf "%s-%s" ${name} $(date '+%Y%m%d_%H%M%S')
     else
-        printf "%s-%s.%s-old" ${name%%.*} $(date '+%Y%m%d_%H%M%S') ${name#*.}
+        printf "%s-%s.%s-old" ${name%.*} $(date '+%Y%m%d_%H%M%S') ${name##*.}
     fi
 }
 
@@ -265,25 +289,44 @@ function nextsuffix {
 }
 
 verify_not_root() {
-    if [ "$EUID" -eq 0 ]; then
-        echo -e "${ERROR}This script must not run as root"
-        exit -1
+    if [ "$IS_MIPS" -ne 1 ]; then
+        if [ "$EUID" -eq 0 ]; then
+            echo -e "${ERROR}This script must not run as root"
+            exit -1
+        fi
+    else
+        echo -e "${WARNING}This script is running on a MIPS system, so we expect it to be run as root"
     fi
 }
 
 check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
-        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
-            echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
+        if [ "$IS_MIPS" -ne 1 ]; then
+            if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
+                echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
+            else
+                echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
+                exit -1
+            fi
         else
-            echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
-            exit -1
+            # There is no systemd on MIPS, we can only check the running processes
+            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/usr/share/klipper/klippy/klippy.py | awk '{print $1}')
+            KLIPPER_PID_FILE=/var/run/klippy.pid
+
+            if [ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]; then
+                echo -e "${INFO}Klipper service found"
+            else
+                echo -e "${ERROR}Klipper service not found! Please install Klipper first"
+                exit -1
+            fi
         fi
     fi
 }
 
 check_octoprint() {
-    if [ "$NOSERVICE" -ne 1 ]; then
+    if [ "$IS_MIPS" -eq 1 ]; then
+        OCTOPRINT=0 # Octoprint can not be set up on MIPS
+    elif [ "$NOSERVICE" -ne 1 ]; then
         if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
             echo -e "${INFO}OctoPrint service found"
             OCTOPRINT=1
@@ -320,102 +363,12 @@ verify_home_dirs() {
     fi
 }
 
-# Silently cleanup legacy ERCF-Software-V3 files...
-cleanup_old_ercf() {
-    # Printer configuration files...
-    ercf_files=$(cd ${KLIPPER_CONFIG_HOME}; ls ercf_*.cfg 2>/dev/null | wc -l || true)
-    if [ "${ercf_files}" -ne 0 ]; then
-        echo -e "${INFO}Cleaning up old Happy Hare v1 installation"
-        if [ ! -d "${KLIPPER_CONFIG_HOME}/ercf.uninstalled" ]; then
-            mkdir ${KLIPPER_CONFIG_HOME}/ercf.uninstalled
-        fi
-        for file in `cd ${KLIPPER_CONFIG_HOME} ; ls ercf_*.cfg 2>/dev/null`; do
-            mv ${KLIPPER_CONFIG_HOME}/${file} ${KLIPPER_CONFIG_HOME}/ercf.uninstalled/${file}
+# Silently cleanup any potentially old klippy modules
+cleanup_old_klippy_modules() {
+    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
+        for file in mmu_config_setup.py; do
+            rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
         done
-        if [ -f "${KLIPPER_CONFIG_HOME}/client_macros.cfg" ]; then
-            mv ${KLIPPER_CONFIG_HOME}/client_macros.cfg ${KLIPPER_CONFIG_HOME}/ercf.uninstalled/client_macros.cfg
-        fi
-    fi
-
-    # Klipper modules...
-    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        rm -f "${KLIPPER_HOME}/klippy/extras/ercf*.py"
-    fi
-
-    # Old klipper logs...
-    if [ -d "${KLIPPER_LOGS_HOME}" ]; then
-        rm -f "${KLIPPER_LOGS_HOME}/ercf*"
-    fi
-
-    # Moonraker update manager...
-    file="${KLIPPER_CONFIG_HOME}/moonraker.conf"
-    if [ -f "${file}" ]; then
-        v1_section=$(grep -c '\[update_manager ercf-happy_hare\]' ${file} || true)
-        if [ "${v1_section}" -ne 0 ]; then
-            cat "${file}" | sed -e " \
-                /\[update_manager ercf-happy_hare\]/,+6 d; \
-                    " > "${file}.update" && mv "${file}.update" "${file}"
-	fi
-    fi
-
-    # printer.cfg includes...
-    dest=${KLIPPER_CONFIG_HOME}/${PRINTER_CONFIG}
-    if test -f $dest; then
-        next_dest="$(nextfilename "$dest")"
-        v1_includes=$(grep -c '\[include ercf_parameters.cfg\]' ${dest} || true)
-        if [ "${v1_includes}" -ne 0 ]; then
-            cp ${dest} ${next_dest}
-            cat "${dest}" | sed -e " \
-                /\[include ercf_software.cfg\]/ d; \
-                /\[include ercf_parameters.cfg\]/ d; \
-                /\[include ercf_hardware.cfg\]/ d; \
-                /\[include ercf_menu.cfg\]/ d; \
-                /\[include client_macros.cfg\]/ d; \
-                    " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
-        fi
-    fi
-}
-
-# TEMPORARY: Upgrade to mmu-toolhead version from manual_stepper
-cleanup_manual_stepper_version() {
-    # Legacy klipper modules...
-    if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        rm -f "${KLIPPER_HOME}/klippy/extras/manual_mh_stepper.py"
-        rm -f "${KLIPPER_HOME}/klippy/extras/manual_extruder_stepper.py"
-        # Used as upgrade reminder rm -f "${KLIPPER_HOME}/klippy/extras/mmu_config_setup.py"
-    fi
-
-    # Upgrade mmu_hardware.cfg...
-    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_manual_stepper=$(grep -E -c "\[mmu_config_setup\]|\[manual_extruder_stepper extruder\]" ${hardware_cfg} || true)
-    if [ "${found_manual_stepper}" -ne 0 ]; then
-        cat "${hardware_cfg}" | sed -e " \
-            /\[mmu_config_setup\]/ d; \
-            /^velocity: .*/ d; \
-            /^accel: .*/ d; \
-            s%\[\(.*\) manual_extruder_stepper extruder\]%# REMOVE/MOVE THIS SECTION vvv\n\[\1 manual_extruder_stepper extruder\]%; \
-            s%\[manual_extruder_stepper extruder\]%# REMOVE/MOVE THIS SECTION vvv\n\[manual_extruder_stepper extruder\]%; \
-            s%\[\(.*\) manual_extruder_stepper gear_stepper\]%\[\1 stepper_mmu_gear\]%; \
-            s%\[manual_extruder_stepper gear_stepper\]%\[stepper_mmu_gear\]%; \
-            s%\[\(.*\) manual_mh_stepper selector_stepper\]%\[\1 stepper_mmu_selector\]%; \
-            s%\[manual_mh_stepper selector_stepper\]%\[stepper_mmu_selector\]%; \
-            s%: \(.*\)_gear_stepper:virtual_endstop%: \1_stepper_mmu_gear:virtual_endstop%; \
-            s%: \(.*\)_selector_stepper:virtual_endstop%: \1_stepper_mmu_selector:virtual_endstop%; \
-                " > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
-
-        echo -e "${WARNING}"
-        echo "------------------------- IMPORTANT INFO ON NEW MMU TOOLHEAD DEFINITION - READ ME --------------------------"
-        echo "  This version of Happy Hare no longer requires the move of the [extruder] definition into mmu_hardware.cfg"
-        echo "  You need to restore the sections marked in your mmu_hardware.cfg back to your original extruder config"
-        echo "  and delete those sections from mmu_hardware.cfg.  Also note that the gear are selector stepper definitions"
-        echo "  have been modified to be compatible with the new MMU toolhead feature of this version"
-        echo
-        echo "  If you see an error similar to:"
-        echo -e "${ERROR}  Option 'microsteps' in section 'manual_extruder_stepper extruder' must be specified"
-        echo -e "${WARNING}"
-        echo "  Edit mmu_hardware.cfg and restart Klipper to complete the upgrade"
-        echo "------------------------------------------------------------------------------------------------------------"
-        echo
     fi
 }
 
@@ -517,25 +470,27 @@ unlink_mmu_plugins() {
 }
 
 parse_file() {
-    filename="$1"
+    file="$1"
     prefix_filter="$2"
     namespace="$3"
     checkdup="$4"
     checkdup=""
 
-    if [ ! -f "${filename}" ]; then
+    if [ ! -f "${file}" ]; then
         return
     fi
 
     # Read old config files
     while IFS= read -r line
     do
-        # Remove comments
+        # Remove leading spaces, comments and config sections
+        line="${line#"${line%%[![:space:]]*}"}"
         line="${line%%#*}"
+        line="${line%%[*}"
         line="${line%%;*}"
 
         # Check if line is not empty and contains variable or parameter
-        if [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
+         if [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [[ "$line" =~ ^($prefix_filter) ]]; }; then
             # Split the line into parameter and value
             IFS=":=" read -r parameter value <<< "$line"
 
@@ -561,7 +516,7 @@ parse_file() {
                 fi
             fi
         fi
-    done < "${filename}"
+    done < "${file}"
 }
 
 update_copy_file() {
@@ -573,10 +528,10 @@ update_copy_file() {
     # Read the file line by line
     while IFS="" read -r line || [ -n "$line" ]
     do
-        if echo "$line" | grep -E -q '^[#;]'; then
+        if echo "$line" | grep -E -q '^[[:space:]]*#'; then
             # Just copy simple comments
             echo "$line"
-        elif [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [ "${line#$prefix_filter}" != "$line" ]; }; then
+        elif [ ! -z "$line" ] && { [ -z "$prefix_filter" ] || [[ "$line" =~ ^($prefix_filter) ]]; }; then
             # Line of interest
             # Split the line into the part before # and the part after #
             parameterAndValueAndSpace=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/;/# /' | cut -d'#' -f1)
@@ -647,12 +602,7 @@ read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""          "_param_" "checkdup"
     parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_software.cfg"   "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_sequence.cfg"   "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_form_tip.cfg"   "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_cut_tip.cfg"    "variable_" ""        "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_leds.cfg"       "variable_" ""        "checkdup"
-    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw"`; do
+    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw" | grep -v "my_"`; do
         parse_file "${SRCDIR}/config/addons/${file}"      "variable_" ""        "checkdup"
     done
 }
@@ -667,92 +617,10 @@ read_previous_config() {
     else
         echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
         parse_file "${dest_cfg}" "" "_param_"
-
-        # Upgrade / map / force old parameters
-        if [ "${_param_form_tip_macro}" == "_MMU_FORM_TIP_STANDALONE" ]; then
-            _param_form_tip_macro="_MMU_FORM_TIP"
-        fi
-        if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
-            _param_gate_unload_buffer=${_param_encoder_unload_buffer}
-        fi
-        if [ ! "${_param_encoder_unload_max}" == "" ]; then
-            _param_gate_homing_max=${_param_encoder_unload_max}
-        fi
-        if [ ! "${_param_encoder_load_retries}" == "" ]; then
-            _param_gate_load_retries=${_param_encoder_load_retries}
-        fi
-        if [ "${_param_toolhead_ignore_load_error}" == "1" ]; then
-            _param_toolhead_move_error_tolerance=100
-        fi
-        if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
-            _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
-        fi
-        if [ ! "${_param_log_visual}" == "2" ]; then
-            _param_log_visual=1
-        fi
-        if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
-            if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
-                _param_servo_buzz_gear_on_down=0
-            else
-                _param_servo_buzz_gear_on_down=3
-            fi
-        fi
-        if [ "${_param_gate_parking_distance}" == "" ]; then
-            if [ ! "${_param_mmu_version}" == "1.1" ]; then
-                _param_gate_parking_distance=23
-            else
-                _param_gate_parking_distance=13
-            fi
-        fi
-        if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
-            _param_gate_endstop_to_encoder=0
-        fi
-
-        if [ ! "${_param_servo_up_angle}" == "" ]; then
-            _param_servo_up_angle=$(echo "$_param_servo_up_angle" | awk '{print int($1)}')
-        fi
-        if [ ! "${_param_servo_down_angle}" == "" ]; then
-            _param_servo_down_angle=$(echo "$_param_servo_down_angle" | awk '{print int($1)}')
-        fi
-        if [ ! "${_param_servo_move_angle}" == "" ]; then
-            _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
-        fi
-        if [ ! "${_param_z_hop_height_error}" == "" ]; then
-            unset _param_z_hop_heigth_error
-        fi
     fi
 
-    cfg="mmu_filametrix.cfg"
-    dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
-
-    if [ -f "${dest_cfg}" ]; then
-        echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
-        parse_file "${dest_cfg}" "variable_"
-
-        # Convert from mm/min to mm/sec and 'spd' to 'speed' for consistency in other macros
-        #
-        if [ ! "${variable_rip_speed}" == "" ]; then
-            variable_rip_speed=$(echo "$variable_rip_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_evacuate_speed}" == "" ]; then
-            variable_evacuate_speed=$(echo "$variable_evacuate_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_extruder_move_speed}" == "" ]; then
-            variable_extruder_move_speed=$(echo "$variable_extruder_move_speed" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_travel_spd}" == "" ]; then
-            variable_travel_speed=$(echo "$variable_travel_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_cut_fast_move_spd}" == "" ]; then
-            variable_cut_fast_move_speed=$(echo "$variable_cut_fast_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-        if [ ! "${variable_cut_slow_move_spd}" == "" ]; then
-            variable_cut_slow_move_speed=$(echo "$variable_cut_slow_move_spd" | awk '{if ($1 > 250) print int($1 / 60); else print $1}')
-        fi
-    fi
-
-    # TODO Remove mmu_variables once everybody has upgraded
-    for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_leds.cfg mmu_macro_vars.cfg; do
+    # TODO Remove 'mmu_variables' from list once everybody has upgraded
+    for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
         if [ ! -f "${dest_cfg}" ]; then
@@ -761,44 +629,10 @@ read_previous_config() {
             fi
         else
             echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
-            parse_file "${dest_cfg}" "variable_"
-
-            if [ ! "${variable_enable_park}" == "" ]; then
-                variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
-                variable_enable_park_runout=${variable_enable_park}
-                variable_enable_park_standalone=${variable_enable_park}
-            fi
-            if [ ! "${variable_ramming_volume}" == "" ]; then
-                variable_ramming_volume_standalone=${variable_ramming_volume}
-            fi
-            if [ ! "${variable_auto_home}" == "" ]; then
-                variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
-            fi
-            if [ ! "${variable_park_after_form_tip}" == "" ]; then
-                variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
-            fi
-            if [ ! "${variable_restore_position}" == "" ]; then
-                variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
-            fi
-            if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
-                variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
-            fi
-            if [ ! "${variable_use_skinnydip}" == "" ]; then
-                variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
-            fi
-            if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
-                variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
-            fi
-            if [ ! "${variable_pin_loc_x}" == "" ]; then
-                variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
-            fi
-            if [ ! "${variable_safe_margin_x}" == "" ]; then
-                variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
-            fi
-            if [ "${variable_restore_xy_pos}" == "True" ]; then
-                variable_restore_xy_pos="\"last\""
-            elif [ "${variable_restore_xy_pos}" == "False" ]; then
-                variable_restore_xy_pos="\"none\""
+            if [ "${cfg}" == "mmu_macro_vars.cfg" ]; then
+                parse_file "${dest_cfg}" "variable_|filename"
+            else
+                parse_file "${dest_cfg}" "variable_"
             fi
         fi
     done
@@ -816,9 +650,146 @@ read_previous_config() {
         done
     fi
 
+    # Upgrade / map / force old parameters
+    if [ "${_param_form_tip_macro}" == "_MMU_FORM_TIP_STANDALONE" ]; then
+        _param_form_tip_macro="_MMU_FORM_TIP"
+    fi
+    if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
+        _param_gate_unload_buffer=${_param_encoder_unload_buffer}
+    fi
+    if [ ! "${_param_encoder_unload_max}" == "" ]; then
+        _param_gate_homing_max=${_param_encoder_unload_max}
+    fi
+    if [ ! "${_param_encoder_load_retries}" == "" ]; then
+        _param_gate_load_retries=${_param_encoder_load_retries}
+    fi
+    if [ "${_param_toolhead_ignore_load_error}" == "1" ]; then
+        _param_toolhead_move_error_tolerance=100
+    fi
+    if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
+        _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
+    fi
+    if [ ! "${_param_extruder_homing_current}" == "" ]; then
+        _param_extruder_collision_homing_current=${_param_extruder_homing_current}
+    fi
+    if [ "${_param_log_visual}" == "2" ]; then
+        _param_log_visual=1
+    fi
+    if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
+        if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
+            _param_servo_buzz_gear_on_down=0
+        else
+            _param_servo_buzz_gear_on_down=3
+        fi
+    fi
+    if [ "${_param_gate_parking_distance}" == "" ]; then
+        if [ ! "${_param_mmu_version}" == "1.1" ]; then
+            _param_gate_parking_distance=23
+        else
+            _param_gate_parking_distance=13
+        fi
+    fi
+    if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
+        _param_gate_endstop_to_encoder=0
+    fi
+    if [ ! "${_param_servo_up_angle}" == "" ]; then
+        _param_servo_up_angle=$(echo "$_param_servo_up_angle" | awk '{print int($1)}')
+    fi
+    if [ ! "${_param_servo_down_angle}" == "" ]; then
+        _param_servo_down_angle=$(echo "$_param_servo_down_angle" | awk '{print int($1)}')
+    fi
+    if [ ! "${_param_servo_move_angle}" == "" ]; then
+        _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
+    fi
+    if [ "${_param_servo_always_active}" == "" ]; then
+        _param_servo_always_active=0
+    fi
+    if [ "${_param_toolhead_post_load_tighten}" == "1" ]; then
+        # Old Boolean -> New Percent
+        _param_toolhead_post_load_tighten=60
+    fi
+    if [ "${_param_log_file_level}" -gt 2 ]; then
+        _param_log_file_level=2
+    fi
+    if [ ! "${_param_enable_spoolman}" == "" ]; then
+        if [ ! "${_param_enable_spoolman}" == "1" ]; then
+            _param_spoolman_support="readonly"
+        else
+            _param_spoolman_support="off"
+        fi
+    fi
+    if [ ! "${variable_enable_park}" == "" ]; then
+        variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
+    fi
+    if [ ! "${variable_ramming_volume}" == "" ]; then
+        variable_ramming_volume_standalone=${variable_ramming_volume}
+    fi
+    if [ ! "${variable_auto_home}" == "" ]; then
+        variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
+    fi
+    if [ ! "${variable_park_after_form_tip}" == "" ]; then
+        variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
+    fi
+    if [ ! "${variable_restore_position}" == "" ]; then
+        variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
+    fi
+    if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
+        variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
+    fi
+    if [ ! "${variable_use_skinnydip}" == "" ]; then
+        variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
+    fi
+    if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
+        variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
+    fi
+    if [ ! "${variable_pin_loc_x}" == "" ]; then
+        variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
+    fi
+    if [ ! "${variable_safe_margin_x}" == "" ]; then
+        variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
+    fi
+    if [ "${variable_restore_xy_pos}" == "True" ]; then
+        variable_restore_xy_pos="\"last\""
+    elif [ "${variable_restore_xy_pos}" == "False" ]; then
+        variable_restore_xy_pos="\"none\""
+    fi
     if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
         mmu_num_gates=$_param_mmu_num_gates
         mmu_num_leds=$(expr $mmu_num_gates + 1)
+    fi
+
+    # v2.7.1
+    if [ ! "${variable_pin_park_x_dist}" == "" ]; then
+        variable_pin_park_dist="${variable_pin_park_x_dist}"
+    fi
+    if [ ! "${variable_pin_loc_x_compressed}" == "" ]; then
+        variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
+    fi
+    if [ ! "${variable_park_xy}" == "" ]; then
+        variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0, 2"
+        variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0, 2"
+    fi
+    if [ ! "${variable_lift_speed}" == "" ]; then
+        variable_park_lift_speed="${variable_lift_speed}"
+    fi
+    if [ "${variable_enable_park}" == "False" ]; then
+        variable_enable_park_printing="'pause,cancel'"
+        if [ "${variable_enable_park_runout}" == "True" ]; then
+            variable_enable_park_printing="'toolchange,load,unload,runout,pause,cancel'"
+        fi
+    else
+        variable_enable_park_printing="'toolchange,load,unload,pause,cancel'"
+    fi
+    if [ "${variable_enable_park_standalone}" == "False" ]; then
+        variable_enable_park_standalone="'pause,cancel'"
+    else
+        variable_enable_park_standalone="'toolchange,load,unload,pause,cancel'"
+    fi
+
+    # v2.7.2
+    if [ "${_param_toolhead_residual_filament}" == "0" -a ! "${_param_toolhead_ooze_reduction}" == "0" ]; then
+        _param_toolhead_residual_filament=$_param_toolhead_ooze_reduction
+        _param_toolhead_ooze_reduction=0
     fi
 }
 
@@ -965,38 +936,56 @@ copy_config_files() {
             # Ensure that supplemental user added params are retained. These are those that are
             # by default set internally in Happy Hare based on vendor and version settings but
             # can be overridden.  This set also includes a couple of hidden test parameters.
-            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta gate_parking_distance encoder_default_resolution"
-            hidden_params="virtual_selector homing_extruder test_random_failures"
-            for var in $(set | grep '^_param_' | cut -d'=' -f1); do
+            echo "" >> $dest
+            echo "# SUPPLEMENTAL USER CONFIG retained after upgrade --------------------------------------------------------------------" >> $dest
+            echo "#" >> $dest
+            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance gate_parking_distance variable_gate_ratios encoder_default_resolution gate_material gate_color gate_spool_id gate_status gate_filament_name gate_speed_override endless_spool_groups tool_to_gate_map"
+            hidden_params="virtual_selector homing_extruder test_random_failures test_random_failures test_disable_encoder test_force_in_print serious mitigate_ttc"
+            for var in $(set | grep '^_param_' | cut -d'=' -f1 | sort); do
                 param=${var#_param_}
                 for item in ${supplemental_params} ${hidden_params}; do
                     if [ "$item" = "$param" ]; then
                         value=$(eval echo "\$${var}")
-                        echo "${param}: ${value} # User added and retained after upgrade"
+                        echo "${param}: ${value}"
+                        eval unset ${var}
                     fi
                 done
             done >> $dest
 
+            # If any params are still left worn the user because they will be lost (should have been upgraded)
+            for var in $(set | grep '^_param_' | cut -d= -f1); do
+                value=$(eval echo \$$var)
+                param=${var#_param_}
+                echo "Parameter: '$param: $value' is deprecated and has been removed"
+            done
+
         # Variables macro ---------------------------------------------------------------------
         elif [ "${file}" == "mmu_macro_vars.cfg" ]; then
             tx_macros=""
-            for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
-            do
-                tx_macros+="[gcode_macro T${i}]\n"
-                tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
-            done
+            if [ "$mmu_num_gates" -eq "$mmu_num_gates" ] 2>/dev/null; then
+                for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
+                do
+                    tx_macros+="[gcode_macro T${i}]\n"
+                    tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
+                done
+            else
+                # Skeleton config file case
+                for (( i=0; i<=11; i++ ))
+                do
+                    tx_macros+="#[gcode_macro T${i}]\n"
+                    tx_macros+="#gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
+                done
+            fi
 
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} | sed -e "\
-                    s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}
             else
                 cat ${src} | sed -e "\
-                    s%{klipper_config_home}%${KLIPPER_CONFIG_HOME}%g; \
                     s%{tx_macros}%${tx_macros}%g; \
                         " > ${dest}.tmp
-                update_copy_file "${dest}.tmp" "${dest}" "variable_" && rm ${dest}.tmp
+                update_copy_file "${dest}.tmp" "${dest}" "variable_|filename" && rm ${dest}.tmp
             fi
 
         # Everything else is read-only symlink ------------------------------------------------
@@ -1031,7 +1020,8 @@ copy_config_files() {
     fi
 
     # Addon config files are always copied (and updated) so they can be edited ----------------
-    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg`; do
+    # Skipping files with 'my_' prefix for development
+    for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "my_"`; do
         src=${SRCDIR}/config/addons/${file}
         dest=${mmu_dir}/addons/${file}
         if [ -f "${dest}" ]; then
@@ -1152,6 +1142,11 @@ install_update_manager() {
                 echo -e "${line}" >> "${file}"
             done < "${SRCDIR}/moonraker_update.txt"
             echo "" >> "${file}"
+            # The path for Happy-Hare on MIPS is /usr/data/Happy-Hare
+            if [ "$IS_MIPS" -eq 1 ]; then
+                sed -i 's|path: ~/Happy-Hare|path: /usr/data/Happy-Hare|' "${file}"
+                echo -e "${INFO}Update Happy-Hare path for MIPS architecture."
+            fi
             restart=1
         else
             echo -e "${WARNING}[update_manager happy-hare] already exists in moonraker.conf - skipping install"
@@ -1223,7 +1218,14 @@ uninstall_update_manager() {
 restart_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Klipper..."
-        sudo systemctl restart ${KLIPPER_SERVICE}
+
+        if [ "$IS_MIPS" -ne 1 ]; then
+            sudo systemctl restart ${KLIPPER_SERVICE}
+        else
+            set +e
+            /etc/init.d/*klipper_service restart
+            set -e
+        fi
     else
         echo -e "${WARNING}Klipper restart suppressed - Please restart ${KLIPPER_SERVICE} by hand"
     fi
@@ -1232,7 +1234,14 @@ restart_klipper() {
 restart_moonraker() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Moonraker..."
-        sudo systemctl restart moonraker
+
+        if [ "$IS_MIPS" -ne 1 ]; then
+            sudo systemctl restart moonraker
+        else
+            set +e
+            /etc/init.d/*moonraker_service restart
+            set -e
+        fi
     else
         echo -e "${WARNING}Moonraker restart suppressed - Please restart by hand"
     fi
@@ -1275,6 +1284,8 @@ questionaire() {
     gate_parking_distance=23.0
     gate_endstop_to_encoder=0
     servo_buzz_gear_on_down=0
+    servo_always_active=0
+    servo_duration=0.3
 
     # mmu_hardware.cfg only...
     gear_gear_ratio="80:20"
@@ -1283,8 +1294,8 @@ questionaire() {
     sel_run_current=0.4
     sel_hold_current=0.2
     maximum_servo_angle=180
-    minimum_pulse_width=0.00075
-    maximum_pulse_width=0.00225
+    minimum_pulse_width=0.001
+    maximum_pulse_width=0.002
 
     echo
     echo -e "${INFO}Let me see if I can get you started with initial configuration"
@@ -1305,9 +1316,6 @@ questionaire() {
             mmu_version="1.1"
             servo_buzz_gear_on_down=3
 
-            maximum_servo_angle=180
-            minimum_pulse_width=0.00085
-            maximum_pulse_width=0.00215
             echo
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Springy' sprung servo selector cart")
@@ -1338,10 +1346,6 @@ questionaire() {
             mmu_version="2.0"
             gate_parking_distance=13.0 # ThumperBlocks is 11.0
             servo_buzz_gear_on_down=3
-
-            maximum_servo_angle=180
-            minimum_pulse_width=0.00085
-            maximum_pulse_width=0.00215
             ;;
         3)
             HAS_ENCODER=no
@@ -1357,9 +1361,6 @@ questionaire() {
             gear_hold_current=0.2
             sel_run_current=0.63
             sel_hold_current=0.2
-            maximum_servo_angle=131
-            minimum_pulse_width=0.00070
-            maximum_pulse_width=0.00220
             echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
             echo
@@ -1397,14 +1398,16 @@ questionaire() {
     brd_type="unknown"
     echo
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
-    echo -e " 1) BTT MMB v1.0"
-    echo -e " 2) BTT MMB v1.1"
-    echo -e " 3) Fysetc Burrows ERB"
-    echo -e " 4) Standard EASY-BRD (with SAMD21)"
-    echo -e " 5) EASY-BRD with RP2040"
-    echo -e " 6) Mellow EASY-BRD with CANbus"
-    echo -e " 7) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 7)
+    echo -e " 1) BTT MMB v1.0 (with CANbus)"
+    echo -e " 2) BTT MMB v1.1 (with CANbus)"
+    echo -e " 3) Fysetc Burrows ERB v1"
+    echo -e " 4) Fysetc Burrows ERB v2"
+    echo -e " 5) Standard EASY-BRD (with SAMD21)"
+    echo -e " 6) EASY-BRD with RP2040"
+    echo -e " 7) Mellow EASY-BRD v1.x (with CANbus)"
+    echo -e " 8) Mellow EASY-BRD v2.x (with CANbus)"
+    echo -e " 9) Not in list / Unknown"
+    num=$(prompt_123 "MCU type?" 9)
     echo
     case $num in
         1)
@@ -1420,18 +1423,26 @@ questionaire() {
             pattern="Klipper_rp2040"
             ;;
         4)
+            brd_type="ERBv2"
+            pattern="Klipper_rp2040"
+            ;;
+        5)
             brd_type="EASY-BRD"
             pattern="Klipper_samd21"
             ;;
-        5)
+        6)
             brd_type="EASY-BRD-RP2040"
             pattern="Klipper_rp2040"
             ;;
-        6)
+        7)
             brd_type="MELLOW-EASY-BRD-CAN"
             pattern="Klipper_rp2040"
             ;;
-        7)
+        8)
+            brd_type="MELLOW-EASY-BRD-CANv2"
+            pattern="Klipper_rp2040"
+            ;;
+        9)
             brd_type="unknown"
             pattern="Klipper_"
             ;;
@@ -1503,15 +1514,21 @@ questionaire() {
     esac
 
     if [ "${mmu_vendor}" == "ERCF" ]; then
+        maximum_servo_angle=180
+        minimum_pulse_width=0.00085
+        maximum_pulse_width=0.00215
+
         echo
         echo -e "${PROMPT}${SECTION}Which servo are you using?"
-        echo -e "1) MG-90S (ERCF)"
-        echo -e "2) Savox SH0255MG (ERCF)"
-        echo -e "3) Not listed / Other${INPUT}"
-        num=$(prompt_123 "Servo?" 3)
+        echo -e "1) MG-90S"
+        echo -e "2) Savox SH0255MG"
+        echo -e "3) GDW DS041MG"
+        echo -e "4) Not listed / Other${INPUT}"
+        num=$(prompt_123 "Servo?" 4)
         echo
         case $num in
             1)
+                # MG-90S
                 servo_up_angle=30
                 if [ "${mmu_version}" == "2.0" ]; then
                     servo_move_angle=61
@@ -1521,6 +1538,7 @@ questionaire() {
                 servo_down_angle=140
                 ;;
             2)
+                # Savox SH0255MG
                 servo_up_angle=140
                 if [ "${mmu_version}" == "2.0" ]; then
                     servo_move_angle=109
@@ -1529,8 +1547,26 @@ questionaire() {
                 fi
                 servo_down_angle=30
                 ;;
+            3)
+                # GDW DS041MG
+                servo_always_active=1
+                maximum_servo_angle=180
+                minimum_pulse_width=0.00050
+                maximum_pulse_width=0.00250
+                servo_up_angle=30
+                if [ "${mmu_version}" == "2.0" ]; then
+                    servo_move_angle=50
+                else
+                    servo_move_angle=${servo_up_angle}
+                fi
+                servo_down_angle=100
         esac
+
     elif [ "${mmu_vendor}" == "Tradrack" ]; then
+        maximum_servo_angle=131
+        minimum_pulse_width=0.00070
+        maximum_pulse_width=0.00220
+
         echo
         echo -e "${PROMPT}${SECTION}Which servo are you using?"
         echo -e "1) PS-1171MG or FT1117M (Tradrack)"
@@ -1544,6 +1580,7 @@ questionaire() {
                 servo_down_angle=1
                 ;;
         esac
+
     else
         servo_up_angle=0
         servo_move_angle=0
@@ -1755,7 +1792,7 @@ verify_not_root
 check_octoprint
 verify_home_dirs
 check_klipper
-cleanup_old_ercf
+cleanup_old_klippy_modules
 if [ "$UNINSTALL" -eq 0 ]; then
 
     # Set in memory parameters from default file
@@ -1780,8 +1817,10 @@ if [ "$UNINSTALL" -eq 0 ]; then
         result=$(awk -v n1="$VERSION" -v n2="$FROM_VERSION" 'BEGIN {print (n1<n2) ? "1" : "0"}')
         if [ "$result" -eq 1 ]; then
             echo -e "${WARNING}Trying to update from version ${FROM_VERSION} to ${VERSION}"
-            echo -e "${ERROR}Cannot automatically 'upgrade' to earlier version. You must do this by hand"
-            exit 1
+            echo -e "${ERROR}Automatic 'downgrade' to earlier version is not garanteed. If you encounter startup problems you may"
+            echo -e "${ERROR}need to manually compare the backed-up 'mmu_parameters.cfg' with current one to restore differences"
+#            echo -e "${ERROR}Cannot automatically 'upgrade' to earlier version. You must do this by hand"
+#            exit 1
         elif [ ! "${FROM_VERSION}" == "${VERSION}" ]; then
             echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
         fi
@@ -1791,7 +1830,6 @@ if [ "$UNINSTALL" -eq 0 ]; then
     copy_config_files
 
     # Temp upgrades
-    cleanup_manual_stepper_version
     upgrade_mmu_sensors
     upgrade_led_effects
 
@@ -1822,9 +1860,12 @@ else
 fi
 
 if [ "$INSTALL" -eq 0 ]; then
+    if [ "$VERSION" == "2.70" -a "$FROM_VERSION" != "2.70" ]; then
+        restart_moonraker
+    fi
     restart_klipper
 else
-    echo -e "${WARNING}Klipper not restarted automatically because you need to validate and complete config"
+    echo -e "${WARNING}Klipper not restarted automatically because you need to validate and complete config first"
 fi
 
 if [ "$UNINSTALL" -eq 0 ]; then

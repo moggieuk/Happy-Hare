@@ -23,17 +23,21 @@ class MmuLeds:
     led_strip = None
     frame_rate = 24
     chains = {}
+    led_effect_module = False
 
     def __init__(self, config):
         led_strip = config.get('led_strip')
         MmuLeds.num_gates = config.getint('num_gates')
         MmuLeds.frame_rate = config.getint('frame_rate', MmuLeds.frame_rate)
 
-        try:
-            pixels = config.get_printer().load_object(config, led_strip.replace(':', ' '))
-            MmuLeds.led_strip = led_strip
-        except Exception as e:
-            raise config.error("Unable to load LED strip '%s': %s" % (led_strip, str(e)))
+        if config.get_printer().lookup_object(led_strip.replace(':', ' '), None) is None:
+            logging.warning("Happy Hare LED support cannot be loaded. Led strip '%s' not defined" % led_strip)
+        else:
+            try:
+                pixels = config.get_printer().load_object(config, led_strip.replace(':', ' '))
+                MmuLeds.led_strip = led_strip
+            except Exception as e:
+                raise config.error("Unable to load LED strip '%s': %s" % (led_strip, str(e)))
 
         indicies_used = set()
         try:
@@ -57,6 +61,16 @@ class MmuLeds:
                         raise config.error("Overlapping LED indicies")
         except Exception as e:
             raise config.error("Invalid 'mmu_leds' specification. Exception: %s" % str(e))
+
+        # Lack of this module loading will make future mmu_led_effect definitions a no-op. This provides an easy way to disable
+        if MmuLeds.led_strip is None:
+            MmuLeds.chains = {}
+        else:
+            try:
+                led_effects = config.get_printer().load_object(config, 'led_effect')
+                MmuLeds.led_effect_module = True
+            except Exception:
+                MmuLeds.led_effect_module = False
 
 def load_config(config):
     return MmuLeds(config)

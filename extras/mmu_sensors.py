@@ -33,14 +33,13 @@
 import logging, time
 
 class MmuRunoutHelper:
-    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay, pause_delay):
+    def __init__(self, printer, name, insert_gcode, runout_gcode, event_delay):
         self.printer, self.name = printer, name
         self.insert_gcode, self.runout_gcode = insert_gcode, runout_gcode
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
         self.min_event_systime = self.reactor.NEVER
-        self.pause_delay = pause_delay # Time to wait after pause
         self.event_delay = event_delay # Time between generated events
         self.filament_present = False
         self.sensor_enabled = True
@@ -48,7 +47,7 @@ class MmuRunoutHelper:
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
-        # We are going to replace previous runout_helper mux commands with ours
+        # Replace previous runout_helper mux commands with ours
         prev = self.gcode.mux_commands.get("QUERY_FILAMENT_SENSOR")
         prev_key, prev_values = prev
         prev_values[self.name] = self.cmd_QUERY_FILAMENT_SENSOR
@@ -70,7 +69,6 @@ class MmuRunoutHelper:
         # Pausing from inside an event requires that the pause portion of pause_resume execute immediately.
         pause_resume = self.printer.lookup_object('pause_resume')
         pause_resume.send_pause_command()
-        self.printer.get_reactor().pause(eventtime + self.pause_delay)
         self._exec_gcode(self.runout_gcode + " DO_RUNOUT=1")
 
     def _exec_gcode(self, command):
@@ -93,18 +91,19 @@ class MmuRunoutHelper:
         # Let Happy Hare decide what processing is possible based on printing state
         if is_filament_present: # Insert detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
+            #logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._insert_event_handler)
         else: # Runout detected
             self.min_event_systime = self.reactor.NEVER
             if self.runout_suspended: # Just a remove event
-                logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
+                #logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._remove_event_handler)
             else: # True runout
-                logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
+                #logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._runout_event_handler)
 
     def enable_runout(self, restore):
+        self.min_event_systime = self.reactor.monotonic()
         self.runout_suspended = not restore
 
     def get_status(self, eventtime):
@@ -129,10 +128,11 @@ class MmuRunoutHelper:
 
 class MmuSensors:
 
-    ENDSTOP_PRE_GATE  = 'mmu_pre_gate'
-    ENDSTOP_GATE      = 'mmu_gate'
-    ENDSTOP_EXTRUDER  = 'extruder'
-    ENDSTOP_TOOLHEAD  = 'toolhead'
+    # TODO Use Mmu class definitions
+    ENDSTOP_PRE_GATE       = 'mmu_pre_gate'
+    ENDSTOP_GATE           = 'mmu_gate'
+    ENDSTOP_EXTRUDER_ENTRY = "extruder"       # Extruder entry sensor
+    ENDSTOP_TOOLHEAD       = 'toolhead'
     SWITCH_SYNC_FEEDBACK_TENSION     = 'sync_feedback_tension'
     SWITCH_SYNC_FEEDBACK_COMPRESSION = 'sync_feedback_compression'
 
@@ -140,7 +140,6 @@ class MmuSensors:
         self.printer = config.get_printer()
 
         event_delay = config.get('event_delay', 1.)
-        pause_delay = config.get('pause_delay', 0.1)
 
         # Setup and pre-gate sensors that are defined...
         for gate in range(23):
@@ -160,9 +159,9 @@ class MmuSensors:
             # Replace with custom runout_helper because limited operation is possible during print
             insert_gcode = "__MMU_GATE_INSERT GATE=%d" % gate
             runout_gcode = "__MMU_GATE_RUNOUT GATE=%d" % gate
-            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
-            fs.runout_helper = gate_helper
-            fs.get_status = gate_helper.get_status
+            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
+            fs.runout_helper = mmu_runout_helper
+            fs.get_status = mmu_runout_helper.get_status
 
         # Setup gate sensor...
         switch_pin = config.get('gate_switch_pin', None)
@@ -178,25 +177,34 @@ class MmuSensors:
             # Replace with custom runout_helper because limited operation is possible during print
             insert_gcode = "__MMU_GATE_INSERT"
             runout_gcode = "__MMU_GATE_RUNOUT"
-            gate_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay, pause_delay)
-            fs.runout_helper = gate_helper
-            fs.get_status = gate_helper.get_status
+            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
+            fs.runout_helper = mmu_runout_helper
+            fs.get_status = mmu_runout_helper.get_status
 
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
-            section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_EXTRUDER
+            name = "%s_sensor" % self.ENDSTOP_EXTRUDER_ENTRY
+            section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
             fs = self.printer.load_object(config, section)
 
+            # Replace with custom runout_helper because of limited operation
+            insert_gcode = "__MMU_EXTRUDER_INSERT"
+            runout_gcode = "__MMU_EXTRUDER_RUNOUT"
+            mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
+            fs.runout_helper = mmu_runout_helper
+            fs.get_status = mmu_runout_helper.get_status
+
         # Setup toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             # Automatically create necessary filament_switch_sensors
-            section = "filament_switch_sensor %s_sensor" % self.ENDSTOP_TOOLHEAD
+            name = "%s_sensor" % self.ENDSTOP_TOOLHEAD
+            section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
