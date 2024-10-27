@@ -236,8 +236,11 @@ class LinearSelector:
         self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_OFFSETS] = self.selector_offsets
 
         self.bypass_offset = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS, -1)
-        if self.bypass_offset >= 0:
+        if self.bypass_offset > 0:
             self.mmu.log_debug("Loaded saved bypass offset: %s" % self.bypass_offset)
+        else:
+            self.bypass_offset = -1 # Ensure -1 value for uncalibrated / non-existent
+        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_BYPASS] = self.bypass_offset
 
         # See if we have a TMC controller capable of current control for filament collision detection and syncing
         # on gear_stepper and tip forming on extruder
@@ -254,8 +257,8 @@ class LinearSelector:
         self.servo.handle_connect()
 
     def _ensure_list_size(self, lst, size, default_value=None):
-        lst = lst[:size] 
-        lst.extend([default_value] * (size - len(lst))) 
+        lst = lst[:size]
+        lst.extend([default_value] * (size - len(lst)))
         return lst
 
     def handle_disconnect(self):
@@ -339,7 +342,7 @@ class LinearSelector:
         return True
 
     def has_bypass(self):
-        return self.bypass_offset > 0
+        return self.bypass_offset >= 0
 
     def get_status(self):
         status = {
@@ -583,7 +586,7 @@ class LinearSelector:
         homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
         homing_state.set_axes([0])
         try:
-            self.mmu.mmu_kinematics.home(homing_state)
+            self.mmu.mmu_toolhead.get_kinematics().home(homing_state)
             self.is_homed = True
         except Exception as e: # Homing failed
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))

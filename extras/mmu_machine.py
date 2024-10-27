@@ -64,7 +64,7 @@ class MmuMachine:
         try:
             self.mmu_version = float(version)
         except ValueError:
-            raise self.config.error("Invalid version parameter")
+            raise config.error("Invalid version parameter")
 
         # MMU design for control purposes can be broken down into the following choices:
         #  - Selector type or no selector
@@ -85,7 +85,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
 
         elif self.mmu_vendor == VENDOR_PRUSA:
-            raise self.config.error("Prusa MMU is not yet supported")
+            raise config.error("Prusa MMU is not yet supported")
 
         elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
             selector_type = 'VirtualSelector'
@@ -276,8 +276,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         printer_extruder = self.printer_toolhead.get_extruder()
         if self.mmu.homing_extruder:
             # Restore original extruder options in case user macros reference them
-            for key in self.old_ext_options:
-                value = self.old_ext_options[key]
+            for key, value in self.old_ext_options.items():
                 self.config.fileconfig.set('extruder', key, value)
 
             # Now we can switch in homing MmuExtruderStepper

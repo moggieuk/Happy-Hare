@@ -547,6 +547,12 @@ read_previous_config() {
     if [ "${_param_persistence_level}" != "" -a "${_param_persistence_level}" -lt 4 ]; then
         _param_home_on_startup=1
     fi
+    if [ "${_param_auto_calibrate_gates}" != "" ]; then
+        _param_autotune_rotation_distance=${_param_auto_calibrate_gates}
+    fi
+    if [ "${_param_auto_calibrate_bowden}" != "" ]; then
+        _param_autotune_bowden_length=${_param_auto_calibrate_bowden}
+    fi
 }
 
 triangular() {
