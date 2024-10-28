@@ -748,7 +748,7 @@ class Mmu:
         self.bowden_lengths = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, None)
         bowden_home = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_HOME, self.ENDSTOP_ENCODER)
         if self.bowden_lengths and bowden_home in self.GATE_ENDSTOPS:
-            self.bowden_lengths = [-1 if x == 0 else x for x in self.bowden_lengths] # Ensure -1 value for uncalibrated
+            self.bowden_lengths = [-1 if x < 0 else x for x in self.bowden_lengths] # Ensure -1 value for uncalibrated
             # Ensure list size
             if len(self.bowden_lengths) == self.num_gates:
                 self.log_debug("Loaded saved bowden lengths: %s" % self.bowden_lengths)
