@@ -93,7 +93,7 @@ class MmuRunoutHelper:
             self.min_event_systime = self.reactor.NEVER
             #logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._insert_event_handler)
-        else: # Runout detected
+        elif self.runout_gcode is not None: # Runout detected
             self.min_event_systime = self.reactor.NEVER
             if self.runout_suspended: # Just a remove event
                 #logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
