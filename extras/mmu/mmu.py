@@ -842,7 +842,7 @@ class Mmu:
         # Reference correct extruder stepper which will definitely be available now
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
         if not self.homing_extruder:
-            self.log_debug("Warning: Using original klipper extruder stepper. Homing not possible")
+            self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
 
         # Restore state (only if fully calibrated)
         self._load_persisted_state()
@@ -1172,7 +1172,7 @@ class Mmu:
             self.log_always(msg, color=True)
             self._set_print_state("initialized")
 
-            # Delayed to allow for correct initial state
+            # Use pre-gate sensors to adjust gate map
             self.gate_status = self._validate_gate_status(self.gate_status)
 
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
@@ -1211,7 +1211,7 @@ class Mmu:
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
             self._spoolman_sync()
         except Exception as e:
-            self.log_error('Warning: Error booting up MMU: %s' % str(e))
+            self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
@@ -2089,15 +2089,13 @@ class Mmu:
     # It can be adjusted if sensor setup changes post calibration, must consider:
     #   gate_endstop_to_encoder    .. potential dead space from gate sensor to encoder
     #   toolhead_entry_to_extruder .. distance for extruder entry sensor to extruder gears
-    # TODO: Enhance for non-gate 0 use
     def _calibrate_bowden_length_auto(self, approximate_length, extruder_homing_max, repeats, save=True):
 
-        # Can't allow "none" endstop during calibration
+        # Can't allow "none" endstop during calibration so temporarily change
         endstop = self.extruder_homing_endstop
         self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_COLLISION if endstop == self.ENDSTOP_EXTRUDER_NONE else self.extruder_homing_endstop
         try:
-            self.log_always("Calibrating bowden length on reference Gate 0 using %s as gate reference point" % self._gate_homing_string())
-            self.select_tool(0) # TODO shouldn't this be select_gate()?
+            self.log_always("Calibrating bowden length for gate %d (automatic method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
             reference_sum = spring_max = 0.
             successes = 0
 
@@ -2150,16 +2148,14 @@ class Mmu:
                 self.log_error("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
         except MmuError as ee:
             # Add some more context to the error and re-raise
-            raise MmuError("Calibration of bowden length (on Gate 0) failed. Aborting, because:\n%s" % str(ee))
+            raise MmuError("Calibration of bowden length on gate %d failed. Aborting, because:\n%s" % (self.gate_selected, str(ee)))
         finally:
             self.extruder_homing_endstop = endstop
             self._auto_filament_grip()
 
     def _calibrate_bowden_length_manual(self, approx_bowden_length, save=True):
-        if self.gate_selected != 0:
-            raise MmuError("Calibration of bowden length must be performed on gate 0")
         try:
-            self.log_always("Calibrating bowden length (manual method) using %s as gate reference point" % self._gate_homing_string())
+            self.log_always("Calibrating bowden length for gate %d (manual method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
             self._set_filament_direction(self.DIRECTION_UNLOAD)
             self.selector.filament_drive()
             self.log_always("Finding %s endstop position..." % self.gate_homing_endstop)
@@ -2198,7 +2194,7 @@ class Mmu:
     def _calibrate_gate(self, gate, length, repeats, save=True):
         try:
             pos_values, neg_values = [], []
-            self.select_tool(gate)
+            self.select_tool(gate) # TODO: Probably should be select_gate() and not need the TTG map reset in caller
             self._load_gate(allow_retry=False)
             self.log_always("%s gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", gate, length))
 
@@ -2403,12 +2399,13 @@ class Mmu:
 
     # Start: Will home selector, select gate 0
     # End: Filament will unload
-    cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for gate 0"
+    cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for selected gate"
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         if self.check_if_not_homed(): return
         if self.check_if_bypass(): return
+        if self.check_if_gate_not_valid(): return
 
         manual = bool(gcmd.get_int('MANUAL', 0, minval=0, maxval=1))
         if not self.has_encoder() and not manual:
@@ -3210,6 +3207,12 @@ class Mmu:
             return True
         return False
 
+    def check_if_gate_not_valid(self):
+        if self.gate_selected < 0:
+            self.log_error("No MMU gate selected")
+            return True
+        return False
+
     # Returns True is required calibration is not complete. Defaults to all gates
     # Params: required = bitmap of checks, check_gates = list of gates to consider
     def check_if_not_calibrated(self, required, silent=False, check_gates=None):
@@ -3323,7 +3326,7 @@ class Mmu:
 
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
-                # We use error channel to aviod heating surprise. This will also cause popup in Klipperscreen
+                # We use error log channel to avoid heating surprise. This will also cause popup in Klipperscreen
                 self.log_error("Warning: Automatically heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             else:
                 self.log_info("Heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
@@ -3809,9 +3812,8 @@ class Mmu:
             # is between extruder entrance and toolhead sensor (if toolhead sensor is available)
             length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
             length = min(length + self.toolhead_unload_safety_margin, homing_max)
-            self.log_debug("Performing safety synced pre-unload bowden move")
+            self.log_debug("Performing synced pre-unload bowden move to ensure filament is not trapped in extruder")
             _,_,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder")
-            #homing_max -= length # PAUL should we reduce homing max?
 
         if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             with self._require_encoder():
@@ -4132,7 +4134,7 @@ class Mmu:
             self._random_failure() # Testing
             self.movequeues_wait()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
-            self.log_debug("Filament should loaded to nozzle")
+            self.log_debug("Filament should be loaded to nozzle")
             return homing_movement
 
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
@@ -4167,9 +4169,9 @@ class Mmu:
 
                 if not self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
                     if self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
-                        raise MmuError("Toolhead or extruder sensor failure. Extruder sensor reports no filament but toolhead sensor is still triggered") # TODO this kind of check could be made generic to check for all proceeding sensors
+                        raise MmuError("Toolhead or extruder sensor failure. Extruder sensor reports no filament but toolhead sensor is still triggered")
                     else:
-                        self.log_info("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload")
+                        self.log_error("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload\nWill attempt to continue...")
                         fhomed = True # Assumption
                 else:
                     hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract
@@ -4184,16 +4186,17 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY)
                     self._set_filament_position(-(self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder))
 
-# TODO - there have been reports this fails, perhaps because of klipper's late update of sensor state?
-#                # Extra pedantic validation if we have toolhead sensor
-#                if self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
-#                    raise MmuError("Toolhead sensor still reports filament is present in toolhead! Possible sensor malfunction")
+                # Extra pedantic validation if we have toolhead sensor
+                # TODO: There have been reports of this failing, perhaps because of klipper's late update of sensor state?
+                #       So fromer MmuError() has been changed to error message
+                if self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
+                    self.log_error("Warning: Toolhead sensor still reports filament is present in toolhead! Possible sensor malfunction\nWill attempt to continue...")
 
             else:
                 if self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
                     # NEXT BEST: With toolhead sensor we first home to toolhead sensor. Optionally synced
                     if not self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
-                        self.log_info("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload")
+                        self.log_error("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload\nWill attempt to continue...")
                         fhomed = True # Assumption
                     else:
                         hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract
@@ -4230,7 +4233,8 @@ class Mmu:
                     elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
                         msg = "suffient"
                     if msg:
-                        self.log_error("Encoder not sensing %s movement\nConcluding filament either stuck in the extruder or tip forming erroneously completely ejected filament\nWill attempt to continue..." % msg)
+                        self.log_error("Warning: Encoder not sensing %s movement during final extruder retraction move\nConcluding filament either stuck in the extruder, tip forming erroneously completely ejected filament or filament was not fully loaded\nWill attempt to continue..." % msg)
+
                 self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
 
             self._random_failure() # Testing
@@ -4646,7 +4650,7 @@ class Mmu:
                     self.log_trace(msg)
 
             if not test and park_pos > self.toolhead_extruder_to_nozzle:
-                self.log_error("Warning: Park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder" % (park_pos, self.toolhead_extruder_to_nozzle))
+                self.log_error("Warning: Park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
                 park_pos = self.toolhead_extruder_to_nozzle
                 filament_remaining = 0.
 
@@ -4898,7 +4902,7 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
             elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self._check_filament_still_in_extruder():
                 # This case adds an additional encoder based test to see if filament is still being gripped by extruder
-                # even though TS doesn't see it. It's a pedantic option so turned off by strict flag
+                # even though TS doesn't see it. It's a pedantic option so on turned on by strict flag
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
 
             # At extruder entry
@@ -5298,13 +5302,13 @@ class Mmu:
         self._auto_filament_grip()
 
     def _set_tool_selected(self, tool):
-        #self.log_error("PAUL: _set_tool_selected(%d)" % tool)
+        #self.log_error("PAUL TEMP: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
 
     def _set_gate_selected(self, gate):
-        #self.log_error("PAUL: _set_gate_selected(%d)" % gate)
+        #self.log_error("PAUL TEMP: _set_gate_selected(%d)" % gate)
         if gate != self.gate_selected:
             self.gate_selected = gate
             self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
@@ -5327,7 +5331,7 @@ class Mmu:
             self.log_debug("Gate not calibrated, falling back to: %.6f" % rd)
         else:
             self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
-        #self.log_error("PAUL: _set_rotation_distance(%s)" % rd)
+        #self.log_error("PAUL TEMP: _set_rotation_distance(%s)" % rd)
         self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_bowden_length(self, gate):
