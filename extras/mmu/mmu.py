@@ -575,9 +575,9 @@ class Mmu:
         # Internal handlers for Runout & Insertion for all sensor options
         self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
         self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
-        self.gcode.register_command('__MMU_GATE_RUNOUT', self.cmd_MMU_GATE_RUNOUT, desc = self.cmd_MMU_GATE_RUNOUT_help)
+        self.gcode.register_command('__MMU_GATE_RUNOUT_REMOVE', self.cmd_MMU_GATE_RUNOUT_REMOVE, desc = self.cmd_MMU_GATE_RUNOUT_REMOVE_help)
         self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
-        self.gcode.register_command('__MMU_EXTRUDER_RUNOUT', self.cmd_MMU_EXTRUDER_RUNOUT, desc = self.cmd_MMU_EXTRUDER_RUNOUT_help)
+        self.gcode.register_command('__MMU_EXTRUDER_RUNOUT_REMOVE', self.cmd_MMU_EXTRUDER_RUNOUT_REMOVE, desc = self.cmd_MMU_EXTRUDER_RUNOUT_REMOVE_help)
         self.gcode.register_command('__MMU_EXTRUDER_INSERT', self.cmd_MMU_EXTRUDER_INSERT, desc = self.cmd_MMU_EXTRUDER_INSERT_help)
 
         # Initializer tasks
@@ -6797,7 +6797,9 @@ class Mmu:
     cmd_MMU_ENCODER_RUNOUT_help = "Internal encoder filament runout handler"
     def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if not self.is_enabled: return
+        if not self.is_enabled:
+            self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+            return
         self._fix_started_state()
         try:
             self._runout()
@@ -6813,16 +6815,19 @@ class Mmu:
     # Callback to handle gate filament sensors on MMU.
     # SENSOR will contain sensor name,
     # GATE will be set if specific pre-gate or post-gate sensor.
-    # This is not protected by klipper "is printing" check so be careful when handling
-    cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
-    def cmd_MMU_GATE_RUNOUT(self, gcmd):
+    cmd_MMU_GATE_RUNOUT_REMOVE_help = "Internal MMU filament remove/runout handler"
+    def cmd_MMU_GATE_RUNOUT_REMOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if not self.is_enabled: return
+        do_runout = gcmd.get_int('DO_RUNOUT', 0) # Treat as runout(send_pause_command was issued) or "remove"
+        if not self.is_enabled:
+            if do_runout:
+                self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+            return
         self._fix_started_state()
         gate = gcmd.get_int('GATE', None)
-        do_runout = gcmd.get_int('DO_RUNOUT', 0) # Treat as runout or "remove"
         sensor = gcmd.get('SENSOR', "")
         try:
+            # Update gate map from pre-gate sensor
             if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
                 # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
                 if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
@@ -6833,7 +6838,7 @@ class Mmu:
             if do_runout:
                 if self.is_in_print() and (gate is None or gate == self.gate_selected):
                     self.log_debug("Handling runout detected by MMU %s sensor" % sensor)
-                    self._runout(True)
+                    self._runout(True) # Will send_resume_command() or fail and pause
                 else:
                     self.log_debug("Assertion failure: runout detected by %s but not in print or occured on unexpected gate. Ignored" % sensor)
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
@@ -6860,15 +6865,21 @@ class Mmu:
 
     # Callback to handle filament sensor at extruder entrance
     # This is not protected by klipper "is printing" check
-    cmd_MMU_EXTRUDER_RUNOUT_help = "Internal extruder filament runout handler"
-    def cmd_MMU_EXTRUDER_RUNOUT(self, gcmd):
+    cmd_MMU_EXTRUDER_RUNOUT_REMOVE_help = "Internal extruder filament remove/runout handler"
+    def cmd_MMU_EXTRUDER_RUNOUT_REMOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if not self.is_enabled: return
-
         do_runout = gcmd.get_int('DO_RUNOUT', 0)
+        if not self.is_enabled:
+            if do_runout:
+                self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+            return
+
         if do_runout:
-            # TODO Future extruder runout feature - just pause print as precaution?
-            self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+            if self.is_in_print():
+                self.handle_mmu_error("Filament runout occured at extruder. Manual intervention is required")
+            else:
+                self.log_debug("Assertion failure: runout detected by extruder sensor but not in print")
+                self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
     # Callback to handle filament sensor at extruder entrance
     # This is not protected by klipper "is not printing" check
