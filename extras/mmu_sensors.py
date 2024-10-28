@@ -94,11 +94,11 @@ class MmuRunoutHelper:
         is_printing = self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing"
 
         # Let Happy Hare decide what processing is possible based on it's printing state
-        if is_filament_present: # Insert detected
+        if is_filament_present and self.insert_gcode: # Insert detected
             self.min_event_systime = self.reactor.NEVER
             #logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
             self.reactor.register_callback(self._insert_event_handler)
-        else: # Runout detected
+        elif self.runout_gcode: # Runout detected
             self.min_event_systime = self.reactor.NEVER
             if is_printing and not self.runout_suspended:
                 #logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
