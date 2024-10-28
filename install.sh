@@ -539,8 +539,11 @@ read_previous_config() {
     # v2.7.3 - Blobifer update - Oct 13th 20204
     if [ ! "${variable_iteration_z_raise}" == "" ]; then
         echo -e "${INFO}Setting Blobifier variable_z_raise and variable_purge_length_maximum from previous settings"
-        variable_z_raise=$(python -c "print(${variable_iteration_z_raise} * ${variable_max_iterations_per_blob} - $(triangular $((variable_max_iterations_per_blob - 1))) * ${variable_iteration_z_change})")
-        variable_purge_length_maximum=$(python -c "print(${variable_max_iteration_length} * ${variable_max_iterations_per_blob})")
+        variable_z_raise=$(awk -v iter_z_raise="$variable_iteration_z_raise" -v max_iter="$variable_max_iterations_per_blob" -v z_change="$variable_iteration_z_change" 'BEGIN {
+            triangular_value = (max_iter - 1) * max_iter / 2;
+            print iter_z_raise * max_iter - triangular_value * z_change;
+        }')
+        variable_purge_length_maximum=$(awk -v max_len="$variable_max_iteration_length" -v max_iter="$variable_max_iterations_per_blob" 'BEGIN { print max_len * max_iter }')
     fi
 
     # v3.0.0
@@ -550,10 +553,6 @@ read_previous_config() {
     if [ "${_param_auto_calibrate_bowden}" != "" ]; then
         _param_autotune_bowden_length=${_param_auto_calibrate_bowden}
     fi
-}
-
-triangular() {
-    awk "BEGIN {print ($1 * ($1 + 1)) / 2}"
 }
 
 # Helper for upgrade logic
