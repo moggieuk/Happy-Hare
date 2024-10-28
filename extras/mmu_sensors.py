@@ -194,7 +194,7 @@ class MmuSensors:
 
             # Replace with custom runout_helper because of limited operation
             insert_gcode = "__MMU_EXTRUDER_INSERT"
-            runout_gcode = "__MMU_EXTRUDER_RUNOUT"
+            runout_gcode = None
             mmu_runout_helper = MmuRunoutHelper(self.printer, name, insert_gcode, runout_gcode, event_delay)
             fs.runout_helper = mmu_runout_helper
             fs.get_status = mmu_runout_helper.get_status
