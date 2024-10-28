@@ -3874,7 +3874,7 @@ class Mmu:
             if not self.sensor_manager.has_sensor(sensor):
                 raise MmuError("Attempting to %s gate but gate sensor '%s' is not configured on MMU!" % (direction, sensor))
         else:
-            raise MmuError("Unsupported gate endstop %s" % self.gate_homeing_endstop)
+            raise MmuError("Unsupported gate endstop %s" % self.gate_homing_endstop)
 
     # Fast load of filament in bowden, usually the full length but if 'full' is False a specific length can be specified
     # Note that filament position will be measured from the gate "parking position" and so will be the gate_parking_distance
