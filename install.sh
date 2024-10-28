@@ -485,7 +485,7 @@ read_previous_config() {
     cfg="mmu_hardware.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
     if [ -f "${dest_cfg}" ]; then
-        _hw_num_gates=$(awk -F '[: ]+' '/num_gates:/ {gsub(/[[:space:]]*#.*/, "", $2); print $2}' "${dest_cfg}")
+        _hw_num_gates=$(sed -n 's/^[[:space:]]*num_gates:[[:space:]]*\([0-9]\+\).*/\1/p' "${dest_cfg}")
     fi
 
     # TODO namespace config in third-party addons separately
@@ -536,7 +536,7 @@ read_previous_config() {
         _param_toolhead_ooze_reduction=0
     fi
 
-    # Blobifer update - Oct 13th 20204
+    # v2.7.3 - Blobifer update - Oct 13th 20204
     if [ ! "${variable_iteration_z_raise}" == "" ]; then
         echo -e "${INFO}Setting Blobifier variable_z_raise and variable_purge_length_maximum from previous settings"
         variable_z_raise=$(python -c "print(${variable_iteration_z_raise} * ${variable_max_iterations_per_blob} - $(triangular $((variable_max_iterations_per_blob - 1))) * ${variable_iteration_z_change})")
@@ -567,15 +567,53 @@ convert_to_boolean_string() {
     fi
 }
 
+# I'd prefer not to attempt to upgrade mmu_hardware.cfg but these will ease pain
+# and are relatively safe
 upgrade_mmu_hardware() {
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
 
-    # TEMPORARY: Upgrade mmu_servo mmu_hardware.cfg
+    # v3.0.0: Upgrade mmu_servo to mmu_selector_servo
     found_mmu_servo=$(grep -E -c "^\[mmu_servo mmu_servo\]" ${hardware_cfg} || true)
-    echo found_mmu_servo=${found_mmu_servo}
     if [ "${found_mmu_servo}" -eq 1 ]; then
         sed "s/\[mmu_servo mmu_servo\]/\[mmu_servo selector_servo\]/g" "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
         echo -e "${INFO}Updated [mmu_servo mmu_servo] in mmu_hardware.cfg..."
+    fi
+
+    found_mmu_machine=$(grep -E -c "^\[mmu_machine\]" ${hardware_cfg} || true)
+
+    # v3.0.0: Remove num_gates in led section
+    found_num_gates=$(grep -E -c "^(#?num_gates)" ${hardware_cfg} || true)
+    if [ "${found_num_gates}" -gt 0 -a "${found_mmu_machine}" -eq 0 ]; then
+        sed "/^\(#\?num_gates\)/d" "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+        echo -e "${INFO}Removed 'num_gates' from [mmu_leds] section in mmu_hardware.cfg..."
+    fi
+
+    # v3.0.0: Add minimal [mmu_machine] section as first section
+    if [ "${found_mmu_machine}" -eq 0 ]; then
+
+        # Note params will be comming from mmu_parameters
+        new_section=$(cat <<EOF
+# MMU MACHINE / TYPE ---------------------------------------------------------------------------------------------------
+# ███╗   ███╗███╗   ███╗██╗   ██╗    ███╗   ███╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗███████╗
+# ████╗ ████║████╗ ████║██║   ██║    ████╗ ████║██╔══██╗██╔════╝██║  ██║██║████╗  ██║██╔════╝
+# ██╔████╔██║██╔████╔██║██║   ██║    ██╔████╔██║███████║██║     ███████║██║██╔██╗ ██║█████╗  
+# ██║╚██╔╝██║██║╚██╔╝██║██║   ██║    ██║╚██╔╝██║██╔══██║██║     ██╔══██║██║██║╚██╗██║██╔══╝  
+# ██║ ╚═╝ ██║██║ ╚═╝ ██║╚██████╔╝    ██║ ╚═╝ ██║██║  ██║╚██████╗██║  ██║██║██║ ╚████║███████╗
+# ╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝     ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝
+[mmu_machine]
+num_gates: ${_param_mmu_num_gates}				# Number of selectable gates on MMU
+mmu_vendor: ${_param_mmu_vendor}			# MMU family
+mmu_version: ${_param_mmu_version}			# MMU hardware version number (add mod suffix documented above)
+
+EOF
+)
+        awk -v block="$new_section" '
+            BEGIN { found = 0 }
+            /^[[:space:]]*$/ && !found { print; print block; found = 1; next }
+            { print }
+        ' "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+
+        echo -e "${INFO}Added new [mmu_machine] section to mmu_hardware.cfg..."
     fi
 }  
 
@@ -1743,7 +1781,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
 
     copy_config_files        # Copy config files updating from in memory parmameters or h/w settings
 
-    # Temp upgrades of mmu_hardware.cfg
+    # Special upgrades of mmu_hardware.cfg
     upgrade_mmu_hardware
 
     # Link in new components
