@@ -21,11 +21,12 @@ jobs:
     - uses: actions/stale@v5
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
-        days-before-stale: 180
+        days-before-pr-stale: 180
+        days-before-issue-stale: 30
         days-before-close: 14
         remove-stale-when-updated: true
         any-of-labels: believe fixed / answered, more info needed, wontfix, incomplete
-        stale-issue-message: "This issue is stale because it has been open for 180 days with no activity. It will be closed in 14 days automatically unless there is activity."
+        stale-issue-message: "This issue is stale because it has been open for over 30 days with no activity. It will be closed in 14 days automatically unless there is activity."
         close-issue-message: "This issue was closed because it has been inactive for 14 days since being marked as stale."
         stale-issue-label: 'stale'
         stale-pr-message: "This PR is stale because it has been open for 180 days with no activity. It will be closed in 14 days automatically unless there is activity."
