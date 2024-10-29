@@ -1072,8 +1072,9 @@ questionaire() {
     echo -e "3) Tradrack v1.0"
     echo -e "4) Angry Beaver v1.0"
     echo -e "5) Armored Turtle v1.0"
-    echo -e "6) Other / Custom (or just want starter config files)"
-    num=$(prompt_123 "MMU Type?" 6)
+    echo -e "6) 3MS (Modular Multi Material System) v1.0"
+    echo -e "7) Other / Custom (or just want starter config files)"
+    num=$(prompt_123 "MMU Type?" 7)
     echo
     case $num in
         1) # ERCF v1.1
@@ -1194,6 +1195,7 @@ questionaire() {
             _param_extruder_homing_endstop="extruder"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_parking_distance=25
+            _param_gear_homing_speed=80
             ;;
 
         5) # Amored Turtle v1.0
@@ -1210,9 +1212,30 @@ questionaire() {
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="post_gate"
             _param_gate_parking_distance=10
+
+            # Macro variable config
+            variable_user_pre_unload_extension="_MMU_RESPOOL_START"
+            variable_user_post_unload_extension="_MMU_RESPOOL_STOP"
             ;;
 
-        6) # Other / Custom
+        6) # 3MS
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            _hw_mmu_vendor="3MS"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=1
+            _hw_variable_rotation_distances=1
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="extruder"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_parking_distance=25
+            _param_gear_homing_speed=80
+            ;;
+
+        7) # Other / Custom
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
             SETUP_LED=yes
