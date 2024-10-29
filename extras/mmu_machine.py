@@ -47,9 +47,10 @@ VENDOR_TRADRACK       = "Tradrack"
 VENDOR_PRUSA          = "Prusa"
 VENDOR_ANGRY_BEAVER   = "AngryBeaver"
 VENDOR_ARMORED_TURTLE = "ArmoredTurtle"
+VENDOR_3MS            = "3MS"
 VENDOR_OTHER          = "Other"
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_ARMORED_TURTLE, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_ARMORED_TURTLE, VENDOR_3MS, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -90,12 +91,17 @@ class MmuMachine:
         elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
-            variable_bowden_lengths = 1
+            variable_bowden_lengths = 0
 
         elif self.mmu_vendor == VENDOR_ARMORED_TURTLE:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
             variable_bowden_lengths = 1
+
+        elif self.mmu_vendor == VENDOR_ANGRY_3MS:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, selector_type)
