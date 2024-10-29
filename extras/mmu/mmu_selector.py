@@ -98,9 +98,7 @@ class VirtualSelector:
         return False
 
     def get_status(self):
-        return {
-            'grip': "drive"
-        }
+        return {}
 
     def get_mmu_status_config(self):
         msg = "\nVirtual selector"
