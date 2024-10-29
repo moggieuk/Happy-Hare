@@ -1224,7 +1224,7 @@ questionaire() {
             _hw_mmu_vendor="3MS"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
-            _hw_variable_bowden_lengths=1
+            _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=1
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
