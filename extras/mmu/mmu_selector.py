@@ -343,14 +343,7 @@ class LinearSelector:
         return self.bypass_offset >= 0
 
     def get_status(self):
-        status = {
-            'grip': "release" if self.servo.servo_state == self.servo.SERVO_UP_STATE else
-                    "drive" if self.servo.servo_state == self.servo.SERVO_DOWN_STATE else
-                    "hold" if self.servo.servo_state == self.servo.SERVO_MOVE_STATE else
-                    "unknown",
-        }
-        status.update(self.servo.get_status())
-        return status
+        return self.servo.get_status()
 
     def get_mmu_status_config(self):
         msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
