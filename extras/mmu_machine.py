@@ -98,7 +98,7 @@ class MmuMachine:
             variable_rotation_distances = 1
             variable_bowden_lengths = 1
 
-        elif self.mmu_vendor == VENDOR_ANGRY_3MS:
+        elif self.mmu_vendor == VENDOR_3MS:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
