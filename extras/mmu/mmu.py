@@ -746,26 +746,30 @@ class Mmu:
 
         # Load bowden length configuration (calibration set with MMU_CALIBRATE_BOWDEN) ----------------------
         self.bowden_lengths = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, None)
-        bowden_home = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_HOME, self.ENDSTOP_ENCODER)
-        if self.bowden_lengths and bowden_home in self.GATE_ENDSTOPS:
-            self.bowden_lengths = [-1 if x < 0 else x for x in self.bowden_lengths] # Ensure -1 value for uncalibrated
-            # Ensure list size
-            if len(self.bowden_lengths) == self.num_gates:
-                self.log_debug("Loaded saved bowden lengths: %s" % self.bowden_lengths)
+        bowden_home = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_HOME, self.gate_homing_endstop)
+        if self.mmu_machine.require_bowden_move:
+            if self.bowden_lengths and bowden_home in self.GATE_ENDSTOPS:
+                self.bowden_lengths = [-1 if x < 0 else x for x in self.bowden_lengths] # Ensure -1 value for uncalibrated
+                # Ensure list size
+                if len(self.bowden_lengths) == self.num_gates:
+                    self.log_debug("Loaded saved bowden lengths: %s" % self.bowden_lengths)
+                else:
+                    self.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_CALIB_BOWDEN_LENGTHS)
+                    self.bowden_lengths = self._ensure_list_size(self.bowden_lengths, self.num_gates)
+
+                # Ensure they are identical (just for optics) if variable_bowden_lengths is False
+                if not self.mmu_machine.variable_bowden_lengths:
+                    self.bowden_lengths = [self.bowden_lengths[0]] * self.num_gates
+
+                self._adjust_bowden_lengths()
+                if not any(x == -1 for x in self.bowden_lengths):
+                    self.calibration_status |= self.CALIBRATED_BOWDENS
             else:
-                self.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_CALIB_BOWDEN_LENGTHS)
-                self.bowden_lengths = self._ensure_list_size(self.bowden_lengths, self.num_gates)
-
-            # Ensure they are identical (just for optics) if variable_bowden_lengths is False
-            if not self.mmu_machine.variable_bowden_lengths:
-                self.bowden_lengths = [self.bowden_lengths[0]] * self.num_gates
-
-            self._adjust_bowden_lengths()
-            if not any(x == -1 for x in self.bowden_lengths):
-                self.calibration_status |= self.CALIBRATED_BOWDENS
+                self.log_always("Warning: Bowden lengths not found in mmu_vars.cfg. Probably not calibrated yet")
+                self.bowden_lengths = [-1] * self.num_gates
         else:
-            self.log_always("Warning: Bowden lengths not found in mmu_vars.cfg. Probably not calibrated yet")
-            self.bowden_lengths = [-1] * self.num_gates
+            self.bowden_lengths = [0] * self.num_gates
+            self.calibration_status |= self.CALIBRATED_BOWDENS
         self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_LENGTHS] = self.bowden_lengths
         self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_HOME] = bowden_home
 
@@ -1886,7 +1890,7 @@ class Mmu:
                 msg += " (%.1fmm runout)" % self.encoder_sensor.get_clog_detection_length()
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
-                msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
+                msg += "\nMMU does not have an encoder - move validation or clog detection is not possible"
             msg += "\nSpoolMan is %s" % ("ENABLED (pulling gate map)" if self.spoolman_support == self.SPOOLMAN_PULL else "ENABLED (push gate map)" if self.spoolman_support == self.SPOOLMAN_PUSH else "ENABLED" if self.spoolman_support == self.SPOOLMAN_READONLY else "DISABLED")
             msg += "\nSensors: "
             sensors = self.sensor_manager.get_all_sensors()
