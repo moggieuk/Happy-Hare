@@ -1,1 +1,3 @@
 my_*.cfg
+out/
+.config

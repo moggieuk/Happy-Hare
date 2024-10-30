@@ -1,6 +1,6 @@
 [update_manager happy-hare]
 type: git_repo
-path: ~/Happy-Hare
+path: {happy_hare_home}
 origin: https://github.com/moggieuk/Happy-Hare.git
 primary_branch: main
 managed_services: klipper
@@ -9,3 +9,4 @@ managed_services: klipper
 enable_file_preprocessor: True
 enable_toolchange_next_pos: True
 update_spoolman_location: True
+

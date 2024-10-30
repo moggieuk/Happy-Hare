@@ -1,0 +1,427 @@
+
+happy_hare_version = 2.72
+formatted_version = $(shell, echo "$(happy_hare_version)" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
+
+mainmenu "Happy Hare $(formatted_version) Configuration"
+# Used to convert a shell command result to a y/n value
+to_bool = $(shell, $(1) && echo y || echo n)
+
+config VERSION
+  string	
+  default "$(happy_hare_version)"
+
+config F_VERSION
+  string
+  default "$(formatted_version)"
+
+comment '					'
+comment '(\\_/)					'
+comment '( *,*)					'
+comment '(")_(") Happy Hare version $(formatted_version) 	'	
+comment '					'
+
+config IS_MIPS
+  bool 
+  default $(to_bool, uname -m | grep -q 'mips')
+
+
+choice 
+  prompt "Type"
+  config HW_MMU_TYPE_ERCF_V1_1
+    bool "ERCF v1.1"
+    select MMU_HAS_ENCODER
+    select MMU_HAS_SELECTOR
+    select HW_VARIABLE_ROTATION_DISTANCES
+
+    if HW_MMU_TYPE_ERCF_V1_1
+      config HW_EXT_SPRINGY
+        bool "Springy"
+      config HW_EXT_BINKY
+		    bool "Binky"
+	    config HW_EXT_TRIPLE_DECK
+		    bool "Triple Deck"
+    endif
+
+  config HW_MMU_TYPE_ERCF_V2
+    bool "ERCF v2.0"
+    select MMU_HAS_ENCODER
+    select MMU_HAS_SELECTOR
+    select HW_VARIABLE_ROTATION_DISTANCES
+
+  config HW_MMU_TYPE_TRADRACK_V1
+    bool "Tradrack v1.0"
+    select MMU_HAS_SELECTOR
+
+    if HW_MMU_TYPE_TRADRACK_V1
+      config HW_EXT_BINKY
+		  bool "Binky" 
+      select MMU_HAS_ENCODER
+    endif
+
+  config HW_MMU_TYPE_ANGRY_BEAVER_V1
+    bool "Angry Beaver v1.0"
+    select HW_VARIABLE_ROTATION_DISTANCES
+
+  config HW_MMU_TYPE_ARMORED_TURTLE_V1
+    bool "Armored Turtle v1.0"
+    select HW_VARIABLE_BOWDEN_LENGTHS
+    select HW_VARIABLE_ROTATION_DISTANCES
+
+  config HW_MMU_TYPE_OTHER
+    bool "Other (or just want start config files)"
+endchoice
+
+config HW_MMU_VENDOR
+  string
+  default "ERCF" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
+  default "Tradrack" if HW_MMU_TYPE_TRADRACK_V1
+  default "AngryBeaver" if HW_MMU_TYPE_ANGRY_BEAVER_V1
+  default "ArmoredTurtle" if HW_MMU_TYPE_ARMORED_TURTLE_V1
+  default "Other"
+
+config HW_MMU_BASE_VERSION
+  string
+  default "1.1" if HW_MMU_TYPE_ERCF_V1_1
+  default "2.0" if HW_MMU_TYPE_ERCF_V2
+  default "1.0" if HW_MMU_TYPE_TRADRACK_V1
+  default "1.0" if HW_MMU_TYPE_ANGRY_BEAVER_V1
+  default "1.0" if HW_MMU_TYPE_ARMORED_TURTLE_V1
+  default "1.0" if HW_MMU_TYPE_OTHER
+
+config MMU_HAS_ENCODER
+  bool
+  prompt "Does the MMU have an encoder?" if HW_MMU_TYPE_OTHER
+
+config MMU_HAS_SELECTOR
+  bool
+  prompt "Does the MMU have a selector?" if HW_MMU_TYPE_OTHER
+
+config HW_VARIABLE_BOWDEN_LENGTHS
+  bool
+  prompt "Variable bowden lengths?" if HW_MMU_TYPE_OTHER
+
+config HW_VARIABLE_ROTATION_DISTANCES
+  bool
+  prompt "Variable rotation distances?" if HW_MMU_TYPE_OTHER
+
+choice 
+  prompt "Homing endstop" if HW_MMU_TYPE_OTHER
+  config PARAM_GATE_HOME_ENDSTOP_ENCODER
+    bool "Encoder homing endstop"
+  config PARAM_GATE_HOME_ENDSTOP_GATE
+    bool "Gate homing endstop"
+  config PARAM_GATE_HOME_ENDSTOP_POST_GATE
+    bool "Post-gate homing endstop"
+endchoice
+
+config PARAM_GATE_HOME_ENDSTOP
+  string
+  default "encoder" if PARAM_GATE_HOME_ENDSTOP_ENCODER
+  default "gate" if PARAM_GATE_HOME_ENDSTOP_GATE
+  default "post_gate" if PARAM_GATE_HOME_ENDSTOP_POST_GATE
+
+choice
+  prompt "Board type"
+  config HW_BOARD_TYPE_MMB_V1_0
+    bool "BTT MMB v1.0 (with CANbus)"
+  config HW_BOARD_TYPE_MMB_V1_1
+    bool "BTT MMB v1.1 (with CANbus)"
+  config HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1
+    bool "Fysetc Burrows ERB v1"
+  config HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
+    bool "Fysetc Burrows ERB v2"
+  config HW_BOARD_TYPE_EASY_BRD 
+    bool "Standard EASY-BRD (with SAMD21)"
+  config HW_BOARD_TYPE_EASY_BRD_RP2040
+    bool "EASY-BRD with RP2040"
+  config HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
+    bool "Mellow EASY-BRD v1.x (with CANbus)"
+  config HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
+    bool "Mellow EASY-BRD v2.x (with CANbus)"
+  config HW_BOARD_TYPE_UNKOWN
+    bool "Not in list / Unknown"
+endchoice
+
+# Make the first 6 serial tty devices selectable, it's unlikely people have more.
+# And if they do, they propably know what they are doing and have no issue manually selecting it.
+# Not the prettiest configuration, but it works
+serial=$(shell, ls '/dev/serial/by-id/*' 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
+serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
+serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "HW_SERIAL_" toupper($0)}')
+choice 
+  prompt "Select MCU serial device"
+  depends on $(serial_exists,1) # Only show if there are any serial tty devices to select. Likely an issue with the setup
+
+  # Select the first tty with the right MCU type as default
+  default $(serial_config,1,samd21) if HW_BOARD_TYPE_EASY_BRD
+  default $(serial_config,1,rp2040) if HW_BOARD_TYPE_EASY_BRD_RP2040 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 || HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1 || HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
+  default $(serial_config,1,stm32) if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
+
+  config $(serial_config,1)
+    depends on $(serial_exists,1)
+    bool "$(serial,1)"
+  config $(serial_config,2)
+    depends on $(serial_exists,2)
+    bool "$(serial,2)"
+  config $(serial_config,3)
+    depends on $(serial_exists,3)
+    bool "$(serial,3)"
+  config $(serial_config,4)
+    depends on $(serial_exists,4)
+    bool "$(serial,4)"
+  config $(serial_config,5)
+    depends on $(serial_exists,5)
+    bool "$(serial,5)"
+  config $(serial_config,6)
+    depends on $(serial_exists,6)
+    bool "$(serial,6)"
+  config HW_SERIAL_OTHER
+    bool "Other (specify in parent menu)"
+endchoice
+
+config HW_SERIAL
+  string
+  prompt "MCU serial device path" if HW_SERIAL_OTHER || !$(serial_exists,1)
+  default "$(serial,1)" if $(serial_config,1)
+  default "$(serial,2)" if $(serial_config,2)
+  default "$(serial,3)" if $(serial_config,3)
+  default "$(serial,4)" if $(serial_config,4)
+  default "$(serial,5)" if $(serial_config,5)
+  default "$(serial,6)" if $(serial_config,6)
+  help
+    Specify the path of the serial device connected to the MMU MCU. 
+    It's best to use the /dev/serial/by-id/ path, as it's unique and doesn't change when you plug in multiple serial devices.
+    Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
+
+
+choice 
+  prompt "Selector type" if MMU_HAS_SELECTOR && HW_MMU_TYPE_OTHER
+	config HW_SELECTOR_TYPE_LINEAR
+	  bool "Linear selector"
+	config HW_SELECTOR_TYPE_VIRTUAL
+	  bool "Virtual selector"
+endchoice
+
+config HW_SELECTOR_TYPE
+  string
+  depends on MMU_HAS_SELECTOR
+	default "LinearSelector" if HW_SELECTOR_TYPE_LINEAR
+	default "VirtualSelector" if HW_SELECTOR_TYPE_VIRTUAL
+
+choice 
+  prompt "Selector servo type" 
+  depends on MMU_HAS_SELECTOR
+
+  if HW_MMU_VENDOR = "ERCF"
+    config HW_SERVO_TYPE_MG_90S
+      bool "MG-90S"
+    config HW_SERVO_TYPE_SAVOX_SH0255MG
+      bool "Savox SH0255MG"
+    config HW_SERVO_TYPE_GDW_DS041MG
+      bool "GDW DS041MG"
+  endif
+
+  if HW_MMU_VENDOR = "Tradrack"
+    config HW_SERVO_TYPE_TRADRACK
+      bool "PS-1171MG or FT1117M (Tradrack)"
+  endif
+
+  config HW_SERVO_TYPE_OTHER
+    bool "Not listed / Other"
+endchoice
+
+config HW_NUM_GATES
+  int "Number of gates" 
+  range 1 32
+  default 12
+
+config ENABLE_LEDS 
+  bool "Enable neopixel LEDs support?"
+# config HW_NUM_LEDS
+#   int "Number of LEDs" 
+#   depends on ENABLE_LEDS
+
+config ENABLE_SELECTOR_TOUCH
+  bool "Enable touch selector operation using TMC Stallguard?"
+  help
+    This allows for additional selector recovery steps but is difficult to tune.
+    Not recommended if you are new to MMU/Happy-Hare.
+    The MCU must have DIAG output for steppers. Possible to configure later.
+  if HW_BOARD_TYPE_EASY_BRD
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! " 
+      depends on SELECTOR_TOUCH
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! " 
+      depends on !SELECTOR_TOUCH
+  endif 
+
+config ENABLE_CLOG_DETECT
+  bool "Enable clog detection?"
+  depends on MMU_HAS_ENCODER
+config ENABLE_AUTO_CLOG_DETECT
+  bool "Enable automatic clog detection length?"
+  depends on MMU_ENABLE_CLOG_DETECT
+  default y
+
+config ENABLE_ENDLESS_SPOOL
+  bool "Enable EndlessSpool? This uses filament runout detection to automate switching to a new spool without interruption."
+
+config INSTALL_INCLUDES
+  bool "Install includes in printer.cfg?"
+  if INSTALL_INCLUDES
+    config INSTALL_12864_MENU
+      bool "Install Mini 12864 menu configuration?"
+    config INSTALL_CLIENT_MACROS
+      bool "Install default pause/resume macros supplied with Happy Hare?"
+      default y
+    config INSTALL_EREC_CUTTER
+      bool "Install EREC filament cutter macros?"
+    config INSTALL_BLOBIFIER
+      bool "Install Blobifier macros?"
+    config INSTALL_RESPOOLER
+      bool "Install Respooler macros?"
+  endif
+
+config SHOW_ADVANCED_SETTINGS
+  bool "Show advanced settings?"
+  default y if HW_MMU_TYPE_OTHER
+  menu "Paths"
+    visible if SHOW_ADVANCED_SETTINGS
+    config PRINTER_CONFIG 
+      string "Printer config file"
+      depends on !REPETIER
+      default "printer.cfg"
+    config KLIPPER_HOME
+      string "Klipper directory"
+      # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture) 
+      # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
+      default "${CONFIG_KLIPPER_HOME}" 
+    config KLIPPER_CONFIG_HOME
+      string "Klipper config directory"
+      default "/usr/data/printer_data/config" if IS_MIPS
+      default "~" if OCTOPRINT
+      default "~/printer_data/config"
+    config MOONRAKER_HOME
+      string "Moonraker directory"
+      depends on !OCTOPRINT
+      default "/usr/data/moonraker" if IS_MIPS
+      default "~/moonraker"
+    config HAPPY_HARE_HOME
+      string "Happy Hare directory"
+      default "/usr/data/Happy-Hare" if IS_MIPS
+      default "$(shell,	pwd)"
+    config GCODES_PATH
+      string "Gcodes directory"
+      default "~/printer_data/gcodes"
+  endmenu  
+  
+  menu "Services"
+    visible if SHOW_ADVANCED_SETTINGS
+    config SERVICE_KLIPPER
+      string "Klipper service name"
+      depends on !REPETIER
+      default "klipper_service" if IS_MIPS
+      default "klipper.service"
+    config SERVICE_MOONRAKER
+      string "Moonraker service name"
+      depends on !OCTOPRINT
+      default "moonraker_service" if IS_MIPS
+      default "moonraker.service"
+    config SERVICE_OCTOPRINT
+      string "Octoprint service name"
+      depends on OCTOPRINT
+      default "octoprint.service"
+  endmenu
+  
+  menu "Pins"
+    visible if SHOW_ADVANCED_SETTINGS
+    source "./pins.kconfig"
+  endmenu
+  
+  menu "Motors"
+    visible if SHOW_ADVANCED_SETTINGS
+    config HW_SERVO_MAX_ANGLE
+      int "Servo maximum angle"
+      depends on MMU_HAS_SELECTOR
+      range 0 360
+      default 131 if HW_SERVO_TYPE_TRADRACK # is this a bug? should be 180?
+      default 180 if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG || HW_SERVO_TYPE_GDW_DS041MG
+      default 180
+    config HW_SERVO_MIN_PULSE_WIDTH
+      string "Servo minimum pulse width"
+      depends on MMU_HAS_SELECTOR
+      default "0.00085" if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG
+      default "0.00050" if HW_SERVO_TYPE_GDW_DS041MG
+      default "0.00070" if HW_SERVO_TYPE_TRADRACK
+    config HW_SERVO_MAX_PULSE_WIDTH
+      string "Servo maximum pulse width"
+      depends on MMU_HAS_SELECTOR
+      default "0.00240" if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG
+      default "0.00240" if HW_SERVO_TYPE_GDW_DS041MG
+      default "0.00240" if HW_SERVO_TYPE_TRADRACK
+    config HW_SERVO_UP_ANGLE
+      int "Servo up angle"
+      depends on MMU_HAS_SELECTOR
+      default 30 if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_GDW_DS041MG
+      default 140 if HW_SERVO_TYPE_SAVOX_SH0255MG
+      default 145 if HW_SERVO_TYPE_TRADRACK
+      default 0
+    config HW_SERVO_MOVE_ANGLE
+      int "Servo move angle"
+      depends on MMU_HAS_SELECTOR
+      default HW_SERVO_UP_ANGLE if !HW_MMU_TYPE_ERCF_V2
+      default 61 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_MG_90S
+      default 109 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_SAVOX_SH0255MG
+      default 50 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_GDW_DS041MG
+      default 0
+    config HW_SERVO_DOWN_ANGLE
+      int "Servo down angle"
+      depends on MMU_HAS_SELECTOR
+      default 140 if HW_SERVO_TYPE_MG_90S 
+      default 100 if HW_SERVO_TYPE_GDW_DS041MG
+      default 30 if HW_SERVO_TYPE_SAVOX_SH0255MG
+      default 1 if HW_SERVO_TYPE_TRADRACK
+      default 0
+    config HW_SERVO_BUZZ_GEAR_ON_DOWN
+      int "How often to buzz servo on down angle"
+      depends on MMU_HAS_SELECTOR
+      default 3 if HW_MMU_VENDOR = "ERCF"
+      default 1 
+    config HW_SERVO_ALWAYS_ACTIVE
+      bool "Servo always active?"
+      depends on MMU_HAS_SELECTOR
+      default y if HW_SERVO_TYPE_TRADRACK
+  
+    config HW_GEAR_GEAR_RATIO
+      string "Gear ratio"
+      default "50:17" if HW_MMU_TYPE_TRADRACK_V1
+      default "80:20"
+    config HW_GEAR_RUN_CURRENT
+      string "Gear run current"
+      default "1.27" if HW_MMU_TYPE_TRADRACK_V1
+      default "0.8"
+    config HW_GEAR_HOLD_CURRENT
+      string "Gear hold current"
+      default "0.2" if HW_MMU_TYPE_TRADRACK_V1
+      default "0.1"	
+  
+    config HW_SELECTOR_RUN_CURRENT
+      string "Selector run current"
+      depends on MMU_HAS_SELECTOR
+      default "0.63" if HW_MMU_TYPE_TRADRACK_V1
+      default "0.4"
+    config HW_SELECTOR_HOLD_CURRENT
+      string "Selector hold current"
+      depends on MMU_HAS_SELECTOR
+      default "0.2"
+  endmenu
+  
+  config REPETIER
+    bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS
+  config REPETIER_NAME
+    string "Repetier name"
+    depends on REPETIER
+    
+  config OCTOPRINT
+    bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
+    depends on !IS_MIPS
+
