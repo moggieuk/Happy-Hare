@@ -701,9 +701,9 @@ install_printer_includes() {
     fi
 
     if [ "${CONFIG_INSTALL_RESPOOLER}" == "y" ]; then
-        install_include "mmu/addons/respooler.cfg" "${dest}"
+        install_include "mmu/addons/dc_respooler.cfg" "${dest}"
     else
-        uninstall_include "mmu/addons/respooler.cfg" "${dest}"
+        uninstall_include "mmu/addons/dc_respooler.cfg" "${dest}"
     fi
 
     install_include "mmu/base/\*.cfg" "${dest}"
