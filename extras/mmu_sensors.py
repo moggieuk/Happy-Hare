@@ -97,23 +97,19 @@ class MmuRunoutHelper:
         if is_filament_present and self.insert_gcode: # Insert detected
             self.min_event_systime = self.reactor.NEVER
             #logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
-            logging.info("PAUL: MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
             self.reactor.register_callback(lambda reh: self._insert_event_handler(eventtime))
 
         else: # Remove or Runout detected
             if is_printing and not self.runout_suspended and self.runout_gcode:
                 self.min_event_systime = self.reactor.NEVER
                 #logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
-                logging.info("PAUL: MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(lambda reh: self._runout_event_handler(eventtime))
             elif self.remove_gcode: # Just a "remove" event
                 self.min_event_systime = self.reactor.NEVER
                 #logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
-                logging.info("PAUL: MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(lambda reh: self._remove_event_handler(eventtime))
 
     def enable_runout(self, restore):
-        # PAUL not needed self.min_event_systime = self.reactor.monotonic()
         self.runout_suspended = not restore
 
     def get_status(self, eventtime):
@@ -146,7 +142,7 @@ class MmuSensors:
         self.RUNOUT_GCODE = "__MMU_SENSOR_RUNOUT"
 
         self.printer = config.get_printer()
-        event_delay = config.get('event_delay', 1.)
+        event_delay = config.get('event_delay', 0.5)
 
         # Setup "mmu_pre_gate" sensors...
         for gate in range(23):
@@ -201,17 +197,17 @@ class MmuSensors:
 
     def _create_mmu_sensor(self, config, name_prefix, gate, switch_pin, event_delay, insert=False, remove=False, runout=False):
         name = "%s_%d" % (name_prefix, gate) if gate is not None else "%s" % name_prefix
-        sensor = "%s_sensor" % name
+        sensor = name if gate is not None else "%s_sensor" % name
         section = "filament_switch_sensor %s" % sensor
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
         config.fileconfig.set(section, "pause_on_runout", "False")
         fs = self.printer.load_object(config, section)
 
-        # Replace with custom runout_helper because limited operation is possible during print
+        # Replace with custom runout_helper because limited operation at all times
         insert_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate else "")) if insert else None
-        remove_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate else "")) if insert else None
-        runout_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate else "")) if insert else None
+        remove_gcode = ("%s SENSOR=%s%s" % (self.REMOVE_GCODE, name, (" GATE=%d" % gate) if gate else "")) if remove else None
+        runout_gcode = ("%s SENSOR=%s%s" % (self.RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate else "")) if runout else None
         gate_helper = MmuRunoutHelper(self.printer, sensor, event_delay, insert_gcode, remove_gcode, runout_gcode)
         fs.runout_helper = gate_helper
         fs.get_status = gate_helper.get_status

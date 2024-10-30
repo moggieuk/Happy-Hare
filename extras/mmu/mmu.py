@@ -579,12 +579,6 @@ class Mmu:
         self.gcode.register_command('__MMU_SENSOR_REMOVE', self.cmd_MMU_SENSOR_REMOVE, desc = self.cmd_MMU_SENSOR_REMOVE_help)
         self.gcode.register_command('__MMU_SENSOR_INSERT', self.cmd_MMU_SENSOR_INSERT, desc = self.cmd_MMU_SENSOR_INSERT_help)
 
-# PAUL
-#        self.gcode.register_command('__MMU_GATE_RUNOUT_REMOVE', self.cmd_MMU_GATE_RUNOUT_REMOVE, desc = self.cmd_MMU_GATE_RUNOUT_REMOVE_help)
-#        self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
-#        self.gcode.register_command('__MMU_EXTRUDER_RUNOUT_REMOVE', self.cmd_MMU_EXTRUDER_RUNOUT_REMOVE, desc = self.cmd_MMU_EXTRUDER_RUNOUT_REMOVE_help)
-#        self.gcode.register_command('__MMU_EXTRUDER_INSERT', self.cmd_MMU_EXTRUDER_INSERT, desc = self.cmd_MMU_EXTRUDER_INSERT_help)
-
         # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
 
@@ -633,12 +627,12 @@ class Mmu:
             [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER_ENTRY] +
             ["%s_%d" % (self.ENDSTOP_POST_GATE_PREFIX, i) for i in range(self.num_gates)]
         ):
-            sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
+            sensor_name = name if re.search(r"_[0-9]+$", name) else "%s_sensor" % name
+            sensor = self.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
             if sensor is not None:
-                if name == self.ENDSTOP_TOOLHEAD or isinstance(sensor.runout_helper, MmuRunoutHelper):
-
+                if isinstance(sensor.runout_helper, MmuRunoutHelper):
                     # Add sensor pin as an extra endstop for gear rail
-                    sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
+                    sensor_pin = self.config.getsection("filament_switch_sensor %s" % sensor_name).get("switch_pin")
                     ppins = self.printer.lookup_object('pins')
                     pin_params = ppins.parse_pin(sensor_pin, True, True)
                     share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
@@ -6836,7 +6830,7 @@ class Mmu:
             self.pause_resume.send_resume_command() # Undo what runout sensor handling did
             return
         self._fix_started_state()
-        eventtime = gcmd.get_int('EVENTTIME', self.reactor.monotonic())
+        eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         sensor = gcmd.get('SENSOR', "")
         send_resume = False
@@ -6845,33 +6839,32 @@ class Mmu:
             if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate != self.gate_selected:
                 # Always update gate map from pre-gate sensor
                 self._set_gate_status(gate, self.GATE_EMPTY)
-                send_resume = True
+                process_runout = False
 
             elif eventtime >= self.runout_last_enable_time:
                 if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate == self.gate_selected:
-                    # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
-                    if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
-                        self._runout(True) # Will send_resume_command() or fail and pause
+                    if self.enable_endless_spool and self.endless_spool_eject_gate == gate:
+                        self.log_trace("Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate" % sensor)
                     else:
-                        send_resume = True
+                        process_runout = True
 
                 elif sensor == self.ENDSTOP_GATE and gate is None:
-                    self._runout(True)
+                    process_runout = True
 
                 elif sensor.startswith(self.ENDSTOP_POST_GATE_PREFIX) and gate == self.gate_selected:
-                    self._runout(True)
+                    process_runout = True
 
                 elif sensor.startswith(self.ENDSTOP_EXTRUDER_ENTRY):
-                    self.handle_mmu_error("Filament runout occured at extruder. Manual intervention is required") # Will pause
+                    raise MmuError("Filament runout occured at extruder. Manual intervention is required")
 
                 else:
                     self.log_debug("Assertion failure: Unexpected/unhandled sensor runout event type. Ignored")
-                    send_resume = True
             else:
                 self.log_debug("Assertion failure: Late sensor runout event. Ignored")
-                send_resume = True
 
-            if send_resume:
+            if process_runout:
+                self._runout(True) # Will send_resume_command() or fail and pause
+            else:
                 self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
         except MmuError as ee:
@@ -6887,7 +6880,7 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
-        eventtime = gcmd.get_int('EVENTTIME', None)
+        eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         sensor = gcmd.get('SENSOR', "")
 
@@ -6931,7 +6924,7 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
-        eventtime = gcmd.get_int('EVENTTIME', None)
+        eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         sensor = gcmd.get('SENSOR', "")
 
@@ -6947,76 +6940,6 @@ class Mmu:
                 self.log_debug("Assertion failure: Unexpected/unhandled sensor remove event. Ignored")
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
-
-# PAUL temp old logic for reference
-#    # Callback to handle gate filament sensors on MMU.
-#    # SENSOR will contain sensor name,
-#    # GATE will be set if specific pre-gate or post-gate sensor.
-#    cmd_MMU_GATE_RUNOUT_REMOVE_help = "Internal MMU filament remove/runout handler"
-#    def cmd_MMU_GATE_RUNOUT_REMOVE(self, gcmd):
-#        self.log_to_file(gcmd.get_commandline())
-#        do_runout = gcmd.get_int('DO_RUNOUT', 0) # Treat as runout(send_pause_command was issued) or "remove"
-#        if not self.is_enabled:
-#            if do_runout:
-#                self.pause_resume.send_resume_command() # Undo what runout sensor handling did
-#            return
-#        self._fix_started_state()
-#        gate = gcmd.get_int('GATE', None)
-#        sensor = gcmd.get('SENSOR', "")
-#        try:
-#            # Update gate map from pre-gate sensor
-#            if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
-#                # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
-#                if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
-#                    self._set_gate_status(gate, self.GATE_EMPTY)
-#                else:
-#                    self.log_trace("Ignoring runout detected by %s because endless_spool_eject_gate is active" % sensor)
-#
-#            if do_runout:
-#                if self.is_in_print() and (gate is None or gate == self.gate_selected):
-#                    self.log_debug("Handling runout detected by MMU %s sensor" % sensor)
-#                    self._runout(True) # Will send_resume_command() or fail and pause
-#                else:
-#                    self.log_debug("Assertion failure: runout detected by %s but not in print or occured on unexpected gate. Ignored" % sensor)
-#                    self.pause_resume.send_resume_command() # Undo what runout sensor handling did
-#        except MmuError as ee:
-#            self.handle_mmu_error(str(ee))
-#
-#    # This callback is not protected by klipper "is printing" check so be careful
-#    cmd_MMU_GATE_INSERT_help = "Internal MMU filament detection handler"
-#    def cmd_MMU_GATE_INSERT(self, gcmd):
-#        self.log_to_file(gcmd.get_commandline())
-#        if not self.is_enabled: return
-#        self._fix_started_state()
-#        sensor = gcmd.get('SENSOR', "")
-#        gate = gcmd.get_int('GATE', None)
-#        try:
-#            if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
-#                self.log_debug("Handling insertion detected by MMU %s sensor" % sensor)
-#                self._set_gate_status(gate, self.GATE_UNKNOWN)
-#                self._check_pending_spool_id(gate) # Have spool_id ready?
-#                if not self.is_in_print() and self.gate_autoload:
-#                    self.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
-#        except MmuError as ee:
-#            self.handle_mmu_error(str(ee))
-#
-#    # Callback to handle filament sensor at extruder entrance
-#    # This is not protected by klipper "is printing" check
-#    cmd_MMU_EXTRUDER_RUNOUT_REMOVE_help = "Internal extruder filament remove/runout handler"
-#    def cmd_MMU_EXTRUDER_RUNOUT_REMOVE(self, gcmd):
-#        self.log_to_file(gcmd.get_commandline())
-#        do_runout = gcmd.get_int('DO_RUNOUT', 0)
-#        if not self.is_enabled:
-#            if do_runout:
-#                self.pause_resume.send_resume_command() # Undo what runout sensor handling did
-#            return
-#
-#        if do_runout:
-#            if self.is_in_print():
-#                self.handle_mmu_error("Filament runout occured at extruder. Manual intervention is required")
-#            else:
-#                self.log_debug("Assertion failure: runout detected by extruder sensor but not in print")
-#                self.pause_resume.send_resume_command() # Undo what runout sensor handling did
 
     # Callback to handle filament sensor at extruder entrance
     # This is not protected by klipper "is not printing" check

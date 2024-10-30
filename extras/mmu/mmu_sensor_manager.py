@@ -26,10 +26,10 @@ class MmuSensorManager:
             ["%s_%d" % (self.mmu.PRE_GATE_SENSOR_PREFIX, i) for i in range(self.mmu.num_gates)] +
             ["%s_%d" % (self.mmu.ENDSTOP_POST_GATE_PREFIX, i) for i in range(self.mmu.num_gates)]
         ):
-            sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
-            if sensor is not None:
-                if name == self.mmu.ENDSTOP_TOOLHEAD or isinstance(sensor.runout_helper, MmuRunoutHelper):
-                    self.sensors[name] = sensor
+            sensor_name = name if re.search(r"_[0-9]+$", name) else "%s_sensor" % name
+            sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
+            if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
+                self.sensors[name] = sensor
 
     # Return dict of all sensor states (or None if sensor disabled)
     def get_all_sensors(self):

@@ -126,6 +126,7 @@ class LinearSelector:
     def __init__(self, mmu):
         self.mmu = mmu
         self.is_homed = False
+        self.bypass_offset = -1
 
         # Process config
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
