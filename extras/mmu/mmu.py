@@ -2881,6 +2881,7 @@ class Mmu:
             # Restore original position if parked
             if self.saved_toolhead_operation:
                 self._restore_toolhead_position(self.saved_toolhead_operation)
+            self._wrap_gcode_command(self.error_macro)
 
         # Be deliberate about order of these tasks
         if run_pause_macro:
