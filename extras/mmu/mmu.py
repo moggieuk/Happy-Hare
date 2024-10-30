@@ -4268,7 +4268,8 @@ class Mmu:
             # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
             # TODO and bowden is calibrated and we don't tune bowden below
             if (
-                self.autotune_rotation_distance and self.gate_selected > 0
+                self.mmu_machine.variable_rotation_distances
+                and self.autotune_rotation_distance and self.gate_selected > 0
                 and bowden_move_ratio > 0 and homing_movement > 0
             ):
                 if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:
@@ -4294,7 +4295,8 @@ class Mmu:
             # TODO Currently only works with gate 0. Could work with other gates if variable_bowden_lengths is True
             # TODO and rotation distance is calibrated and not being tuned above
             if (
-                self.autotune_bowden_length and self.gate_selected == 0
+                self.mmu_machine.require_bowden_move
+                and self.autotune_bowden_length and self.gate_selected == 0
                 and (0.9 < bowden_move_ratio < 1.1 or not self.has_encoder())
             ):
                 if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:

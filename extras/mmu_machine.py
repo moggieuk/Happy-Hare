@@ -373,7 +373,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             pass
 
         # Restore previous synchronization state if any with new gear steppers
-        # TODO: Not sure of practical usefulness of resyncing but it will not handle the extruder_only case
+        # TODO: Not sure of practical usefulness of resyncing but it will now handle the extruder_only case
         if sync_mode:
             self.sync(sync_mode)
 
