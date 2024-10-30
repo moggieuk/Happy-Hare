@@ -775,9 +775,12 @@ METADATA_PURGE_VOLUMES = "!purge_volumes!"
 FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
+INITIAL_TOOL_REGEX = r"^\s*MMU_START_LOAD_INITIAL_TOOL.*$"
+
 # Detection for next pos processing
 T_PATTERN  = r'^T(\d+)\s*(?:;.*)?$'
 G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
+E_PATTERN = r'^G[01](?=.*\sE(-?[\d.]+)).*$'
 
 def gcode_processed_already(file_path):
     """Expects first line of gcode to be the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
@@ -905,47 +908,112 @@ def parse_gcode_file(file_path):
     return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
             sorted(tools_used), colors, temps, materials, purge_volumes, filament_names, slicer)
 
-def process_file(input_filename, output_filename, insert_nextpos, tools_used, colors, temps, materials, purge_volumes, filament_names):
+def copy_tool_block(infile, outfile, last_toolchange_pos, next_toolchange, tool, insert_nextpos, insert_extrude_length, x, y, e_max, tools_used, colors, temps, materials, purge_volumes, filament_names):
+
+    # last_toolchange_pos points to the first line AFTER the Tx macro, or the line after MMU_START_LOAD_INITIAL_TOOL, or 0
+    # tool may be the tool number referenced in that Tx macro or 'initial'
+    # next_toolchange points to the line WITH the NEXT Tx macro, or the end of the file
+    file_pos_reset = infile.tell()
+    infile.seek(last_toolchange_pos)
+    toolchange = ''
+        
+    if tool is None and e_max > 0 and insert_extrude_length:
+        # Covers the scenarios with no MMU_START_LOAD_INITIAL_TOOL macro in the file
+        # or scenarios where there are extruding moves prior to said macro
+        toolchange = f'_MMU_DEFINE_SINGLE_TOOL EXTRUDE_LENGTH={e_max}'
+
+    elif tool == 'initial':
+        toolchange = f'MMU_START_LOAD_INITIAL_TOOL'
+        if insert_extrude_length:
+            toolchange += f' EXTRUDE_LENGTH="{e_max}"'
+        toolchange += '\n'
+
+    elif tool is not None:        
+        # Write down the modified toolchange macro
+        toolchange = f'MMU_CHANGE_TOOL TOOL={tool}'
+        if insert_nextpos and x is not None and y is not None:
+            toolchange += f' NEXT_POS="{x},{y}"'
+        if insert_extrude_length:
+            toolchange += f' EXTRUDE_LENGTH="{e_max}"'
+        toolchange += f' ; T{tool}\n'
+    
+    outfile.write(toolchange)
+    
+    while True:
+        line = infile.readline()
+        line = add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, filament_names)
+        if line and infile.tell() < next_toolchange:
+            outfile.write(line)
+        else:
+            break
+
+    # Reset the file descriptor to how it was
+    infile.seek(file_pos_reset)
+
+
+def process_file(input_filename, output_filename, insert_nextpos, insert_extrude_length, tools_used, colors, temps, materials, purge_volumes, filament_names):
 
     t_pattern = re.compile(T_PATTERN)
     g1_pattern = re.compile(G1_PATTERN)
+    e_pattern = re.compile(E_PATTERN)
+    initial_pattern = re.compile(INITIAL_TOOL_REGEX)
 
     with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
         buffer = [] # Buffer lines between a "T" line and the next matching "G1" line
         tool = None # Store the tool number from a "T" line
+        last_toolchange_pos = cur_filepos = next_filepos = 0
+        e_max = e_sum = 0
+        x = y = None
+        
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
-        for line in infile:
-            line = add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, filament_names)
-            if tool is not None:
-                # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
-                buffer.append(line)
+        #for line in infile:
+        while True:
+            line = infile.readline()
+            if not line:
+                break
+
+            cur_filepos = next_filepos
+            next_filepos = infile.tell()
+    
+            # Check for extrusion motion and sum it up
+            e_match = e_pattern.match(line)
+            if e_match:
+                e_sum += float(e_match.groups()[0])
+                if e_sum > e_max:
+                    e_max = e_sum
+
+            # Check for the first toolhead motion in the tool block and record the target position
+            if x is None or y is None:
                 g1_match = g1_pattern.match(line)
                 if g1_match:
-                    # Now replace "T" line and write buffered lines, including the current "G1" line
-                    if insert_nextpos:
-                        x, y = g1_match.groups()
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
-                    else:
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
-                    for buffered_line in buffer:
-                        outfile.write(buffered_line)
-                    buffer.clear()
-                    tool = None
-                continue
+                    x, y = g1_match.groups()
 
+            if tool is None:
+                # Look for a LOAD_INITIAL_TOOL macro (essentially, a Tx with no number)
+                initial_match = initial_pattern.match(line)
+                if initial_match:
+                    copy_tool_block(infile, outfile, last_toolchange_pos, cur_filepos, tool, insert_nextpos, insert_extrude_length, x, y, e_max, tools_used, colors, temps, materials, purge_volumes, filament_names)
+                    
+                    x = y = None
+                    e_max = e_sum = 0
+                    last_toolchange_pos = infile.tell()
+                    tool = 'initial'
+
+            # Look for a Tx macro
             t_match = t_pattern.match(line)
             if t_match:
-                tool = t_match.group(1)
-            else:
-                outfile.write(line)
+                copy_tool_block(infile, outfile, last_toolchange_pos, cur_filepos, tool, insert_nextpos, insert_extrude_length, x, y, e_max, tools_used, colors, temps, materials, purge_volumes, filament_names)
 
-        # If there is anything left in buffer it means there wasn't a final "G1" line
-        if buffer:
-            outfile.write(f"T{tool}\n")
-            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
-            for line in buffer:
-                outfile.write(line)
+                x = y = None
+                e_max = e_sum = 0
+                last_toolchange_pos = infile.tell()
+                tool = t_match.group(1)
+
+        # After the cycle is finished, we have one last tool block that has not been written, write it explicitly
+        cur_filepos = infile.tell()
+        copy_tool_block(infile, outfile, last_toolchange_pos, cur_filepos, tool, insert_nextpos, insert_extrude_length, x, y, e_max, tools_used, colors, temps, materials, purge_volumes, filament_names)
+
 
 def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, filament_names):
     # Ignore comment lines to preserve slicer metadata comments
@@ -967,7 +1035,7 @@ def add_placeholder(line, tools_used, colors, temps, materials, purge_volumes, f
             line = line.replace(METADATA_FILAMENT_NAMES, ",".join(map(str, filament_names)))
     return line
 
-def main(path, filename, insert_placeholders=False, insert_nextpos=False):
+def main(path, filename, insert_placeholders=False, insert_nextpos=False, insert_extrude_length=False):
     file_path = os.path.join(path, filename)
     if not os.path.isfile(file_path):
         metadata.logger.info(f"File Not Found: {file_path}")
@@ -994,7 +1062,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                         msg.append("Writing MMU placeholders")
                     if insert_nextpos:
                         msg.append("Inserting next position to tool changes")
-                    process_file(file_path, tmp_file, insert_nextpos, tools_used, colors, temps, materials, purge_volumes, filament_names)
+                    process_file(file_path, tmp_file, insert_nextpos, insert_extrude_length, tools_used, colors, temps, materials, purge_volumes, filament_names)
                     metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
@@ -1042,4 +1110,4 @@ if __name__ == "__main__":
     metadata.main(args.path, args.filename, args.ufp, check_objects)
 
     # Second parsing for mmu placeholders and next pos insertion
-    main(args.path, args.filename, args.placeholders, args.nextpos)
+    main(args.path, args.filename, args.placeholders, args.nextpos, True)
