@@ -40,12 +40,13 @@ class Mmu:
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
     # Calibration steps
-    CALIBRATED_GEAR     = 0b00001
-    CALIBRATED_ENCODER  = 0b00010
-    CALIBRATED_SELECTOR = 0b00100 # Defaults true with VirtualSelector
-    CALIBRATED_BOWDEN   = 0b01000
-    CALIBRATED_GATES    = 0b10000
-    CALIBRATED_ALL      = 0b01111 # Calibrated gates is optional
+    CALIBRATED_GEAR_0    = 0b00001 # Specifically rotation_distance for gate 0
+    CALIBRATED_ENCODER   = 0b00010
+    CALIBRATED_SELECTOR  = 0b00100 # Defaults true with VirtualSelector
+    CALIBRATED_BOWDENS   = 0b01000 # Bowden length for all gates
+    CALIBRATED_GEAR_RDS  = 0b10000
+    CALIBRATED_ESSENTIAL = 0b01111
+    CALIBRATED_ALL       = 0b11111
 
     TOOL_GATE_UNKNOWN = -1
     TOOL_GATE_BYPASS = -2
@@ -56,14 +57,14 @@ class Mmu:
     GATE_AVAILABLE_FROM_BUFFER = 2
 
     FILAMENT_POS_UNKNOWN = -1
-    FILAMENT_POS_UNLOADED = 0
+    FILAMENT_POS_UNLOADED = 0       # Parked in gate
     FILAMENT_POS_HOMED_GATE = 1     # Homed at either gate or post-gate sensor (currently assumed mutually exclusive sensors)
-    FILAMENT_POS_START_BOWDEN = 2
-    FILAMENT_POS_IN_BOWDEN = 3
-    FILAMENT_POS_END_BOWDEN = 4
+    FILAMENT_POS_START_BOWDEN = 2   # Point of fast load portion
+    FILAMENT_POS_IN_BOWDEN = 3      # Some unknown position in the bowden
+    FILAMENT_POS_END_BOWDEN = 4     # End of fast load portion
     FILAMENT_POS_HOMED_ENTRY = 5    # Homed at entry sensor
-    FILAMENT_POS_HOMED_EXTRUDER = 6 # Collision homing case
-    FILAMENT_POS_EXTRUDER_ENTRY = 7 # Past extruder entry
+    FILAMENT_POS_HOMED_EXTRUDER = 6 # Collision homing case at extruder gear entry
+    FILAMENT_POS_EXTRUDER_ENTRY = 7 # Past extruder gear entry
     FILAMENT_POS_HOMED_TS = 8       # Homed at toolhead sensor
     FILAMENT_POS_IN_EXTRUDER = 9    # In extruder past toolhead sensor
     FILAMENT_POS_LOADED = 10        # Homed to nozzle
@@ -285,13 +286,14 @@ class Mmu:
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
         self.force_form_tip_standalone = config.getint('force_form_tip_standalone', 0, minval=0, maxval=1)
-        self.persistence_level = config.getint('persistence_level', 0, minval=0, maxval=4)
-        self.auto_calibrate_gates = config.getint('auto_calibrate_gates', 0, minval=0, maxval=1)
-        self.auto_calibrate_bowden = config.getint('auto_calibrate_bowden', 0, minval=0, maxval=1)
+        self.autotune_rotation_distance = config.getint('autotune_rotation_distance', 0, minval=0, maxval=1) # autotune_rotation_distance
+        self.autotune_bowden_length = config.getint('autotune_bowden_length', 0, minval=0, maxval=1) # autotune_bowden_length
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
         self.filament_recovery_on_pause = config.getint('filament_recovery_on_pause', 1, minval=0, maxval=1)
         self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
         self.print_start_detection = config.getint('print_start_detection', 1, minval=0, maxval=1)
+        self.startup_home_if_unloaded = config.getint('startup_home_if_unloaded', 0, minval=0, maxval=1)
+        self.startup_reset_ttg_map = config.getint('startup_reset_ttg_map', 0, minval=0, maxval=1)
         self.show_error_dialog = config.getint('show_error_dialog', 1, minval=0, maxval=1)
 
         # Internal macro overrides
@@ -312,6 +314,7 @@ class Mmu:
         self.save_position_macro = config.get('save_position_macro', '_MMU_SAVE_POSITION') # Not exposed
         self.restore_position_macro = config.get('restore_position_macro', '_MMU_RESTORE_POSITION') # Not exposed
         self.park_macro = config.get('park_macro', '_MMU_PARK') # Not exposed
+        self.error_macro = config.get('error_macro', '_MMU_ERROR') # Not exposed
 
         # User MMU setup
         self.default_ttg_map = list(config.getintlist('tool_to_gate_map', []))
@@ -345,7 +348,7 @@ class Mmu:
 
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
-        self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_COLLISION)
+        self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_NONE)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.) # Extruder homing max
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # Toolhead sensor homing max
@@ -572,10 +575,9 @@ class Mmu:
         # Internal handlers for Runout & Insertion for all sensor options
         self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
         self.gcode.register_command('__MMU_ENCODER_INSERT', self.cmd_MMU_ENCODER_INSERT, desc = self.cmd_MMU_ENCODER_INSERT_help)
-        self.gcode.register_command('__MMU_GATE_RUNOUT', self.cmd_MMU_GATE_RUNOUT, desc = self.cmd_MMU_GATE_RUNOUT_help)
-        self.gcode.register_command('__MMU_GATE_INSERT', self.cmd_MMU_GATE_INSERT, desc = self.cmd_MMU_GATE_INSERT_help)
-        self.gcode.register_command('__MMU_EXTRUDER_RUNOUT', self.cmd_MMU_EXTRUDER_RUNOUT, desc = self.cmd_MMU_EXTRUDER_RUNOUT_help)
-        self.gcode.register_command('__MMU_EXTRUDER_INSERT', self.cmd_MMU_EXTRUDER_INSERT, desc = self.cmd_MMU_EXTRUDER_INSERT_help)
+        self.gcode.register_command('__MMU_SENSOR_RUNOUT', self.cmd_MMU_SENSOR_RUNOUT, desc = self.cmd_MMU_SENSOR_RUNOUT_help)
+        self.gcode.register_command('__MMU_SENSOR_REMOVE', self.cmd_MMU_SENSOR_REMOVE, desc = self.cmd_MMU_SENSOR_REMOVE_help)
+        self.gcode.register_command('__MMU_SENSOR_INSERT', self.cmd_MMU_SENSOR_INSERT, desc = self.cmd_MMU_SENSOR_INSERT_help)
 
         # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
@@ -591,7 +593,7 @@ class Mmu:
             except Exception as e:
                 self.log_error("Unable to update TRSYNC_TIMEOUT: %s" % str(e))
 
-        if self.update_bit_max_time: # Neopixel update mitigation
+        if self.update_bit_max_time: # Neopixel update error mitigation
             try:
                 from extras import neopixel
                 neopixel.BIT_MAX_TIME = max(neopixel.BIT_MAX_TIME, 0.000030)
@@ -625,12 +627,12 @@ class Mmu:
             [self.ENDSTOP_TOOLHEAD, self.ENDSTOP_GATE, self.ENDSTOP_EXTRUDER_ENTRY] +
             ["%s_%d" % (self.ENDSTOP_POST_GATE_PREFIX, i) for i in range(self.num_gates)]
         ):
-            sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % name, None)
+            sensor_name = name if re.search(r"_[0-9]+$", name) else "%s_sensor" % name
+            sensor = self.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
             if sensor is not None:
-                if name == self.ENDSTOP_TOOLHEAD or isinstance(sensor.runout_helper, MmuRunoutHelper):
-
+                if isinstance(sensor.runout_helper, MmuRunoutHelper):
                     # Add sensor pin as an extra endstop for gear rail
-                    sensor_pin = self.config.getsection("filament_switch_sensor %s_sensor" % name).get("switch_pin")
+                    sensor_pin = self.config.getsection("filament_switch_sensor %s" % sensor_name).get("switch_pin")
                     ppins = self.printer.lookup_object('pins')
                     pin_params = ppins.parse_pin(sensor_pin, True, True)
                     share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
@@ -721,7 +723,7 @@ class Mmu:
         bowden_length = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
         if bowden_length:
             self.log_debug("Upgrading %s variable" % (self.VARS_MMU_CALIB_BOWDEN_LENGTH))
-            bowden_lengths = self._ensure_list_size([round(bowden_length, 1)], self.num_gates, default_value=-1)
+            bowden_lengths = self._ensure_list_size([round(bowden_length, 1)], self.num_gates)
             self.save_variables.allVariables.pop(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
             # Can't write file now so we let this occur naturally on next write
             self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_LENGTHS] = bowden_lengths
@@ -743,26 +745,30 @@ class Mmu:
 
         # Load bowden length configuration (calibration set with MMU_CALIBRATE_BOWDEN) ----------------------
         self.bowden_lengths = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, None)
-        bowden_home = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_HOME, self.ENDSTOP_ENCODER)
-        if self.bowden_lengths and bowden_home in self.GATE_ENDSTOPS:
+        bowden_home = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_HOME, self.gate_homing_endstop)
+        if self.mmu_machine.require_bowden_move:
+            if self.bowden_lengths and bowden_home in self.GATE_ENDSTOPS:
+                self.bowden_lengths = [-1 if x < 0 else x for x in self.bowden_lengths] # Ensure -1 value for uncalibrated
+                # Ensure list size
+                if len(self.bowden_lengths) == self.num_gates:
+                    self.log_debug("Loaded saved bowden lengths: %s" % self.bowden_lengths)
+                else:
+                    self.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_CALIB_BOWDEN_LENGTHS)
+                    self.bowden_lengths = self._ensure_list_size(self.bowden_lengths, self.num_gates)
 
-            # Ensure list size
-            if len(self.bowden_lengths) == self.num_gates:
-                self.log_debug("Loaded saved bowden lengths: %s" % self.bowden_lengths)
+                # Ensure they are identical (just for optics) if variable_bowden_lengths is False
+                if not self.mmu_machine.variable_bowden_lengths:
+                    self.bowden_lengths = [self.bowden_lengths[0]] * self.num_gates
+
+                self._adjust_bowden_lengths()
+                if not any(x == -1 for x in self.bowden_lengths):
+                    self.calibration_status |= self.CALIBRATED_BOWDENS
             else:
-                self.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_CALIB_BOWDEN_LENGTHS)
-                self.bowden_lengths = self._ensure_list_size(self.bowden_lengths, self.num_gates, default_value=-1)
-
-            # Ensure they are identical (just for optics) if variable_bowden_lengths is False
-            if not self.mmu_machine.variable_bowden_lengths:
-                self.bowden_lengths = [self.bowden_lengths[0]] * self.num_gates
-
-            self._adjust_bowden_lengths()
-            if not any(x == -1 for x in self.bowden_lengths):
-                self.calibration_status |= self.CALIBRATED_BOWDEN
+                self.log_always("Warning: Bowden lengths not found in mmu_vars.cfg. Probably not calibrated yet")
+                self.bowden_lengths = [-1] * self.num_gates
         else:
-            self.log_always("Warning: Bowden lengths not found in mmu_vars.cfg. Probably not calibrated yet")
-            self.bowden_lengths = [-1] * self.num_gates
+            self.bowden_lengths = [0] * self.num_gates
+            self.calibration_status |= self.CALIBRATED_BOWDENS
         self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_LENGTHS] = self.bowden_lengths
         self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_HOME] = bowden_home
 
@@ -770,19 +776,22 @@ class Mmu:
         self.default_rotation_distance = self.gear_rail.steppers[0].get_rotation_distance()[0] # TODO should be per gear in case they are disimilar?
         self.rotation_distances = self.save_variables.allVariables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCES, None)
         if self.rotation_distances:
+            self.rotation_distances = [-1 if x == 0 else x for x in self.rotation_distances] # Ensure -1 value for uncalibrated
             # Ensure list size
             if len(self.rotation_distances) == self.num_gates:
                 self.log_debug("Loaded saved gear rotation distances: %s" % self.rotation_distances)
             else:
                 self.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_GEAR_ROTATION_DISTANCES)
-                self.rotation_distances = self._ensure_list_size(self.rotation_distances, self.num_gates, default_value=-1)
+                self.rotation_distances = self._ensure_list_size(self.rotation_distances, self.num_gates)
 
             # Ensure they are identical (just for optics) if variable_rotation_distances is False
             if not self.mmu_machine.variable_rotation_distances:
                 self.rotation_distances = [self.rotation_distances[0]] * self.num_gates
 
+            if self.rotation_distances[0] != -1:
+                self.calibration_status |= self.CALIBRATED_GEAR_0
             if not any(x == -1 for x in self.rotation_distances):
-                self.calibration_status |= self.CALIBRATED_GEAR
+                self.calibration_status |= self.CALIBRATED_GEAR_RDS
         else:
             self.log_always("Warning: Gear rotation distances not found in mmu_vars.cfg. Probably not calibrated yet")
             self.rotation_distances = [-1] * self.num_gates
@@ -813,9 +822,9 @@ class Mmu:
         # Sub components
         self.selector.handle_connect()
 
-    def _ensure_list_size(self, lst, size, default_value=None):
-        lst = lst[:size] # Truncate if too long
-        lst.extend([default_value] * (size - len(lst))) # Pad with default value if too short
+    def _ensure_list_size(self, lst, size, default_value=-1):
+        lst = lst[:size]
+        lst.extend([default_value] * (size - len(lst)))
         return lst
 
     def handle_disconnect(self):
@@ -836,11 +845,10 @@ class Mmu:
         # Reference correct extruder stepper which will definitely be available now
         self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
         if not self.homing_extruder:
-            self.log_debug("Warning: Using original klipper extruder stepper. Homing not possible")
+            self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
 
-        # Restore state only if fully calibrated
-        if not self.check_is_calibrated(silent=True):
-            self._load_persisted_state()
+        # Restore state (only if fully calibrated)
+        self._load_persisted_state()
 
         # Setup events for managing internal print state machine
         self.printer.register_event_handler("idle_timeout:printing", self._handle_idle_timeout_printing)
@@ -931,11 +939,12 @@ class Mmu:
         # Ensure sync_feedback starting state. This is mainly cosmetic because state is ensured when enabling
         self._update_sync_starting_state()
 
-        # Runout bootup tasks
+        # Schedule bootup tasks to run after klipper and hopefully spoolman have settled
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
 
     def reinit(self):
         self.is_enabled = self.runout_enabled = True
+        self.runout_last_enable_time = self.reactor.monotonic()
         self.is_handling_runout = self.calibrating = False
         self.last_print_stats = self.paused_extruder_temp = self.reason_for_pause = None
         self.tool_selected = self._next_tool = self.gate_selected = self.TOOL_GATE_UNKNOWN
@@ -1087,57 +1096,52 @@ class Mmu:
         return purge_volumes
 
     def _load_persisted_state(self):
-        self.log_debug("Loaded persisted MMU state, level: %d" % self.persistence_level)
+        self.log_debug("Loading persisted MMU state")
         errors = []
 
         # Always load length of filament remaining in extruder (after cut) and last tool loaded
         self.filament_remaining = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_REMAINING, self.filament_remaining)
         self._last_tool = self.save_variables.allVariables.get(self.VARS_MMU_LAST_TOOL, self._last_tool)
 
-        if self.persistence_level >= 1:
-            # Load EndlessSpool config
-            self.enable_endless_spool = self.save_variables.allVariables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
-            endless_spool_groups = self.save_variables.allVariables.get(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
-            if len(endless_spool_groups) == self.num_gates:
-                self.endless_spool_groups = endless_spool_groups
-            else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_ENDLESS_SPOOL_GROUPS)
+        # Load EndlessSpool config
+        self.enable_endless_spool = self.save_variables.allVariables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
+        endless_spool_groups = self.save_variables.allVariables.get(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
+        if len(endless_spool_groups) == self.num_gates:
+            self.endless_spool_groups = endless_spool_groups
+        else:
+            errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_ENDLESS_SPOOL_GROUPS)
 
-        if self.persistence_level >= 2:
-            # Load TTG map
-            tool_to_gate_map = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
-            if len(tool_to_gate_map) == self.num_gates:
-                self.ttg_map = tool_to_gate_map
-            else:
-                errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_TOOL_TO_GATE_MAP)
+        # Load TTG map
+        tool_to_gate_map = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
+        if len(tool_to_gate_map) == self.num_gates:
+            self.ttg_map = tool_to_gate_map
+        else:
+            errors.append("Incorrect number of gates specified in %s" % self.VARS_MMU_TOOL_TO_GATE_MAP)
 
-        if self.persistence_level >= 3:
-            # Load gate map
-            for var, attr, _ in self.gate_map_vars:
-                value = self.save_variables.allVariables.get(var, getattr(self, attr))
-                if len(value) == self.num_gates:
-                    if attr == "gate_color":
-                        self._update_gate_color(value)
-                    else:
-                        setattr(self, attr, value)
+        # Load gate map
+        for var, attr, _ in self.gate_map_vars:
+            value = self.save_variables.allVariables.get(var, getattr(self, attr))
+            if len(value) == self.num_gates:
+                if attr == "gate_color":
+                    self._update_gate_color(value)
                 else:
-                    errors.append("Incorrect number of gates specified in %s" % var)
-
-        if self.persistence_level >= 4:
-            # Load selected tool and gate
-            tool_selected = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
-            gate_selected = self.save_variables.allVariables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
-            if gate_selected < self.num_gates and tool_selected < self.num_gates:
-                self._set_tool_selected(tool_selected)
-                self._set_gate_selected(gate_selected)
-                self._ensure_ttg_match() # Ensure tool/gate consistency
-                self.selector.restore_gate_position()
+                    setattr(self, attr, value)
             else:
-                errors.append("Invalid tool or gate specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
+                errors.append("Incorrect number of gates specified in %s" % var)
 
-            # Previous filament position
-            if self.TOOL_GATE_UNKNOWN not in (gate_selected, tool_selected):
-                self.filament_pos = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
+        # Load selected tool and gate
+        tool_selected = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
+        gate_selected = self.save_variables.allVariables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
+        if gate_selected < self.num_gates and tool_selected < self.num_gates:
+            self._set_tool_selected(tool_selected)
+            self._set_gate_selected(gate_selected)
+            self._ensure_ttg_match() # Ensure tool/gate consistency
+            self.selector.restore_gate_position()
+        else:
+            errors.append("Invalid tool or gate specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
+
+        # Previous filament position
+        self.filament_pos = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
 
         if len(errors) > 0:
             self.log_info("Warning: Some persisted state was ignored because it contained errors:\n%s" % ''.join(errors))
@@ -1172,17 +1176,34 @@ class Mmu:
             self.log_always(msg, color=True)
             self._set_print_state("initialized")
 
-            # Delayed to allow for correct initial state
+            # Use pre-gate sensors to adjust gate map
             self.gate_status = self._validate_gate_status(self.gate_status)
 
-            # Sanity check filament pos if toolhead sensor available
-            ts = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
-            if ts is True and self.filament_pos != self.FILAMENT_POS_LOADED or ts is False and self.filament_pos != self.FILAMENT_POS_UNLOADED:
+            # Sanity check filament pos based only on non-intrusive tests and recover if necessary
+            recover_pos = False
+            if self.filament_pos == self.FILAMENT_POS_LOADED and not self.sensor_manager.check_all_sensors_before(self.filament_pos, self.gate_selected):
+                recover_pos = True
+            elif self.filament_pos == self.FILAMENT_POS_UNLOADED and self.sensor_manager.check_any_sensors_in_path():
+                recover_pos = True
+            elif self.filament_pos == self.FILAMENT_POS_UNKNOWN:
+                recover_pos = True
+            if recover_pos:
                 self.recover_filament_pos(can_heat=False, message=True, silent=True)
 
+            # Apply startup options
+            if self.startup_reset_ttg_map:
+                self._reset_ttg_map()
+
+            if self.startup_home_if_unloaded and self.check_if_not_calibrated(self.CALIBRATED_SELECTOR) and self.filament_pos == self.FILAMENT_POS_UNLOADED:
+                self.home(0)
+
             if self.log_startup_status:
-                self.log_always(self._mmu_visual_to_string() if self.log_startup_status == 1 else self._ttg_map_to_string())
-                self._display_visual_state(silent=self.persistence_level < 4)
+                self.log_always(self._mmu_visual_to_string())
+                self._display_visual_state()
+
+            if not self.check_if_not_calibrated(self.CALIBRATED_ALL, silent=None):
+                if self.filament_pos != self.FILAMENT_POS_UNLOADED and self.TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
+                    self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER to correct state")
 
             if self.has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
@@ -1190,9 +1211,11 @@ class Mmu:
 
             self.selector.filament_hold()
             self.movequeues_wait()
-            self._spoolman_sync() # Delay as long as possible to maximize the chance it is contactable after startup/reboot
+
+            # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
+            self._spoolman_sync()
         except Exception as e:
-            self.log_error('Warning: Error booting up MMU: %s' % str(e))
+            self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
@@ -1277,55 +1300,55 @@ class Mmu:
         status = {
             'enabled': self.is_enabled,
         }
-        if self.is_enabled or True: # TODO is the copy of lists a long-term perf problem?
-            status.update({
-                'num_gates': self.num_gates,
-                'is_paused': self.is_mmu_paused(),
-                'is_locked': self.is_mmu_paused(), # Alias for is_paused (deprecated)
-                'is_homed': self.selector.is_homed,
-                'is_in_print': self.is_in_print(),
-                'tool': self.tool_selected,
-                'gate': self.gate_selected,
-                'active_filament': self.active_filament,
-                'last_tool': self._last_tool,
-                'next_tool': self._next_tool,
-                'toolchange_purge_volume': self.toolchange_purge_volume,
-                'last_toolchange': self._last_toolchange,
-                'runout': self.is_handling_runout, # Deprecated (use operation)
-                'operation': self.saved_toolhead_operation,
-                'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
-                            "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
-                            "Unknown",
-                'filament_position': self.mmu_toolhead.get_position()[1],
-                'filament_pos': self.filament_pos,
-                'filament_direction': self.filament_direction,
-                'ttg_map': list(self.ttg_map),
-                'gate_status': list(self.gate_status),
-                'gate_filament_name': list(self.gate_filament_name),
-                'gate_material': list(self.gate_material),
-                'gate_color': list(self.gate_color),
-                'gate_temperature': list(self.gate_temperature),
-                'gate_color_rgb': self.gate_color_rgb,
-                'gate_spool_id': list(self.gate_spool_id),
-                'slicer_color_rgb': self.slicer_color_rgb,
-                'endless_spool_groups': list(self.endless_spool_groups),
-                'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
-                'tool_speed_multipliers': self.tool_speed_multipliers,
-                'slicer_tool_map': self.slicer_tool_map,
-                'action': self._get_action_string(),
-                'has_bypass': self.selector.has_bypass(),
-                'sync_drive': self.mmu_toolhead.is_synced(),
-                'sync_feedback_state': self._get_sync_feedback_string(),
-                'print_state': self.print_state,
-                'clog_detection': self.enable_clog_detection,
-                'endless_spool': self.enable_endless_spool,
-                'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
-                'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
-                'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
-                'spoolman_support': self.spoolman_support,
-                'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
-            })
-            status.update(self.selector.get_status())
+        # TODO: Should this be in a conditional if self.is_enabled: block for performance?
+        status.update({
+            'num_gates': self.num_gates,
+            'is_paused': self.is_mmu_paused(),
+            'is_locked': self.is_mmu_paused(), # Alias for is_paused (deprecated)
+            'is_homed': self.selector.is_homed,
+            'is_in_print': self.is_in_print(),
+            'tool': self.tool_selected,
+            'gate': self.gate_selected,
+            'active_filament': self.active_filament,
+            'last_tool': self._last_tool,
+            'next_tool': self._next_tool,
+            'toolchange_purge_volume': self.toolchange_purge_volume,
+            'last_toolchange': self._last_toolchange,
+            'runout': self.is_handling_runout, # Deprecated (use operation)
+            'operation': self.saved_toolhead_operation,
+            'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
+                        "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
+                        "Unknown",
+            'filament_position': self.mmu_toolhead.get_position()[1],
+            'filament_pos': self.filament_pos,
+            'filament_direction': self.filament_direction,
+            'ttg_map': list(self.ttg_map),
+            'gate_status': list(self.gate_status),
+            'gate_filament_name': list(self.gate_filament_name),
+            'gate_material': list(self.gate_material),
+            'gate_color': list(self.gate_color),
+            'gate_temperature': list(self.gate_temperature),
+            'gate_color_rgb': self.gate_color_rgb,
+            'gate_spool_id': list(self.gate_spool_id),
+            'slicer_color_rgb': self.slicer_color_rgb,
+            'endless_spool_groups': list(self.endless_spool_groups),
+            'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
+            'tool_speed_multipliers': self.tool_speed_multipliers,
+            'slicer_tool_map': self.slicer_tool_map,
+            'action': self._get_action_string(),
+            'has_bypass': self.selector.has_bypass(),
+            'sync_drive': self.mmu_toolhead.is_synced(),
+            'sync_feedback_state': self._get_sync_feedback_string(),
+            'print_state': self.print_state,
+            'clog_detection': self.enable_clog_detection,
+            'endless_spool': self.enable_endless_spool,
+            'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
+            'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
+            'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
+            'spoolman_support': self.spoolman_support,
+            'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
+        })
+        status.update(self.selector.get_status())
         return status
 
     def _reset_statistics(self):
@@ -1733,7 +1756,7 @@ class Mmu:
     cmd_MMU_STATS_help = "Dump and optionally reset the MMU statistics"
     def cmd_MMU_STATS(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         counter = gcmd.get('COUNTER', None)
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         total = bool(gcmd.get_int('TOTAL', 0, minval=0, maxval=1))
@@ -1809,6 +1832,7 @@ class Mmu:
             msg += "\nSync feedback is disabled"
 
         if config:
+            self.calibrated_bowden_length = self._get_bowden_length(self.gate_selected) # Temp scalar pulled from list
             msg += "\n\nLoad Sequence:"
             msg += "\n- Filament loads into gate by homing a maximum of %s to %s" % (self._f_calc("gate_homing_max"), self._gate_homing_string())
             msg += "\n- Bowden is loaded with a fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length"))
@@ -1860,15 +1884,13 @@ class Mmu:
 
             if hasattr(self.selector, 'use_touch_move'):
                 msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector.use_touch_move() else ("DISABLED", "is not"))
-            p = self.persistence_level
-            msg += "\nPersistence: %s state is persisted across restarts" % ("All" if p == 4 else "Gate status, TTG map & EndlessSpool groups" if p == 3 else "TTG map & EndlessSpool groups" if p == 2 else "EndlessSpool groups" if p == 1 else "No")
             if self.has_encoder():
                 msg += "\nMMU has an encoder. Non essential move validation is %s" % ("ENABLED" if self._can_use_encoder() else "DISABLED")
                 msg += "\nRunout/Clog detection is %s" % ("AUTOMATIC" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_AUTOMATIC else "ENABLED" if self.enable_clog_detection == self.encoder_sensor.RUNOUT_STATIC else "DISABLED")
                 msg += " (%.1fmm runout)" % self.encoder_sensor.get_clog_detection_length()
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.enable_endless_spool else "DISABLED")
             else:
-                msg += "\nMMU does not have an encoder - move validation or clog detection / endless spool is not possible"
+                msg += "\nMMU does not have an encoder - move validation or clog detection is not possible"
             msg += "\nSpoolMan is %s" % ("ENABLED (pulling gate map)" if self.spoolman_support == self.SPOOLMAN_PULL else "ENABLED (push gate map)" if self.spoolman_support == self.SPOOLMAN_PUSH else "ENABLED" if self.spoolman_support == self.SPOOLMAN_READONLY else "DISABLED")
             msg += "\nSensors: "
             sensors = self.sensor_manager.get_all_sensors()
@@ -1886,7 +1908,7 @@ class Mmu:
                 msg += ", for configuration add 'SHOWCONFIG=1'"
 
         msg += "\n\n%s" % self._mmu_visual_to_string()
-        msg += "\n\n%s" % self._state_to_string()
+        msg += "\n%s" % self._state_to_string()
 
         if detail:
             msg += "\n\n%s" % self._ttg_map_to_string()
@@ -1895,6 +1917,7 @@ class Mmu:
             msg += "\n\n%s" % self._gate_map_to_string()
 
         self.log_always(msg, color=True)
+        self.check_if_not_calibrated(self.CALIBRATED_ALL, silent=None) # Always warn if not fully calibrated
 
     def _f_calc(self, formula):
         format_var = lambda p: p + ':' + "%.1f" % vars(self).get(p.lower())
@@ -1915,7 +1938,7 @@ class Mmu:
     cmd_MMU_SENSORS_help = "Query state of sensors fitted to mmu"
     def cmd_MMU_SENSORS(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         eventtime = self.reactor.monotonic()
 
@@ -1961,14 +1984,14 @@ class Mmu:
     cmd_MMU_MOTORS_OFF_help = "Turn off all MMU motors and servos"
     def cmd_MMU_MOTORS_OFF(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         self.motors_off()
 
     cmd_MMU_TEST_BUZZ_MOTOR_help = "Simple buzz the selected motor (default gear) for setup testing"
     def cmd_MMU_TEST_BUZZ_MOTOR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self.check_in_bypass(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
         motor = gcmd.get('MOTOR', "gear")
         if motor == "gear":
             found = self.buzz_gear_motor()
@@ -1989,9 +2012,9 @@ class Mmu:
     cmd_MMU_SYNC_GEAR_MOTOR_help = "Sync the MMU gear motor to the extruder stepper"
     def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self.check_in_bypass(): return
-        if self._check_not_homed(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_not_homed(): return
         grip = gcmd.get_int('GRIP', 1, minval=0, maxval=1)
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # Deprecated (use GRIP=1 instead)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
@@ -2070,15 +2093,13 @@ class Mmu:
     # It can be adjusted if sensor setup changes post calibration, must consider:
     #   gate_endstop_to_encoder    .. potential dead space from gate sensor to encoder
     #   toolhead_entry_to_extruder .. distance for extruder entry sensor to extruder gears
-    # TODO: Enhance for non-gate 0 use
     def _calibrate_bowden_length_auto(self, approximate_length, extruder_homing_max, repeats, save=True):
 
-        # Can't allow "none" endstop during calibration
+        # Can't allow "none" endstop during calibration so temporarily change
         endstop = self.extruder_homing_endstop
         self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_COLLISION if endstop == self.ENDSTOP_EXTRUDER_NONE else self.extruder_homing_endstop
         try:
-            self.log_always("Calibrating bowden length on reference Gate 0 using %s as gate reference point" % self._gate_homing_string())
-            self.select_tool(0) # TODO shouldn't this be select_gate()?
+            self.log_always("Calibrating bowden length for gate %d (automatic method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
             reference_sum = spring_max = 0.
             successes = 0
 
@@ -2131,16 +2152,14 @@ class Mmu:
                 self.log_error("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
         except MmuError as ee:
             # Add some more context to the error and re-raise
-            raise MmuError("Calibration of bowden length (on Gate 0) failed. Aborting, because:\n%s" % str(ee))
+            raise MmuError("Calibration of bowden length on gate %d failed. Aborting, because:\n%s" % (self.gate_selected, str(ee)))
         finally:
             self.extruder_homing_endstop = endstop
             self._auto_filament_grip()
 
     def _calibrate_bowden_length_manual(self, approx_bowden_length, save=True):
-        if self.gate_selected != 0:
-            raise MmuError("Calibration of bowden length must be performed on gate 0")
         try:
-            self.log_always("Calibrating bowden length (manual method) using %s as gate reference point" % self._gate_homing_string())
+            self.log_always("Calibrating bowden length for gate %d (manual method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
             self._set_filament_direction(self.DIRECTION_UNLOAD)
             self.selector.filament_drive()
             self.log_always("Finding %s endstop position..." % self.gate_homing_endstop)
@@ -2155,10 +2174,10 @@ class Mmu:
 
             else: # Gate sensor... ENDSTOP_GATE is shared, but ENDSTOP_POST_GATE_PREFIX is specific
                 actual,homed,_,_ = self.trace_filament_move("Reverse homing to gate sensor", -approx_bowden_length, motor="gear", homing_move=-1, endstop_name=self._get_gate_endstop_name())
-                clog_detection_length = (actual * 2) / 100. # 2% of bowden length
 
             if homed:
                 actual = abs(actual)
+                clog_detection_length = (actual * 2) / 100. # 2% of bowden length
                 self.log_always("Recommended calibration bowden length is %.1fmm" % actual)
                 if save:
                     self._save_bowden_length(self.gate_selected, actual, endstop=self.gate_homing_endstop)
@@ -2179,7 +2198,7 @@ class Mmu:
     def _calibrate_gate(self, gate, length, repeats, save=True):
         try:
             pos_values, neg_values = [], []
-            self.select_tool(gate)
+            self.select_tool(gate) # TODO: Probably should be select_gate() and not need the TTG map reset in caller
             self._load_gate(allow_retry=False)
             self.log_always("%s gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", gate, length))
 
@@ -2218,7 +2237,6 @@ class Mmu:
                         self.rotation_distances[gate] = new_rd
                         self.save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
                         self.log_always("Calibration for gate %d has been saved" % gate)
-                        self.calibration_status |= self.CALIBRATED_GATES
                 else:
                     self.log_always("Calibration ignored because it is not considered valid (>20% difference from gate 0)")
             self._unload_gate()
@@ -2272,7 +2290,7 @@ class Mmu:
 
         # Move to extruder extrance again
         self.selector.filament_release()
-        actual,_,measured,delta = self.trace_filament_move("Moving to extruder entrance", -(probe_depth - toolhead_sensor_to_nozzle), motor="extruder")
+        actual,_,_,_ = self.trace_filament_move("Moving to extruder entrance", -(probe_depth - toolhead_sensor_to_nozzle), motor="extruder")
 
         # Measure 'toolhead_extruder_to_nozzle'
         self.selector.filament_drive()
@@ -2287,7 +2305,7 @@ class Mmu:
         if self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
             # Retract clear of extruder sensor and then home in "extrude" direction
             actual,fhomed,_,_ = self.trace_filament_move("Reverse homing to extruder entry sensor", -(sensor_homing + toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle), motor="gear+extruder", homing_move=-1, endstop_name=self.ENDSTOP_EXTRUDER_ENTRY)
-            actual,_,measured,delta = self.trace_filament_move("Moving before extruder entry sensor", -20, motor="gear+extruder")
+            actual,_,_,_ = self.trace_filament_move("Moving before extruder entry sensor", -20, motor="gear+extruder")
             actual,fhomed,_,_ = self.trace_filament_move("Homing to extruder entry sensor", 40, motor="gear+extruder", homing_move=1, endstop_name=self.ENDSTOP_EXTRUDER_ENTRY)
 
             # Measure to toolhead sensor and thus derive 'toolhead_entry_to_extruder'
@@ -2301,7 +2319,7 @@ class Mmu:
 
         # Unload and re-park filament
         self.selector.filament_release()
-        actual,_,measured,delta = self.trace_filament_move("Moving to extruder entrance", -sensor_homing, motor="extruder")
+        actual,_,_,_ = self.trace_filament_move("Moving to extruder entrance", -sensor_homing, motor="extruder")
 
         return toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle, toolhead_entry_to_extruder
 
@@ -2311,7 +2329,7 @@ class Mmu:
     cmd_MMU_CALIBRATE_GEAR_help = "Calibration routine for gear stepper rotational distance"
     def cmd_MMU_CALIBRATE_GEAR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         length = gcmd.get_float('LENGTH', 100., above=50.)
         measured = gcmd.get_float('MEASURED', -1, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
@@ -2323,7 +2341,8 @@ class Mmu:
             self._set_rotation_distance(self.default_rotation_distance)
             self.save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
             self.log_always("Gear calibration for all gates has been reset")
-            self.calibration_status &= ~self.CALIBRATED_GEAR
+            self.calibration_status &= ~self.CALIBRATED_GEAR_0
+            self.calibration_status &= ~self.CALIBRATED_GEAR_RDS
 
         elif measured > 0:
             current_rd = self.gear_rail.steppers[0].get_rotation_distance()[0]
@@ -2340,9 +2359,12 @@ class Mmu:
                 self._set_rotation_distance(new_rd)
                 self.save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
                 self.log_always("Gear calibration for %s has been saved" % ("all gates" if all_gates else "gate %d" % gate))
+
                 # This feature can be used to calibrate any gate gear but gate 0 is mandatory
-                if gate == 0:
-                    self.calibration_status |= self.CALIBRATED_GEAR
+                if self.rotation_distances[0] != -1:
+                    self.calibration_status |= self.CALIBRATED_GEAR_0
+                if not any(x == -1 for x in self.rotation_distances):
+                    self.calibration_status |= self.CALIBRATED_GEAR_RDS
         else:
             raise gcmd.error("Must specify 'MEASURED=' and optionally 'LENGTH='")
 
@@ -2352,10 +2374,10 @@ class Mmu:
     cmd_MMU_CALIBRATE_ENCODER_help = "Calibration routine for the MMU encoder"
     def cmd_MMU_CALIBRATE_ENCODER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         if self._check_has_encoder(): return
-        if self.check_in_bypass(): return
-        if self.check_is_calibrated(self.CALIBRATED_GEAR): return
+        if self.check_if_bypass(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0, check_gates=[self.gate_selected]): return
 
         length = gcmd.get_float('LENGTH', 400., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
@@ -2381,21 +2403,22 @@ class Mmu:
 
     # Start: Will home selector, select gate 0
     # End: Filament will unload
-    cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for gate 0"
+    cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for selected gate"
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_not_homed(): return
-        if self.check_in_bypass(): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_bypass(): return
+        if self.check_if_gate_not_valid(): return
 
         manual = bool(gcmd.get_int('MANUAL', 0, minval=0, maxval=1))
         if not self.has_encoder() and not manual:
             self.log_always("No encoder available. Use manual calibration method:\nWith gate selected, manually load filament all the way to the extruder gear\nThen run 'MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx'\nWhere BOWDEN_LENGTH is greater than your real length")
             return
         if manual:
-            if self.check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_SELECTOR): return
+            if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_SELECTOR, check_gates=[self.gate_selected]): return
         else:
-            if self.check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR): return
+            if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR, check_gates=[self.gate_selected]): return
 
         approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
@@ -2422,10 +2445,9 @@ class Mmu:
     cmd_MMU_CALIBRATE_GATES_help = "Optional calibration of individual MMU gate"
     def cmd_MMU_CALIBRATE_GATES(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_not_homed(): return
-        if self.check_in_bypass(): return
-        if self.check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR|self.CALIBRATED_BOWDEN): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_bypass(): return
         length = gcmd.get_float('LENGTH', 400., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
         auto = gcmd.get_int('ALL', 0, minval=0, maxval=1)
@@ -2433,6 +2455,8 @@ class Mmu:
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         if gate == -1 and not auto:
             raise gcmd.error("Must specify 'GATE=' or 'ALL=1' for all gates")
+        if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR, check_gates=[gate] if gate != -1 else None): return
+
         try:
             self._reset_ttg_map() # To force tool = gate
             self._unload_tool()
@@ -2445,6 +2469,8 @@ class Mmu:
                     self.log_always("Phew! End of auto gate calibration")
                 else:
                     self._calibrate_gate(gate, length, repeats, save=(save and gate != 0))
+            if not any(x == -1 for x in self.rotation_distances[1:]):
+                self.calibration_status |= self.CALIBRATED_GEAR_RDS
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
         finally:
@@ -2455,11 +2481,11 @@ class Mmu:
     cmd_MMU_CALIBRATE_TOOLHEAD_help = "Automated measurement of key toolhead parameters"
     def cmd_MMU_CALIBRATE_TOOLHEAD(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_not_homed(): return
-        if self.check_in_bypass(): return
-        if self.check_is_loaded(): return
-        if self.check_is_calibrated(self.CALIBRATED_GEAR|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR|self.CALIBRATED_BOWDEN): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_bypass(): return
+        if self.check_if_loaded(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR|self.CALIBRATED_BOWDENS, check_gates=[self.gate_selected]): return
         if not self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
             raise gcmd.error("Sorry this feature requires a toolhead sensor")
         clean = gcmd.get_int('CLEAN', 0, minval=0, maxval=1)
@@ -2840,13 +2866,14 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._save_toolhead_position_and_park('pause') # if already paused this is a no-op
-                self._wrap_gcode_command("_MMU_ERROR")
+                self._wrap_gcode_command(self.error_macro)
                 run_pause_macro = not self.is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
                 recover_pos = self.filament_recovery_on_pause
             else:
                 self.log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
+                self._wrap_gcode_command(self.error_macro)
                 recover_pos = self.filament_recovery_on_pause
 
         else: # Not in a print (standalone operation)
@@ -2854,6 +2881,7 @@ class Mmu:
             # Restore original position if parked
             if self.saved_toolhead_operation:
                 self._restore_toolhead_position(self.saved_toolhead_operation)
+            self._wrap_gcode_command(self.error_macro)
 
         # Be deliberate about order of these tasks
         if run_pause_macro:
@@ -3029,6 +3057,7 @@ class Mmu:
         if self.has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
         self.sensor_manager.enable_runout(self.gate_selected)
+        self.runout_last_enable_time = self.reactor.monotonic()
 
     @contextlib.contextmanager
     def _wrap_suspend_runout(self):
@@ -3159,65 +3188,101 @@ class Mmu:
     def _must_home_to_extruder(self):
         return self.extruder_force_homing or not self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD)
 
-    def check_is_disabled(self):
+    def check_if_disabled(self):
         if not self.is_enabled:
             self.log_error("MMU is disabled. Please use MMU ENABLE=1 to use")
             return True
         self._wakeup()
         return False
 
-    def check_in_bypass(self):
+    def check_if_bypass(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos not in [self.FILAMENT_POS_UNLOADED]:
             self.log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
             return True
         return False
 
-    def _check_not_bypass(self):
-        if self.tool_selected != self.TOOL_GATE_BYPASS:
-            self.log_error("Bypass not selected. Please use MMU_SELECT_BYPASS first")
-            return True
-        return False
-
-    def _check_not_homed(self):
+    def check_if_not_homed(self):
         if not self.selector.is_homed:
             self.log_error("MMU is not homed")
             return True
         return False
 
-    def check_is_loaded(self):
+    def check_if_loaded(self):
         if self.filament_pos not in [self.FILAMENT_POS_UNLOADED, self.FILAMENT_POS_UNKNOWN]:
             self.log_error("MMU has filament loaded")
             return True
         return False
 
-    def check_is_calibrated(self, required=None, silent=False):
-        if not required:
-            required = self.CALIBRATED_ALL
-        if not self.calibration_status & required == required:
-            steps = []
-            if self.CALIBRATED_GEAR & required and not self.calibration_status & self.CALIBRATED_GEAR:
-                steps.append("MMU_CALIBRATE_GEAR")
-            if self.CALIBRATED_ENCODER & required and not self.calibration_status & self.CALIBRATED_ENCODER:
-                steps.append("MMU_CALIBRATE_ENCODER")
-            if self.CALIBRATED_SELECTOR & required and not self.calibration_status & self.CALIBRATED_SELECTOR:
-                steps.append("MMU_CALIBRATE_SELECTOR")
-            if self.CALIBRATED_BOWDEN & required and not self.calibration_status & self.CALIBRATED_BOWDEN:
-                steps.append("MMU_CALIBRATE_BOWDEN")
-            if self.CALIBRATED_GATES & required and not self.calibration_status & self.CALIBRATED_GATES:
-                steps.append("MMU_CALIBRATE_GATES")
-            msg = "Prerequsite calibration steps are not complete. Please run:"
-            if not silent:
-                self.log_error("%s %s" % (msg, ", ".join(steps)))
+    def check_if_gate_not_valid(self):
+        if self.gate_selected < 0:
+            self.log_error("No MMU gate selected")
             return True
         return False
 
-    def _check_has_leds(self):
+    # Returns True is required calibration is not complete. Defaults to all gates
+    # Params: required = bitmap of checks, check_gates = list of gates to consider
+    def check_if_not_calibrated(self, required, silent=False, check_gates=None):
+
+        # First quickly check if everything calibrated
+        if not self.calibration_status & required == required:
+            if check_gates is None:
+                check_gates = list(range(self.num_gates))
+
+            # We have to be more methodical and consider just gates of interest
+            msg = ""
+            if required & self.CALIBRATED_GEAR_0 and not self.calibration_status & self.CALIBRATED_GEAR_0:
+                if self.mmu_machine.variable_rotation_distances:
+                    uncalibrated = [gate for gate, value in enumerate(self.rotation_distances) if value == -1 and gate in check_gates]
+                    if uncalibrated:
+                        msg += "\nUse MMU_CALIBRATE_GEAR (with gate 0 selected)"
+                        msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
+
+            if required & self.CALIBRATED_ENCODER and not self.calibration_status & self.CALIBRATED_ENCODER:
+                msg += "\nUse MMU_CALIBRATE_ENCODER (with gate 0 selected)"
+
+            if required & self.CALIBRATED_SELECTOR and not self.calibration_status & self.CALIBRATED_SELECTOR:
+                uncalibrated = [gate for gate, value in enumerate(self.selector.selector_offsets) if value == -1 and gate in check_gates]
+                if uncalibrated:
+                    msg += "\nUse MMU_CALIBRATE_SELECTOR to calibrate selector offset on gates: %s" % ",".join(map(str, uncalibrated))
+
+            if required & self.CALIBRATED_BOWDENS and not self.calibration_status & self.CALIBRATED_BOWDENS:
+                if self.mmu_machine.variable_bowden_lengths:
+                    uncalibrated = [gate for gate, value in enumerate(self.bowden_lengths) if value == -1 and gate in check_gates]
+                    if uncalibrated:
+                        msg += "\nUse MMU_CALIBRATE_BOWDEN (with gate selected)"
+                        msg += " to calibrate bowden length gates: %s" % ",".join(map(str, uncalibrated))
+                elif self.bowden_lengths[0] == -1:
+                    msg += "\nUse MMU_CALIBRATE_BOWDEN (with gate 0 selected)"
+
+            if required & self.CALIBRATED_GEAR_RDS and not self.calibration_status & self.CALIBRATED_GEAR_RDS:
+                if self.mmu_machine.variable_rotation_distances:
+                    uncalibrated = [gate for gate, value in enumerate(self.rotation_distances) if value == -1 and gate in check_gates]
+                    if uncalibrated:
+                        if self.has_encoder():
+                            msg += "\nUse MMU_CALIBRATE_GEAR (with gate selected) or MMU_CALIBRATE_GATES GATE=xx"
+                            msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
+                        else:
+                            msg += "\nUse MMU_CALIBRATE_GEAR (with gate selected)"
+                            msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
+                elif self.rotation_distances[0] == -1:
+                    msg += "\nUse MMU_CALIBRATE_GEAR (with gate 0 selected)"
+            if msg:
+                msg = "Prerequsite calibration steps are not complete:" + msg
+                if not silent:
+                    if silent is None: # Bootup/status use case to avoid looking like error
+                        self.log_always("{2}%s{0}" % msg, color=True)
+                    else:
+                        self.log_error(msg)
+                return True
+        return False
+
+    def check_if_has_leds(self):
         if not self.has_leds:
             self.log_error("No LEDs configured on MMU")
             return True
         return False
 
-    def _check_spoolman_enabled(self):
+    def check_if_spoolman_enabled(self):
         if self.spoolman_support == self.SPOOLMAN_OFF:
             self.log_error("Spoolman support is currently disabled")
             return True
@@ -3267,7 +3332,7 @@ class Mmu:
 
         if new_target_temp > current_target_temp:
             if source in ["default", "minimum"]:
-                # We use error channel to aviod heating surprise. This will also cause popup in Klipperscreen
+                # We use error log channel to avoid heating surprise. This will also cause popup in Klipperscreen
                 self.log_error("Warning: Automatically heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             else:
                 self.log_info("Heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
@@ -3317,8 +3382,7 @@ class Mmu:
     def _enable_mmu(self):
         if self.is_enabled: return
         self.reinit()
-        if not self.check_is_calibrated(silent=True):
-            self._load_persisted_state()
+        self._load_persisted_state()
         self.is_enabled = True
         self.printer.send_event("mmu:enabled")
         self.log_always("MMU enabled and reset")
@@ -3416,14 +3480,13 @@ class Mmu:
     def cmd_MMU_ENCODER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self._check_has_encoder(): return
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         if enable == 1:
             self.encoder_sensor.set_mode(self.enable_clog_detection)
         elif enable == 0:
             self.encoder_sensor.set_mode(self.encoder_sensor.RUNOUT_DISABLED)
-            return
         elif value >= 0.:
             self.set_encoder_distance(value)
             return
@@ -3439,8 +3502,8 @@ class Mmu:
     cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
     def cmd_MMU_LED(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self._check_has_leds(): return
-        if self.check_is_disabled(): return
+        if self.check_if_has_leds(): return
+        if self.check_if_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
 
         set_led_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
@@ -3491,7 +3554,7 @@ class Mmu:
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
     def cmd_MMU_RESET(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         confirm = gcmd.get_int('CONFIRM', 0, minval=0, maxval=1)
         if confirm != 1:
             self.log_always("You must re-run and add 'CONFIRM=1' to reset all state back to default")
@@ -3529,7 +3592,7 @@ class Mmu:
     cmd_MMU_TEST_FORM_TIP_help = "Convenience macro for calling the standalone tip forming functionality (or cutter logic)"
     def cmd_MMU_TEST_FORM_TIP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         show = bool(gcmd.get_int('SHOW', 0, minval=0, maxval=1))
         run = bool(gcmd.get_int('RUN', 1, minval=0, maxval=1))
@@ -3749,32 +3812,33 @@ class Mmu:
         full = homing_max == self._get_bowden_length(self.gate_selected)
         homing_max = homing_max or self.gate_homing_max
 
-        # Safety step because this method is used as a defensive way to unload the entire bowden from unkown position
-        # It handles the small window where filament is between extruder entrance and toolhead sensor
-        if full and self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
-            length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle
-            self.log_debug("Performing safety synced pre-unload bowden move")
-            _,_,_,_ = self.trace_filament_move("Bowden pre-unload move", -length, motor="gear+extruder")
-            homing_max -= length
+        if full: # Means recovery operation
+            # Safety step because this method is used as a defensive way to unload the entire bowden from unknown position
+            # It handles the cases of filament still in extruder with not toolhead sensor or the small window where filament
+            # is between extruder entrance and toolhead sensor (if toolhead sensor is available)
+            length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
+            length = min(length + self.toolhead_unload_safety_margin, homing_max)
+            self.log_debug("Performing synced pre-unload bowden move to ensure filament is not trapped in extruder")
+            _,_,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder")
 
         if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             with self._require_encoder():
                 if full:
                     self.log_info("Slowly unloading bowden because unsure of filament position...")
                 else:
-                    self.log_debug("Slow unload of the encoder")
+                    self.log_trace("Unloading gate using the encoder")
+                success = self._reverse_home_to_encoder(homing_max)
+                if success:
+                    actual,park,_ = success
+                    _,_,measured,_ = self.trace_filament_move("Final parking", -park)
+                    # We don't expect any movement of the encoder unless it is free-spinning
+                    if measured > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
+                        self.log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                    return max(actual - self.gate_unload_buffer, 0)
+                msg = "did not clear the encoder after moving %.1fmm" % homing_max
 
-                    success = self._reverse_home_to_encoder(homing_max)
-                    if success:
-                        actual,park,_ = success
-                        _,_,measured,_ = self.trace_filament_move("Final parking", -park)
-                        # We don't expect any movement of the encoder unless it is free-spinning
-                        if measured > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
-                            self.log_info("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
-                        self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-                        return max(actual - self.gate_unload_buffer, 0)
-
-        else: # Gate sensor... ENDSTOP_GATE is shared, but ENDSTOP_POST_GATE_PREFIX is specific
+        else: # Using mmu_gate or mmu_post_gate sensor
             actual,homed,_,_ = self.trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self._get_gate_endstop_name())
             if homed:
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
@@ -3782,9 +3846,9 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                 return max(actual - self.gate_unload_buffer, 0)
             else:
-                self.log_debug("Did not home to gate sensor %s" % self.gate_homing_endstop)
+                msg = "did not home to gate sensor %s after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
 
-        raise MmuError("Unloading gate failed")
+        raise MmuError("Failed to unload gate because %s" % msg)
 
     # Shared with manual bowden calibration routine
     def _reverse_home_to_encoder(self, homing_max):
@@ -3809,14 +3873,14 @@ class Mmu:
         if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             if not self.has_encoder():
                 raise MmuError("Attempting to %s encoder but encoder is not configured on MMU!" % direction)
-        elif self.gate_homing_endstop == self.ENDSTOP_POST_GATE_PREFIX:
+        elif self.gate_homing_endstop in [self.ENDSTOP_GATE, self.ENDSTOP_POST_GATE_PREFIX]:
             sensor = self.gate_homing_endstop
             if self.gate_homing_endstop == self.ENDSTOP_POST_GATE_PREFIX:
                 sensor += "_%d" % self.gate_selected
             if not self.sensor_manager.has_sensor(sensor):
                 raise MmuError("Attempting to %s gate but gate sensor '%s' is not configured on MMU!" % (direction, sensor))
         else:
-            raise MmuError("Unsupported gate endstop")
+            raise MmuError("Unsupported gate endstop %s" % self.gate_homing_endstop)
 
     # Fast load of filament in bowden, usually the full length but if 'full' is False a specific length can be specified
     # Note that filament position will be measured from the gate "parking position" and so will be the gate_parking_distance
@@ -3841,13 +3905,13 @@ class Mmu:
                 self.log_info("Warning: Gate %d not calibrated! Using default rotation distance from gate 0" % self.gate_selected)
 
             # "Fast" load
-            _,_,_,delta = self.trace_filament_move("Fast loading move through bowden", length, track=True, encoder_dwell=bool(self.auto_calibrate_gates))
+            _,_,_,delta = self.trace_filament_move("Fast loading move through bowden", length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
             delta -= self._get_encoder_dead_space()
             ratio = (length - delta) / length
 
             # Encoder based validation test
             if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
-                raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
+                raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
             # Encoder based validation test
             if self._can_use_encoder() and delta >= self.bowden_allowable_load_delta and not self.calibrating:
@@ -3864,9 +3928,9 @@ class Mmu:
                             break
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
                     if delta >= self.bowden_allowable_load_delta:
-                        self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder delta %.1fmm. See mmu.log for more details"% (length, delta))
+                        self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details"% (length, length - delta))
                 else:
-                    self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder delta %.1fmm. See mmu.log for more details" % (length, delta))
+                    self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
 
                 if delta >= self.bowden_allowable_load_delta:
                     self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
@@ -3888,9 +3952,9 @@ class Mmu:
     def _unload_bowden(self, length=None):
         bowden_length = self._get_bowden_length(self.gate_selected)
         if length is None:
-            length = self.bowden_length
-        if self.bowden_length > 0 and not self.calibrating:
-            length = min(length, self.bowden_length) # Cannot exceed calibrated distance
+            length = bowden_length
+        if bowden_length > 0 and not self.calibrating:
+            length = min(length, bowden_length) # Cannot exceed calibrated distance
         full = length == bowden_length
 
         # Shorten move by buffer used to ensure we don't overshoot
@@ -3918,7 +3982,7 @@ class Mmu:
             # "Fast" unload
             ratio = 0.
             if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is not False:
-                _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.auto_calibrate_gates))
+                _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
                 delta -= self._get_encoder_dead_space()
                 ratio = (length - delta) / length
 
@@ -3926,7 +3990,7 @@ class Mmu:
                 if self._can_use_encoder() and delta >= self.bowden_allowable_unload_delta and not self.calibrating:
                     ratio = 0.
                     # Only a warning because _unload_gate() will deal with it
-                    self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder delta %.1fmm" % (length, delta))
+                    self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
             self._random_failure() # Testing
             self.movequeues_wait()
@@ -4076,7 +4140,7 @@ class Mmu:
             self._random_failure() # Testing
             self.movequeues_wait()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
-            self.log_debug("Filament should loaded to nozzle")
+            self.log_debug("Filament should be loaded to nozzle")
             return homing_movement
 
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
@@ -4111,9 +4175,9 @@ class Mmu:
 
                 if not self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
                     if self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
-                        raise MmuError("Toolhead or extruder sensor failure. Extruder sensor reports no filament but toolhead sensor is still triggered") # TODO this kind of check could be made generic to check for all proceeding sensors
+                        raise MmuError("Toolhead or extruder sensor failure. Extruder sensor reports no filament but toolhead sensor is still triggered")
                     else:
-                        self.log_info("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload")
+                        self.log_error("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload\nWill attempt to continue...")
                         fhomed = True # Assumption
                 else:
                     hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract
@@ -4128,16 +4192,17 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY)
                     self._set_filament_position(-(self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder))
 
-# TODO - there have been reports this fails, perhaps because of klipper's late update of sensor state?
-#                # Extra pedantic validation if we have toolhead sensor
-#                if self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
-#                    raise MmuError("Toolhead sensor still reports filament is present in toolhead! Possible sensor malfunction")
+                # Extra pedantic validation if we have toolhead sensor
+                # TODO: There have been reports of this failing, perhaps because of klipper's late update of sensor state?
+                #       So fromer MmuError() has been changed to error message
+                if self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
+                    self.log_error("Warning: Toolhead sensor still reports filament is present in toolhead! Possible sensor malfunction\nWill attempt to continue...")
 
             else:
                 if self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
                     # NEXT BEST: With toolhead sensor we first home to toolhead sensor. Optionally synced
                     if not self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
-                        self.log_info("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload")
+                        self.log_error("Warning: Filament was not detected in extruder by toolhead sensor at start of extruder unload\nWill attempt to continue...")
                         fhomed = True # Assumption
                     else:
                         hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract
@@ -4174,7 +4239,8 @@ class Mmu:
                     elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
                         msg = "suffient"
                     if msg:
-                        self.log_error("Encoder not sensing %s movement\nConcluding filament either stuck in the extruder or tip forming erroneously completely ejected filament\nWill attempt to continue..." % msg)
+                        self.log_error("Warning: Encoder not sensing %s movement during final extruder retraction move\nConcluding filament either stuck in the extruder, tip forming erroneously completely ejected filament or filament was not fully loaded\nWill attempt to continue..." % msg)
+
                 self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
 
             self._random_failure() # Testing
@@ -4184,12 +4250,12 @@ class Mmu:
     # Use data from load or unload operation to auto-calibrate / auto-tune
     #
     # Data we can use:
-    #  - ratio of large bowden move to that measure by encoder (0 if it can't be relied on)
+    #  - ratio of large bowden move to that measured by encoder (0 if it can't be relied on)
     #  - the amount of unexpected homing necessary to reach endstop. We want some homing
-    #    movement but we can use excessive numbers for tuning (None if not available)
+    #    movement but we can't use excessive numbers for tuning (None indicates not available)
     #  - the direction of filament movement
     #
-    # Things we can tune:
+    # Things we could/can tune:
     #  - If gate 0, use the bowden move ratio to update encoder calibration ("encoder calibration"). Dangerous so not done!
     #  - If gate 0, use excess homing move to tune the calibrated bowden length ("bowden calibration")
     #    but only do this if bowden move ratio is reasonable. Can be done in both directions
@@ -4197,11 +4263,16 @@ class Mmu:
     #    but only do this if homing movement data tells us we haven't overshot. Can be done in both directions
     #
     # Calibration replaces the previous value. Autotuning applies a moving average
-    # PAUL TODO: Update with logic to handle variable_bowden_lengths and variable_rotation_distances
-    def _auto_calibrate(self, direction, bowden_move_ratio, homing_movement):
+    def _autotune(self, direction, bowden_move_ratio, homing_movement):
         msg = "Autotune: bowden move ratio: %.6f, Extra homing movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
         if homing_movement is not None:
-            if self.auto_calibrate_gates and self.gate_selected > 0 and bowden_move_ratio > 0 and homing_movement > 0:
+            # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
+            # TODO and bowden is calibrated and we don't tune bowden below
+            if (
+                self.mmu_machine.variable_rotation_distances
+                and self.autotune_rotation_distance and self.gate_selected > 0
+                and bowden_move_ratio > 0 and homing_movement > 0
+            ):
                 if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:
                     # Encoder based automatic calibration of gate's gear rotation_distance aka MMU_CALIBRATE_GATES
                     current_rd = self.gear_rail.steppers[0].get_rotation_distance()[0]
@@ -4222,9 +4293,15 @@ class Mmu:
                     else:
                         msg += "\nCalculated rotation_distance: %.6f for gate %d failed sanity check and has been ignored (ratio: %.6f)" % (new_rd, self.gate_selected, bowden_move_ratio)
 
-            if self.auto_calibrate_bowden and self.gate_selected == 0 and ((bowden_move_ratio > 0.9 and bowden_move_ratio < 1.1) or not self.has_encoder()):
+            # TODO Currently only works with gate 0. Could work with other gates if variable_bowden_lengths is True
+            # TODO and rotation distance is calibrated and not being tuned above
+            if (
+                self.mmu_machine.require_bowden_move
+                and self.autotune_bowden_length and self.gate_selected == 0
+                and (0.9 < bowden_move_ratio < 1.1 or not self.has_encoder())
+            ):
                 if direction in [self.DIRECTION_LOAD, self.DIRECTION_UNLOAD]:
-                    # Homing movem_ent based automatic calibration of bowden length aka MMU_CALIBRATE_BOWDEN
+                    # Homing movement based automatic calibration of bowden length aka MMU_CALIBRATE_BOWDEN
                     bowden_length = self._get_bowden_length(self.gate_selected)
                     if homing_movement > 10: # Represents padding because we want some homing room
                         new_bl = bowden_length + homing_movement - 10.
@@ -4322,7 +4399,7 @@ class Mmu:
 
             # Finally autotune calibrated bowden length
             if full and not extruder_only and not self.gcode_load_sequence:
-                self._auto_calibrate(self.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
+                self._autotune(self.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
 
         except MmuError as ee:
             if full:
@@ -4440,7 +4517,7 @@ class Mmu:
                 movement = self.selector.filament_release(measure=True)
                 if movement > self.encoder_min:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
-                    self.log_trace("Encoder moved %.1fmm when filament was released!")
+                    self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
                     raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
             else:
                 self.selector.filament_release()
@@ -4448,12 +4525,12 @@ class Mmu:
             self.movequeues_wait()
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
-                msg += " (encoder measured %.1fmm)" % self.get_encoder_distance(dwell=False)
-            self.log_info(msg)
+                msg += " {1}(encoder measured %.1fmm){0}" % self.get_encoder_distance(dwell=None)
+            self.log_info(msg, color=True)
 
             # Finally autotune calibrated bowden length
             if full and not extruder_only and not self.gcode_unload_sequence:
-                self._auto_calibrate(self.DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
+                self._autotune(self.DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
 
         except MmuError as ee:
             if not extruder_only:
@@ -4581,7 +4658,7 @@ class Mmu:
                     self.log_trace(msg)
 
             if not test and park_pos > self.toolhead_extruder_to_nozzle:
-                self.log_error("Warning: Park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder" % (park_pos, self.toolhead_extruder_to_nozzle))
+                self.log_error("Warning: Park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
                 park_pos = self.toolhead_extruder_to_nozzle
                 filament_remaining = 0.
 
@@ -4816,28 +4893,37 @@ class Mmu:
         with self._wrap_sync_gear_to_extruder():
             if message:
                 self.log_info("Attempting to recover filament position...")
+
             ts = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
-            if ts is None: # Not installed
-                if self.check_filament_in_mmu():
-                    if can_heat and self._check_filament_still_in_extruder():
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent)
-                    else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # This prevents fast unload move
-                else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
-            elif ts: # Filament detected in toolhead
+            es = self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
+            gs = self.sensor_manager.check_sensor(self._get_gate_endstop_name())
+            filament_detected = self.sensor_manager.check_any_sensors_in_path()
+            if not filament_detected:
+                filament_detected = self.check_filament_in_mmu() # Include encoder detection method
+
+            # Loaded
+            if ts:
                 self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=silent)
-            else: # Filament not detected in toolhead
-                if self.check_filament_in_mmu():
-                    if self.strict_filament_recovery or strict:
-                        if can_heat and self._check_filament_still_in_extruder():
-                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY, silent=silent)
-                        else:
-                            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent)
-                    else:
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Slight risk of it still being gripped by extruder
-                else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
+
+            # Somewhere in extruder
+            elif filament_detected and can_heat and self._check_filament_still_in_extruder(): # Encoder based
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
+            elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self._check_filament_still_in_extruder():
+                # This case adds an additional encoder based test to see if filament is still being gripped by extruder
+                # even though TS doesn't see it. It's a pedantic option so on turned on by strict flag
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
+
+            # At extruder entry
+            elif es:
+                self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY, silent=silent) # Allows for fast bowden unload move
+
+            # Somewhere in bowden
+            elif gs or filament_detected:
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Prevents fast bowden unload move
+
+            # Unloaded
+            else:
+                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
 
         # If filament is found then ensure gate status is correct
         if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.filament_pos >= self.FILAMENT_POS_START_BOWDEN and self.gate_status[self.gate_selected] == self.GATE_EMPTY:
@@ -4876,10 +4962,9 @@ class Mmu:
     def _test_filament_in_extruder_by_retracting(self, length=None):
         with self._require_encoder():
             self.log_debug("Testing for filament in extruder by retracting on extruder stepper only")
-            if not length:
-                length = self.encoder_move_step_size
+            move = self.encoder_move_step_size if length is None else length
             self.selector.filament_release()
-            _,_,measured,_ = self.trace_filament_move("Moving extruder to test for filament exit", -length, speed=self.extruder_unload_speed, motor="extruder")
+            _,_,measured,_ = self.trace_filament_move("Moving extruder to test for filament exit", -move, speed=self.extruder_unload_speed, motor="extruder")
             detected = measured > self.encoder_min
             self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
             return detected, measured
@@ -4891,8 +4976,8 @@ class Mmu:
             self.log_debug("Checking for possibility of filament still in extruder gears...")
             self._ensure_safe_extruder_temperature(wait=False)
             self.selector.filament_release()
-            length = self.encoder_move_step_size
-            _,_,measured,_ = self.trace_filament_move("Checking extruder", -length, speed=self.extruder_unload_speed, motor="extruder")
+            move = self.encoder_move_step_size
+            _,_,measured,_ = self.trace_filament_move("Checking extruder", -move, speed=self.extruder_unload_speed, motor="extruder")
             detected = measured > self.encoder_min
             self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
             return detected
@@ -5019,8 +5104,8 @@ class Mmu:
         # TODO avoid klipper console messages?
 
     def _move_cmd(self, gcmd, trace_str):
-        if self.check_is_disabled(): return (0., False, 0., 0.)
-        if self.check_in_bypass(): return (0., False, 0., 0.)
+        if self.check_if_disabled(): return (0., False, 0., 0.)
+        if self.check_if_bypass(): return (0., False, 0., 0.)
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None)
@@ -5037,8 +5122,8 @@ class Mmu:
         return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, sync=sync, wait=wait)
 
     def _homing_move_cmd(self, gcmd, trace_str):
-        if self.check_is_disabled(): return (0., False, 0., 0.)
-        if self.check_in_bypass(): return (0., False, 0., 0.)
+        if self.check_if_disabled(): return (0., False, 0., 0.)
+        if self.check_if_bypass(): return (0., False, 0., 0.)
         endstop = gcmd.get('ENDSTOP', "default")
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', None)
@@ -5174,7 +5259,7 @@ class Mmu:
 ### TOOL AND GATE SELECTION ######################################################
 
     def home(self, tool, force_unload = None):
-        if self.check_in_bypass(): return
+        if self.check_if_bypass(): return
         self.unselect_tool()
         self.selector.home(force_unload=force_unload)
         if tool >= 0:
@@ -5225,13 +5310,13 @@ class Mmu:
         self._auto_filament_grip()
 
     def _set_tool_selected(self, tool):
-        #self.log_error("PAUL: _set_tool_selected(%d)" % tool)
+        #self.log_error("PAUL TEMP: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
 
     def _set_gate_selected(self, gate):
-        #self.log_error("PAUL: _set_gate_selected(%d)" % gate)
+        #self.log_error("PAUL TEMP: _set_gate_selected(%d)" % gate)
         if gate != self.gate_selected:
             self.gate_selected = gate
             self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
@@ -5254,7 +5339,7 @@ class Mmu:
             self.log_debug("Gate not calibrated, falling back to: %.6f" % rd)
         else:
             self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
-        #self.log_error("PAUL: _set_rotation_distance(%s)" % rd)
+        #self.log_error("PAUL TEMP: _set_rotation_distance(%s)" % rd)
         self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_bowden_length(self, gate):
@@ -5269,7 +5354,8 @@ class Mmu:
             if gate == 0 and not self.mmu_machine.variable_bowden_lengths:
                 self.bowden_lengths = [self.bowden_lengths[0]] * self.num_gates
             self.save_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, self.bowden_lengths)
-            self.calibration_status |= self.CALIBRATED_BOWDEN
+            if not any(x == -1 for x in self.bowden_lengths):
+                self.calibration_status |= self.CALIBRATED_BOWDENS
         else:
             self.log_debug("Assertion failure: cannot save bowden length for gate: %d" % gate)
 
@@ -5421,8 +5507,8 @@ class Mmu:
     cmd_MMU_SPOOLMAN_help = "Manage spoolman integration"
     def cmd_MMU_SPOOLMAN(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_spoolman_enabled(): return
+        if self.check_if_disabled(): return
+        if self.check_if_spoolman_enabled(): return
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
@@ -5479,10 +5565,10 @@ class Mmu:
     cmd_MMU_HOME_help = "Home the MMU selector"
     def cmd_MMU_HOME(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         self._fix_started_state()
 
-        if self.check_is_calibrated(self.CALIBRATED_SELECTOR):
+        if self.check_if_not_calibrated(self.CALIBRATED_SELECTOR):
             self.log_always("Not calibrated. Will home to endstop only!")
             tool = -1
             force_unload = 0
@@ -5500,10 +5586,10 @@ class Mmu:
     cmd_MMU_SELECT_help = "Select the specified logical tool (following TTG map) or physical gate"
     def cmd_MMU_SELECT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_not_homed(): return
-        if self.check_is_loaded(): return
-        if self.check_is_calibrated(self.CALIBRATED_SELECTOR): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_loaded(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_SELECTOR): return
         self._fix_started_state()
 
         bypass = gcmd.get_int('BYPASS', -1, minval=0, maxval=1)
@@ -5520,10 +5606,10 @@ class Mmu:
     cmd_MMU_SELECT_BYPASS_help = "Select the filament bypass"
     def cmd_MMU_SELECT_BYPASS(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_not_homed(): return
-        if self.check_is_loaded(): return
-        if self.check_is_calibrated(self.CALIBRATED_SELECTOR): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_loaded(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_SELECTOR): return
         self._fix_started_state()
 
         try:
@@ -5556,9 +5642,9 @@ class Mmu:
     cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap (called from Tx command)"
     def cmd_MMU_CHANGE_TOOL(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self.check_in_bypass(): return
-        if self.check_is_calibrated(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
         self._fix_started_state()
 
         self.last_statistics = {}
@@ -5671,7 +5757,6 @@ class Mmu:
                     self._persist_gate_statistics()
 
                     # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
-                    self._continue_after('toolchange', restore)
                     self._continue_after('toolchange', restore=restore)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -5682,8 +5767,8 @@ class Mmu:
     cmd_MMU_LOAD_help = "Loads filament on current tool/gate or optionally loads just the extruder for bypass or recovery usage (EXTRUDER_ONLY=1)"
     def cmd_MMU_LOAD(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_not_homed(): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
         self._fix_started_state()
 
         self.last_statistics = {}
@@ -5713,8 +5798,8 @@ class Mmu:
     cmd_MMU_EJECT_help = "aka MMU_UNLOAD Eject filament and park it in the MMU or optionally unloads just the extruder (EXTRUDER_ONLY=1)"
     def cmd_MMU_EJECT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self.check_is_calibrated(): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
         self._fix_started_state()
 
         self.last_statistics = {}
@@ -5778,7 +5863,7 @@ class Mmu:
     cmd_MMU_PAUSE_help = "Pause the current print and lock the MMU operations"
     def cmd_MMU_PAUSE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
         msg = gcmd.get('MSG',"MMU_PAUSE macro was directly called")
         self.handle_mmu_error(msg, force_in_print)
@@ -5786,7 +5871,7 @@ class Mmu:
     cmd_MMU_UNLOCK_help = "Wakeup the MMU prior to resume to restore temperatures and timeouts"
     def cmd_MMU_UNLOCK(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         self._clear_mmu_error_dialog()
         if self.is_mmu_paused_and_locked():
             self._mmu_unlock()
@@ -5864,7 +5949,7 @@ class Mmu:
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
     def cmd_MMU_RECOVER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         tool = gcmd.get_int('TOOL', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
         mod_gate = gcmd.get_int('GATE', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
         loaded = gcmd.get_int('LOADED', -1, minval=0, maxval=1)
@@ -5918,11 +6003,11 @@ class Mmu:
     cmd_MMU_SOAKTEST_LOAD_SEQUENCE_help = "Soak test tool load/unload sequence"
     def cmd_MMU_SOAKTEST_LOAD_SEQUENCE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self.check_in_bypass(): return
-        if self._check_not_homed(): return
-        if self.check_is_loaded(): return
-        if self.check_is_calibrated(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_loaded(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL): return
         loops = gcmd.get_int('LOOP', 10)
         rand = gcmd.get_int('RANDOM', 0)
         to_nozzle = gcmd.get_int('FULL', 0)
@@ -5952,8 +6037,8 @@ class Mmu:
     cmd_MMU_TEST_GRIP_help = "Test the MMU grip for a Tool"
     def cmd_MMU_TEST_GRIP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self.check_in_bypass(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
         self.selector.filament_drive()
         self.motors_off(motor="gear")
 
@@ -5961,10 +6046,10 @@ class Mmu:
     def cmd_MMU_TEST_TRACKING(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self._check_has_encoder(): return
-        if self.check_is_disabled(): return
-        if self.check_in_bypass(): return
-        if self._check_not_homed(): return
-        if self.check_is_calibrated(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
         direction = gcmd.get_int('DIRECTION', 1, minval=-1, maxval=1)
         step = gcmd.get_float('STEP', 1, minval=0.5, maxval=20)
         sensitivity = gcmd.get_float('SENSITIVITY', self.encoder_resolution, minval=0.1, maxval=10)
@@ -5996,10 +6081,10 @@ class Mmu:
     cmd_MMU_TEST_LOAD_help = "For quick testing filament loading from gate to the extruder"
     def cmd_MMU_TEST_LOAD(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self.check_in_bypass(): return
-        if self.check_is_loaded(): return
-        if self.check_is_calibrated(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_loaded(): return
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
         full = gcmd.get_int('FULL', 0, minval=0, maxval=1)
         try:
             if full:
@@ -6013,7 +6098,7 @@ class Mmu:
     cmd_MMU_TEST_MOVE_help = "Test filament move to help debug setup / options"
     def cmd_MMU_TEST_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1)) # Hidden option
         with DebugStepperMovement(self, debug):
             actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
@@ -6022,7 +6107,7 @@ class Mmu:
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"
     def cmd_MMU_TEST_HOMING_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1)) # Hidden option
         with DebugStepperMovement(self, debug):
             actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move")
@@ -6085,10 +6170,10 @@ class Mmu:
             self._write_variables()
 
         # Special bowden calibration (get current length after potential gate_homing_endstop change)
-        current_gate = max(self.gate_selected, 0) # Assume gate 0 if not known / bypass
-        bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.bowden_lengths[current_gate], minval=0.)
-        if bowden_length != self.bowden_lengths[current_gate]:
-            self._save_bowden_length(current_gate, bowden_length)
+        gate_selected = max(self.gate_selected, 0) # Assume gate 0 if not known / bypass
+        bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.bowden_lengths[gate_selected], minval=0.)
+        if bowden_length != self.bowden_lengths[gate_selected]:
+            self._save_bowden_length(gate_selected, bowden_length, endstop=self.gate_homing_endstop)
             self._write_variables()
 
         self.gate_endstop_to_encoder = gcmd.get_float('GATE_ENDSTOP_TO_ENCODER', self.gate_endstop_to_encoder)
@@ -6152,8 +6237,8 @@ class Mmu:
         self.filament_recovery_on_pause = gcmd.get_int('FILAMENT_RECOVERY_ON_PAUSE', self.filament_recovery_on_pause, minval=0, maxval=1)
         self.preload_attempts = gcmd.get_int('PRELOAD_ATTEMPTS', self.preload_attempts, minval=1, maxval=20)
         self.encoder_move_validation = gcmd.get_int('ENCODER_MOVE_VALIDATION', self.encoder_move_validation, minval=0, maxval=1)
-        self.auto_calibrate_gates = gcmd.get_int('AUTO_CALIBRATE_GATES', self.auto_calibrate_gates, minval=0, maxval=1)
-        self.auto_calibrate_bowden = gcmd.get_int('AUTO_CALIBRATE_BOWDEN', self.auto_calibrate_bowden, minval=0, maxval=1)
+        self.autotune_rotation_distance = gcmd.get_int('AUTOTUNE_ROTATION_DISTANCE', self.autotune_rotation_distance, minval=0, maxval=1)
+        self.autotune_bowden_length = gcmd.get_int('AUTOTUNE_BOWDEN_LENGTH', self.autotune_bowden_length, minval=0, maxval=1)
         self.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.retry_tool_change_on_error, minval=0, maxval=1)
         self.print_start_detection = gcmd.get_int('PRINT_START_DETECTION', self.print_start_detection, minval=0, maxval=1)
         self.show_error_dialog = gcmd.get_int('SHOW_ERROR_DIALOG', self.show_error_dialog, minval=0, maxval=1)
@@ -6261,8 +6346,8 @@ class Mmu:
             if self.has_encoder():
                 msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
                 msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
-                msg += "\nauto_calibrate_gates = %d" % self.auto_calibrate_gates
-            msg += "\nauto_calibrate_bowden = %d" % self.auto_calibrate_bowden
+                msg += "\nautotune_rotation_distance = %d" % self.autotune_rotation_distance
+            msg += "\nautotune_bowden_length = %d" % self.autotune_bowden_length
             msg += "\nfilament_recovery_on_pause = %d" % self.filament_recovery_on_pause
             msg += "\nretry_tool_change_on_error = %d" % self.retry_tool_change_on_error
             msg += "\nprint_start_detection = %d" % self.print_start_detection
@@ -6711,7 +6796,7 @@ class Mmu:
     cmd_MMU_TEST_RUNOUT_help = "Manually invoke the clog/runout detection logic for testing"
     def cmd_MMU_TEST_RUNOUT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         try:
             self._runout(True)
         except MmuError as ee:
@@ -6720,7 +6805,9 @@ class Mmu:
     cmd_MMU_ENCODER_RUNOUT_help = "Internal encoder filament runout handler"
     def cmd_MMU_ENCODER_RUNOUT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if not self.is_enabled: return
+        if not self.is_enabled:
+            self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+            return
         self._fix_started_state()
         try:
             self._runout()
@@ -6733,63 +6820,129 @@ class Mmu:
         if not self.is_enabled: return
         # TODO Possible future bypass preload feature - make gate act like bypass
 
-    # Callback to handle filament sensor on MMU. If GATE parameter is set then it is a pre-gate
-    # sensor that fired.  This is not protected by klipper "is printing" check so be careful when
-    # runout handle_logic is fired
-    cmd_MMU_GATE_RUNOUT_help = "Internal MMU filament runout handler"
-    def cmd_MMU_GATE_RUNOUT(self, gcmd):
+    # Callback to handle runout event from an MMU sensors. Note that pause_resume.send_pause_command()
+    # will have already been issued but no PAUSE command
+    # Params:
+    #   EVENTTIME will contain reactor time that the sensor triggered and command was queued
+    #   SENSOR will contain sensor name
+    #   GATE will be set if specific pre-gate or post-gate sensor
+    cmd_MMU_SENSOR_RUNOUT_help= "Internal MMU filament runout handler"
+    def cmd_MMU_SENSOR_RUNOUT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if not self.is_enabled: return
+        if not self.is_enabled:
+            self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+            return
         self._fix_started_state()
+        eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
+        gate = gcmd.get_int('GATE', None)
+        sensor = gcmd.get('SENSOR', "")
+        send_resume = False
+
         try:
-            gate = gcmd.get_int('GATE', None)
-            do_runout = gcmd.get_int('DO_RUNOUT', 0)
-
-            if gate is not None:
-                # Ignore pre-gate runout if endless_spool_eject_gate feature is active
-                if self.enable_endless_spool and self.endless_spool_eject_gate > 0:
-                    self.log_trace("Ignoring pre-gate sensor runout on gate %d because endless_spool_eject_gate is active" % gate)
-                    return
+            if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate != self.gate_selected:
+                # Always update gate map from pre-gate sensor
                 self._set_gate_status(gate, self.GATE_EMPTY)
+                process_runout = False
 
-            if do_runout:
-                if self.is_in_print() and (gate is None or gate == self.gate_selected):
-                    self.log_debug("Handling runout detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
-                    self._runout(True)
+            elif eventtime >= self.runout_last_enable_time:
+                if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate == self.gate_selected:
+                    if self.enable_endless_spool and self.endless_spool_eject_gate == gate:
+                        self.log_trace("Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate" % sensor)
+                    else:
+                        process_runout = True
+
+                elif sensor == self.ENDSTOP_GATE and gate is None:
+                    process_runout = True
+
+                elif sensor.startswith(self.ENDSTOP_POST_GATE_PREFIX) and gate == self.gate_selected:
+                    process_runout = True
+
+                elif sensor.startswith(self.ENDSTOP_EXTRUDER_ENTRY):
+                    raise MmuError("Filament runout occured at extruder. Manual intervention is required")
+
                 else:
-                    self.log_debug("Assertion failure: runout detected but not in print or occured on unexpected gate. Ignored")
-                    self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+                    self.log_debug("Assertion failure: Unexpected/unhandled sensor runout event type. Ignored")
+            else:
+                self.log_debug("Assertion failure: Late sensor runout event. Ignored")
+
+            if process_runout:
+                self._runout(True) # Will send_resume_command() or fail and pause
+            else:
+                self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
-    # This callback is not protected by klipper "is printing" check so be careful
-    cmd_MMU_GATE_INSERT_help = "Internal MMU filament detection handler"
-    def cmd_MMU_GATE_INSERT(self, gcmd):
+    # Callback to handle insert event from an MMU sensor
+    # Params:
+    #   EVENTTIME will contain reactor time that the sensor triggered and command was queued
+    #   SENSOR will contain sensor name
+    #   GATE will be set if specific pre-gate or post-gate sensor
+    cmd_MMU_SENSOR_INSERT_help= "Internal MMU filament insertion handler"
+    def cmd_MMU_SENSOR_INSERT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
         self._fix_started_state()
+        eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
+        gate = gcmd.get_int('GATE', None)
+        sensor = gcmd.get('SENSOR', "")
+
         try:
-            gate = gcmd.get_int('GATE', None)
-            if gate is not None:
-                self.log_debug("Handling insertion detected by MMU %s" % (("pre-gate sensor #%d" % gate) if gate is not None else "gate sensor"))
+            if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
                 self._set_gate_status(gate, self.GATE_UNKNOWN)
                 self._check_pending_spool_id(gate) # Have spool_id ready?
                 if not self.is_in_print() and self.gate_autoload:
                     self.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
+
+            elif sensor == self.ENDSTOP_EXTRUDER_ENTRY:
+                if self.gate_selected != self.TOOL_GATE_BYPASS:
+                    msg = "bypass not selected"
+                elif self.is_printing():
+                    msg = "actively printing" # Should not get here!
+                elif self.filament_pos != self.FILAMENT_POS_UNLOADED :
+                    msg = "extruder cannot be verified as unloaded"
+                elif not self.bypass_autoload:
+                    msg = "bypass autoload is disabled"
+                else:
+                    self.log_debug("Autoloading extruder")
+                    with self._wrap_suspend_runout():
+                        self._note_toolchange("> Bypass")
+                        self.load_sequence(bowden_move=0., extruder_only=True)
+                    return
+                self.log_debug("Ignoring extruder insertion because %s" % msg)
+
+            else:
+                self.log_debug("Assertion failure: Unexpected/unhandled sensor insert event. Ignored")
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
-    # Callback to handle filament sensor at extruder entrance
-    # This is not protected by klipper "is printing" check
-    cmd_MMU_EXTRUDER_RUNOUT_help = "Internal extruder filament runout handler"
-    def cmd_MMU_EXTRUDER_RUNOUT(self, gcmd):
+    # Callback to handle removal event from an MMU sensor (only mmu_pre_gate for now). A removal
+    # event can happen both in an out of a print
+    # Params:
+    #   EVENTTIME will contain reactor time that the sensor triggered and command was queued
+    #   SENSOR will contain sensor name
+    #   GATE will be set if specific pre-gate or post-gate sensor
+    cmd_MMU_SENSOR_REMOVE_help= "Internal MMU filament removal handler"
+    def cmd_MMU_SENSOR_REMOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if not self.is_enabled: return
+        self._fix_started_state()
+        eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
+        gate = gcmd.get_int('GATE', None)
+        sensor = gcmd.get('SENSOR', "")
 
-        do_runout = gcmd.get_int('DO_RUNOUT', 0)
-        if do_runout:
-            # TODO Future extruder runout feature - just pause print as precaution
-            self.pause_resume.send_resume_command() # Undo what runout sensor handling did
+        try:
+            if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
+                # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
+                if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
+                    self._set_gate_status(gate, self.GATE_EMPTY)
+                else:
+                    self.log_trace("Ignoring filament removal detected by %s because endless_spool_eject_gate is active" % sensor)
+
+            else:
+                self.log_debug("Assertion failure: Unexpected/unhandled sensor remove event. Ignored")
+        except MmuError as ee:
+            self.handle_mmu_error(str(ee))
 
     # Callback to handle filament sensor at extruder entrance
     # This is not protected by klipper "is not printing" check
@@ -6825,7 +6978,7 @@ class Mmu:
     cmd_MMU_TTG_MAP_help = "aka MMU_REMAP_TTG Display or remap a tool to a specific gate and set gate availability"
     def cmd_MMU_TTG_MAP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
@@ -6867,7 +7020,7 @@ class Mmu:
     cmd_MMU_GATE_MAP_help = "Display or define the type and color of filaments on each gate"
     def cmd_MMU_GATE_MAP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
@@ -6928,7 +7081,7 @@ class Mmu:
                 try:
                     for gate in gates.split(','):
                         gate = int(gate)
-                        if gate >= 0 and gate < self.num_gates:
+                        if 0 <= gate < self.num_gates:
                             gatelist.append(gate)
                 except ValueError:
                     raise gcmd.error("Invalid GATES parameter: %s" % gates)
@@ -6989,7 +7142,7 @@ class Mmu:
     cmd_MMU_ENDLESS_SPOOL_help = "Diplay or Manage EndlessSpool functionality and groups"
     def cmd_MMU_ENDLESS_SPOOL(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         enabled = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
@@ -7031,7 +7184,7 @@ class Mmu:
     cmd_MMU_TOOL_OVERRIDES_help = "Displays, sets or clears tool speed and extrusion factors (M220 & M221)"
     def cmd_MMU_TOOL_OVERRIDES(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.num_gates)
         speed = gcmd.get_int('M220', None, minval=0, maxval=200)
         extrusion = gcmd.get_int('M221', None, minval=0, maxval=200)
@@ -7058,7 +7211,7 @@ class Mmu:
     cmd_MMU_SLICER_TOOL_MAP_help = "Display or define the tools used in print as specified by slicer"
     def cmd_MMU_SLICER_TOOL_MAP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         self._fix_started_state()
 
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
@@ -7146,7 +7299,17 @@ class Mmu:
                     volumes = [row[:num_slicer_tools] for row in self.slicer_tool_map['purge_volumes'][:num_slicer_tools]]
                     msg += "\nPurge Volume Map (mm^3):\n"
                     msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(num_slicer_tools)) + "\n"
-                    msg += '\n'.join(["T{: <2}{}{}".format(y, UI_SEPARATOR, ' '.join(map(lambda v, x: str(round(v)).rjust(4, UI_SPACE) if (not sparse_purge_map or (y in rt and x in rt)) and v > 0 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE), row, range(len(row))))) for y, row in enumerate(volumes)])
+                    msg += '\n'.join([
+                        "T{: <2}{}{}".format(y, UI_SEPARATOR, ' '.join(
+                            map(lambda v, x, y=y: str(round(v)).rjust(4, UI_SPACE)
+                                if (not sparse_purge_map or (y in rt and x in rt)) and v > 0
+                                else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE),
+                                row, range(len(row))
+                            )
+                        )) 
+                        for y, row in enumerate(volumes)
+                    ])
+
             elif have_purge_map:
                 msg += "\nDETAIL=1 to see purge volume map"
             self.log_always(msg)
@@ -7154,7 +7317,7 @@ class Mmu:
     cmd_MMU_CALC_PURGE_VOLUMES_help = "Calculate purge volume matrix based on filament color overriding slicer tool map import"
     def cmd_MMU_CALC_PURGE_VOLUMES(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
+        if self.check_if_disabled(): return
         self._fix_started_state()
 
         min_purge = gcmd.get_int('MIN', 0, minval=0)
@@ -7187,10 +7350,9 @@ class Mmu:
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
     def cmd_MMU_CHECK_GATE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_not_homed(): return
-        if self.check_in_bypass(): return
-        if self.check_is_calibrated(): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_bypass(): return
         self._fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
@@ -7200,6 +7362,7 @@ class Mmu:
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         all_gates = gcmd.get_int('ALL', 0, minval=0, maxval=1)
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates = None if gate == -1 else [gate]): return # TODO Incomplete/simplified gate selection
 
         try:
             with self._wrap_suspend_runout(): # Don't want runout accidently triggering during gate check
@@ -7210,7 +7373,26 @@ class Mmu:
                             filament_pos = self.filament_pos
                             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                             gates_tools = []
-                            if tools != "!":
+                            if gate >= 0:
+                                # Individual gate
+                                gates_tools.append([gate, -1])
+                            elif tool >= 0:
+                                # Individual tool
+                                gate = self.ttg_map[tool]
+                                gates_tools.append([gate, tool])
+                            elif all_gates:
+                                for gate in range(self.num_gates):
+                                    gates_tools.append([gate, -1])
+                            elif gates != "!":
+                                # List of gates
+                                try:
+                                    for gate in gates.split(','):
+                                        gate = int(gate)
+                                        if 0 <= gate < self.num_gates:
+                                            gates_tools.append([gate, -1])
+                                except ValueError:
+                                    raise MmuError("Invalid GATES parameter: %s" % tools)
+                            elif tools != "!":
                                 # Tools used in print (may be empty list)
                                 try:
                                     for tool in tools.split(','):
@@ -7225,25 +7407,6 @@ class Mmu:
                                         return
                                 except ValueError:
                                     raise MmuError("Invalid TOOLS parameter: %s" % tools)
-                            elif gates != "!":
-                                # List of gates
-                                try:
-                                    for gate in gates.split(','):
-                                        gate = int(gate)
-                                        if 0 <= gate < self.num_gates:
-                                            gates_tools.append([gate, -1])
-                                except ValueError as ve:
-                                    raise MmuError("Invalid GATES parameter: %s" % tools)
-                            elif tool >= 0:
-                                # Individual tool
-                                gate = self.ttg_map[tool]
-                                gates_tools.append([gate, tool])
-                            elif gate >= 0:
-                                # Individual gate
-                                gates_tools.append([gate, -1])
-                            elif all_gates:
-                                for gate in range(self.num_gates):
-                                    gates_tools.append([gate, -1])
                             elif self.gate_selected >= 0:
                                 # No parameters means current gate
                                 gates_tools.append([self.gate_selected, -1])
@@ -7315,13 +7478,14 @@ class Mmu:
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
     def cmd_MMU_PRELOAD(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_is_disabled(): return
-        if self._check_not_homed(): return
-        if self.check_in_bypass(): return
-        if self.check_is_loaded(): return
-        if self.check_is_calibrated(): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_bypass(): return
+        if self.check_if_loaded(): return
 
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate] if gate != -1 else [self.gate_selected]): return
+
         self.log_always("Preloading filament in %s" % (("Gate %d" % gate) if gate >= 0 else "current gate"))
         try:
             with self.wrap_action(self.ACTION_CHECKING):

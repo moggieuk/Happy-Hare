@@ -47,9 +47,10 @@ VENDOR_TRADRACK       = "Tradrack"
 VENDOR_PRUSA          = "Prusa"
 VENDOR_ANGRY_BEAVER   = "AngryBeaver"
 VENDOR_ARMORED_TURTLE = "ArmoredTurtle"
+VENDOR_3MS            = "3MS"
 VENDOR_OTHER          = "Other"
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_ARMORED_TURTLE, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_ARMORED_TURTLE, VENDOR_3MS, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -64,71 +65,102 @@ class MmuMachine:
         try:
             self.mmu_version = float(version)
         except ValueError:
-            raise self.config.error("Invalid version parameter")
+            raise config.error("Invalid version parameter")
 
         # MMU design for control purposes can be broken down into the following choices:
         #  - Selector type or no selector
         #  -  Does each gate of the MMU have different BMG drive gears (or similar). I.e. drive rotation distance is variable
         #  -  Does each gate of the MMU have different bowden path
+        #  -  Does design require "bowden move" (i.e. non zero length bowden)
         selector_type = 'LinearSelector'
         variable_rotation_distances = 1
         variable_bowden_lengths = 0
+        require_bowden_move = 1
 
         if self.mmu_vendor == VENDOR_ERCF:
             selector_type = 'LinearSelector'
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
+            require_bowden_move = 1
 
         elif self.mmu_vendor == VENDOR_TRADRACK:
             selector_type = 'LinearSelector'
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
+            require_bowden_move = 1
 
         elif self.mmu_vendor == VENDOR_PRUSA:
-            raise self.config.error("Prusa MMU is not yet supported")
+            raise config.error("Prusa MMU is not yet supported")
 
         elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
-            variable_bowden_lengths = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 0
 
         elif self.mmu_vendor == VENDOR_ARMORED_TURTLE:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
             variable_bowden_lengths = 1
+            require_bowden_move = 1
+
+        elif self.mmu_vendor == VENDOR_3MS:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
+        self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
-        for i in range(1, 23): # Don't allow "_0" or it is confusing with unprefixed initial stepper
+
+        # Find the TMC controller for base stepper so we can fill in missing config for other matching steppers
+        base_tmc_chip = base_tmc_section = None
+        for chip in TMC_CHIPS:
+            base_tmc_section = '%s %s' % (chip, GEAR_STEPPER_CONFIG)
+            if config.has_section(base_tmc_section):
+                base_tmc_chip = chip
+                break
+
+        last_gear = 24
+        for i in range(1, last_gear): # Don't allow "_0" or it is confusing with unprefixed initial stepper
             section = "%s_%d" % (GEAR_STEPPER_CONFIG, i)
             if not config.has_section(section):
+                last_gear = i
                 break
 
             self.multigear = True
 
+            # Share stepper config section with additional steppers
+            stepper_section = "%s_%d" % (GEAR_STEPPER_CONFIG, i)
             for key in SHAREABLE_STEPPER_PARAMS:
-                if not config.fileconfig.has_option(section, key) and config.fileconfig.has_option(GEAR_STEPPER_CONFIG, key):
+                if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(GEAR_STEPPER_CONFIG, key):
                     base_value = config.fileconfig.get(GEAR_STEPPER_CONFIG, key)
                     if base_value:
-                        config.fileconfig.set(section, key, base_value)
+                        logging.info("Sharing gear stepper config %s=%s with %s" % (key, base_value, stepper_section))
+                        config.fileconfig.set(stepper_section, key, base_value)
 
-            # Find the TMC controller for stepper and fill in missing config
-            for chip in TMC_CHIPS:
-                base_tmc = '%s %s' % (chip, GEAR_STEPPER_CONFIG)
-                if config.has_section(base_tmc):
-                    tmc_section = '%s %s_%d' % (chip, GEAR_STEPPER_CONFIG, i)
+            # IF TMC controller for this additional stepper matches the base we can fill in missing TMC config
+            if base_tmc_chip:
+                tmc_section = '%s %s_%d' % (base_tmc_chip, GEAR_STEPPER_CONFIG, i)
+                if config.has_section(tmc_section):
                     for key in SHAREABLE_TMC_PARAMS:
                         if not config.fileconfig.has_option(tmc_section, key):
-                            base_value = config.fileconfig.get(base_tmc, key)
+                            base_value = config.fileconfig.get(base_tmc_section, key)
                             if base_value:
+                                logging.info("Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
                                 config.fileconfig.set(tmc_section, key, base_value)
 
-        # TODO add h/w validation here based on num_gates & vendor, virtual selector, etc
+        # H/W validation checks
+        if self.multigear and last_gear != self.num_gates:
+            raise config.error("MMU is configured with %d gates but %d gear stepper configurations were found" % (self.num_gates, last_gear))
+
+        # TODO add more h/w validation here based on num_gates & vendor, virtual selector, etc
         # TODO would allow for easier to understand error messages for conflicting or missing
         # TODO hardware definitions.
         # TODO Can also automatically remove config sections that aren't required. E.g. if VirtualSelector
@@ -276,8 +308,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         printer_extruder = self.printer_toolhead.get_extruder()
         if self.mmu.homing_extruder:
             # Restore original extruder options in case user macros reference them
-            for key in self.old_ext_options:
-                value = self.old_ext_options[key]
+            for key, value in self.old_ext_options.items():
                 self.config.fileconfig.set('extruder', key, value)
 
             # Now we can switch in homing MmuExtruderStepper
@@ -342,9 +373,9 @@ class MmuToolHead(toolhead.ToolHead, object):
             pass
 
         # Restore previous synchronization state if any with new gear steppers
-        # TODO: Not sure of practical usefulness of resyncing but it will not handle the extruder_only case
+        # TODO: Not sure of practical usefulness of resyncing but it will now handle the extruder_only case
         if sync_mode:
-            self._sync(sync_mode)
+            self.sync(sync_mode)
 
     def is_synced(self):
         return self.sync_mode is not None
@@ -550,12 +581,13 @@ class MmuKinematics:
         positions = []
         for i, r in enumerate(self.rails):
             #logging.info("DEBUG: * %d. rail=%s, initial_stepper_name=%s", i, r.get_name(), r.steppers[0].get_name())
+            stepper = None
             if i == 1:
                 stepper = next((s for s in r.steppers if s not in self.toolhead.inactive_gear_steppers), None)
-                if stepper:
-                    positions.append(stepper_positions[stepper.get_name()])
-                else:
-                    positions.append(stepper_positions[r.get_name()])
+            if stepper:
+                positions.append(stepper_positions[stepper.get_name()])
+            elif isinstance(r, DummyRail):
+                positions.append(0.)
             else:
                 positions.append(stepper_positions[r.get_name()])
         return positions
@@ -740,7 +772,6 @@ class MmuPrinterRail(stepper.PrinterRail, object):
     def is_endstop_virtual(self, name):
         return name in self.virtual_endstops if name else False
 
-
     class MockEndstop:
         def add_stepper(self, *args, **kwargs):
             pass
@@ -788,6 +819,9 @@ class DummyRail:
 
     def get_endstops(self):
         return self.endstops
+    
+    def set_position(self, newpos):
+        pass
 
 
 def load_config(config):

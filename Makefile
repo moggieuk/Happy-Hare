@@ -189,7 +189,8 @@ $(KCONFIG_CONFIG): Kconfig | $(klipper_home)
 		python $(klipper_home)/lib/kconfiglib/olddefconfig.py Kconfig; \
 		touch $(KCONFIG_CONFIG); \
 	else \
-		$(error "No .config file found. Please run 'make menuconfig' first"); \
+		echp -e "No .config file found. Please run 'make menuconfig' first"; \
+		exit 1; \
 	fi
 
 menuconfig: Kconfig | $(klipper_home)
