@@ -51,7 +51,7 @@ An addon used to control a DC motor based respooler that is active when the MMU 
 ### Github
 
 ### Config
-1. Add `[include mmu/addons/respooler.cfg]` to your `printer.cfg`
+1. Add `[include mmu/addons/dc_respooler.cfg]` to your `printer.cfg`
 1. Set `variable_user_pre_unload_extension : "MMU_RESPOOLER_START"` in `mmu_macro_vars.cfg` to start respooler movement
 1. Set `variable_user_post_unload_extension : "MMU_RESPOOLER_STOP"` in `mmu_macro_vars.cfg` to stop respooler movement
 1. Set `variable_user_mmu_error_extension : "MMU_RESPOOLER_STOP"` in `mmu_macro_vars.cfg` to stop respooler movement on error

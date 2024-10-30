@@ -1220,8 +1220,9 @@ questionaire() {
             _param_gate_parking_distance=10
 
             # Macro variable config
-            variable_user_pre_unload_extension="_MMU_RESPOOL_START"
-            variable_user_post_unload_extension="_MMU_RESPOOL_STOP"
+            variable_user_pre_unload_extension="MMU_RESPOOL_START"
+            variable_user_post_unload_extension="MMU_RESPOOL_STOP"
+            variable_user_mmu_error_extension="MMU_RESPOOL_STOP"
             ;;
 
         6) # 3MS
