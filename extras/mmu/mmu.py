@@ -1152,7 +1152,7 @@ class Mmu:
         self.filament_pos = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
 
         if len(errors) > 0:
-            self.log_always("{2}Warning: Some persisted state was ignored because it contained errors:\n%s{0}" % '\n'.join(errors), color=True)
+            self.log_always("Warning: Some persisted state was ignored because it contained errors:\n%s" % '\n'.join(errors))
 
         swap_stats = self.save_variables.allVariables.get(self.VARS_MMU_SWAP_STATISTICS, {})
         counters = self.save_variables.allVariables.get(self.VARS_MMU_COUNTERS, {})
@@ -5018,9 +5018,9 @@ class Mmu:
     # Returns True if the gear was previously synced, otherwise False
     def sync_gear_to_extruder(self, sync, gate=None, grip=False, current=False):
 
-        # Safety in case somehow called with bypass/unknown selected. Usually this is called
-        # after self.gate_selected is set, but can be before on type-B designs hence gate parameter
-        if (gate is None and self.gate_selected < 0) or gate < 0:
+        # Safety in case somehow called with bypass/unknown selected. Usually this is called after
+        # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
+        if (gate is None and self.gate_selected < 0) or (gate is not None and gate < 0):
             sync = current = False
 
         if grip:
