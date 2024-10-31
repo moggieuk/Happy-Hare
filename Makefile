@@ -75,7 +75,6 @@ endif
 # 	$(Q)cp -a "$<" "$@"
 
 $(OUT)/config/moonraker.conf: | $(OUT)/config/
-
 	$(Q)cp -a "$(klipper_config_home)/moonraker.conf" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/install.sh install-update-manager "$@"
 
@@ -109,7 +108,7 @@ $(call backup,%):
 
 
 
-build: check_root check_paths .config \
+build: $(KCONFIG_CONFIG) check_root check_paths .config \
 	$(OUT)/config/$(klipper_printer_file) \
 	$(OUT)/config/moonraker.conf \
 	$(addprefix $(OUT)/config/mmu/, $(hh_config_files)) \
@@ -182,22 +181,22 @@ endif
 check_version:
 	$(Q)$(SRC)/install.sh check-version
 
-$(KCONFIG_CONFIG): Kconfig | $(klipper_home)
+$(KCONFIG_CONFIG): Kconfig 
 # 	If .config does not exist yet run menuconfig, else just update it
 #	touch in case .config does not get updated by olddefconfig.py
-	@if [ -f .config ]; then \
+	@if [ -f $(KCONFIG_CONFIG) ]; then \
 		python $(klipper_home)/lib/kconfiglib/olddefconfig.py Kconfig; \
 		touch $(KCONFIG_CONFIG); \
-	else \
-		echp -e "No .config file found. Please run 'make menuconfig' first"; \
-		exit 1; \
+	elif [[ ! "$(MAKECMDGOALS)" =~ menuconfig ]]; then \
+		$(MAKE) menuconfig; \
+		[ -f $(KCONFIG_CONFIG) ] || { echo "No $(KCONFIG_CONFIG) file found, exiting. Run 'make menuconfig' to create a config file"; exit 1; }; \
 	fi
 
-menuconfig: Kconfig | $(klipper_home)
+menuconfig: Kconfig 
 	@MENUCONFIG_STYLE="aquatic" python ${klipper_home}/lib/kconfiglib/menuconfig.py Kconfig
 
 
-genconfig: Kconfig | $(klipper_home)
+genconfig: Kconfig 
 	@python ${klipper_home}/lib/kconfiglib/genconfig.py Kconfig --config-out test.config
 
 
