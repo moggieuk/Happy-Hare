@@ -19,6 +19,10 @@ VERSION=${CONFIG_VERSION} # Important: Keep synced with mmy.py
 
 set -e # Exit immediately on error
 
+# scoped paramaters, will have the following layout:
+# [SECTION],PARAM = VALUE
+declare -A PARAMS
+
 # Screen Colors
 OFF='\033[0m'       # Text Reset
 BLACK='\033[0;30m'  # Black
@@ -86,10 +90,6 @@ EOF
 
 calc() {
     awk "BEGIN { print $* }"
-}
-
-triangular() {
-    calc "($1 * ($1 + 1) / 2)"
 }
 
 # Helper for upgrade logic
@@ -168,31 +168,35 @@ self_update() {
     echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
 }
 
-# Parse file config settings into memory
 parse_file() {
-    local file="$1"
-    local prefix_filter="$2"
-    local namespace="$3"
-    local checkdup="$4"
-    local checkdup=""
+    local file=$1
+    local prefix_filter=$2
 
     if [ ! -f "${file}" ]; then
         log_error "Trying to parse '${file}' but it doesn't exist"
     fi
 
     # Read old config files
+    local current_section=""
     while IFS="" read -r line; do
         # Remove comments and config sections
-        local line="${line%%[#\[\;]*}"
+        local line="${line%%[#\;]*}"
+        line="${line##*([[:space:]])}" # Remove leading whitespace
+        line="${line%%*([[:space:]])}" # Remove leading whitespace
+
+        if [[ "${line}" =~ ^\[ ]]; then
+            # section
+            current_section="${line}"
+            continue
+        fi
 
         if [[ ! "${line}" =~ : ]]; then
             # Line doesn't contain a parameter
             continue
         fi
 
-        local parameter="${line%%:*}"                  # Select parameter before :
-        local parameter="${parameter##*([[:space:]])}" # Remove leading whitespace
-        local parameter="${parameter%%*([[:space:]])}" # Remove trailing whitespace
+        local parameter="${line%%:*}"            # Select parameter before :
+        parameter="${parameter%%*([[:space:]])}" # Remove trailing whitespace
 
         if [ -z "${parameter}" ] || ! [[ "${parameter}" =~ ^(${prefix_filter}) ]]; then
             # Parameter is empty or doesn't match filter
@@ -200,44 +204,34 @@ parse_file() {
         fi
 
         local value="${line#*:}" # Select value after :
-        local value="${value##*([[:space:]])}"
-        local value="${value%%*([[:space:]])}"
+        value="${value##*([[:space:]])}"
 
-        if [ -z "${value}" ]; then
-            # Value is empty
-            continue
+        if [ -n "${value}" ]; then
+            # If parameter is one of interest and it has a value remember it
+            set_param "${current_section}" "${parameter}" "${value}"
         fi
 
-        # If parameter is one of interest and it has a value remember it
-        local combined="${namespace}${parameter}"
-        if [ -n "${checkdup}" ] && [ -n "${!combined+x}" ]; then
-            log_error "${parameter} defined multiple times!"
-        fi
-
-        if [[ "${value}" =~ ^{.*}$ ]]; then
-            eval "${combined}=\$${value}"
-        elif [ "${value:0:1}" = "'" ]; then
-            eval "${combined}=\'${value}\'"
-        else
-            eval "${combined}='${value}'"
-        fi
     done <"${file}"
 }
 
-# Copy config file substituting in memory values from past config or initial interview
 update_file() {
-    local dest="$1"
-    local prefix_filter="$2"
-    local namespace="$3"
+    local dest=$1
+    local prefix_filter=$2
 
-    echo "Updating ${dest} from ${src}..."
-    # local line_no=0
+    local current_section=""
     # Read the file line by line
     while IFS="" read -r line; do
-        local line_no=$((line_no + 1))
+        if [[ "${line}" =~ ^[[:space:]]*([#\;]|$) ]]; then
+            # Empty line or comment, just copy
+            echo "${line}"
+            continue
+        fi
 
-        if [[ "${line}" =~ ^[[:space:]]*([#\;\[\]|$) ]]; then
-            # Empty line, section or comment, just copy
+        if [[ "${line}" =~ ^[[:space:]]*\[ ]]; then
+            # section
+
+            current_section="${line##*([[:space:]])}"
+            current_section="${current_section%%*([[:space:]])?([#;]*)}"
             echo "${line}"
             continue
         fi
@@ -245,6 +239,7 @@ update_file() {
         local parameter="${line%%:*}"                  # select parameter
         local parameter="${parameter##*([[:space:]])}" # remove leading spaces
         local parameter="${parameter%%*([[:space:]])}" # remove trailing spaces
+        # local parameter="${parameter,,}"               # lowercase
 
         if [ -z "${parameter}" ] || [[ ! "${parameter}" =~ ^(${prefix_filter}) ]]; then
             # Parameter doesn't match filter
@@ -252,128 +247,185 @@ update_file() {
             continue
         fi
 
-        local namespaced_parameter="${namespace}${parameter}"
-        if [ -n "${!namespaced_parameter}" ]; then
+        if has_param "${current_section}" "${parameter}"; then
             # If 'parameter' is set and not empty, evaluate its value
-            local new_value=${!namespaced_parameter}
-            if [ -n "${namespace}" ]; then
-                # Namespaced, use once
-                unset "${namespaced_parameter}"
-            fi
-        elif [ -n "${!parameter}" ]; then
-            # Try non-namespaced name, multi-use
-            local new_value="${!parameter}"
+            local new_value=$(take_param "${current_section}" "${parameter}")
+            local comment="${line#"${line%%*([[:space:]])?([#;]*)}"}" # extract trailing space + comment
+
+            echo "${parameter}: ${new_value}${comment}"
         else
-            # If 'parameter' is unset or empty leave as token
-            local new_value="{${parameter}}"
+            echo "${line}"
         fi
-
-        if [ -z "${new_value}" ]; then
-            local new_value="''"
-        fi
-
-        local comment="${line#"${line%%*([[:space:]])[#;]*}"}" # extract trailing space + comment
-        echo "${parameter}: ${new_value}${comment}"
-
     done <"${dest}" >"${dest}.tmp" && mv "${dest}.tmp" "${dest}"
-}
-
-# Set default parameters from the distribution (reference) config files
-read_default_config() {
-    # log_info "Reading default configuration parameters..."
-    parse_file "config/base/mmu_parameters.cfg" "" "_param_" "checkdup"
-    parse_file "config/base/mmu_macro_vars.cfg" "variable_|filename" "" "checkdup"
-    for file in config/addons/*.cfg; do
-        if ! [[ "${file##*/}" =~ ^my_|_hw.cfg$ ]]; then
-            parse_file "${file}" "variable_" "" "checkdup"
-        fi
-    done
 }
 
 # Pull parameters from previous installation
 read_previous_config() {
-    local cfg="mmu_parameters.cfg"
-    local dest_cfg=${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
-
-    if [ -f "${dest_cfg}" ]; then
-        parse_file "${dest_cfg}" "" "_param_"
-    fi
-
-    for cfg in mmu_macro_vars.cfg; do
+    for cfg in mmu_parameters.cfg mmu_hardware.cfg mmu_macro_vars.cfg; do
         local dest_cfg=${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
         if [ -f "${dest_cfg}" ]; then
-            log_info "Reading ${cfg} configuration from previous installation..."
-            if [ "${cfg}" == "mmu_macro_vars.cfg" ]; then
-                parse_file "${dest_cfg}" "variable_|filename"
-            else
-                parse_file "${dest_cfg}" "variable_"
-            fi
+            parse_file "${dest_cfg}"
         fi
     done
-
-    # Get number of gates stored in mmu_hardware.cfg if available
-    local cfg="mmu_hardware.cfg"
-    local cfg=${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg
-    # if [ -f "${dest_cfg}" ]; then
-    # 	CONFIG_HW_NUM_GATES=$(awk -F '[: ]+' '/num_gates:/ {gsub(/[[:space:]]*#.*/, "", $2); print $2}' "${cfg}")
-    # fi
 
     # TODO namespace config in third-party addons separately
     if [ -d "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
         for cfg in "${CONFIG_KLIPPER_CONFIG_HOME}"/mmu/addons/*.cfg; do
-            if [[ "${cfg##*/}" =~ _hw ]]; then
-                continue
-            fi
-
-            if [ -f "${dest_cfg}" ]; then
-                log_info "Reading ${cfg##*/} configuration from previous installation..."
-                parse_file "${cfg}" "variable_"
+            if [[ ! "${cfg##*/}" =~ _hw ]]; then
+                parse_file "${cfg}"
             fi
         done
     fi
 
     # Upgrade / map / force old parameters...
     # v2.7.1
-    if [ -n "${variable_pin_park_x_dist}" ]; then
-        variable_pin_park_dist="${variable_pin_park_x_dist}"
+    local section="[gcode_macro _MMU_CUT_TIP_VARS]"
+    if has_param "${section}" "variable_pin_park_x_dist"; then
+        change_param_var "${section}" "variable_pin_park_x_dist" "variable_pin_park_dist"
     fi
-    if [ -n "${variable_pin_loc_x_compressed}" ]; then
-        variable_pin_loc_compressed="${variable_pin_loc_x_compressed}"
+
+    if has_param "${section}" "variable_pin_pin_loc_x_compressed"; then
+        change_param_var "${section}" "variable_pin_pin_loc_x_compressed" "variable_pin_loc_compressed"
     fi
-    if [ -n "${variable_park_xy}" ]; then
-        variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0, 2"
-        variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0, 2"
+
+    # TODO: this seems broken?
+    # if [ -n "${variable_park_xy}" ]; then
+    #     variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0, 2"
+    #     variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0, 2"
+    # fi
+    #
+    local sec="[gcode_macro _MMU_SEQUENCE_VARS]"
+    if has_param "${sec}" "variable_lift_speed"; then
+        change_param_var "${sec}" "variable_lift_speed" "variable_park_lift_speed"
     fi
-    if [ -n "${variable_lift_speed}" ]; then
-        variable_park_lift_speed="${variable_lift_speed}"
-    fi
-    if [ "${variable_enable_park}" == "False" ]; then
-        variable_enable_park_printing="'pause,cancel'"
-        if [ "${variable_enable_park_runout}" == "True" ]; then
-            variable_enable_park_printing="'toolchange,load,unload,runout,pause,cancel'"
+
+    if has_param "${sec}" "variable_enable_park"; then
+        if param "${sec}" "variable_enable_park" == "False"; then
+            if param "${sec}" "variable_enable_park_runout" == "True"; then
+                set_param "${sec}" "varriable_enable_park_printing" "'toolchange,load,unload,runout,pause,cancel'"
+            else
+                set_param "${sec}" "varriable_enable_park_printing" "'pause,cancel'"
+            fi
+        else
+            set_param "${sec}" "varriable_enable_park_printing" "'toolchange,load,unload,pause,cancel'"
         fi
-    else
-        variable_enable_park_printing="'toolchange,load,unload,pause,cancel'"
+        remove_param "${sec}" "variable_enable_park"
     fi
-    if [ "${variable_enable_park_standalone}" == "False" ]; then
-        variable_enable_park_standalone="'pause,cancel'"
-    else
-        variable_enable_park_standalone="'toolchange,load,unload,pause,cancel'"
+
+    if has_param "${sec}" "variable_enable_park_standalone"; then
+        if param "${sec}" "variable_enable_park_standalone" == "False"; then
+            set_param "${sec}" "varriable_enable_park_standalone" "'pause,cancel'"
+        else
+            set_param "${sec}" "varriable_enable_park_standalone" "'toolchange,load,unload,pause,cancel'"
+        fi
+        remove_param "${sec}" "variable_enable_park_standalone"
     fi
 
     # v2.7.2
-    if [ "${_param_toolhead_residual_filament}" == "0" ] && [ ! "${_param_toolhead_ooze_reduction}" == "0" ]; then
-        _param_toolhead_residual_filament=${_param_toolhead_ooze_reduction}
-        _param_toolhead_ooze_reduction=0
+    if [ "$(param "[mmu]" "toolhead_residual_filament")" == "0" ] &&
+        [ "$(param "[mmu]" "toolhead_ooze_reduction")" != "0" ]; then
+        copy_param "[mmu]" "toolhead_residual_filament" "[mmu]" "toolhead_ooze_reduction"
+        set_param "[mmu]" "toolhead_ooze_reduction" "0"
     fi
 
     # Blobifer update - Oct 13th 20204
-    if [ -n "${variable_iteration_z_raise}" ]; then
+    local sec="[gcode_macro BLOBIFIER]"
+    if has_param "${sec}" "variable_iteration_z_raise"; then
         log_info "Setting Blobifier variable_z_raise and variable_purge_length_maximum from previous settings"
-        triangulated=$(triangular "${variable_max_iterations_per_blob} - 1")
-        variable_z_raise=$(calc "${variable_iteration_z_raise} * ${variable_max_iterations_per_blob} - ${triangulated} * ${variable_iteration_z_change}")
-        variable_purge_length_maximum=$(calc "${variable_max_iteration_length} * ${variable_max_iterations_per_blob}")
+        local max_i_per_blob=$(param "${sec}" "variable_max_iterations_per_blob")
+        local i_z_raise=$(param "${sec}" "variable_iterations_z_raise")
+        local i_z_change=$(param "${sec}" "variable_iteration_z_change")
+        local max_i_length=$(param "${sec}" "variable_max_iteration_length")
+        local triangulated=$(calc "${max_i_per_blob} (${max_i_per_blob} - 1) / 2")
+
+        set_param "${sec}" "variable_z_raise" "$(calc "${i_z_raise} * ${max_i_per_blob} - ${triangulated} * ${i_z_change}")"
+        set_param "${sec}" "variable_purge_length_maximum" "$(calc "${max_i_length} * ${max_i_per_blob}")"
     fi
+
+    if has_param "[mmu]" "mmu_num_gates"; then
+        param_change_key "[mmu],mmu_num_gates" "[mmu_machine],num_gates"
+    fi
+    if has_param "[mmu]" "mmu_vendor"; then
+        param_change_key "[mmu],mmu_vendor" "[mmu_machine],mmu_vendor"
+    fi
+    if has_param "[mmu]" "mmu_version"; then
+        param_change_key "[mmu],mmu_version" "[mmu_machine],mmu_version"
+    fi
+
+    param_change_section "[mmu_servo mmu_servo]" "[mmu_servo selector_servo]"
+}
+
+param_change_var() {
+    local section=$1
+    local from_var=$2
+    local to_var=$3
+
+    for key in "${!PARAMS[@]}"; do
+        if [[ "${key}" =~ ^"${section}","${from_var}" ]]; then
+            param_change_key "${key}" "${section},${to_var}"
+        fi
+    done
+}
+param_change_section() {
+    local from_section=$1
+    local to_section=$2
+
+    for key in "${!PARAMS[@]}"; do
+        if [[ "${key}" =~ ^"${from_section}", ]]; then
+            param_change_key "${key}" "${to_section},${key##*,}"
+        fi
+    done
+}
+
+param_change_key() {
+    local from=$1
+    local to=$2
+
+    PARAMS["${to}"]="${PARAMS[${from}]}"
+    unset "PARAMS[${from}]"
+}
+
+param() {
+    local section=$1
+    local param=$2
+    echo "${PARAMS["${section},${param}"]}"
+}
+
+copy_param() {
+    local from_section=$1
+    local from_param=$2
+    local to_section=$3
+    local to_param=$4
+
+    set_param "${to_section}" "${to_param}" "$(param "${from_section}" "${from_param}")"
+}
+
+set_param() {
+    local section=$1
+    local param=$2
+    local value=$3
+    PARAMS["${section},${param}"]="${value}"
+}
+
+has_param() {
+    local section=$1
+    local param=$2
+    [ -n "${PARAMS["${section},${param}"]}" ]
+}
+
+# Take a parameter from the PARAMS array and clear it afterwards
+take_param() {
+    local section=$1
+    local param=$2
+    local key="${section},${param}"
+    echo "${PARAMS["${key}"]}"
+    unset "PARAMS[${key}]"
+}
+
+remove_param() {
+    local section=$1
+    local param=$2
+    unset "PARAMS[${section},${param}]"
 }
 
 per_section() {
@@ -448,57 +500,6 @@ replace_placeholder() {
     sed -i "s|{${placeholder}}|${value}|g" "${file}"
 }
 
-# I'd prefer not to attempt to upgrade mmu_hardware.cfg but these will ease pain
-# and are relatively safe
-upgrade_mmu_hardware() {
-    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-
-    # v3.0.0: Upgrade mmu_servo to mmu_selector_servo
-    found_mmu_servo=$(grep -E -c "^\[mmu_servo mmu_servo\]" ${hardware_cfg} || true)
-    if [ "${found_mmu_servo}" -eq 1 ]; then
-        sed "s/\[mmu_servo mmu_servo\]/\[mmu_servo selector_servo\]/g" "${hardware_cfg}" >"${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
-        echo -e "${INFO}Updated [mmu_servo mmu_servo] in mmu_hardware.cfg..."
-    fi
-
-    found_mmu_machine=$(grep -E -c "^\[mmu_machine\]" ${hardware_cfg} || true)
-
-    # v3.0.0: Remove num_gates in led section
-    found_num_gates=$(grep -E -c "^(#?num_gates)" ${hardware_cfg} || true)
-    if [ "${found_num_gates}" -gt 0 -a "${found_mmu_machine}" -eq 0 ]; then
-        sed "/^\(#\?num_gates\)/d" "${hardware_cfg}" >"${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
-        echo -e "${INFO}Removed 'num_gates' from [mmu_leds] section in mmu_hardware.cfg..."
-    fi
-
-    # v3.0.0: Add minimal [mmu_machine] section as first section
-    if [ "${found_mmu_machine}" -eq 0 ]; then
-
-        # Note params will be comming from mmu_parameters
-        new_section=$(
-            cat <<EOF
-# MMU MACHINE / TYPE ---------------------------------------------------------------------------------------------------
-# ███╗   ███╗███╗   ███╗██╗   ██╗    ███╗   ███╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗███████╗
-# ████╗ ████║████╗ ████║██║   ██║    ████╗ ████║██╔══██╗██╔════╝██║  ██║██║████╗  ██║██╔════╝
-# ██╔████╔██║██╔████╔██║██║   ██║    ██╔████╔██║███████║██║     ███████║██║██╔██╗ ██║█████╗  
-# ██║╚██╔╝██║██║╚██╔╝██║██║   ██║    ██║╚██╔╝██║██╔══██║██║     ██╔══██║██║██║╚██╗██║██╔══╝  
-# ██║ ╚═╝ ██║██║ ╚═╝ ██║╚██████╔╝    ██║ ╚═╝ ██║██║  ██║╚██████╗██║  ██║██║██║ ╚████║███████╗
-# ╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝     ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝
-[mmu_machine]
-num_gates: ${_param_mmu_num_gates}				# Number of selectable gates on MMU
-mmu_vendor: ${_param_mmu_vendor}			# MMU family
-mmu_version: ${_param_mmu_version}			# MMU hardware version number (add mod suffix documented above)
-
-EOF
-        )
-        awk -v block="$new_section" '
-            BEGIN { found = 0 }
-            /^[[:space:]]*$/ && !found { print; print block; found = 1; next }
-            { print }
-        ' "${hardware_cfg}" >"${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
-
-        echo -e "${INFO}Added new [mmu_machine] section to mmu_hardware.cfg..."
-    fi
-}
-
 copy_config_files() {
     # Now substitute tokens using given brd_type and Kconfig starting values
 
@@ -532,6 +533,10 @@ copy_config_files() {
             # Remove uart_address lines
             sed_expr+="/^uart_address:/ d; "
         fi
+        if [ "${filename}" == "mmu_hardware.cfg" ]; then
+            cp "${dest}" "${OUT}/mmu_hardware.cfg.im"
+            update_file "${dest}" ""
+        fi
 
         # Do all the token substitution
 
@@ -544,17 +549,17 @@ copy_config_files() {
         fi
 
         # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
-        if [ "${file}" == "mmu_hardware.cfg" ] && [ "${CONFIG_ENABLE_LED}" != "y" ]; then
+        if [ "${filename}" == "mmu_hardware.cfg" ] && [ "${CONFIG_ENABLE_LED}" != "y" ]; then
             comment_section "\[neopixel mmu_leds\]" "$" "${dest}"
             comment_section "\[mmu_leds\]" "$" "${dest}"
         fi
 
         # Handle Encoder option - Delete if not required (section is 25 lines long)
-        if [ "${file}" == "mmu_hardware.cfg" ] && [ "${CONFIG_HW_MMU_HAS_ENCODER}" != "y" ]; then
+        if [ "${filename}" == "mmu_hardware.cfg" ] && [ "${CONFIG_MMU_HAS_ENCODER}" != "y" ]; then
             delete_section "# ENCODER" "# FILAMENT SENSORS" "${dest}"
         fi
         # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
-        if [ "${file}" == "mmu_hardware.cfg" ] && [ "${CONFIG_HW_MMU_HAS_SELECTOR}" != "y" ]; then
+        if [ "${filename}" == "mmu_hardware.cfg" ] && [ "${CONFIG_MMU_HAS_SELECTOR}" != "y" ]; then
             delete_section "# SELECTOR SERVO" "# OPTIONAL GANTRY" "${dest}"
             delete_section "# SELECTOR STEPPER" "# SERVOS" "${dest}"
 
@@ -572,12 +577,13 @@ copy_config_files() {
             # Delete additional gear drivers template section
             delete_section "# ADDITIONAL FILAMENT DRIVE" "# SELECTOR STEPPER" "${dest}"
         fi
+
     fi
 
     # Conifguration parameters -----------------------------------------------------------
     if [ "${filename}" == "mmu_parameters.cfg" ]; then
         cp --remove-destination "${src}" "${dest}" # Overwrite the symbolic link first
-        update_file "${dest}" "" "_param_"
+        update_file "${dest}"
 
         # Ensure that supplemental user added params are retained. These are those that are
         # by default set internally in Happy Hare based on vendor and version settings but
@@ -622,7 +628,7 @@ copy_config_files() {
         done
 
         replace_placeholder "tx_macros" "${tx_macros}" "${dest}"
-        update_file "${dest}" "variable_|filename"
+        update_file "${dest}"
     fi
     # done
 
@@ -637,7 +643,7 @@ copy_config_files() {
         if [[ ! "${filename}" =~ (^my_|_hw\.cfg.*$) ]]; then
             cp --remove-destination "${src}" "${dest}" # Overwrite the symbolic link first
             log_info "Installing configuration file ${file}"
-            update_file "${dest}" "variable_"
+            update_file "${dest}"
         fi
 
     fi
@@ -794,7 +800,11 @@ restart_service() {
         /etc/init.d/"${service}" restart
         set -e
     else
-        sudo systemctl restart "${service}" 2>/dev/null
+        if systemctl list-unit-files "${service}" >/dev/null; then
+            systemctl restart "${service}" 2>/dev/null
+        else
+            log_warning "service '${service}' not found! Restart manual or check your config"
+        fi
     fi
 }
 
@@ -808,7 +818,7 @@ restart_moonraker() {
 
 # These parameters are too complex to encode with Kconfig.
 set_extra_parameters() {
-    _param_happy_hare_version=${VERSION}
+    set_param "[mmu]" "happy_hare_version" "${CONFIG_VERSION}"
 
     CONFIG_HW_MMU_VERSION=${CONFIG_HW_MMU_BASE_VERSION}
     if [ "${CONFIG_HW_MMU_TYPE_ERCF_V1_1}" == "y" ]; then
@@ -830,7 +840,6 @@ build() {
 
     log_info "Building file ${out}..."
 
-    read_default_config
     read_previous_config
     set_extra_parameters
     copy_config_files "$src" "$out"
@@ -842,24 +851,24 @@ uninstall() {
 }
 
 check_version() {
+    parse_file "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/mmu_parameters.cfg" "happy_hare_version"
     # Important to update version
-    FROM_VERSION=${_param_happy_hare_version}
+    FROM_VERSION=$(take_param "base/mmu_parameters.cfg" "[mmu]" "happy_hare_version")
     if [ ! "${FROM_VERSION}" == "" ]; then
         downgrade=$(awk -v to="$VERSION" -v from="$FROM_VERSION" 'BEGIN {print (to < from) ? "1" : "0"}')
         bad_v2v3=$(awk -v to="$VERSION" -v from="$FROM_VERSION" 'BEGIN {print (from < 2.70 && to >= 3.0) ? "1" : "0"}')
         if [ "$downgrade" -eq 1 ]; then
-            echo -e "${WARNING}Trying to update from version ${FROM_VERSION} to ${VERSION}"
-            echo -e "${ERROR}Automatic 'downgrade' to earlier version is not garanteed. If you encounter startup problems you may"
-            echo -e "${ERROR}need to manually compare the backed-up 'mmu_parameters.cfg' with current one to restore differences"
+            log_warning "Trying to update from version ${FROM_VERSION} to ${CONFIG_VERSION}" \
+                "Automatic 'downgrade' to earlier version is not garanteed. If you encounter startup problems you may" \
+                "need to manually compare the backed-up 'mmu_parameters.cfg' with current one to restore differences"
         elif [ "$bad_v2v3" -eq 1 ]; then
-            echo -e "${ERROR}Cannot automatically 'upgrade' from version ${FROM_VERSION} to ${VERSION}..."
-            echo -e "${ERROR}Please upgrade to v2.7.0 or later before attempting v3.0 upgrade"
-            exit 1
-        elif [ ! "${FROM_VERSION}" == "${VERSION}" ]; then
-            echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
+            log_error "Cannot automatically 'upgrade' from version ${FROM_VERSION} to ${CONFIG_VERSION}..." \
+                "${ERROR}Please upgrade to v2.7.0 or later before attempting v3.0 upgrade"
+        elif [ ! "${FROM_VERSION}" == "${CONFIG_VERSION}" ]; then
+            log_warning "Upgrading from version ${FROM_VERSION} to ${CONFIG_VERSION}..."
         fi
     fi
-    _param_happy_hare_version=${VERSION}
+    set_param "base/mmu_parameters.cfg" "[mmu]" "happy_hare_version" "${CONFIG_VERSION}"
 }
 
 print_happy_hare() {
@@ -868,6 +877,14 @@ print_happy_hare() {
 
 print_unhappy_hare() {
     log_info "${sad_logo}"
+}
+
+print_params() {
+    read_previous_config
+    log_info "Printing parameters..."
+    for key in "${!PARAMS[@]}"; do
+        echo "PARAMS[${key}]=${PARAMS[${key}]}"
+    done
 }
 
 case $1 in
@@ -900,6 +917,9 @@ print-unhappy-hare)
     ;;
 check-version)
     check_version
+    ;;
+print-params)
+    print_params
     ;;
 *)
     log_error "
