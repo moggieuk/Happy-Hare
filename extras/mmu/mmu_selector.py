@@ -66,12 +66,19 @@ class VirtualSelector:
     def select_gate(self, gate):
         if gate == self.mmu.gate_selected: return
         #self.mmu.log_error("PAUL TEMP: selector.select_gate(%d)" % gate)
-        self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper
+        self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
+
+        # Sync new MMU gear stepper now if design requires it
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate=gate)
 
     def restore_gate_position(self):
         #self.mmu.log_error("PAUL TEMP: selector.restore_gate_position()")
-        if self.mmu.gate_selected >= 0:
-            self.mmu.mmu_toolhead.select_gear_stepper(self.mmu.gate_selected) # Select correct drive stepper
+        self.mmu.mmu_toolhead.select_gear_stepper(self.mmu.gate_selected) # Select correct drive stepper or none if bypass
+
+        # Sync MMU gear stepper now if design requires it
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(self.mmu.gate_selected >= 0)
 
     def filament_drive(self):
         pass
@@ -287,22 +294,20 @@ class LinearSelector:
     def select_gate(self, gate):
         if gate == self.mmu.gate_selected: return
         #self.mmu.log_error("PAUL TEMP: selector.select_gate(%d)" % gate)
-
         with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
             self.filament_hold()
             if gate == self.mmu.TOOL_GATE_BYPASS:
-                offset = self.bypass_offset
-            else:
-                offset = self.selector_offsets[gate]
-            self._position(offset)
+                self._position(self.bypass_offset)
+            elif gate >= 0:
+                self._position(selector_offsets[gate])
 
     # Correct rail position for selector
     def restore_gate_position(self):
         #self.mmu.log_error("PAUL TEMP: selector.restore_gate_position()")
-        if self.mmu.gate_selected >= 0:
-            self.set_position(self.selector_offsets[self.mmu.gate_selected])
-        elif self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS:
+        if self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS:
             self.set_position(self.bypass_offset)
+        elif self.mmu.gate_selected >= 0:
+            self.set_position(self.selector_offsets[self.mmu.gate_selected])
 
     def filament_drive(self, buzz_gear=True):
         self.servo.servo_down(buzz_gear=buzz_gear)

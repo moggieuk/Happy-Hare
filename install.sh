@@ -1124,6 +1124,7 @@ questionaire() {
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
             _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.5
             _hw_gear_hold_current=0.1
@@ -1172,6 +1173,7 @@ questionaire() {
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
             _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.5
             _hw_gear_hold_current=0.1
@@ -1196,6 +1198,7 @@ questionaire() {
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=0
             _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
             _hw_gear_gear_ratio="50:17"
             _hw_gear_run_current=1.27
             _hw_gear_hold_current=0.2
@@ -1231,6 +1234,7 @@ questionaire() {
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=0
+            _hw_filament_always_gripped=1
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
@@ -1250,6 +1254,7 @@ questionaire() {
             _hw_variable_bowden_lengths=1
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
+            _hw_filament_always_gripped=1
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
@@ -1272,6 +1277,7 @@ questionaire() {
             _hw_variable_bowden_lengths=1
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
+            _hw_filament_always_gripped=1
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
@@ -1294,6 +1300,7 @@ questionaire() {
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=0
+            _hw_filament_always_gripped=1
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
@@ -1315,6 +1322,7 @@ questionaire() {
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=0
             _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
@@ -1353,6 +1361,7 @@ questionaire() {
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
@@ -1361,6 +1370,7 @@ questionaire() {
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
@@ -1370,6 +1380,7 @@ questionaire() {
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
@@ -1378,6 +1389,7 @@ questionaire() {
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
                     _param_gate_homing_endstop="post_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
@@ -1387,6 +1399,7 @@ questionaire() {
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
                     _param_gate_homing_endstop="post_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
