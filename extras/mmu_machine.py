@@ -46,11 +46,12 @@ VENDOR_ERCF           = "ERCF"
 VENDOR_TRADRACK       = "Tradrack"
 VENDOR_PRUSA          = "Prusa"
 VENDOR_ANGRY_BEAVER   = "AngryBeaver"
-VENDOR_ARMORED_TURTLE = "ArmoredTurtle"
+VENDOR_BOX_TURTLE     = "BoxTurtle"
+VENDOR_NIGHT_OWL      = "NightOwl"
 VENDOR_3MS            = "3MS"
 VENDOR_OTHER          = "Other"
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_ARMORED_TURTLE, VENDOR_3MS, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -98,7 +99,13 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 0
 
-        elif self.mmu_vendor == VENDOR_ARMORED_TURTLE:
+        elif self.mmu_vendor == VENDOR_BOX_TURTLE:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 1
+            require_bowden_move = 1
+
+        elif self.mmu_vendor == VENDOR_NIGHT_OWL:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
             variable_bowden_lengths = 1

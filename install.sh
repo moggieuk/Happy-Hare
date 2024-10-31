@@ -745,7 +745,7 @@ copy_config_files() {
                 sed "/^# ADDITIONAL FILAMENT DRIVE/,+10 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-        # Conifguration parameters -----------------------------------------------------------
+        # Configuration parameters -----------------------------------------------------------
         elif [ "${file}" == "mmu_parameters.cfg" ]; then
             update_copy_file "$src" "$dest" "" "_param_"
 
@@ -1052,12 +1052,49 @@ prompt_123() {
     prompt=$1
     max=$2
     while true; do
-        read -p "${prompt} (1-${max})? " -n 1 number
-        if [[ "$number" =~ [1-${max}] ]]; then
-            echo ${number}
-            break
+        if [ -z "${max}" ]; then
+            read -ep "${prompt}? " number
+        elif [[ "${max}" -lt 10 ]]; then
+            read -ep "${prompt} (1-${max})? " -n1 number
+        else
+            read -ep "${prompt} (1-${max})? " number
         fi
+        if ! [[ "$number" =~ ^-?[0-9]+$ ]] ; then
+            echo -e "Invalid value." >&2
+            continue
+        fi
+        if [ "$number" -lt 1 ]; then
+            echo -e "Value must be greater than 0." >&2
+            continue
+        fi
+        if [ -n "$max" ] && [ "$number" -gt "$max" ]; then
+            echo -e "Value must be less than $((max+1))." >&2
+            continue
+        fi
+        echo ${number}
+        break
     done
+}
+
+prompt_option() {
+    local var_name="$1"
+    local query="$2"
+    shift 2
+    local i=0
+    for val in "$@"; do
+        i=$((i+1))
+        echo "$i) $val"
+    done
+    REPLY=$(prompt_123 "$query" "$#")
+    echo
+    declare -g $var_name="${!REPLY}"
+}
+
+option() {
+    local var_name="$1"
+    local desc="$2"
+    declare -g $var_name="${desc}"
+    OPTIONS+=("$desc")
 }
 
 questionaire() {
@@ -1067,17 +1104,18 @@ questionaire() {
     echo -e "(Note that all this script does is set a lot of the time consuming parameters in the config"
     echo
     echo -e "${PROMPT}${SECTION}What type of MMU are you running?${INPUT}"
-    echo -e "1) ERCF v1.1 (inc TripleDecky, Springy, Binky mods)"
-    echo -e "2) ERCF v2.0"
-    echo -e "3) Tradrack v1.0"
-    echo -e "4) Angry Beaver v1.0"
-    echo -e "5) Armored Turtle v1.0"
-    echo -e "6) 3MS (Modular Multi Material System) v1.0"
-    echo -e "7) Other / Custom (or just want starter config files)"
-    num=$(prompt_123 "MMU Type?" 7)
-    echo
-    case $num in
-        1) # ERCF v1.1
+    OPTIONS=()
+    option ERCF11         'ERCF v1.1 (inc TripleDecky, Springy, Binky mods)'
+    option ERCF20         'ERCF v2.0'
+    option TRADRACK       'Tradrack v1.0'
+    option ANGRY_BEAVER   'Angry Beaver v1.0'
+    option BOX_TURTLE     'Box Turtle v1.0'
+    option NIGHT_OWL      'Night Owl (Night Turtle) v1.0'
+    option _3MS           '3MS (Modular Multi Material System) v1.0'
+    option OTHER          'Other / Custom (or just want starter config files)'
+    prompt_option opt 'MMU Type' "${OPTIONS[@]}"
+    case $opt in
+        "$ERCF11")
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
             _hw_mmu_vendor="ERCF"
@@ -1125,7 +1163,7 @@ questionaire() {
             esac
             ;;
 
-        2) # ERCF v2.0
+        "$ERCF20")
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
             _hw_mmu_vendor="ERCF"
@@ -1149,7 +1187,7 @@ questionaire() {
             _param_servo_buzz_gear_on_down=1
             ;;
 
-        3) # Tradrack v1.0
+        "$TRADRACK")
             HAS_ENCODER=no
             HAS_SELECTOR=yes
             _hw_mmu_vendor="Tradrack"
@@ -1184,7 +1222,7 @@ questionaire() {
             esac
             ;;
 
-        4) # Angry Beaver v1.0
+        "$ANGRY_BEAVER")
             HAS_ENCODER=no
             HAS_SELECTOR=no
             _hw_mmu_vendor="AngryBeaver"
@@ -1203,10 +1241,10 @@ questionaire() {
             _param_gear_homing_speed=80
             ;;
 
-        5) # Amored Turtle v1.0
+        "$BOX_TURTLE")
             HAS_ENCODER=no
             HAS_SELECTOR=no
-            _hw_mmu_vendor="AmoredTurtle"
+            _hw_mmu_vendor="BoxTurtle"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
             _hw_variable_bowden_lengths=1
@@ -1225,7 +1263,29 @@ questionaire() {
             variable_user_mmu_error_extension="MMU_RESPOOLER_STOP"
             ;;
 
-        6) # 3MS
+        "$NIGHT_OWL")
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            _hw_mmu_vendor="NightOwl"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=1
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="post_gate"
+            _param_gate_parking_distance=10
+
+            # Macro variable config
+            variable_user_pre_unload_extension="MMU_RESPOOLER_START"
+            variable_user_post_unload_extension="MMU_RESPOOLER_STOP"
+            variable_user_mmu_error_extension="MMU_RESPOOLER_STOP"
+            ;;
+
+        "$_3MS")
             HAS_ENCODER=no
             HAS_SELECTOR=no
             _hw_mmu_vendor="3MS"
@@ -1244,7 +1304,7 @@ questionaire() {
             _param_gear_homing_speed=80
             ;;
 
-        7) # Other / Custom
+        *)
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
             SETUP_LED=yes
@@ -1263,32 +1323,32 @@ questionaire() {
 
             # This isn't meant to be all-inclusive of options. It is just to provide a config starting point that is close
             echo
-            echo -e "${PROMPT}${SECTION}Which if these most closely resembles your MMU design (this allows for some tuning of config files)?"
-            echo -e "1) Type-A (selector) with Encoder"
-            echo -e "2) Type-A (selector), No Encoder"
-            echo -e "3) Type-B (mutliple filament drive steppers) with Encoder"
-            echo -e "4) Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder"
-            echo -e "5) Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder"
-            echo -e "6) Type-B (multiple filament drive steppers) with individual post-gate sensors and Encoder"
-            echo -e "7) Type-B (multiple filament drive steppers) with individual post-gate sensors, No Encoder"
-            echo -e "8) Just turn on all options and let me configure"
-            num=$(prompt_123 "Type?" 8)
-            echo
-            case $num in
-                1)
+            echo -e "${PROMPT}${SECTION}Which of these most closely resembles your MMU design (this allows for some tuning of config files)?{$INPUT}"
+            OPTIONS=() # reset option array
+            option TYPE_A_WITH_ENCODER                          'Type-A (selector) with Encoder'
+            option TYPE_A_NO_ENCODER                            'Type-A (selector), No Encoder'
+            option TYPE_B_WITH_ENCODER                          'Type-B (mutliple filament drive steppers) with Encoder'
+            option TYPE_B_WITH_SHARED_GATE_AND_ENCODER          'Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder'
+            option TYPE_B_WITH_SHARED_GATE_NO_ENCODER           'Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder'
+            option TYPE_B_WITH_INDIVIDUAL_POST_GATE_AND_ENCODER 'Type-B (multiple filament drive steppers) with individual post-gate sensors and Encoder'
+            option TYPE_B_WITH_INDIVIDUAL_POST_GATE_NO_ENCODER  'Type-B (multiple filament drive steppers) with individual post-gate sensors, No Encoder'
+            option OTHER                                        'Just turn on all options and let me configure'
+            prompt_option opt 'Type' "${OPTIONS[@]}"
+            case "$opt" in
+                "$TYPE_A_WITH_ENCODER")
                     _param_gate_homing_endstop="encoder"
                     _param_extruder_homing_endstop="collision"
                     echo
                     echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU with selector you will need to setup some CAD dimensions in mmu_parameters.cfg... See doc"
                     ;;
-                2)
+                "$TYPE_A_NO_ENCODER")
                     HAS_ENCODER=no
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     echo
                     echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU with selector you will need to setup some CAD dimensions in mmu_parameters.cfg... See doc"
                     ;;
-                3)
+                "$TYPE_B_WITH_ENCODER")
                     HAS_SELECTOR=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
@@ -1296,7 +1356,7 @@ questionaire() {
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
-                4)
+                "$TYPE_B_WITH_SHARED_GATE_AND_ENCODER")
                     HAS_SELECTOR=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
@@ -1304,7 +1364,7 @@ questionaire() {
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
-                5)
+                "$TYPE_B_WITH_SHARED_GATE_NO_ENCODER")
                     HAS_SELECTOR=no
                     HAS_ENCODER=no
                     _hw_selector_type=VirtualSelector
@@ -1313,7 +1373,7 @@ questionaire() {
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
-                6)
+                "$TYPE_B_WITH_INDIVIDUAL_POST_GATE_AND_ENCODER")
                     HAS_SELECTOR=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
@@ -1321,7 +1381,7 @@ questionaire() {
                     _param_gate_homing_endstop="post_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
-                7)
+                "$TYPE_B_WITH_INDIVIDUAL_POST_GATE_NO_ENCODER")
                     HAS_SELECTOR=no
                     HAS_ENCODER=no
                     _hw_selector_type=VirtualSelector
@@ -1330,7 +1390,7 @@ questionaire() {
                     _param_gate_homing_endstop="post_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
-                8)
+                *)
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
@@ -1340,63 +1400,59 @@ questionaire() {
 
     echo
     echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
-    while true; do
-        read -p "Number of gates? " _hw_num_gates
-        if ! [ "${_hw_num_gates}" -ge 1 ] 2> /dev/null ;then
-            echo -e "${INFO}Positive integer value only"
-      else
-           break
-       fi
-    done
+    _hw_num_gates=$(prompt_123 "Number of gates")
 
     _hw_brd_type="unknown"
     echo
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
-    echo -e " 1) BTT MMB v1.0 (with CANbus)"
-    echo -e " 2) BTT MMB v1.1 (with CANbus)"
-    echo -e " 3) Fysetc Burrows ERB v1"
-    echo -e " 4) Fysetc Burrows ERB v2"
-    echo -e " 5) Standard EASY-BRD (with SAMD21)"
-    echo -e " 6) EASY-BRD with RP2040"
-    echo -e " 7) Mellow EASY-BRD v1.x (with CANbus)"
-    echo -e " 8) Mellow EASY-BRD v2.x (with CANbus)"
-    echo -e " 9) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 9)
-    echo
-    case $num in
-        1)
+    # Perhaps consider just supporting the BTT MMB (and eventually AFC) when mmu_vendor is BoxTurtle
+    # as many of these other boards may not work (due lack of exposed gpio)
+    OPTIONS=()
+    option MMB10                'BTT MMB v1.0 (with CANbus)'
+    option MMB11                'BTT MMB v1.1 (with CANbus)'
+    option FYSETC_BURROWS_ERB_1 'Fysetc Burrows ERB v1'
+    option FYSETC_BURROWS_ERB_2 'Fysetc Burrows ERB v2'
+    option EASY_BRD_SAMD21      'Standard EASY-BRD (with SAMD21)'
+    option EASY_BRD_RP2040      'EASY-BRD with RP2040'
+    option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
+    option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
+    option OTHER                'Not in list / Unknown'
+    prompt_option opt 'MCU Type' "${OPTIONS[@]}"
+    echo "opt=$opt"
+    case $opt in
+        "$MMB10")
             _hw_brd_type="MMB10"
             pattern="Klipper_stm32"
             ;;
-        2)
+        "$MMB11")
             _hw_brd_type="MMB11"
             pattern="Klipper_stm32"
             ;;
-        3)
+        "$FYSETC_BURROWS_ERB_1")
             _hw_brd_type="ERB"
             pattern="Klipper_rp2040"
             ;;
-        4)
+        "$FYSETC_BURROWS_ERB_2")
             _hw_brd_type="ERBv2"
             pattern="Klipper_rp2040"
             ;;
-        5)
+        "$EASY_BRD_SAMD21")
             _hw_brd_type="EASY-BRD"
             pattern="Klipper_samd21"
             ;;
-        6)
+        "$EASY_BRD_RP2040")
             _hw_brd_type="EASY-BRD-RP2040"
             pattern="Klipper_rp2040"
             ;;
-        7)
+        "$MELLOW_BRD_1")
             _hw_brd_type="MELLOW-EASY-BRD-CAN"
             pattern="Klipper_rp2040"
             ;;
-        8)
+        "$MELLOW_BRD_2")
             _hw_brd_type="MELLOW-EASY-BRD-CANv2"
             pattern="Klipper_rp2040"
             ;;
-        9)
+        *)
             _hw_brd_type="unknown"
             pattern="Klipper_"
             ;;
@@ -1474,16 +1530,15 @@ questionaire() {
             _param_servo_always_active=0
 
             echo
-            echo -e "${PROMPT}${SECTION}Which servo are you using?"
-            echo -e "1) MG-90S"
-            echo -e "2) Savox SH0255MG"
-            echo -e "3) GDW DS041MG"
-            echo -e "4) Not listed / Other${INPUT}"
-            num=$(prompt_123 "Servo?" 4)
-            echo
-            case $num in
-                1)
-                    # MG-90S
+            echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
+            OPTIONS=()
+            option MG90S    'MG-90S'
+            option SH0255MG 'Savox SH0255MG'
+            option DS041MG  'GDW DS041MG'
+            option OTHER    'Not listed / Other'
+            prompt_option opt 'Servo' "${OPTIONS[@]}"
+            case $opt in
+                "$MG90S")
                     _param_servo_up_angle=30
                     if [ "${_hw_mmu_version}" == "2.0" ]; then
                         _param_servo_move_angle=61
@@ -1492,8 +1547,7 @@ questionaire() {
                     fi
                     _param_servo_down_angle=140
                     ;;
-                2)
-                    # Savox SH0255MG
+                "$SH0255MG")
                     _param_servo_up_angle=140
                     if [ "${_hw_mmu_version}" == "2.0" ]; then
                         _param_servo_move_angle=109
@@ -1502,8 +1556,7 @@ questionaire() {
                     fi
                     _param_servo_down_angle=30
                     ;;
-                3)
-                    # GDW DS041MG
+                "$DS041MG")
                     _hw_maximum_servo_angle=180
                     _hw_minimum_pulse_width=0.00050
                     _hw_maximum_pulse_width=0.00250
@@ -1524,18 +1577,18 @@ questionaire() {
             _param_servo_always_active=1
 
             echo
-            echo -e "${PROMPT}${SECTION}Which servo are you using?"
-            echo -e "1) PS-1171MG or FT1117M (Tradrack)"
-            echo -e "2) Not listed / Other${INPUT}"
-            num=$(prompt_123 "Servo?" 2)
-            echo
-            case $num in
-                1)
+            echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
+            OPTIONS=()
+            option TRADRACK_BOM 'PS-1171MG or FT1117M (Tradrack)'
+            option OTHER 'Not listed / Other'
+            prompt_option opt 'Servo' "${OPTIONS[@]}"
+            case $opt in
+                "$TRADRACK_BOM")
                     _param_servo_up_angle=145
                     _param_servo_move_angle=${servo_up_angle}
                     _param_servo_down_angle=1
                     ;;
-                2)
+                *)
                     _param_servo_up_angle=145
                     _param_servo_move_angle=${servo_up_angle}
                     _param_servo_down_angle=1
