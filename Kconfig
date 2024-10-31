@@ -32,6 +32,7 @@ choice
     select MMU_HAS_ENCODER
     select MMU_HAS_SELECTOR
     select HW_VARIABLE_ROTATION_DISTANCES
+    select HW_REQUIRE_BOWDEN_MOVE
 
     if HW_MMU_TYPE_ERCF_V1_1
       config HW_EXT_SPRINGY
@@ -47,10 +48,12 @@ choice
     select MMU_HAS_ENCODER
     select MMU_HAS_SELECTOR
     select HW_VARIABLE_ROTATION_DISTANCES
+    select HW_REQUIRE_BOWDEN_MOVE
 
   config HW_MMU_TYPE_TRADRACK_V1
     bool "Tradrack v1.0"
     select MMU_HAS_SELECTOR
+    select HW_REQUIRE_BOWDEN_MOVE
 
     if HW_MMU_TYPE_TRADRACK_V1
       config HW_EXT_BINKY
@@ -62,9 +65,20 @@ choice
     bool "Angry Beaver v1.0"
     select HW_VARIABLE_ROTATION_DISTANCES
 
-  config HW_MMU_TYPE_ARMORED_TURTLE_V1
-    bool "Armored Turtle v1.0"
+  config HW_MMU_TYPE_BOX_TURTLE_V1
+    bool "Box Turtle v1.0"
     select HW_VARIABLE_BOWDEN_LENGTHS
+    select HW_VARIABLE_ROTATION_DISTANCES
+    select HW_REQUIRE_BOWDEN_MOVE
+
+  config HW_MMU_TYPE_NIGHT_OWL_V1
+    bool "Night Owl (Night Turtle) v1.0"
+    select HW_VARIABLE_BOWDEN_LENGTHS
+    select HW_VARIABLE_ROTATION_DISTANCES
+    select HW_REQUIRE_BOWDEN_MOVE
+  
+  config HW_MMU_TYPE_3MS_V1
+    bool "Box Turtle v1.0"
     select HW_VARIABLE_ROTATION_DISTANCES
 
   config HW_MMU_TYPE_OTHER
@@ -76,7 +90,9 @@ config HW_MMU_VENDOR
   default "ERCF" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
   default "Tradrack" if HW_MMU_TYPE_TRADRACK_V1
   default "AngryBeaver" if HW_MMU_TYPE_ANGRY_BEAVER_V1
-  default "ArmoredTurtle" if HW_MMU_TYPE_ARMORED_TURTLE_V1
+  default "BoxTurtle" if HW_MMU_TYPE_BOX_TURTLE_V1
+  default "NightOwl" if HW_MMU_TYPE_NIGHT_OWL_V1
+  default "3MS" if HW_MMU_TYPE_3MS_V1
   default "Other"
 
 config HW_MMU_BASE_VERSION
@@ -85,7 +101,7 @@ config HW_MMU_BASE_VERSION
   default "2.0" if HW_MMU_TYPE_ERCF_V2
   default "1.0" if HW_MMU_TYPE_TRADRACK_V1
   default "1.0" if HW_MMU_TYPE_ANGRY_BEAVER_V1
-  default "1.0" if HW_MMU_TYPE_ARMORED_TURTLE_V1
+  default "1.0" if HW_MMU_TYPE_BOX_TURTLE_V1
   default "1.0" if HW_MMU_TYPE_OTHER
 
 config MMU_HAS_ENCODER
@@ -104,6 +120,10 @@ config HW_VARIABLE_ROTATION_DISTANCES
   bool
   prompt "Variable rotation distances?" if HW_MMU_TYPE_OTHER
 
+config HW_REQUIRE_BOWDEN_MOVE
+  bool
+  prompt "Require bowden move?" if HW_MMU_TYPE_OTHER
+
 choice 
   prompt "Homing endstop" if HW_MMU_TYPE_OTHER
   config PARAM_GATE_HOME_ENDSTOP_ENCODER
@@ -112,13 +132,16 @@ choice
     bool "Gate homing endstop"
   config PARAM_GATE_HOME_ENDSTOP_POST_GATE
     bool "Post-gate homing endstop"
+  config PARAM_GATE_HOME_ENDSTOP_NONE
+    bool "No homing endstop"
 endchoice
 
 config PARAM_GATE_HOME_ENDSTOP
   string
   default "encoder" if PARAM_GATE_HOME_ENDSTOP_ENCODER
-  default "gate" if PARAM_GATE_HOME_ENDSTOP_GATE
+  default "mmu_gate" if PARAM_GATE_HOME_ENDSTOP_GATE
   default "post_gate" if PARAM_GATE_HOME_ENDSTOP_POST_GATE
+  default "none" if PARAM_GATE_HOME_ENDSTOP_NONE
 
 choice
   prompt "Board type"
@@ -237,9 +260,6 @@ config HW_NUM_GATES
 
 config ENABLE_LEDS 
   bool "Enable neopixel LEDs support?"
-# config HW_NUM_LEDS
-#   int "Number of LEDs" 
-#   depends on ENABLE_LEDS
 
 config ENABLE_SELECTOR_TOUCH
   bool "Enable touch selector operation using TMC Stallguard?"
@@ -394,21 +414,24 @@ config SHOW_ADVANCED_SETTINGS
     config HW_GEAR_GEAR_RATIO
       string "Gear ratio"
       default "50:17" if HW_MMU_TYPE_TRADRACK_V1
-      default "80:20"
+      default "80:20" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
+      default "1:1" 
     config HW_GEAR_RUN_CURRENT
       string "Gear run current"
       default "1.27" if HW_MMU_TYPE_TRADRACK_V1
-      default "0.8"
+      default "0.5" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
+      default "0.7"
     config HW_GEAR_HOLD_CURRENT
       string "Gear hold current"
       default "0.2" if HW_MMU_TYPE_TRADRACK_V1
-      default "0.1"	
+      default "0.1"
   
     config HW_SELECTOR_RUN_CURRENT
       string "Selector run current"
       depends on MMU_HAS_SELECTOR
       default "0.63" if HW_MMU_TYPE_TRADRACK_V1
-      default "0.4"
+      default "0.4" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
+      default "0.5"
     config HW_SELECTOR_HOLD_CURRENT
       string "Selector hold current"
       depends on MMU_HAS_SELECTOR
