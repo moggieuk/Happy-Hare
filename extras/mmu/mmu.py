@@ -364,6 +364,10 @@ class Mmu:
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
         self.sync_form_tip = config.getint('sync_form_tip', 0, minval=0, maxval=1)
+        if self.mmu_machine.filament_always_gripped:
+            self.sync_to_extruder = 1
+            self.sync_form_tip = 1
+
         self.sync_multiplier_high = config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
         self.sync_multiplier_low = config.getfloat('sync_multipler_low', 0.95, minval=0.5, maxval=1.)
         self.sync_feedback_enable = config.getint('sync_feedback_enable', 0, minval=0, maxval=1)
@@ -1127,24 +1131,28 @@ class Mmu:
                 else:
                     setattr(self, attr, value)
             else:
-                errors.append("Incorrect number of gates specified in %s" % var)
+                errors.append("Incorrect number of gates specified with %s" % var)
 
         # Load selected tool and gate
         tool_selected = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
         gate_selected = self.save_variables.allVariables.get(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
-        if gate_selected < self.num_gates and tool_selected < self.num_gates:
-            self._set_tool_selected(tool_selected)
-            self._set_gate_selected(gate_selected)
-            self._ensure_ttg_match() # Ensure tool/gate consistency
-            self.selector.restore_gate_position()
-        else:
-            errors.append("Invalid tool or gate specified in %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
+        if not (
+            self.TOOL_GATE_BYPASS <= gate_selected < self.num_gates and
+            self.TOOL_GATE_BYPASS <= tool_selected < self.num_gates
+        ):
+            errors.append("Invalid tool or gate specified with %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
+            tool_selected = gate_selected = self.TOOL_GATE_UNKNOWN
+
+        self._set_tool_selected(tool_selected)
+        self._set_gate_selected(gate_selected)
+        self._ensure_ttg_match() # Ensure tool/gate consistency
+        self.selector.restore_gate_position()
 
         # Previous filament position
         self.filament_pos = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
 
         if len(errors) > 0:
-            self.log_info("Warning: Some persisted state was ignored because it contained errors:\n%s" % ''.join(errors))
+            self.log_always("{2}Warning: Some persisted state was ignored because it contained errors:\n%s{0}" % '\n'.join(errors), color=True)
 
         swap_stats = self.save_variables.allVariables.get(self.VARS_MMU_SWAP_STATISTICS, {})
         counters = self.save_variables.allVariables.get(self.VARS_MMU_COUNTERS, {})
@@ -2019,7 +2027,7 @@ class Mmu:
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # Deprecated (use GRIP=1 instead)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print current
-        self._sync_gear_to_extruder(sync, grip=(grip and servo), current=self.is_in_print(force_in_print))
+        self.sync_gear_to_extruder(sync, grip=(grip and servo), current=self.is_in_print(force_in_print))
 
 
 #########################
@@ -2811,7 +2819,7 @@ class Mmu:
 
         if not pre_start_only and self.print_state not in ["printing"]:
             self.log_trace("_on_print_start(->printing)")
-            self._sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
+            self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=min_lifted_z VALUE=0" % self.park_macro) # Sequential printing movement "floor"
             self._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.park_macro)
             msg = "Happy Hare initialized ready for print"
@@ -2844,7 +2852,7 @@ class Mmu:
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
             self._set_print_state(state) # Must be before the unsyncing below for grip (servo) to operate
-            self._sync_gear_to_extruder(False, grip=True)
+            self.sync_gear_to_extruder(False, grip=True)
         if state == "standby" and not self.is_in_standby():
             self._set_print_state(state)
         self._clear_macro_state()
@@ -2852,7 +2860,7 @@ class Mmu:
     def handle_mmu_error(self, reason, force_in_print=False):
         self._fix_started_state() # Get out of 'started' state before transistion to pause
 
-        run_pause_macro = recover_pos = send_event = False
+        run_pause_macro = run_error_macro = recover_pos = send_event = False
         if self.is_in_print(force_in_print):
             if not self.is_mmu_paused():
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
@@ -2866,32 +2874,38 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._save_toolhead_position_and_park('pause') # if already paused this is a no-op
-                self._wrap_gcode_command(self.error_macro)
+                run_error_macro = True
                 run_pause_macro = not self.is_printer_paused()
                 self._set_print_state("pause_locked")
                 send_event = True
                 recover_pos = self.filament_recovery_on_pause
             else:
                 self.log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
-                self._wrap_gcode_command(self.error_macro)
+                run_error_macro = True
                 recover_pos = self.filament_recovery_on_pause
 
         else: # Not in a print (standalone operation)
             self.log_error("MMU issue: %s" % reason)
+            run_error_macro = True
             # Restore original position if parked
             if self.saved_toolhead_operation:
                 self._restore_toolhead_position(self.saved_toolhead_operation)
-            self._wrap_gcode_command(self.error_macro)
 
         # Be deliberate about order of these tasks
+        if run_error_macro:
+            self._wrap_gcode_command(self.error_macro)
+
         if run_pause_macro:
             self._wrap_gcode_command(self.pause_macro)
 
         if recover_pos:
             self.recover_filament_pos(message=True)
 
-        # Default to unsynced on error. Will be restored on resume/continue_printing
-        self._sync_gear_to_extruder(False, grip=True)
+        if self.mmu_machine.filament_always_gripped:
+            self.sync_gear_to_extruder(True, grip=True) # Should already be in this state
+        else:
+            # Default to unsynced (if possible) on error. Will be restored on resume/continue_printing
+            self.sync_gear_to_extruder(False, grip=True)
 
         if send_event:
             self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
@@ -2947,7 +2961,7 @@ class Mmu:
             self._initialize_encoder(dwell=None) # Encoder 0000
 
             # Restablish syncing state and grip (servo) position
-            self._sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
+            self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
 
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
@@ -3642,13 +3656,13 @@ class Mmu:
             self._ensure_safe_extruder_temperature(wait=True)
             # Mimick in print if requested
             try:
-                self._sync_gear_to_extruder(self.sync_form_tip and self.is_in_print(force_in_print), grip=True, current=self.is_in_print(force_in_print))
+                self.sync_gear_to_extruder(self.sync_form_tip and self.is_in_print(force_in_print), grip=True, current=self.is_in_print(force_in_print))
                 _,_,_ = self._do_form_tip(test=True)
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
             except MmuError as ee:
                 self.handle_mmu_error(str(ee))
             finally:
-                self._sync_gear_to_extruder(False, grip=True)
+                self.sync_gear_to_extruder(False, grip=True)
 
     cmd_MMU_STEP_LOAD_GATE_help = "User composable loading step: Move filament from gate to start of bowden"
     def cmd_MMU_STEP_LOAD_GATE(self, gcmd):
@@ -4577,7 +4591,7 @@ class Mmu:
 
         with self.wrap_action(self.ACTION_FORMING_TIP):
             synced = self.sync_form_tip and not extruder_only
-            self._sync_gear_to_extruder(synced, grip=True, current=False)
+            self.sync_gear_to_extruder(synced, grip=True, current=False)
             self._ensure_safe_extruder_temperature(wait=True)
 
             # Perform the tip forming move and establish park_pos
@@ -5002,25 +5016,36 @@ class Mmu:
     # servo: True=move, False=don't mess
     # current: True=optionally reduce, False=restore to current default
     # Returns True if the gear was previously synced, otherwise False
-    def _sync_gear_to_extruder(self, sync, grip=False, current=False):
-        if self.gate_selected < 0: # Safety in case somehow called with bypass/unknown selected
+    def sync_gear_to_extruder(self, sync, gate=None, grip=False, current=False):
+
+        # Safety in case somehow called with bypass/unknown selected. Usually this is called
+        # after self.gate_selected is set, but can be before on type-B designs hence gate parameter
+        if (gate is None and self.gate_selected < 0) or gate < 0:
             sync = current = False
+
         if grip:
             _ = self.selector.filament_drive() if sync else self._auto_filament_grip()
         _ = self._adjust_gear_current(self.sync_gear_current, "for extruder syncing") if current and sync else self._restore_gear_current()
-        self.movequeues_wait() # Safety but should not be required(?)
-        return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+
+# XXX We used to wait() every sync change call. Keeping this logic as a reminder in case of issues with new conditional logic
+#        self.movequeues_wait() # Safety but should not be required(?)
+#        return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+        new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
+        if new_sync_mode != self.mmu_toolhead.sync_mode:
+            self.movequeues_wait() # Safety but should not be required(?)
+            return self.mmu_toolhead.sync(new_sync_mode)
+        return new_sync_mode
 
     # This is used to protect the in print synchronization state and is used as an outermost wrapper for
     # calls back into Happy Hare during a print. It ensures that grip (servo) and current are correctly restored,
     # but like the rest of Happy Hare it employs lazy grip (servo) movement to reduce "flutter"
     @contextlib.contextmanager
     def _wrap_sync_gear_to_extruder(self):
-        prev_gear_synced = self._sync_gear_to_extruder(False, grip=False, current=True)
+        prev_gear_synced = self.sync_gear_to_extruder(False, grip=False, current=True)
         try:
             yield self
         finally:
-            self._sync_gear_to_extruder(prev_gear_synced, grip=True, current=True)
+            self.sync_gear_to_extruder(prev_gear_synced, grip=True, current=True)
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
     # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
@@ -5276,6 +5301,7 @@ class Mmu:
             raise ee
 
     def unselect_gate(self):
+        self.selector.select_gate(self.TOOL_GATE_UNKNOWN) # Required for type-B MMU's to unsync
         self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
 
     def select_tool(self, tool, move_servo=True):
@@ -6149,8 +6175,12 @@ class Mmu:
         self.extruder_accel = gcmd.get_float('EXTRUDER_ACCEL', self.extruder_accel, above=10.)
 
         # Synchronous motor control
-        self.sync_form_tip = gcmd.get_int('SYNC_FORM_TIP', self.sync_form_tip, minval=0, maxval=1)
         self.sync_to_extruder = gcmd.get_int('SYNC_TO_EXTRUDER', self.sync_to_extruder, minval=0, maxval=1)
+        self.sync_form_tip = gcmd.get_int('SYNC_FORM_TIP', self.sync_form_tip, minval=0, maxval=1)
+        if self.mmu_machine.filament_always_gripped:
+            self.sync_to_extruder = 1
+            self.sync_form_tip = 1
+
         self.sync_feedback_enable = gcmd.get_int('SYNC_FEEDBACK_ENABLE', self.sync_feedback_enable, minval=0, maxval=1)
         self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
         self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
