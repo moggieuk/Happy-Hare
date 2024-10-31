@@ -1109,7 +1109,8 @@ questionaire() {
     option ERCF20         'ERCF v2.0'
     option TRADRACK       'Tradrack v1.0'
     option ANGRY_BEAVER   'Angry Beaver v1.0'
-    option ARMORED_TURTLE 'Armored Turtle v1.0'
+    option BOX_TURTLE     'Box Turtle v1.0'
+    option NIGHT_OWL      'Night Owl (Night Turtle) v1.0'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
@@ -1240,10 +1241,32 @@ questionaire() {
             _param_gear_homing_speed=80
             ;;
 
-        "$ARMORED_TURTLE")
+        "$BOX_TURTLE")
             HAS_ENCODER=no
             HAS_SELECTOR=no
-            _hw_mmu_vendor="AmoredTurtle"
+            _hw_mmu_vendor="BoxTurtle"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=1
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="post_gate"
+            _param_gate_parking_distance=10
+
+            # Macro variable config
+            variable_user_pre_unload_extension="MMU_RESPOOLER_START"
+            variable_user_post_unload_extension="MMU_RESPOOLER_STOP"
+            variable_user_mmu_error_extension="MMU_RESPOOLER_STOP"
+            ;;
+
+        "$NIGHT_OWL")
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            _hw_mmu_vendor="NightOwl"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
             _hw_variable_bowden_lengths=1
@@ -1395,7 +1418,8 @@ questionaire() {
     option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
     option OTHER                'Not in list / Unknown'
     prompt_option opt 'MCU Type' "${OPTIONS[@]}"
-    case $REPLY in
+    echo "opt=$opt"
+    case $opt in
         "$MMB10")
             _hw_brd_type="MMB10"
             pattern="Klipper_stm32"
