@@ -354,7 +354,7 @@ config SHOW_ADVANCED_SETTINGS
   
   menu "Pins"
     visible if SHOW_ADVANCED_SETTINGS
-    source "./pins.kconfig"
+    source "./scripts/pins.kconfig"
   endmenu
   
   menu "Motors"

@@ -1,5 +1,5 @@
 SHELL=/usr/bin/env bash
-MAKEFLAGS += --jobs
+MAKEFLAGS += --jobs --output-sync
 Q ?= @
 
 export KCONFIG_CONFIG ?= .config
@@ -76,16 +76,16 @@ endif
 
 $(OUT)/config/moonraker.conf: | $(OUT)/config/
 	$(Q)cp -a "$(klipper_config_home)/moonraker.conf" "$@" # Copy the current version to the out directory
-	$(Q)$(SRC)/install.sh install-update-manager "$@"
+	$(Q)$(SRC)/scripts/build.sh install-update-manager "$@"
 
 $(OUT)/config/$(klipper_printer_file): | $(OUT)/config/
 	$(Q)cp -a "$(klipper_config_home)/$(klipper_printer_file)" "$@" # Copy the current version to the out directory
-	$(Q)$(SRC)/install.sh install-includes "$@"
+	$(Q)$(SRC)/scripts/build.sh install-includes "$@"
 
 # We link all config files, those that need to be copied will be written over in the install script
 $(OUT)/config/mmu/%.cfg: $(SRC)/config/%.cfg | $(addprefix $(OUT)/config/mmu/,$(hh_config_dirs))
 	$(Q)ln -sf "$(abspath $<)" "$@"
-	$(Q)$(SRC)/install.sh build "$<" "$@"
+	$(Q)$(SRC)/scripts/build.sh build "$<" "$@"
 
 $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py | $(addprefix $(OUT)/klippy/,$(hh_klipper_extras_dirs))
 	$(Q)ln -sf "$(abspath $<)" "$@"
@@ -105,8 +105,6 @@ $(OUT)/%/: | $(OUT)
 $(call backup,%): 
 	@echo "Making a backup of '$(basename $@)' to '$@'"
 	$(Q)cp -a "$(basename $@)" "$@"
-
-
 
 build: $(KCONFIG_CONFIG) check_root check_paths .config \
 	$(OUT)/config/$(klipper_printer_file) \
@@ -138,7 +136,7 @@ $(klipper_config_home)/$(klipper_printer_file): $(OUT)/config/$(klipper_printer_
 	@echo "Installing $@"
 	$(Q)cp -f "$<" "$@"
 
-$(klipper_config_home)/moonraker.conf: $(OUT)/config/moonraker.conf | build $(call backup, $(klipper_config_home)/moonraker.conf ) 
+$(klipper_config_home)/moonraker.conf: $(OUT)/config/moonraker.conf | build $(call backup, $(klipper_config_home)/moonraker.conf) 
 	@echo "Installing $@"
 	$(Q)cp -f "$<" "$@"
 	$(eval restart_moonraker = 1)
@@ -150,16 +148,16 @@ install: check_root check_version check_paths \
 	$(addprefix $(moonraker_home)/moonraker/, $(hh_moonraker_components)) \
 	$(addprefix $(klipper_home)/klippy/, $(hh_klipper_extras)) \
 	| remove_old_modules
-	$(Q)[ "$(restart_moonraker)" -eq 0 ] || ./install.sh restart-moonraker
-	$(Q)$(SRC)/install.sh restart-klipper
-	$(Q)$(SRC)/install.sh print-happy-hare
+	$(Q)[ "$(restart_moonraker)" -eq 0 ] || ./scripts/build.sh restart-moonraker
+	$(Q)$(SRC)/scripts/build.sh restart-klipper
+	$(Q)$(SRC)/scripts/build.sh print-happy-hare
 
-uninstall: | backup 
+uninstall: | $(call backup, $(wildcard $(klipper_config_home)/mmu)) $(call backup, $(klipper_config_home)/$(klipper_printer_file)) $(call backup, $(klipper_config_home)/moonraker.conf)
 	$(Q)rm -f $(klipper_target_extras)
 	$(Q)rm -f $(addprefix, $(moonraker_home)/, $(moonraker_components))
 	$(Q)rm -rf $(klipper_config_home)/mmu
-	$(Q)$(SRC)/install.sh uninstall
-	$(Q)$(SRC)/install.sh print-unhappy-hare
+	$(Q)$(SRC)/scripts/build.sh uninstall
+	$(Q)$(SRC)/scripts/build.sh print-unhappy-hare
 
 clean: 
 	$(Q)rm -rf $(OUT)
@@ -179,25 +177,25 @@ else
 endif
 
 check_version:
-	$(Q)$(SRC)/install.sh check-version
+	$(Q)$(SRC)/scripts/build.sh check-version
 
-$(KCONFIG_CONFIG): Kconfig 
+$(KCONFIG_CONFIG): $(SRC)/scripts/Kconfig 
 # 	If .config does not exist yet run menuconfig, else just update it
 #	touch in case .config does not get updated by olddefconfig.py
 	@if [ -f $(KCONFIG_CONFIG) ]; then \
-		python $(klipper_home)/lib/kconfiglib/olddefconfig.py Kconfig; \
+		python $(klipper_home)/lib/kconfiglib/olddefconfig.py $(SRC)/scripts/Kconfig; \
 		touch $(KCONFIG_CONFIG); \
 	elif [[ ! "$(MAKECMDGOALS)" =~ menuconfig ]]; then \
 		$(MAKE) menuconfig; \
 		[ -f $(KCONFIG_CONFIG) ] || { echo "No $(KCONFIG_CONFIG) file found, exiting. Run 'make menuconfig' to create a config file"; exit 1; }; \
 	fi
 
-menuconfig: Kconfig 
-	@MENUCONFIG_STYLE="aquatic" python ${klipper_home}/lib/kconfiglib/menuconfig.py Kconfig
+menuconfig: $(SRC)/scripts/Kconfig 
+	@MENUCONFIG_STYLE="aquatic" python ${klipper_home}/lib/kconfiglib/menuconfig.py $(SRC)/scripts/Kconfig
 
 
-genconfig: Kconfig 
-	@python ${klipper_home}/lib/kconfiglib/genconfig.py Kconfig --config-out test.config
+genconfig: $(SRC)/scripts/Kconfig 
+	@python ${klipper_home}/lib/kconfiglib/genconfig.py $(SRC)/scripts/Kconfig --config-out test.config
 
 
 
