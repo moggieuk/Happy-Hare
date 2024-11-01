@@ -407,7 +407,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.unsync()
         if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
         self.mmu.log_stepper("sync(mode=%s)" % new_sync_mode)
-        self.mmu.log_error("PAUL: sync(mode=%s)" % new_sync_mode)
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
 
@@ -460,7 +459,6 @@ class MmuToolHead(toolhead.ToolHead, object):
     def unsync(self):
         if self.sync_mode is None: return None
         self.mmu.log_stepper("unsync()")
-        self.mmu.log_error("PAUL: unsync()")
         prev_sync_mode = self.sync_mode
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
