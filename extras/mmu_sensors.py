@@ -164,6 +164,7 @@ class MmuSensors:
         # Setup extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
+# PAUL REVIST..
             # Allow pin sharing for special case of "no bowden MMU designs" where gate sensor is same as extruder entry sensor
             if switch_pin == config.get('gate_switch_pin', None):
                 ppins = self.printer.lookup_object('pins')

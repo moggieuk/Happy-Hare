@@ -1307,7 +1307,7 @@ questionaire() {
             _param_extruder_homing_endstop="extruder"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=500
-            _param_gate_parking_distance=100
+            _param_gate_parking_distance=250
             _param_gear_homing_speed=80
             ;;
 
