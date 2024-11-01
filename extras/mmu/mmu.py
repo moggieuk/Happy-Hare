@@ -2004,7 +2004,7 @@ class Mmu:
         if self.check_if_bypass(): return
         motor = gcmd.get('MOTOR', "gear")
 
-        with self._wrap_sync_gear_to_extruder():
+        with self.wrap_sync_gear_to_extruder():
             if motor == "gear":
                 found = self.buzz_gear_motor()
                 if found is not None:
@@ -2028,11 +2028,10 @@ class Mmu:
         if self.check_if_bypass(): return
         if self.check_if_not_homed(): return
         grip = gcmd.get_int('GRIP', 1, minval=0, maxval=1)
-        servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # Deprecated (use GRIP=1 instead)
+        servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # Deprecated (use GRIP=0 instead)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print current
         self.sync_gear_to_extruder(sync, grip=(grip and servo), current=self.is_in_print(force_in_print))
-# PAUL augment to reset sync / servo state
 
 
 #########################
@@ -2349,7 +2348,7 @@ class Mmu:
         reset = gcmd.get_int('RESET', 0, minval=0, maxval=1)
         gate = self.gate_selected if self.gate_selected >= 0 else 0
 
-        with self._wrap_sync_gear_to_extruder():
+        with self.wrap_sync_gear_to_extruder():
             if reset:
                 self.rotation_distances = [self.default_rotation_distance] * self.num_gates
                 self._set_rotation_distance(self.default_rotation_distance)
@@ -2402,8 +2401,8 @@ class Mmu:
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         advance = 60. # Ensure filament is in encoder even if not loaded by user
 
-        with self._wrap_sync_gear_to_extruder():
-            try:
+        try:
+            with self.wrap_sync_gear_to_extruder():
                 with self._require_encoder():
                     self.selector.filament_drive()
                     self.calibrating = True
@@ -2412,10 +2411,10 @@ class Mmu:
                         raise MmuError("Filament not detected in encoder. Ensure filament is available and try again")
                     self._calibrate_encoder(length, repeats, speed, min_speed, max_speed, accel, save)
                     _,_,_,_ = self.trace_filament_move("Parking filament", -advance)
-            except MmuError as ee:
-                self.handle_mmu_error(str(ee))
-            finally:
-                self.calibrating = False
+        except MmuError as ee:
+            self.handle_mmu_error(str(ee))
+        finally:
+            self.calibrating = False
 
     # Start: Will home selector, select gate 0
     # End: Filament will unload
@@ -2441,8 +2440,8 @@ class Mmu:
         extruder_homing_max = gcmd.get_float('HOMING_MAX', 150, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
 
-        with self._wrap_sync_gear_to_extruder():
-            try:
+        try:
+            with self.wrap_sync_gear_to_extruder():
                 self.calibrating = True
                 if manual:
                     self._calibrate_bowden_length_manual(approx_bowden_length, save)
@@ -2452,10 +2451,10 @@ class Mmu:
                     self._unload_tool()
                     with self._require_encoder():
                         self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats, save)
-            except MmuError as ee:
-                self.handle_mmu_error(str(ee))
-            finally:
-                self.calibrating = False
+        except MmuError as ee:
+            self.handle_mmu_error(str(ee))
+        finally:
+            self.calibrating = False
 
     # Start: Will home selector, select gate 0 or required gate
     # End: Filament will unload
@@ -2474,8 +2473,8 @@ class Mmu:
             raise gcmd.error("Must specify 'GATE=' or 'ALL=1' for all gates")
         if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR, check_gates=[gate] if gate != -1 else None): return
 
-        with self._wrap_sync_gear_to_extruder():
-            try:
+        try:
+            with self.wrap_sync_gear_to_extruder():
                 self._reset_ttg_map() # To force tool = gate
                 self._unload_tool()
                 self.calibrating = True
@@ -2489,10 +2488,10 @@ class Mmu:
                         self._calibrate_gate(gate, length, repeats, save=(save and gate != 0))
                 if not any(x == -1 for x in self.rotation_distances[1:]):
                     self.calibration_status |= self.CALIBRATED_GEAR_RDS
-            except MmuError as ee:
-                self.handle_mmu_error(str(ee))
-            finally:
-                self.calibrating = False
+        except MmuError as ee:
+            self.handle_mmu_error(str(ee))
+        finally:
+            self.calibrating = False
 
     # Start: Test gate should already be selected
     # End: Filament will unload
@@ -2527,7 +2526,7 @@ class Mmu:
                 raise gcmd.error("Filament tip forming macro '%s' does not look like a cutting macro!" % self.form_tip_macro)
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 self.calibrating = True
                 self._initialize_filament_position(dwell=True)
                 self._load_gate(allow_retry=False)
@@ -5050,17 +5049,13 @@ class Mmu:
     # calls back into Happy Hare during a print. It ensures that grip (servo) and current are correctly restored,
     # but like the rest of Happy Hare it employs lazy grip (servo) movement to reduce "flutter"
     @contextlib.contextmanager
-    def _wrap_sync_gear_to_extruder(self):
+    def wrap_sync_gear_to_extruder(self):
         prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
-        prev_current = not(self.gear_percentage_run_current == 100)
-        #self.log_error("PAUL TEMP: _wrap_sync_gear_to_extruder(ENTRY), prev_sync=%s, prev_current=%s" % (prev_sync, prev_current))
-#PAUL        prev_gear_synced = self.sync_gear_to_extruder(False, grip=False, current=True)
+        prev_current = self.gear_percentage_run_current != 100
         try:
             yield self
         finally:
-            #self.log_error("PAUL TEMP: _wrap_sync_gear_to_extruder(EXIT), prev_sync=%s, prev_current=%s" % (prev_sync, prev_current))
             self.sync_gear_to_extruder(prev_sync, grip=True, current=prev_current)
-#PAUL            self.sync_gear_to_extruder(prev_gear_synced, grip=True, current=True)
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
     # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
@@ -5308,7 +5303,7 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - NO-OP" if gate == self.gate_selected else ""))
+        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - NO-OP" if gate == self.gate_selected else ""))
         if gate == self.gate_selected: return
         try:
             self._next_gate = gate # Valid only during the gate selection process
@@ -5325,7 +5320,7 @@ class Mmu:
         self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
 
     def select_tool(self, tool, move_servo=True):
-        self.log_error("PAUL TEMP: selet_tool(%s)" % tool)
+        #self.log_error("PAUL TEMP: selet_tool(%s)" % tool)
         if tool < 0 or tool >= self.num_gates:
             self.log_always("Tool %d does not exist" % tool)
             return
@@ -5357,13 +5352,13 @@ class Mmu:
         self._auto_filament_grip()
 
     def _set_tool_selected(self, tool):
-        self.log_error("PAUL TEMP: _set_tool_selected(%d)" % tool)
+        #self.log_error("PAUL TEMP: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
 
     def _set_gate_selected(self, gate):
-        self.log_error("PAUL TEMP: _set_gate_selected(%d)" % gate)
+        #self.log_error("PAUL TEMP: _set_gate_selected(%d)" % gate)
         if gate != self.gate_selected:
             self.gate_selected = gate
             self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
@@ -5386,7 +5381,7 @@ class Mmu:
             self.log_debug("Gate not calibrated, falling back to: %.6f" % rd)
         else:
             self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
-        self.log_error("PAUL TEMP: _set_rotation_distance(%s)%s" % (rd, " - NO-OP" if rd == self.gear_rail.steppers[0].get_rotation_distance()[0] else ""))
+        #self.log_error("PAUL TEMP: _set_rotation_distance(%s)%s" % (rd, " - NO-OP" if rd == self.gear_rail.steppers[0].get_rotation_distance()[0] else ""))
         self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_bowden_length(self, gate):
@@ -5624,7 +5619,7 @@ class Mmu:
             force_unload = gcmd.get_int('FORCE_UNLOAD', None, minval=0, maxval=1)
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 self.home(tool, force_unload=force_unload)
                 if tool == -1:
                     self.log_always("Homed")
@@ -5647,7 +5642,7 @@ class Mmu:
             raise gcmd.error("Error on 'MMU_SELECT': missing TOOL, GATE or BYPASS")
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 self._select(bypass, tool, gate)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -5662,7 +5657,7 @@ class Mmu:
         self._fix_started_state()
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 self._select(1, -1, -1)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -5722,23 +5717,23 @@ class Mmu:
             tool = gcmd.get_int('TOOL', minval=0, maxval=self.num_gates - 1)
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
                     with self._wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
                         self._auto_home(tool=tool)
-    
+
                         if self.has_encoder():
                             self.encoder_sensor.update_clog_detection_length()
-    
+
                         form_tip = self.FORM_TIP_SLICER if (self.is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
                         self.log_debug("Tool change initiated %s" % ("with slicer tip forming" if form_tip == self.FORM_TIP_SLICER else "with standalone MMU tip forming" if form_tip == self.FORM_TIP_STANDALONE else "without tip forming"))
                         current_tool_string = self._selected_tool_string()
-    
+
                         # Check if we are already loaded
                         if tool == self.tool_selected and self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
                             self.log_always("Tool T%d is already loaded" % tool)
                             return
-    
+
                         # Load only case
                         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
                             msg = "Tool change requested: T%d" % tool
@@ -5750,19 +5745,19 @@ class Mmu:
                             # Normal toolchange case
                             msg = "Tool change requested, from %s to T%d" % (current_tool_string, tool)
                             m117_msg = "%s > T%d" % (current_tool_string, tool)
-    
+
                         self._note_toolchange(m117_msg)
                         self.log_always(msg)
-    
+
                         # Check if new tool is mapped to current gate
                         if self.ttg_map[tool] == self.gate_selected and self.filament_pos == self.FILAMENT_POS_LOADED:
                             self.select_tool(tool)
                             self._note_toolchange("T%s" % tool)
                             return
-    
+
                         # Determine purge volume for current toolchange. Valid only during toolchange operation
                         self.toolchange_purge_volume = self._get_purge_volume(self.tool_selected, tool)
-    
+
                         # Ok, now ready to park and perform the swap
                         self._next_tool = tool # Valid only during the change process
                         self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
@@ -5816,7 +5811,7 @@ class Mmu:
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
                     if self.filament_pos != self.FILAMENT_POS_UNLOADED:
                         self.log_always("Filament already loaded")
@@ -5851,7 +5846,7 @@ class Mmu:
         form_tip = self.FORM_TIP_STANDALONE if not skip_tip else self.FORM_TIP_NONE
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
                     if self.filament_pos == self.FILAMENT_POS_UNLOADED:
                         self.log_always("Filament not loaded")
@@ -5997,7 +5992,7 @@ class Mmu:
         strict = gcmd.get_int('STRICT', 0, minval=0, maxval=1)
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 if self.TOOL_GATE_BYPASS in (tool, mod_gate) and not self.selector.has_bypass():
                     self.log_always("Bypass not configured")
                     return
@@ -6054,7 +6049,7 @@ class Mmu:
         rand = gcmd.get_int('RANDOM', 0)
         to_nozzle = gcmd.get_int('FULL', 0)
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 for l in range(loops):
                     self.log_always("Testing loop %d / %d" % (l, loops))
                     for t in range(self.num_gates):
@@ -6098,7 +6093,7 @@ class Mmu:
         sensitivity = gcmd.get_float('SENSITIVITY', self.encoder_resolution, minval=0.1, maxval=10)
         if direction == 0: return
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 if self.filament_pos not in [self.FILAMENT_POS_START_BOWDEN, self.FILAMENT_POS_IN_BOWDEN]:
                     # Ready MMU for test if not already setup
                     self._unload_tool()
@@ -6131,7 +6126,7 @@ class Mmu:
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
         full = gcmd.get_int('FULL', 0, minval=0, maxval=1)
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 if full:
                     self.load_sequence(skip_extruder=True)
                 else:
@@ -6146,7 +6141,7 @@ class Mmu:
         if self.check_if_disabled(): return
         debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1)) # Hidden option
 
-        with self._wrap_sync_gear_to_extruder():
+        with self.wrap_sync_gear_to_extruder():
             with DebugStepperMovement(self, debug):
                 actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
             self.log_always("Moved %.1fmm%s" % (actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
@@ -6156,7 +6151,7 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
 
-        with self._wrap_sync_gear_to_extruder():
+        with self.wrap_sync_gear_to_extruder():
             debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1)) # Hidden option
             with DebugStepperMovement(self, debug):
                 actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move")
@@ -6852,7 +6847,7 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 self._runout(True)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -6865,7 +6860,7 @@ class Mmu:
             return
         self._fix_started_state()
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 self._runout()
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -6892,14 +6887,13 @@ class Mmu:
         eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         sensor = gcmd.get('SENSOR', "")
-        send_resume = False
+        process_runout = False
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate != self.gate_selected:
                     # Always update gate map from pre-gate sensor
                     self._set_gate_status(gate, self.GATE_EMPTY)
-                    process_runout = False
 
                 elif eventtime >= self.runout_last_enable_time:
                     if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate == self.gate_selected:
@@ -6944,7 +6938,7 @@ class Mmu:
         sensor = gcmd.get('SENSOR', "")
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
                     self._set_gate_status(gate, self.GATE_UNKNOWN)
                     self._check_pending_spool_id(gate) # Have spool_id ready?
@@ -6989,7 +6983,7 @@ class Mmu:
         sensor = gcmd.get('SENSOR', "")
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
                     # Ignore pre-gate runout if endless_spool_eject_gate feature is active and we want filament to be consumed to clear gate
                     if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
@@ -7010,7 +7004,7 @@ class Mmu:
         if not self.is_enabled: return
         self._fix_started_state()
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 if self.gate_selected != self.TOOL_GATE_BYPASS:
                     msg = "bypass not selected"
                 elif self.is_printing():
@@ -7047,7 +7041,7 @@ class Mmu:
         available = gcmd.get_int('AVAILABLE', self.GATE_UNKNOWN, minval=self.GATE_EMPTY, maxval=self.GATE_AVAILABLE)
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 if reset == 1:
                     self._reset_ttg_map()
                 elif ttg_map != "!":
@@ -7369,7 +7363,7 @@ class Mmu:
                                 else "{}{}-{}".format(UI_SPACE, UI_SPACE, UI_SPACE),
                                 row, range(len(row))
                             )
-                        )) 
+                        ))
                         for y, row in enumerate(volumes)
                     ])
 
@@ -7428,7 +7422,7 @@ class Mmu:
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates = None if gate == -1 else [gate]): return # TODO Incomplete/simplified gate selection
 
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during gate check
                     with self._wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
                         with self.wrap_action(self.ACTION_CHECKING):
@@ -7551,7 +7545,7 @@ class Mmu:
 
         self.log_always("Preloading filament in %s" % (("Gate %d" % gate) if gate >= 0 else "current gate"))
         try:
-            with self._wrap_sync_gear_to_extruder():
+            with self.wrap_sync_gear_to_extruder():
                 with self.wrap_suppress_visual_log():
                     with self.wrap_action(self.ACTION_CHECKING):
                         # If gate not specified assume current gate

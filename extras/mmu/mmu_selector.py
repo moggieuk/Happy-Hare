@@ -64,7 +64,7 @@ class VirtualSelector:
         pass
 
     def select_gate(self, gate):
-        self.mmu.log_error("PAUL TEMP: -------selector.select_gate(%d)%s" % (gate, " - IGNORED" if gate == self.mmu.gate_selected else ""))
+        #self.mmu.log_error("PAUL TEMP: -------selector.select_gate(%d)%s" % (gate, " - IGNORED" if gate == self.mmu.gate_selected else ""))
         if gate == self.mmu.gate_selected: return
 
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
@@ -72,16 +72,16 @@ class VirtualSelector:
         # Sync new MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.sync_gear_to_extruder(gate >= 0, gate)
-        self.mmu.log_error("PAUL TEMP: -------selector.select_gate(END)")
+        #self.mmu.log_error("PAUL TEMP: -------selector.select_gate(END)")
 
     def restore_gate(self, gate):
-        self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(%s)" % gate)
+        #self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(%s)" % gate)
         self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.sync_gear_to_extruder(gate >= 0, gate)
-        self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(END)")
+        #self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(END)")
 
     def filament_drive(self):
         pass
@@ -296,17 +296,15 @@ class LinearSelector:
     # Physically move selector to correct gate position
     def select_gate(self, gate):
         if gate == self.mmu.gate_selected: return
-        self.mmu.log_error("PAUL TEMP: selector.select_gate(%d)" % gate)
         with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
             self.filament_hold()
             if gate == self.mmu.TOOL_GATE_BYPASS:
                 self._position(self.bypass_offset)
             elif gate >= 0:
-                self._position(selector_offsets[gate])
+                self._position(self.selector_offsets[gate])
 
     # Correct rail position for selector
     def restore_gate(self, gate):
-        self.mmu.log_error("PAUL TEMP: selector.restore_gate()")
         if gate == self.mmu.TOOL_GATE_BYPASS:
             self.set_position(self.bypass_offset)
         elif self.mmu.gate_selected >= 0:
@@ -386,10 +384,11 @@ class LinearSelector:
             gate = self.mmu.TOOL_GATE_BYPASS
 
         try:
-            if gate != -1:
-                self._calibrate_selector(gate, save=save)
-            else:
-                self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
+            with self.mmu.wrap_sync_gear_to_extruder():
+                if gate != -1:
+                    self._calibrate_selector(gate, save=save)
+                else:
+                    self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
 
@@ -403,20 +402,21 @@ class LinearSelector:
         servo = bool(gcmd.get_int('SERVO', 0))
         home = bool(gcmd.get_int('HOME', 1))
         try:
-            if home:
-                self.home()
-            for l in range(loops):
-                self.mmu.log_always("Testing loop %d / %d" % (l + 1, loops))
-                tool = random.randint(0, self.mmu.num_gates)
-                if tool == self.mmu.num_gates:
-                    self.mmu.select_bypass()
-                else:
-                    if random.randint(0, 10) == 0 and home:
-                        self.mmu.home(tool=tool)
+            with self.mmu.wrap_sync_gear_to_extruder():
+                if home:
+                    self.home()
+                for l in range(loops):
+                    self.mmu.log_always("Testing loop %d / %d" % (l + 1, loops))
+                    tool = random.randint(0, self.mmu.num_gates)
+                    if tool == self.mmu.num_gates:
+                        self.mmu.select_bypass()
                     else:
-                        self.mmu.select_tool(tool, move_servo=servo)
-                if servo:
-                    self.filament_drive()
+                        if random.randint(0, 10) == 0 and home:
+                            self.mmu.home(tool=tool)
+                        else:
+                            self.mmu.select_tool(tool, move_servo=servo)
+                    if servo:
+                        self.filament_drive()
         except MmuError as ee:
             self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
@@ -493,7 +493,7 @@ class LinearSelector:
             max_movement = self._get_max_selector_movement()
             self.mmu.log_always("Searching for end of selector... (up to %.1fmm)" % max_movement)
             if self.use_touch_move():
-                halt_pos,found_home = self.homing_move("Detecting end of selector movement", max_movement, homing_move=1, endstop_name=self.mmu.ENDSTOP_SELECTOR_TOUCH)
+                _,found_home = self.homing_move("Detecting end of selector movement", max_movement, homing_move=1, endstop_name=self.mmu.ENDSTOP_SELECTOR_TOUCH)
             else:
                 # This might not sound good!
                 self.move("Ensure we are clear off the physical endstop", self.cad_gate0_pos)
@@ -580,7 +580,7 @@ class LinearSelector:
             self.mmu.calibrating = False
 
     def _home_selector(self):
-        self.mmu.unselect_gate() # PAUL       self.mmu.gate_selected = self.mmu.TOOL_GATE_UNKNOWN # PAUL why not unset_gate()?
+        self.mmu.unselect_gate()
         self.servo.servo_move()
         self.mmu.movequeues_wait()
         homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
@@ -610,7 +610,7 @@ class LinearSelector:
                         if not found:
                             # Push filament into view of the gate endstop
                             self.servo_down()
-                            _,_,measured,delta = self.mmu.trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
+                            _,_,measured,_ = self.mmu.trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
                             if self.mmu.has_encoder() and measured < self.mmu.encoder_min:
                                 raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
 
