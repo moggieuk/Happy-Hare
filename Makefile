@@ -1,5 +1,10 @@
 SHELL=/usr/bin/env bash
-MAKEFLAGS += --jobs --output-sync
+
+# For parallel builds
+MAKEFLAGS += -j
+# kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target
+MAKEFLAGS += $(if $(findstring menuconfig,$(MAKECMDGOALS)),, --output-sync)
+# For quiet builds, override with make Q= or verbose output
 Q ?= @
 
 export KCONFIG_CONFIG ?= .config
@@ -182,11 +187,12 @@ check_version:
 $(KCONFIG_CONFIG): $(SRC)/scripts/Kconfig 
 # 	If .config does not exist yet run menuconfig, else just update it
 #	touch in case .config does not get updated by olddefconfig.py
+	echo -e "goals: $(MAKECMDGOALS)"
 	@if [ -f $(KCONFIG_CONFIG) ]; then \
 		python $(klipper_home)/lib/kconfiglib/olddefconfig.py $(SRC)/scripts/Kconfig; \
 		touch $(KCONFIG_CONFIG); \
 	elif [[ ! "$(MAKECMDGOALS)" =~ menuconfig ]]; then \
-		$(MAKE) menuconfig; \
+		$(MAKE) MAKEFLAGS= menuconfig; \
 		[ -f $(KCONFIG_CONFIG) ] || { echo "No $(KCONFIG_CONFIG) file found, exiting. Run 'make menuconfig' to create a config file"; exit 1; }; \
 	fi
 
