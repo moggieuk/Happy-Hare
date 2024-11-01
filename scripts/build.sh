@@ -171,6 +171,16 @@ has_param() {
     [ -n "${PARAMS["${section},${param}"]}" ]
 }
 
+has_param_section() {
+    local section=$1
+    for key in "${!PARAMS[@]}"; do
+        if [[ "${key}" =~ ^"${section}", ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 remove_param() {
     local section=$1
     local param=$2
@@ -330,6 +340,7 @@ update_file() {
 
         if ! has_param "${current_section}" "${parameter}"; then
             echo "${line}" >>"${dest}.tmp"
+            continue
         fi
 
         local value="${line#*:}" # select value
@@ -384,13 +395,20 @@ process_upgrades() {
         change_param_var "${sec}" "variable_pin_pin_loc_x_compressed" "variable_pin_loc_compressed"
     fi
 
-    # TODO: this seems broken?
-    # if [ -n "${variable_park_xy}" ]; then
-    #     variable_park_toolchange="${variable_park_xy}, ${_param_z_hop_height_toolchange:-0}, 0, 2"
-    #     variable_park_error="${variable_park_xy}, ${_param_z_hop_height_error:-0}, 0, 2"
-    # fi
-    #
     local sec="[gcode_macro _MMU_SEQUENCE_VARS]"
+    if has_param "${sec}" "variable_park_xy"; then
+        local xy=$(param "${sec}" "variable_park_xy")
+        local z_hop_toolchange=$(param "${sec}" "z_hop_height_toolchange")
+        # local z_hop_error=$(param "${sec}" "z_hop_height_error")
+
+        set_param "${sec}" "variable_park_toolchange" "${xy}, ${z_hop_toolchange:-0}, 0, 2"
+        # TODO: This is not relevant anymore?
+        # set_param "${sec}" "variable_park_error" "${xy}, ${z_hop_error:-0}, 0, 2"
+        remove "${sec}" "variable_park_xy"
+        remove "${sec}" "z_hop_height_toolchange"
+        # remove "${sec}" "z_hop_height_error"
+    fi
+
     if has_param "${sec}" "variable_lift_speed"; then
         change_param_var "${sec}" "variable_lift_speed" "variable_park_lift_speed"
     fi
@@ -448,7 +466,12 @@ process_upgrades() {
         param_change_key "[mmu],mmu_version" "[mmu_machine],mmu_version"
     fi
 
-    param_change_section "[mmu_servo mmu_servo]" "[mmu_servo selector_servo]"
+    if has_param_section "[mmu_servo mmu_servo]"; then
+        param_change_section "[mmu_servo mmu_servo]" "[mmu_servo selector_servo]"
+        if [ "$(param "[mmu_servo selector_servo]" "pin")" == "mmu:MMU_SERVO" ]; then
+            remove_param "[mmu_servo selector_servo]" "pin" # Pin name has been changed, reset
+        fi
+    fi
 }
 
 copy_config_files() {
@@ -457,6 +480,8 @@ copy_config_files() {
     local filename=${1##*/}
     local src=${1}
     local dest=${2}
+
+    local sed_expr=""
 
     # Hardware files: Special token substitution -----------------------------------------
     if [ "${filename}" == "mmu.cfg" ] || [ "${filename}" == "mmu_hardware.cfg" ]; then
@@ -485,8 +510,8 @@ copy_config_files() {
         fi
 
         cp --remove-destination "${src}" "${dest}"
-        update_file "${dest}"
         sed -i "${sed_expr}" "${dest}"
+        update_file "${dest}"
     fi
 
     if [ "${filename}" == "mmu_hardware.cfg" ]; then
@@ -530,7 +555,14 @@ copy_config_files() {
 
     # Conifguration parameters -----------------------------------------------------------
     if [ "${filename}" == "mmu_parameters.cfg" ]; then
+        for var in $(declare | grep "^CONFIG_PARAM_"); do
+            local var=${var%%=*}
+            local pattern="{${var#CONFIG_PARAM_}}"
+            sed_expr+="s|${pattern,,}|${!var}|g; "
+        done
+
         cp --remove-destination "${src}" "${dest}"
+        sed -i "${sed_expr}" "${dest}"
         update_file "${dest}"
         # Ensure that supplemental user added params are retained. These are those that are
         # by default set internally in Happy Hare based on vendor and version settings but
@@ -830,7 +862,9 @@ restart_moonraker() {
 
 # These parameters are too complex to encode with Kconfig.
 set_extra_parameters() {
-    set_param "[mmu]" "happy_hare_version" "${CONFIG_VERSION}"
+    # never use the version from the existing installation file
+    remove_param "[mmu]" "happy_hare_version"
+    CONFIG_PARAM_HAPPY_HARE_VERSION="${CONFIG_VERSION}"
 
     CONFIG_HW_MMU_VERSION=${CONFIG_HW_MMU_BASE_VERSION}
     if [ "${CONFIG_HW_MMU_TYPE_ERCF_V1_1}" == "y" ]; then
@@ -852,8 +886,8 @@ build() {
 
     log_info "Building file ${out}..."
 
-    set_extra_parameters
     read_previous_config
+    set_extra_parameters
     process_upgrades
     copy_config_files "$src" "$out"
 }
@@ -881,7 +915,6 @@ check_version() {
             log_warning "Upgrading from version ${FROM_VERSION} to ${CONFIG_VERSION}..."
         fi
     fi
-    set_param "[mmu]" "happy_hare_version" "${CONFIG_VERSION}"
 }
 
 print_happy_hare() {
