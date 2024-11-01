@@ -24,124 +24,31 @@ config IS_MIPS
   bool 
   default $(to_bool, uname -m | grep -q 'mips')
 
-
-choice 
-  prompt "Type"
-  config HW_MMU_TYPE_ERCF_V1_1
-    bool "ERCF v1.1"
-    select MMU_HAS_ENCODER
-    select MMU_HAS_SELECTOR
-    select HW_VARIABLE_ROTATION_DISTANCES
-    select HW_REQUIRE_BOWDEN_MOVE
-
-    if HW_MMU_TYPE_ERCF_V1_1
-      config HW_EXT_SPRINGY
-        bool "Springy"
-      config HW_EXT_BINKY
-		    bool "Binky"
-	    config HW_EXT_TRIPLE_DECK
-		    bool "Triple Deck"
-    endif
-
-  config HW_MMU_TYPE_ERCF_V2
-    bool "ERCF v2.0"
-    select MMU_HAS_ENCODER
-    select MMU_HAS_SELECTOR
-    select HW_VARIABLE_ROTATION_DISTANCES
-    select HW_REQUIRE_BOWDEN_MOVE
-
-  config HW_MMU_TYPE_TRADRACK_V1
-    bool "Tradrack v1.0"
-    select MMU_HAS_SELECTOR
-    select HW_REQUIRE_BOWDEN_MOVE
-
-    if HW_MMU_TYPE_TRADRACK_V1
-      config HW_EXT_BINKY
-		  bool "Binky" 
-      select MMU_HAS_ENCODER
-    endif
-
-  config HW_MMU_TYPE_ANGRY_BEAVER_V1
-    bool "Angry Beaver v1.0"
-    select HW_VARIABLE_ROTATION_DISTANCES
-
-  config HW_MMU_TYPE_BOX_TURTLE_V1
-    bool "Box Turtle v1.0"
-    select HW_VARIABLE_BOWDEN_LENGTHS
-    select HW_VARIABLE_ROTATION_DISTANCES
-    select HW_REQUIRE_BOWDEN_MOVE
-
-  config HW_MMU_TYPE_NIGHT_OWL_V1
-    bool "Night Owl (Night Turtle) v1.0"
-    select HW_VARIABLE_BOWDEN_LENGTHS
-    select HW_VARIABLE_ROTATION_DISTANCES
-    select HW_REQUIRE_BOWDEN_MOVE
-  
-  config HW_MMU_TYPE_3MS_V1
-    bool "Box Turtle v1.0"
-    select HW_VARIABLE_ROTATION_DISTANCES
-
-  config HW_MMU_TYPE_OTHER
-    bool "Other (or just want start config files)"
-endchoice
-
-config HW_MMU_VENDOR
-  string
-  default "ERCF" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
-  default "Tradrack" if HW_MMU_TYPE_TRADRACK_V1
-  default "AngryBeaver" if HW_MMU_TYPE_ANGRY_BEAVER_V1
-  default "BoxTurtle" if HW_MMU_TYPE_BOX_TURTLE_V1
-  default "NightOwl" if HW_MMU_TYPE_NIGHT_OWL_V1
-  default "3MS" if HW_MMU_TYPE_3MS_V1
-  default "Other"
-
-config HW_MMU_BASE_VERSION
-  string
-  default "1.1" if HW_MMU_TYPE_ERCF_V1_1
-  default "2.0" if HW_MMU_TYPE_ERCF_V2
-  default "1.0" if HW_MMU_TYPE_TRADRACK_V1
-  default "1.0" if HW_MMU_TYPE_ANGRY_BEAVER_V1
-  default "1.0" if HW_MMU_TYPE_BOX_TURTLE_V1
-  default "1.0" if HW_MMU_TYPE_OTHER
+source "./scripts/mmu_types.kconfig"
 
 config MMU_HAS_ENCODER
   bool
-  prompt "Does the MMU have an encoder?" if HW_MMU_TYPE_OTHER
+  prompt "Does the MMU have an encoder?" if HW_MMU_TYPE_CUSTOM
 
 config MMU_HAS_SELECTOR
   bool
-  prompt "Does the MMU have a selector?" if HW_MMU_TYPE_OTHER
+  prompt "Does the MMU have a selector?" if HW_MMU_TYPE_CUSTOM
 
 config HW_VARIABLE_BOWDEN_LENGTHS
   bool
-  prompt "Variable bowden lengths?" if HW_MMU_TYPE_OTHER
+  prompt "Variable bowden lengths?" if HW_MMU_TYPE_CUSTOM
 
 config HW_VARIABLE_ROTATION_DISTANCES
   bool
-  prompt "Variable rotation distances?" if HW_MMU_TYPE_OTHER
+  prompt "Variable rotation distances?" if HW_MMU_TYPE_CUSTOM
 
 config HW_REQUIRE_BOWDEN_MOVE
   bool
-  prompt "Require bowden move?" if HW_MMU_TYPE_OTHER
+  prompt "Require bowden move?" if HW_MMU_TYPE_CUSTOM
 
-choice 
-  prompt "Homing endstop" if HW_MMU_TYPE_OTHER
-  config PARAM_GATE_HOME_ENDSTOP_ENCODER
-    bool "Encoder homing endstop"
-  config PARAM_GATE_HOME_ENDSTOP_GATE
-    bool "Gate homing endstop"
-  config PARAM_GATE_HOME_ENDSTOP_POST_GATE
-    bool "Post-gate homing endstop"
-  config PARAM_GATE_HOME_ENDSTOP_NONE
-    bool "No homing endstop"
-endchoice
-
-config PARAM_GATE_HOME_ENDSTOP
-  string
-  default "encoder" if PARAM_GATE_HOME_ENDSTOP_ENCODER
-  default "mmu_gate" if PARAM_GATE_HOME_ENDSTOP_GATE
-  default "post_gate" if PARAM_GATE_HOME_ENDSTOP_POST_GATE
-  default "none" if PARAM_GATE_HOME_ENDSTOP_NONE
+config HW_FILAMENT_ALWAYS_GRIPPED
+  bool
+  prompt "Filament always gripped?" if HW_MMU_TYPE_CUSTOM
 
 choice
   prompt "Board type"
@@ -218,7 +125,9 @@ config HW_SERIAL
 
 
 choice 
-  prompt "Selector type" if MMU_HAS_SELECTOR && HW_MMU_TYPE_OTHER
+  prompt "Selector type" if MMU_HAS_SELECTOR && HW_MMU_TYPE_CUSTOM
+  default HW_SELECTOR_TYPE_LINEAR if MMU_HAS_SELECTOR
+  default HW_SELECTOR_TYPE_VIRTUAL
 	config HW_SELECTOR_TYPE_LINEAR
 	  bool "Linear selector"
 	config HW_SELECTOR_TYPE_VIRTUAL
@@ -303,7 +212,7 @@ config INSTALL_INCLUDES
 
 config SHOW_ADVANCED_SETTINGS
   bool "Show advanced settings?"
-  default y if HW_MMU_TYPE_OTHER
+  default y if HW_MMU_TYPE_CUSTOM
   menu "Paths"
     visible if SHOW_ADVANCED_SETTINGS
     config PRINTER_CONFIG 
@@ -359,83 +268,12 @@ config SHOW_ADVANCED_SETTINGS
   
   menu "Motors"
     visible if SHOW_ADVANCED_SETTINGS
-    config HW_SERVO_MAX_ANGLE
-      int "Servo maximum angle"
-      depends on MMU_HAS_SELECTOR
-      range 0 360
-      default 131 if HW_SERVO_TYPE_TRADRACK # is this a bug? should be 180?
-      default 180 if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG || HW_SERVO_TYPE_GDW_DS041MG
-      default 180
-    config HW_SERVO_MIN_PULSE_WIDTH
-      string "Servo minimum pulse width"
-      depends on MMU_HAS_SELECTOR
-      default "0.00085" if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG
-      default "0.00050" if HW_SERVO_TYPE_GDW_DS041MG
-      default "0.00070" if HW_SERVO_TYPE_TRADRACK
-    config HW_SERVO_MAX_PULSE_WIDTH
-      string "Servo maximum pulse width"
-      depends on MMU_HAS_SELECTOR
-      default "0.00240" if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG
-      default "0.00240" if HW_SERVO_TYPE_GDW_DS041MG
-      default "0.00240" if HW_SERVO_TYPE_TRADRACK
-    config HW_SERVO_UP_ANGLE
-      int "Servo up angle"
-      depends on MMU_HAS_SELECTOR
-      default 30 if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_GDW_DS041MG
-      default 140 if HW_SERVO_TYPE_SAVOX_SH0255MG
-      default 145 if HW_SERVO_TYPE_TRADRACK
-      default 0
-    config HW_SERVO_MOVE_ANGLE
-      int "Servo move angle"
-      depends on MMU_HAS_SELECTOR
-      default HW_SERVO_UP_ANGLE if !HW_MMU_TYPE_ERCF_V2
-      default 61 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_MG_90S
-      default 109 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_SAVOX_SH0255MG
-      default 50 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_GDW_DS041MG
-      default 0
-    config HW_SERVO_DOWN_ANGLE
-      int "Servo down angle"
-      depends on MMU_HAS_SELECTOR
-      default 140 if HW_SERVO_TYPE_MG_90S 
-      default 100 if HW_SERVO_TYPE_GDW_DS041MG
-      default 30 if HW_SERVO_TYPE_SAVOX_SH0255MG
-      default 1 if HW_SERVO_TYPE_TRADRACK
-      default 0
-    config HW_SERVO_BUZZ_GEAR_ON_DOWN
-      int "How often to buzz servo on down angle"
-      depends on MMU_HAS_SELECTOR
-      default 3 if HW_MMU_VENDOR = "ERCF"
-      default 1 
-    config HW_SERVO_ALWAYS_ACTIVE
-      bool "Servo always active?"
-      depends on MMU_HAS_SELECTOR
-      default y if HW_SERVO_TYPE_TRADRACK
-  
-    config HW_GEAR_GEAR_RATIO
-      string "Gear ratio"
-      default "50:17" if HW_MMU_TYPE_TRADRACK_V1
-      default "80:20" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
-      default "1:1" 
-    config HW_GEAR_RUN_CURRENT
-      string "Gear run current"
-      default "1.27" if HW_MMU_TYPE_TRADRACK_V1
-      default "0.5" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
-      default "0.7"
-    config HW_GEAR_HOLD_CURRENT
-      string "Gear hold current"
-      default "0.2" if HW_MMU_TYPE_TRADRACK_V1
-      default "0.1"
-  
-    config HW_SELECTOR_RUN_CURRENT
-      string "Selector run current"
-      depends on MMU_HAS_SELECTOR
-      default "0.63" if HW_MMU_TYPE_TRADRACK_V1
-      default "0.4" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
-      default "0.5"
-    config HW_SELECTOR_HOLD_CURRENT
-      string "Selector hold current"
-      depends on MMU_HAS_SELECTOR
-      default "0.2"
+    source "./scripts/motors.kconfig"
+  endmenu
+
+  menu "Endstops"
+    visible if SHOW_ADVANCED_SETTINGS
+    source "./scripts/endstops.kconfig"
   endmenu
   
   config REPETIER
@@ -447,4 +285,3 @@ config SHOW_ADVANCED_SETTINGS
   config OCTOPRINT
     bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
     depends on !IS_MIPS
-
