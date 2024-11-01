@@ -2590,10 +2590,10 @@ class Mmu:
                 # Unload and park filament
                 self._unload_bowden()
                 self._unload_gate()
-            except MmuError as ee:
-                self.handle_mmu_error(str(ee))
-            finally:
-                self.calibrating = False
+        except MmuError as ee:
+            self.handle_mmu_error(str(ee))
+        finally:
+            self.calibrating = False
 
 
 #######################
