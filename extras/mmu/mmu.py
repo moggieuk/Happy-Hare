@@ -6866,13 +6866,12 @@ class Mmu:
         eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         sensor = gcmd.get('SENSOR', "")
-        send_resume = False
+        process_runout = False
 
         try:
             if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate != self.gate_selected:
                 # Always update gate map from pre-gate sensor
                 self._set_gate_status(gate, self.GATE_EMPTY)
-                process_runout = False
 
             elif eventtime >= self.runout_last_enable_time:
                 if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate == self.gate_selected:
