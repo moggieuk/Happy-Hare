@@ -379,6 +379,7 @@ class LinearSelector:
         if self.mmu.check_if_disabled(): return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.mmu_machine.num_gates - 1)
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = self.mmu.TOOL_GATE_BYPASS
@@ -386,9 +387,13 @@ class LinearSelector:
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
                 if gate != -1:
-                    self._calibrate_selector(gate, save=save)
+                    self._calibrate_selector(gate, extrapolate=not single, save=save)
                 else:
                     self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
+
+            if not any(x == -1 for x in self.selector_offsets):
+                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
 
@@ -423,7 +428,7 @@ class LinearSelector:
     def _get_max_selector_movement(self, gate=-1):
         n = gate if gate >= 0 else self.mmu.num_gates - 1
 
-        if self.mmu.mmu_machine.mmu_vendor.lower() == mmu_machine.VENDOR_ERCF.lower():
+        if self.mmu.mmu_machine.mmu_vendor == mmu_machine.VENDOR_ERCF:
             # ERCF Designs
             if self.mmu.mmu_machine.mmu_version >= 2.0 or "t" in self.mmu.mmu_machine.mmu_version_string:
                 max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
@@ -437,7 +442,7 @@ class LinearSelector:
         max_movement += self.cad_selector_tolerance
         return max_movement
 
-    def _calibrate_selector(self, gate, save=True):
+    def _calibrate_selector(self, gate, extrapolate=True, save=True):
         gate_str = lambda gate : ("Gate %d" % gate) if gate >= 0 else "bypass"
         try:
             self.mmu.reinit()
@@ -462,12 +467,28 @@ class LinearSelector:
             if save:
                 if gate >= 0:
                     self.selector_offsets[gate] = round(traveled, 1)
+                    if (
+                        extrapolate and gate == self.num_gates - 1  and self.selector_offsets[0] > 0 or
+                        extrapolate and gate == 0 and self.selector_offsets[-1] > 0
+                    ):
+                        # Distribute selector spacing
+                        spacing = (self.selector_offsets[-1] - self.selector_offsets[0]) / (self.num_gates - 1)
+                        self.selector_offsets = [self.selector_offests[0] + i * spacing for i in range(self.num_gates)]
+                        self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
+                    else:
+                        extrapolate = False
                     self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
-                    self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
                 else:
                     self.bypass_offset = round(traveled, 1)
+                    extrapolate = False
                     self.mmu.save_variable(self.mmu.VARS_MMU_SELECTOR_BYPASS, self.mmu.bypass_offset, write=True)
-                self.mmu.log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
+
+                if extrapolate:
+                    self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
+                else:
+                    self.mmu.log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
+                    if gate == 0:
+                        self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % self.num_gates - 1)
         finally:
             self.mmu.calibrating = False
             self.mmu.motors_off()
@@ -570,7 +591,6 @@ class LinearSelector:
                 self.mmu.save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset)
                 self.mmu.write_variables()
                 self.mmu.log_always("Selector calibration has been saved")
-                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
 
             self.mmu.home(tool=0, force_unload=False)
         except MmuError as ee:
