@@ -717,10 +717,11 @@ class Mmu:
 
         # Sanity check to see that mmu_vars.cfg is included. This will verify path because default deliberately has 'mmu_revision' entry
         self.save_variables = self.printer.lookup_object('save_variables', None)
-        rd_var = self.save_variables.allVariables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCE, None)
-        revision_var = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, None)
-        if revision_var is None:
-            self.save_variables.allVariables[self.VARS_MMU_REVISION] = 0
+        if self.save_variables:
+            rd_var = self.save_variables.allVariables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCE, None)
+            revision_var = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, None)
+            if revision_var is None:
+                self.save_variables.allVariables[self.VARS_MMU_REVISION] = 0
         if not self.save_variables or (rd_var is None and revision_var is None):
             raise self.config.error("Calibration settings file (mmu_vars.cfg) not found. Check [save_variables] section in mmu_macro_vars.cfg\nAlso ensure you only have a single [save_variables] section defined in your printer config and it contains the line: mmu__revision = 0. If not, add this line and restart")
 
@@ -1988,7 +1989,7 @@ class Mmu:
         if motor in ["all", "gear", "gears"]:
             self.mmu_toolhead.unsync()
             stepper_enable = self.printer.lookup_object('stepper_enable')
-            steppers = self.gear_rail.steppers if motor == "gears" else [self.gear_rail.steppers[0]]
+            steppers = self.gear_rail.steppers if motor == "gears" else [self.gear_rail.steppers[0]] if self.gear_rail.steppers else []
             for stepper in steppers:
                 se = stepper_enable.lookup_enable(stepper.get_name())
                 se.motor_disable(self.mmu_toolhead.get_last_move_time())
@@ -5400,8 +5401,9 @@ class Mmu:
             self.log_debug("Gate not calibrated, falling back to: %.6f" % rd)
         else:
             self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
-        #self.log_error("PAUL TEMP: _set_rotation_distance(%s)%s" % (rd, " - NO-OP" if rd == self.gear_rail.steppers[0].get_rotation_distance()[0] else ""))
-        self.gear_rail.steppers[0].set_rotation_distance(rd)
+        if self.gear_rail.steppers:
+            #self.log_error("PAUL TEMP: _set_rotation_distance(%s)%s" % (rd, " - NO-OP" if rd == self.gear_rail.steppers[0].get_rotation_distance()[0] else ""))
+            self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_bowden_length(self, gate):
         return self.bowden_lengths[gate if gate >= 0 and self.mmu_machine.variable_bowden_lengths else 0]
