@@ -1110,7 +1110,7 @@ questionaire() {
     option TRADRACK       'Tradrack v1.0'
     option ANGRY_BEAVER   'Angry Beaver v1.0'
     option BOX_TURTLE     'Box Turtle v1.0'
-    option NIGHT_OWL      'Night Owl (Night Turtle) v1.0'
+    option NIGHT_OWL      'Night Owl v1.0'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
