@@ -30,8 +30,8 @@ class DebugStepperMovement:
 
     def __enter__(self):
         if self.debug:
-            self.g_steps0 = self.mmu.gear_stepper.get_mcu_position()
-            self.g_pos0 = self.mmu.gear_stepper.get_commanded_position()
+            self.g_steps0 = self.mmu.gear_rail.steppers[0].get_mcu_position()
+            self.g_pos0 = self.mmu.gear_rail.steppers[0].get_commanded_position()
             self.e_steps0 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
             self.e_pos0 = self.mmu.mmu_extruder_stepper.stepper.get_commanded_position()
             self.rail_pos0 = self.mmu.mmu_toolhead.get_position()[1]
@@ -40,12 +40,12 @@ class DebugStepperMovement:
         if self.debug:
             self.mmu.log_always("Waiting for movement to complete...")
             self.mmu.movequeues_wait()
-            g_steps1 = self.mmu.gear_stepper.get_mcu_position()
-            g_pos1 = self.mmu.gear_stepper.get_commanded_position()
+            g_steps1 = self.mmu.gear_rail.steppers[0].get_mcu_position()
+            g_pos1 = self.mmu.gear_rail.steppers[0].get_commanded_position()
             e_steps1 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
             e_pos1 = self.mmu.mmu_extruder_stepper.stepper.get_commanded_position()
             rail_pos1 = self.mmu.mmu_toolhead.get_position()[1]
-            self.mmu.log_always("Gear steps: %d = %.4fmm, commanded movement: %.4fmm" % (g_steps1 - self.g_steps0, (g_steps1 - self.g_steps0) * self.mmu.gear_stepper.get_step_dist(), g_pos1 - self.g_pos0))
+            self.mmu.log_always("Gear steps: %d = %.4fmm, commanded movement: %.4fmm" % (g_steps1 - self.g_steps0, (g_steps1 - self.g_steps0) * self.mmu.gear_rail.steppers[0].get_step_dist(), g_pos1 - self.g_pos0))
             self.mmu.log_always("Extruder steps: %d = %.4fmm, commanded movement: %.4fmm" % (e_steps1 - self.e_steps0, (e_steps1 - self.e_steps0) * self.mmu.mmu_extruder_stepper.stepper.get_step_dist(), e_pos1 - self.e_pos0))
             self.mmu.log_always("Rail movement: %.4fmm" % (rail_pos1 - self.rail_pos0))
 
