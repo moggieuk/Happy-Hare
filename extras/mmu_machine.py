@@ -832,7 +832,7 @@ class DummyRail:
 
     def get_endstops(self):
         return self.endstops
-    
+
     def set_position(self, newpos):
         pass
 
