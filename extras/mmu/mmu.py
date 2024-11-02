@@ -2038,6 +2038,7 @@ class Mmu:
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_not_homed(): return
+        if self.check_if_always_synced(): return
         grip = gcmd.get_int('GRIP', 1, minval=0, maxval=1)
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # Deprecated (use GRIP=0 instead)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
@@ -2353,6 +2354,8 @@ class Mmu:
     def cmd_MMU_CALIBRATE_GEAR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_gate_not_valid(): return
         length = gcmd.get_float('LENGTH', 100., above=50.)
         measured = gcmd.get_float('MEASURED', -1, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
@@ -2371,7 +2374,7 @@ class Mmu:
             elif measured > 0:
                 current_rd = self.gear_rail.steppers[0].get_rotation_distance()[0]
                 new_rd = round(current_rd * measured / length, 6)
-                self.log_always("Gear stepper 'rotation_distance' calculated to be %.6f (currently: %.6f" % (new_rd, current_rd))
+                self.log_always("Gear stepper 'rotation_distance' calculated to be %.6f (currently: %.6f)" % (new_rd, current_rd))
                 if save:
                     all_gates = False
                     if not self.mmu_machine.variable_rotation_distances or (gate == 0 and self.rotation_distances[0] == 0.):
@@ -2657,7 +2660,12 @@ class Mmu:
 
     def _handle_mmu_synced(self):
         if not self.is_enabled: return
-        self.log_info("Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enable else ""))
+        msg = "Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enable else "")
+        if self.mmu_machine.filament_always_gripped:
+            self.log_debug(msg)
+        else:
+            self.log_info(msg)
+
         if not self.sync_feedback_operational:
             # Enable sync feedback
             self.sync_feedback_operational = True
@@ -2666,7 +2674,12 @@ class Mmu:
 
     def _handle_mmu_unsynced(self):
         if not self.is_enabled: return
-        self.log_info("Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enable else ""))
+        msg = "Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enable else "")
+        if self.mmu_machine.filament_always_gripped:
+            self.log_debug(msg)
+        else:
+            self.log_info(msg)
+
         if self.sync_feedback_operational:
             # Disable sync feedback
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
@@ -3254,6 +3267,12 @@ class Mmu:
             return True
         return False
 
+    def check_if_always_synced(self):
+        if self.mmu_machine.filament_always_gripped:
+            self.log_error("MMU design required continuous gear/extruder syncing")
+            return True
+        return False
+
     # Returns True is required calibration is not complete. Defaults to all gates
     # Params: required = bitmap of checks, check_gates = list of gates to consider
     def check_if_not_calibrated(self, required, silent=False, check_gates=None):
@@ -3265,20 +3284,33 @@ class Mmu:
 
             # We have to be more methodical and consider just gates of interest
             msg = ""
+            if required & self.CALIBRATED_SELECTOR and not self.calibration_status & self.CALIBRATED_SELECTOR:
+                uncalibrated = [gate for gate, value in enumerate(self.selector.selector_offsets) if value == -1 and gate in check_gates]
+                if uncalibrated:
+                    msg += "\nUse MMU_CALIBRATE_SELECTOR to calibrate selector offset on gates: %s" % ",".join(map(str, uncalibrated))
+
             if required & self.CALIBRATED_GEAR_0 and not self.calibration_status & self.CALIBRATED_GEAR_0:
                 if self.mmu_machine.variable_rotation_distances:
                     uncalibrated = [gate for gate, value in enumerate(self.rotation_distances) if value == -1 and gate in check_gates]
                     if uncalibrated:
                         msg += "\nUse MMU_CALIBRATE_GEAR (with gate 0 selected)"
-                        msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
+                        msg += " to calibrate gear rotation_distance on gate: 0"
 
             if required & self.CALIBRATED_ENCODER and not self.calibration_status & self.CALIBRATED_ENCODER:
                 msg += "\nUse MMU_CALIBRATE_ENCODER (with gate 0 selected)"
 
-            if required & self.CALIBRATED_SELECTOR and not self.calibration_status & self.CALIBRATED_SELECTOR:
-                uncalibrated = [gate for gate, value in enumerate(self.selector.selector_offsets) if value == -1 and gate in check_gates]
-                if uncalibrated:
-                    msg += "\nUse MMU_CALIBRATE_SELECTOR to calibrate selector offset on gates: %s" % ",".join(map(str, uncalibrated))
+            if required & self.CALIBRATED_GEAR_RDS and not self.calibration_status & self.CALIBRATED_GEAR_RDS:
+                if self.mmu_machine.variable_rotation_distances:
+                    uncalibrated = [gate for gate, value in enumerate(self.rotation_distances) if gate != 0 and value == -1 and gate in check_gates]
+                    if uncalibrated:
+                        if self.has_encoder():
+                            msg += "\nUse MMU_CALIBRATE_GEAR (with gate selected) or MMU_CALIBRATE_GATES GATE=xx"
+                            msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
+                        else:
+                            msg += "\nUse MMU_CALIBRATE_GEAR (with gate selected)"
+                            msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
+                elif self.rotation_distances[0] == -1:
+                    msg += "\nUse MMU_CALIBRATE_GEAR (with gate 0 selected)"
 
             if required & self.CALIBRATED_BOWDENS and not self.calibration_status & self.CALIBRATED_BOWDENS:
                 if self.mmu_machine.variable_bowden_lengths:
@@ -3289,18 +3321,6 @@ class Mmu:
                 elif self.bowden_lengths[0] == -1:
                     msg += "\nUse MMU_CALIBRATE_BOWDEN (with gate 0 selected)"
 
-            if required & self.CALIBRATED_GEAR_RDS and not self.calibration_status & self.CALIBRATED_GEAR_RDS:
-                if self.mmu_machine.variable_rotation_distances:
-                    uncalibrated = [gate for gate, value in enumerate(self.rotation_distances) if value == -1 and gate in check_gates]
-                    if uncalibrated:
-                        if self.has_encoder():
-                            msg += "\nUse MMU_CALIBRATE_GEAR (with gate selected) or MMU_CALIBRATE_GATES GATE=xx"
-                            msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
-                        else:
-                            msg += "\nUse MMU_CALIBRATE_GEAR (with gate selected)"
-                            msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
-                elif self.rotation_distances[0] == -1:
-                    msg += "\nUse MMU_CALIBRATE_GEAR (with gate 0 selected)"
             if msg:
                 msg = "Prerequsite calibration steps are not complete:" + msg
                 if not silent:
