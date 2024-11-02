@@ -110,7 +110,7 @@ class Mmu:
     PRE_GATE_SENSOR_PREFIX      = "mmu_pre_gate"
 
     EXTRUDER_ENDSTOPS = [ENDSTOP_EXTRUDER_COLLISION, ENDSTOP_GEAR_TOUCH, ENDSTOP_EXTRUDER_ENTRY, ENDSTOP_EXTRUDER_NONE]
-    GATE_ENDSTOPS     = [ENDSTOP_GATE, ENDSTOP_ENCODER, ENDSTOP_POST_GATE_PREFIX]
+    GATE_ENDSTOPS     = [ENDSTOP_GATE, ENDSTOP_ENCODER, ENDSTOP_POST_GATE_PREFIX, ENDSTOP_EXTRUDER_ENTRY]
 
     # Statistics output types
     GATE_STATS_STRING           = "string"
@@ -1844,7 +1844,11 @@ class Mmu:
             self.calibrated_bowden_length = self._get_bowden_length(self.gate_selected) # Temp scalar pulled from list
             msg += "\n\nLoad Sequence:"
             msg += "\n- Filament loads into gate by homing a maximum of %s to %s" % (self._f_calc("gate_homing_max"), self._gate_homing_string())
-            msg += "\n- Bowden is loaded with a fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length"))
+
+            if self.mmu_machine.require_bowden_move:
+                msg += "\n- Bowden is loaded with a fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length"))
+            else:
+                msg += "\n- No fast bowden move is required"
             if self._must_home_to_extruder():
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
                     msg += ", then homes to extruder using COLLISION detection (at %d%% current)" % self.extruder_collision_homing_current
@@ -1855,6 +1859,7 @@ class Mmu:
                         msg += ", then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
                     if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY:
                         msg += " and then moves %s to extruder extrance" % self._f_calc("toolhead_entry_to_extruder")
+
             if self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
                 msg += "\n- Extruder (synced) loads by homing a maximum of %s to TOOLHEAD SENSOR before moving the last %s to the nozzle" % (self._f_calc("toolhead_homing_max"), self._f_calc("toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining"))
             else:
@@ -1876,10 +1881,14 @@ class Mmu:
             else:
                 msg += "\n- Extruder (optionally synced) unloads by moving %s less tip-cutting reported park position to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
 
-            if self.has_encoder() and self.bowden_pre_unload_test and not self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
-                msg += "\n- Bowden is unloaded with a short %s validation move before %s fast move" % (self._f_calc("encoder_move_step_size"), self._f_calc("calibrated_bowden_length - gate_unload_buffer - encoder_move_step_size"))
+            if self.mmu_machine.require_bowden_move:
+                if self.has_encoder() and self.bowden_pre_unload_test and not self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+                    msg += "\n- Bowden is unloaded with a short %s validation move before %s fast move" % (self._f_calc("encoder_move_step_size"), self._f_calc("calibrated_bowden_length - gate_unload_buffer - encoder_move_step_size"))
+                else:
+                    msg += "\n- Bowden is unloaded with a fast %s move" % self._f_calc("calibrated_bowden_length - gate_unload_buffer")
             else:
-                msg += "\n- Bowden is unloaded with a fast %s move" % self._f_calc("calibrated_bowden_length - gate_unload_buffer")
+                msg += "\n- No fast bowden move is required"
+
             msg += "\n- Filament is stored by homing a maximum of %s to %s and parking %s in the gate\n" % (self._f_calc("gate_homing_max"), self._gate_homing_string(), self._f_calc("gate_parking_distance"))
 
             if self.sync_form_tip or self.sync_to_extruder:
@@ -3678,7 +3687,8 @@ class Mmu:
     def cmd_MMU_STEP_LOAD_GATE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-            self._load_gate()
+            with self.wrap_sync_gear_to_extruder():
+                self._load_gate()
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
 
@@ -3687,7 +3697,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         full = gcmd.get_int('FULL', 0)
         try:
-            self._unload_gate(homing_max=self._get_bowden_length(self.gate_selected) if full else None)
+            with self.wrap_sync_gear_to_extruder():
+                self._unload_gate(homing_max=self._get_bowden_length(self.gate_selected) if full else None)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
 
@@ -3696,7 +3707,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         length = gcmd.get_float('LENGTH', None, minval=0.)
         try:
-            self._load_bowden(length)
+            with self.wrap_sync_gear_to_extruder():
+                self._load_bowden(length)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
 
@@ -3705,7 +3717,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         length = gcmd.get_float('LENGTH', self._get_bowden_length(self.gate_selected))
         try:
-            self._unload_bowden(length)
+            with self.wrap_sync_gear_to_extruder():
+                self._unload_bowden(length)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
 
@@ -3713,7 +3726,8 @@ class Mmu:
     def cmd_MMU_STEP_HOME_EXTRUDER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-            self._home_to_extruder(self.extruder_homing_max)
+            with self.wrap_sync_gear_to_extruder():
+                self._home_to_extruder(self.extruder_homing_max)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
 
@@ -3722,7 +3736,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         extruder_only = gcmd.get_int('EXTRUDER_ONLY', 0)
         try:
-            self._load_extruder(extruder_only)
+            with self.wrap_sync_gear_to_extruder():
+                self._load_extruder(extruder_only)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
 
@@ -3732,11 +3747,12 @@ class Mmu:
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0))
         park_pos = gcmd.get_float('PARK_POS', -self._get_filament_position()) # +ve value
         try:
-            # Precautionary validation of filament position
-            park_pos = min(self.toolhead_extruder_to_nozzle, max(0, park_pos))
-            self._set_filament_position(-park_pos)
+            with self.wrap_sync_gear_to_extruder():
+                # Precautionary validation of filament position
+                park_pos = min(self.toolhead_extruder_to_nozzle, max(0, park_pos))
+                self._set_filament_position(-park_pos)
 
-            self._unload_extruder(extruder_only = extruder_only)
+                self._unload_extruder(extruder_only = extruder_only)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
 
@@ -3744,7 +3760,8 @@ class Mmu:
     def cmd_MMU_STEP_HOMING_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-            self._homing_move_cmd(gcmd, "User defined step homing move")
+            with self.wrap_sync_gear_to_extruder():
+                self._homing_move_cmd(gcmd, "User defined step homing move")
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
@@ -3752,7 +3769,8 @@ class Mmu:
     def cmd_MMU_STEP_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-            self._move_cmd(gcmd, "User defined step move")
+            with self.wrap_sync_gear_to_extruder():
+                self._move_cmd(gcmd, "User defined step move")
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
 
@@ -3897,7 +3915,7 @@ class Mmu:
         if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             if not self.has_encoder():
                 raise MmuError("Attempting to %s encoder but encoder is not configured on MMU!" % direction)
-        elif self.gate_homing_endstop in [self.ENDSTOP_GATE, self.ENDSTOP_POST_GATE_PREFIX]:
+        elif self.gate_homing_endstop in self.GATE_ENDSTOPS:
             sensor = self.gate_homing_endstop
             if self.gate_homing_endstop == self.ENDSTOP_POST_GATE_PREFIX:
                 sensor += "_%d" % self.gate_selected
@@ -4156,7 +4174,7 @@ class Mmu:
             # Tightening move to prevent erroneous clog detection / runout if gear stepper is not synced with extruder
             if self._can_use_encoder() and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
                 with self._wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
-                    # Servo will already be down
+                    # Filament will already be gripped (Servo will be down)
                     pullback = min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15) # % of current clog detection length
                     _,_,measured,delta = self.trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
                     self.log_info("Filament tightened by %.1fmm to prevent false clog detection" % pullback)
@@ -6508,7 +6526,7 @@ class Mmu:
         return gate_status
 
     def _get_gate_endstop_name(self):
-        return "%s_%d" % (self.gate_homing_endstop, self.gate_selected) if self.gate_homing_endstop == self.ENDSTOP_POST_GATE_PREFIX else self.ENDSTOP_GATE
+        return "%s_%d" % (self.gate_homing_endstop, self.gate_selected) if self.gate_homing_endstop == self.ENDSTOP_POST_GATE_PREFIX else self.gate_homing_endstop
 
     def _get_filament_char(self, gate, no_space=False, show_source=False):
         gate_status = self.gate_status[gate]
