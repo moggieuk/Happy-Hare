@@ -105,14 +105,14 @@ class MmuMachine:
         elif self.mmu_vendor == VENDOR_BOX_TURTLE:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
-            variable_bowden_lengths = 1
+            variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
 
         elif self.mmu_vendor == VENDOR_NIGHT_OWL:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
-            variable_bowden_lengths = 1
+            variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
 
