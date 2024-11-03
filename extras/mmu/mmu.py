@@ -58,7 +58,7 @@ class Mmu:
 
     FILAMENT_POS_UNKNOWN = -1
     FILAMENT_POS_UNLOADED = 0       # Parked in gate
-    FILAMENT_POS_HOMED_GATE = 1     # Homed at either gate or post-gate sensor (currently assumed mutually exclusive sensors)
+    FILAMENT_POS_HOMED_GATE = 1     # Homed at either gate or gear sensor (currently assumed mutually exclusive sensors)
     FILAMENT_POS_START_BOWDEN = 2   # Point of fast load portion
     FILAMENT_POS_IN_BOWDEN = 3      # Some unknown position in the bowden
     FILAMENT_POS_END_BOWDEN = 4     # End of fast load portion
@@ -165,7 +165,7 @@ class Mmu:
     VARS_MMU_FILAMENT_POS            = "mmu_state_filament_pos"
     VARS_MMU_FILAMENT_REMAINING      = "mmu_state_filament_remaining"
     VARS_MMU_CALIB_BOWDEN_LENGTHS    = "mmu_calibration_bowden_lengths" # Per-gate calibrated bowden lengths
-    VARS_MMU_CALIB_BOWDEN_HOME       = "mmu_calibration_bowden_home"    # Was encoder, gate or post-gate sensor used as reference point
+    VARS_MMU_CALIB_BOWDEN_HOME       = "mmu_calibration_bowden_home"    # Was encoder, gate or gear sensor used as reference point
     VARS_MMU_GATE_STATISTICS_PREFIX  = "mmu_statistics_gate_"
     VARS_MMU_SWAP_STATISTICS         = "mmu_statistics_swaps"
     VARS_MMU_COUNTERS                = "mmu_statistics_counters"
@@ -3947,7 +3947,7 @@ class Mmu:
         raise MmuError(msg)
 
     # Unload filament through gate to final MMU park position.
-    # Strategies include use of encoder or homing to gate/post-gate endstop and then parking
+    # Strategies include use of encoder or homing to gate/gear endstop and then parking
     # Allows the overriding of homing_max for slow unloads when we are unsure of filament position
     def _unload_gate(self, homing_max=None):
         self._validate_gate_config("unload")
@@ -3994,7 +3994,7 @@ class Mmu:
                     return max(actual - self.gate_unload_buffer, 0)
                 msg = "did not clear the encoder after moving %.1fmm" % homing_max
 
-        else: # Using mmu_gate or mmu_post_gate sensor
+        else: # Using mmu_gate or mmu_gear_N sensor
             endstop_name = self._get_gate_endstop_name()
             actual,homed,_,_ = self.trace_filament_move("Reverse homing to %s sensor" % endstop_name, -homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
@@ -6667,7 +6667,7 @@ class Mmu:
                 self.save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status, write=True)
                 self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
 
-    # Use pre-gate (and post-gate) sensors to "correct" gate status
+    # Use pre-gate (and gear) sensors to "correct" gate status
     # Return updated gate_status
     def _validate_gate_status(self, gate_status):
         for gate, status in enumerate(gate_status):
@@ -7051,7 +7051,7 @@ class Mmu:
     # Params:
     #   EVENTTIME will contain reactor time that the sensor triggered and command was queued
     #   SENSOR will contain sensor name
-    #   GATE will be set if specific pre-gate or post-gate sensor
+    #   GATE will be set if specific pre-gate or gear sensor
     cmd_MMU_SENSOR_RUNOUT_help= "Internal MMU filament runout handler"
     def cmd_MMU_SENSOR_RUNOUT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -7102,7 +7102,7 @@ class Mmu:
     # Params:
     #   EVENTTIME will contain reactor time that the sensor triggered and command was queued
     #   SENSOR will contain sensor name
-    #   GATE will be set if specific pre-gate or post-gate sensor
+    #   GATE will be set if specific pre-gate or gear sensor
     cmd_MMU_SENSOR_INSERT_help= "Internal MMU filament insertion handler"
     def cmd_MMU_SENSOR_INSERT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -7147,7 +7147,7 @@ class Mmu:
     # Params:
     #   EVENTTIME will contain reactor time that the sensor triggered and command was queued
     #   SENSOR will contain sensor name
-    #   GATE will be set if specific pre-gate or post-gate sensor
+    #   GATE will be set if specific pre-gate or gear sensor
     cmd_MMU_SENSOR_REMOVE_help= "Internal MMU filament removal handler"
     def cmd_MMU_SENSOR_REMOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
