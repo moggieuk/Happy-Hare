@@ -2462,14 +2462,15 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                self.calibrating = True
-                if manual:
-                    self._calibrate_bowden_length_manual(approx_bowden_length, save)
-                else:
-                    # Automatic method with encoder
-                    self._reset_ttg_map() # To force tool = gate
-                    self._unload_tool()
-                    self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats, save)
+                with self._wrap_suspend_runout():
+                    self.calibrating = True
+                    if manual:
+                        self._calibrate_bowden_length_manual(approx_bowden_length, save)
+                    else:
+                        # Automatic method with encoder
+                        self._reset_ttg_map() # To force tool = gate
+                        self._unload_tool()
+                        self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats, save)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
         finally:
