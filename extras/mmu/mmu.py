@@ -1663,7 +1663,7 @@ class Mmu:
         # Good place to persist current clog length
         if self.has_encoder():
             self.save_variable(self.VARS_MMU_CALIB_CLOG_LENGTH, round(self.encoder_sensor.get_clog_detection_length(), 1))
-        self._write_variables()
+        self.write_variables()
 
     def _persist_swap_statistics(self):
         self.statistics = {key: round(value, 2) if isinstance(value, float) else value for key, value in self.statistics.items()}
@@ -2171,7 +2171,7 @@ class Mmu:
                         self.log_always("Calibrated bowden and clog detection length have been saved")
                     else:
                         self.log_always("Calibrated bowden length has been saved")
-                    self._write_variables()
+                    self.write_variables()
             else:
                 self.log_error("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
         except MmuError as ee:
@@ -2211,7 +2211,7 @@ class Mmu:
                         self.log_always("Bowden calibration and clog detection length have been saved")
                     else:
                         self.log_always("Bowden calibration length has been saved")
-                    self._write_variables()
+                    self.write_variables()
 
                 self._unload_gate() # Use real method to park filament
             else:
@@ -3458,21 +3458,21 @@ class Mmu:
     def save_variable(self, variable, value, write=False):
         self.save_variables.allVariables[variable] = value
         if write:
-            self._write_variables()
+            self.write_variables()
 
-    def _write_variables(self):
+    def write_variables(self):
         if self._can_write_variables:
             mmu_vars_revision = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, 0) + 1
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_REVISION, mmu_vars_revision))
 
     @contextlib.contextmanager
-    def _wrap_suspend_write_variables(self):
+    def _wrap_suspendwrite_variables(self):
         self._can_write_variables = False
         try:
             yield self
         finally:
             self._can_write_variables = True
-            self._write_variables()
+            self.write_variables()
 
     def _random_failure(self):
         if self.test_random_failures and random.randint(0, 10) == 0:
@@ -3634,7 +3634,7 @@ class Mmu:
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
         self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
         self.save_variable(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
-        self._write_variables()
+        self.write_variables()
         self._persist_gate_map(sync=True)
         self.log_always("MMU state reset")
         self._schedule_mmu_bootup_tasks()
@@ -5760,7 +5760,7 @@ class Mmu:
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
-                    with self._wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
+                    with self._wrap_suspendwrite_variables(): # Reduce I/O activity to a minimum
                         self._auto_home(tool=tool)
 
                         if self.has_encoder():
@@ -6256,14 +6256,14 @@ class Mmu:
         if gate_homing_endstop != self.gate_homing_endstop:
             self.gate_homing_endstop = gate_homing_endstop
             self._adjust_bowden_lengths()
-            self._write_variables()
+            self.write_variables()
 
         # Special bowden calibration (get current length after potential gate_homing_endstop change)
         gate_selected = max(self.gate_selected, 0) # Assume gate 0 if not known / bypass
         bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.bowden_lengths[gate_selected], minval=0.)
         if bowden_length != self.bowden_lengths[gate_selected]:
             self._save_bowden_length(gate_selected, bowden_length, endstop=self.gate_homing_endstop)
-            self._write_variables()
+            self.write_variables()
 
         self.gate_endstop_to_encoder = gcmd.get_float('GATE_ENDSTOP_TO_ENCODER', self.gate_endstop_to_encoder)
         self.gate_parking_distance = gcmd.get_float('GATE_PARKING_DISTANCE', self.gate_parking_distance)
@@ -6709,7 +6709,7 @@ class Mmu:
         self.save_variable(self.VARS_MMU_GATE_TEMPERATURE, self.gate_temperature)
         self.save_variable(self.VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
         self.save_variable(self.VARS_MMU_GATE_SPEED_OVERRIDE, self.gate_speed_override)
-        self._write_variables()
+        self.write_variables()
         self._update_t_macros()
 
         # Also persist to spoolman db if pushing updates for visability
@@ -7465,7 +7465,7 @@ class Mmu:
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during gate check
-                    with self._wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
+                    with self._wrap_suspendwrite_variables(): # Reduce I/O activity to a minimum
                         with self.wrap_action(self.ACTION_CHECKING):
                             tool_selected = self.tool_selected
                             filament_pos = self.filament_pos
