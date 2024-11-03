@@ -3325,7 +3325,7 @@ class Mmu:
                         msg += "\nUse MMU_CALIBRATE_BOWDEN (with gate selected)"
                         msg += " to calibrate bowden length gates: %s" % ",".join(map(str, uncalibrated))
                 elif self.bowden_lengths[0] == -1:
-                    msg += "\nUse MMU_CALIBRATE_BOWDEN (with gate 0 selected)"
+                    msg += "\nUse MMU_CALIBRATE_BOWDEN"
 
             if msg:
                 msg = "Prerequsite calibration steps are not complete:" + msg
