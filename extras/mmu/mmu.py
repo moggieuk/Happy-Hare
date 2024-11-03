@@ -643,10 +643,10 @@ class Mmu:
                     pin_params = ppins.parse_pin(sensor_pin, True, True)
                     share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
                     ppins.allow_multi_use_pin(share_name)
+                    mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
 
                     # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                     # otherwise the extruder can continue to move a small (speed dependent) distance
-                    mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
                     if self.homing_extruder and name == self.ENDSTOP_TOOLHEAD:
                         mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
                 else:
@@ -6364,7 +6364,7 @@ class Mmu:
         self.gate_endstop_to_encoder = gcmd.get_float('GATE_ENDSTOP_TO_ENCODER', self.gate_endstop_to_encoder)
         self.gate_parking_distance = gcmd.get_float('GATE_PARKING_DISTANCE', self.gate_parking_distance)
         self.gate_autoload = gcmd.get_int('GATE_AUTOLOAD', self.gate_autoload, minval=0, maxval=1)
-        self.gate_final_eject_distance = gcmd.getfloat('GATE_FINAL_PARKING_DISTANCE', self.gate_final_eject_distance)
+        self.gate_final_eject_distance = gcmd.get_float('GATE_FINAL_PARKING_DISTANCE', self.gate_final_eject_distance)
         self.gate_unload_buffer = gcmd.get_float('GATE_UNLOAD_BUFFER', self.gate_unload_buffer, minval=0.)
         self.gate_homing_max = gcmd.get_float('GATE_HOMING_MAX', self.gate_homing_max)
         self.gate_preload_homing_max = gcmd.get_float('GATE_PRELOAD_HOMING_MAX', self.gate_preload_homing_max)
@@ -6491,7 +6491,7 @@ class Mmu:
             msg += "\ngate_preload_homing_max = %s" % self.gate_preload_homing_max
             msg += "\ngate_parking_distance = %s" % self.gate_parking_distance
             msg += "\ngate_autoload = %s" % self.gate_autoload
-            msg += "\ngate_final_eject_distance" % self.gate_final_eject_distance
+            msg += "\ngate_final_eject_distance = %s" % self.gate_final_eject_distance
             if self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
                 msg += "\nbypass_autoload = %s" % self.bypass_autoload
             if self.has_encoder():

@@ -46,7 +46,7 @@ class MmuSensorManager:
         return self.sensors[name].runout_helper.sensor_enabled if name in self.sensors else False
 
     def has_gate_sensor(self, name, gate):
-        return self.sensors[self.get_gate_sensor_name(name, gate)].runout_helper.sensor_enabled if name in self.sensors else False
+        return self.sensors[self.get_gate_sensor_name(name, gate)].runout_helper.sensor_enabled if self.get_gate_sensor_name(name, gate) in self.sensors else False
 
     def get_gate_sensor_name(self, name, gate):
         return "%s_%d" % (name, gate)
@@ -147,9 +147,11 @@ class MmuSensorManager:
 
     def _get_sensors(self, pos, gate, position_condition):
         result = {}
+        # PAUL this is correct if gear is being used as gate endstop TODO
+        # PAUL (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE),
         sensor_selection = [
             (self.get_gate_sensor_name(self.mmu.PRE_GATE_SENSOR_PREFIX, gate), None),
-            (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE),
+            (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), None),
             (self.mmu.ENDSTOP_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
             (self.mmu.ENDSTOP_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
             (self.mmu.ENDSTOP_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
