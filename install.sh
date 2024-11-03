@@ -453,7 +453,6 @@ read_previous_mmu_type() {
             HAS_SELECTOR="no"
         fi
     fi
-echo "PAUL: HAS_SELECTOR=${HAS_SELECTOR}"
 }
 
 # Set default parameters from the distribution (reference) config files
