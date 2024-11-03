@@ -2153,8 +2153,10 @@ class Mmu:
                     self.log_always("Failed to detect a reliable home position on this attempt")
 
                 self._initialize_filament_position(True)
+                self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True)
                 self._unload_bowden(reference)
                 self._unload_gate()
+                self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
             if successes > 0:
                 average_reference = reference_sum / successes
