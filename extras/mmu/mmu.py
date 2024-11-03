@@ -3985,7 +3985,8 @@ class Mmu:
                 msg = "did not clear the encoder after moving %.1fmm" % homing_max
 
         else: # Using mmu_gate or mmu_post_gate sensor
-            actual,homed,_,_ = self.trace_filament_move("Reverse homing to gate sensor", -homing_max, motor="gear", homing_move=-1, endstop_name=self._get_gate_endstop_name())
+            endstop_name = self._get_gate_endstop_name()
+            actual,homed,_,_ = self.trace_filament_move("Reverse homing to %s sensor" % endstop_name, -homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
                 self.trace_filament_move("Final parking", -self.gate_parking_distance)
@@ -6589,7 +6590,7 @@ class Mmu:
 # RUNOUT, ENDLESS SPOOL and GATE HANDLING #
 ###########################################
 
-    def _runout(self, force_runout=False):
+    def _runout(self, force_runout=False, sensor=None):
         with self._wrap_suspend_runout(): # Don't want runout accidently triggering during handling
             self.is_handling_runout = force_runout # Best starting assumption
             self._save_toolhead_position_and_park('runout')
@@ -6616,7 +6617,7 @@ class Mmu:
                 self._set_gate_status(self.gate_selected, self.GATE_EMPTY) # Indicate current gate is empty
                 next_gate, msg = self._get_next_endless_spool_gate(self.tool_selected, self.gate_selected)
                 if next_gate == -1:
-                    raise MmuError("Runout detected\nNo alternative gates available after checking %s" % msg)
+                    raise MmuError("Runout detected on %s\nNo alternative gates available after checking %s" % (sensor, msg))
 
                 self.log_error("A runout has been detected. Checking for alternative gates %s" % msg)
                 self.log_info("Remapping T%d to gate %d" % (self.tool_selected, next_gate))
@@ -6630,7 +6631,7 @@ class Mmu:
                 self._remap_tool(self.tool_selected, next_gate)
                 self._select_and_load_tool(self.tool_selected)
             else:
-                raise MmuError("Runout detected\nEndlessSpool mode is off - manual intervention is required")
+                raise MmuError("Runout detected on %s\nEndlessSpool mode is off - manual intervention is required" % sensor)
 
         self._continue_after("endless_spool")
         self.pause_resume.send_resume_command() # Undo what runout sensor handling did
@@ -7076,12 +7077,12 @@ class Mmu:
                         raise MmuError("Filament runout occured at extruder. Manual intervention is required")
 
                     else:
-                        self.log_debug("Assertion failure: Unexpected/unhandled sensor runout event type. Ignored")
+                        self.log_debug("Assertion failure: Unexpected/unhandled sensor runout event type on %s. Ignored" % sensor)
                 else:
-                    self.log_debug("Assertion failure: Late sensor runout event. Ignored")
+                    self.log_debug("Assertion failure: Late sensor runout event on %s. Ignored" % sensor)
 
                 if process_runout:
-                    self._runout(True) # Will send_resume_command() or fail and pause
+                    self._runout(True, sensor=sensor) # Will send_resume_command() or fail and pause
                 else:
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
         except MmuError as ee:
