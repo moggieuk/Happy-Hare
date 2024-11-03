@@ -156,7 +156,7 @@ class MmuMachine:
                 if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(GEAR_STEPPER_CONFIG, key):
                     base_value = config.fileconfig.get(GEAR_STEPPER_CONFIG, key)
                     if base_value:
-                        logging.info("Sharing gear stepper config %s=%s with %s" % (key, base_value, stepper_section))
+                        logging.info("MMU: Sharing gear stepper config %s=%s with %s" % (key, base_value, stepper_section))
                         config.fileconfig.set(stepper_section, key, base_value)
 
             # IF TMC controller for this additional stepper matches the base we can fill in missing TMC config
@@ -167,7 +167,7 @@ class MmuMachine:
                         if not config.fileconfig.has_option(tmc_section, key):
                             base_value = config.fileconfig.get(base_tmc_section, key)
                             if base_value:
-                                logging.info("Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
+                                logging.info("MMU: Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
                                 config.fileconfig.set(tmc_section, key, base_value)
 
         # H/W validation checks
@@ -289,7 +289,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             raise
         except:
             msg = "Error loading MMU kinematics"
-            logging.exception(msg)
+            logging.exception("MMU: %s" % msg)
             raise config.error(msg)
 
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
@@ -593,7 +593,7 @@ class MmuKinematics:
     def calc_position(self, stepper_positions):
         positions = []
         for i, r in enumerate(self.rails):
-            #logging.info("DEBUG: * %d. rail=%s, initial_stepper_name=%s", i, r.get_name(), r.steppers[0].get_name())
+            #logging.info("MMU: DEBUG: * %d. rail=%s, initial_stepper_name=%s", i, r.get_name(), r.steppers[0].get_name())
             stepper = None
             if i == 1:
                 stepper = next((s for s in r.steppers if s not in self.toolhead.inactive_gear_steppers), None)
@@ -766,7 +766,10 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         self.extra_endstops.append((mcu_endstop, name))
         if bind_rail_steppers:
             for s in self.steppers:
-                mcu_endstop.add_stepper(s)
+                try:
+                    mcu_endstop.add_stepper(s)
+                except Exception as e:
+                    logging.info("MMU: Not possible to add stepper %s to endstop %s because: %s" % (s.get_name(), name, str(e)))
         if register: # and not self.is_endstop_virtual(name):
             self.query_endstops.register_endstop(mcu_endstop, name)
         return mcu_endstop

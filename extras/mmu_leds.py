@@ -31,7 +31,7 @@ class MmuLeds:
         MmuLeds.frame_rate = config.getint('frame_rate', MmuLeds.frame_rate)
 
         if config.get_printer().lookup_object(led_strip.replace(':', ' '), None) is None:
-            logging.warning("Happy Hare LED support cannot be loaded. Led strip '%s' not defined" % led_strip)
+            logging.warning("MMU: Happy Hare LED support cannot be loaded. Led strip '%s' not defined" % led_strip)
         else:
             try:
                 _ = config.get_printer().load_object(config, led_strip.replace(':', ' '))

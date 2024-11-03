@@ -612,7 +612,7 @@ class Mmu:
 
     # Initialize MMU hardare. Note that logging not set up yet so use main klippy logger
     def _setup_mmu_hardware(self, config):
-        logging.info("MMU Hardware Initialization -------------------------------")
+        logging.info("MMU: Hardware Initialization -------------------------------")
 
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.num_gates = self.mmu_machine.num_gates
@@ -649,12 +649,12 @@ class Mmu:
                     if self.homing_extruder and name == self.ENDSTOP_TOOLHEAD:
                         mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
                 else:
-                    logging.warning("Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
+                    logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
 
         # Get optional encoder setup
         self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
         if not self.encoder_sensor:
-            logging.warning("No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
+            logging.warning("MMU: No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
 
     def _setup_logging(self):
         # Setup background file based logging before logging any messages
@@ -665,7 +665,7 @@ class Mmu:
                 mmu_log = '/tmp/mmu.log'
             else:
                 mmu_log = dirname + '/mmu.log'
-            logging.info("MMU Log: %s" % mmu_log)
+            logging.info("MMU: Log: %s" % mmu_log)
             self.mmu_logger = MmuLogger(mmu_log)
             self.mmu_logger.log("\n\n\nMMU Startup -----------------------------------------------\n")
 
@@ -2821,7 +2821,7 @@ class Mmu:
         try:
             self.gcode.run_script(command)
         except Exception:
-            logging.exception("Error running job state initializer/finalizer")
+            logging.exception("MMU: Error running job state initializer/finalizer")
 
     # MMU job state machine: initialized|ready|started|printing|complete|cancelled|error|pause_locked|paused|standby
     def _set_print_state(self, print_state, call_macro=True):
