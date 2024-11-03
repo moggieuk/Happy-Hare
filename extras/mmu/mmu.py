@@ -2192,6 +2192,7 @@ class Mmu:
             self.log_always("Finding %s endstop position..." % self.gate_homing_endstop)
             homed = False
 
+            self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True)
             if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
                 with self._require_encoder():
                     success = self._reverse_home_to_encoder(approx_bowden_length)
@@ -2217,6 +2218,7 @@ class Mmu:
                     self.write_variables()
 
                 self._unload_gate() # Use real method to park filament
+                self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
             else:
                 raise MmuError("Calibration of bowden length failed. Did not home to gate sensor after moving %.1fmm" % approx_bowden_length)
         finally:
