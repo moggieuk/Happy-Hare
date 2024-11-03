@@ -444,10 +444,26 @@ update_copy_file() {
     done < "$src" >"$dest"
 }
 
+# Get MMU type info first
+read_previous_mmu_type() {
+    HAS_SELECTOR="yes"
+    dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    if [ -f "${dest_cfg}" ]; then
+        if ! grep -q "^\[stepper_mmu_selector\]" "${dest_cfg}"; then
+            HAS_SELECTOR="no"
+        fi
+    fi
+echo "PAUL: HAS_SELECTOR=${HAS_SELECTOR}"
+}
+
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
-    parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""                   "_param_" "checkdup"
+    if [ "$HAS_SELECTOR" == "no" ]; then
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.vs" ""            "_param_" "checkdup"
+    else
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""               "_param_" "checkdup"
+    fi
     parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_|filename" ""        "checkdup"
     for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw" | grep -v "my_"`; do
         parse_file "${SRCDIR}/config/addons/${file}"      "variable_"          ""        "checkdup"
@@ -457,6 +473,14 @@ read_default_config() {
 
 # Pull parameters from previous installation
 read_previous_config() {
+
+    # Get a few vital bits of information stored in mmu_hardware.cfg if available
+    cfg="mmu_hardware.cfg"
+    dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
+    if [ -f "${dest_cfg}" ]; then
+        _hw_num_gates=$(sed -n 's/^[[:space:]]*num_gates:[[:space:]]*\([0-9]\+\).*/\1/p' "${dest_cfg}")
+    fi
+
     cfg="mmu_parameters.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
 
@@ -480,13 +504,6 @@ read_previous_config() {
             fi
         fi
     done
-
-    # Get number of gates stored in mmu_hardware.cfg if available
-    cfg="mmu_hardware.cfg"
-    dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
-    if [ -f "${dest_cfg}" ]; then
-        _hw_num_gates=$(sed -n 's/^[[:space:]]*num_gates:[[:space:]]*\([0-9]\+\).*/\1/p' "${dest_cfg}")
-    fi
 
     # TODO namespace config in third-party addons separately
     if [ -d "${KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
@@ -750,7 +767,12 @@ copy_config_files() {
 
         # Configuration parameters -----------------------------------------------------------
         elif [ "${file}" == "mmu_parameters.cfg" ]; then
-            update_copy_file "$src" "$dest" "" "_param_"
+            if [ "${HAS_SELECTOR}" == "no" ]; then
+                # Use truncated VirtualSelector parameter file
+                update_copy_file "${src}.vs" "$dest" "" "_param_"
+            else
+                update_copy_file "$src" "$dest" "" "_param_"
+            fi
 
             # Ensure that supplemental user added params are retained. These are those that are
             # by default set internally in Happy Hare based on vendor and version settings but
@@ -773,8 +795,8 @@ copy_config_files() {
 
             # If any params are still left warn the user because they will be lost (should have been upgraded)
             for var in $(set | grep '^_param_' | cut -d= -f1); do
-                value=$(eval echo \$$var)
                 param=${var#_param_}
+                value=$(eval echo \$$var)
                 echo "Parameter: '$param: $value' is deprecated and has been removed"
             done
 
@@ -1854,6 +1876,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
         hardware_config="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
         if [ -f "${hardware_config}" ]; then
             echo -e "${TITLE}$(get_logo "Happy Hare upgrading previous install...")"
+            read_previous_mmu_type # Get MMU type info first
             read_default_config  # Parses template file parameters into memory
             read_previous_config # Update in memory parameters from previous install
         elif [ "${STARTER}" -eq 0 ]; then

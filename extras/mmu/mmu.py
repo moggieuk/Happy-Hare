@@ -5344,7 +5344,7 @@ class Mmu:
         with self._wrap_track_time('post_load'):
             self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
-    # Primary method to unload current tool but retains selection
+    # Primary method to unload current tool but retain selection
     def _unload_tool(self, form_tip=None, runout=False):
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_info("Tool already unloaded")
@@ -5967,6 +5967,7 @@ class Mmu:
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when ejecting tool" % str(ee))
 
+    # Common logic for MMU_UNLOAD and MMU_EJECT
     def _mmu_unload_eject(self, gcmd):
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
