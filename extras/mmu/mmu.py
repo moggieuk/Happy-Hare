@@ -2441,9 +2441,10 @@ class Mmu:
         if self.check_if_bypass(): return
         if self.check_if_gate_not_valid(): return
 
+        can_auto_calibrate = self.has_encoder() or self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY
         manual = bool(gcmd.get_int('MANUAL', 0, minval=0, maxval=1))
-        if not self.has_encoder() and not manual:
-            self.log_always("No encoder available. Use manual calibration method:\nWith gate selected, manually load filament all the way to the extruder gear\nThen run 'MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx'\nWhere BOWDEN_LENGTH is greater than your real length")
+        if not can_auto_calibrate and not manual:
+            self.log_always("No encoder or extruder entry sensor available. Use manual calibration method:\nWith gate selected, manually load filament all the way to the extruder gear\nThen run 'MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx'\nWhere BOWDEN_LENGTH is greater than your real length")
             return
         if manual:
             if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_SELECTOR, check_gates=[self.gate_selected]): return
@@ -2464,8 +2465,7 @@ class Mmu:
                     # Automatic method with encoder
                     self._reset_ttg_map() # To force tool = gate
                     self._unload_tool()
-                    with self._require_encoder():
-                        self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats, save)
+                    self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats, save)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
         finally:
@@ -3194,7 +3194,7 @@ class Mmu:
             self.encoder_sensor.reset_counts()
 
     def _get_encoder_dead_space(self):
-        if self.gate_homing_endstop in [self.ENDSTOP_GATE, self.ENDSTOP_GEAR_PREFIX]:
+        if self.has_encoder() and self.gate_homing_endstop in [self.ENDSTOP_GATE, self.ENDSTOP_GEAR_PREFIX]:
             return self.gate_endstop_to_encoder
         else:
             return 0.
