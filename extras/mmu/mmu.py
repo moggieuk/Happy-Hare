@@ -3837,11 +3837,12 @@ class Mmu:
             endstop_name = self.sensor_manager.get_gate_sensor_name(self.ENDSTOP_GEAR_PREFIX, gate)
             self.log_always("Loading...")
             msg = "Homing to %s sensor" % endstop_name
-            actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
-            if homed:
-                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
-                self.log_always("Filament detected and loaded in gate %d" % gate)
-                return
+            with self._wrap_suspend_runout():
+                actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
+                if homed:
+                    self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+                    self.log_always("Filament detected and loaded in gate %d" % gate)
+                    return
         else:
             # Full gate load if no gear sensor
             for _ in range(self.preload_attempts):
