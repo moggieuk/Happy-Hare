@@ -110,8 +110,8 @@ extruder_homing_speed: 18		# mm/s speed of extruder only homing moves (e.g. to t
 #
 gate_homing_endstop: encoder		# Name of gate endstop, "encoder" forces use of encoder for parking
 gate_homing_max: 70			# Maximum move distance to home to the gate (actual move distance for encoder parking)
+gate_preload_homing_max: 70             # Maximum homing distance to the mmu_gear endstop (if MMU is fitted with one)
 gate_unload_buffer: 50			# Amount to reduce the fast unload so that filament doesn't overshoot when parking
-gate_load_retries: 2			# Number of times MMU will attempt to grab the filament on initial load (max 5)
 gate_parking_distance: 23 		# Parking postion in the gate (distance back from gate endstop/encoder point)
 gate_endstop_to_encoder: 10		# Distance between gate endstop and encoder (IF both fitted. +ve if encoder after endstop)
 gate_autoload: 1			# If pre-gate sensor fitted this controls the automatic loading of the gate
@@ -424,7 +424,6 @@ autotune_rotation_distance: 0   # Automated gate calibration/tuning (requires en
 startup_home_if_unloaded: 0	# 1 = force homing of MMU on startup if unloaded, 0 = do nothing
 startup_reset_ttg_map: 0	# 1 = reset TTG map on startup, 0 = do nothing
 show_error_dialog: 0		# 1 = show pop-up dialog in addition to console message, 0 = show error in console
-preload_attempts: 5		# How many "grabbing" attempts are made to pick up the filament with preload feature
 strict_filament_recovery: 0	# If enabled with MMU with toolhead sensor, this will cause filament position recovery to
 				# perform extra moves to look for filament trapped in the space after extruder but before sensor
 filament_recovery_on_pause: 1	# 1 = Run a quick check to determine current filament position on pause/error, 0 = disable

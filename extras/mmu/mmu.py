@@ -332,8 +332,9 @@ class Mmu:
         self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', 0., minval=0.)
         self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
+        self.gate_preload_homing_max = config.getfloat('gate_preload_homing_max', self.gate_homing_max)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
-        self.gate_load_retries = config.getint('gate_load_retries', 2, minval=1, maxval=5)
+        self.gate_load_retries = config.getint('gate_load_retries', 1, minval=1, maxval=5)
         self.gate_autoload = config.getint('gate_autoload', 1, minval=0, maxval=1)
         self.gate_final_eject_distance = config.getfloat('gate_final_eject_distance', 0)
         self.bypass_autoload = config.getint('bypass_autoload', 1, minval=0, maxval=1)
@@ -399,7 +400,7 @@ class Mmu:
         self.gear_buzz_accel = config.getfloat('gear_buzz_accel', 1000, minval=10.) # Not exposed
 
         # Optional features
-        self.preload_attempts = config.getint('preload_attempts', 5, minval=1, maxval=20) # How many times to try to grab the filament
+        self.preload_attempts = config.getint('preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.spoolman_support = config.getchoice('spoolman_support', {o: o for o in self.SPOOLMAN_OPTIONS}, self.SPOOLMAN_OFF)
@@ -3808,7 +3809,7 @@ class Mmu:
 # MODULAR FILAMENT LOAD AND UNLOAD FUNCTIONS #
 ##############################################
 
-    # Preload gate as far as possible. Will park correctly if possible else will just move to grip filament
+    # Preload gate as little as possible. If a full gate load is the only option this will then park correctly after pre-load
     def _preload_gate(self, gate=None):
         # If gate not specified assume current gate
         if gate is None: 
@@ -3816,18 +3817,31 @@ class Mmu:
         else:
             self.select_gate(gate)
 
-        for _ in range(self.preload_attempts):
+        if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
+            # Minimal load past gear stepper if gear sensor is fitted
+            endstop_name = self.sensor_manager.get_gate_sensor_name(self.ENDSTOP_GEAR_PREFIX, gate)
             self.log_always("Loading...")
-            try:
-                self._load_gate(allow_retry=False, adjust_grip_on_error=False)
-                self._check_pending_spool_id(gate) # Have spool_id ready?
-                self.log_always("Parking...")
-                self._unload_gate()
-                self.log_always("Filament detected and parked in gate %d" % gate)
+            msg = "Homing to %s sensor" % endstop_name
+            actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
+            if homed:
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+                self.log_always("Filament detected and loaded in gate %d" % gate)
                 return
-            except MmuError as ee:
-                # Exception just means filament is not loaded yet, so continue
-                self.log_trace("Exception on preload: %s" % str(ee))
+        else:
+            # Full gate load if no gear sensor
+            for _ in range(self.preload_attempts):
+                self.log_always("Loading...")
+                try:
+                    self._load_gate(allow_retry=False, adjust_grip_on_error=False)
+                    self._check_pending_spool_id(gate) # Have spool_id ready?
+                    self.log_always("Parking...")
+                    self._unload_gate()
+                    self.log_always("Filament detected and parked in gate %d" % gate)
+                    return
+                except MmuError as ee:
+                    # Exception just means filament is not loaded yet, so continue
+                    self.log_trace("Exception on preload: %s" % str(ee))
+
         self.log_always("Filament not detected in gate %d" % gate)
         self._set_gate_status(gate, self.GATE_EMPTY)
         self._initialize_encoder() # Encoder 0000
@@ -3844,8 +3858,8 @@ class Mmu:
         self.log_always("Ejecting...")
         if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
             endstop_name = self.sensor_manager.get_gate_sensor_name(self.ENDSTOP_GEAR_PREFIX, gate)
-            msg = "Homing to %s sensor" % endstop_name
-            actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
+            msg = "Reverse homing to %s sensor" % endstop_name
+            actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
                 self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
             else:
@@ -6350,7 +6364,11 @@ class Mmu:
         self.gate_endstop_to_encoder = gcmd.get_float('GATE_ENDSTOP_TO_ENCODER', self.gate_endstop_to_encoder)
         self.gate_parking_distance = gcmd.get_float('GATE_PARKING_DISTANCE', self.gate_parking_distance)
         self.gate_autoload = gcmd.get_int('GATE_AUTOLOAD', self.gate_autoload, minval=0, maxval=1)
-        self.gate_final_eject_distance = config.getfloat('GATE_FINAL_PARKING_DISTANCE', self.gate_final_eject_distance)
+        self.gate_final_eject_distance = gcmd.getfloat('GATE_FINAL_PARKING_DISTANCE', self.gate_final_eject_distance)
+        self.gate_unload_buffer = gcmd.get_float('GATE_UNLOAD_BUFFER', self.gate_unload_buffer, minval=0.)
+        self.gate_homing_max = gcmd.get_float('GATE_HOMING_MAX', self.gate_homing_max)
+        self.gate_preload_homing_max = gcmd.get_float('GATE_PRELOAD_HOMING_MAX', self.gate_preload_homing_max)
+
         self.bypass_autoload = gcmd.get_int('BYPASS_AUTOLOAD', self.bypass_autoload, minval=0, maxval=1)
         self.bowden_apply_correction = gcmd.get_int('BOWDEN_APPLY_CORRECTION', self.bowden_apply_correction, minval=0, maxval=1)
         self.bowden_allowable_unload_delta = self.bowden_allowable_load_delta = gcmd.get_float('BOWDEN_ALLOWABLE_LOAD_DELTA', self.bowden_allowable_load_delta, minval=1., maxval=50.)
@@ -6468,6 +6486,9 @@ class Mmu:
             msg += "\ngate_homing_endstop = %s" % self.gate_homing_endstop
             if self.gate_homing_endstop in [self.ENDSTOP_GATE] and self.has_encoder():
                 msg += "\ngate_endstop_to_encoder = %s" % self.gate_endstop_to_encoder
+            msg += "\ngate_unload_buffer = %s" % self.gate_unload_buffer
+            msg += "\ngate_homing_max = %s" % self.gate_homing_max
+            msg += "\ngate_preload_homing_max = %s" % self.gate_preload_homing_max
             msg += "\ngate_parking_distance = %s" % self.gate_parking_distance
             msg += "\ngate_autoload = %s" % self.gate_autoload
             msg += "\ngate_final_eject_distance" % self.gate_final_eject_distance
