@@ -153,23 +153,23 @@ class MmuSensors:
             if switch_pin is not None and not self._is_empty_pin(switch_pin):
                 self._create_mmu_sensor(config, Mmu.PRE_GATE_SENSOR_PREFIX, gate, switch_pin, event_delay, insert=True, remove=True, runout=True, allow_in_print=True)
 
-        # Setup "mmu_gate" sensor...
+        # Setup single "mmu_gate" sensor...
         switch_pin = config.get('gate_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             self._create_mmu_sensor(config, Mmu.ENDSTOP_GATE, None, switch_pin, event_delay, runout=True)
 
-        # Setup "mmu_post_gate" sensors...
+        # Setup "mmu_gear" sensors...
         for gate in range(23):
-            switch_pin = config.get('post_gate_switch_pin_%d' % gate, None)
+            switch_pin = config.get('post_gear_switch_pin_%d' % gate, None)
             if switch_pin is not None and not self._is_empty_pin(switch_pin):
-                self._create_mmu_sensor(config, Mmu.ENDSTOP_POST_GATE_PREFIX, gate, switch_pin, event_delay, runout=True)
+                self._create_mmu_sensor(config, Mmu.ENDSTOP_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
 
-        # Setup extruder (entrance) sensor...
+        # Setup single extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             self._create_mmu_sensor(config, Mmu.ENDSTOP_EXTRUDER_ENTRY, None, switch_pin, event_delay, insert=True, runout=True)
 
-        # Setup toolhead sensor...
+        # Setup single toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             self._create_mmu_sensor(config, Mmu.ENDSTOP_TOOLHEAD, None, switch_pin, event_delay)
@@ -202,9 +202,9 @@ class MmuSensors:
         fs = self.printer.load_object(config, section)
 
         # Replace with custom runout_helper because limited operation at all times
-        insert_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate else "")) if insert else None
-        remove_gcode = ("%s SENSOR=%s%s" % (self.REMOVE_GCODE, name, (" GATE=%d" % gate) if gate else "")) if remove else None
-        runout_gcode = ("%s SENSOR=%s%s" % (self.RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate else "")) if runout else None
+        insert_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
+        remove_gcode = ("%s SENSOR=%s%s" % (self.REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
+        runout_gcode = ("%s SENSOR=%s%s" % (self.RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
         gate_helper = MmuRunoutHelper(self.printer, sensor, event_delay, insert_gcode, remove_gcode, runout_gcode, allow_in_print)
         fs.runout_helper = gate_helper
         fs.get_status = gate_helper.get_status

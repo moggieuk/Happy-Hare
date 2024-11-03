@@ -734,7 +734,7 @@ class LinearSelector:
             homing_state.set_axes([0])
             self.mmu_toolhead.get_kinematics().home(homing_state)
             homed = True
-        except Exception as e:
+        except Exception:
             pass # Home not found
         mcu_position = self.selector_stepper.get_mcu_position()
         traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()

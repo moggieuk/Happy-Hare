@@ -129,7 +129,6 @@ class MmuMachine:
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
-        logging.info("PAUL: variable_bowden_lengths=%s" % self.variable_bowden_lengths)
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False

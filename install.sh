@@ -553,6 +553,9 @@ read_previous_config() {
     if [ "${_param_auto_calibrate_bowden}" != "" ]; then
         _param_autotune_bowden_length=${_param_auto_calibrate_bowden}
     fi
+    if [ "${_param_endless_spool_final_eject}" != "" ]; then
+        _param_gate_final_eject_distance=${_param_endless_spool_final_eject}
+    fi
 }
 
 # Helper for upgrade logic
@@ -1251,7 +1254,7 @@ questionaire() {
             _hw_mmu_vendor="BoxTurtle"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
-            _hw_variable_bowden_lengths=1
+            _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=1
@@ -1259,8 +1262,9 @@ questionaire() {
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="none"
-            _param_gate_homing_endstop="post_gate"
-            _param_gate_parking_distance=10
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_parking_distance=100
+            _param_gate_final_eject_distance=100
 
             # Macro variable config
             variable_user_pre_unload_extension="MMU_RESPOOLER_START"
@@ -1274,7 +1278,7 @@ questionaire() {
             _hw_mmu_vendor="NightOwl"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
-            _hw_variable_bowden_lengths=1
+            _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=1
@@ -1282,8 +1286,9 @@ questionaire() {
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="none"
-            _param_gate_homing_endstop="post_gate"
-            _param_gate_parking_distance=10
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_parking_distance=100
+            _param_gate_final_eject_distance=100
 
             # Macro variable config
             variable_user_pre_unload_extension="MMU_RESPOOLER_START"
@@ -1338,8 +1343,8 @@ questionaire() {
             option TYPE_B_WITH_ENCODER                          'Type-B (mutliple filament drive steppers) with Encoder'
             option TYPE_B_WITH_SHARED_GATE_AND_ENCODER          'Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder'
             option TYPE_B_WITH_SHARED_GATE_NO_ENCODER           'Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder'
-            option TYPE_B_WITH_INDIVIDUAL_POST_GATE_AND_ENCODER 'Type-B (multiple filament drive steppers) with individual post-gate sensors and Encoder'
-            option TYPE_B_WITH_INDIVIDUAL_POST_GATE_NO_ENCODER  'Type-B (multiple filament drive steppers) with individual post-gate sensors, No Encoder'
+            option TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER 'Type-B (multiple filament drive steppers) with individual post-gear sensors and Encoder'
+            option TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_NO_ENCODER  'Type-B (multiple filament drive steppers) with individual post-gear sensors, No Encoder'
             option OTHER                                        'Just turn on all options and let me configure'
             prompt_option opt 'Type' "${OPTIONS[@]}"
             case "$opt" in
@@ -1384,23 +1389,23 @@ questionaire() {
                     _param_gate_homing_endstop="gate"
                     _param_extruder_homing_endstop="none"
                     ;;
-                "$TYPE_B_WITH_INDIVIDUAL_POST_GATE_AND_ENCODER")
+                "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER")
                     HAS_SELECTOR=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
                     _hw_filament_always_gripped=1
-                    _param_gate_homing_endstop="post_gate"
+                    _param_gate_homing_endstop="mmu_gear"
                     _param_extruder_homing_endstop="none"
                     ;;
-                "$TYPE_B_WITH_INDIVIDUAL_POST_GATE_NO_ENCODER")
+                "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_NO_ENCODER")
                     HAS_SELECTOR=no
                     HAS_ENCODER=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
                     _hw_filament_always_gripped=1
-                    _param_gate_homing_endstop="post_gate"
+                    _param_gate_homing_endstop="mmu_gear"
                     _param_extruder_homing_endstop="none"
                     ;;
                 *)
