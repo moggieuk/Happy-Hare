@@ -2132,6 +2132,16 @@ class Mmu:
                 self._initialize_filament_position(dwell=True)
                 self._load_gate(allow_retry=False)
                 self._load_bowden(approximate_length)
+
+                if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY and self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+                    msg = "Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop
+                    self.log_error(msg)
+                    # Home back to the gate
+                    self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True)
+                    self._unload_gate(approximate_length)
+                    self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
+                    raise MmuError("Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop)
+
                 self.log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
                 actual = self._get_filament_position() - self.gate_parking_distance
