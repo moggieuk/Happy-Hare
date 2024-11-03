@@ -3953,7 +3953,19 @@ class Mmu:
             length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD) else self.toolhead_extruder_to_nozzle
             length = min(length + self.toolhead_unload_safety_margin, homing_max)
             self.log_debug("Performing synced pre-unload bowden move to ensure filament is not trapped in extruder")
-            _,_,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder")
+            if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
+                _,_,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder")
+            else:
+                actual,homed,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder", homing_move=-1, endstop_name=self._get_gate_endstop_name())
+                # In case we ended up homing during the safety pre-unload, lets just do our parking and be done
+                # This can easily happen when your parking distance is configured to park the filament past the
+                # gate sensor instead of behind the gate sensor and the filament position is determined to be
+                # "somewhere in the bowden tube"
+                if homed:
+                    self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
+                    self.trace_filament_move("Final parking", -self.gate_parking_distance)
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
+                    return max(actual - self.gate_unload_buffer, 0)
 
         if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
             with self._require_encoder():
