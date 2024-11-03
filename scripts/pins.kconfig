@@ -264,57 +264,57 @@ menu "Pre-gate pins"
 		default "gpio29" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
 endmenu
 
-menu "Post-gate pins"
-  config PIN_POST_GATE_0
-    string "Post-gate 0 pin"
+menu "Gear sensor pins"
+  config PIN_GEAR_SENSOR_0
+    string "Gear sensor 0 pin"
     depends on HW_NUM_GATES > 0
     default "PC15" if !MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
 
-  config PIN_POST_GATE_1
-    string "Post-gate 1 pin"
+  config PIN_GEAR_SENSOR_1
+    string "Gear sensor 1 pin"
     depends on HW_NUM_GATES > 1
     default "PC13" if !MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
 
-  config PIN_POST_GATE_2
-    string "Post-gate 2 pin"
+  config PIN_GEAR_SENSOR_2
+    string "Gear sensor 2 pin"
     depends on HW_NUM_GATES > 2
     default "PC14" if !MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
 
-  config PIN_POST_GATE_3
-    string "Post-gate 3 pin"
+  config PIN_GEAR_SENSOR_3
+    string "Gear sensor 3 pin"
     depends on HW_NUM_GATES > 3
     default "PC12" if !MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
 
-  config PIN_POST_GATE_4
-    string "Post-gate 4 pin"
+  config PIN_GEAR_SENSOR_4
+    string "Gear sensor 4 pin"
     depends on HW_NUM_GATES > 4
 
-  config PIN_POST_GATE_5
-    string "Post-gate 5 pin"
+  config PIN_GEAR_SENSOR_5
+    string "Gear sensor 5 pin"
     depends on HW_NUM_GATES > 5
 
-  config PIN_POST_GATE_6
-    string "Post-gate 6 pin"
+  config PIN_GEAR_SENSOR_6
+    string "Gear sensor 6 pin"
     depends on HW_NUM_GATES > 6
 
-  config PIN_POST_GATE_7
-    string "Post-gate 7 pin"
+  config PIN_GEAR_SENSOR_7
+    string "Gear sensor 7 pin"
     depends on HW_NUM_GATES > 7
 
-  config PIN_POST_GATE_8
-    string "Post-gate 8 pin"
+  config PIN_GEAR_SENSOR_8
+    string "Gear sensor 8 pin"
     depends on HW_NUM_GATES > 8
 
-  config PIN_POST_GATE_9	
-    string "Post-gate 9 pin"
+  config PIN_GEAR_SENSOR_9	
+    string "Gear sensor 9 pin"
     depends on HW_NUM_GATES > 9
 
-  config PIN_POST_GATE_10
-    string "Post-gate 10 pin"
+  config PIN_GEAR_SENSOR_10
+    string "Gear sensor 10 pin"
     depends on HW_NUM_GATES > 10
 
-  config PIN_POST_GATE_11
-    string "Post-gate 11 pin"
+  config PIN_GEAR_SENSOR_11
+    string "Gear sensor 11 pin"
     depends on HW_NUM_GATES > 11
 endmenu
 
