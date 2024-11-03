@@ -5516,8 +5516,8 @@ class Mmu:
             if endstop:
                 self._adjust_bowden_lengths()
             self.bowden_lengths[gate] = length
-            if gate == 0 and not self.mmu_machine.variable_bowden_lengths:
-                self.bowden_lengths = [self.bowden_lengths[0]] * self.num_gates
+            if not self.mmu_machine.variable_bowden_lengths:
+                self.bowden_lengths = [self.bowden_lengths[gate]] * self.num_gates
             self.save_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, self.bowden_lengths)
             if not any(x == -1 for x in self.bowden_lengths):
                 self.calibration_status |= self.CALIBRATED_BOWDENS
