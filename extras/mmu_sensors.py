@@ -34,10 +34,11 @@ import logging, time
 
 
 class MmuRunoutHelper:
-    def __init__(self, printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode):
+    def __init__(self, printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode, allow_in_print):
 
         self.printer, self.name = printer, name
         self.insert_gcode, self.remove_gcode, self.runout_gcode = insert_gcode, remove_gcode, runout_gcode
+        self.insert_remove_in_print = allow_in_print
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
@@ -78,7 +79,7 @@ class MmuRunoutHelper:
             try:
                 self.gcode.run_script(command)
             except Exception:
-                logging.exception("Error running mmu sensor handler: `%s`" % command)
+                logging.exception("MMU: Error running mmu sensor handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def note_filament_present(self, is_filament_present):
@@ -95,18 +96,20 @@ class MmuRunoutHelper:
         is_printing = self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing"
 
         if is_filament_present and self.insert_gcode: # Insert detected
-            self.min_event_systime = self.reactor.NEVER
-            #logging.info("MMU filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
-            self.reactor.register_callback(lambda reh: self._insert_event_handler(eventtime))
+            if not is_printing or (is_printing and self.insert_remove_in_print):
+                self.min_event_systime = self.reactor.NEVER
+                #logging.info("MMU: filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.reactor.register_callback(lambda reh: self._insert_event_handler(eventtime))
 
         else: # Remove or Runout detected
             if is_printing and not self.runout_suspended and self.runout_gcode:
                 self.min_event_systime = self.reactor.NEVER
-                #logging.info("MMU filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
+                #logging.info("MMU: filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(lambda reh: self._runout_event_handler(eventtime))
-            elif self.remove_gcode: # Just a "remove" event
+            elif self.remove_gcode and (not is_printing or self.insert_remove_in_print):
+                # Just a "remove" event
                 self.min_event_systime = self.reactor.NEVER
-                #logging.info("MMU filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
+                #logging.info("MMU: filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(lambda reh: self._remove_event_handler(eventtime))
 
     def enable_runout(self, restore):
@@ -148,31 +151,25 @@ class MmuSensors:
         for gate in range(23):
             switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
             if switch_pin is not None and not self._is_empty_pin(switch_pin):
-                self._create_mmu_sensor(config, Mmu.PRE_GATE_SENSOR_PREFIX, gate, switch_pin, event_delay, insert=True, remove=True, runout=True)
+                self._create_mmu_sensor(config, Mmu.PRE_GATE_SENSOR_PREFIX, gate, switch_pin, event_delay, insert=True, remove=True, runout=True, allow_in_print=True)
 
-        # Setup "mmu_gate" sensor...
+        # Setup single "mmu_gate" sensor...
         switch_pin = config.get('gate_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             self._create_mmu_sensor(config, Mmu.ENDSTOP_GATE, None, switch_pin, event_delay, runout=True)
 
-        # Setup "mmu_post_gate" sensors...
+        # Setup "mmu_gear" sensors...
         for gate in range(23):
-            switch_pin = config.get('post_gate_switch_pin_%d' % gate, None)
+            switch_pin = config.get('post_gear_switch_pin_%d' % gate, None)
             if switch_pin is not None and not self._is_empty_pin(switch_pin):
-                self._create_mmu_sensor(config, Mmu.ENDSTOP_POST_GATE_PREFIX, gate, switch_pin, event_delay, runout=True)
+                self._create_mmu_sensor(config, Mmu.ENDSTOP_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
 
-        # Setup extruder (entrance) sensor...
+        # Setup single extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
-            # Allow pin sharing for special case of "no bowden MMU designs" where gate sensor is same as extruder entry sensor
-            if switch_pin == config.get('gate_switch_pin', None):
-                ppins = self.printer.lookup_object('pins')
-                pin_params = ppins.parse_pin(switch_pin, True, True)
-                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-                ppins.allow_multi_use_pin(share_name)
             self._create_mmu_sensor(config, Mmu.ENDSTOP_EXTRUDER_ENTRY, None, switch_pin, event_delay, insert=True, runout=True)
 
-        # Setup toolhead sensor...
+        # Setup single toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin is not None and not self._is_empty_pin(switch_pin):
             self._create_mmu_sensor(config, Mmu.ENDSTOP_TOOLHEAD, None, switch_pin, event_delay)
@@ -195,7 +192,7 @@ class MmuSensors:
             self.has_compression_switch = True
             self.compression_switch_state = 0
 
-    def _create_mmu_sensor(self, config, name_prefix, gate, switch_pin, event_delay, insert=False, remove=False, runout=False):
+    def _create_mmu_sensor(self, config, name_prefix, gate, switch_pin, event_delay, insert=False, remove=False, runout=False, allow_in_print=False):
         name = "%s_%d" % (name_prefix, gate) if gate is not None else "%s" % name_prefix
         sensor = name if gate is not None else "%s_sensor" % name
         section = "filament_switch_sensor %s" % sensor
@@ -205,10 +202,10 @@ class MmuSensors:
         fs = self.printer.load_object(config, section)
 
         # Replace with custom runout_helper because limited operation at all times
-        insert_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate else "")) if insert else None
-        remove_gcode = ("%s SENSOR=%s%s" % (self.REMOVE_GCODE, name, (" GATE=%d" % gate) if gate else "")) if remove else None
-        runout_gcode = ("%s SENSOR=%s%s" % (self.RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate else "")) if runout else None
-        gate_helper = MmuRunoutHelper(self.printer, sensor, event_delay, insert_gcode, remove_gcode, runout_gcode)
+        insert_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
+        remove_gcode = ("%s SENSOR=%s%s" % (self.REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
+        runout_gcode = ("%s SENSOR=%s%s" % (self.RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
+        gate_helper = MmuRunoutHelper(self.printer, sensor, event_delay, insert_gcode, remove_gcode, runout_gcode, allow_in_print)
         fs.runout_helper = gate_helper
         fs.get_status = gate_helper.get_status
 

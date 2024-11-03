@@ -31,7 +31,7 @@ class MmuLeds:
         MmuLeds.frame_rate = config.getint('frame_rate', MmuLeds.frame_rate)
 
         if config.get_printer().lookup_object(led_strip.replace(':', ' '), None) is None:
-            logging.warning("Happy Hare LED support cannot be loaded. Led strip '%s' not defined" % led_strip)
+            logging.warning("MMU: Happy Hare LED support cannot be loaded. Led strip '%s' not defined" % led_strip)
         else:
             try:
                 _ = config.get_printer().load_object(config, led_strip.replace(':', ' '))
@@ -51,7 +51,7 @@ class MmuLeds:
                     if led_range:
                         first, last = map(int, led_range.split('-'))
                         if abs(first - last) + 1 != MmuLeds.num_gates:
-                            raise config.error("Range of '%s' LEDS doesn't match num_gates (%d)" % (segment, MmuLeds.num_gates))
+                            raise config.error("Range of '%s' LEDS doesn't match num_gates (%s)" % (segment, MmuLeds.num_gates))
                         MmuLeds.chains[segment] = list(range(first, last + 1) if first <= last else range(first, last - 1, -1))
                 if MmuLeds.chains[segment]:
                     as_set = set(MmuLeds.chains[segment])

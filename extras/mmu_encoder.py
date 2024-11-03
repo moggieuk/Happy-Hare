@@ -192,13 +192,13 @@ class MmuEncoder:
             if not is_printing and self.insert_gcode is not None:
                 # Insert detected
                 self.min_event_systime = self.reactor.NEVER
-                logging.info("Encoder Sensor %s: insert event detected, Time %.2f" % (self.name, eventtime))
+                logging.info("MMU: Encoder Sensor %s: insert event detected, Time %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._insert_event_handler)
         else:
             if is_printing and self.runout_gcode is not None:
                 # Runout detected
                 self.min_event_systime = self.reactor.NEVER
-                logging.info("Encoder Sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
+                logging.info("MMU: Encoder Sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._runout_event_handler)
 
     def _runout_event_handler(self, eventtime):
@@ -216,7 +216,7 @@ class MmuEncoder:
         try:
             self.gcode.run_script(command)
         except Exception:
-            logging.exception("Error running mmu encoder handler: `%s`" % command)
+            logging.exception("MMU: Error running mmu encoder handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def get_clog_detection_length(self):

@@ -23,13 +23,17 @@ class MmuSensorManager:
 
         for name in (
             [self.mmu.ENDSTOP_TOOLHEAD, self.mmu.ENDSTOP_GATE, self.mmu.ENDSTOP_EXTRUDER_ENTRY] +
-            ["%s_%d" % (self.mmu.PRE_GATE_SENSOR_PREFIX, i) for i in range(self.mmu.num_gates)] +
-            ["%s_%d" % (self.mmu.ENDSTOP_POST_GATE_PREFIX, i) for i in range(self.mmu.num_gates)]
+            [self.get_gate_sensor_name(self.mmu.PRE_GATE_SENSOR_PREFIX, i) for i in range(self.mmu.num_gates)] +
+            [self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)]
         ):
             sensor_name = name if re.search(r"_[0-9]+$", name) else "%s_sensor" % name
             sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
             if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
                 self.sensors[name] = sensor
+
+        # Special case for "no bowden" designs where mmu_gate is an alias for extruder sensor
+        if not self.mmu.mmu_machine.require_bowden_move and self.sensors[self.mmu.ENDSTOP_EXTRUDER_ENTRY] and self.mmu.ENDSTOP_GATE not in self.sensors:
+            self.sensors[self.mmu.ENDSTOP_GATE] = self.sensors[self.mmu.ENDSTOP_EXTRUDER_ENTRY]
 
     # Return dict of all sensor states (or None if sensor disabled)
     def get_all_sensors(self):
@@ -42,7 +46,10 @@ class MmuSensorManager:
         return self.sensors[name].runout_helper.sensor_enabled if name in self.sensors else False
 
     def has_gate_sensor(self, name, gate):
-        return self.sensors["%s_%d" % (name, gate)].runout_helper.sensor_enabled if name in self.sensors else False
+        return self.sensors[self.get_gate_sensor_name(name, gate)].runout_helper.sensor_enabled if self.get_gate_sensor_name(name, gate) in self.sensors else False
+
+    def get_gate_sensor_name(self, name, gate):
+        return "%s_%d" % (name, gate)
 
     # Return sensor state or None if not installed
     def check_sensor(self, name):
@@ -56,10 +63,11 @@ class MmuSensorManager:
 
     # Return per-gate sensor state or None if not installed
     def check_gate_sensor(self, name, gate):
-        sensor = self.sensors.get("%s_%d" % (name, gate), None)
+        sensor_name = self.get_gate_sensor_name(name, gate)
+        sensor = self.sensors.get(sensor_name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_trace("(%s_%d sensor %s filament)" % (name, gate, "detects" if detected else "does not detect"))
+            self.mmu.log_trace("(%s sensor %s filament)" % (sensor_name, "detects" if detected else "does not detect"))
             return detected
         else:
             return None
@@ -139,9 +147,11 @@ class MmuSensorManager:
 
     def _get_sensors(self, pos, gate, position_condition):
         result = {}
+        # PAUL this is correct if gear is being used as gate endstop TODO
+        # PAUL (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE),
         sensor_selection = [
-            ("%s_%d" % (self.mmu.PRE_GATE_SENSOR_PREFIX, gate), None),
-            ("%s_%d" % (self.mmu.ENDSTOP_POST_GATE_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE),
+            (self.get_gate_sensor_name(self.mmu.PRE_GATE_SENSOR_PREFIX, gate), None),
+            (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), None),
             (self.mmu.ENDSTOP_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
             (self.mmu.ENDSTOP_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
             (self.mmu.ENDSTOP_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
