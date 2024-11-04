@@ -145,13 +145,12 @@ class MmuSensorManager:
                 else:
                     sensor.runout_helper.enable_runout(enable and (gate != self.mmu.TOOL_GATE_UNKNOWN))
 
+    # Defines sensors and relationship to filament_pos state for easy filament tracing
     def _get_sensors(self, pos, gate, position_condition):
         result = {}
-        # PAUL this is correct if gear is being used as gate endstop TODO
-        # PAUL (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE),
         sensor_selection = [
             (self.get_gate_sensor_name(self.mmu.PRE_GATE_SENSOR_PREFIX, gate), None),
-            (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), None),
+            (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.ENDSTOP_GEAR_PREFIX else None),
             (self.mmu.ENDSTOP_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
             (self.mmu.ENDSTOP_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
             (self.mmu.ENDSTOP_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),

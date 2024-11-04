@@ -2137,7 +2137,7 @@ class Mmu:
                     msg = "Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop
                     self.log_error(msg)
                     # Home back to the gate
-                    self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True)
+                    self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True) # TODO maybe _unload_sequence() can be used so macros will be called from one place?
                     self._unload_gate(approximate_length)
                     self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
                     raise MmuError("Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop)
@@ -2237,7 +2237,7 @@ class Mmu:
     def _calibrate_gate(self, gate, length, repeats, save=True):
         try:
             pos_values, neg_values = [], []
-            self.select_tool(gate) # TODO: Probably should be select_gate() and not need the TTG map reset in caller
+            self.select_tool(gate) # TODO: Probably should be select_gate() and then not need the TTG map reset in caller
             self._load_gate(allow_retry=False)
             self.log_always("%s gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", gate, length))
 
@@ -5430,7 +5430,7 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - NO-OP" if gate == self.gate_selected else ""))
+        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected else ""))
         if gate == self.gate_selected: return
         try:
             self._next_gate = gate # Valid only during the gate selection process
@@ -7678,7 +7678,7 @@ class Mmu:
                                         self._initialize_encoder() # Encoder 0000
 
                             # If not printing select original tool and load filament if necessary
-                            # We don't do this when printing because this is expected to preceed the loading initial tool
+                            # We don't do this when printing because this is expected to preceed loading initial tool
                             if not self.is_printing():
                                 try:
                                     if tool_selected == self.TOOL_GATE_BYPASS:
