@@ -5441,7 +5441,6 @@ class Mmu:
             self._next_gate = gate # Valid only during the gate selection process
             self.selector.select_gate(gate)
             self._set_gate_selected(gate)
-            return
         except MmuError as ee:
             self.unselect_gate()
             raise ee
