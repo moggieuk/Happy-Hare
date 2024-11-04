@@ -1347,7 +1347,7 @@ class Mmu:
             'slicer_tool_map': self.slicer_tool_map,
             'action': self._get_action_string(),
             'has_bypass': self.selector.has_bypass(),
-            'sync_drive': self.mmu_toolhead.is_synced(),
+            'synced_drive': self.mmu_toolhead.is_synced(),
             'sync_feedback_state': self._get_sync_feedback_string(),
             'print_state': self.print_state,
             'clog_detection': self.enable_clog_detection,
@@ -1357,6 +1357,7 @@ class Mmu:
             'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
             'spoolman_support': self.spoolman_support,
             'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
+            'selector_type': self.mmu_machine.selector_type,
         })
         status.update(self.selector.get_status())
         return status
@@ -5181,9 +5182,12 @@ class Mmu:
     # calls back into Happy Hare during a print. It ensures that grip (servo) and current are correctly restored,
     # but like the rest of Happy Hare it employs lazy grip (servo) movement to reduce "flutter"
     @contextlib.contextmanager
-    def wrap_sync_gear_to_extruder(self):
+    def wrap_sync_gear_to_extruder(self, sync=None):
         prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
         prev_current = self.gear_percentage_run_current != 100
+        if sync is not None:
+            # Implies sync mode needs to be applied
+            self.sync_gear_to_extruder(sync) # PAUL wip
         try:
             yield self
         finally:
@@ -5384,6 +5388,8 @@ class Mmu:
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
         with self._wrap_track_time('post_load'):
+            if self.mmu_machine.filament_always_gripped: # PAUL wip (temp hack) for blobifer fix
+                self.sync_gear_to_extruder(True)
             self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
     # Primary method to unload current tool but retain selection
@@ -5400,6 +5406,8 @@ class Mmu:
         self.unload_sequence(form_tip=form_tip if not None else self.FORM_TIP_STANDALONE, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
         with self._wrap_track_time('post_unload'):
+            if self.mmu_machine.filament_always_gripped: # PAUL wip (temp hack) for blobifer fix
+                self.sync_gear_to_extruder(True)
             self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
     def _auto_home(self, tool=0):
