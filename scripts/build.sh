@@ -857,6 +857,11 @@ cmp_version() {
 }
 
 check_version() {
+    if [ ! -f "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/mmu_parameters.cfg" ]; then
+        log_info "Fresh install detected"
+        return
+    fi
+
     parse_file "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/mmu_parameters.cfg" "happy_hare_version"
     # Important to update version
     FROM_VERSION=$(param "[mmu]" "happy_hare_version")
