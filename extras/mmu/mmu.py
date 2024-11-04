@@ -3812,10 +3812,7 @@ class Mmu:
     # Preload gate as little as possible. If a full gate load is the only option this will then park correctly after pre-load
     def _preload_gate(self, gate=None):
         # If gate not specified assume current gate
-        if gate is None: 
-            gate = self.gate_selected
-        else:
-            self.select_gate(gate)
+        gate = self.gate_selected if gate is None else self.select_gate(gate)
 
         if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
             # Minimal load past gear stepper if gear sensor is fitted
@@ -3850,16 +3847,13 @@ class Mmu:
     # Eject final clear of gate. Important for MMU's where filament is always gripped (e.g. most type-B)
     def _eject_from_gate(self, gate=None):
         # If gate not specified assume current gate
-        if gate is None: 
-            gate = self.gate_selected
-        else:
-            self.select_gate(gate)
+        gate = self.gate_selected if gate is None else self.select_gate(gate)
 
         self.log_always("Ejecting...")
         if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
             endstop_name = self.sensor_manager.get_gate_sensor_name(self.ENDSTOP_GEAR_PREFIX, gate)
             msg = "Reverse homing to %s sensor" % endstop_name
-            actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
+            actual,homed,measured,_ = self.trace_filament_move(msg, -self.gate_homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
                 self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
             else:
@@ -4786,7 +4780,7 @@ class Mmu:
                     self.log_trace(msg)
 
             if not test and park_pos > self.toolhead_extruder_to_nozzle:
-                self.log_error("Warning: Park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
+                self.log_error("Warning: park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
                 park_pos = self.toolhead_extruder_to_nozzle
                 filament_remaining = 0.
 

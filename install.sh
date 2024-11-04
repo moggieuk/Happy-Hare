@@ -572,6 +572,12 @@ read_previous_config() {
     if [ "${_param_endless_spool_final_eject}" != "" ]; then
         _param_gate_final_eject_distance=${_param_endless_spool_final_eject}
     fi
+    if [ "${_variable_eject_tool}" != "" ]; then
+        _variable_unload_tool=${_variable_eject_tool}
+    fi
+    if [ "${_variable_eject_tool_on_cancel}" != "" ]; then
+        _variable_unload_tool_on_cancel=${_variable_eject_tool_on_cancel}
+    fi
 }
 
 # Helper for upgrade logic
