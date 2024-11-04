@@ -5388,8 +5388,9 @@ class Mmu:
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
         with self._wrap_track_time('post_load'):
-            with self._sync_gear_to_extruder(sync=True if self.mmu_machine.filament_always_gripped else None): # PAUL wip blobifer fix
-                self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
+            if self.mmu_machine.filament_always_gripped: # PAUL wip (temp hack) for blobifer fix
+                self.sync_gear_to_extruder(True)
+            self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
     # Primary method to unload current tool but retain selection
     def _unload_tool(self, form_tip=None, runout=False):
@@ -5405,6 +5406,8 @@ class Mmu:
         self.unload_sequence(form_tip=form_tip if not None else self.FORM_TIP_STANDALONE, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
         with self._wrap_track_time('post_unload'):
+            if self.mmu_machine.filament_always_gripped: # PAUL wip (temp hack) for blobifer fix
+                self.sync_gear_to_extruder(True)
             self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
     def _auto_home(self, tool=0):
