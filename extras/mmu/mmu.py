@@ -3826,7 +3826,10 @@ class Mmu:
     # Preload gate as little as possible. If a full gate load is the only option this will then park correctly after pre-load
     def _preload_gate(self, gate=None):
         # If gate not specified assume current gate
-        gate = self.gate_selected if gate is None else self.select_gate(gate)
+        if gate == None:
+            gate = self.gate_selected
+        else:
+            self.select_gate(gate)
 
         if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
             # Minimal load past gear stepper if gear sensor is fitted
@@ -3862,7 +3865,10 @@ class Mmu:
     # Eject final clear of gate. Important for MMU's where filament is always gripped (e.g. most type-B)
     def _eject_from_gate(self, gate=None):
         # If gate not specified assume current gate
-        gate = self.gate_selected if gate is None else self.select_gate(gate)
+        if gate == None:
+            gate = self.gate_selected
+        else:
+            self.select_gate(gate)
 
         self.log_always("Ejecting...")
         if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
