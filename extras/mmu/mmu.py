@@ -1191,14 +1191,11 @@ class Mmu:
             self.gate_status = self._validate_gate_status(self.gate_status)
 
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
-            recover_pos = False
-            if self.filament_pos == self.FILAMENT_POS_LOADED and not self.sensor_manager.check_all_sensors_before(self.filament_pos, self.gate_selected):
-                recover_pos = True
-            elif self.filament_pos == self.FILAMENT_POS_UNLOADED and self.sensor_manager.check_any_sensors_in_path():
-                recover_pos = True
-            elif self.filament_pos == self.FILAMENT_POS_UNKNOWN:
-                recover_pos = True
-            if recover_pos:
+            if (
+                (self.filament_pos == self.FILAMENT_POS_LOADED and self.sensor_manager.check_any_sensors_after(self.FILAMENT_POS_END_BOWDEN, self.gate_selected) is False) or
+                (self.filament_pos == self.FILAMENT_POS_UNLOADED and self.sensor_manager.check_any_sensors_in_path()) or
+                self.filament_pos == self.FILAMENT_POS_UNKNOWN
+            ):
                 self.recover_filament_pos(can_heat=False, message=True, silent=True)
 
             # Apply startup options
@@ -1214,7 +1211,9 @@ class Mmu:
 
             if not self.check_if_not_calibrated(self.CALIBRATED_ALL, silent=None):
                 if self.filament_pos != self.FILAMENT_POS_UNLOADED and self.TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
-                    self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER to correct state")
+                    self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER GATE=xx to correct state")
+                elif self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
+                    self.log_error("Filament not detected as unloaded or fully loaded. Please confirm and use MMU_RECOVER to correct state or fix before continuing")
 
             if self.has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
@@ -2137,7 +2136,7 @@ class Mmu:
                     msg = "Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop
                     self.log_error(msg)
                     # Home back to the gate
-                    self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True)
+                    self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True) # TODO maybe _unload_sequence() can be used so macros will be called from one place?
                     self._unload_gate(approximate_length)
                     self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
                     raise MmuError("Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop)
@@ -2237,7 +2236,7 @@ class Mmu:
     def _calibrate_gate(self, gate, length, repeats, save=True):
         try:
             pos_values, neg_values = [], []
-            self.select_tool(gate) # TODO: Probably should be select_gate() and not need the TTG map reset in caller
+            self.select_tool(gate) # TODO: Probably should be select_gate() and then not need the TTG map reset in caller
             self._load_gate(allow_retry=False)
             self.log_always("%s gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", gate, length))
 
@@ -3827,7 +3826,10 @@ class Mmu:
     # Preload gate as little as possible. If a full gate load is the only option this will then park correctly after pre-load
     def _preload_gate(self, gate=None):
         # If gate not specified assume current gate
-        gate = self.gate_selected if gate is None else self.select_gate(gate)
+        if gate == None:
+            gate = self.gate_selected
+        else:
+            self.select_gate(gate)
 
         if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
             # Minimal load past gear stepper if gear sensor is fitted
@@ -3863,7 +3865,10 @@ class Mmu:
     # Eject final clear of gate. Important for MMU's where filament is always gripped (e.g. most type-B)
     def _eject_from_gate(self, gate=None):
         # If gate not specified assume current gate
-        gate = self.gate_selected if gate is None else self.select_gate(gate)
+        if gate == None:
+            gate = self.gate_selected
+        else:
+            self.select_gate(gate)
 
         self.log_always("Ejecting...")
         if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
@@ -5430,13 +5435,13 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - NO-OP" if gate == self.gate_selected else ""))
-        if gate == self.gate_selected: return gate
+        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected else ""))
+        if gate == self.gate_selected: return
         try:
             self._next_gate = gate # Valid only during the gate selection process
             self.selector.select_gate(gate)
             self._set_gate_selected(gate)
-            return gate
+            return
         except MmuError as ee:
             self.unselect_gate()
             raise ee
@@ -7679,7 +7684,7 @@ class Mmu:
                                         self._initialize_encoder() # Encoder 0000
 
                             # If not printing select original tool and load filament if necessary
-                            # We don't do this when printing because this is expected to preceed the loading initial tool
+                            # We don't do this when printing because this is expected to preceed loading initial tool
                             if not self.is_printing():
                                 try:
                                     if tool_selected == self.TOOL_GATE_BYPASS:
