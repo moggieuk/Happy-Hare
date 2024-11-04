@@ -90,11 +90,21 @@ class MmuSensorManager:
             return None
         return any(state is True for state in sensors.values())
 
+    # Returns True if ALL sensors after position detect filament
+    #         None if NO sensors available (disambiguate from non-triggered sensor)
+    # Can be used as a "filament continuity test"
+    def check_all_sensors_after(self, pos, gate, loading=True):
+        sensors = self._get_sensors_after(pos, gate, loading)
+        if all(state is None for state in sensors.values()):
+            return None
+        return all(state is not False for state in sensors.values())
+
     # Returns True if ANY sensor after position detects filament
     #         None if no sensors available (disambiguate from non-triggered sensor)
     # Can be used to validate position
     def check_any_sensors_after(self, pos, gate, loading=True):
         sensors = self._get_sensors_after(pos, gate, loading)
+        self.mmu.log_error("PAUL: sensors=%s" % sensors)
         if all(state is None for state in sensors.values()):
             return None
         return any(state is True for state in sensors.values())
@@ -148,18 +158,19 @@ class MmuSensorManager:
     # Defines sensors and relationship to filament_pos state for easy filament tracing
     def _get_sensors(self, pos, gate, position_condition):
         result = {}
-        sensor_selection = [
-            (self.get_gate_sensor_name(self.mmu.PRE_GATE_SENSOR_PREFIX, gate), None),
-            (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.ENDSTOP_GEAR_PREFIX else None),
-            (self.mmu.ENDSTOP_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
-            (self.mmu.ENDSTOP_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
-            (self.mmu.ENDSTOP_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
-        ]
-        for name, position_check in sensor_selection:
-            sensor = self.sensors.get(name, None)
-            if sensor and position_condition(pos, position_check):
-                result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-        self.mmu.log_debug("Sensors: %s" % result)
+        if gate >= 0:
+            sensor_selection = [
+                (self.get_gate_sensor_name(self.mmu.PRE_GATE_SENSOR_PREFIX, gate), None),
+                (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.ENDSTOP_GEAR_PREFIX else None),
+                (self.mmu.ENDSTOP_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
+                (self.mmu.ENDSTOP_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
+                (self.mmu.ENDSTOP_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
+            ]
+            for name, position_check in sensor_selection:
+                sensor = self.sensors.get(name, None)
+                if sensor and position_condition(pos, position_check):
+                    result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
+            self.mmu.log_debug("Sensors: %s" % result)
         return result
 
     def _get_sensors_before(self, pos, gate, loading=True):

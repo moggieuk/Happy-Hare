@@ -1191,14 +1191,11 @@ class Mmu:
             self.gate_status = self._validate_gate_status(self.gate_status)
 
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
-            recover_pos = False
-            if self.filament_pos == self.FILAMENT_POS_LOADED and not self.sensor_manager.check_all_sensors_before(self.filament_pos, self.gate_selected):
-                recover_pos = True
-            elif self.filament_pos == self.FILAMENT_POS_UNLOADED and self.sensor_manager.check_any_sensors_in_path():
-                recover_pos = True
-            elif self.filament_pos == self.FILAMENT_POS_UNKNOWN:
-                recover_pos = True
-            if recover_pos:
+            if (
+                (self.filament_pos == self.FILAMENT_POS_LOADED and self.sensor_manager.check_any_sensors_after(self.FILAMENT_POS_END_BOWDEN, self.gate_selected) is False) or
+                (self.filament_pos == self.FILAMENT_POS_UNLOADED and self.sensor_manager.check_any_sensors_in_path()) or
+                self.filament_pos == self.FILAMENT_POS_UNKNOWN
+            ):
                 self.recover_filament_pos(can_heat=False, message=True, silent=True)
 
             # Apply startup options
@@ -1214,7 +1211,9 @@ class Mmu:
 
             if not self.check_if_not_calibrated(self.CALIBRATED_ALL, silent=None):
                 if self.filament_pos != self.FILAMENT_POS_UNLOADED and self.TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
-                    self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER to correct state")
+                    self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER GATE=xx to correct state")
+                elif self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
+                    self.log_error("Filament not detected as unloaded or fully loaded. Please confirm and use MMU_RECOVER to correct state or fix before continuing")
 
             if self.has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
