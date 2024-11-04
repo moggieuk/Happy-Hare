@@ -7716,10 +7716,10 @@ class Mmu:
         if self.check_if_bypass(): return
         if self.check_if_loaded(): return
 
-        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
-        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate] if gate != -1 else [self.gate_selected]): return
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates - 1)
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate] if gate is not None else [self.gate_selected]): return
 
-        self.log_always("Preloading filament in %s" % (("gate %d" % gate) if gate >= 0 else "current gate"))
+        self.log_always("Preloading filament in %s" % (("gate %d" % gate) if gate is not None else "current gate"))
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self.wrap_suppress_visual_log():
