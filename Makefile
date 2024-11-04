@@ -51,7 +51,7 @@ ifneq ($(CONFIG_OCTOPRINT),y)
   required_paths += $(moonraker_home)/moonraker/components
 endif
 
-backup_ext = .old-$(shell date '+%Y%m%d-%H%M%S')
+backup_ext ?= .old-$(shell date '+%Y%m%d-%H%M%S')
 backup = $(addsuffix $(backup_ext),$(1))
 
 restart_moonraker = 0
@@ -107,11 +107,11 @@ $(OUT):
 $(OUT)/%/: | $(OUT)
 	$(Q)mkdir -p "$@"
 
-$(call backup,%): 
+$(call backup,%):
 	@echo "Making a backup of '$(basename $@)' to '$@'"
 	$(Q)cp -a "$(basename $@)" "$@"
 
-build: $(KCONFIG_CONFIG) check_root check_paths .config \
+build: $(KCONFIG_CONFIG) check_root check_paths check_version .config \
 	$(OUT)/config/$(klipper_printer_file) \
 	$(OUT)/config/moonraker.conf \
 	$(addprefix $(OUT)/config/mmu/, $(hh_config_files)) \
@@ -127,7 +127,7 @@ $(klipper_home)/%: $(OUT)/% | build
 	$(Q)mkdir -p $(dir $@)
 	$(Q)cp -rdf "$<" "$@"
 
-$(klipper_config_home)/mmu/%: $(OUT)/config/mmu/% | build $(call backup, $(wildcard $(klipper_config_home)/mmu)) 
+$(klipper_config_home)/mmu/%: $(OUT)/config/mmu/% | build $(call backup, $(wildcard $(klipper_config_home)/mmu))
 	@echo "Installing $@"
 	$(Q)mkdir -p $(dir $@)
 	$(Q)cp -rdf "$<" "$@"
@@ -137,16 +137,18 @@ $(klipper_config_home)/mmu/mmu_vars.cfg: $(OUT)/config/mmu/mmu_vars.cfg | build
 	$(Q)mkdir -p $(dir $@)
 	$(Q)cp --update=none "$<" "$@"
 
-$(klipper_config_home)/$(klipper_printer_file): $(OUT)/config/$(klipper_printer_file) | build $(call backup, $(klipper_config_home)/$(klipper_printer_file))
+$(klipper_config_home)/$(klipper_printer_file): $(OUT)/config/$(klipper_printer_file) | build 
+	@$(MAKE) -s $(call backup, $(klipper_config_home)/$(klipper_printer_file))
 	@echo "Installing $@"
 	$(Q)cp -f "$<" "$@"
 
-$(klipper_config_home)/moonraker.conf: $(OUT)/config/moonraker.conf | build $(call backup, $(klipper_config_home)/moonraker.conf) 
+$(klipper_config_home)/moonraker.conf: $(OUT)/config/moonraker.conf | build 
+	@$(MAKE) -s $(call backup, $(klipper_config_home)/moonraker.conf) 
 	@echo "Installing $@"
 	$(Q)cp -f "$<" "$@"
 	$(eval restart_moonraker = 1)
 
-install: check_root check_version check_paths \
+install: check_root check_paths \
 	$(klipper_config_home)/moonraker.conf \
 	$(klipper_config_home)/$(klipper_printer_file) \
 	$(addprefix $(klipper_config_home)/mmu/, $(hh_config_files)) \

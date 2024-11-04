@@ -14,8 +14,7 @@
 shopt -s extglob
 
 source "${KCONFIG_CONFIG}"
-
-VERSION=${CONFIG_VERSION} # Important: Keep synced with mmy.py
+source "${SRC}/scripts/upgrades.sh"
 
 set -e # Exit immediately on error
 
@@ -115,6 +114,7 @@ param_change_var() {
         fi
     done
 }
+
 param_change_section() {
     local from_section=$1
     local to_section=$2
@@ -259,7 +259,7 @@ replace_placeholder() {
     sed -i "s|{${placeholder}}|${value}|g" "${file}"
 }
 
-### CFG Processing fucntions
+### .cfg Processing fucntions
 
 parse_file() {
     local file=$1
@@ -383,95 +383,49 @@ read_previous_config() {
     fi
 }
 
+# Runs the upgrades in upgrades.sh from the current version to the final version
+# Tries to find the quickest path to the final version
 process_upgrades() {
-    # Upgrade / map / force old parameters...
-    # v2.7.1
-    local sec="[gcode_macro _MMU_CUT_TIP_VARS]"
-    if has_param "${sec}" "variable_pin_park_x_dist"; then
-        change_param_var "${sec}" "variable_pin_park_x_dist" "variable_pin_park_dist"
+    local from_version=$1
+    local final_version=${CONFIG_VERSION}
+
+    if [ -z "${from_version}" ]; then
+        log_info "No current version specified, skipping upgrade"
+        return
     fi
 
-    if has_param "${sec}" "variable_pin_pin_loc_x_compressed"; then
-        change_param_var "${sec}" "variable_pin_pin_loc_x_compressed" "variable_pin_loc_compressed"
+    if [ "${from_version}" == "${final_version}" ]; then
+        return
     fi
 
-    local sec="[gcode_macro _MMU_SEQUENCE_VARS]"
-    if has_param "${sec}" "variable_park_xy"; then
-        local xy=$(param "${sec}" "variable_park_xy")
-        local z_hop_toolchange=$(param "${sec}" "z_hop_height_toolchange")
-        # local z_hop_error=$(param "${sec}" "z_hop_height_error")
+    local highest_to_version="0.00"
+    local upgrade_function
+    for upgrade in $(declare -F | grep "^declare -f upgrade_${from_version//\./_}_to_[0-9]\+_[0-9]\+" | sed "s/declare -f //"); do
+        local to_version=${upgrade#*_to_}
+        if cmp_version "${highest_to_version}" "${to_version}"; then
+            highest_to_version=${to_version}
+            upgrade_function=${upgrade}
+        fi
+    done
 
-        set_param "${sec}" "variable_park_toolchange" "${xy}, ${z_hop_toolchange:-0}, 0, 2"
-        # TODO: This is not relevant anymore?
-        # set_param "${sec}" "variable_park_error" "${xy}, ${z_hop_error:-0}, 0, 2"
-        remove "${sec}" "variable_park_xy"
-        remove "${sec}" "z_hop_height_toolchange"
-        # remove "${sec}" "z_hop_height_error"
-    fi
-
-    if has_param "${sec}" "variable_lift_speed"; then
-        change_param_var "${sec}" "variable_lift_speed" "variable_park_lift_speed"
-    fi
-
-    if has_param "${sec}" "variable_enable_park"; then
-        if param "${sec}" "variable_enable_park" == "False"; then
-            if param "${sec}" "variable_enable_park_runout" == "True"; then
-                set_param "${sec}" "varriable_enable_park_printing" "'toolchange,load,unload,runout,pause,cancel'"
-            else
-                set_param "${sec}" "varriable_enable_park_printing" "'pause,cancel'"
+    if [ -z "${upgrade_function}" ]; then
+        local lowest_from_version="999.99"
+        # find lowest available upgrade path
+        for upgrade in $(declare -F | grep "^declare -f upgrade_[0-9]\+_[0-9]\+_to_[0-9]\+_[0-9]\+" | sed "s/declare -f //"); do
+            local upgrade_from_version=${upgrade#upgrade_}
+            upgrade_from_version=${upgrade_from_version%_to_*}
+            if cmp_version "${upgrade_from_version}" "${lowest_from_version}"; then
+                lowest_from_version=${upgrade_from_version}
             fi
-        else
-            set_param "${sec}" "varriable_enable_park_printing" "'toolchange,load,unload,pause,cancel'"
-        fi
-        remove_param "${sec}" "variable_enable_park"
+        done
+        log_error "No upgrade path found for version ${from_version}" \
+            "Please reinstall Happy Hare from scratch or upgrade to ${lowest_from_version//_/.} first"
     fi
 
-    if has_param "${sec}" "variable_enable_park_standalone"; then
-        if param "${sec}" "variable_enable_park_standalone" == "False"; then
-            set_param "${sec}" "varriable_enable_park_standalone" "'pause,cancel'"
-        else
-            set_param "${sec}" "varriable_enable_park_standalone" "'toolchange,load,unload,pause,cancel'"
-        fi
-        remove_param "${sec}" "variable_enable_park_standalone"
-    fi
-
-    # v2.7.2
-    if [ "$(param "[mmu]" "toolhead_residual_filament")" == "0" ] &&
-        [ "$(param "[mmu]" "toolhead_ooze_reduction")" != "0" ]; then
-        copy_param "[mmu]" "toolhead_residual_filament" "[mmu]" "toolhead_ooze_reduction"
-        set_param "[mmu]" "toolhead_ooze_reduction" "0"
-    fi
-
-    # Blobifer update - Oct 13th 20204
-    local sec="[gcode_macro BLOBIFIER]"
-    if has_param "${sec}" "variable_iteration_z_raise"; then
-        log_info "Setting Blobifier variable_z_raise and variable_purge_length_maximum from previous settings"
-        local max_i_per_blob=$(param "${sec}" "variable_max_iterations_per_blob")
-        local i_z_raise=$(param "${sec}" "variable_iterations_z_raise")
-        local i_z_change=$(param "${sec}" "variable_iteration_z_change")
-        local max_i_length=$(param "${sec}" "variable_max_iteration_length")
-        local triangulated=$(calc "${max_i_per_blob} (${max_i_per_blob} - 1) / 2")
-
-        set_param "${sec}" "variable_z_raise" "$(calc "${i_z_raise} * ${max_i_per_blob} - ${triangulated} * ${i_z_change}")"
-        set_param "${sec}" "variable_purge_length_maximum" "$(calc "${max_i_length} * ${max_i_per_blob}")"
-    fi
-
-    if has_param "[mmu]" "mmu_num_gates"; then
-        param_change_key "[mmu],mmu_num_gates" "[mmu_machine],num_gates"
-    fi
-    if has_param "[mmu]" "mmu_vendor"; then
-        param_change_key "[mmu],mmu_vendor" "[mmu_machine],mmu_vendor"
-    fi
-    if has_param "[mmu]" "mmu_version"; then
-        param_change_key "[mmu],mmu_version" "[mmu_machine],mmu_version"
-    fi
-
-    if has_param_section "[mmu_servo mmu_servo]"; then
-        param_change_section "[mmu_servo mmu_servo]" "[mmu_servo selector_servo]"
-        if [ "$(param "[mmu_servo selector_servo]" "pin")" == "mmu:MMU_SERVO" ]; then
-            remove_param "[mmu_servo selector_servo]" "pin" # Pin name has been changed, reset
-        fi
-    fi
+    highest_to_version=${highest_to_version//_/.}
+    log_info "Upgrading from ${from_version} to ${highest_to_version}"
+    eval "${upgrade_function}"
+    process_upgrades "${highest_to_version}"
 }
 
 copy_config_files() {
@@ -862,7 +816,7 @@ restart_moonraker() {
 
 # These parameters are too complex to encode with Kconfig.
 set_extra_parameters() {
-    # never use the version from the existing installation file
+    # never use the version from the existing installation files
     remove_param "[mmu]" "happy_hare_version"
     CONFIG_PARAM_HAPPY_HARE_VERSION="${CONFIG_VERSION}"
 
@@ -883,12 +837,13 @@ set_extra_parameters() {
 build() {
     local src=$1
     local out=$2
-
     log_info "Building file ${out}..."
 
     read_previous_config
+    local current_version=$(param "[mmu]" "happy_hare_version")
+
     set_extra_parameters
-    process_upgrades
+    process_upgrades "${current_version}"
     copy_config_files "$src" "$out"
 }
 
@@ -897,39 +852,26 @@ uninstall() {
     uninstall_printer_includes "${CONFIG_KLIPPER_CONFIG_HOME}/${CONFIG_PRINTER_CONFIG}"
 }
 
+cmp_version() {
+    awk "BEGIN { exit !($1 < $2) }"
+}
+
 check_version() {
     parse_file "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/mmu_parameters.cfg" "happy_hare_version"
     # Important to update version
     FROM_VERSION=$(param "[mmu]" "happy_hare_version")
-    if [ ! "${FROM_VERSION}" == "" ]; then
-        downgrade=$(awk -v to="$CONFIG_VERSION" -v from="$FROM_VERSION" 'BEGIN {print (to < from) ? "1" : "0"}')
-        bad_v2v3=$(awk -v to="$CONFIG_VERSION" -v from="$FROM_VERSION" 'BEGIN {print (from < 2.70 && to >= 3.0) ? "1" : "0"}')
-        if [ "$downgrade" -eq 1 ]; then
+    if [ -n "${FROM_VERSION}" ]; then
+        if cmp_version "${CONFIG_VERSION}" "${FROM_VERSION}"; then
             log_warning "Trying to update from version ${FROM_VERSION} to ${CONFIG_VERSION}" \
-                "Automatic 'downgrade' to earlier version is not garanteed. If you encounter startup problems you may" \
+                "Automatic 'downgrade' to earlier version is not guaranteed. If you encounter startup problems you may" \
                 "need to manually compare the backed-up 'mmu_parameters.cfg' with current one to restore differences"
-        elif [ "$bad_v2v3" -eq 1 ]; then
+        elif cmp_version "${FROM_VERSION}" "2.70"; then
             log_error "Cannot automatically 'upgrade' from version ${FROM_VERSION} to ${CONFIG_VERSION}..." \
                 "${ERROR}Please upgrade to v2.7.0 or later before attempting v3.0 upgrade"
-        elif [ ! "${FROM_VERSION}" == "${CONFIG_VERSION}" ]; then
+        elif [ "${FROM_VERSION}" != "${CONFIG_VERSION}" ]; then
             log_warning "Upgrading from version ${FROM_VERSION} to ${CONFIG_VERSION}..."
         fi
     fi
-}
-
-print_happy_hare() {
-    log_info "$(get_logo "Happy Hare ${CONFIG_F_VERSION} Ready...")"
-}
-
-print_unhappy_hare() {
-    log_info "${sad_logo}"
-}
-
-print_params() {
-    read_previous_config
-    for key in "${!PARAMS[@]}"; do
-        echo "${key%,*} ${key#*,}: ${PARAMS[${key}]}"
-    done
 }
 
 case $1 in
@@ -955,16 +897,19 @@ restart-moonraker)
     restart_moonraker
     ;;
 print-happy-hare)
-    print_happy_hare
+    log_info "$(get_logo "Happy Hare ${CONFIG_F_VERSION} Ready...")"
     ;;
 print-unhappy-hare)
-    print_unhappy_hare
+    log_info "${sad_logo}"
     ;;
 check-version)
     check_version
     ;;
 print-params)
-    print_params
+    read_previous_config
+    for key in "${!PARAMS[@]}"; do
+        echo "${key%,*} ${key#*,}: ${PARAMS[${key}]}"
+    done
     ;;
 *)
     log_error "
