@@ -5431,11 +5431,12 @@ class Mmu:
 
     def select_gate(self, gate):
         #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - NO-OP" if gate == self.gate_selected else ""))
-        if gate == self.gate_selected: return
+        if gate == self.gate_selected: return gate
         try:
             self._next_gate = gate # Valid only during the gate selection process
             self.selector.select_gate(gate)
             self._set_gate_selected(gate)
+            return gate
         except MmuError as ee:
             self.unselect_gate()
             raise ee
