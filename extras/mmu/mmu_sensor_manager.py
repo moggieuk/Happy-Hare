@@ -104,7 +104,6 @@ class MmuSensorManager:
     # Can be used to validate position
     def check_any_sensors_after(self, pos, gate, loading=True):
         sensors = self._get_sensors_after(pos, gate, loading)
-        self.mmu.log_error("PAUL: sensors=%s" % sensors)
         if all(state is None for state in sensors.values()):
             return None
         return any(state is True for state in sensors.values())
