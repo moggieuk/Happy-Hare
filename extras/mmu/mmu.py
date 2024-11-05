@@ -2158,7 +2158,7 @@ class Mmu:
     # Bowden calibration - Method 2
     # Automatic one-shot homing calibration from gate to extruder entry sensor
     #   bowden_length = actual_moved + toolhead_entry_to_extruder
-    def _calibrate_bowden_length_to_extruder_sensor(self, extruder_homing_max):
+    def _calibrate_bowden_length_to_extruder_sensor(self, extruder_homing_max): # PAUL should be better named and include "touch" homing support
         try:
             self.log_always("Calibrating bowden length for gate %d (automatic method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
             self._initialize_filament_position(dwell=True)
@@ -2194,7 +2194,14 @@ class Mmu:
         try:
             # Can't allow "none" endstop during calibration so temporarily change
             orig_endstop = self.extruder_homing_endstop
-            self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_COLLISION if endstop == self.ENDSTOP_EXTRUDER_NONE else self.extruder_homing_endstop
+            if orig_endstop == self.ENDSTOP_EXTRUDER_NONE:
+                if self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+                    self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_ENTRY
+                elif self.has_encoder():
+                    self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_COLLISION
+                else:
+                    # TODO touch homing is also an option to add here
+                    raise MmuError("No automatic method of bowden calibration availble. Use MANUAL=1")
 
             self.log_always("Calibrating bowden length for gate %d (automatic average method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
             reference_sum = spring_max = 0.
@@ -2218,7 +2225,7 @@ class Mmu:
                 reference = actual - spring
 
                 # When homing using collision, we expect the filament to spring back.
-                if not (endstop == self.ENDSTOP_EXTRUDER_COLLISION and spring == 0.):
+                if not (self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION and spring == 0.):
                     msg = "Pass #%d: Filament homed to extruder after %.1fmm movement" % (i+1, actual)
                     if self.has_encoder():
                         msg += "\n(encoder measured %.1fmm, filament sprung back %.1fmm)" % (measured - self.gate_parking_distance, spring)
@@ -2237,7 +2244,7 @@ class Mmu:
             if successes == 0:
                 raise MmuError("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
 
-            calibrated_length = (reference_sum / successes) + self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY else 0
+            calibrated_length = (reference_sum / successes) + (self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY else 0)
             clog_detection_length = (calibrated_length * 2) / 100. + spring_max # 2% of bowden length plus spring seems to be good starting point
 
             return calibrated_length, clog_detection_length
@@ -2499,17 +2506,17 @@ class Mmu:
                     self.calibrating = True
                     if manual:
                         # Method 1: Manual (reverse homing to gate) method
-                        length, clog, endstop = self._calibrate_bowden_length_manual(approx_bowden_length)
+                        length, clog = self._calibrate_bowden_length_manual(approx_bowden_length)
 
                     elif self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY) and self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY:
                         # Method 2: Automatic one-shot method with extruder entry sensor (BEST)
-                        length, clog, endstop = self._calibrate_bowden_length_to_extruder_sensor(approx_bowden_length)
+                        length, clog = self._calibrate_bowden_length_to_extruder_sensor(approx_bowden_length)
 
                     else:
                         # Method 3: Automatic averaging method with encoder and extruder collision or extruder entry sensor. Use repeats for accuracy
                         self._reset_ttg_map() # To force tool = gate
                         self._unload_tool()
-                        length, clog, endstop = self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats)
+                        length, clog = self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats)
 
                     msg = "Calibrated bowden length is %.1fmm" % length
                     if self.has_encoder() and self.enable_clog_detection:
@@ -2517,7 +2524,7 @@ class Mmu:
                     self.log_always(msg)
 
                     if save:
-                        self._save_bowden_length(self.gate_selected, length, endstop=endstop)
+                        self._save_bowden_length(self.gate_selected, length, endstop=self.gate_homing_endstop)
                         self.save_variable(self.VARS_MMU_CALIB_CLOG_LENGTH, clog)
                         if self.has_encoder():
                             self.encoder_sensor.set_clog_detection_length(clog)
@@ -5099,7 +5106,8 @@ class Mmu:
     # Ensures respooler is always stopped
     @contextlib.contextmanager
     def _wrap_respooler(self, motor, dist, speed, homing_move):
-        if motor == "gear" and dist < -50 and self.respooler_start_macro:
+        if motor == "gear" and dist < -50 and self.respooler_start_macro and self.respooler_start_macro != "''":
+            self.log_error("PAUL: respooler_start_macro=|%s|" % self.respooler_start_macro)
             active = True
             self._wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d SPEED=%d HOMING_MOVE=%d" % (self.respooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
             self._wait_for_respooler = True if not homing_move else False
@@ -5110,7 +5118,7 @@ class Mmu:
         try:
             yield self
         finally:
-            if active and self.respooler_stop_macro:
+            if active and self.respooler_stop_macro and self.respooler_stop_macro != "''":
                 moved = abs(self.mmu_toolhead.get_position()[1] - initial_pos)
                 self._wrap_gcode_command("%s GATE=%d DISTANCE=%d" % (self.respooler_stop_macro, self.gate_selected, moved))
 
@@ -5163,7 +5171,7 @@ class Mmu:
     def check_filament_in_mmu(self):
         self.log_debug("Checking for filament in MMU...")
         detected = self.sensor_manager.check_any_sensors_in_path()
-        if detected is None and self.has_encoder():
+        if not detected and self.has_encoder():
             self.selector.filament_drive()
             detected = self.buzz_gear_motor()
             self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if detected else "not detected"))
