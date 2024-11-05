@@ -289,9 +289,7 @@ slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder 
 # If equipped with TMC drivers the current of the gear and extruder motors can be controlled to optimize performance.
 # This can be useful to control gear stepper temperature when printing with synchronized motor
 #
-sync_to_extruder: 0			# Gear motor is synchronized to extruder during print
 sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
-sync_form_tip: 0			# Synchronize during standalone tip formation (initial part of unload)
 
 # Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
 # extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
@@ -480,6 +478,7 @@ update_bit_max_time: 1		# 1 = Increase BIT_MAX_TIME, 0 = Leave the klipper defau
 #
 # 'pause_macro' defines what macro to call on MMU error (must put printer in paused state)
 # Other macros are detailed in 'mmu_sequence.cfg'
+# Also see form_tip_macro in Tip Forming section
 #
 pause_macro: PAUSE 					# What macro to call to pause the print
 action_changed_macro: _MMU_ACTION_CHANGED		# Called when action (printer.mmu.action) changes
@@ -492,6 +491,8 @@ pre_load_macro: _MMU_PRE_LOAD				# Called before starting the load
 post_load_macro: _MMU_POST_LOAD				# Called after the load is complete
 unload_sequence_macro: _MMU_UNLOAD_SEQUENCE		# VERY ADVANCED: Optionally called based on 'gcode_unload_sequence'
 load_sequence_macro: _MMU_LOAD_SEQUENCE			# VERY ADVANCED: Optionally called based on 'gcode_load_sequence'
+respooler_start_macro: ''				# Called to start respooled if fitted (GATE, SPEED, MAX_DISTANCE, HOMING)
+respooler_stop_macro: ''				# Called to stop respooler if fitted (GATE, DISTANCE)
 
 
 # ADVANCED: See documentation for use of these -----------------------------------------------------------------------

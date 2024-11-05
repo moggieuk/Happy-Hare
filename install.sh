@@ -1294,9 +1294,8 @@ questionaire() {
             _param_gate_final_eject_distance=100
 
             # Macro variable config
-            variable_user_pre_unload_extension="MMU_RESPOOLER_START"
-            variable_user_post_unload_extension="MMU_RESPOOLER_STOP"
-            variable_user_mmu_error_extension="MMU_RESPOOLER_STOP"
+            _param_respooler_start_macro="MMU_RESPOOLER_START"
+            _param_respooler_stop_macro="MMU_RESPOOLER_STOP"
             ;;
 
         "$NIGHT_OWL")
