@@ -332,7 +332,7 @@ class Mmu:
         # Configuration for gate loading and unloading
         self.gate_homing_endstop = config.getchoice('gate_homing_endstop', {o: o for o in self.GATE_ENDSTOPS}, self.ENDSTOP_ENCODER)
         self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', 0., minval=0.)
-        self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting
+        self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting the gate
         self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
         self.gate_preload_homing_max = config.getfloat('gate_preload_homing_max', self.gate_homing_max)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
@@ -355,6 +355,7 @@ class Mmu:
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
         self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_NONE)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.) # Extruder homing max
+        self.extruder_load_buffer = config.getfloat('extruder_load_buffer', 30., minval=0.) # How far to short bowden load move to avoid overshooting # PAUL add to config
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # Toolhead sensor homing max
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
@@ -2119,31 +2120,95 @@ class Mmu:
             if mean == 0:
                 self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
 
-    # Calibrated bowden length is always from chosen gate homing point to the entruder gears
-    # It can be adjusted if sensor setup changes post calibration, must consider:
-    #   gate_endstop_to_encoder    .. potential dead space from gate sensor to encoder
-    #   toolhead_entry_to_extruder .. distance for extruder entry sensor to extruder gears
-    def _calibrate_bowden_length_auto(self, approximate_length, extruder_homing_max, repeats, save=True):
+    # Bowden calibration - Method 1
+    # This method of bowden calibration is done in reverse and is a fallback. The user inserts filament to the
+    # actual extruder and we measure the distance necessary to home to the defined gate homing position
+    def _calibrate_bowden_length_manual(self, approx_bowden_length):
+        try:
+            self.log_always("Calibrating bowden length for gate %d (manual method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
+            self._set_filament_direction(self.DIRECTION_UNLOAD)
+            self.selector.filament_drive()
+            self.log_always("Finding %s endstop position..." % self.gate_homing_endstop)
+            homed = False
 
-        # Can't allow "none" endstop during calibration so temporarily change
-        endstop = self.extruder_homing_endstop
-        self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_COLLISION if endstop == self.ENDSTOP_EXTRUDER_NONE else self.extruder_homing_endstop
+            if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
+                with self._require_encoder():
+                    success = self._reverse_home_to_encoder(approx_bowden_length)
+                    if success:
+                        actual,_,_ = success
+                        homed = True
+
+            else: # Gate sensor... ENDSTOP_GATE is shared, but ENDSTOP_GEAR_PREFIX is specific
+                actual,homed,measured,_ = self.trace_filament_move("Reverse homing to gate sensor", -approx_bowden_length, motor="gear", homing_move=-1, endstop_name=self._get_gate_endstop_name())
+
+            if not homed:
+                raise MmuError("Did not home to gate sensor after moving %.1fmm" % approx_bowden_length)
+
+            actual = abs(actual)
+            clog_detection_length = (actual * 2) / 100. # 2% of bowden length
+            self.log_always("Filament homed back to gate after %.1fmm movement" % actual)
+            self._unload_gate()
+            return calibrated_length, clog_detection_length
+
+        except MmuError as ee:
+            raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (self.gate_selected, str(ee)))
+        finally:
+            self._auto_filament_grip()
+
+    # Bowden calibration - Method 2
+    # Automatic one-shot homing calibration from gate to extruder entry sensor
+    #   bowden_length = actual_moved + toolhead_entry_to_extruder
+    def _calibrate_bowden_length_to_extruder_sensor(self, extruder_homing_max):
         try:
             self.log_always("Calibrating bowden length for gate %d (automatic method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
+            self._initialize_filament_position(dwell=True)
+            self._load_gate(allow_retry=False)
+
+            if self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
+                raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % self.extruder_homing_endstop)
+
+            self._home_to_extruder(extruder_homing_max)
+            actual = self._get_filament_position() - self.gate_parking_distance
+            measured = self.get_encoder_distance(dwell=True) + self._get_encoder_dead_space()
+            calibrated_length = round(actual + self.toolhead_entry_to_extruder, 1)
+            clog_detection_length = round((calibrated_length * 2) / 100., 1) # 2% of bowden length plus spring seems to be good starting point
+
+            msg = "Filament homed to extruder after %.1fmm movement" % actual
+            if self.has_encoder():
+                msg += "\n(encoder measured %.1fmm)" % (measured - self.gate_parking_distance)
+            self.log_always(msg)
+
+            self._unload_bowden(calibrated_length) # Fast move
+            self._unload_gate()
+            return calibrated_length, clog_detection_length
+
+        except MmuError as ee:
+            raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (self.gate_selected, str(ee)))
+        finally:
+            self._auto_filament_grip()
+
+    # Bowden calibration - Method 3
+    # Automatic calibration from gate to extruder entry sensor or collision with extruder gear (requires encoder)
+    # Allows for repeats to average restult which is essential with encoder collision detection
+    def _calibrate_bowden_length_auto(self, approximate_length, extruder_homing_max, repeats):
+        try:
+            # Can't allow "none" endstop during calibration so temporarily change
+            orig_endstop = self.extruder_homing_endstop
+            self.extruder_homing_endstop = self.ENDSTOP_EXTRUDER_COLLISION if endstop == self.ENDSTOP_EXTRUDER_NONE else self.extruder_homing_endstop
+
+            self.log_always("Calibrating bowden length for gate %d (automatic average method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
             reference_sum = spring_max = 0.
             successes = 0
 
             for i in range(repeats):
                 self._initialize_filament_position(dwell=True)
                 self._load_gate(allow_retry=False)
-                self._load_bowden(approximate_length)
+                self._load_bowden(approximate_length) # Get close to extruder homing point
 
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY and self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
-                    msg = "Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop
-                    self.log_error(msg)
-                    # Home back to the gate
+                    self.log_error("Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop)
                     self._unload_gate(approximate_length)
-                    raise MmuError("Fast move overshoot. The %s sensor triggered before homing. Try reducing your estimated BOWDEN_LENGTH." % self.extruder_homing_endstop)
+                    raise MmuError("Bowden calibration aborted")
 
                 self.log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 self._home_to_extruder(extruder_homing_max)
@@ -2169,70 +2234,23 @@ class Mmu:
                 self._unload_bowden(reference)
                 self._unload_gate()
 
-            if successes > 0:
-                average_reference = reference_sum / successes
-                clog_detection_length = (average_reference * 2) / 100. + spring_max # 2% of bowden length plus spring seems to be good starting point
-                msg = "Recommended calibration bowden length is %.1fmm" % average_reference
-                if self.has_encoder() and self.enable_clog_detection:
-                    msg += ". Clog detection length: %.1fmm" % clog_detection_length
-                self.log_always(msg)
+            if successes == 0:
+                raise MmuError("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
 
-                if save:
-                    self._save_bowden_length(self.gate_selected, average_reference, endstop=self.gate_homing_endstop)
-                    self.save_variable(self.VARS_MMU_CALIB_CLOG_LENGTH, round(clog_detection_length, 1))
-                    if self.has_encoder():
-                        self.encoder_sensor.set_clog_detection_length(clog_detection_length)
-                        self.log_always("Calibrated bowden and clog detection length have been saved")
-                    else:
-                        self.log_always("Calibrated bowden length has been saved")
-                    self.write_variables()
-            else:
-                self.log_error("All %d attempts at homing failed. MMU needs some adjustments!" % repeats)
+            calibrated_length = (reference_sum / successes) + self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY else 0
+            clog_detection_length = (calibrated_length * 2) / 100. + spring_max # 2% of bowden length plus spring seems to be good starting point
+
+            return calibrated_length, clog_detection_length
+
         except MmuError as ee:
             # Add some more context to the error and re-raise
-            raise MmuError("Calibration of bowden length on gate %d failed. Aborting, because:\n%s" % (self.gate_selected, str(ee)))
+            raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (self.gate_selected, str(ee)))
         finally:
-            self.extruder_homing_endstop = endstop
+            self.extruder_homing_endstop = orig_endstop
             self._auto_filament_grip()
 
-    def _calibrate_bowden_length_manual(self, approx_bowden_length, save=True):
-        try:
-            self.log_always("Calibrating bowden length for gate %d (manual method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
-            self._set_filament_direction(self.DIRECTION_UNLOAD)
-            self.selector.filament_drive()
-            self.log_always("Finding %s endstop position..." % self.gate_homing_endstop)
-            homed = False
-
-            if self.gate_homing_endstop == self.ENDSTOP_ENCODER:
-                with self._require_encoder():
-                    success = self._reverse_home_to_encoder(approx_bowden_length)
-                    if success:
-                        actual,_,_ = success
-                        homed = True
-
-            else: # Gate sensor... ENDSTOP_GATE is shared, but ENDSTOP_GEAR_PREFIX is specific
-                actual,homed,_,_ = self.trace_filament_move("Reverse homing to gate sensor", -approx_bowden_length, motor="gear", homing_move=-1, endstop_name=self._get_gate_endstop_name())
-
-            if homed:
-                actual = abs(actual)
-                clog_detection_length = (actual * 2) / 100. # 2% of bowden length
-                self.log_always("Recommended calibration bowden length is %.1fmm" % actual)
-                if save:
-                    self._save_bowden_length(self.gate_selected, actual, endstop=self.gate_homing_endstop)
-                    self.save_variable(self.VARS_MMU_CALIB_CLOG_LENGTH, round(clog_detection_length, 1))
-                    if self.has_encoder():
-                        self.encoder_sensor.set_clog_detection_length(clog_detection_length)
-                        self.log_always("Bowden calibration and clog detection length have been saved")
-                    else:
-                        self.log_always("Bowden calibration length has been saved")
-                    self.write_variables()
-
-                self._unload_gate() # Use real method to park filament
-            else:
-                raise MmuError("Calibration of bowden length failed. Did not home to gate sensor after moving %.1fmm" % approx_bowden_length)
-        finally:
-            self._auto_filament_grip()
-
+    # Automatically calibrate the rotation_distance for gate>0 using encoder measurements and gate 0 as reference
+    # Gate 0 is always calibrated with MMU_CALILBRATE_GEAR
     def _calibrate_gate(self, gate, length, repeats, save=True):
         try:
             pos_values, neg_values = [], []
@@ -2444,42 +2462,69 @@ class Mmu:
         finally:
             self.calibrating = False
 
-    # Start: Will home selector, select gate 0
-    # End: Filament will unload
+    # Calibrated bowden length is always from chosen gate homing point to the entruder gears
+    # Start: With desired gate selected
+    # End: Filament will be unloaded
     cmd_MMU_CALIBRATE_BOWDEN_help = "Calibration of reference bowden length for selected gate"
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         if self.check_if_not_homed(): return
         if self.check_if_bypass(): return
+        if self.check_if_loaded(): return
         if self.check_if_gate_not_valid(): return
 
-        can_auto_calibrate = self.has_encoder() or self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY
+        repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
+        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         manual = bool(gcmd.get_int('MANUAL', 0, minval=0, maxval=1))
-        if not can_auto_calibrate and not manual:
-            self.log_always("No encoder or extruder entry sensor available. Use manual calibration method:\nWith gate selected, manually load filament all the way to the extruder gear\nThen run 'MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx'\nWhere BOWDEN_LENGTH is greater than your real length")
-            return
         if manual:
             if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_SELECTOR, check_gates=[self.gate_selected]): return
         else:
             if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR, check_gates=[self.gate_selected]): return
 
-        approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', above=0.)
-        repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
+        can_use_sensor = self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY) and self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY
+        can_auto_calibrate = self.has_encoder() or can_use_sensor
+        if not can_auto_calibrate and not manual:
+            self.log_always("No encoder or extruder entry sensor available. Use manual calibration method:\nWith gate selected, manually load filament all the way to the extruder gear\nThen run 'MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx'\nWhere BOWDEN_LENGTH is greater than your real length")
+            return
+
         extruder_homing_max = gcmd.get_float('HOMING_MAX', 150, above=0.)
-        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', 2000 if can_use_sensor else None, above=0.)
+        if not approx_bowden_length:
+            raise gcmd.error("Must specify 'BOWDEN_LENGTH=x' where x is slightly less than your estimated bowden length to give room for homing")
 
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout():
                     self.calibrating = True
                     if manual:
-                        self._calibrate_bowden_length_manual(approx_bowden_length, save)
+                        # Method 1: Manual (reverse homing to gate) method
+                        length, clog, endstop = self._calibrate_bowden_length_manual(approx_bowden_length)
+
+                    elif self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY) and self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY:
+                        # Method 2: Automatic one-shot method with extruder entry sensor (BEST)
+                        length, clog, endstop = self._calibrate_bowden_length_to_extruder_sensor(approx_bowden_length)
+
                     else:
-                        # Automatic method with encoder
+                        # Method 3: Automatic averaging method with encoder and extruder collision or extruder entry sensor. Use repeats for accuracy
                         self._reset_ttg_map() # To force tool = gate
                         self._unload_tool()
-                        self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats, save)
+                        length, clog, endstop = self._calibrate_bowden_length_auto(approx_bowden_length, extruder_homing_max, repeats)
+
+                    msg = "Calibrated bowden length is %.1fmm" % length
+                    if self.has_encoder() and self.enable_clog_detection:
+                        msg += ". Clog detection length: %.1fmm" % clog
+                    self.log_always(msg)
+
+                    if save:
+                        self._save_bowden_length(self.gate_selected, length, endstop=endstop)
+                        self.save_variable(self.VARS_MMU_CALIB_CLOG_LENGTH, clog)
+                        if self.has_encoder():
+                            self.encoder_sensor.set_clog_detection_length(clog)
+                            self.log_always("Calibrated bowden and clog detection length have been saved")
+                        else:
+                            self.log_always("Calibrated bowden length has been saved")
+                        self.write_variables()
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
         finally:
@@ -4051,8 +4096,15 @@ class Mmu:
             length = min(length, bowden_length) # Cannot exceed calibrated distance
         full = length == bowden_length
 
-        # Compensate for distance already moved (e.g. overshoot after encoder homing)
+        # Compensate for distance already moved (e.g. overshoot after encoder based gate homing)
         length -= (self._get_filament_position() - self.gate_parking_distance)
+
+        if full:
+            # Compensate for distance from extruder sensor to gear if homing to sensor
+            length -= self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY else 0
+
+            # Shorten move by buffer used to ensure we don't overshoot unless not homing
+            length -= self.extruder_load_buffer if self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER_NONE else 0
 
         if length > 0:
             self.log_debug("Loading bowden tube")
