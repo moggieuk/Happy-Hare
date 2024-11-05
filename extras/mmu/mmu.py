@@ -355,7 +355,7 @@ class Mmu:
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
         self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_NONE)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.) # Extruder homing max
-        self.extruder_load_buffer = config.getfloat('extruder_load_buffer', 30., minval=0.) # How far to short bowden load move to avoid overshooting # PAUL add to config
+        self.extruder_homing_buffer = config.getfloat('extruder_homing_buffer', 30., minval=0.) # How far to short bowden load move to avoid overshooting # PAUL add to config
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # Toolhead sensor homing max
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
@@ -4104,7 +4104,7 @@ class Mmu:
             length -= self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY else 0
 
             # Shorten move by buffer used to ensure we don't overshoot unless not homing
-            length -= self.extruder_load_buffer if self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER_NONE else 0
+            length -= self.extruder_homing_buffer if self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER_NONE else 0
 
         if length > 0:
             self.log_debug("Loading bowden tube")
