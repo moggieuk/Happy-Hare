@@ -1347,7 +1347,7 @@ class Mmu:
             'slicer_tool_map': self.slicer_tool_map,
             'action': self._get_action_string(),
             'has_bypass': self.selector.has_bypass(),
-            'synced_drive': self.mmu_toolhead.is_synced(),
+            'sync_drive': self.mmu_toolhead.is_synced(),
             'sync_feedback_state': self._get_sync_feedback_string(),
             'print_state': self.print_state,
             'clog_detection': self.enable_clog_detection,
