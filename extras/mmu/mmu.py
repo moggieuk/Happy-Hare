@@ -355,7 +355,7 @@ class Mmu:
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
         self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.ENDSTOP_EXTRUDER_NONE)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.) # Extruder homing max
-        self.extruder_homing_buffer = config.getfloat('extruder_homing_buffer', 30., minval=0.) # How far to short bowden load move to avoid overshooting # PAUL add to config
+        self.extruder_homing_buffer = config.getfloat('extruder_homing_buffer', 30., minval=0.) # How far to short bowden load move to avoid overshooting
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # Toolhead sensor homing max
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
@@ -2148,7 +2148,7 @@ class Mmu:
             clog_detection_length = (actual * 2) / 100. # 2% of bowden length
             self.log_always("Filament homed back to gate after %.1fmm movement" % actual)
             self._unload_gate()
-            return calibrated_length, clog_detection_length
+            return actual, clog_detection_length
 
         except MmuError as ee:
             raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (self.gate_selected, str(ee)))
@@ -2498,7 +2498,10 @@ class Mmu:
         extruder_homing_max = gcmd.get_float('HOMING_MAX', 150, above=0.)
         approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', 2000 if can_use_sensor else None, above=0.)
         if not approx_bowden_length:
-            raise gcmd.error("Must specify 'BOWDEN_LENGTH=x' where x is slightly less than your estimated bowden length to give room for homing")
+            if manual:
+                raise gcmd.error("Must specify 'BOWDEN_LENGTH=x' where x is slightly MORE than your estimated bowden length")
+            else:
+                raise gcmd.error("Must specify 'BOWDEN_LENGTH=x' where x is slightly LESS than your estimated bowden length to give room for homing")
 
         try:
             with self.wrap_sync_gear_to_extruder():
@@ -5107,7 +5110,6 @@ class Mmu:
     @contextlib.contextmanager
     def _wrap_respooler(self, motor, dist, speed, homing_move):
         if motor == "gear" and dist < -50 and self.respooler_start_macro and self.respooler_start_macro != "''":
-            self.log_error("PAUL: respooler_start_macro=|%s|" % self.respooler_start_macro)
             active = True
             self._wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d SPEED=%d HOMING_MOVE=%d" % (self.respooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
             self._wait_for_respooler = True if not homing_move else False
