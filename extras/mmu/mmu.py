@@ -5111,7 +5111,7 @@ class Mmu:
     def _wrap_respooler(self, motor, dist, speed, homing_move):
         if motor == "gear" and dist < -50 and self.respooler_start_macro and self.respooler_start_macro != "''":
             active = True
-            self._wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d SPEED=%d HOMING_MOVE=%d" % (self.respooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
+            self._wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d STEP_SPEED=%d HOMING_MOVE=%d" % (self.respooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
             self._wait_for_respooler = True if not homing_move else False
             initial_pos = self.mmu_toolhead.get_position()[1]
         else:
