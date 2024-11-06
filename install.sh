@@ -578,6 +578,13 @@ read_previous_config() {
     if [ "${_variable_eject_tool_on_cancel}" != "" ]; then
         _variable_unload_tool_on_cancel=${_variable_eject_tool_on_cancel}
     fi
+    # Temp for alpha testers..
+    if [ "${_param_respooler_start_macro}" != "" ]; then
+        _param_espooler_start_macro=${_param_respooler_start_macro}
+    fi
+    if [ "${_param_respooler_stop_macro}" != "" ]; then
+        _param_espooler_stop_macro=${_param_respooler_stop_macro}
+    fi
 }
 
 # Helper for upgrade logic
@@ -1294,9 +1301,8 @@ questionaire() {
             _param_gate_final_eject_distance=100
 
             # Macro variable config
-            variable_user_pre_unload_extension="MMU_RESPOOLER_START"
-            variable_user_post_unload_extension="MMU_RESPOOLER_STOP"
-            variable_user_mmu_error_extension="MMU_RESPOOLER_STOP"
+            _param_espooler_start_macro="MMU_ESPOOLER_START"
+            _param_espooler_stop_macro="MMU_ESPOOLER_STOP"
             ;;
 
         "$NIGHT_OWL")
@@ -1318,9 +1324,8 @@ questionaire() {
             _param_gate_final_eject_distance=100
 
             # Macro variable config
-            variable_user_pre_unload_extension="MMU_RESPOOLER_START"
-            variable_user_post_unload_extension="MMU_RESPOOLER_STOP"
-            variable_user_mmu_error_extension="MMU_RESPOOLER_STOP"
+            _param_espooler_start_macro="MMU_ESPOOLER_START"
+            _param_espooler_stop_macro="MMU_ESPOOLER_STOP"
             ;;
 
         "$_3MS")
