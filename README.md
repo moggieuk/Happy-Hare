@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-Universal MMU driver for Klipper
+Universal MMU driver/manager for Klipper
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@ Universal MMU driver for Klipper
     <img src="https://img.shields.io/github/commit-activity/y/moggieuk/Happy-Hare"></a> &nbsp;
 </p>
 
-Happy Hare is the second edition of what started life and as alternative software control for the ERCF v1.1 ecosystem - the original open source filament changer for multi-colored printing. However it has now been rearchitected to support most types of MMU's connected to the Klipper ecosystem. That includes **ERCF**, **Tradrack**, AMS-style and other custom designs. It has extensive configuration to allow for customization and using the installer simplifies initial setup for common MMU types. The three conceptual types of MMUs and the function and operation of their various sensors can be [found here](https://github.com/moggieuk/Happy-Hare/wiki/Conceptual-MMU) and should be consulted for any customized setup.  It is best partnered with [KlipperScreen for Happy Hare](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) projet at least until the Mainsail integration is complete :-)
+Happy Hare started life and as alternative software control for the ERCF ecosystem - the original open source filament changer for multi-colored printing. However it has long been rearchitected to support most types of MMU's connected to the Klipper ecosystem. That includes **ERCF**, **Tradrack**, **Box Turtle**, **Angry Beaver**, **Night Owl**, **3MS**, other custom designs. It has extensive configuration to allow for customization and using the installer simplifies initial setup for common MMU types. The three conceptual types of MMUs and the function and operation of their various sensors can be [found here](https://github.com/moggieuk/Happy-Hare/wiki/Conceptual-MMU) and should be consulted for any customized setup.  It is best partnered with [KlipperScreen for Happy Hare](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) projet at least until the Mainsail integration is complete :-)
 
 Some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). Although I'm not doing this for any financial reward this is a BIG undertaking (9000 lines of python, 5000 lines of doc, 4000 lines of macros/config). I have put hundreds of hours into this project and if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable. Thank you!
 <p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="35%"></a></p>
@@ -32,7 +32,7 @@ Some folks have asked about making a donation to cover the cost of the all the c
 
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) A few of the features:
 
-- Support any brand of MMU and user defined monsters (ERCF 1.1, 2.0, Tradrack, Custom.  Prusa & KMS coming very soon)
+- Support any brand of MMU and user defined monsters (ERCF, Tradrack, Box Turtle, Angry Beaver, Night Owl, 3MS, Custom)
 - Synchronized movement of extruder and gear motors (with feedback control) to overcome friction and even work with FLEX materials!
 - Sophisticated multi-homing options including extruder!
 - Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any tool
@@ -53,7 +53,7 @@ Some folks have asked about making a donation to cover the cost of the all the c
 - Built in tip forming and filament cutter support
 - Lots more... Detail change log can be found in the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki/Change-Log)
 
-Controlling an ERCF with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control!
+Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control!
 
 <p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="600" alt="KlipperScreen-Happy Hare edition"></p>
 
@@ -110,7 +110,7 @@ Although the journey to calibrating and setup can be a frustrating one, I wanted
 
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) My Testing and Setup:
 
-Most of the development of Happy Hare was done on my trusty ERCF v1.1 setup but as it's grown, so has my collection of MMU's and MCU controllers. Multi-color printing is addictive but can be frustrating during setup and learning. Be patient and use the forums for help!  **But first read the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki/Home)!**
+Most of the development of Happy Hare was done on my trusty old ERCF v1.1 setup but as it's grown, so has my collection of MMU's and MCU controllers. Multi-color printing is addictive but can be frustrating during setup and learning. Be patient and use the forums for help!  **But first read the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki/Home)!**
 
 <p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_voron_and_ercf.jpg" width="300" alt="My Setup"></p>
 <p align="center"><i>
