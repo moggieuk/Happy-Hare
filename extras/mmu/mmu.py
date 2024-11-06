@@ -310,8 +310,8 @@ class Mmu:
         self.post_load_macro = config.get('post_load_macro', '_MMU_POST_LOAD_MACRO')
         self.unload_sequence_macro = config.get('unload_sequence_macro', '_MMU_UNLOAD_SEQUENCE')
         self.load_sequence_macro = config.get('load_sequence_macro', '_MMU_LOAD_SEQUENCE')
-        self.respooler_start_macro = config.get('respooler_start_macro', '')
-        self.respooler_stop_macro = config.get('respooler_stop_macro', '')
+        self.espooler_start_macro = config.get('espooler_start_macro', '')
+        self.espooler_stop_macro = config.get('espooler_stop_macro', '')
         self.error_dialog_macro = config.get('error_dialog_macro', '_MMU_ERROR_DIALOG') # Not exposed
         self.clear_position_macro = config.get('clear_position_macro', '_MMU_CLEAR_POSITION') # Not exposed
         self.save_position_macro = config.get('save_position_macro', '_MMU_SAVE_POSITION') # Not exposed
@@ -403,6 +403,7 @@ class Mmu:
         self.gear_buzz_accel = config.getfloat('gear_buzz_accel', 1000, minval=10.) # Not exposed
 
         # Optional features
+        self.espooler_min_distance = config.getfloat('espooler_min_distance', 50., above=0) # Not exposed
         self.preload_attempts = config.getint('preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
@@ -2476,6 +2477,7 @@ class Mmu:
     def cmd_MMU_CALIBRATE_BOWDEN(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
+        if self.check_if_no_bowden_move(): return
         if self.check_if_not_homed(): return
         if self.check_if_bypass(): return
         if self.check_if_loaded(): return
@@ -3338,6 +3340,12 @@ class Mmu:
     def check_if_always_synced(self):
         if self.mmu_machine.filament_always_gripped:
             self.log_error("MMU design required continuous gear/extruder syncing")
+            return True
+        return False
+
+    def check_if_no_bowden_move(self):
+        if not self.mmu_machine.require_bowden_move:
+            self.log_error("MMU design does not require bowden move/calibration")
             return True
         return False
 
@@ -4910,7 +4918,7 @@ class Mmu:
     #
     # All moves return: actual (relative), homed, measured, delta; mmu_toolhead.get_position[1] holds absolute position
     #
-    def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, sync=False, wait=False, encoder_dwell=False, respool=False):
+    def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, sync=False, wait=False, encoder_dwell=False):
         self.mmu_toolhead.unsync() # Precaution
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         pos = self.mmu_toolhead.get_position()
@@ -4973,8 +4981,8 @@ class Mmu:
         if sync:
             self.movequeues_sync()
 
-        with self._wrap_respooler(motor, dist, speed, homing_move):
-            wait = wait or self._wait_for_respooler # Allow respooler wrapper to force wait
+        with self._wrap_espooler(motor, dist, speed, homing_move):
+            wait = wait or self._wait_for_espooler # Allow eSpooler wrapper to force wait
 
             # Gear rail is driving the filament
             if motor in ["gear", "gear+extruder", "extruder"]:
@@ -5105,24 +5113,24 @@ class Mmu:
         finally:
             self.mmu_toolhead.get_kinematics().set_accel_limit(None)
 
-    # Used to wrap certain unload moves and activate respooler
-    # Ensures respooler is always stopped
+    # Used to wrap certain unload moves and activate eSpooler. Ensures eSpooler is always stopped
     @contextlib.contextmanager
-    def _wrap_respooler(self, motor, dist, speed, homing_move):
-        if motor == "gear" and dist < -50 and self.respooler_start_macro and self.respooler_start_macro != "''":
+    def _wrap_espooler(self, motor, dist, speed, homing_move):
+        if motor in ['gear', 'synced', 'both'] and dist < -self.espooler_min_distance and self.espooler_start_macro and self.espooler_start_macro != "''":
             active = True
-            self._wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d STEP_SPEED=%d HOMING_MOVE=%d" % (self.respooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
-            self._wait_for_respooler = True if not homing_move else False
+            self._wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d STEP_SPEED=%d HOMING_MOVE=%d" % (self.espooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
+            self._wait_for_espooler = True if not homing_move else False
             initial_pos = self.mmu_toolhead.get_position()[1]
         else:
-            self._wait_for_respooler = False
+            self._wait_for_espooler = False
             active = False
         try:
             yield self
         finally:
-            if active and self.respooler_stop_macro and self.respooler_stop_macro != "''":
+            self._wait_for_espooler = False
+            if active and self.espooler_stop_macro and self.espooler_stop_macro != "''":
                 moved = abs(self.mmu_toolhead.get_position()[1] - initial_pos)
-                self._wrap_gcode_command("%s GATE=%d DISTANCE=%d" % (self.respooler_stop_macro, self.gate_selected, moved))
+                self._wrap_gcode_command("%s GATE=%d DISTANCE=%d" % (self.espooler_stop_macro, self.gate_selected, moved))
 
 
 ##############################################
