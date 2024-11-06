@@ -7825,7 +7825,8 @@ class Mmu:
                         current_gate = self.gate_selected
                         self.select_gate(gate)
                         self._preload_gate()
-                        if self.is_in_print():
+                        # If necessary or easy restore previous gate
+                        if self.is_in_print() or self.mmu_machine.multigear:
                             self.select_gate(current_gate)
                         else:
                             self._initialize_encoder() # Encoder 0000
