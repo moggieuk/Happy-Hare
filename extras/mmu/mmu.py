@@ -3308,7 +3308,7 @@ class Mmu:
 
     def check_if_disabled(self):
         if not self.is_enabled:
-            self.log_error("MMU is disabled. Please use MMU ENABLE=1 to use")
+            self.log_error("Operation not possible. MMU is disabled. Please use MMU ENABLE=1 to use")
             return True
         self._wakeup()
         return False
@@ -3321,31 +3321,31 @@ class Mmu:
 
     def check_if_not_homed(self):
         if not self.selector.is_homed:
-            self.log_error("MMU is not homed")
+            self.log_error("Operation not possible. MMU is not homed")
             return True
         return False
 
     def check_if_loaded(self):
         if self.filament_pos not in [self.FILAMENT_POS_UNLOADED, self.FILAMENT_POS_UNKNOWN]:
-            self.log_error("MMU has filament loaded")
+            self.log_error("Operation not possible. MMU has filament loaded")
             return True
         return False
 
     def check_if_gate_not_valid(self):
         if self.gate_selected < 0:
-            self.log_error("No MMU gate selected")
+            self.log_error("Operation not possible. No MMU gate selected")
             return True
         return False
 
     def check_if_always_synced(self):
         if self.mmu_machine.filament_always_gripped:
-            self.log_error("MMU design required continuous gear/extruder syncing")
+            self.log_error("Operation not possible. MMU design required continuous gear/extruder syncing")
             return True
         return False
 
     def check_if_no_bowden_move(self):
         if not self.mmu_machine.require_bowden_move:
-            self.log_error("MMU design does not require bowden move/calibration")
+            self.log_error("Operation not possible. MMU design does not require bowden move/calibration")
             return True
         return False
 
@@ -3886,24 +3886,20 @@ class Mmu:
 # MODULAR FILAMENT LOAD AND UNLOAD FUNCTIONS #
 ##############################################
 
-    # Preload gate as little as possible. If a full gate load is the only option this will then park correctly after pre-load
-    def _preload_gate(self, gate=None):
-        # If gate not specified assume current gate
-        if gate == None:
-            gate = self.gate_selected
-        else:
-            self.select_gate(gate)
-
-        if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate):
+    # Preload selected gate as little as possible. If a full gate load is the only option
+    # this will then park correctly after pre-load
+    def _preload_gate(self):
+        if self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, self.gate_selected):
             # Minimal load past gear stepper if gear sensor is fitted
-            endstop_name = self.sensor_manager.get_gate_sensor_name(self.ENDSTOP_GEAR_PREFIX, gate)
+            endstop_name = self.sensor_manager.get_gate_sensor_name(self.ENDSTOP_GEAR_PREFIX, self.gate_selected)
             self.log_always("Loading...")
             msg = "Homing to %s sensor" % endstop_name
             with self._wrap_suspend_runout():
                 actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
                 if homed:
                     self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
-                    self.log_always("Filament detected and loaded in gate %d" % gate)
+                    self._check_pending_spool_id(self.gate_selected) # Have spool_id ready?
+                    self.log_always("Filament detected and loaded in gate %d" % self.gate_selected)
                     return
         else:
             # Full gate load if no gear sensor
@@ -3911,19 +3907,17 @@ class Mmu:
                 self.log_always("Loading...")
                 try:
                     self._load_gate(allow_retry=False, adjust_grip_on_error=False)
-                    self._check_pending_spool_id(gate) # Have spool_id ready?
+                    self._check_pending_spool_id(self.gate_selected) # Have spool_id ready?
                     self.log_always("Parking...")
                     self._unload_gate()
-                    self.log_always("Filament detected and parked in gate %d" % gate)
+                    self.log_always("Filament detected and parked in gate %d" % self.gate_selected)
                     return
                 except MmuError as ee:
                     # Exception just means filament is not loaded yet, so continue
                     self.log_trace("Exception on preload: %s" % str(ee))
 
-        self.log_always("Filament not detected in gate %d" % gate)
-        self._set_gate_status(gate, self.GATE_EMPTY)
-        self._initialize_encoder() # Encoder 0000
-        self._auto_filament_grip()
+        self.log_always("Filament not detected in gate %d" % self.gate_selected)
+        self._set_gate_status(self.gate_selected, self.GATE_EMPTY)
 
     # Eject final clear of gate. Important for MMU's where filament is always gripped (e.g. most type-B)
     def _eject_from_gate(self, gate=None):
@@ -7220,7 +7214,7 @@ class Mmu:
                 if sensor.startswith(self.PRE_GATE_SENSOR_PREFIX) and gate is not None:
                     self._set_gate_status(gate, self.GATE_UNKNOWN)
                     self._check_pending_spool_id(gate) # Have spool_id ready?
-                    if not self.is_in_print() and self.gate_autoload:
+                    if not self.is_printing() and self.gate_autoload:
                         self.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
 
                 elif sensor == self.ENDSTOP_EXTRUDER_ENTRY:
@@ -7815,19 +7809,27 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         if self.check_if_not_homed(): return
-        if self.check_if_bypass(): return
-        if self.check_if_loaded(): return
+        gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates - 1)
-        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate] if gate is not None else [self.gate_selected]): return
+        can_crossload = self.mmu_machine.multigear and self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate)
+        if not can_crossload:
+            if self.check_if_bypass(): return
+            if self.check_if_loaded(): return
 
-        self.log_always("Preloading filament in %s" % (("gate %d" % gate) if gate is not None else "current gate"))
+        self.log_always("Preloading filament in %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self.wrap_suppress_visual_log():
                     with self.wrap_action(self.ACTION_CHECKING):
-                        self._preload_gate(gate)
-
+                        current_gate = self.gate_selected
+                        self.select_gate(gate)
+                        self._preload_gate()
+                        if self.is_in_print():
+                            self.select_gate(current_gate)
+                        else:
+                            self._initialize_encoder() # Encoder 0000
+                            self._auto_filament_grip()
         except MmuError as ee:
             self.handle_mmu_error("Filament preload for gate %d failed: %s" % (gate, str(ee)))
 
