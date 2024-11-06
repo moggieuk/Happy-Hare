@@ -39,9 +39,9 @@ https://github.com/Dendrowen/Blobifier
 
 <hr>
 
-## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) DC Respooler
+## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) DC eSspooler
 
-An addon used to control a DC motor based respooler that is active when the MMU is unloaded
+An addon used to control a DC motor based eSpooler that is active when the MMU is unloaded
 
 <img src="https://github.com/moggieuk/Happy-Hare/wiki/Addon-Feature-Setup/TODO.png" width=60%>
 
@@ -51,9 +51,9 @@ An addon used to control a DC motor based respooler that is active when the MMU 
 ### Github
 
 ### Config
-1. Add `[include mmu/addons/dc_respooler.cfg]` to your `printer.cfg`
-1. Set `respooler_start_macro: MMU_RESPOOLER_START` in `mmu_parameters.cfg` to start respooler movement
-1. Set `respooler_stopt_macro: MMU_RESPOOLER_STOP` in `mmu_parameters.cfg` to stop respooler movement
-1. Update the `mmu/addon/dc_respooler_hw.cfg` for your configuration.
+1. Add `[include mmu/addons/dc_espooler.cfg]` to your `printer.cfg`
+1. Set `espooler_start_macro: MMU_ESPOOLER_START` in `mmu_parameters.cfg` to start eSpooler movement
+1. Set `espooler_stopt_macro: MMU_ESPOOLER_STOP` in `mmu_parameters.cfg` to stop eSspooler movement
+1. Update the `mmu/addon/dc_espooler_hw.cfg` for your configuration.
 
 <hr>
