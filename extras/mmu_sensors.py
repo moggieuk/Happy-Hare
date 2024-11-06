@@ -93,7 +93,11 @@ class MmuRunoutHelper:
 
     def _process_state_change(self, eventtime, is_filament_present):
         # Determine "printing" status
-        is_printing = self.printer.lookup_object("print_stats").get_status(eventtime)["state"] == "printing"
+        print_stats = self.printer.lookup_object("print_stats")
+        if print_stats:
+            is_printing = print_stats.get_status(eventtime)["state"] == "printing"
+        else:
+            is_printing = self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing"
 
         if is_filament_present and self.insert_gcode: # Insert detected
             if not is_printing or (is_printing and self.insert_remove_in_print):

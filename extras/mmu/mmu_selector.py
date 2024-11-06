@@ -64,8 +64,8 @@ class VirtualSelector:
         pass
 
     def select_gate(self, gate):
-        #self.mmu.log_error("PAUL TEMP: -------selector.select_gate(%d)%s" % (gate, " - IGNORED" if gate == self.mmu.gate_selected else ""))
-        if gate == self.mmu.gate_selected: return
+        self.mmu.log_error("PAUL TEMP: -------selector.select_gate(%d)%s" % (gate, " - IGNORED" if gate == self.mmu.gate_selected else ""))
+        #if gate == self.mmu.gate_selected: return # TODO: there appears to be a corner case where this fails, so for now always select
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync new MMU gear stepper now if design requires it
