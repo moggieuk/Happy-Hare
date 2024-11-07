@@ -1485,6 +1485,7 @@ questionaire() {
     option EASY_BRD_RP2040      'EASY-BRD with RP2040'
     option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
     option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
+    option AFC_LITE_1           'AFC Lite v1.0'
     option OTHER                'Not in list / Unknown'
     prompt_option opt 'MCU Type' "${OPTIONS[@]}"
     echo "opt=$opt"
@@ -1520,6 +1521,10 @@ questionaire() {
         "$MELLOW_BRD_2")
             _hw_brd_type="MELLOW-EASY-BRD-CANv2"
             pattern="Klipper_rp2040"
+            ;;
+        "$AFC_LITE_1")
+            _hw_brd_type="AFC_LITE_1"
+            pattern="Klipper_stm32"
             ;;
         *)
             _hw_brd_type="unknown"
