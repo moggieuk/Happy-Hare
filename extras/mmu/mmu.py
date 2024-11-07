@@ -1212,12 +1212,7 @@ class Mmu:
             if self.log_startup_status:
                 self.log_always(self._mmu_visual_to_string())
                 self._display_visual_state()
-
-            if not self.check_if_not_calibrated(self.CALIBRATED_ALL, silent=None):
-                if self.filament_pos != self.FILAMENT_POS_UNLOADED and self.TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
-                    self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER GATE=xx to correct state")
-                elif self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
-                    self.log_error("Filament not detected as unloaded or fully loaded. Please confirm and use MMU_RECOVER to correct state or fix before continuing")
+            self.report_necessary_recovery()
 
             if self.has_encoder():
                 self.encoder_sensor.set_clog_detection_length(self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
@@ -1946,6 +1941,8 @@ class Mmu:
 
         self.log_always(msg, color=True)
         self.check_if_not_calibrated(self.CALIBRATED_ALL, silent=None) # Always warn if not fully calibrated
+        if not detail:
+            self.report_necessary_recovery()
 
     def _f_calc(self, formula):
         format_var = lambda p: p + ':' + "%.1f" % vars(self).get(p.lower())
@@ -5131,6 +5128,14 @@ class Mmu:
 # GENERAL FILAMENT RECOVERY AND MOVE HELPERS #
 ##############################################
 
+    # Report on need to recover
+    def report_necessary_recovery(self):
+        if not self.check_if_not_calibrated(self.CALIBRATED_ALL, silent=None):
+            if self.filament_pos != self.FILAMENT_POS_UNLOADED and self.TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
+                self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER GATE=xx to correct state")
+            elif self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
+                self.log_error("Filament not detected as unloaded or fully loaded. Please confirm and use MMU_RECOVER to correct state or fix before continuing")
+
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
     def recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
         if message:
@@ -6081,29 +6086,51 @@ class Mmu:
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
 
-    cmd_MMU_EJECT_help = "Alias for MMU_UNLOAD except with type-B MMU's this will fully eject filament and release from the gear"
+    cmd_MMU_EJECT_help = "Alias for MMU_UNLOAD if filament is loaded but will fully eject filament from MMU (release from gear) if in unloaded state"
     def cmd_MMU_EJECT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
-        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
+        gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
+        force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
+        if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
         self._fix_started_state()
+
+        can_crossload = self.mmu_machine.multigear and self.sensor_manager.has_gate_sensor(self.ENDSTOP_GEAR_PREFIX, gate)
+        if not can_crossload and gate != self.gate_selected:
+            if self.check_if_loaded(): return
 
         # Determine if eject_from_gate is necessary
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
-        eject_from_gate = self.mmu_machine.filament_always_gripped and not extruder_only
-        if not eject_from_gate and self.filament_pos == self.FILAMENT_POS_UNLOADED:
+        can_eject_from_gate = (
+            not extruder_only
+            and (
+                self.mmu_machine.multigear
+                or self.filament_pos == self.FILAMENT_POS_UNLOADED
+                or force
+            )
+        )
+
+        if not can_eject_from_gate and self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_always("Filament not loaded")
             return
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
-                    self._mmu_unload_eject(gcmd)
-                    if eject_from_gate:
-                        self._eject_from_gate()
+                current_gate = self.gate_selected
+                self.select_gate(gate)
+                self._mmu_unload_eject(gcmd)
+                if can_eject_from_gate:
+                    self.log_always("Ejecting filament out of %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
+                    self._eject_from_gate()
+                # If necessary or easy restore previous gate
+                if self.is_in_print() or self.mmu_machine.multigear:
+                    self.select_gate(current_gate)
+                else:
+                    self._initialize_encoder() # Encoder 0000
+                    self._auto_filament_grip()
         except MmuError as ee:
-            self.handle_mmu_error("%s.\nOccured when ejecting tool" % str(ee))
+            self.handle_mmu_error("Filament eject for gate %d failed: %s" % (gate, str(ee)))
 
     # Common logic for MMU_UNLOAD and MMU_EJECT
     def _mmu_unload_eject(self, gcmd):
