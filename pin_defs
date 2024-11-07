@@ -278,11 +278,11 @@ PIN[B,MMB10,gear_3_step_pin]="PB6";                        PIN[B,MMB11,gear_3_st
 PIN[B,MMB10,gear_3_dir_pin]="PB7";                         PIN[B,MMB11,gear_3_dir_pin]="PB7";
 PIN[B,MMB10,gear_3_enable_pin]="PB5";                      PIN[B,MMB11,gear_3_enable_pin]="PB5";
 PIN[B,MMB10,gear_3_diag_pin]="PB8";                        PIN[B,MMB11,gear_3_diag_pin]="PB8";      # Aka STP4
-PIN[B,MMB10,selector_uart_pin]="";                         PIN[MMB11,selector_uart_pin]="";
-PIN[B,MMB10,selector_step_pin]="";                         PIN[MMB11,selector_step_pin]="";
-PIN[B,MMB10,selector_dir_pin]="";                          PIN[MMB11,selector_dir_pin]="";
-PIN[B,MMB10,selector_enable_pin]="";                       PIN[MMB11,selector_enable_pin]="";
-PIN[B,MMB10,selector_diag_pin]="";                         PIN[MMB11,selector_diag_pin]="";
+PIN[B,MMB10,selector_uart_pin]="";                         PIN[B,MMB11,selector_uart_pin]="";
+PIN[B,MMB10,selector_step_pin]="";                         PIN[B,MMB11,selector_step_pin]="";
+PIN[B,MMB10,selector_dir_pin]="";                          PIN[B,MMB11,selector_dir_pin]="";
+PIN[B,MMB10,selector_enable_pin]="";                       PIN[B,MMB11,selector_enable_pin]="";
+PIN[B,MMB10,selector_diag_pin]="";                         PIN[B,MMB11,selector_diag_pin]="";
 PIN[B,MMB10,selector_endstop_pin]="";                      PIN[B,MMB11,selector_endstop_pin]="";
 PIN[B,MMB10,selector_servo_pin]="";                        PIN[B,MMB11,selector_servo_pin]="";
 PIN[B,MMB10,encoder_pin]="PA1";                            PIN[B,MMB11,encoder_pin]="PA1";
