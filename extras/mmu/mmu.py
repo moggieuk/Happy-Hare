@@ -3919,7 +3919,7 @@ class Mmu:
     # Eject final clear of gate. Important for MMU's where filament is always gripped (e.g. most type-B)
     def _eject_from_gate(self, gate=None):
         # If gate not specified assume current gate
-        if gate == None:
+        if gate is None:
             gate = self.gate_selected
         else:
             self.select_gate(gate)
@@ -4109,11 +4109,12 @@ class Mmu:
         length -= (self._get_filament_position() - self.gate_parking_distance)
 
         if full:
-            # Compensate for distance from extruder sensor to gear if homing to sensor
-            length -= self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY else 0
-
-            # Shorten move by buffer used to ensure we don't overshoot unless not homing
-            length -= self.extruder_homing_buffer if self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER_NONE else 0
+            if not(self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD) and not self.extruder_force_homing):
+                # Reduce to compensate for distance from extruder sensor to gear if homing to sensor
+                length -= self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY else 0
+            
+                # Reduce by buffer used to ensure we don't overshoot unless not homing
+                length -= self.extruder_homing_buffer if self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER_NONE else 0
 
         if length > 0:
             self.log_debug("Loading bowden tube")
@@ -5013,7 +5014,7 @@ class Mmu:
                                 ext_actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
 
                                 # Support setup where a non-homing extruder is being used
-                                if motor == "extruder" and not self.mmu_machine.homing_extruder:
+                                if motor == "extruder" and not self.homing_extruder:
                                     # This isn't super accurate if extruder isn't (homing) MmuExtruder because doesn't have required endstop, thus this will
                                     # overrun and even move slightly even if already homed. We can only correct the actual gear rail position.
                                     halt_pos[1] += ext_actual
@@ -5110,7 +5111,7 @@ class Mmu:
         if motor in ['gear', 'synced', 'both'] and dist < -self.espooler_min_distance and self.espooler_start_macro and self.espooler_start_macro != "''":
             active = True
             self._wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d STEP_SPEED=%d HOMING_MOVE=%d" % (self.espooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
-            self._wait_for_espooler = True if not homing_move else False
+            self._wait_for_espooler = not homing_move
             initial_pos = self.mmu_toolhead.get_position()[1]
         else:
             self._wait_for_espooler = False
@@ -5262,7 +5263,7 @@ class Mmu:
             if sync:
                 self.selector.filament_drive()
             else:
-                 self._auto_filament_grip()
+                self._auto_filament_grip()
 
         if current and sync:
             self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
@@ -5371,6 +5372,7 @@ class Mmu:
         self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % pa)
         # TODO avoid klipper console messages?
 
+    # Logic shared with MMU_TEST_MOVE and _MMU_STEP_MOVE
     def _move_cmd(self, gcmd, trace_str):
         if self.check_if_disabled(): return (0., False, 0., 0.)
         if self.check_if_bypass(): return (0., False, 0., 0.)
@@ -5378,8 +5380,8 @@ class Mmu:
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
-        wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1))
-        sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
+        wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
+        sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1)) # Hidden option to sync printer toolhead and mmu toolhead before moving
         if motor not in ["gear", "extruder", "gear+extruder", "synced", "both"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder', 'synced' or 'both'")
         if motor == "extruder":
@@ -5389,6 +5391,7 @@ class Mmu:
         self.log_debug("Moving '%s' motor %.1fmm..." % (motor, move))
         return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, sync=sync, wait=wait)
 
+    # Logic shared with MMU_TEST_HOMING_MOVE and _MMU_STEP_HOMING_MOVE
     def _homing_move_cmd(self, gcmd, trace_str):
         if self.check_if_disabled(): return (0., False, 0., 0.)
         if self.check_if_bypass(): return (0., False, 0., 0.)
@@ -5397,7 +5400,7 @@ class Mmu:
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None) # Ignored for extruder led moves
         motor = gcmd.get('MOTOR', "gear")
-        sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
+        sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1)) # Hidden option to sync printer toolhead and mmu toolhead before moving
         if motor not in ["gear", "extruder", "gear+extruder"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")
         direction = -1 if move < 0 else 1
