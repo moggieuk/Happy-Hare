@@ -140,7 +140,7 @@ class MmuTest:
                 self.mmu._initialize_filament_position()
                 total = 0.
                 for i in range(loop):
-                    move_type = random.randint(0, 11)
+                    move_type = random.randint(0, 11) # 12 to enable tracking test
                     move = random.randint(0, 100) - 50
                     speed = random.uniform(50, 200)
                     accel = random.randint(50, 1000)
@@ -182,11 +182,11 @@ class MmuTest:
                     elif move_type == 10:
                         self.mmu.log_info("Loop: %d - legacy 'synced' movement: %.1fmm" % (i, move))
                         self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d" % (move, speed))
-                    else:
+                    elif move_type == 11:
                         self.mmu.log_info("Loop: %d - legacy 'both' movement: %.1fmm" % (i, move))
                         self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=both MOVE=%.2f SPEED=%d" % (move, speed))
                         total += move
-
+                    else:
                         sync = "---" if self.mmu.mmu_toolhead.sync_mode is None else "E2G" if self.mmu.mmu_toolhead.sync_mode == MmuToolHead.EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER else "Ext"
                         self.mmu.movequeues_wait()
                         tracking = abs(self.mmu._get_filament_position() - total) < 0.1
