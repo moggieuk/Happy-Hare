@@ -16,13 +16,13 @@
 #   Named `extruder` & `toolhead`
 #
 # sync feedback sensor:
-#   Creates simple button and publishes events based on state change
+#   Creates simple buttons and publishes events based on state change
 #
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
 #
 # RunoutHelper based on:
-# Generic Filament Sensor Module                 Copyright (C) 2019  Eric Callahan <arksine.code@gmail.com>
+# Generic Filament Sensor Module Copyright (C) 2019  Eric Callahan <arksine.code@gmail.com>
 #
 # (\_/)
 # ( *,*)
@@ -33,6 +33,8 @@
 import logging, time
 
 
+# Enhanced "runout helper" that gives greater control of when filament sensor events are fired in
+# addition to creating a "remove" / "runout" distinction
 class MmuRunoutHelper:
     def __init__(self, printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode, allow_in_print):
 
