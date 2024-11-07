@@ -670,6 +670,17 @@ copy_config_files() {
         mkdir -p ${mmu_dir}/addons
     fi
 
+    _hw_additional_pins=
+
+    if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
+        for i in $(seq 0 $(expr $_hw_num_gates - 1)); do
+            espooler_pins="    MMU_DC_MOT_$(expr $i + 1)_EN={spooler_en_${i}_pin},\n"
+            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_A={spooler_rwd_${i}_pin},\n"
+            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_B={spooler_fwd_${i}_pin},\n"
+            _hw_additional_pins="${_hw_additional_pins}\n${espooler_pins}"
+        done
+    fi
+
     # Now substitute tokens using given brd_type and "questionaire" starting values
     _hw_num_leds=$(expr $_hw_num_gates \* 2 + 1)
     _hw_num_leds_minus1=$(expr $_hw_num_leds - 1)
@@ -904,6 +915,13 @@ install_printer_includes() {
             fi
             if [ ${ADDONS_BLOBIFIER} -eq 1 ]; then
                 i='\[include mmu/addons/blobifier.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
+            if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
+                i='\[include mmu/addons/dc_espooler.cfg\]'
                 already_included=$(grep -c "${i}" ${dest} || true)
                 if [ "${already_included}" -eq 0 ]; then
                     sed -i "1i ${i}" ${dest}
@@ -1285,6 +1303,7 @@ questionaire() {
         "$BOX_TURTLE")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            ADDONS_DC_ESPOOLER=1
             _hw_mmu_vendor="BoxTurtle"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1781,6 +1800,9 @@ questionaire() {
     echo "        [include mmu/optional/client_macros.cfg]"
     echo "        [include mmu/addons/blobifier.cfg]"
     echo "        [include mmu/addons/mmu_erec_cutter.cfg]"
+    if [ "${ADDONS_DC_ESPOOLER:-0}" -eq 1 ]; then
+        echo "        [include mmu/addons/dc_espooler.cfg]"
+    fi
     echo -e "${INFO}"
     echo "    Later:"
     echo "        * Tweak configurations like speed and distance in mmu_parameters.cfg"

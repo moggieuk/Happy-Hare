@@ -312,4 +312,16 @@ PIN[B,MMB10,gear_sensor_8_pin]="";                         PIN[B,MMB11,gear_sens
 PIN[B,MMB10,gear_sensor_9_pin]="";                         PIN[B,MMB11,gear_sensor_9_pin]="";
 PIN[B,MMB10,gear_sensor_10_pin]="";                        PIN[B,MMB11,gear_sensor_10_pin]="";
 PIN[B,MMB10,gear_sensor_11_pin]="";                        PIN[B,MMB11,gear_sensor_11_pin]="";
+PIN[B,MMB10,spooler_en_0_pin]="";                          PIN[B,MMB11,spooler_en_0_pin]="";
+PIN[B,MMB10,spooler_en_1_pin]="";                          PIN[B,MMB11,spooler_en_1_pin]="";
+PIN[B,MMB10,spooler_en_2_pin]="";                          PIN[B,MMB11,spooler_en_2_pin]="";
+PIN[B,MMB10,spooler_en_3_pin]="";                          PIN[B,MMB11,spooler_en_3_pin]="";
+PIN[B,MMB10,spooler_rwd_0_pin]="PA0";                      PIN[B,MMB11,spooler_rwd_0_pin]="PA0";
+PIN[B,MMB10,spooler_rwd_1_pin]="PA1";                      PIN[B,MMB11,spooler_rwd_1_pin]="PA1";
+PIN[B,MMB10,spooler_rwd_2_pin]="PB10";                     PIN[B,MMB11,spooler_rwd_2_pin]="PB10";
+PIN[B,MMB10,spooler_rwd_3_pin]="PB2";                      PIN[B,MMB11,spooler_rwd_3_pin]="PB2";
+PIN[B,MMB10,spooler_fwd_0_pin]="";                         PIN[B,MMB11,spooler_fwd_0_pin]="";
+PIN[B,MMB10,spooler_fwd_1_pin]="";                         PIN[B,MMB11,spooler_fwd_1_pin]="";
+PIN[B,MMB10,spooler_fwd_2_pin]="";                         PIN[B,MMB11,spooler_fwd_2_pin]="";
+PIN[B,MMB10,spooler_fwd_3_pin]="";                         PIN[B,MMB11,spooler_fwd_3_pin]="";
 # Spare: PB10 (STP10), PB2 (STP11)                         PB10 (STP10), PB2 (STP11)
