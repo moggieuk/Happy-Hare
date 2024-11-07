@@ -6105,7 +6105,7 @@ class Mmu:
         can_eject_from_gate = (
             not extruder_only
             and (
-                self.mmu_machine.multigear
+                self.mmu_machine.multigear and gate != self.gate_selected
                 or self.filament_pos == self.FILAMENT_POS_UNLOADED
                 or force
             )
