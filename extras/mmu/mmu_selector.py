@@ -627,8 +627,8 @@ class LinearSelector:
                         self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
                         self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
 
-                        # See if we can detect filament in the encoder
-                        found = self.mmu.check_filament_at_gate()
+                        # See if we can detect filament in gate area
+                        found = self.mmu.check_filament_in_gate()
                         if not found:
                             # Push filament into view of the gate endstop
                             self.servo_down()

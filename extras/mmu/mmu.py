@@ -5174,9 +5174,9 @@ class Mmu:
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=silent)
 
         # Somewhere in extruder
-        elif filament_detected and can_heat and self._check_filament_still_in_extruder(): # Encoder based
+        elif filament_detected and can_heat and self.check_filament_still_in_extruder(): # Encoder based
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
-        elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self._check_filament_still_in_extruder():
+        elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self.check_filament_still_in_extruder():
             # This case adds an additional encoder based test to see if filament is still being gripped by extruder
             # even though TS doesn't see it. It's a pedantic option so on turned on by strict flag
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
@@ -5207,7 +5207,18 @@ class Mmu:
             self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if detected else "not detected"))
         if detected is None:
             self.log_debug("No sensors configured!")
-            detected = False # Don't expect to get here but assume no filament
+        return detected
+
+    # Check for filament at currently selected gate
+    def check_filament_in_gate(self):
+        self.log_debug("Checking for filament at gate...")
+        detected = self.sensor_manager.check_any_sensors_before(self.FILAMENT_POS_HOMED_GATE, self.gate_selected)
+        if not detected and self.has_encoder():
+            self.selector.filament_drive()
+            detected = self.buzz_gear_motor()
+            self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if detected else "not detected"))
+        if detected is None:
+            self.log_debug("No sensors configured!")
         return detected
 
     # Return True if filament runout detected by sensors
@@ -5221,8 +5232,23 @@ class Mmu:
             runout = not detected
         if runout is None:
             self.log_debug("No sensors configured!")
-            runout = False # Don't expect to get here but assume not runout
         return runout
+
+    # Requires encoder: Check for filament in extruder by moving extruder motor. Even with toolhead
+    # sensor this can happen if the filament is in the short distance from sensor to gears.
+    def check_filament_still_in_extruder(self):
+        detected = None
+        if self.has_encoder() and not self.mmu_machine.filament_always_gripped:
+            self.log_debug("Checking for possibility of filament still in extruder gears...")
+            self._ensure_safe_extruder_temperature(wait=False)
+            self.selector.filament_release()
+            move = self.encoder_move_step_size
+            _,_,measured,_ = self.trace_filament_move("Checking extruder", -move, speed=self.extruder_unload_speed, motor="extruder")
+            detected = measured > self.encoder_min
+            self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
+        if detected is None:
+            self.log_debug("No sensors configured!")
+        return detected
 
     # Retract the filament by the extruder stepper only and see if we do not have any encoder movement
     # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
@@ -5236,20 +5262,6 @@ class Mmu:
             detected = measured > self.encoder_min
             self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
             return detected, measured
-
-    # Requires encoder: Check for filament in extruder by moving extruder motor. Even with toolhead
-    # sensor this can happen if the filament is in the short distance from sensor to gears.
-    def _check_filament_still_in_extruder(self):
-        if self.has_encoder() and not self.mmu_machine.filament_always_gripped:
-            self.log_debug("Checking for possibility of filament still in extruder gears...")
-            self._ensure_safe_extruder_temperature(wait=False)
-            self.selector.filament_release()
-            move = self.encoder_move_step_size
-            _,_,measured,_ = self.trace_filament_move("Checking extruder", -move, speed=self.extruder_unload_speed, motor="extruder")
-            detected = measured > self.encoder_min
-            self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
-            return detected
-        return False
 
     def buzz_gear_motor(self):
         if self.has_encoder():
