@@ -60,6 +60,9 @@ class VirtualSelector:
     def handle_ready(self):
         pass
 
+    def handle_disconnect(self):
+        pass
+
     def home(self, tool = None, force_unload = None):
         pass
 
