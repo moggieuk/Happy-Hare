@@ -86,7 +86,7 @@ WARNING="${B_YELLOW}"
 PROMPT="${CYAN}"
 DIM="${PURPLE}"
 INPUT="${OFF}"
-SECTION="----------\n"
+SECTION="----------------\n"
 
 get_logo() {
     caption=$1
@@ -671,7 +671,6 @@ copy_config_files() {
     fi
 
     _hw_additional_pins=
-
     if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
         for i in $(seq 0 $(expr $_hw_num_gates - 1)); do
             espooler_pins="    MMU_DC_MOT_$(expr $i + 1)_EN={spooler_en_${i}_pin},\n"
@@ -1092,11 +1091,13 @@ prompt_yn() {
         read -n1 -p "$@ (y/n)? " yn
         case "${yn}" in
             Y|y)
-                echo "y" 
-                break;;
+                echo -n "y" 
+                break
+                ;;
             N|n)
-                echo "n" 
-                break;;
+                echo -n "n" 
+                break
+                ;;
             *)
                 ;;
         esac
@@ -1141,7 +1142,6 @@ prompt_option() {
         echo "$i) $val"
     done
     REPLY=$(prompt_123 "$query" "$#")
-    echo
     declare -g $var_name="${!REPLY}"
 }
 
@@ -1386,7 +1386,6 @@ questionaire() {
             _hw_sel_hold_current=0.1
 
             # This isn't meant to be all-inclusive of options. It is just to provide a config starting point that is close
-            echo
             echo -e "${PROMPT}${SECTION}Which of these most closely resembles your MMU design (this allows for some tuning of config files)?{$INPUT}"
             OPTIONS=() # reset option array
             option TYPE_A_WITH_ENCODER                          'Type-A (selector) with Encoder'
@@ -1467,12 +1466,10 @@ questionaire() {
             ;;
         esac
 
-    echo
     echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
     _hw_num_gates=$(prompt_123 "Number of gates")
 
     _hw_brd_type="unknown"
-    echo
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
     # Perhaps consider just supporting the BTT MMB (and eventually AFC) when mmu_vendor is BoxTurtle
     # as many of these other boards may not work (due lack of exposed gpio)
@@ -1488,7 +1485,6 @@ questionaire() {
     option AFC_LITE_1           'AFC Lite v1.0'
     option OTHER                'Not in list / Unknown'
     prompt_option opt 'MCU Type' "${OPTIONS[@]}"
-    echo "opt=$opt"
     case $opt in
         "$MMB10")
             _hw_brd_type="MMB10"
@@ -1532,7 +1528,6 @@ questionaire() {
             ;;
     esac
 
-    echo
     for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
         if echo ${line} | grep --quiet "${pattern}"; then
             echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${_hw_brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
@@ -1561,7 +1556,6 @@ questionaire() {
         eval PIN[${_hw_brd_type},encoder_pin]=""
     fi
 
-    echo
     echo -e "${PROMPT}${SECTION}Would you like to have neopixel LEDs setup now for your MMU?${INPUT}"
     yn=$(prompt_yn "Enable LED support?")
     echo
@@ -1575,7 +1569,6 @@ questionaire() {
     esac
 
     if [ "${HAS_SELECTOR}" == "yes" ]; then
-        echo
         echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
         echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers. Can configure later${INPUT}"
         yn=$(prompt_yn "Enable selector touch operation")
@@ -1603,7 +1596,6 @@ questionaire() {
             _hw_maximum_pulse_width=0.00215
             _param_servo_always_active=0
 
-            echo
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
             OPTIONS=()
             option MG90S    'MG-90S'
@@ -1650,7 +1642,6 @@ questionaire() {
             _hw_maximum_pulse_width=0.00220
             _param_servo_always_active=1
 
-            echo
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
             OPTIONS=()
             option TRADRACK_BOM 'PS-1171MG or FT1117M (Tradrack)'
@@ -1681,7 +1672,6 @@ questionaire() {
     fi
 
     if [ "${HAS_ENCODER}" == "yes" ]; then
-        echo
         echo -e "${PROMPT}${SECTION}Clog detection? This uses the MMU encoder movement to detect clogs and can call your filament runout logic${INPUT}"
         yn=$(prompt_yn "Enable clog detection")
         echo
@@ -1703,7 +1693,6 @@ questionaire() {
         _param_enable_clog_detection=0
     fi
 
-    echo
     echo -e "${PROMPT}${SECTION}EndlessSpool? This uses filament runout detection to automate switching to new spool without interruption${INPUT}"
     yn=$(prompt_yn "Enable EndlessSpool")
     echo
@@ -1716,7 +1705,6 @@ questionaire() {
             ;;
     esac
 
-    echo
     echo -e "${PROMPT}${SECTION}Finally, would you like me to include all the MMU config files into your ${PRINTER_CONFIG} file${INPUT}"
     yn=$(prompt_yn "Add include?")
     echo
