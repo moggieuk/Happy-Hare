@@ -1848,23 +1848,39 @@ class Mmu:
         if config:
             self.calibrated_bowden_length = self._get_bowden_length(self.gate_selected) # Temp scalar pulled from list
             msg += "\n\nLoad Sequence:"
+
+            # Gate loading
             msg += "\n- Filament loads into gate by homing a maximum of %s to %s" % (self._f_calc("gate_homing_max"), self._gate_homing_string())
 
+            # Bowden loading
             if self.mmu_machine.require_bowden_move:
-                msg += "\n- Bowden is loaded with a fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length"))
+                if self._must_home_to_extruder() and self.extruder_homing_endstop not in [self.ENDSTOP_EXTRUDER_COLLISION, self.ENDSTOP_EXTRUDER_NONE]:
+                    if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY:
+                        msg += "\n- Bowden is loaded with a fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length - toolhead_entry_to_extruder - extruder_homing_buffer"))
+                    else:
+                        msg += "\n- Bowden is loaded with a fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length - extruder_homing_buffer"))
+                else:
+                    msg += "\n- Bowden is loaded with a full fast%s %s move" % (" CORRECTED" if self.bowden_apply_correction else "", self._f_calc("calibrated_bowden_length"))
             else:
                 msg += "\n- No fast bowden move is required"
+
+            # Extruder homing
             if self._must_home_to_extruder():
                 if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_COLLISION:
                     msg += ", then homes to extruder using COLLISION detection (at %d%% current)" % self.extruder_collision_homing_current
+                elif self.extruder_homing_endstop == self.ENDSTOP_GEAR_TOUCH:
+                    msg += ", then homes a maxium of %s to extruder using 'touch' (stallguard) detection" % self._f_calc("extruder_homing_max")
                 else:
-                    if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_NONE:
-                        msg += ", no extruder homing is performed!"
-                    else:
-                        msg += ", then homes to extruder using ENDSTOP '%s'" % self.extruder_homing_endstop
-                    if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY:
-                        msg += " and then moves %s to extruder extrance" % self._f_calc("toolhead_entry_to_extruder")
+                    msg += ", then homes a maximum of %s to %s SENSOR" % (self._f_calc("extruder_homing_max"), self.extruder_homing_endstop.upper())
+                if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY:
+                    msg += " and then moves %s to extruder extrance" % self._f_calc("toolhead_entry_to_extruder")
+            else:
+                if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_NONE and not self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
+                    msg += ". WARNING: no extruder homing is performed - extruder loading cannot be precise"
+                else:
+                    msg += ", no extruder homing is necessary"
 
+            # Extruder loading
             if self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
                 msg += "\n- Extruder (synced) loads by homing a maximum of %s to TOOLHEAD SENSOR before moving the last %s to the nozzle" % (self._f_calc("toolhead_homing_max"), self._f_calc("toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining"))
             else:
@@ -1873,11 +1889,14 @@ class Mmu:
                 msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
 
             msg += "\n\nUnload Sequence:"
+
+            # Tip forming
             msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), " after initial retraction of %s" % self._f_calc("toolchange_retract")))
             msg += " and tip forming extruder current is %d%%" % self.extruder_form_tip_current
 
             msg += "\n- An estimated %s of filament is left in extruder (filament_remaining = tip-cutting fragment)" % self._f_calc("toolhead_residual_filament + filament_remaining")
 
+            # Extruder unloading
             if self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
                 msg += "\n- Extruder (synced) unloads by reverse homing a maximum of %s to EXTRUDER SENSOR" % self._f_calc("toolhead_entry_to_extruder + toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
             elif self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD):
@@ -1886,6 +1905,7 @@ class Mmu:
             else:
                 msg += "\n- Extruder (optionally synced) unloads by moving %s less tip-cutting reported park position to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
 
+            # Bowden unloading
             if self.mmu_machine.require_bowden_move:
                 if self.has_encoder() and self.bowden_pre_unload_test and not self.sensor_manager.has_sensor(self.ENDSTOP_EXTRUDER_ENTRY):
                     msg += "\n- Bowden is unloaded with a short %s validation move before %s fast move" % (self._f_calc("encoder_move_step_size"), self._f_calc("calibrated_bowden_length - gate_unload_buffer - encoder_move_step_size"))
@@ -1894,6 +1914,7 @@ class Mmu:
             else:
                 msg += "\n- No fast bowden move is required"
 
+            # Gate parking
             msg += "\n- Filament is stored by homing a maximum of %s to %s and parking %s in the gate\n" % (self._f_calc("gate_homing_max"), self._gate_homing_string(), self._f_calc("gate_parking_distance"))
 
             if self.sync_form_tip or self.sync_to_extruder:
@@ -2156,7 +2177,7 @@ class Mmu:
     # Bowden calibration - Method 2
     # Automatic one-shot homing calibration from gate to extruder entry sensor
     #   bowden_length = actual_moved + toolhead_entry_to_extruder
-    def _calibrate_bowden_length_to_extruder_sensor(self, extruder_homing_max): # PAUL should be better named and include "touch" homing support
+    def _calibrate_bowden_length_to_extruder_sensor(self, extruder_homing_max): # TODO should be better named and include "touch" homing support
         try:
             self.log_always("Calibrating bowden length for gate %d (automatic method) using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
             self._initialize_filament_position(dwell=True)
@@ -3301,7 +3322,7 @@ class Mmu:
         self.filament_direction = direction
 
     def _must_home_to_extruder(self):
-        return self.extruder_force_homing or not self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD)
+        return self.extruder_force_homing or (not self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD) and self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER_NONE)
 
     def check_if_disabled(self):
         if not self.is_enabled:
@@ -3417,7 +3438,7 @@ class Mmu:
         return False
 
     def _gate_homing_string(self):
-        return "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "ENDSTOP '%s'" % self.gate_homing_endstop
+        return "ENCODER" if self.gate_homing_endstop == self.ENDSTOP_ENCODER else "%s SENSOR" % self.gate_homing_endstop
 
     def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
         extruder = self.printer.lookup_object(self.extruder_name)
@@ -4108,13 +4129,12 @@ class Mmu:
         # Compensate for distance already moved (e.g. overshoot after encoder based gate homing)
         length -= (self._get_filament_position() - self.gate_parking_distance)
 
+        # Reduce by buffer amount to ensure we don't overshoot homing sensor
         if full:
-            if not(self.sensor_manager.has_sensor(self.ENDSTOP_TOOLHEAD) and not self.extruder_force_homing):
-                # Reduce to compensate for distance from extruder sensor to gear if homing to sensor
+            if self._must_home_to_extruder() and self.extruder_homing_endstop not in [self.ENDSTOP_EXTRUDER_COLLISION, self.ENDSTOP_EXTRUDER_NONE]:
+                length -= self.extruder_homing_buffer
+                # Further reduce to compensate for distance from extruder sensor to gear
                 length -= self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.ENDSTOP_EXTRUDER_ENTRY else 0
-            
-                # Reduce by buffer used to ensure we don't overshoot unless not homing
-                length -= self.extruder_homing_buffer if self.extruder_homing_endstop != self.ENDSTOP_EXTRUDER_NONE else 0
 
         if length > 0:
             self.log_debug("Loading bowden tube")
