@@ -303,7 +303,7 @@ sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when synci
 #
 sync_feedback_enable: 0			# 0 = Turn off (even with fitted sensor), 1 = Turn on
 sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
-sync_multipler_low: 0.95		# Minimum factor to apply
+sync_multiplier_low: 0.95		# Minimum factor to apply
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------
