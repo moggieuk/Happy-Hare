@@ -375,7 +375,7 @@ class Mmu:
             self.sync_form_tip = 1
 
         self.sync_multiplier_high = config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
-        self.sync_multiplier_low = config.getfloat('sync_multipler_low', 0.95, minval=0.5, maxval=1.)
+        self.sync_multiplier_low = config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
         self.sync_feedback_enable = config.getint('sync_feedback_enable', 0, minval=0, maxval=1)
 
         # TMC current control
