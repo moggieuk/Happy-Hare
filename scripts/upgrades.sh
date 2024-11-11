@@ -66,7 +66,7 @@ upgrade_2_72_to_3_00() {
 		local i_z_raise=$(param "${sec}" "variable_iterations_z_raise")
 		local i_z_change=$(param "${sec}" "variable_iteration_z_change")
 		local max_i_length=$(param "${sec}" "variable_max_iteration_length")
-		local triangulated=$(calc "${max_i_per_blob} (${max_i_per_blob} - 1) / 2")
+		local triangulated=$(calc "${max_i_per_blob} * (${max_i_per_blob} - 1) / 2")
 
 		set_param "${sec}" "variable_z_raise" "$(calc "${i_z_raise} * ${max_i_per_blob} - ${triangulated} * ${i_z_change}")"
 		set_param "${sec}" "variable_purge_length_maximum" "$(calc "${max_i_length} * ${max_i_per_blob}")"
