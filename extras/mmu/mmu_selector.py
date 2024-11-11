@@ -60,12 +60,15 @@ class VirtualSelector:
     def handle_ready(self):
         pass
 
+    def handle_disconnect(self):
+        pass
+
     def home(self, tool = None, force_unload = None):
         pass
 
     def select_gate(self, gate):
         #self.mmu.log_error("PAUL TEMP: -------selector.select_gate(%d)%s" % (gate, " - IGNORED" if gate == self.mmu.gate_selected else ""))
-        if gate == self.mmu.gate_selected: return
+        #if gate == self.mmu.gate_selected: return # TODO: there appears to be a corner case where this fails, so for now always select
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync new MMU gear stepper now if design requires it
@@ -624,8 +627,8 @@ class LinearSelector:
                         self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
                         self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
 
-                        # See if we can detect filament in the encoder
-                        found = self.mmu.check_filament_at_gate()
+                        # See if we can detect filament in gate area
+                        found = self.mmu.check_filament_in_gate()
                         if not found:
                             # Push filament into view of the gate endstop
                             self.servo_down()

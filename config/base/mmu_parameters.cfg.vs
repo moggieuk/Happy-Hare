@@ -164,13 +164,18 @@ bowden_pre_unload_error_tolerance: 50
 #
 # Possible homing_endtop names:
 #   collision      - Detect the collision with the extruder gear by monitoring encoder movement (Requires encoder)
+#                    Fast bowden load will move to the extruder gears
 #   mmu_gear_touch - Use touch detection when the gear stepper hits the extruder (Requires stallguard)
+#                    Fast bowden load will move to extruder_homing_buffer distance before extruder gear
 #   extruder       - If you have a "filament entry" endstop configured (Requires 'extruder' endstop)
-#   none           - Don't attempt to home. Only possibiliy if lacking all sensor options (not recommended)
+#                    Fast bowden load will move to extruder_homing_buffer distance before sensor
+#   none           - Don't attempt to home. Only possibiliy if lacking all sensor options
+#                    Fast bowden load will move to the extruder gears. Fine if using toolhead sensor
 # Note: The homing_endstop will be ignored if a toolhead sensor is available unless `extruder_force_homing: 1`
 #
 extruder_homing_max: 80			# Maximum distance to advance in order to attempt to home the extruder
 extruder_homing_endstop: collision	# Filament homing method/endstop name (fallback if toolhead sensor not available)
+extruder_homing_buffer: 30		# Amount to reduce the fast bowden load so filament doesn't overshoot the extruder homing point
 extruder_collision_homing_current: 30	# % gear_stepper current (10%-100%) to use when homing to extruder homing (100 to disable)
 
 # In the absence of a toolhead sensor Happy Hare will automatically default to extruder entrance detection regardless
@@ -289,9 +294,7 @@ slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder 
 # If equipped with TMC drivers the current of the gear and extruder motors can be controlled to optimize performance.
 # This can be useful to control gear stepper temperature when printing with synchronized motor
 #
-sync_to_extruder: 0			# Gear motor is synchronized to extruder during print
 sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
-sync_form_tip: 0			# Synchronize during standalone tip formation (initial part of unload)
 
 # Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
 # extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
@@ -480,6 +483,7 @@ update_bit_max_time: 1		# 1 = Increase BIT_MAX_TIME, 0 = Leave the klipper defau
 #
 # 'pause_macro' defines what macro to call on MMU error (must put printer in paused state)
 # Other macros are detailed in 'mmu_sequence.cfg'
+# Also see form_tip_macro in Tip Forming section
 #
 pause_macro: PAUSE 					# What macro to call to pause the print
 action_changed_macro: _MMU_ACTION_CHANGED		# Called when action (printer.mmu.action) changes
@@ -492,6 +496,8 @@ pre_load_macro: _MMU_PRE_LOAD				# Called before starting the load
 post_load_macro: _MMU_POST_LOAD				# Called after the load is complete
 unload_sequence_macro: _MMU_UNLOAD_SEQUENCE		# VERY ADVANCED: Optionally called based on 'gcode_unload_sequence'
 load_sequence_macro: _MMU_LOAD_SEQUENCE			# VERY ADVANCED: Optionally called based on 'gcode_load_sequence'
+espooler_start_macro: ''				# Called to start eSpooler if fitted (params: GATE, STEP_SPEED, MAX_DISTANCE, HOMING)
+espooler_stop_macro: ''					# Called to stop eSpooler if fitted (params: GATE, DISTANCE)
 
 
 # ADVANCED: See documentation for use of these -----------------------------------------------------------------------
