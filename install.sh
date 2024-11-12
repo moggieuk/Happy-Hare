@@ -477,11 +477,14 @@ read_previous_config() {
     cfg="mmu_hardware.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
     if [ -f "${dest_cfg}" ]; then
-        _hw_num_gates=$(sed -n 's/^[[:space:]]*num_gates:[[:space:]]*\([0-9]\+\).*/\1/p' "${dest_cfg}")
+        _hw_num_gates=$(sed -n 's/^[[:space:]]*num_gates:[[:space:]]*\([0-9]\{1,\}\)[[:space:]]*.*$/\1/p' "${dest_cfg}")
     fi
 
     cfg="mmu_parameters.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
+    if [ -f "${dest_cfg}" -a "$_hw_num_gates" == "" ]; then
+        _hw_num_gates=$(sed -n 's/^[[:space:]]*mmu_num_gates[:=][[:space:]]*\([0-9]\{1,\}\)[[:space:]]*.*$/\1/p' "${dest_cfg}")
+    fi
 
     if [ ! -f "${dest_cfg}" ]; then
         echo -e "${WARNING}No previous ${cfg} found. Will install default"
@@ -638,11 +641,20 @@ mmu_version: ${_param_mmu_version}			# MMU hardware version number (add mod suff
 
 EOF
 )
-        awk -v block="$new_section" '
+        temp_file=$(mktemp)
+        echo "$new_section" > "$temp_file"
+        awk '
             BEGIN { found = 0 }
-            /^[[:space:]]*$/ && !found { print; print block; found = 1; next }
+            /^[[:space:]]*$/ && !found {
+                print
+                while ((getline line < "'"$temp_file"'") > 0) print line
+                close("'"$temp_file"'")
+                found = 1
+                next
+            }
             { print }
-        ' "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+        ' "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
+        rm "$temp_file"
 
         echo -e "${INFO}Added new [mmu_machine] section to mmu_hardware.cfg..."
     fi
@@ -1889,7 +1901,7 @@ verify_not_root
 }
 check_octoprint
 verify_home_dirs
-check_klipper
+#check_klipper
 cleanup_old_klippy_modules
 
 if [ "$UNINSTALL" -eq 0 ]; then
@@ -1937,7 +1949,8 @@ if [ "$UNINSTALL" -eq 0 ]; then
     fi
     _param_happy_hare_version=${VERSION}
 
-    copy_config_files        # Copy config files updating from in memory parmameters or h/w settings
+    # Copy config files updating from in memory parmameters or h/w settings
+    copy_config_files
 
     # Special upgrades of mmu_hardware.cfg
     upgrade_mmu_hardware
