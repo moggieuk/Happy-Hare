@@ -1901,7 +1901,7 @@ verify_not_root
 }
 check_octoprint
 verify_home_dirs
-#check_klipper
+check_klipper
 cleanup_old_klippy_modules
 
 if [ "$UNINSTALL" -eq 0 ]; then
