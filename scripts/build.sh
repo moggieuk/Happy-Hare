@@ -662,9 +662,9 @@ install_printer_includes() {
     fi
 
     if [ "${CONFIG_INSTALL_ESPOOLER}" == "y" ]; then
-        install_include "mmu/addons/dc_respooler.cfg" "${dest}"
+        install_include "mmu/addons/dc_espooler.cfg" "${dest}"
     else
-        uninstall_include "mmu/addons/dc_respooler.cfg" "${dest}"
+        uninstall_include "mmu/addons/dc_espooler.cfg" "${dest}"
     fi
 
     install_include "mmu/base/\*.cfg" "${dest}"
@@ -680,7 +680,7 @@ uninstall_printer_includes() {
         'mmu/optional/client_macros.cfg' \
         'mmu/addons/mmu_erec_cutter.cfg' \
         'mmu/addons/blobifier.cfg' \
-        'mmu/addons/respooler.cfg' \
+        'mmu/addons/dc_espooler.cfg' \
         'mmu_software.cfg' \
         'mmu_sequence.cfg' \
         'mmu_cut_tip.cfg' \
