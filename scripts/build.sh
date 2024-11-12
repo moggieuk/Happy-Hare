@@ -221,10 +221,31 @@ delete_section() {
 insert_after_section() {
     local start_section=$1
     local end_section=$2
-    local insert="${3//$'\n'/\\ \\n}" # Add command split at every newline
+    local insert="${3//$'\n'/\\ \\n}" # Add command split at every newline for sed
     local file=$4
 
-    sed -i "/^${start_section}/,/^${end_section}/!b; /^${end_section}/ a ${insert}" "${file}"
+    sed -i -e "/^${start_section}/,/^${end_section}/ !b; $ b wnl; /^${end_section}/ b nonl; b" \
+        -e ":wnl a \ " \
+        -e ":nonl a ${insert}" \
+        "${file}"
+}
+
+# Selects a section from start_section to end_section (exclusive) and duplicates it end_range - start_range times replacing any start_range number with the current range number
+duplicate_section() {
+    local start_section=$1
+    local end_section=$2
+    local start_range=$3
+    local end_range=$4
+    local file=$5
+
+    local section_to_duplicate="$(select_section "${start_section}" "${end_section}" "${file}")\\n\\n"
+
+    local duplicated_sections=""
+    for ((i = start_range + 1; i <= end_range; i++)); do
+        duplicated_sections+="${section_to_duplicate//${start_range}/${i}}"
+    done
+
+    insert_after_section "${start_section}" "${end_section}" "${duplicated_sections}" "${file}"
 }
 
 comment_section() {
@@ -366,7 +387,7 @@ update_file() {
 
 # Pull parameters from previous installation
 read_previous_config() {
-    for cfg in mmu_parameters.cfg mmu_hardware.cfg mmu_macro_vars.cfg; do
+    for cfg in mmu.cfg mmu_parameters.cfg mmu_hardware.cfg mmu_macro_vars.cfg; do
         local dest_cfg=${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
         if [ -f "${dest_cfg}" ]; then
             parse_file "${dest_cfg}"
@@ -430,30 +451,60 @@ process_upgrades() {
 
 copy_config_files() {
     # Now substitute tokens using given brd_type and Kconfig starting values
-
     local filename=${1##*/}
-    local src=${1}
-    local dest=${2}
+    local src=$1
+    local dest=$2
 
     local sed_expr=""
 
-    # Hardware files: Special token substitution -----------------------------------------
-    if [ "${filename}" == "mmu.cfg" ] || [ "${filename}" == "mmu_hardware.cfg" ]; then
-        local sed_expr=""
-        for var in $(declare | grep '^CONFIG_HW_'); do
-            local var=${var%%=*}
-            local pattern="{${var#CONFIG_HW_}}"
-            sed_expr+="s|${pattern,,}|${!var}|g; "
-        done
+    local files_to_copy="mmu.cfg mmu_hardware.cfg mmu_parameters.cfg mmu_macro_vars.cfg mmu_vars.cfg"
+    if [[ ! "${files_to_copy}" =~ (^| )${filename}( |$) ]] && [[ ! ${src#"${SRC}"/config/} =~ ^addons/ ]]; then
+        # File doesn't need to be changed/copied
+        return
+    fi
 
-        for var in $(declare | grep "^CONFIG_PIN_"); do
-            local var=${var%%=*}
-            local pattern="{${var#CONFIG_}}"
-            sed_expr+="s|${pattern,,}|${!var}|g; "
-        done
+    if [[ "${filename}" =~ ^my_ ]]; then
+        # Skip files that start with 'my_' used in development/testing
+        return
+    fi
 
+    cp --remove-destination "${src}" "${dest}"
+
+    local sed_expr=""
+    for var in $(declare | grep '^CONFIG_HW_'); do
+        local var=${var%%=*}
+        local pattern="{${var#CONFIG_HW_}}"
+        sed_expr+="s|${pattern,,}|${!var}|g; "
+    done
+
+    for var in $(declare | grep "^CONFIG_PIN_"); do
+        local var=${var%%=*}
+        local pattern="{${var#CONFIG_}}"
+        sed_expr+="s|${pattern,,}|${!var}|g; "
+    done
+
+    for var in $(declare | grep "^CONFIG_PARAM_"); do
+        local var=${var%%=*}
+        local pattern="{${var#CONFIG_PARAM_}}"
+        sed_expr+="s|${pattern,,}|${!var}|g; "
+    done
+
+    local num_gates=${CONFIG_HW_NUM_GATES}
+    if has_param "[mmu_machine]" "num_gates"; then
+        # When a pre-existing num_gates is found, use it
+        num_gates=$(param "[mmu_machine]" "num_gates")
+    fi
+
+    if [ "${filename}" == "mmu.cfg" ]; then
         sed_expr+="s|{pin_.*}||g; " # Remove any remaining unprocessed pin tokens
+        if [ "${CONFIG_MMU_HAS_SELECTOR}" != "y" ]; then
+            duplicate_section "[[:space:]]*MMU_GEAR_UART_1" "$" "1" "${num_gates} - 1" "${dest}"
+        else
+            delete_section "[[:space:]]*MMU_GEAR_UART_1" "$" "${dest}"
+        fi
+    fi
 
+    if [ "${filename}" == "mmu_hardware.cfg" ]; then
         # Correct shared uart_address for EASY-BRD
         if [ "${CONFIG_HW_MMU_BOARD_TYPE}" == "EASY-BRD" ]; then
             # Share uart_pin to avoid duplicate alias problem
@@ -463,12 +514,6 @@ copy_config_files() {
             sed_expr+="/^uart_address:/ d; "
         fi
 
-        cp --remove-destination "${src}" "${dest}"
-        sed -i "${sed_expr}" "${dest}"
-        update_file "${dest}"
-    fi
-
-    if [ "${filename}" == "mmu_hardware.cfg" ]; then
         if [ "${CONFIG_ENABLE_SELECTOR_TOUCH}" == "y" ]; then
             uncomment_section "#diag_pin: ^mmu:MMU_GEAR_DIAG" "$" "${dest}"
             uncomment_section "#extra_endstop_pins" "$" "${dest}"
@@ -476,48 +521,30 @@ copy_config_files() {
         fi
 
         # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
-        if [ "${filename}" == "mmu_hardware.cfg" ] && [ "${CONFIG_ENABLE_LED}" != "y" ]; then
+        if [ "${CONFIG_ENABLE_LED}" != "y" ]; then
             comment_section "\[neopixel mmu_leds\]" "$" "${dest}"
             comment_section "\[mmu_leds\]" "$" "${dest}"
         fi
 
         # Handle Encoder option - Delete if not required (section is 25 lines long)
-        if [ "${filename}" == "mmu_hardware.cfg" ] && [ "${CONFIG_MMU_HAS_ENCODER}" != "y" ]; then
+        if [ "${CONFIG_MMU_HAS_ENCODER}" != "y" ]; then
             delete_section "# ENCODER" "# FILAMENT SENSORS" "${dest}"
         fi
         # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
-        if [ "${filename}" == "mmu_hardware.cfg" ] && [ "${CONFIG_MMU_HAS_SELECTOR}" != "y" ]; then
+        if [ "${CONFIG_MMU_HAS_SELECTOR}" != "y" ]; then
             delete_section "# SELECTOR SERVO" "# OPTIONAL GANTRY" "${dest}"
             delete_section "# SELECTOR STEPPER" "# SERVOS" "${dest}"
 
-            additional_gear_section_tmc="$(select_section "\[tmc2209 stepper_mmu_gear_1\]" "$" "${dest}")\n"
-            additional_gear_section_stepper="$(select_section "\[stepper_mmu_gear_1\]" "$" "${dest}")\n"
-
-            gear_sections=""
-            for ((i = 2; i <= $(calc "${CONFIG_HW_NUM_GATES} - 1"); i++)); do
-                gear_sections+="${additional_gear_section_tmc//_1/_${i}}\n"
-                gear_sections+="${additional_gear_section_stepper//_1/_${i}}\n"
-            done
-
-            insert_after_section "\[stepper_mmu_gear_1\]" "$" "${gear_sections}" "${dest}"
+            duplicate_section "\[tmc2209 stepper_mmu_gear_1\]" "$" "1" "${num_gates} - 1" "${dest}"
+            duplicate_section "\[stepper_mmu_gear_1\]" "$" "1" "${num_gates} - 1" "${dest}"
         else
             # Delete additional gear drivers template section
             delete_section "# ADDITIONAL FILAMENT DRIVE" "# SELECTOR STEPPER" "${dest}"
         fi
-
     fi
 
     # Conifguration parameters -----------------------------------------------------------
     if [ "${filename}" == "mmu_parameters.cfg" ]; then
-        for var in $(declare | grep "^CONFIG_PARAM_"); do
-            local var=${var%%=*}
-            local pattern="{${var#CONFIG_PARAM_}}"
-            sed_expr+="s|${pattern,,}|${!var}|g; "
-        done
-
-        cp --remove-destination "${src}" "${dest}"
-        sed -i "${sed_expr}" "${dest}"
-        update_file "${dest}"
         # Ensure that supplemental user added params are retained. These are those that are
         # by default set internally in Happy Hare based on vendor and version settings but
         # can be overridden.  This set also includes a couple of hidden test parameters.
@@ -539,47 +566,20 @@ copy_config_files() {
             done
         } >>"${dest}"
 
-        # If any params are still left warn the user because they will be lost (should have been upgraded)
-        for key in $(param_keys_for "[mmu]"); do
-            log_warning "Following parameter is deprecated and has been removed: [mmu] ${key#*,} = ${PARAMS[$key]}"
-        done
     fi
 
     # Variables macro ---------------------------------------------------------------------
     if [ "${filename}" == "mmu_macro_vars.cfg" ]; then
-        cp --remove-destination "${src}" "${dest}" # Overwrite the symbolic link first
-        local tx_macros=""
-        if has_param "[mmu_machine]" "num_gates"; then
-            num_gates=$(param "[mmu_machine]" "num_gates")
-        else
-            num_gates=${CONFIG_HW_NUM_GATES}
-        fi
-
-        for ((i = 0; i <= $(calc "${num_gates} - 1"); i++)); do
-            tx_macros+="[gcode_macro T${i}]\n"
-            tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
-        done
-
-        replace_placeholder "tx_macros" "${tx_macros}" "${dest}"
-        update_file "${dest}"
-    fi
-    # done
-
-    if [ "${filename}" == "mmu_vars.cfg" ]; then
-        cp --remove-destination "${src}" "${dest}"
+        duplicate_section "\[gcode_macro T0\]" "$" "0" "${num_gates} - 1" "${dest}"
     fi
 
-    # Addon config files are always copied (and updated) so they can be edited ----------------
-    # Skipping files with 'my_' prefix for development
-    if [[ ${src#"${OUT}"/config/} =~ ^addons ]]; then
-        # for file in config/addons/*.cfg; do
-        if [[ ! "${filename}" =~ (^my_|_hw\.cfg.*$) ]]; then
-            cp --remove-destination "${src}" "${dest}" # Overwrite the symbolic link first
-            log_info "Installing configuration file ${file}"
-            update_file "${dest}"
-        fi
+    sed -i "${sed_expr}" "${dest}"
+    update_file "${dest}"
 
-    fi
+    # If any params are still left warn the user because they will be lost (should have been upgraded)
+    for key in $(param_keys_for "[mmu]"); do
+        log_warning "Following parameter is deprecated and has been removed: [mmu] ${key#*,} = ${PARAMS[$key]}"
+    done
 }
 
 install_include() {
@@ -829,6 +829,10 @@ set_extra_parameters() {
         [ "${CONFIG_HW_EXT_BINKY}" == "y" ] && CONFIG_HW_MMU_VERSION+="e"
     fi
 
+    if has_param "[mmu_machine]" "num_gates"; then
+        CONFIG_HW_NUM_GATES=$(param "[mmu_machine]" "num_gates")
+    fi
+
     CONFIG_HW_NUM_LEDS=$(calc "${CONFIG_HW_NUM_GATES} * 2 + 1")
     CONFIG_HW_NUM_LEDS_MINUS1=$(calc "${CONFIG_HW_NUM_LEDS} - 1")
     CONFIG_HW_NUM_GATES_PLUS1=$(calc "${CONFIG_HW_NUM_GATES} + 1")
@@ -840,10 +844,8 @@ build() {
     log_info "Building file ${out}..."
 
     read_previous_config
-    local current_version=$(param "[mmu]" "happy_hare_version")
-
+    process_upgrades "$(param "[mmu]" "happy_hare_version")"
     set_extra_parameters
-    process_upgrades "${current_version}"
     copy_config_files "$src" "$out"
 }
 
