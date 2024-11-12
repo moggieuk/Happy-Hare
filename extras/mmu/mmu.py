@@ -27,7 +27,7 @@ from extras.mmu_sensors  import MmuRunoutHelper
 # MMU subcomponent clases
 from .mmu_shared         import *
 from .mmu_logger         import MmuLogger
-from .mmu_selector       import VirtualSelector, LinearSelector
+from .mmu_selector       import VirtualSelector, LinearSelector, DigitalSelector
 from .mmu_test           import MmuTest
 from .mmu_utils          import DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager import MmuSensorManager

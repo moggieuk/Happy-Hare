@@ -30,6 +30,109 @@ from extras import mmu_machine
 # MMU subcomponent clases
 from .mmu_shared import MmuError
 
+################################################################################
+# Digital Selector
+# Implements digital selector for type-B MMU's with single gear driver
+################################################################################
+
+class DigitalSelector:
+
+    def __init__(self, mmu):
+        self.mmu = mmu
+        self.is_homed = True
+
+        # Read all controller parameters related to selector or servo to stop klipper complaining. This
+        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
+        self.select_tool_macro = mmu.config.get('select_tool_macro')
+        self.num_switches = mmu.config.getint('select_tool_num_switches', minval=0)
+
+        max_num_tools = 2**self.num_switches
+        if mmu.num_gates > max_num_tools:
+            raise mmu.config.error(f'Maximum number of allowed tools is {max_num_tools}, but {mmu.num_gates} are present.')
+
+        self.printer = mmu.printer
+        self.gcode = self.printer.lookup_object('gcode')
+        # raise Exception(f'Digital: {self.select_tool_macro}')
+        for option in ['selector_', 'servo_', 'cad_']:
+            for key in mmu.config.get_prefix_options(option):
+                _ = mmu.config.get(key)
+
+    # Selector "Interface" methods ---------------------------------------------
+
+    def reinit(self):
+        pass
+
+    def handle_connect(self):
+        self.mmu_toolhead = self.mmu.mmu_toolhead
+        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
+
+    def handle_ready(self):
+        pass
+
+    def handle_disconnect(self):
+        pass
+
+    def home(self, tool = None, force_unload = None):
+        pass
+
+    def select_gate(self, gate):
+        binary = '{0:b}'.format(gate).zfill(self.num_switches)
+        params = [f'GATE={gate}']
+        for i in range(self.num_switches):
+            char = binary[i]
+            params.append(f'S{i}={char}')
+        params = ' '.join(params)
+
+        self.gcode.run_script_from_command(f'{self.select_tool_macro} {params}')
+
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+
+    def restore_gate(self, gate):
+        #self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(%s)" % gate)
+        self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
+
+        # Sync MMU gear stepper now if design requires it
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+        #self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(END)")
+
+    def filament_drive(self):
+        pass
+
+    def filament_release(self):
+        return 0. # Encoder movement
+
+    def filament_hold(self):
+        pass
+
+    def get_filament_grip_state(self):
+        return self.mmu.FILAMENT_DRIVE_STATE
+
+    def disable_motors(self):
+        pass
+
+    def enable_motors(self):
+        pass
+
+    def buzz_motor(self, motor):
+        pass
+
+    def has_bypass(self):
+        return False
+
+    def get_status(self):
+        return {}
+
+    def get_mmu_status_config(self):
+        msg = "\nVirtual selector"
+        return msg
+
+    def set_test_config(self, gcmd):
+        pass
+
+    def get_test_config(self):
+        return ""
 
 ################################################################################
 # Virtual Selector
