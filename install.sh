@@ -1419,7 +1419,7 @@ questionaire() {
                     ;;
                 "$TYPE_A_NO_ENCODER")
                     HAS_ENCODER=no
-                    _param_gate_homing_endstop="gate"
+                    _param_gate_homing_endstop="mmu_gate"
                     _param_extruder_homing_endstop="none"
                     echo
                     echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU with selector you will need to setup some CAD dimensions in mmu_parameters.cfg... See doc"
@@ -1430,7 +1430,7 @@ questionaire() {
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
                     _hw_filament_always_gripped=1
-                    _param_gate_homing_endstop="gate"
+                    _param_gate_homing_endstop="mmu_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
                 "$TYPE_B_WITH_SHARED_GATE_AND_ENCODER")
@@ -1439,7 +1439,7 @@ questionaire() {
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
                     _hw_filament_always_gripped=1
-                    _param_gate_homing_endstop="gate"
+                    _param_gate_homing_endstop="mmu_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
                 "$TYPE_B_WITH_SHARED_GATE_NO_ENCODER")
@@ -1449,7 +1449,7 @@ questionaire() {
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
                     _hw_filament_always_gripped=1
-                    _param_gate_homing_endstop="gate"
+                    _param_gate_homing_endstop="mmu_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
                 "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER")
@@ -1472,7 +1472,7 @@ questionaire() {
                     _param_extruder_homing_endstop="none"
                     ;;
                 *)
-                    _param_gate_homing_endstop="gate"
+                    _param_gate_homing_endstop="mmu_gate"
                     _param_extruder_homing_endstop="none"
                     ;;
             esac
