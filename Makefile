@@ -1,7 +1,7 @@
 SHELL=/usr/bin/env bash
 
 # For parallel builds
-MAKEFLAGS += --jobs
+MAKEFLAGS += --jobs 16
 # kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target
 MAKEFLAGS += $(if $(findstring menuconfig,$(MAKECMDGOALS)),, --output-sync)
 # For quiet builds, override with make Q= or verbose output

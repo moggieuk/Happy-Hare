@@ -24,14 +24,14 @@ choice
     select HW_VARIABLE_ROTATION_DISTANCES
     select HW_REQUIRE_BOWDEN_MOVE
 
-    if HW_MMU_TYPE_ERCF_V1_1
-      config HW_EXT_SPRINGY
-        bool "Springy"
-      config HW_EXT_BINKY
-		    bool "Binky"
-	    config HW_EXT_TRIPLE_DECK
-		    bool "Triple Deck"
-    endif
+  if HW_MMU_TYPE_ERCF_V1_1
+    config HW_EXT_SPRINGY
+      bool "Springy"
+    config HW_EXT_BINKY
+      bool "Binky"
+    config HW_EXT_TRIPLE_DECK
+      bool "Triple Deck"
+  endif
 
   config HW_MMU_TYPE_ERCF_V2
     bool "ERCF v2.0"
@@ -45,35 +45,35 @@ choice
     select MMU_HAS_SELECTOR
     select HW_REQUIRE_BOWDEN_MOVE
 
-    if HW_MMU_TYPE_TRADRACK_V1
-      config HW_EXT_BINKY
-		  bool "Binky" 
+  if HW_MMU_TYPE_TRADRACK_V1
+    config HW_EXT_BINKY
+      bool "Binky" 
       select MMU_HAS_ENCODER
-    endif
+  endif
 
   config HW_MMU_TYPE_ANGRY_BEAVER_V1
     bool "Angry Beaver v1.0"
     select HW_VARIABLE_ROTATION_DISTANCES
-	select HW_FILAMENT_ALWAYS_GRIPPED
+    select HW_FILAMENT_ALWAYS_GRIPPED
 
   config HW_MMU_TYPE_BOX_TURTLE_V1
     bool "Box Turtle v1.0"
     select HW_VARIABLE_BOWDEN_LENGTHS
     select HW_VARIABLE_ROTATION_DISTANCES
     select HW_REQUIRE_BOWDEN_MOVE
-	select HW_FILAMENT_ALWAYS_GRIPPED
+    select HW_FILAMENT_ALWAYS_GRIPPED
 
   config HW_MMU_TYPE_NIGHT_OWL_V1
     bool "Night Owl (Night Turtle) v1.0"
     select HW_VARIABLE_BOWDEN_LENGTHS
     select HW_VARIABLE_ROTATION_DISTANCES
     select HW_REQUIRE_BOWDEN_MOVE
-	select HW_FILAMENT_ALWAYS_GRIPPED
-  
+    select HW_FILAMENT_ALWAYS_GRIPPED
+
   config HW_MMU_TYPE_3MS_V1
     bool "Box Turtle v1.0"
     select HW_VARIABLE_ROTATION_DISTANCES
-	select HW_FILAMENT_ALWAYS_GRIPPED
+    select HW_FILAMENT_ALWAYS_GRIPPED
 
   config HW_MMU_TYPE_CUSTOM
     bool "Custom"
