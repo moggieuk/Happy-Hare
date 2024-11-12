@@ -148,7 +148,10 @@ $(klipper_config_home)/moonraker.conf: $(OUT)/config/moonraker.conf | build
 	$(Q)cp -f "$<" "$@"
 	$(eval restart_moonraker = 1)
 
-install: check_root check_paths \
+update: 
+	$(Q)$(SRC)/scripts/build.sh self-update
+
+install: check_root check_paths update \
 	$(klipper_config_home)/moonraker.conf \
 	$(klipper_config_home)/$(klipper_printer_file) \
 	$(addprefix $(klipper_config_home)/mmu/, $(hh_config_files)) \

@@ -66,6 +66,10 @@ log_info() {
     log_color "${INFO}" "$@"
 }
 
+log_git() {
+    log_color "${B_GREEN}" "$@"
+}
+
 get_logo() {
     caption=$1
     cat <<EOF
@@ -604,12 +608,13 @@ install_include() {
     local dest=$2
 
     if ! grep -q "\[include ${include}\]" "${dest}"; then
+        log_info "Adding include ${include} from ${dest}"
         sed -i "1i [include ${include}]" "${dest}"
     fi
 }
 
 uninstall_include() {
-    local include=${1//./\\.}
+    local include=${1//./\\.} # Escape for regex
     include=${include//\*/\\*}
     local dest=$2
 
@@ -621,13 +626,14 @@ uninstall_include() {
 
 # Link in all includes if not already present
 install_printer_includes() {
+    local dest=$1
+
     if [ "${CONFIG_INSTALL_INCLUDES}" != "y" ]; then
-        uninstall_printer_includes "$1"
+        uninstall_printer_includes "${dest}"
         return
     fi
 
     log_info "Installing MMU references in ${CONFIG_PRINTER_CONFIG}"
-    local dest=$1
 
     if grep -q "\[include config/hardware/mmu.cfg\]" "${dest}"; then
         log_warning "This looks like a Klippain config installation - skipping automatic config install. Please add config includes by hand"
@@ -664,7 +670,7 @@ install_printer_includes() {
         uninstall_include "mmu/addons/dc_espooler.cfg" "${dest}"
     fi
 
-    install_include "mmu/base/\*.cfg" "${dest}"
+    install_include "mmu/base/*.cfg" "${dest}"
 }
 
 uninstall_printer_includes() {
@@ -734,68 +740,59 @@ uninstall_update_manager() {
 }
 
 self_update() {
-    [ "$UPDATE_GUARD" ] && return
-    export UPDATE_GUARD=YES
-    clear
-
-    cd "$SCRIPTPATH"
-
-    set +e
-    # timeout is unavailable on MIPS
-    if [ "$IS_MIPS" -ne 1 ]; then
-        BRANCH=$(timeout 3s git branch --show-current)
-    else
-        BRANCH=$(git branch --show-current)
-    fi
-
-    if [ $? -ne 0 ]; then
-        echo -e "${ERROR}Error updating from github"
-        echo -e "${ERROR}You might have an old version of git"
-        echo -e "${ERROR}Skipping automatic update..."
-        set -e
+    if [ -n "${NO_UPDATE+x}" ]; then
+        log_info "Skipping self update"
         return
     fi
-    set -e
 
-    [ -z "${BRANCH}" ] && {
-        echo -e "${ERROR}Timeout talking to github. Skipping upgrade check"
+    local git_cmd="git branch --show-current"
+    if [ "${CONFIG_IS_MIPS}" != "y" ]; then
+        # timeout is unavailable on MIPS
+        git_cmd="timeout 3s ${git_cmd}"
+    fi
+
+    local current_branch
+    if ! current_branch=$(${git_cmd}); then
+        log_warning "Error updating from github" \
+            "You might have an old version of git" \
+            "Skipping automatic update..."
         return
-    }
-    echo -e "${B_GREEN}Running on '${BRANCH}' branch"
+    fi
 
+    if [ -z "${current_branch}" ]; then
+        log_warning "Timeout talking to github. Skipping upgrade check"
+        return
+    fi
+
+    log_git "Running on '${current_branch}' branch" \
+        "Checking for updates..."
     # Both check for updates but also help me not loose changes accidently
-    echo -e "${B_GREEN}Checking for updates..."
     git fetch --quiet
 
-    set +e
-    git diff --quiet --exit-code "origin/$BRANCH"
-    if [ $? -eq 1 ]; then
-        echo -e "${B_GREEN}Found a new version of Happy Hare on github, updating..."
-        [ -n "$(git status --porcelain)" ] && {
+    local switch=0
+    if ! git diff --quiet --exit-code "origin/${current_branch}"; then
+        log_git "Found a new version of Happy Hare on github, updating..."
+        if [ -n "$(git status --porcelain)" ]; then
             git stash push -m 'local changes stashed before self update' --quiet
-        }
-        RESTART=1
-    fi
-    set -e
-
-    if [ -n "${N_BRANCH}" ] && [ "${BRANCH}" != "${N_BRANCH}" ]; then
-        BRANCH=${N_BRANCH}
-        echo -e "${B_GREEN}Switching to '${BRANCH}' branch"
-        RESTART=1
+        fi
+        switch=1
     fi
 
-    if [ -n "${RESTART}" ]; then
-        git checkout "$BRANCH" --quiet
+    if [ -n "${BRANCH}" ] && [ "${BRANCH}" != "${current_branch}" ]; then
+        log_git "Switching to '${current_branch}' branch"
+        current_branch=${BRANCH}
+        switch=1
+    fi
+
+    if [ "${switch}" -eq 1 ]; then
+        git checkout "${current_branch}" --quiet
         git pull --quiet --force
-        GIT_VER=$(git describe --tags)
-        echo -e "${B_GREEN}Now on git version ${GIT_VER}"
-        echo -e "${B_GREEN}Running the new install script..."
-        cd - >/dev/null
-        exec "$SCRIPTNAME" "${ARGS[@]}"
-        exit 0 # Exit this old instance
+        git_version=$(git describe --tags)
+        log_git "Now on git version: ${git_version}"
+    else
+        git_version=$(git describe --tags)
+        log_git "Already on the latest version: ${git_version}"
     fi
-    GIT_VER=$(git describe --tags)
-    echo -e "${B_GREEN}Already the latest version: ${GIT_VER}"
 }
 
 restart_service() {
@@ -903,7 +900,7 @@ install-includes)
 install-update-manager)
     install_update_manager "$2"
     ;;
-update)
+self-update)
     self_update
     ;;
 uninstall)
