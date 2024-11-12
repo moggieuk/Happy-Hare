@@ -318,6 +318,58 @@ menu "Gear sensor pins"
     depends on HW_NUM_GATES > 11
 endmenu
 
+menu "eSpooler pins"
+  depends on INSTALL_ESPOOLER
+  if HW_NUM_GATES > 0
+    config PIN_SPOOLER_EN_0
+      string "eSpooler enable 0 pin"
+      default "PA2" if HW_BOARD_TYPE_AFC_LITE_1
+    config PIN_SPOOLER_RWD_0
+      string "eSpooler rewind 0 pin"
+      default "PA0" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
+      default "PA0" if HW_BOARD_TYPE_AFC_LITE_1
+    config PIN_SPOOLER_FWD_0
+      string "eSpooler forward 0 pin"
+      default "PA1" if HW_BOARD_TYPE_AFC_LITE_1
+  endif
+  if HW_NUM_GATES > 1
+    config PIN_SPOOLER_EN_1
+      string "eSpooler enable 1 pin"
+      default "PA5" if HW_BOARD_TYPE_AFC_LITE_1
+    config PIN_SPOOLER_RWD_1
+      string "eSpooler rewind 1 pin"
+      default "PA1" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
+      default "PA6" if HW_BOARD_TYPE_AFC_LITE_1
+    config PIN_SPOOLER_FWD_1
+      string "eSpooler forward 1 pin"
+      default "PA7" if HW_BOARD_TYPE_AFC_LITE_1
+  endif
+  if HW_NUM_GATES > 2
+    config PIN_SPOOLER_EN_2
+      string "eSpooler enable 2 pin"
+      default "PB13" if HW_BOARD_TYPE_AFC_LITE_1
+    config PIN_SPOOLER_RWD_2
+      string "eSpooler rewind 2 pin"
+      default "PB10" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
+      default "PB14" if HW_BOARD_TYPE_AFC_LITE_1
+    config PIN_SPOOLER_FWD_2
+      string "eSpooler forward 2 pin"
+      default "PB15" if HW_BOARD_TYPE_AFC_LITE_1
+  endif
+  if HW_NUM_GATES > 3
+    config PIN_SPOOLER_EN_3
+      string "eSpooler enable 3 pin"
+      default "PD11" if HW_BOARD_TYPE_AFC_LITE_1
+    config PIN_SPOOLER_RWD_3
+      string "eSpooler rewind 3 pin"
+      default "PPB2" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
+      default "PD12" if HW_BOARD_TYPE_AFC_LITE_1
+    config PIN_SPOOLER_FWD_3
+      string "eSpooler forward 3 pin"
+      default "PD13" if HW_BOARD_TYPE_AFC_LITE_1
+  endif
+endmenu
+
 config PIN_ENCODER
   string "Encoder pin"
   depends on MMU_HAS_ENCODER

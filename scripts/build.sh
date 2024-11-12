@@ -224,9 +224,10 @@ insert_after_section() {
     local insert="${3//$'\n'/\\ \\n}" # Add command split at every newline for sed
     local file=$4
 
-    sed -i -e "/^${start_section}/,/^${end_section}/ !b; $ b wnl; /^${end_section}/ b nonl; b" \
-        -e ":wnl a \ " \
-        -e ":nonl a ${insert}" \
+    sed -i -e "/^${start_section}/,/^${end_section}/ !b; /^${start_section}/ b; $ b a; /^${end_section}/ b i; b" \
+        -e ":a a\\${insert}" \
+        -e "b" \
+        -e ":i i\\${insert}" \
         "${file}"
 }
 
@@ -238,12 +239,20 @@ duplicate_section() {
     local end_range=$4
     local file=$5
 
-    local section_to_duplicate="$(select_section "${start_section}" "${end_section}" "${file}")\\n\\n"
-
+    local section_to_duplicate="$(select_section "${start_section}" "${end_section}" "${file}")"
     local duplicated_sections=""
+    local suffix="\\n"
+    if [ -n "${end_section}" ]; then
+        # A multiline section, instead of a single line. So add an extra newline
+        suffix+="\\n"
+        duplicated_sections+="\\n"
+    fi
+
     for ((i = start_range + 1; i <= end_range; i++)); do
-        duplicated_sections+="${section_to_duplicate//${start_range}/${i}}"
+        duplicated_sections+="${section_to_duplicate//${start_range}/${i}}${suffix}"
     done
+
+    duplicated_sections="${duplicated_sections%%*(\\n)}" # Remove last newlines
 
     insert_after_section "${start_section}" "${end_section}" "${duplicated_sections}" "${file}"
 }
@@ -496,22 +505,35 @@ copy_config_files() {
     fi
 
     if [ "${filename}" == "mmu.cfg" ]; then
-        sed_expr+="s|{pin_.*}||g; " # Remove any remaining unprocessed pin tokens
+        sed_expr+="s|{pin_.*}||g; " # Clear any remaining unprocessed pin placeholders
+
+        duplicate_section "[[:space:]]*MMU_PRE_GATE_0=" "" "0" "${num_gates} - 1" "${dest}"
+        duplicate_section "[[:space:]]*MMU_POST_GEAR_0=" "" "0" "${num_gates} - 1" "${dest}"
+
         if [ "${CONFIG_MMU_HAS_SELECTOR}" != "y" ]; then
             duplicate_section "[[:space:]]*MMU_GEAR_UART_1" "$" "1" "${num_gates} - 1" "${dest}"
         else
             delete_section "[[:space:]]*MMU_GEAR_UART_1" "$" "${dest}"
         fi
+
+        if [ "${CONFIG_INSTALL_ESPOOLER}" == "y" ]; then
+            duplicate_section "[[:space:]]*MMU_DC_MOT_0_EN=" "$" "0" "${num_gates} - 1" "${dest}"
+        else
+            delete_section "[[:space:]]*MMU_DC_MOT_0_EN=" "$" "${dest}"
+        fi
     fi
 
     if [ "${filename}" == "mmu_hardware.cfg" ]; then
+        duplicate_section "pre_gate_switch_pin_0:" "" "0" "${num_gates} - 1" "${dest}"
+        duplicate_section "post_gear_switch_pin_0:" "" "0" "${num_gates} - 1" "${dest}"
+
         # Correct shared uart_address for EASY-BRD
         if [ "${CONFIG_HW_MMU_BOARD_TYPE}" == "EASY-BRD" ]; then
             # Share uart_pin to avoid duplicate alias problem
             sed_expr+="s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; "
         else
             # Remove uart_address lines
-            sed_expr+="/^uart_address:/ d; "
+            delete_section "uart_address:" "" "${dest}"
         fi
 
         if [ "${CONFIG_ENABLE_SELECTOR_TOUCH}" == "y" ]; then
@@ -639,7 +661,7 @@ install_printer_includes() {
         uninstall_include "mmu/addons/blobifier.cfg" "${dest}"
     fi
 
-    if [ "${CONFIG_INSTALL_RESPOOLER}" == "y" ]; then
+    if [ "${CONFIG_INSTALL_ESPOOLER}" == "y" ]; then
         install_include "mmu/addons/dc_respooler.cfg" "${dest}"
     else
         uninstall_include "mmu/addons/dc_respooler.cfg" "${dest}"

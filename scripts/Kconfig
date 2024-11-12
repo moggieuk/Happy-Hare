@@ -68,6 +68,8 @@ choice
     bool "Mellow EASY-BRD v1.x (with CANbus)"
   config HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
     bool "Mellow EASY-BRD v2.x (with CANbus)"
+  config HW_BOARD_TYPE_AFC_LITE_1
+    bool "AFC Lite v1.0"
   config HW_BOARD_TYPE_UNKOWN
     bool "Not in list / Unknown"
 endchoice
@@ -84,8 +86,16 @@ choice
 
   # Select the first tty with the right MCU type as default
   default $(serial_config,1,samd21) if HW_BOARD_TYPE_EASY_BRD
-  default $(serial_config,1,rp2040) if HW_BOARD_TYPE_EASY_BRD_RP2040 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 || HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1 || HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
-  default $(serial_config,1,stm32) if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
+  default $(serial_config,1,rp2040) if \
+    HW_BOARD_TYPE_EASY_BRD_RP2040 || \
+    HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || \
+    HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 || \
+    HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1 || \
+    HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
+  default $(serial_config,1,stm32) if \
+    HW_BOARD_TYPE_MMB_V1_0 || \
+    HW_BOARD_TYPE_MMB_V1_1 || \
+    HW_BOARD_TYPE_AFC_LITE_1
 
   config $(serial_config,1)
     depends on $(serial_exists,1)
@@ -206,8 +216,8 @@ config INSTALL_INCLUDES
       bool "Install EREC filament cutter macros?"
     config INSTALL_BLOBIFIER
       bool "Install Blobifier macros?"
-    config INSTALL_RESPOOLER
-      bool "Install Respooler macros?"
+    config INSTALL_ESPOOLER
+      bool "Install eSpooler macros?"
   endif
 
 config SHOW_ADVANCED_SETTINGS
