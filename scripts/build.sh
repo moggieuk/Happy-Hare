@@ -499,10 +499,6 @@ copy_config_files() {
     done
 
     local num_gates=${CONFIG_HW_NUM_GATES}
-    if has_param "[mmu_machine]" "num_gates"; then
-        # When a pre-existing num_gates is found, use it
-        num_gates=$(param "[mmu_machine]" "num_gates")
-    fi
 
     if [ "${filename}" == "mmu.cfg" ]; then
         sed_expr+="s|{pin_.*}||g; " # Clear any remaining unprocessed pin placeholders
@@ -587,7 +583,6 @@ copy_config_files() {
                 done
             done
         } >>"${dest}"
-
     fi
 
     # Variables macro ---------------------------------------------------------------------
@@ -609,16 +604,18 @@ install_include() {
     local dest=$2
 
     if ! grep -q "\[include ${include}\]" "${dest}"; then
-        sed -i "1i \[include ${include}\]" "${dest}"
+        sed -i "1i [include ${include}]" "${dest}"
     fi
 }
 
 uninstall_include() {
-    local include=$1
+    local include=${1//./\\.}
+    include=${include//\*/\\*}
     local dest=$2
 
     if grep -q "\[include ${include}\]" "${dest}"; then
-        sed -i "/\[include ${include}\]/ d" "${dest}"
+        log_info "Removing include ${1} from ${dest}"
+        sed -i "\%\[include ${include}\]% d" "${dest}"
     fi
 }
 
@@ -672,7 +669,7 @@ install_printer_includes() {
 
 uninstall_printer_includes() {
     log_info "Cleaning MMU references from ${CONFIG_PRINTER_CONFIG}"
-    local dest=$1 #${CONFIG_KLIPPER_CONFIG_HOME}/${CONFIG_PRINTER_CONFIG}
+    local dest=$1
 
     for include in \
         'mmu/optional/mmu_menu.cfg' \
@@ -689,8 +686,8 @@ uninstall_printer_includes() {
         'mmu_hardware.cfg' \
         'mmu_filametrix.cfg' \
         'mmu.cfg' \
-        'mmu/base/\*.cfg' \
-        'mmu/addons/\*.cfg'; do
+        'mmu/base/*.cfg' \
+        'mmu/addons/*.cfg'; do
         uninstall_include "${include}" "${dest}"
     done
 }
@@ -724,13 +721,14 @@ install_update_manager() {
 }
 
 uninstall_update_manager() {
-    log_info "Removing update manager from moonraker.conf"
+    log_info "Cleaning Happy Hare sections from moonraker.conf"
     local dest=$1
     for section in "update_manager happy-hare" "mmu_server"; do
-        if ! grep -q "${section}" "${file}"; then
-            log_info "[$section] not found in moonraker.conf - skipping removal"
+        if ! grep -q "\[${section}\]" "${dest}"; then
+            log_info "[$section] not found in ${dest} - skipping removal"
         else
-            delete_section "\[${section}\]" "$" "${dest}"
+            log_info "Removing [$section] from ${dest}"
+            delete_section "\[${section}\]" "\[" "${dest}"
         fi
     done
 }
@@ -828,14 +826,6 @@ restart_service() {
     fi
 }
 
-restart_klipper() {
-    restart_service "Klipper" "${CONFIG_SERVICE_KLIPPER}"
-}
-
-restart_moonraker() {
-    restart_service "Moonraker" "${CONFIG_SERVICE_MOONRAKER}"
-}
-
 # These parameters are too complex to encode with Kconfig.
 set_extra_parameters() {
     # never use the version from the existing installation files
@@ -919,11 +909,8 @@ update)
 uninstall)
     uninstall
     ;;
-restart-klipper)
-    restart_klipper
-    ;;
-restart-moonraker)
-    restart_moonraker
+restart-service)
+    restart_service "$2" "$3"
     ;;
 print-happy-hare)
     log_info "$(get_logo "Happy Hare ${CONFIG_F_VERSION} Ready...")"

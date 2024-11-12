@@ -155,8 +155,8 @@ install: check_root check_paths \
 	$(addprefix $(moonraker_home)/moonraker/, $(hh_moonraker_components)) \
 	$(addprefix $(klipper_home)/klippy/, $(hh_klipper_extras)) \
 	| remove_old_modules
-	$(Q)[ "$(restart_moonraker)" -eq 0 ] || ./scripts/build.sh restart-moonraker
-	$(Q)$(SRC)/scripts/build.sh restart-klipper
+	$(Q)[ "$(restart_moonraker)" -eq 0 ] || $(SRC)/scripts/build.sh restart-service "Moonraker" $(CONFIG_SERVICE_MOONRAKER)
+	$(Q)$(SRC)/scripts/build.sh restart-service "Klipper" $(CONFIG_SERVICE_KLIPPER)
 	$(Q)$(SRC)/scripts/build.sh print-happy-hare
 
 uninstall: | $(call backup, $(wildcard $(klipper_config_home)/mmu)) $(call backup, $(klipper_config_home)/$(klipper_printer_file)) $(call backup, $(klipper_config_home)/moonraker.conf)
@@ -164,6 +164,8 @@ uninstall: | $(call backup, $(wildcard $(klipper_config_home)/mmu)) $(call backu
 	$(Q)rm -f $(addprefix, $(moonraker_home)/, $(moonraker_components))
 	$(Q)rm -rf $(klipper_config_home)/mmu
 	$(Q)$(SRC)/scripts/build.sh uninstall
+	$(Q)$(SRC)/scripts/build.sh restart-service "Moonraker" $(CONFIG_SERVICE_MOONRAKER)
+	$(Q)$(SRC)/scripts/build.sh restart-service "Klipper" $(CONFIG_SERVICE_KLIPPER)
 	$(Q)$(SRC)/scripts/build.sh print-unhappy-hare
 
 clean: 
