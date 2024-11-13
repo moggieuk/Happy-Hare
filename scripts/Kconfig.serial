@@ -1,26 +1,9 @@
-# Make the first 6 serial tty devices selectable, it's unlikely people have more.
+# Make the first 10 available serial tty devices selectable, it's unlikely people have more.
 # And if they do, they propably know what they are doing and have no issue manually selecting it.
 # Not the prettiest configuration, but it works
-serial=$(shell, ls '/dev/serial/by-id/*' 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
-serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
-serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "HW_SERIAL_" toupper($0)}')
-
-choice 
+choice CHOICE_SERIAL_DEVICE 
   prompt "Select MCU serial device"
   depends on $(serial_exists,1) # Only show if there are any serial tty devices to select. Likely an issue with the setup
-
-  # Select the first tty with the right MCU type as default
-  default $(serial_config,1,samd21) if HW_BOARD_TYPE_EASY_BRD
-  default $(serial_config,1,rp2040) if \
-    HW_BOARD_TYPE_EASY_BRD_RP2040 || \
-    HW_BOARD_TYPE_ERB_1 || \
-    HW_BOARD_TYPE_ERB_2 || \
-    HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1 || \
-    HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
-  default $(serial_config,1,stm32) if \
-    HW_BOARD_TYPE_MMB_1_0 || \
-    HW_BOARD_TYPE_MMB_1_1 || \
-    HW_BOARD_TYPE_AFC_LITE_1
 
   config $(serial_config,1)
     depends on $(serial_exists,1)
@@ -40,6 +23,18 @@ choice
   config $(serial_config,6)
     depends on $(serial_exists,6)
     bool "$(serial,6)"
+  config $(serial_config,7)
+    depends on $(serial_exists,7)
+    bool "$(serial,7)"
+  config $(serial_config,8)
+    depends on $(serial_exists,8)
+    bool "$(serial,8)"
+  config $(serial_config,9)
+    depends on $(serial_exists,9)
+    bool "$(serial,9)"
+  config $(serial_config,10)
+    depends on $(serial_exists,10)
+    bool "$(serial,10)"
   config HW_SERIAL_OTHER
     bool "Other (specify in parent menu)"
 endchoice
@@ -53,6 +48,10 @@ config HW_SERIAL
   default "$(serial,4)" if $(serial_config,4)
   default "$(serial,5)" if $(serial_config,5)
   default "$(serial,6)" if $(serial_config,6)
+  default "$(serial,7)" if $(serial_config,7)
+  default "$(serial,8)" if $(serial_config,8)
+  default "$(serial,9)" if $(serial_config,9)
+  default "$(serial,10)" if $(serial_config,10)
   help
     Specify the path of the serial device connected to the MMU MCU. 
     It's best to use the /dev/serial/by-id/ path, as it's unique and doesn't change when you plug in multiple serial devices.

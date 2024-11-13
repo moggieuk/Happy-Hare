@@ -2,8 +2,17 @@ mainmenu "Happy Hare $(formatted_version) Configuration"
 
 happy_hare_version = 3.00
 formatted_version = $(shell, echo "$(happy_hare_version)" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
+
+### Helper functions
 # Used to convert a shell command result to a y/n value
 to_bool = $(shell, $(1) && echo y || echo n)
+
+# Used to get the serial device paths 
+serial=$(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
+serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
+serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "HW_SERIAL_" toupper($0)}')
+
+### Start of configuration
 
 config VERSION
   string	

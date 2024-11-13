@@ -3,6 +3,10 @@ choice CHOICE_BOARD_TYPE
     bool "Standard EASY-BRD (with SAMD21)"
 endchoice
 
+choice CHOICE_SERIAL_DEVICE
+  default $(serial_config,1,samd21)
+endchoice
+
 if HW_BOARD_TYPE_EASY_BRD
   config PIN_GEAR_UART
     default "PA8" 

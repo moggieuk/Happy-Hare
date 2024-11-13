@@ -3,6 +3,10 @@ choice CHOICE_BOARD_TYPE
     bool "AFC Lite v1.0"
 endchoice
 
+choice CHOICE_SERIAL_DEVICE
+  default $(serial_config,1,stm32)
+endchoice
+
 if HW_BOARD_TYPE_AFC_LITE_1
   config PIN_GEAR_UART 
     default "PD5" 
