@@ -1,0 +1,30 @@
+if HW_BOARD_TYPE_EASY_BRD
+  config PIN_GEAR_UART
+    default "PA8" 
+  config PIN_GEAR_STEP
+    default "PA4" 
+  config PIN_GEAR_DIR
+    default "PA10" 
+  config PIN_GEAR_ENABLE
+    default "PA2" 
+
+  config PIN_SELECTOR_UART
+    default "PA8" 
+  config PIN_SELECTOR_STEP
+    default "PA9" 
+  config PIN_SELECTOR_DIR
+    default "PB8" 
+  config PIN_SELECTOR_ENABLE
+    default "PA11" 
+  config PIN_SELECTOR_DIAG
+    default "PA7" if MMU_SELECTOR_TOUCH 
+  config PIN_SELECTOR_ENDSTOP
+    default "PB9" if !MMU_SELECTOR_TOUCH
+  config PIN_SELECTOR_SERVO
+    default "PA4" 
+
+  config PIN_ENCODER
+    default "PA6" if MMU_HAS_ENCODER
+  config PIN_GATE_SENSOR
+    default "PA6"  
+endif

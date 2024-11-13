@@ -1,0 +1,115 @@
+if HW_BOARD_TYPE_MMB_1_1
+  config PIN_GEAR_UART 
+    default "PA10" 
+  config PIN_GEAR_STEP
+    default "PB15" 
+  config PIN_GEAR_DIR
+    default "PB14" 
+  config PIN_GEAR_ENABLE
+    default "PB8" 
+  config PIN_GEAR_DIAG
+    default "PA3" 
+
+  if !MMU_HAS_SELECTOR
+    config PIN_GEAR_1_UART 
+      default "PC7" 
+    config PIN_GEAR_1_STEP
+      default "PD2" 
+    config PIN_GEAR_1_DIR
+      default "PB13" 
+    config PIN_GEAR_1_ENABLE
+      default "PD1" 
+    config PIN_GEAR_1_DIAG
+      default "PA4" 
+
+    config PIN_GEAR_2_UART 
+      default "PC6" 
+    config PIN_GEAR_2_STEP
+      default "PD0" 
+    config PIN_GEAR_2_DIR
+      default "PB3" 
+    config PIN_GEAR_2_ENABLE
+      default "PA15" 
+    config PIN_GEAR_2_DIAG
+
+    config PIN_GEAR_3_UART 
+      default "PA9" 
+    config PIN_GEAR_3_STEP
+      default "PB6" 
+    config PIN_GEAR_3_DIR
+      default "PB7" 
+    config PIN_GEAR_3_ENABLE
+      default "PB5" 
+    config PIN_GEAR_3_DIAG
+      default "PB8" 
+
+    config PIN_PRE_GATE_0
+      default "PB11" 
+    config PIN_PRE_GATE_1
+      default "PA3" 
+    config PIN_PRE_GATE_2
+      default "PB9" 
+    config PIN_PRE_GATE_3
+      default "PA8" 
+
+    config PIN_GEAR_SENSOR_0
+      default "PC15"
+    config PIN_GEAR_SENSOR_1
+      default "PC13"
+    config PIN_GEAR_SENSOR_2
+      default "PC14"
+    config PIN_GEAR_SENSOR_3
+      default "PC12"
+    
+    config PIN_SPOOLER_RWD_0
+      default "PA0"
+    config PIN_SPOOLER_RWD_1
+      default "PA1"
+    config PIN_SPOOLER_RWD_2
+      default "PB10"
+    config PIN_SPOOLER_RWD_3
+      default "PB2"
+  endif
+
+  if MMU_HAS_SELECTOR
+    config PIN_SELECTOR_UART
+      default "PC7" 
+    config PIN_SELECTOR_STEP
+      default "PD2" 
+    config PIN_SELECTOR_DIR
+      default "PB13" 
+    config PIN_SELECTOR_ENABLE
+      default "PD1" 
+    config PIN_SELECTOR_DIAG
+      default "PA4" 
+    config PIN_SELECTOR_ENDSTOP
+      default "PB2" 
+    config PIN_SELECTOR_SERVO
+      default "PA0" 
+
+    config PIN_PRE_GATE_0
+      default "PB9" 
+    config PIN_PRE_GATE_1
+      default "PA8" 
+    config PIN_PRE_GATE_2
+      default "PC15" 
+    config PIN_PRE_GATE_3
+      default "PC13" 
+
+    config PIN_PRE_GATE_4
+      default "PC14"
+    config PIN_PRE_GATE_5
+      default "PB12"
+    config PIN_PRE_GATE_6
+      default "PB11"
+    config PIN_PRE_GATE_7
+      default "PB10"
+  endif
+
+  config PIN_ENCODER
+    default "PA1" 
+  config PIN_NEOPIXEL
+    default "PA2" 
+  config PIN_GATE_SENSOR
+    default "PA3" 
+endif

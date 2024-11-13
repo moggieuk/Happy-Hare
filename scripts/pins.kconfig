@@ -1,116 +1,53 @@
 menu "Gear pins"
   config PIN_GEAR_UART 
     string "Gear UART pin"
-    default "PA8" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio6" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio9" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1 || HW_BOARD_TYPE_MELLOW_EASY_BRD_V2default
-    default "PA10" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio20" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2default
-    default "PD5" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_GEAR_STEP
     string "Gear step pin"
-    default "PA4" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio27" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio7" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1 || HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PB15" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio10" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-    default "PD4" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_GEAR_DIR
     string "Gear dir pin"
-    default "PA10" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio28" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio8" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1 || HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PB14" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio9" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-    default "PD3" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_GEAR_ENABLE
     string "Gear enable pin"
-    default "PA2" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio26" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio6" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1 || HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PA8" if HW_BOARD_TYPE_MMB_V1_0 
-    default "PB8" if HW_BOARD_TYPE_MMB_V1_1 
-    default "gpio8" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-    default "PD6" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_GEAR_DIAG
     string "Gear diag pin"
-    default "gpio23" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "PA3" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio13" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-    default "PD2" if HW_BOARD_TYPE_AFC_LITE_1
 
   if !MMU_HAS_SELECTOR
     if HW_NUM_GATES > 1 
       config PIN_GEAR_1_UART 
         string "Gear 1 UART pin"
-        default "PC7" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PD0" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_1_STEP
         string "Gear 1 step pin"
-        default "PD2" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PC12" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_1_DIR
         string "Gear 1 dir pin"
-        default "PB13" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PC11" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_1_ENABLE
         string "Gear 1 enable pin"
-        default "PD1" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 
-        default "PD1" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_1_DIAG
         string "Gear 1 diag pin"
-        default "PA4" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PC10" if HW_BOARD_TYPE_AFC_LITE_1
     endif 
 
     if HW_NUM_GATES > 2
       config PIN_GEAR_2_UART 
         string "Gear 2 UART pin"
-        default "PC6" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PE1" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_2_STEP
         string "Gear 2 step pin"
-        default "PD0" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PE2" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_2_DIR
         string "Gear 2 dir pin"
-        default "PB3" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PE3" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_2_ENABLE
         string "Gear 2 enable pin"
-        default "PA15" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 
-        default "PE0" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_2_DIAG
         string "Gear 2 diag pin"
-        default "PB9" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PE4" if HW_BOARD_TYPE_AFC_LITE_1
     endif
 
     if HW_NUM_GATES > 3
       config PIN_GEAR_3_UART 
         string "Gear 3 UART pin"
-        default "PA9" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PC6" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_3_STEP
         string "Gear 3 step pin"
-        default "PB6" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PD15" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_3_DIR
         string "Gear 3 dir pin"
-        default "PB7" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PD14" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_3_ENABLE
         string "Gear 3 enable pin"
-        default "PB5" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 
-        default "PC7" if HW_BOARD_TYPE_AFC_LITE_1
       config PIN_GEAR_3_DIAG
         string "Gear 3 diag pin"
-        default "PB8" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-        default "PC8" if HW_BOARD_TYPE_AFC_LITE_1
     endif
   endif
 endmenu
@@ -119,222 +56,93 @@ menu "Selector pins"
   visible if MMU_HAS_SELECTOR
   config PIN_SELECTOR_UART
     string "Selector UART pin"
-    default "PA8" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio6" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio2" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio0" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PC7" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio17" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-
   config PIN_SELECTOR_STEP
     string "Selector step pin"
-    default "PA9" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio7" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio2" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio4" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PD2" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio16" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-
   config PIN_SELECTOR_DIR
     string "Selector dir pin"
-    default "PB8" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio0" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio1" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio3" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PB13" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio15" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-
   config PIN_SELECTOR_ENABLE
     string "Selector enable pin"
-    default "PA11" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio29" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio3" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio5" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PD1" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio14" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-
   config PIN_SELECTOR_DIAG
     string "Selector diag pin"
-    default "" if !MMU_SELECTOR_TOUCH
-    default "PA7" if HW_BOARD_TYPE_EASY_BRD 
-    default "gpio2" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio22" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio20" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2 
-    default "PA4" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio19" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-
   config PIN_SELECTOR_ENDSTOP
     string "Selector endstop pin"
-    default "" if MMU_SELECTOR_TOUCH
-    default "PB9" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio1" if HW_BOARD_TYPE_EASY_BRD_RP 
-    default "gpio20" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1 
-    default "gpio20" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2 
-    default "PB2" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 
-    default "gpio24" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
-
   config PIN_SELECTOR_SERVO
     string "Servo pin"
-    default "PA4" if HW_BOARD_TYPE_EASY_BRD
-    default "gpio4" if HW_BOARD_TYPE_EASY_BRD_RP
-    default "gpio21" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio21" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PA0" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio23" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
 endmenu
 
 menu "Pre-gate pins"
   config PIN_PRE_GATE_0
     string "Pre-gate 0 pin"
     depends on HW_NUM_GATES > 0
-    default "gpio10" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio24" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PB9" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio0" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 
-    default "gpio12" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-    default "PC5" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_PRE_GATE_1
     string "Pre-gate 1 pin"
     depends on HW_NUM_GATES > 1
-    default "gpio26" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio22" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PB8" if HW_BOARD_TYPE_MMB_V1_0
-    default "PA8" if HW_BOARD_TYPE_MMB_V1_1
-    default "gpio1" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 
-    default "gpio18" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-    default "PB0" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_PRE_GATE_2
     string "Pre-gate 2 pin"
     depends on HW_NUM_GATES > 2
-    default "gpio11" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio25" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PC15" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio2" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-    default "PB1" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_PRE_GATE_3
     string "Pre-gate 3 pin"
     depends on HW_NUM_GATES > 3
-    default "gpio27" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio23" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PC13" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-    default "gpio3" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-    default "PB2" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_PRE_GATE_4
     string "Pre-gate 4 pin"
     depends on HW_NUM_GATES > 4
-    default "gpio12" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio13" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PC14" if MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
-    default "gpio4" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-
   config PIN_PRE_GATE_5
     string "Pre-gate 5 pin"
     depends on HW_NUM_GATES > 5
-    default "gpio28" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio26" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PB12" if MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
-    default "gpio5" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-
   config PIN_PRE_GATE_6
     string "Pre-gate 6 pin"
     depends on HW_NUM_GATES > 6
-    default "gpio24" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio12" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PB11" if MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
-    default "gpio6" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-
   config PIN_PRE_GATE_7
     string "Pre-gate 7 pin"
     depends on HW_NUM_GATES > 7
-    default "gpio29" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio27" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "PB10" if MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
-    default "gpio7" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-
   config PIN_PRE_GATE_8
     string "Pre-gate 8 pin"
     depends on HW_NUM_GATES > 8
-    default "gpio13" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio11" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "gpio26" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-
   config PIN_PRE_GATE_9	
     string "Pre-gate 9 pin"
     depends on HW_NUM_GATES > 9
-    default "gpio25" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-    default "gpio28" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "gpio27" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-
   config PIN_PRE_GATE_10
     string "Pre-gate 10 pin"
     depends on HW_NUM_GATES > 10
-    default "gpio10" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "gpio28" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
-
   config PIN_PRE_GATE_11
     string "Pre-gate 11 pin"
     depends on HW_NUM_GATES > 11
-    default "gpio29" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-    default "gpio29" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 
 endmenu
 
 menu "Gear sensor pins"
   config PIN_GEAR_SENSOR_0
     string "Gear sensor 0 pin"
     depends on HW_NUM_GATES > 0
-    default "PC15" if !MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
-    default "PE8" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_GEAR_SENSOR_1
     string "Gear sensor 1 pin"
     depends on HW_NUM_GATES > 1
-    default "PC13" if !MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
-    default "PE9" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_GEAR_SENSOR_2
     string "Gear sensor 2 pin"
     depends on HW_NUM_GATES > 2
-    default "PC14" if !MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
-    default "PE10" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_GEAR_SENSOR_3
     string "Gear sensor 3 pin"
     depends on HW_NUM_GATES > 3
-    default "PC12" if !MMU_HAS_SELECTOR && ( HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1 )
-    default "PE11" if HW_BOARD_TYPE_AFC_LITE_1
-
   config PIN_GEAR_SENSOR_4
     string "Gear sensor 4 pin"
     depends on HW_NUM_GATES > 4
-
   config PIN_GEAR_SENSOR_5
     string "Gear sensor 5 pin"
     depends on HW_NUM_GATES > 5
-
   config PIN_GEAR_SENSOR_6
     string "Gear sensor 6 pin"
     depends on HW_NUM_GATES > 6
-
   config PIN_GEAR_SENSOR_7
     string "Gear sensor 7 pin"
     depends on HW_NUM_GATES > 7
-
   config PIN_GEAR_SENSOR_8
     string "Gear sensor 8 pin"
     depends on HW_NUM_GATES > 8
-
   config PIN_GEAR_SENSOR_9	
     string "Gear sensor 9 pin"
     depends on HW_NUM_GATES > 9
-
   config PIN_GEAR_SENSOR_10
     string "Gear sensor 10 pin"
     depends on HW_NUM_GATES > 10
-
   config PIN_GEAR_SENSOR_11
     string "Gear sensor 11 pin"
     depends on HW_NUM_GATES > 11
@@ -345,82 +153,49 @@ menu "eSpooler pins"
   if HW_NUM_GATES > 0
     config PIN_SPOOLER_EN_0
       string "eSpooler enable 0 pin"
-      default "PA2" if HW_BOARD_TYPE_AFC_LITE_1
     config PIN_SPOOLER_RWD_0
       string "eSpooler rewind 0 pin"
-      default "PA0" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-      default "PA0" if HW_BOARD_TYPE_AFC_LITE_1
     config PIN_SPOOLER_FWD_0
       string "eSpooler forward 0 pin"
-      default "PA1" if HW_BOARD_TYPE_AFC_LITE_1
   endif
 
   if HW_NUM_GATES > 1
     config PIN_SPOOLER_EN_1
       string "eSpooler enable 1 pin"
-      default "PA5" if HW_BOARD_TYPE_AFC_LITE_1
     config PIN_SPOOLER_RWD_1
       string "eSpooler rewind 1 pin"
-      default "PA1" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-      default "PA6" if HW_BOARD_TYPE_AFC_LITE_1
     config PIN_SPOOLER_FWD_1
       string "eSpooler forward 1 pin"
-      default "PA7" if HW_BOARD_TYPE_AFC_LITE_1
   endif
 
   if HW_NUM_GATES > 2
     config PIN_SPOOLER_EN_2
       string "eSpooler enable 2 pin"
-      default "PB13" if HW_BOARD_TYPE_AFC_LITE_1
     config PIN_SPOOLER_RWD_2
       string "eSpooler rewind 2 pin"
-      default "PB10" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-      default "PB14" if HW_BOARD_TYPE_AFC_LITE_1
     config PIN_SPOOLER_FWD_2
       string "eSpooler forward 2 pin"
-      default "PB15" if HW_BOARD_TYPE_AFC_LITE_1
   endif
 
   if HW_NUM_GATES > 3
     config PIN_SPOOLER_EN_3
       string "eSpooler enable 3 pin"
-      default "PD11" if HW_BOARD_TYPE_AFC_LITE_1
     config PIN_SPOOLER_RWD_3
       string "eSpooler rewind 3 pin"
-      default "PPB2" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-      default "PD12" if HW_BOARD_TYPE_AFC_LITE_1
     config PIN_SPOOLER_FWD_3
       string "eSpooler forward 3 pin"
-      default "PD13" if HW_BOARD_TYPE_AFC_LITE_1
   endif
 endmenu
 
 config PIN_ENCODER
   string "Encoder pin"
   depends on MMU_HAS_ENCODER
-  default "PA6" if HW_BOARD_TYPE_EASY_BRD
-  default "gpio3" if HW_BOARD_TYPE_EASY_BRD_RP
-  default "gpio15" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-  default "gpio15" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-  default "PA1" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-  default "gpio22" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
 
 config PIN_NEOPIXEL
   string "Neopixel pin"
-  default "gpio114" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-  default "gpio14" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-  default "PA2" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-  default "gpio21" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
 
 config PIN_GATE_SENSOR
   string "Gate sensor pin"
-  default "" if MMU_HAS_ENCODER
-  default "PA6" if HW_BOARD_TYPE_EASY_BRD 
-  default "gpio3" if HW_BOARD_TYPE_EASY_BRD_RP
-  default "gpio15" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V1
-  default "gpio15" if HW_BOARD_TYPE_MELLOW_EASY_BRD_V2
-  default "PA3" if HW_BOARD_TYPE_MMB_V1_0 || HW_BOARD_TYPE_MMB_V1_1
-  default "gpio22" if HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2
 
 config PIN_EXTRUDER_SENSOR
   string "Extruder sensor pin"

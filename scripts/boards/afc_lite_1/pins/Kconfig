@@ -1,0 +1,96 @@
+if HW_BOARD_TYPE_AFC_LITE_1
+  config PIN_GEAR_UART 
+    default "PD5" 
+  config PIN_GEAR_STEP
+    default "PD4" 
+  config PIN_GEAR_DIR
+    default "PD3" 
+  config PIN_GEAR_ENABLE
+    default "PD6" 
+  config PIN_GEAR_DIAG
+    default "PD2" 
+
+  config PIN_GEAR_1_UART 
+    default "PD0" 
+  config PIN_GEAR_1_STEP
+    default "PC12" 
+  config PIN_GEAR_1_DIR
+    default "PC11" 
+  config PIN_GEAR_1_ENABLE
+    default "PD1" 
+  config PIN_GEAR_1_DIAG
+    default "PC10" 
+
+  config PIN_GEAR_2_UART 
+    default "PE1" 
+  config PIN_GEAR_2_STEP
+    default "PE2" 
+  config PIN_GEAR_2_DIR
+    default "PE3" 
+  config PIN_GEAR_2_ENABLE
+    default "PE0" 
+  config PIN_GEAR_2_DIAG
+    default "PE4" 
+
+  config PIN_GEAR_3_UART 
+    default "PC6" 
+  config PIN_GEAR_3_STEP
+    default "PD15" 
+  config PIN_GEAR_3_DIR
+    default "PD14" 
+  config PIN_GEAR_3_ENABLE
+    default "PC7" 
+  config PIN_GEAR_3_DIAG
+    default "PC8" 
+
+  config PIN_PRE_GATE_0
+    default "PC5" 
+  config PIN_PRE_GATE_1
+    default "PB0" 
+  config PIN_PRE_GATE_2
+    default "PB1" 
+  config PIN_PRE_GATE_3
+    default "PB2" 
+
+  config PIN_GEAR_SENSOR_0
+    default "PE8" 
+  config PIN_GEAR_SENSOR_1
+    default "PE9" 
+  config PIN_GEAR_SENSOR_2
+    default "PE10" 
+  config PIN_GEAR_SENSOR_3
+    default "PE11" 
+
+  config PIN_SPOOLER_EN_0
+    default "PA2" 
+  config PIN_SPOOLER_RWD_0
+    default "PA0" 
+  config PIN_SPOOLER_FWD_0
+    default "PA1" 
+
+  config PIN_SPOOLER_EN_1
+    default "PA5" 
+  config PIN_SPOOLER_RWD_1
+    default "PA6" 
+  config PIN_SPOOLER_FWD_1
+    default "PA7" 
+
+  config PIN_SPOOLER_EN_2
+    default "PB13" 
+  config PIN_SPOOLER_RWD_2
+    default "PB14" 
+  config PIN_SPOOLER_FWD_2
+    default "PB15" 
+
+  config PIN_SPOOLER_EN_3
+    default "PD11" 
+  config PIN_SPOOLER_RWD_3
+    default "PD12" 
+  config PIN_SPOOLER_FWD_3
+    default "PD13" 
+
+  config PIN_NEOPIXEL
+    default "PE14"
+  config PIN_GATE_SENSOR
+    default "PC4"
+endif

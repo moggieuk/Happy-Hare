@@ -13,13 +13,13 @@ choice
   default $(serial_config,1,samd21) if HW_BOARD_TYPE_EASY_BRD
   default $(serial_config,1,rp2040) if \
     HW_BOARD_TYPE_EASY_BRD_RP2040 || \
-    HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V1 || \
-    HW_BOARD_TYPE_FYSETC_BURROWS_ERB_V2 || \
+    HW_BOARD_TYPE_ERB_1 || \
+    HW_BOARD_TYPE_ERB_2 || \
     HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1 || \
     HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
   default $(serial_config,1,stm32) if \
-    HW_BOARD_TYPE_MMB_V1_0 || \
-    HW_BOARD_TYPE_MMB_V1_1 || \
+    HW_BOARD_TYPE_MMB_1_0 || \
+    HW_BOARD_TYPE_MMB_1_1 || \
     HW_BOARD_TYPE_AFC_LITE_1
 
   config $(serial_config,1)

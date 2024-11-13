@@ -1,0 +1,59 @@
+if HW_BOARD_TYPE_ERB_1
+  config PIN_GEAR_UART
+    default "gpio20" 
+  config PIN_GEAR_STEP
+    default "gpio10" 
+  config PIN_GEAR_DIR
+    default "gpio9" 
+  config PIN_GEAR_ENABLE
+    default "gpio8"
+  config PIN_GEAR_DIAG
+    default "gpio13"
+
+  config PIN_SELECTOR_UART
+    default "gpio17" 
+  config PIN_SELECTOR_STEP
+    default "gpio16" 
+  config PIN_SELECTOR_DIR
+    default "gpio15" 
+  config PIN_SELECTOR_ENABLE
+    default "gpio14" 
+  config PIN_SELECTOR_DIAG
+    default "gpio19" if MMU_SELECTOR_TOUCH 
+  config PIN_SELECTOR_ENDSTOP
+    default "gpio24" if !MMU_SELECTOR_TOUCH
+  config PIN_SELECTOR_SERVO
+    default "gpio23" 
+
+  config PIN_PRE_GATE_0
+    default "gpio0"
+  config PIN_PRE_GATE_1
+    default "gpio1"
+  config PIN_PRE_GATE_2
+    default "gpio2"
+  config PIN_PRE_GATE_3
+    default "gpio3"
+  config PIN_PRE_GATE_4
+    default "gpio4"
+  config PIN_PRE_GATE_5
+    default "gpio5"
+  config PIN_PRE_GATE_6
+    default "gpio6"
+  config PIN_PRE_GATE_7
+    default "gpio7"
+  config PIN_PRE_GATE_8
+    default "gpio26"
+  config PIN_PRE_GATE_9
+    default "gpio27"
+  config PIN_PRE_GATE_10
+    default "gpio28"
+  config PIN_PRE_GATE_11
+    default "gpio29"
+
+  config PIN_ENCODER
+    default "gpio22" if MMU_HAS_ENCODER
+  config PIN_GATE_SENSOR
+    default "gpio22"
+  config PIN_NEOPIXEL
+    default "gpio21"
+endif
