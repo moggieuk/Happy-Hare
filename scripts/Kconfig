@@ -23,7 +23,7 @@ config IS_MIPS
   bool 
   default $(to_bool, uname -m | grep -q 'mips')
 
-rsource "mmu_types.kconfig"
+rsource "Kconfig.mmu_types"
 
 config MMU_HAS_ENCODER
   bool
@@ -50,7 +50,7 @@ config HW_FILAMENT_ALWAYS_GRIPPED
   prompt "Filament always gripped?" if HW_MMU_TYPE_CUSTOM
 
 rsource "boards/Kconfig"
-rsource "serial.kconfig"
+rsource "Kconfig.serial"
 
 choice 
   prompt "Selector type" if MMU_HAS_SELECTOR && HW_MMU_TYPE_CUSTOM
@@ -194,17 +194,17 @@ endmenu
 
 menu "Pins"
   visible if SHOW_ADVANCED_SETTINGS
-  rsource "pins.kconfig"
+  rsource "Kconfig.pins"
 endmenu
 
 menu "Motors"
   visible if SHOW_ADVANCED_SETTINGS
-  rsource "motors.kconfig"
+  rsource "Kconfig.motors"
 endmenu
 
 menu "Endstops"
   visible if SHOW_ADVANCED_SETTINGS
-  rsource "endstops.kconfig"
+  rsource "Kconfig.endstops"
 endmenu
 
 config REPETIER
