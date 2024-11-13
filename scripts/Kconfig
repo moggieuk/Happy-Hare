@@ -5,8 +5,6 @@ to_bool = $(shell, $(1) && echo y || echo n)
 
 mainmenu "Happy Hare $(formatted_version) Configuration"
 
-rsource "boards/*/pins/Kconfig"
-
 config VERSION
   string	
   default "$(happy_hare_version)"
@@ -25,7 +23,7 @@ config IS_MIPS
   bool 
   default $(to_bool, uname -m | grep -q 'mips')
 
-source "./scripts/mmu_types.kconfig"
+rsource "mmu_types.kconfig"
 
 config MMU_HAS_ENCODER
   bool
@@ -51,31 +49,8 @@ config HW_FILAMENT_ALWAYS_GRIPPED
   bool
   prompt "Filament always gripped?" if HW_MMU_TYPE_CUSTOM
 
-choice
-  prompt "Board type"
-  config HW_BOARD_TYPE_MMB_1_0
-    bool "BTT MMB v1.0 (with CANbus)"
-  config HW_BOARD_TYPE_MMB_1_1
-    bool "BTT MMB v1.1 (with CANbus)"
-  config HW_BOARD_TYPE_ERB_1
-    bool "Fysetc Burrows ERB v1"
-  config HW_BOARD_TYPE_ERB_2
-    bool "Fysetc Burrows ERB v2"
-  config HW_BOARD_TYPE_EASY_BRD 
-    bool "Standard EASY-BRD (with SAMD21)"
-  config HW_BOARD_TYPE_EASY_BRD_RP2040
-    bool "EASY-BRD with RP2040"
-  config HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
-    bool "Mellow EASY-BRD v1.x (with CANbus)"
-  config HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
-    bool "Mellow EASY-BRD v2.x (with CANbus)"
-  config HW_BOARD_TYPE_AFC_LITE_1
-    bool "AFC Lite v1.0"
-  config HW_BOARD_TYPE_UNKOWN
-    bool "Not in list / Unknown"
-endchoice
-
-source "./scripts/serial.kconfig"
+rsource "boards/Kconfig"
+rsource "serial.kconfig"
 
 choice 
   prompt "Selector type" if MMU_HAS_SELECTOR && HW_MMU_TYPE_CUSTOM
@@ -219,17 +194,17 @@ endmenu
 
 menu "Pins"
   visible if SHOW_ADVANCED_SETTINGS
-  source "./scripts/pins.kconfig"
+  rsource "pins.kconfig"
 endmenu
 
 menu "Motors"
   visible if SHOW_ADVANCED_SETTINGS
-  source "./scripts/motors.kconfig"
+  rsource "motors.kconfig"
 endmenu
 
 menu "Endstops"
   visible if SHOW_ADVANCED_SETTINGS
-  source "./scripts/endstops.kconfig"
+  rsource "endstops.kconfig"
 endmenu
 
 config REPETIER
