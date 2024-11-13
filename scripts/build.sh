@@ -421,14 +421,9 @@ read_previous_config() {
 # Tries to find the quickest path to the final version
 process_upgrades() {
     local from_version=$1
-    local final_version=${CONFIG_VERSION}
+    local final_version=$2
 
-    if [ -z "${from_version}" ]; then
-        log_info "No current version specified, skipping upgrade"
-        return
-    fi
-
-    if [ "${from_version}" == "${final_version}" ]; then
+    if [ -z "${from_version}" ] || [ "${from_version}" == "${final_version}" ]; then
         return
     fi
 
@@ -459,7 +454,7 @@ process_upgrades() {
     highest_to_version=${highest_to_version//_/.}
     log_info "Upgrading from ${from_version} to ${highest_to_version}"
     eval "${upgrade_function}"
-    process_upgrades "${highest_to_version}"
+    process_upgrades "${highest_to_version}" "${final_version}"
 }
 
 copy_config_files() {
@@ -853,7 +848,7 @@ build() {
     log_info "Building file ${out}..."
 
     read_previous_config
-    process_upgrades "$(param "[mmu]" "happy_hare_version")"
+    process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_VERSION}"
     set_extra_parameters
     copy_config_files "$src" "$out"
 }
