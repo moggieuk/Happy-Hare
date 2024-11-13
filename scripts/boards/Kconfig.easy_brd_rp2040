@@ -1,3 +1,8 @@
+choice CHOICE_BOARD_TYPE
+  config HW_BOARD_TYPE_EASY_BRD_RP2040
+    bool "EASY-BRD with RP2040"
+endchoice
+
 if HW_BOARD_TYPE_EASY_BRD_RP2040
   config PIN_GEAR_UART
     default "gpio6" 

@@ -1,3 +1,8 @@
+choice CHOICE_BOARD_TYPE
+  config HW_BOARD_TYPE_ERB_1
+    bool "Fysetc Burrows ERB v1"
+endchoice
+
 if HW_BOARD_TYPE_ERB_1
   config PIN_GEAR_UART
     default "gpio20" 

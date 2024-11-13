@@ -1,3 +1,8 @@
+choice CHOICE_BOARD_TYPE
+  config HW_BOARD_TYPE_AFC_LITE_1
+    bool "AFC Lite v1.0"
+endchoice
+
 if HW_BOARD_TYPE_AFC_LITE_1
   config PIN_GEAR_UART 
     default "PD5" 

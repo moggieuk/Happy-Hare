@@ -623,11 +623,6 @@ uninstall_include() {
 install_printer_includes() {
     local dest=$1
 
-    if [ "${CONFIG_INSTALL_INCLUDES}" != "y" ]; then
-        uninstall_printer_includes "${dest}"
-        return
-    fi
-
     log_info "Installing MMU references in ${CONFIG_PRINTER_CONFIG}"
 
     if grep -q "\[include config/hardware/mmu.cfg\]" "${dest}"; then

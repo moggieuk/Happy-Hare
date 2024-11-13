@@ -1,3 +1,5 @@
+# This just defines the pins menu layout. To change the actual defaults create a Kconfig.board_type under the boards directory.
+
 menu "Gear pins"
   config PIN_GEAR_UART 
     string "Gear UART pin"
@@ -146,45 +148,6 @@ menu "Gear sensor pins"
   config PIN_GEAR_SENSOR_11
     string "Gear sensor 11 pin"
     depends on HW_NUM_GATES > 11
-endmenu
-
-menu "eSpooler pins"
-  depends on INSTALL_ESPOOLER
-  if HW_NUM_GATES > 0
-    config PIN_SPOOLER_EN_0
-      string "eSpooler enable 0 pin"
-    config PIN_SPOOLER_RWD_0
-      string "eSpooler rewind 0 pin"
-    config PIN_SPOOLER_FWD_0
-      string "eSpooler forward 0 pin"
-  endif
-
-  if HW_NUM_GATES > 1
-    config PIN_SPOOLER_EN_1
-      string "eSpooler enable 1 pin"
-    config PIN_SPOOLER_RWD_1
-      string "eSpooler rewind 1 pin"
-    config PIN_SPOOLER_FWD_1
-      string "eSpooler forward 1 pin"
-  endif
-
-  if HW_NUM_GATES > 2
-    config PIN_SPOOLER_EN_2
-      string "eSpooler enable 2 pin"
-    config PIN_SPOOLER_RWD_2
-      string "eSpooler rewind 2 pin"
-    config PIN_SPOOLER_FWD_2
-      string "eSpooler forward 2 pin"
-  endif
-
-  if HW_NUM_GATES > 3
-    config PIN_SPOOLER_EN_3
-      string "eSpooler enable 3 pin"
-    config PIN_SPOOLER_RWD_3
-      string "eSpooler rewind 3 pin"
-    config PIN_SPOOLER_FWD_3
-      string "eSpooler forward 3 pin"
-  endif
 endmenu
 
 config PIN_ENCODER

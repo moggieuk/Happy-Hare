@@ -10,6 +10,9 @@ config HW_MMU_BASE_VERSION
 
 choice CHOICE_MMU_TYPE 
   prompt "Type"
+  help 
+    Select the type of MMU you are using. 
+    This will configure the default settings for your setup.
 
   config HW_MMU_TYPE_CUSTOM
     bool "Custom"
@@ -18,6 +21,10 @@ choice CHOICE_MMU_TYPE
   if HW_MMU_TYPE_CUSTOM
     choice 
       prompt "Custom starter config"
+      help 
+        Select a custom starter config to start from. 
+        This will configure a good starting point for your custom MMU setup.
+
       config MMU_CUSTOM_TYPE_A_NO_ENCODER
         bool "Type A (Selector)"
         imply MMU_HAS_SELECTOR

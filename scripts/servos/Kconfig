@@ -2,7 +2,9 @@ if MMU_HAS_SELECTOR
   rsource	"Kconfig.*"
 
   choice CHOICE_SERVO_TYPE 
-    prompt "Selector servo type" 
+    prompt "Selector servo type"
+    help
+      Select the type of servo you are using for the selector. 
   
     config HW_SERVO_TYPE_OTHER
       bool "Not listed / Other"

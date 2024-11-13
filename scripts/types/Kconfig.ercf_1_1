@@ -25,7 +25,7 @@ if HW_MMU_TYPE_ERCF_1_1
   config HW_SERVO_BUZZ_GEAR_ON_DOWN
     default 3
 
-  config HW_GEAR_RATIO
+  config HW_GEAR_GEAR_RATIO
     default "80:20"
   config HW_GEAR_RUN_CURRENT
     default "0.5"

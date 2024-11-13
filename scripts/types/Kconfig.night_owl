@@ -13,7 +13,7 @@ if HW_MMU_TYPE_NIGHT_OWL_1
   config HW_MMU_BASE_VERSION
     default "1.0"
 
-  config HW_GEAR_RATIO
+  config HW_GEAR_GEAR_RATIO
     default "1:1"
   config HW_GEAR_RUN_CURRENT
     default "0.7"

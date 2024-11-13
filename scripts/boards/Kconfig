@@ -1,25 +1,10 @@
 rsource "Kconfig.*"
 
-choice
+choice CHOICE_BOARD_TYPE
   prompt "Board type"
-  config HW_BOARD_TYPE_MMB_1_0
-    bool "BTT MMB v1.0 (with CANbus)"
-  config HW_BOARD_TYPE_MMB_1_1
-    bool "BTT MMB v1.1 (with CANbus)"
-  config HW_BOARD_TYPE_ERB_1
-    bool "Fysetc Burrows ERB v1"
-  config HW_BOARD_TYPE_ERB_2
-    bool "Fysetc Burrows ERB v2"
-  config HW_BOARD_TYPE_EASY_BRD 
-    bool "Standard EASY-BRD (with SAMD21)"
-  config HW_BOARD_TYPE_EASY_BRD_RP2040
-    bool "EASY-BRD with RP2040"
-  config HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
-    bool "Mellow EASY-BRD v1.x (with CANbus)"
-  config HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
-    bool "Mellow EASY-BRD v2.x (with CANbus)"
-  config HW_BOARD_TYPE_AFC_LITE_1
-    bool "AFC Lite v1.0"
-  config HW_BOARD_TYPE_UNKOWN
-    bool "Not in list / Unknown"
+  help 
+    Select the type of board you are using. This will configure the default pin layout for your setup.
+
+  config HW_BOARD_TYPE_OTHER
+    bool "Not listed / Other"
 endchoice
