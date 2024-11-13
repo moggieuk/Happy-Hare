@@ -23,7 +23,7 @@ config IS_MIPS
   bool 
   default $(to_bool, uname -m | grep -q 'mips')
 
-rsource "Kconfig.mmu_types"
+rsource "types/Kconfig"
 
 config MMU_HAS_ENCODER
   bool
@@ -68,27 +68,7 @@ config HW_SELECTOR_TYPE
   default "LinearSelector" if HW_SELECTOR_TYPE_LINEAR
   default "VirtualSelector" if HW_SELECTOR_TYPE_VIRTUAL
 
-choice 
-  prompt "Selector servo type" 
-  depends on MMU_HAS_SELECTOR
-
-  if HW_MMU_VENDOR = "ERCF"
-    config HW_SERVO_TYPE_MG_90S
-      bool "MG-90S"
-    config HW_SERVO_TYPE_SAVOX_SH0255MG
-      bool "Savox SH0255MG"
-    config HW_SERVO_TYPE_GDW_DS041MG
-      bool "GDW DS041MG"
-  endif
-
-  if HW_MMU_VENDOR = "Tradrack"
-    config HW_SERVO_TYPE_TRADRACK
-      bool "PS-1171MG or FT1117M (Tradrack)"
-  endif
-
-  config HW_SERVO_TYPE_OTHER
-    bool "Not listed / Other"
-endchoice
+rsource "servos/Kconfig"
 
 config HW_NUM_GATES
   int "Number of gates" 

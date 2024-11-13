@@ -1,0 +1,30 @@
+choice CHOICE_MMU_TYPE
+  config HW_MMU_TYPE_NIGHT_OWL_1
+    bool "Night Owl (Night Turtle) v1.0"
+    select HW_VARIABLE_BOWDEN_LENGTHS
+    select HW_VARIABLE_ROTATION_DISTANCES
+    select HW_REQUIRE_BOWDEN_MOVE
+    select HW_FILAMENT_ALWAYS_GRIPPED
+endchoice
+
+if HW_MMU_TYPE_NIGHT_OWL_1
+  config HW_MMU_VENDOR
+    default "NightOwl"
+  config HW_MMU_BASE_VERSION
+    default "1.0"
+
+  config HW_GEAR_RATIO
+    default "1:1"
+  config HW_GEAR_RUN_CURRENT
+    default "0.7"
+  config HW_GEAR_HOLD_CURRENT
+    default "0.1"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default PARAM_GATE_HOMING_ENDSTOP_GATE
+  endchoice
+  
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default PARAM_EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 

@@ -1,0 +1,41 @@
+choice CHOICE_MMU_TYPE
+  config HW_MMU_TYPE_TRADRACK_1
+    bool "Tradrack v1.0"
+    select MMU_HAS_SELECTOR
+    select HW_REQUIRE_BOWDEN_MOVE
+    imply HW_SERVO_ALWAYS_ACTIVE
+    
+  config HW_EXT_BINKY
+    bool "Binky" 
+    select MMU_HAS_ENCODER
+    depends on HW_MMU_TYPE_TRADRACK_1
+endchoice
+
+if HW_MMU_TYPE_TRADRACK_1
+  config HW_MMU_VENDOR
+    default "Tradrack"
+  config HW_MMU_BASE_VERSION
+    default "1.0"
+
+  config HW_SERVO_BUZZ_GEAR_ON_DOWN
+    default 1
+
+  config HW_GEAR_RATIO
+    default "50:17"
+  config HW_GEAR_RUN_CURRENT
+    default "1.27"
+  config HW_GEAR_HOLD_CURRENT
+    default "0.2"
+  config HW_SELECTOR_RUN_CURRENT
+    default "0.63"
+  config HW_SELECTOR_HOLD_CURRENT
+    default "0.2"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default PARAM_GATE_HOMING_ENDSTOP_GATE
+  endchoice
+  
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default PARAM_EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 

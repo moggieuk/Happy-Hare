@@ -1,4 +1,4 @@
-rsource "*/Kconfig"
+rsource "Kconfig.*"
 
 choice
   prompt "Board type"

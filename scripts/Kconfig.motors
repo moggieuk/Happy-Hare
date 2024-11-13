@@ -1,77 +1,34 @@
-config HW_SERVO_MAX_ANGLE
-  int "Servo maximum angle"
-  depends on MMU_HAS_SELECTOR
-  range 0 360
-  default 131 if HW_SERVO_TYPE_TRADRACK # is this a bug? should be 180?
-  default 180 if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG || HW_SERVO_TYPE_GDW_DS041MG
-  default 180
-config HW_SERVO_MIN_PULSE_WIDTH
-  string "Servo minimum pulse width"
-  depends on MMU_HAS_SELECTOR
-  default "0.00085" if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG
-  default "0.00050" if HW_SERVO_TYPE_GDW_DS041MG
-  default "0.00070" if HW_SERVO_TYPE_TRADRACK
-config HW_SERVO_MAX_PULSE_WIDTH
-  string "Servo maximum pulse width"
-  depends on MMU_HAS_SELECTOR
-  default "0.00240" if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_SAVOX_SH0255MG
-  default "0.00240" if HW_SERVO_TYPE_GDW_DS041MG
-  default "0.00240" if HW_SERVO_TYPE_TRADRACK
-config HW_SERVO_UP_ANGLE
-  int "Servo up angle"
-  depends on MMU_HAS_SELECTOR
-  default 30 if HW_SERVO_TYPE_MG_90S || HW_SERVO_TYPE_GDW_DS041MG
-  default 140 if HW_SERVO_TYPE_SAVOX_SH0255MG
-  default 145 if HW_SERVO_TYPE_TRADRACK
-  default 0
-config HW_SERVO_MOVE_ANGLE
-  int "Servo move angle"
-  depends on MMU_HAS_SELECTOR
-  default HW_SERVO_UP_ANGLE if !HW_MMU_TYPE_ERCF_V2
-  default 61 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_MG_90S
-  default 109 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_SAVOX_SH0255MG
-  default 50 if HW_MMU_TYPE_ERCF_V2 && HW_SERVO_TYPE_GDW_DS041MG
-  default 0
-config HW_SERVO_DOWN_ANGLE
-  int "Servo down angle"
-  depends on MMU_HAS_SELECTOR
-  default 140 if HW_SERVO_TYPE_MG_90S 
-  default 100 if HW_SERVO_TYPE_GDW_DS041MG
-  default 30 if HW_SERVO_TYPE_SAVOX_SH0255MG
-  default 1 if HW_SERVO_TYPE_TRADRACK
-  default 0
-config HW_SERVO_BUZZ_GEAR_ON_DOWN
-  int "How often to buzz servo on down angle"
-  depends on MMU_HAS_SELECTOR
-  default 3 if HW_MMU_VENDOR = "ERCF"
-  default 1 
-config HW_SERVO_ALWAYS_ACTIVE
-  bool "Servo always active?"
-  depends on MMU_HAS_SELECTOR
-  default y if HW_SERVO_TYPE_TRADRACK
-
 config HW_GEAR_GEAR_RATIO
   string "Gear ratio"
-  default "50:17" if HW_MMU_TYPE_TRADRACK_V1
-  default "80:20" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
-  default "1:1" 
 config HW_GEAR_RUN_CURRENT
   string "Gear run current"
-  default "1.27" if HW_MMU_TYPE_TRADRACK_V1
-  default "0.5" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
-  default "0.7"
 config HW_GEAR_HOLD_CURRENT
   string "Gear hold current"
-  default "0.2" if HW_MMU_TYPE_TRADRACK_V1
-  default "0.1"
 
-config HW_SELECTOR_RUN_CURRENT
-  string "Selector run current"
-  depends on MMU_HAS_SELECTOR
-  default "0.63" if HW_MMU_TYPE_TRADRACK_V1
-  default "0.4" if HW_MMU_TYPE_ERCF_V1_1 || HW_MMU_TYPE_ERCF_V2
-  default "0.5"
-config HW_SELECTOR_HOLD_CURRENT
-  string "Selector hold current"
-  depends on MMU_HAS_SELECTOR
-  default "0.2"
+if MMU_HAS_SELECTOR
+  config HW_SERVO_MAX_ANGLE
+    int "Servo maximum angle"
+    range 0 360
+    default 180
+  config HW_SERVO_MIN_PULSE_WIDTH
+    string "Servo minimum pulse width"
+  config HW_SERVO_MAX_PULSE_WIDTH
+    string "Servo maximum pulse width"
+  config HW_SERVO_UP_ANGLE
+    int "Servo up angle"
+  config HW_SERVO_MOVE_ANGLE
+    int "Servo move angle"
+  config HW_SERVO_DOWN_ANGLE
+    int "Servo down angle"
+  config HW_SERVO_BUZZ_GEAR_ON_DOWN
+    int "How often to buzz servo on down angle"
+    default 1 
+  config HW_SERVO_ALWAYS_ACTIVE
+    bool "Servo always active?"
+  config HW_SELECTOR_RUN_CURRENT
+    string "Selector run current"
+    default "0.5"
+  config HW_SELECTOR_HOLD_CURRENT
+    string "Selector hold current"
+    default "0.2"
+endif 

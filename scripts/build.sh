@@ -825,7 +825,7 @@ set_extra_parameters() {
     CONFIG_PARAM_HAPPY_HARE_VERSION="${CONFIG_VERSION}"
 
     CONFIG_HW_MMU_VERSION=${CONFIG_HW_MMU_BASE_VERSION}
-    if [ "${CONFIG_HW_MMU_TYPE_ERCF_V1_1}" == "y" ]; then
+    if [ "${CONFIG_HW_MMU_TYPE_ERCF_1_1}" == "y" ]; then
         [ "${CONFIG_HW_EXT_SPRINGY}" == "y" ] && CONFIG_HW_MMU_VERSION+="s"
         [ "${CONFIG_HW_EXT_BINKY}" == "y" ] && CONFIG_HW_MMU_VERSION+="b"
         [ "${CONFIG_HW_EXT_TRIPLE_DECK}" == "y" ] && CONFIG_HW_MMU_VERSION+="t"

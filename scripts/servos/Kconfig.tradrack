@@ -1,0 +1,21 @@
+if HW_MMU_VENDOR = "Tradrack"
+  choice CHOICE_SERVO_TYPE 
+    config HW_SERVO_TYPE_TRADRACK
+    bool "PS-1171MG or FT1117M (Tradrack)"
+  endchoice
+endif
+
+if HW_SERVO_TYPE_TRADRACK
+  config HW_SERVO_MIN_PULSE_WIDTH
+    default "0.00070"
+  config HW_SERVO_MAX_PULSE_WIDTH
+    default "0.00220" 
+  config HW_SERVO_MAX_ANGLE
+    default 131
+  config HW_SERVO_UP_ANGLE
+    default 145 
+  config HW_SERVO_MOVE_ANGLE
+    default HW_SERVO_UP_ANGLE
+  config HW_SERVO_DOWN_ANGLE
+    default 1 
+endif

@@ -1,0 +1,10 @@
+if MMU_HAS_SELECTOR
+  rsource	"Kconfig.*"
+
+  choice CHOICE_SERVO_TYPE 
+    prompt "Selector servo type" 
+  
+    config HW_SERVO_TYPE_OTHER
+      bool "Not listed / Other"
+  endchoice
+endif
