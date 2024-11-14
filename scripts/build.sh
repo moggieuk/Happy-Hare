@@ -457,7 +457,7 @@ process_upgrades() {
             fi
         done
         log_error "No upgrade path found for version ${from_version}" \
-            "Please reinstall Happy Hare from scratch or upgrade to ${lowest_from_version//_/.} first"
+            "Please reinstall Happy Hare from scratch or manually upgrade to ${lowest_from_version//_/.} first"
     fi
 
     highest_to_version=${highest_to_version//_/.}
@@ -880,11 +880,6 @@ check_version() {
             log_warning "Trying to update from version ${FROM_VERSION} to ${CONFIG_VERSION}" \
                 "Automatic 'downgrade' to earlier version is not guaranteed. If you encounter startup problems you may" \
                 "need to manually compare the backed-up 'mmu_parameters.cfg' with current one to restore differences"
-        elif cmp_version "${FROM_VERSION}" "2.70"; then
-            log_error "Cannot automatically 'upgrade' from version ${FROM_VERSION} to ${CONFIG_VERSION}..." \
-                "${ERROR}Please upgrade to v2.7.0 or later before attempting v3.0 upgrade"
-        elif [ "${FROM_VERSION}" != "${CONFIG_VERSION}" ]; then
-            log_warning "Upgrading from version ${FROM_VERSION} to ${CONFIG_VERSION}..."
         fi
     fi
 }
