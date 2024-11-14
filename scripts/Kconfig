@@ -122,81 +122,73 @@ menu "Addons"
   rsource "addons/Kconfig.*"
 endmenu
 
-config SHOW_ADVANCED_SETTINGS
-  bool "Show advanced settings?"
-  default y if HW_MMU_TYPE_CUSTOM
+menu "Advanced settings"
+  menu "Paths"
+    config PRINTER_CONFIG 
+      string "Printer config file"
+      depends on !REPETIER
+      default "printer.cfg"
+    config KLIPPER_HOME
+      string "Klipper directory"
+      # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture) 
+      # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
+      default "$(CONFIG_KLIPPER_HOME)"
+    config KLIPPER_CONFIG_HOME
+      string "Klipper config directory"
+      default "/usr/data/printer_data/config" if IS_MIPS
+      default "~" if OCTOPRINT
+      default "~/printer_data/config"
+    config MOONRAKER_HOME
+      string "Moonraker directory"
+      depends on !OCTOPRINT
+      default "/usr/data/moonraker" if IS_MIPS
+      default "~/moonraker"
+    config HAPPY_HARE_HOME
+      string "Happy Hare directory"
+      default "/usr/data/Happy-Hare" if IS_MIPS
+      default "$(shell,	pwd)"
+    config GCODES_PATH
+      string "Gcodes directory"
+      default "~/printer_data/gcodes"
+  endmenu
 
-menu "Paths"
-  visible if SHOW_ADVANCED_SETTINGS
-  config PRINTER_CONFIG 
-    string "Printer config file"
-    depends on !REPETIER
-    default "printer.cfg"
-  config KLIPPER_HOME
-    string "Klipper directory"
-    # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture) 
-    # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
-    default "$(CONFIG_KLIPPER_HOME)" 
-  config KLIPPER_CONFIG_HOME
-    string "Klipper config directory"
-    default "/usr/data/printer_data/config" if IS_MIPS
-    default "~" if OCTOPRINT
-    default "~/printer_data/config"
-  config MOONRAKER_HOME
-    string "Moonraker directory"
-    depends on !OCTOPRINT
-    default "/usr/data/moonraker" if IS_MIPS
-    default "~/moonraker"
-  config HAPPY_HARE_HOME
-    string "Happy Hare directory"
-    default "/usr/data/Happy-Hare" if IS_MIPS
-    default "$(shell,	pwd)"
-  config GCODES_PATH
-    string "Gcodes directory"
-    default "~/printer_data/gcodes"
-endmenu  
+  menu "Services"
+    config SERVICE_KLIPPER
+      string "Klipper service name"
+      depends on !REPETIER
+      default "klipper_service" if IS_MIPS
+      default "klipper.service"
+    config SERVICE_MOONRAKER
+      string "Moonraker service name"
+      depends on !OCTOPRINT
+      default "moonraker_service" if IS_MIPS
+      default "moonraker.service"
+    config SERVICE_OCTOPRINT
+      string "Octoprint service name"
+      depends on OCTOPRINT
+      default "octoprint.service"
+  endmenu
 
-menu "Services"
-  visible if SHOW_ADVANCED_SETTINGS
-  config SERVICE_KLIPPER
-    string "Klipper service name"
-    depends on !REPETIER
-    default "klipper_service" if IS_MIPS
-    default "klipper.service"
-  config SERVICE_MOONRAKER
-    string "Moonraker service name"
-    depends on !OCTOPRINT
-    default "moonraker_service" if IS_MIPS
-    default "moonraker.service"
-  config SERVICE_OCTOPRINT
-    string "Octoprint service name"
-    depends on OCTOPRINT
-    default "octoprint.service"
+  menu "Pins"
+    rsource "Kconfig.pins"
+  endmenu
+
+  menu "Motors"
+    rsource "Kconfig.motors"
+  endmenu
+
+  menu "Endstops"
+    rsource "Kconfig.endstops"
+  endmenu
+
+  config REPETIER
+    bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS
+
+  config REPETIER_NAME
+    string "Repetier name"
+    depends on REPETIER
+
+  config OCTOPRINT
+    bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
+    depends on !IS_MIPS
 endmenu
-
-menu "Pins"
-  visible if SHOW_ADVANCED_SETTINGS
-  rsource "Kconfig.pins"
-endmenu
-
-menu "Motors"
-  visible if SHOW_ADVANCED_SETTINGS
-  rsource "Kconfig.motors"
-endmenu
-
-menu "Endstops"
-  visible if SHOW_ADVANCED_SETTINGS
-  rsource "Kconfig.endstops"
-endmenu
-
-config REPETIER
-  bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS
-
-config REPETIER_NAME
-  string "Repetier name"
-  depends on REPETIER
-
-config OCTOPRINT
-  bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
-  depends on !IS_MIPS
-
