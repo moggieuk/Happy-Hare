@@ -21,6 +21,10 @@ set -e # Exit immediately on error
 # scoped paramaters, will have the following layout:
 # [SECTION],PARAM = VALUE
 declare -A PARAMS
+# These will be the same as above but not stripped of comments and whitespace
+declare -A PARAMS_UNSTRIPPED
+# Keep track of where the parameters came from to detect deprecated parameters
+declare -A SECTION_ORIGIN
 
 # Screen Colors
 OFF='\033[0m'       # Text Reset
@@ -48,6 +52,7 @@ WARNING="${B_YELLOW}"
 DIM="${PURPLE}"
 
 log_color() {
+    local line
     for line in "${@:2}"; do
         echo -e "${1}${line}${OFF}"
     done
@@ -178,10 +183,11 @@ set_param() {
     PARAMS["${section},${param}"]="${value}"
 }
 
+# check if a parameter is defined, an empty string returns true
 has_param() {
     local section=$1
     local param=$2
-    [ -n "${PARAMS["${section},${param}"]}" ]
+    [ -n "${PARAMS["${section},${param}"]+x}" ]
 }
 
 has_param_section() {
@@ -217,7 +223,7 @@ per_section() {
             params+="-n"
         fi
         sed ${params} "
-			/^${start_section}/,/^${end_section}/ { // ! ${sed_cmd}; /${start_section}/ ${sed_cmd}; }
+			\%^${start_section}%,\%^${end_section}% { // ! ${sed_cmd}; \%${start_section}% ${sed_cmd}; }
 		" "${file}"
     fi
 }
@@ -229,6 +235,12 @@ delete_section() {
     local file=$3
 
     per_section "${start_section}" "${end_section}" "d" "y" "${file}"
+}
+delete_line() {
+    local line_select=$1
+    local file=$2
+
+    delete_section "${line_select}" "" "${file}"
 }
 
 insert_after_section() {
@@ -312,98 +324,181 @@ parse_file() {
         log_error "Trying to parse '${file}' but it doesn't exist"
     fi
 
+    set_parameter() {
+        if [ -z "${current_parameter}" ]; then
+            return
+        fi
+
+        current_value="${current_value%$'\n\t'}"
+        set_param "${current_section}" "${current_parameter}" "${current_value}"
+        PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]="${current_lines%$'\n'}"
+        SECTION_ORIGIN["${current_section}"]="${file##*/}"
+    }
+
+    local current_section
+    local current_parameter
+    local current_value
+    local current_lines
+    local line
+
     # Read old config files
-    local current_section=""
     while IFS="" read -r line; do
-        # Remove comments and config sections
-        local line="${line%%[#\;]*}"
-        line="${line##*([[:space:]])}" # Remove leading whitespace
-        line="${line%%*([[:space:]])}" # Remove leading whitespace
 
-        if [[ "${line}" =~ ^\[ ]]; then
+        if [ -z "${line%%*([[:space:]])?([#\;]*)}" ]; then
+            current_lines+=${line}$'\n'
+            # Empty line
+            continue
+        fi
+
+        if [[ "${line}" =~ ^\[.*\] ]]; then
             # section
-            current_section="${line}"
+            set_parameter
+            current_section="${line%%*([[:space:]])?([#;]*)}"
+            current_parameter=
+            current_value=
+            current_lines=
             continue
         fi
 
-        if [[ ! "${line}" =~ : ]]; then
-            # Line doesn't contain a parameter
+        if [ -z "${current_section}" ]; then
+            # No section yet, everything is irrelevant until we do
             continue
         fi
 
-        local parameter="${line%%:*}"            # Select parameter before :
-        parameter="${parameter%%*([[:space:]])}" # Remove trailing whitespace
+        if [[ "${line}" =~ ^[[:alnum:]_]+[[:space:]]*: ]]; then
+            # parameter
+            set_parameter
+            current_parameter="${line%%*([[:space:]]):*}" # Select parameter before :
+            current_value=
+            current_lines=
 
-        if [ -z "${parameter}" ] || ! [[ "${parameter}" =~ ^(${prefix_filter}) ]]; then
-            # Parameter is empty or doesn't match filter
+            if [[ "${current_section}" =~ ^\[gcode_macro ]] &&
+                [[ ! "${current_parameter}" =~ ^variable_ ]]; then
+                # skip everything that is not a variable in gcode macros
+                current_parameter=
+            fi
+
+            if [[ ! "${current_parameter}" =~ ^(${prefix_filter}) ]]; then
+                # We skip these parameters
+                current_parameter=
+            fi
+        fi
+
+        if [ -z "${current_parameter}" ]; then
+            # no parameter yet, so not relevant
             continue
         fi
 
-        local value="${line#*:}" # Select value after :
-        value="${value##*([[:space:]])}"
-
+        # part of a possibly multiline value
+        local value="${line%%*([[:space:]])?([#\;]*)}" # Strip spaces and comments
+        value="${value#*:}"                            # Select value after :
+        value="${value##*([[:space:]])}"               # Strip leading spaces
         if [ -n "${value}" ]; then
-            # If parameter is one of interest and it has a value remember it
-            set_param "${current_section}" "${parameter}" "${value}"
+            current_value+=${value}$'\n\t'
         fi
+        current_lines+=${line}$'\n'
 
     done <"${file}"
+
+    # after reaching end of file, set the last known parameter
+    set_parameter
 }
 
 update_file() {
     local dest=$1
     local prefix_filter=$2
 
-    local current_section=""
+    check_parameter() {
+        if [ -z "${current_parameter}" ]; then
+            return
+        fi
+
+        current_value="${current_value%$'\n\t'}"
+        local existing_value="$(param "${current_section}" "${current_parameter}")"
+        remove_param "${current_section}" "${current_parameter}"
+        local unstripped_value="${PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]}"
+        unset "PARAMS_UNSTRIPPED[${current_section},${current_parameter}]"
+
+        # Compare stripped parameter values
+        if [ "${current_value}" == "${existing_value}" ]; then
+            # No change, just print as is. This will remove any comments the user might have added
+            echo "${current_lines%$'\n'}" >>"${dest}.tmp"
+            return
+        fi
+
+        if [ "${#existing_value}" -gt 50 ]; then
+            local print_value="'${existing_value:0:50}'..."
+        else
+            local print_value="'${existing_value}'"
+        fi
+
+        log_info "Reusing parameter value from existing install: ${current_section} ${current_parameter} = ${print_value}"
+        echo "${unstripped_value}" >>"${dest}.tmp"
+    }
+
+    local current_section
+    local current_parameter
+    local current_value
+    local current_lines
+    local line
+
     # Read the file line by line
     while IFS="" read -r line; do
-        if [[ "${line}" =~ ^[[:space:]]*([#\;]|$) ]]; then
-            # Empty line or comment, just copy
-            echo "${line}" >>"${dest}.tmp"
-            continue
-        fi
-
-        if [[ "${line}" =~ ^[[:space:]]*\[ ]]; then
+        if [[ "${line}" =~ ^\[.*\] ]]; then
             # section
-            current_section="${line##*([[:space:]])}"
-            current_section="${current_section%%*([[:space:]])?([#;]*)}"
+            check_parameter
+            current_section="${line%%*([[:space:]])?([#;]*)}"
+            current_parameter=
+            current_value=
+            current_lines=
             echo "${line}" >>"${dest}.tmp"
             continue
         fi
 
-        local parameter="${line%%:*}"            # select parameter
-        parameter="${parameter##*([[:space:]])}" # remove leading spaces
-        parameter="${parameter%%*([[:space:]])}" # remove trailing spaces
-
-        if [ -z "${parameter}" ] || [[ ! "${parameter}" =~ ^(${prefix_filter}) ]]; then
-            # Parameter doesn't match filter
+        if [ -z "${current_section}" ]; then
+            # No section yet, everything is irrelevant until we do
             echo "${line}" >>"${dest}.tmp"
             continue
         fi
 
-        if ! has_param "${current_section}" "${parameter}"; then
+        if [[ "${line}" =~ ^[[:alnum:]_]+[[:space:]]*: ]]; then
+            check_parameter
+            current_parameter="${line%%*([[:space:]]):*}" # Select parameter before
+            current_value=
+            current_lines=
+
+            if [[ "${current_section}" = ^\[gcode_macro ]] &&
+                [[ ! "${current_parameter}" = ^variable_ ]]; then
+                # skip everything that is not a variable in gcode macros
+                current_parameter=
+            fi
+
+            if [[ ! "${current_parameter}" =~ ^(${prefix_filter}) ]] ||
+                ! has_param "${current_section}" "${current_parameter}"; then
+                # We skip these parameters as they should never be overwritten
+                current_parameter=
+            fi
+        fi
+
+        if [ -z "${current_parameter}" ]; then
+            # no parameter yet, so just print the line
             echo "${line}" >>"${dest}.tmp"
             continue
         fi
 
-        local value="${line#*:}" # select value
-        value="${value##*([[:space:]])}"
-        value="${value%%*([[:space:]])?([#;]*)}" # remove trailing spaces and comments
+        # part of a possibly multiline value
+        local value="${line%%*([[:space:]])?([#\;]*)}" # Strip spaces and comments
+        value="${value#*:}"                            # Select value after :
+        value="${value##*([[:space:]])}"               # Strip leading spaces
 
-        local new_value="$(param "${current_section}" "${parameter}")"
-        remove_param "${current_section}" "${parameter}"
-
-        if [ "${value}" == "${new_value}" ]; then
-            # No change
-            echo "${line}" >>"${dest}.tmp"
-            continue
+        if [ -n "${value}" ]; then
+            current_value+=${value}$'\n\t'
         fi
-
-        log_info "Reusing parameter value from existing install: ${current_section} ${parameter} = ${new_value}"
-        local comment="${line#"${line%%*([[:space:]])?([#;]*)}"}" # extract trailing space + comment
-        echo "${parameter}: ${new_value}${comment}" >>"${dest}.tmp"
-
+        current_lines+=${line}$'\n'
     done <"${dest}"
+
+    # after reaching end of file, check the last known parameter
+    check_parameter
     mv "${dest}.tmp" "${dest}"
 }
 
@@ -419,7 +514,7 @@ read_previous_config() {
     # TODO namespace config in third-party addons separately
     if [ -d "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
         for cfg in "${CONFIG_KLIPPER_CONFIG_HOME}"/mmu/addons/*.cfg; do
-            if [[ ! "${cfg##*/}" =~ _hw ]]; then
+            if [[ ! "${cfg##*/}" =~ ^my_ ]]; then
                 parse_file "${cfg}"
             fi
         done
@@ -537,7 +632,7 @@ copy_config_files() {
             sed_expr+="s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; "
         else
             # Remove uart_address lines
-            delete_section "uart_address:" "" "${dest}"
+            delete_line "uart_address:" "${dest}"
         fi
 
         if [ "${CONFIG_ENABLE_SELECTOR_TOUCH}" == "y" ]; then
@@ -574,6 +669,18 @@ copy_config_files() {
         # Ensure that supplemental user added params are retained. These are those that are
         # by default set internally in Happy Hare based on vendor and version settings but
         # can be overridden.  This set also includes a couple of hidden test parameters.
+
+        if [ "${CONFIG_HW_SELECTOR_TYPE}" == "VirtualSelector" ]; then
+            delete_section "# Servo configuration" "# Logging" "${dest}"
+            delete_section "# Selector movement speeds" "$" "${dest}"
+            delete_section "# Selector touch" "$" "${dest}"
+            delete_section "# ADVANCED/CUSTOM MMU" "$" "${dest}"
+            delete_line "sync_to_extruder:" "${dest}"
+            delete_line "sync_form_tip:" "${dest}"
+            delete_line "preload_attempts:" "${dest}"
+            delete_line "gate_load_retries:" "${dest}"
+        fi
+
         {
             echo ""
             echo "# SUPPLEMENTAL USER CONFIG retained after upgrade --------------------------------------------------------------------"
@@ -602,13 +709,17 @@ copy_config_files() {
     update_file "${dest}"
 
     # If any params are still left warn the user because they will be lost (should have been upgraded)
-    for key in $(param_keys_for "[mmu]"); do
-        log_warning "Following parameter is deprecated and has been removed: [mmu] ${key#*,} = ${PARAMS[$key]}"
+    for key in "${!PARAMS[@]}"; do
+        local section=${key%,*}
+        if [ "${SECTION_ORIGIN["${section}"]}" == "${filename}" ]; then
+            log_warning "Following parameter in '${filename}' is deprecated and has been removed: ${section} ${key#*,} = ${PARAMS[$key]}"
+        fi
     done
 }
 
 install_include() {
-    local include=$1
+    local include=${1//./\\.} # Escape for regex
+    include=${include//\*/\\*}
     local dest=$2
 
     if ! grep -q "\[include ${include}\]" "${dest}"; then
@@ -915,7 +1026,7 @@ check-version)
 print-params)
     read_previous_config
     for key in "${!PARAMS[@]}"; do
-        echo "${key%,*} ${key#*,}: ${PARAMS[${key}]}"
+        echo -e "${key%,*} ${key#*,}: ${PARAMS[${key}]}"
     done
     ;;
 *)

@@ -1,13 +1,13 @@
 SHELL=/usr/bin/env bash
 
+export KCONFIG_CONFIG ?= .config
 # For parallel builds
 MAKEFLAGS += --jobs 16
 # kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target
-MAKEFLAGS += $(if $(findstring menuconfig,$(MAKECMDGOALS)),, --output-sync)
+MAKEFLAGS += $(if $(or $(findstring menuconfig,$(MAKECMDGOALS)),$(shell [ ! -e "$(KCONFIG_CONFIG)" ] && echo y)),, --output-sync)
 # For quiet builds, override with make Q= or verbose output
 Q ?= @
 
-export KCONFIG_CONFIG ?= .config
 
 include $(KCONFIG_CONFIG)
 
@@ -74,6 +74,7 @@ backup = if [ -e "$(1)" ] && [ ! -e "$(addsuffix $(backup_ext),$(1))" ]; then \
 		cp -a "$(1)" "$(addsuffix $(backup_ext),$(1))"; \
 	fi
 
+.DEFAULT_GOAL := install
 .PHONY: update menuconfig install uninstall remove_old_klippy_modules check_root link_plugins backups build clean clean-all 
 
 
@@ -132,6 +133,7 @@ $(klipper_config_home)/mmu/%: $(OUT)/mmu/%
 	$(Q)$(call backup,$(klipper_config_home)/mmu)
 	$(Q)$(call install,$<,$@)
 
+# Special case for mmu_vars.cfg, we don't want to overwrite it
 $(klipper_config_home)/mmu/mmu_vars.cfg: $(OUT)/mmu/mmu_vars.cfg 
 	$(Q)$(call backup,$(klipper_config_home)/mmu) 
 	$(Q)$(call install,$<,$@,--update=none) 
@@ -206,7 +208,7 @@ $(KCONFIG_CONFIG): $(SRC)/scripts/Kconfig
 		python $(klipper_home)/lib/kconfiglib/olddefconfig.py $(SRC)/scripts/Kconfig; \
 		touch $(KCONFIG_CONFIG); \
 	elif [[ ! "$(MAKECMDGOALS)" =~ menuconfig ]]; then \
-		$(MAKE) MAKEFLAGS= menuconfig; \
+		$(MAKE) menuconfig; \
 		[ -f $(KCONFIG_CONFIG) ] || { echo "No $(KCONFIG_CONFIG) file found, exiting. Run 'make menuconfig' to create a config file"; exit 1; }; \
 	fi
 

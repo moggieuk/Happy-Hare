@@ -20,6 +20,9 @@ if HW_MMU_TYPE_NIGHT_OWL_1
   config HW_GEAR_HOLD_CURRENT
     default "0.1"
 
+  config HW_SELECTOR_TYPE
+    default "VirtualSelector"
+
   choice CHOICE_GATE_HOMING_ENDSTOP
     default PARAM_GATE_HOMING_ENDSTOP_GATE
   endchoice

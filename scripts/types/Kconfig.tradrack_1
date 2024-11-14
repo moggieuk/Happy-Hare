@@ -31,6 +31,9 @@ if HW_MMU_TYPE_TRADRACK_1
   config HW_SELECTOR_HOLD_CURRENT
     default "0.2"
 
+  config HW_SELECTOR_TYPE
+    default "LinearSelector"
+
   choice CHOICE_GATE_HOMING_ENDSTOP
     default PARAM_GATE_HOMING_ENDSTOP_GATE
   endchoice

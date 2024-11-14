@@ -61,8 +61,8 @@ config HW_FILAMENT_ALWAYS_GRIPPED
 rsource "boards/Kconfig"
 rsource "Kconfig.serial"
 
-choice 
-  prompt "Selector type" if MMU_HAS_SELECTOR && HW_MMU_TYPE_CUSTOM
+choice CHOICE_SELECTOR_TYPE
+  prompt "Selector type" if HW_MMU_TYPE_CUSTOM 
   default HW_SELECTOR_TYPE_LINEAR if MMU_HAS_SELECTOR
   default HW_SELECTOR_TYPE_VIRTUAL
   config HW_SELECTOR_TYPE_LINEAR
@@ -73,7 +73,6 @@ endchoice
 
 config HW_SELECTOR_TYPE
   string
-  depends on MMU_HAS_SELECTOR
   default "LinearSelector" if HW_SELECTOR_TYPE_LINEAR
   default "VirtualSelector" if HW_SELECTOR_TYPE_VIRTUAL
 
