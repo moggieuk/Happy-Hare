@@ -850,7 +850,7 @@ uninstall_update_manager() {
 }
 
 self_update() {
-    if [ -n "${NO_UPDATE+x}" ]; then
+    if [ -n "${SKIP_UPDATE+x}" ]; then
         log_info "Skipping self update"
         return
     fi

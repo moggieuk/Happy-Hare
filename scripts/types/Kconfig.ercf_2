@@ -26,6 +26,8 @@ if HW_MMU_TYPE_ERCF_2
     default "0.4"
   config HW_SELECTOR_HOLD_CURRENT
     default "0.2"
+  config HW_ENCODER_RESOLUTION
+    default "1.0"
 
   config HW_SELECTOR_TYPE
     default "LinearSelector"

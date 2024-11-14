@@ -180,6 +180,11 @@ menu "Advanced settings"
     rsource "Kconfig.endstops"
   endmenu
 
+  config HW_ENCODER_RESOLUTION
+    string "Encoder resolution"
+    depends on MMU_HAS_ENCODER
+    default "1.0"
+
   config REPETIER
     bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS
 
