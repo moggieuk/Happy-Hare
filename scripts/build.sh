@@ -107,6 +107,8 @@ convert_to_boolean_string() {
     fi
 }
 
+# Change parameter name of section $1 from $2 to $3
+# e.g. param_change_var "[section]" "from_param" "to_param"
 param_change_var() {
     local section=$1
     local from_var=$2
@@ -119,6 +121,8 @@ param_change_var() {
     done
 }
 
+# Move all parameters in section $1 to section $2
+# e.g. param_change_section "[from_section]" "[to_section]"
 param_change_section() {
     local from_section=$1
     local to_section=$2
@@ -130,12 +134,17 @@ param_change_section() {
     done
 }
 
+# Change key $1 to $2
+# e.g. param_change_key "[from_section],from_param" "[to_section],to_param"
 param_change_key() {
     local from=$1
     local to=$2
 
-    PARAMS["${to}"]="${PARAMS[${from}]}"
-    unset "PARAMS[${from}]"
+    # only change if the key exists (even if empty)
+    if [ -n "${PARAMS["${from}"]+x}" ]; then
+        PARAMS["${to}"]="${PARAMS[${from}]}"
+        unset "PARAMS[${from}]"
+    fi
 }
 
 param() {
