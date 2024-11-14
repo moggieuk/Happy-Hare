@@ -31,28 +31,48 @@ from extras import mmu_machine
 from .mmu_shared import MmuError
 
 ################################################################################
-# Digital Selector
-# Implements digital selector for type-B MMU's with single gear driver
+# Macro Selector
+# Implements macro-based selector for MMU's
 ################################################################################
 
-class DigitalSelector:
+"""
+Example demultiplexer-style SELECT_TOOL macro:
+[gcode_macro SELECT_TOOL]
+gcode:
+    SET_PIN PIN=d0 VALUE={params.S0}
+    SET_PIN PIN=d1 VALUE={params.S1}
+    SET_PIN PIN=d2 VALUE={params.S2}
+
+
+
+Example optocoupler-style SELECT_TOOL macro:
+[gcode_macro SELECT_TOOL]
+gcode:
+    SET_PIN PIN=o{printer.mmu.gate} VALUE=0
+    SET_PIN PIN=o{params.GATE} VALUE=1
+"""
+
+class MacroSelector:
 
     def __init__(self, mmu):
         self.mmu = mmu
         self.is_homed = True
 
-        # Read all controller parameters related to selector or servo to stop klipper complaining. This
-        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
-        self.select_tool_macro = mmu.config.get('select_tool_macro')
-        self.num_switches = mmu.config.getint('select_tool_num_switches', minval=0)
-
-        max_num_tools = 2**self.num_switches
-        if mmu.num_gates > max_num_tools:
-            raise mmu.config.error(f'Maximum number of allowed tools is {max_num_tools}, but {mmu.num_gates} are present.')
-
         self.printer = mmu.printer
         self.gcode = self.printer.lookup_object('gcode')
-        # raise Exception(f'Digital: {self.select_tool_macro}')
+
+        # Check if using a demultiplexer-style setup
+        if self.mmu.select_tool_num_switches > 0:
+            self.binary_mode = True
+            max_num_tools = 2**self.mmu.select_tool_num_switches
+            # Verify that there aren't too many tools for the demultiplexer
+            if mmu.num_gates > max_num_tools:
+                raise mmu.config.error(f'Maximum number of allowed tools is {max_num_tools}, but {mmu.num_gates} are present.')
+        else:
+            self.binary_mode = False
+
+        # Read all controller parameters related to selector or servo to stop klipper complaining. This
+        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
         for option in ['selector_', 'servo_', 'cad_']:
             for key in mmu.config.get_prefix_options(option):
                 _ = mmu.config.get(key)
@@ -76,26 +96,26 @@ class DigitalSelector:
         pass
 
     def select_gate(self, gate):
-        binary = '{0:b}'.format(gate).zfill(self.num_switches)
+        # Store parameters as list
         params = [f'GATE={gate}']
-        for i in range(self.num_switches):
-            char = binary[i]
-            params.append(f'S{i}={char}')
+        if self.binary_mode: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
+            binary = '{0:b}'.format(gate).zfill(self.mmu.select_tool_num_switches)[::-1]
+            for i in range(self.mmu.select_tool_num_switches):
+                char = binary[i]
+                params.append(f'S{i}={char}')
         params = ' '.join(params)
 
+        # Call selector macro
         self.gcode.run_script_from_command(f'{self.select_tool_macro} {params}')
-
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
-
-    def restore_gate(self, gate):
-        #self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(%s)" % gate)
-        self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.sync_gear_to_extruder(gate >= 0, gate)
-        #self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(END)")
+
+    def restore_gate(self, gate):
+        # Sync MMU gear stepper now if design requires it
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
 
     def filament_drive(self):
         pass
