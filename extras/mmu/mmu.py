@@ -2833,12 +2833,6 @@ class Mmu:
         self._handle_sync_feedback(eventtime, sss)
         self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string())
 
-    def is_printer_printing(self):
-        return bool(self.print_stats and self.print_stats.state == "printing")
-
-    def is_printer_paused(self):
-        return self.pause_resume.is_paused
-
     def is_printing(self, force_in_print=False): # Actively printing and not paused
         return self.print_state in ["started", "printing"] or force_in_print or self.test_force_in_print
 
@@ -2856,6 +2850,15 @@ class Mmu:
 
     def is_in_standby(self):
         return self.print_state in ["standby"]
+
+    def is_printer_printing(self):
+        return bool(self.print_stats and self.print_stats.state == "printing")
+
+    def is_printer_paused(self):
+        return self.pause_resume.is_paused
+
+    def is_paused(self):
+        return self.is_printer_paused() or self.is_mmu_paused()
 
     def _wakeup(self):
         if self.is_in_standby():
@@ -2956,7 +2959,7 @@ class Mmu:
             self.log_info(msg)
             self._set_print_state("printing")
 
-    # Hack: Force state transistion to printing for any early moves if _MMU_PRINT_START not yet run
+    # Hack: Force state transistion to printing for any early moves if MMU_PRINT_START not yet run
     def _fix_started_state(self):
         if self.is_printer_printing() and not self.is_in_print():
             self._wrap_gcode_command("MMU_PRINT_START")
@@ -2982,34 +2985,35 @@ class Mmu:
         self._clear_macro_state()
 
     def handle_mmu_error(self, reason, force_in_print=False):
-        self._fix_started_state() # Get out of 'started' state before transistion to pause
+        self._fix_started_state() # Get out of 'started' state before transistion to mmu pause
 
         run_pause_macro = run_error_macro = recover_pos = send_event = False
         if self.is_in_print(force_in_print):
             if not self.is_mmu_paused():
+                self._disable_runout() # Disable runout/clog detection while in pause state
+                self._track_pause_start()
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
                 self.reason_for_pause = reason
                 self._display_mmu_error()
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
-                self._track_pause_start()
-                self.log_trace("Extruder heater will be disabled in %s" % self._seconds_to_string(self.disable_heater))
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
-                self._disable_runout() # Disable runout/clog detection while in pause state
+                self.log_trace("Extruder heater will be disabled in %s" % (self._seconds_to_string(self.disable_heater))
+                self.log_trace("Idle timeout in %s" % self._seconds_to_string(self.timeout_pause))
                 self._save_toolhead_position_and_park('pause') # if already paused this is a no-op
                 run_error_macro = True
                 run_pause_macro = not self.is_printer_paused()
-                self._set_print_state("pause_locked")
                 send_event = True
                 recover_pos = self.filament_recovery_on_pause
+                self._set_print_state("pause_locked")
             else:
                 self.log_error("MMU issue detected whilst printer is paused\nReason: %s" % reason)
                 recover_pos = self.filament_recovery_on_pause
 
         else: # Not in a print (standalone operation)
             self.log_error("MMU issue: %s" % reason)
-            # Restore original position if parked
+            # Restore original position if parked because there will be no resume
             if self.saved_toolhead_operation:
                 self._restore_toolhead_position(self.saved_toolhead_operation)
 
@@ -3074,6 +3078,7 @@ class Mmu:
             self.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed")
         elif self.is_mmu_paused():
+# PAUL what if mmu is not mmu_paused and we get a RESUME?
             # If paused we can only continue on resume
             return
 
@@ -3097,9 +3102,10 @@ class Mmu:
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
         eventtime = self.reactor.monotonic()
         homed = self.toolhead.get_status(eventtime)['homed_axes']
-        if not self.saved_toolhead_operation:
-            # Save toolhead position
-            if 'xyz' in homed:
+        if 'xyz' in homed:
+            if not self.saved_toolhead_operation:
+                # Save toolhead position
+
                 # This is paranoia so I can be absolutely sure that Happy Hare leaves toolhead the same way when we are done
                 gcode_pos = self.gcode_move.get_status(eventtime)['gcode_position']
                 toolhead_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
@@ -3122,14 +3128,14 @@ class Mmu:
                 self._wrap_gcode_command(self.save_position_macro)
                 self._wrap_gcode_command(self.park_macro)
             else:
-                self.log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
-        else:
-            if 'xyz' in homed:
-                # Re-apply parking for new operation. This will not change the saved position in macro
+                # Re-apply parking for new operation (this will not change the saved position in macro)
+
                 self.saved_toolhead_operation = operation # Update operation in progress
                 # Force re-park now because user may not be using HH client_macros. This can result
                 # in duplicate calls to parking macro but it is itempotent and will ignore
                 self._wrap_gcode_command(self.park_macro)
+        else:
+            self.log_debug("Cannot save toolhead position or z-hop for %s because not homed" % operation)
 
     def _restore_toolhead_position(self, operation, restore=True):
         eventtime = self.reactor.monotonic()
@@ -3141,8 +3147,9 @@ class Mmu:
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
             # If this is the final "restore toolhead position" call then allow macro to restore position, then sanity check
-            if not (self.is_mmu_paused() or self.is_printer_paused()) or (operation == "resume" and (self.is_mmu_paused() or self.is_printer_paused())):
-                # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final eject)
+# PAUL dangerous .. what about CLEAR_PAUSE or call to BASE_RESUME!
+            if not self.is_paused() or operation == "resume":
+                # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final unload)
                 if restore:
                     self._wrap_gcode_command(self.restore_position_macro) # Restore macro position and clear saved
 
@@ -4394,7 +4401,7 @@ class Mmu:
 
             self._ensure_safe_extruder_temperature(wait=False)
 
-            synced = self.selector.get_filament_grip_state() == self.FILAMENT_DRIVE_STATE and not extruder_only
+            synced = self.selector.get_filament_grip_state() == self.FILAMENT_DRIVE_STATE and not extruder_only # PAUL why can't I used sync_form_tip?
             if synced:
                 self.selector.filament_drive()
                 speed = self.extruder_sync_unload_speed
@@ -4790,13 +4797,18 @@ class Mmu:
         self.movequeues_wait()
 
         # Pre check to validate the presence of filament in the extruder and case where we don't need to form tip
-        if self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY) or self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
-            filament_initially_present = True
-        else:
-            # Only the "extruder" sensor can definitely answer but believe toolhead if that is all we have
-            filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
-            if filament_initially_present is None:
-                filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
+# PAUL this should only test toolhead sensor.. actually this logic is wrong!
+#        if self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY) or self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
+#            filament_initially_present = True
+#        else:
+#            # Only the "extruder" sensor can definitely answer but believe toolhead if that is all we have
+#            filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
+#            if filament_initially_present is None:
+#                filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
+        # Only the "extruder" sensor can definitely answer but believe toolhead if that is all we have
+        filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
+        if filament_initially_present is None:
+            filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
 
         if filament_initially_present is False:
             self.log_debug("Tip forming skipped because no filament was detected")
@@ -6236,7 +6248,7 @@ class Mmu:
             self._mmu_unlock()
 
     # Not a user facing command - used in automatic wrapper
-    cmd_MMU_RESUME_help = "Wrapper around default RESUME macro"
+    cmd_MMU_RESUME_help = "Wrapper around default user RESUME macro"
     def cmd_MMU_RESUME(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if not self.is_enabled:
@@ -6245,7 +6257,8 @@ class Mmu:
             return
 
         self.log_debug("MMU RESUME wrapper called")
-        if not self.is_printer_paused() and not self.is_mmu_paused():
+        if not self._is_paused():
+# PAUL problem .. if CLEAR_PAUSE was called this will never resume!
             self.log_always("Print is not paused. Resume ignored.")
             return
 
@@ -6277,7 +6290,7 @@ class Mmu:
     def cmd_PAUSE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.is_enabled:
-            self._fix_started_state() # Get out of 'started' state before transistion to pause
+            self._fix_started_state() # Get out of 'started' state
             self.log_debug("MMU PAUSE wrapper called")
             self._save_toolhead_position_and_park("pause")
         self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
@@ -6289,6 +6302,7 @@ class Mmu:
         if self.is_enabled:
             self.log_debug("MMU CLEAR_PAUSE wrapper called")
             self._clear_macro_state()
+# PAUL TODO need to also fix restore position logic
         self._wrap_gcode_command("__CLEAR_PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
