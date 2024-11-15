@@ -1,0 +1,43 @@
+choice CHOICE_MMU_CUSTOM_TYPE
+  config MMU_CUSTOM_TYPE_A
+    bool "Type A (Selector)"
+		imply MMU_HAS_SELECTOR
+    imply HW_REQUIRE_BOWDEN_MOVE
+  
+  if MMU_CUSTOM_TYPE_A 
+    config MMU_HAS_ENCODER
+      bool "With Encoder?"
+  endif 
+endchoice
+
+if MMU_CUSTOM_TYPE_A
+  config HW_MMU_VENDOR
+    default "Other"
+  config HW_MMU_BASE_VERSION
+    default "1.0"
+
+  config HW_GEAR_GEAR_RATIO
+    default "1:1"
+  config HW_GEAR_RUN_CURRENT
+    default "0.7"
+  config HW_GEAR_HOLD_CURRENT
+    default "0.1"
+
+  config HW_SELECTOR_RUN_CURRENT
+    default "0.5"
+  config HW_SELECTOR_HOLD_CURRENT
+    default "0.1"
+  config HW_SELECTOR_TYPE
+    default "LinearSelector"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default PARAM_GATE_HOMING_ENDSTOP_ENCODER if MMU_HAS_ENCODER
+    default PARAM_GATE_HOMING_ENDSTOP_GATE if !MMU_HAS_ENCODER
+  endchoice
+
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default PARAM_EXTRUDER_HOMING_ENDSTOP_COLLISION if MMU_HAS_ENCODER
+    default PARAM_EXTRUDER_HOMING_ENDSTOP_NONE if !MMU_HAS_ENCODER
+  endchoice
+endif 
+

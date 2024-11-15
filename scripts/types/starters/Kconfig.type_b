@@ -1,0 +1,44 @@
+choice CHOICE_MMU_CUSTOM_TYPE
+  config MMU_CUSTOM_TYPE_B
+    bool "Type B (Multiple filament drivers)"
+    imply HW_REQUIRE_BOWDEN_MOVE
+    imply HW_VARIABLE_BOWDEN_LENGTHS
+    imply HW_VARIABLE_ROTATION_DISTANCES
+    imply HW_FILAMENT_ALWAYS_GRIPPED
+
+  if MMU_CUSTOM_TYPE_B
+    config MMU_HAS_ENCODER
+      bool "With encoder?"
+    config MMU_WITH_SHARED_GATE # There seems to be no difference in setup between shared gate and not?
+      bool "With shared Gate?"
+    config MMU_WITH_GEAR_SENSORS
+      bool "With individual post-gear sensors?"
+  endif
+endchoice
+
+if MMU_CUSTOM_TYPE_B
+  config HW_MMU_VENDOR
+    default "Other"
+  config HW_MMU_BASE_VERSION
+    default "1.0"
+
+  config HW_GEAR_GEAR_RATIO
+    default "1:1"
+  config HW_GEAR_RUN_CURRENT
+    default "0.7"
+  config HW_GEAR_HOLD_CURRENT
+    default "0.1"
+
+  config HW_SELECTOR_TYPE
+    default "VirtualSelector"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default PARAM_GATE_HOMING_ENDSTOP_GATE if !MMU_WITH_GEAR_SENSORS
+    default PARAM_GATE_HOMING_ENDSTOP_GEAR if MMU_WITH_GEAR_SENSORS
+  endchoice
+
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default PARAM_EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 
+
