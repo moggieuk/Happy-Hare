@@ -61,10 +61,13 @@ class MacroSelector:
         self.printer = mmu.printer
         self.gcode = self.printer.lookup_object('gcode')
 
+        self.select_tool_macro = mmu.config.get('select_tool_macro')
+        self.select_tool_num_switches = mmu.config.getint('select_tool_num_switches', default=0, minval=1)
+
         # Check if using a demultiplexer-style setup
-        if self.mmu.mmu_machine.select_tool_num_switches > 0:
+        if self.select_tool_num_switches > 0:
             self.binary_mode = True
-            max_num_tools = 2**self.mmu.mmu_machine.select_tool_num_switches
+            max_num_tools = 2**self.select_tool_num_switches
             # Verify that there aren't too many tools for the demultiplexer
             if mmu.num_gates > max_num_tools:
                 raise mmu.config.error(f'Maximum number of allowed tools is {max_num_tools}, but {mmu.num_gates} are present.')
@@ -99,8 +102,8 @@ class MacroSelector:
         # Store parameters as list
         params = [f'GATE={gate}']
         if self.binary_mode: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
-            binary = '{0:b}'.format(gate).zfill(self.mmu.mmu_machine.select_tool_num_switches)[::-1]
-            for i in range(self.mmu.mmu_machine.select_tool_num_switches):
+            binary = '{0:b}'.format(gate).zfill(self.select_tool_num_switches)[::-1]
+            for i in range(self.select_tool_num_switches):
                 char = binary[i]
                 params.append(f'S{i}={char}')
         params = ' '.join(params)
