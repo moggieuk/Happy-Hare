@@ -6635,7 +6635,7 @@ class Mmu:
             self._fix_started_state() # Get out of 'started' state before transistion to pause
             self.log_debug("MMU PAUSE wrapper called")
             self._save_toolhead_position_and_park("pause")
-        self._wrap_gcode_command("__PAUSE", None) # User defined or Klipper default behavior
+        self._wrap_gcode_command(" ".join(("__PAUSE", gcmd.get_raw_command_parameters()))) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
     cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
