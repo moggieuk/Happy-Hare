@@ -3,9 +3,9 @@ SHELL=/usr/bin/env bash
 export KCONFIG_CONFIG ?= .config
 # For parallel builds
 MAKEFLAGS += --jobs 16
-# kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target
+# kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target or if .config doesn't exist yet
 MAKEFLAGS += $(if $(or $(findstring menuconfig,$(MAKECMDGOALS)),$(shell [ ! -e "$(KCONFIG_CONFIG)" ] && echo y)),, --output-sync)
-# For quiet builds, override with make Q= or verbose output
+# For quiet builds, override with make Q= for verbose output
 Q ?= @
 
 
@@ -26,7 +26,14 @@ else
 endif
 
 export SRC ?= $(CURDIR)
-export OUT ?= $(CURDIR)/out
+
+# Use the name of the 'name.config' file as the output directory, or 'out' if just '.config ''is used
+ifeq ($(basename $(KCONFIG_CONFIG)),)
+  export OUT ?= $(CURDIR)/out
+else
+  export OUT ?= $(CURDIR)/out_$(basename $(KCONFIG_CONFIG))
+endif
+# export OUT ?= $(CURDIR)/$(basename $(KCONFIG_CONFIG))out
 
 # Strings in .config are quoted, this removes the quotes so paths are handled properly
 unquote = $(patsubst "%",%,$(1))
@@ -164,11 +171,14 @@ uninstall:
 	$(Q)$(SRC)/scripts/build.sh restart-service "Klipper" $(CONFIG_SERVICE_KLIPPER)
 	$(Q)$(SRC)/scripts/build.sh print-unhappy-hare
 
-clean: 
+clean:
 	$(Q)rm -rf $(OUT)
 
 clean-all: clean
 	$(Q)rm -rf $(KCONFIG_CONFIG)
+
+diff:
+	git diff -U3 --stat --color=auto --color-words --no-index "$(klipper_config_home)/mmu" "$(OUT)/mmu"
 
 check_root:
 ifneq ($(shell id -u),0)
