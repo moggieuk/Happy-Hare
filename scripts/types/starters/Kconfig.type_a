@@ -6,7 +6,7 @@ choice CHOICE_MMU_CUSTOM_TYPE
   
   if MMU_CUSTOM_TYPE_A 
     config MMU_HAS_ENCODER
-      bool "With Encoder?"
+      bool "With encoder?"
   endif 
 endchoice
 

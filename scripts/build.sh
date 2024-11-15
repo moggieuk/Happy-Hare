@@ -580,6 +580,8 @@ copy_config_files() {
         return
     fi
 
+    log_info "Building file ${out}..."
+
     cp --remove-destination "${src}" "${dest}"
 
     local sed_expr=""
@@ -960,7 +962,6 @@ set_extra_parameters() {
 build() {
     local src=$1
     local out=$2
-    log_info "Building file ${out}..."
 
     read_previous_config
     process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_VERSION}"

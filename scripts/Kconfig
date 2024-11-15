@@ -139,6 +139,9 @@ menu "Advanced settings"
       default "/usr/data/printer_data/config" if IS_MIPS
       default "~" if OCTOPRINT
       default "~/printer_data/config"
+    config MOONRAKER_CONFIG_FILE
+      string "Moonraker config file"
+      default "moonraker.conf"
     config MOONRAKER_HOME
       string "Moonraker directory"
       depends on !OCTOPRINT

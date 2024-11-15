@@ -18,7 +18,7 @@ endif
 
 # If CONFIG_KLIPPER_HOME is not yet set by .config, set it to the default value
 # this is required to make menuconfig work the first time
-# can be overridden with 'CONFIG_KLIPPER_HOME=/path/to/klipper make ...'
+# can be overridden with 'make CONFIG_KLIPPER_HOME=/path/to/klipper <target>'
 ifeq ($(CONFIG_IS_MIPS),y)
   CONFIG_KLIPPER_HOME ?= /usr/share/klipper
 else
@@ -27,54 +27,57 @@ endif
 
 export SRC ?= $(CURDIR)
 
-# Use the name of the 'name.config' file as the output directory, or 'out' if just '.config ''is used
+# Use the name of the 'name.config' file as the output directory, or 'out' if just '.config' is used
 ifeq ($(basename $(KCONFIG_CONFIG)),)
   export OUT ?= $(CURDIR)/out
 else
   export OUT ?= $(CURDIR)/out_$(basename $(KCONFIG_CONFIG))
 endif
-# export OUT ?= $(CURDIR)/$(basename $(KCONFIG_CONFIG))out
 
 # Strings in .config are quoted, this removes the quotes so paths are handled properly
+# I feel like there should be a better way but I haven't found it yet..
 unquote = $(patsubst "%",%,$(1))
 
-
+# Klipper python extras
 klipper_home = $(call unquote,$(CONFIG_KLIPPER_HOME))
 hh_klipper_extras_files = $(wildcard extras/*.py extras/*/*.py )
 hh_klipper_extras_dirs = $(sort $(dir $(hh_klipper_extras_files)))
 hh_old_klipper_modules = mmu.py mmu_toolhead.py
 
-
+# Klipper config files
 klipper_config_home = $(call unquote,$(CONFIG_KLIPPER_CONFIG_HOME))
-klipper_printer_file = $(call unquote, $(CONFIG_PRINTER_CONFIG))
+klipper_printer_file = $(call unquote,$(CONFIG_PRINTER_CONFIG))
 hh_config_files = $(patsubst config/%, %, $(wildcard config/*.cfg config/*/*.cfg))
 hh_config_dirs = $(sort $(dir $(hh_config_files)))
 
-
+# Moonraker files
 moonraker_home = $(call unquote,$(CONFIG_MOONRAKER_HOME))
-moonraker_config_file = moonraker.conf
 hh_moonraker_components = $(wildcard components/*.py )
+moonraker_config_file = $(call unquote,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
-
+# Bool to check if moonraker needs to be restarted
 restart_moonraker = 0
 
+# Files/targets that will be built
 build_targets = $(OUT)/$(moonraker_config_file) \
 	$(OUT)/$(klipper_printer_file) \
 	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
 	$(addprefix $(OUT)/klippy/,$(hh_klipper_extras_files)) \
 	$(addprefix $(OUT)/moonraker/,$(hh_moonraker_components)) \
 
+# Files/targets that will be installed
 install_targets = $(klipper_config_home)/$(moonraker_config_file) \
 	$(klipper_config_home)/$(klipper_printer_file) \
 	$(addprefix $(klipper_config_home)/mmu/, $(hh_config_files)) \
 	$(addprefix $(moonraker_home)/moonraker/, $(hh_moonraker_components)) \
 	$(addprefix $(klipper_home)/klippy/, $(hh_klipper_extras_files))
 
-
+# Install function
 install = echo "Installing $(2)"; \
 	mkdir -p $(dir $(2)); \
 	cp -rdf $(3) "$(1)" "$(2)";
 
+# Backup function
 backup_ext ?= .old-$(shell date '+%Y%m%d-%H%M%S')
 backup = if [ -e "$(1)" ] && [ ! -e "$(addsuffix $(backup_ext),$(1))" ]; then \
 		echo "Making a backup of '$(1)' to '$(addsuffix $(backup_ext),$(1))'"; \
@@ -82,25 +85,26 @@ backup = if [ -e "$(1)" ] && [ ! -e "$(addsuffix $(backup_ext),$(1))" ]; then \
 	fi
 
 .DEFAULT_GOAL := install
-.PHONY: update menuconfig install uninstall remove_old_klippy_modules check_root link_plugins backups build clean clean-all 
-
+.PHONY: update menuconfig install uninstall remove_old_klippy_modules check_root check_paths check_version diff build clean clean-all
 
 # Copy existing $(moonraker_config_file) and printer.cfg to the out directory
 $(OUT)/$(moonraker_config_file):
+	echo "Copying moonraker_config_file.cfg"
 	$(Q)cp -a "$(klipper_config_home)/$(moonraker_config_file)" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/scripts/build.sh install-update-manager "$@"
 
 $(OUT)/$(klipper_printer_file):
+	echo "Copying printer.cfg"
 	$(Q)cp -a "$(klipper_config_home)/$(klipper_printer_file)" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/scripts/build.sh install-includes "$@"
 
 
 # We link all config files, those that need to be updated will be written over in the install script
-$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg  | $(addprefix $(OUT)/mmu/,$(hh_config_dirs))
+$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg | $(addprefix $(OUT)/mmu/,$(hh_config_dirs))
 	$(Q)ln -sf "$(abspath $<)" "$@"
 	$(Q)$(SRC)/scripts/build.sh build "$<" "$@"
 
-# Python files are linked to the out directory 
+# Python files are linked to the out directory
 $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py | $(addprefix $(OUT)/klippy/,$(hh_klipper_extras_dirs))
 	$(Q)ln -sf "$(abspath $<)" "$@"
 
@@ -116,34 +120,34 @@ $(OUT)/%/:
 	$(Q)mkdir -p "$@"
 
 
-$(build_targets): | update $(OUT) 
+$(build_targets): $(KCONFIG_CONFIG) | update $(OUT)
 
 build: $(build_targets) | check_paths check_version 
 
-
-$(klipper_home)/%: $(OUT)/% 
+# Different install targets
+$(klipper_home)/%: $(OUT)/%
 	$(Q)$(call install,$<,$@)
 
-$(moonraker_home)/%: $(OUT)/% 
+$(moonraker_home)/%: $(OUT)/%
 	$(Q)$(call install,$<,$@)
 
-$(klipper_config_home)/%: $(OUT)/% 
+$(klipper_config_home)/%: $(OUT)/%
 	$(Q)$(call backup,$@)
 	$(Q)$(call install,$<,$@)
 
-$(klipper_config_home)/${moonraker_config_file}: $(OUT)/$(moonraker_config_file) 
+$(klipper_config_home)/${moonraker_config_file}: $(OUT)/$(moonraker_config_file)
 	$(Q)$(call backup,$@)
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
 
-$(klipper_config_home)/mmu/%: $(OUT)/mmu/% 
+$(klipper_config_home)/mmu/%: $(OUT)/mmu/%
 	$(Q)$(call backup,$(klipper_config_home)/mmu)
 	$(Q)$(call install,$<,$@)
 
 # Special case for mmu_vars.cfg, we don't want to overwrite it
-$(klipper_config_home)/mmu/mmu_vars.cfg: $(OUT)/mmu/mmu_vars.cfg 
-	$(Q)$(call backup,$(klipper_config_home)/mmu) 
-	$(Q)$(call install,$<,$@,--update=none) 
+$(klipper_config_home)/mmu/mmu_vars.cfg: $(OUT)/mmu/mmu_vars.cfg
+	$(Q)$(call backup,$(klipper_config_home)/mmu)
+	$(Q)$(call install,$<,$@,--update=none)
 
 $(install_targets): | build
 
@@ -156,10 +160,10 @@ install: $(install_targets) | update check_root remove_old_modules
 remove_old_modules:
 	$(Q)cd $(klipper_home)/klippy/extras && rm -f $(hh_old_klipper_modules)
 
-update: check_root 
+update: check_root
 	$(Q)$(SRC)/scripts/build.sh self-update
 
-uninstall: 
+uninstall:
 	$(Q)$(call backup,$(klipper_config_home)/$(moonraker_config_file))
 	$(Q)$(call backup,$(klipper_config_home)/$(klipper_printer_file))
 	$(Q)$(call backup,$(klipper_config_home)/mmu)
@@ -177,8 +181,15 @@ clean:
 clean-all: clean
 	$(Q)rm -rf $(KCONFIG_CONFIG)
 
-diff:
-	git diff -U3 --stat --color=auto --color-words --no-index "$(klipper_config_home)/mmu" "$(OUT)/mmu"
+# Target to see the difference between an existing config and the one build
+diff_args = -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index
+# Filter out command and index lines from the diff, they only muck up the information
+diff_filter = | grep -v "diff --git " | grep -Ev "index [[:xdigit:]]+\.\.[[:xdigit:]]+"
+diff: | check_paths
+	$(Q)[ -d "$(OUT)/mmu" ] || { echo "No build directory found, exiting. Run 'make build' first"; exit 1; }
+	$(Q)git diff $(diff_args) -- "$(klipper_config_home)/mmu" "$(patsubst $(CURDIR)/%,%,$(OUT)/mmu)" $(diff_filter) || true
+	$(Q)git diff $(diff_args) -- "$(klipper_config_home)/$(klipper_printer_file)" "$(patsubst $(CURDIR)/%,%,$(OUT)/$(klipper_printer_file))" $(diff_filter) || true
+	$(Q)git diff $(diff_args) -- "$(klipper_config_home)/$(moonraker_config_file)" "$(patsubst $(CURDIR)/%,%,$(OUT)/$(moonraker_config_file))" $(diff_filter) || true
 
 check_root:
 ifneq ($(shell id -u),0)
@@ -196,17 +207,17 @@ check_version:
 
 # Check whther the required paths exist
 check_paths:
-	@[ -f "$(klipper_config_home)/$(moonraker_config_file)" ] || { \
+	$(Q)[ -f "$(klipper_config_home)/$(moonraker_config_file)" ] || { \
 		echo -e "The file '$(klipper_config_home)/$(moonraker_config_file)' does not exist. Please check your config for the correct paths"; \
 		exit 1; }
-	@[ -f "$(klipper_config_home)/$(klipper_printer_file)" ] || { \
+	$(Q)[ -f "$(klipper_config_home)/$(klipper_printer_file)" ] || { \
 		echo -e "The file '$(klipper_config_home)/$(klipper_printer_file)' does not exist. Please check your config for the correct paths"; \
 		exit 1; }
-	@[ -d "$(klipper_home)/klippy/extras" ] || { \
+	$(Q)[ -d "$(klipper_home)/klippy/extras" ] || { \
 		echo -e "The directory '$(klipper_home)/klippy/extras' does not exist. Please check your config for the correct paths"; \
 		exit 1; }
 ifneq ($(CONFIG_OCTOPRINT),y)
-	@[ -d "$(moonraker_home)/moonraker/components" ] || { \
+	$(Q)[ -d "$(moonraker_home)/moonraker/components" ] || { \
 		echo -e "The directory '$(moonraker_home)/moonraker/components' does not exist. Please check your config for the correct paths"; \
 		exit 1; }
 endif
@@ -214,14 +225,13 @@ endif
 $(KCONFIG_CONFIG): $(SRC)/scripts/Kconfig
 # 	If .config does not exist yet run menuconfig, else just update it
 #	touch in case .config does not get updated by olddefconfig.py
-	@if [ -f $(KCONFIG_CONFIG) ]; then \
+	$(Q)if [ -f $(KCONFIG_CONFIG) ]; then \
 		python $(klipper_home)/lib/kconfiglib/olddefconfig.py $(SRC)/scripts/Kconfig; \
-		touch $(KCONFIG_CONFIG); \
 	elif [[ ! "$(MAKECMDGOALS)" =~ menuconfig ]]; then \
 		$(MAKE) menuconfig; \
 		[ -f $(KCONFIG_CONFIG) ] || { echo "No $(KCONFIG_CONFIG) file found, exiting. Run 'make menuconfig' to create a config file"; exit 1; }; \
 	fi
 
-menuconfig: $(SRC)/scripts/Kconfig 
-	@MENUCONFIG_STYLE="aquatic" python ${klipper_home}/lib/kconfiglib/menuconfig.py $(SRC)/scripts/Kconfig
+menuconfig: $(SRC)/scripts/Kconfig
+	$(Q)MENUCONFIG_STYLE="aquatic" python ${klipper_home}/lib/kconfiglib/menuconfig.py $(SRC)/scripts/Kconfig
 
