@@ -1,17 +1,17 @@
 config ADDON_BLOBIFIER
   bool "Enable Blobifier support?"
 
-config INSTALL_BLOBIFIER
-  bool "Install Blobifier include in printer.cfg?"
-  depends on ADDON_BLOBIFIER
+if ADDON_BLOBIFIER
+  config INSTALL_BLOBIFIER
+    bool "Install Blobifier include in printer.cfg?"
 
-menu "Blobifier pins"
-  depends on ADDON_BLOBIFIER
-  config PIN_BLOBIFIER_SERVO
-    string "Blobifier servo pin"
-    default "PG14"
-  config PIN_BLOBIFIER_BUCKET_SWITCH
-    string "Blobifier bucket switch pin, mind the pull-up!"
-    default "^PG15"
-endmenu
+  menu "Blobifier pins"
+    config PIN_BLOBIFIER_SERVO
+      string "Blobifier servo pin"
+      default "PG14"
+    config PIN_BLOBIFIER_BUCKET_SWITCH
+      string "Blobifier bucket switch pin, mind the pull-up!"
+      default "^PG15"
+  endmenu
+endif
 

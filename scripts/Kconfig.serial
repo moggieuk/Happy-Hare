@@ -6,35 +6,35 @@ choice CHOICE_SERIAL_DEVICE
   depends on $(serial_exists,1) # Only show if there are any serial tty devices to select. Likely an issue with the setup
 
   config $(serial_config,1)
-    depends on $(serial_exists,1)
     bool "$(serial,1)"
+    depends on $(serial_exists,1)
   config $(serial_config,2)
-    depends on $(serial_exists,2)
     bool "$(serial,2)"
+    depends on $(serial_exists,2)
   config $(serial_config,3)
-    depends on $(serial_exists,3)
     bool "$(serial,3)"
+    depends on $(serial_exists,3)
   config $(serial_config,4)
-    depends on $(serial_exists,4)
     bool "$(serial,4)"
+    depends on $(serial_exists,4)
   config $(serial_config,5)
-    depends on $(serial_exists,5)
     bool "$(serial,5)"
+    depends on $(serial_exists,5)
   config $(serial_config,6)
-    depends on $(serial_exists,6)
     bool "$(serial,6)"
+    depends on $(serial_exists,6)
   config $(serial_config,7)
-    depends on $(serial_exists,7)
     bool "$(serial,7)"
+    depends on $(serial_exists,7)
   config $(serial_config,8)
-    depends on $(serial_exists,8)
     bool "$(serial,8)"
+    depends on $(serial_exists,8)
   config $(serial_config,9)
-    depends on $(serial_exists,9)
     bool "$(serial,9)"
+    depends on $(serial_exists,9)
   config $(serial_config,10)
-    depends on $(serial_exists,10)
     bool "$(serial,10)"
+    depends on $(serial_exists,10)
   config HW_SERIAL_OTHER
     bool "Other (specify in parent menu)"
 endchoice
@@ -42,6 +42,10 @@ endchoice
 config HW_SERIAL
   string
   prompt "MCU serial device path" if HW_SERIAL_OTHER || !$(serial_exists,1)
+  help
+    Specify the path of the serial device connected to the MMU MCU. 
+    It's best to use the /dev/serial/by-id/ path, as it's unique and doesn't change when you plug in multiple serial devices.
+    Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
   default "$(serial,1)" if $(serial_config,1)
   default "$(serial,2)" if $(serial_config,2)
   default "$(serial,3)" if $(serial_config,3)
@@ -52,8 +56,4 @@ config HW_SERIAL
   default "$(serial,8)" if $(serial_config,8)
   default "$(serial,9)" if $(serial_config,9)
   default "$(serial,10)" if $(serial_config,10)
-  help
-    Specify the path of the serial device connected to the MMU MCU. 
-    It's best to use the /dev/serial/by-id/ path, as it's unique and doesn't change when you plug in multiple serial devices.
-    Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
 

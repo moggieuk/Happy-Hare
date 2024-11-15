@@ -9,7 +9,7 @@ config HW_MMU_BASE_VERSION
   default "0.1" 
 
 choice CHOICE_MMU_TYPE 
-  prompt "Type"
+  prompt "MMU Type"
   help 
     Select the type of MMU you are using. 
     This will configure the default settings for your setup.

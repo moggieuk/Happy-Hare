@@ -1,7 +1,7 @@
-mainmenu "Happy Hare $(formatted_version) Configuration"
-
 happy_hare_version = 3.00
 formatted_version = $(shell, echo "$(happy_hare_version)" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
+
+mainmenu "Happy Hare $(formatted_version) Configuration"
 
 ### Helper functions
 # Used to convert a shell command result to a y/n value
@@ -109,7 +109,9 @@ config ENABLE_AUTO_CLOG_DETECT
   default y
 
 config ENABLE_ENDLESS_SPOOL
-  bool "Enable EndlessSpool? This uses filament runout detection to automate switching to a new spool without interruption."
+  bool "Enable EndlessSpool?"
+  help 
+    This uses filament runout detection to automate switching to a new spool without interruption.
 
 config INSTALL_12864_MENU
   bool "Install Mini 12864 menu configuration?"

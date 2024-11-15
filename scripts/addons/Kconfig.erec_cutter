@@ -1,13 +1,13 @@
 config ADDON_EREC_CUTTER
   bool "Enable EREC filament cutter support?"
 
-config INSTALL_EREC_CUTTER
-  bool "Install EREC filament cutter include in printer.cfg?"
-  depends on ADDON_EREC_CUTTER
+if ADDON_EREC_CUTTER
+  config INSTALL_EREC_CUTTER
+    bool "Install EREC filament cutter include in printer.cfg?"
 
-menu "EREC filament cutter pins"
-  depends on ADDON_EREC_CUTTER
-  config PIN_EREC_CUTTER_SERVO
-    string "EREC filament cutter servo pin"
-    default "mmu:PA7"
-endmenu
+  menu "EREC filament cutter pins"
+    config PIN_EREC_CUTTER_SERVO
+      string "EREC filament cutter servo pin"
+      default "mmu:PA7"
+  endmenu
+endif

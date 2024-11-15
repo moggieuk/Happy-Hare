@@ -1,45 +1,45 @@
 config ADDON_ESPOOLER
   bool "Enable eSpooler support?"
 
-config INSTALL_ESPOOLER
-  bool "Install eSpooler include in printer.cfg?"
-  depends on ADDON_ESPOOLER
-
-menu "eSpooler pins"
-  depends on ADDON_ESPOOLER
-  if HW_NUM_GATES > 0
-    config PIN_SPOOLER_EN_0
-      string "eSpooler enable 0 pin"
-    config PIN_SPOOLER_RWD_0
-      string "eSpooler rewind 0 pin"
-    config PIN_SPOOLER_FWD_0
-      string "eSpooler forward 0 pin"
-  endif
-
-  if HW_NUM_GATES > 1
-    config PIN_SPOOLER_EN_1
-      string "eSpooler enable 1 pin"
-    config PIN_SPOOLER_RWD_1
-      string "eSpooler rewind 1 pin"
-    config PIN_SPOOLER_FWD_1
-      string "eSpooler forward 1 pin"
-  endif
-
-  if HW_NUM_GATES > 2
-    config PIN_SPOOLER_EN_2
-      string "eSpooler enable 2 pin"
-    config PIN_SPOOLER_RWD_2
-      string "eSpooler rewind 2 pin"
-    config PIN_SPOOLER_FWD_2
-      string "eSpooler forward 2 pin"
-  endif
-
-  if HW_NUM_GATES > 3
-    config PIN_SPOOLER_EN_3
-      string "eSpooler enable 3 pin"
-    config PIN_SPOOLER_RWD_3
-      string "eSpooler rewind 3 pin"
-    config PIN_SPOOLER_FWD_3
-      string "eSpooler forward 3 pin"
-  endif
-endmenu
+if ADDON_ESPOOLER
+  config INSTALL_ESPOOLER
+    bool "Install eSpooler include in printer.cfg?"
+  
+  menu "eSpooler pins"
+    if HW_NUM_GATES > 0
+      config PIN_DC_ESPOOLER_EN_0
+        string "eSpooler enable 0 pin"
+      config PIN_DC_ESPOOLER_RWD_0
+        string "eSpooler rewind 0 pin"
+      config PIN_DC_ESPOOLER_FWD_0
+        string "eSpooler forward 0 pin"
+    endif
+  
+    if HW_NUM_GATES > 1
+      config PIN_DC_ESPOOLER_EN_1
+        string "eSpooler enable 1 pin"
+      config PIN_DC_ESPOOLER_RWD_1
+        string "eSpooler rewind 1 pin"
+      config PIN_DC_ESPOOLER_FWD_1
+        string "eSpooler forward 1 pin"
+    endif
+  
+    if HW_NUM_GATES > 2
+      config PIN_DC_ESPOOLER_EN_2
+        string "eSpooler enable 2 pin"
+      config PIN_DC_ESPOOLER_RWD_2
+        string "eSpooler rewind 2 pin"
+      config PIN_DC_ESPOOLER_FWD_2
+        string "eSpooler forward 2 pin"
+    endif
+  
+    if HW_NUM_GATES > 3
+      config PIN_DC_ESPOOLER_EN_3
+        string "eSpooler enable 3 pin"
+      config PIN_DC_ESPOOLER_RWD_3
+        string "eSpooler rewind 3 pin"
+      config PIN_DC_ESPOOLER_FWD_3
+        string "eSpooler forward 3 pin"
+    endif
+  endmenu
+endif

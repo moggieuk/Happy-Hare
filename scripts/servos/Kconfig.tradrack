@@ -1,7 +1,7 @@
 if HW_MMU_VENDOR = "Tradrack"
   choice CHOICE_SERVO_TYPE 
     config HW_SERVO_TYPE_TRADRACK
-    bool "PS-1171MG or FT1117M (Tradrack)"
+      bool "PS-1171MG or FT1117M (Tradrack)"
   endchoice
 endif
 
