@@ -1031,8 +1031,10 @@ class RotarySelector:
 
         # Register GCODE commands specific to this module
         gcode = mmu.printer.lookup_object('gcode')
-        gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc = self.cmd_MMU_CALIBRATE_SELECTOR_help)
-        gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
+        gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
+        gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc=self.cmd_MMU_SOAKTEST_SELECTOR_help)
+
+        gcode.register_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
 
         # Selector stepper setup before MMU toolhead is instantiated
         section = mmu_machine.SELECTOR_STEPPER_CONFIG
@@ -1214,6 +1216,15 @@ class RotarySelector:
         return msg
 
     # Internal Implementation --------------------------------------------------
+
+    cmd_MMU_GRIP_help = "Control the grip the MMU has on the filament"
+    def cmd_MMU_GRIP(self, gcmd):
+        pos = gcmd.get('POS', "").lower()
+        if pos == "release":
+            self.filament_release()  # or whatever you need to do
+        elif pos == "grip":
+            self.filament_drive()  # or whatever you need to do
+
 
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
