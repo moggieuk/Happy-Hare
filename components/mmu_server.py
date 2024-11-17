@@ -328,7 +328,7 @@ class MmuServer:
                 if result:
                     old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
                     self.spool_location[sid] = ('', -1, filament_attr)
-                    await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate}", silent=silent)
+                    await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
         return True
 
     # Function to find the first spool_id with a matching 'printer/gate', just 'gate' or just 'printer'
@@ -491,11 +491,11 @@ class MmuServer:
                     if updates[sid] < 0: # 'unset' case
                         self.spool_location[sid] = ('', -1, filament_attr)
                         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
-                        await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
+                        await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else: # 'set' case
                         self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
                         self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
-                        await self._log_n_send(f"Spool {sid} set for printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
+                        await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
             # Send update of filament attributes back to Happy Hare
             return await self._send_gate_map_update(gate_ids, silent=silent)
@@ -538,7 +538,7 @@ class MmuServer:
                         updated_gate_ids[old_gate] = -1
                     self.spool_location[sid] = ('', -1, filament_attr)
                     self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
-                    await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate}", silent=silent)
+                    await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
 
             self.server.send_event("spoolman:clear_spool_gates", {"printer": printer_name})
             if sync and updated_gate_ids:
@@ -598,7 +598,7 @@ class MmuServer:
                             updated_gate_ids[old_gate] = -1
                         self.spool_location[sid] = ('', -1, filament_attr)
                         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
-                        await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
+                        await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else:
                         # 'set' case
                         if 0 <= gate < self.nb_gates:
@@ -607,7 +607,7 @@ class MmuServer:
                             updated_gate_ids[gate] = sid
                         self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
                         self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
-                        await self._log_n_send(f"Spool {sid} set for printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
+                        await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
             # Sync with Happy Hare if required
             if sync and updated_gate_ids:
@@ -649,7 +649,7 @@ class MmuServer:
                         updated_gate_ids[old_gate] = -1
                     self.spool_location[sid] = ('', -1, filament_attr)
                     self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "old_printer": self.printer_hostname, "old_gate": gate})
-                    await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
+                    await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
 
             # Sync with Happy Hare if required
             if sync and updated_gate_ids:

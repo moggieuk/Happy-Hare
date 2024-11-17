@@ -2340,7 +2340,7 @@ class Mmu:
         return {'mean': mean, 'stdev': stdev, 'min': vmin, 'max': vmax, 'range': vmax - vmin}
 
     # Filament is assumed to be at the extruder and will be at extruder again when complete
-    def _probe_toolhead(self, cold_temp=70, probe_depth=100, sensor_homing=50):
+    def _probe_toolhead(self, cold_temp=70, probe_depth=100, sensor_homing=80):
         # Ensure extruder is COLD
         self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % self.extruder_name)
         current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
@@ -6258,7 +6258,7 @@ class Mmu:
 
         self.log_debug("MMU RESUME wrapper called")
         if not self._is_paused():
-# PAUL problem .. if CLEAR_PAUSE was called this will never resume!
+# PAUL problem FIXME .. if CLEAR_PAUSE was called this will never resume!
             self.log_always("Print is not paused. Resume ignored.")
             return
 
@@ -7451,9 +7451,15 @@ class Mmu:
             self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
             if replace:
                 # Replace map
+# PAUL: Test changes to this block with:
+# MMU_GATE_MAP MAP="{2: {}}" REPLACE=1 QUIET=1
+# @npa62 user error when running:
+# MMU_SPOOLMAN GATE=2 SPOOLID=21
+# Also, why did spoolman send and empty list? Race condition? Check...
                 for gate, fil in gate_map.items():
-                    self.gate_spool_id[gate] = fil['spool_id']
-                    if fil['spool_id'] >= 0:
+                    spool_id = fil.get('spool_id', -1)
+                    self.gate_spool_id[gate] = spool_id
+                    if spool_id >= 0:
                         self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')

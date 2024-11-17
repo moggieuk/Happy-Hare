@@ -819,7 +819,7 @@ class LinearSelectorServo:
             if save:
                 self._servo_save_pos(pos)
             else:
-                self.mmu.selector.filament_release()
+                self.servo_up()
         elif pos == "move":
             if save:
                 self._servo_save_pos(pos)
