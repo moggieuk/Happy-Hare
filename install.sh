@@ -1179,7 +1179,7 @@ questionaire() {
     option BOX_TURTLE     'Box Turtle v1.0'
     option NIGHT_OWL      'Night Owl v1.0'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
-    option 3D_CHAMELEON   '3D Chameleon'
+    option _3D_CHAMELEON   '3D Chameleon'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
     case $opt in
@@ -1381,7 +1381,7 @@ questionaire() {
             _param_gear_homing_speed=80
             ;;
 
-        "$3D_CHAMELEON")
+        "$_3D_CHAMELEON")
             HAS_ENCODER=no
             HAS_SELECTOR=yes
             _hw_mmu_vendor="3DChameleon"
