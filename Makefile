@@ -78,7 +78,7 @@ link = \
 backup_ext :::= .old-$(shell date '+%Y%m%d-%H%M%S')
 backup = \
 	if [ -e "$(1)" ] && [ ! -e "$(addsuffix $(backup_ext),$(1))" ]; then \
-		echo -e "${C_NOTICE}Making a backup of '$(1)' to '$(addsuffix $(backup_ext),$(1))'${OFF}"; \
+		echo -e "$(C_NOTICE)Making a backup of '$(1)' to '$(addsuffix $(backup_ext),$(1))'$(OFF)"; \
 		cp -a "$(1)" "$(addsuffix $(backup_ext),$(1))"; \
 	fi
 
@@ -137,7 +137,7 @@ $(CONFIG_KLIPPER_CONFIG_HOME)/%: $(OUT)/%
 	$(Q)$(call backup,$@)
 	$(Q)$(call install,$<,$@)
 
-$(CONFIG_KLIPPER_CONFIG_HOME)/${CONFIG_MOONRAKER_CONFIG_FILE}: $(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE)
+$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE): $(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE)
 	$(Q)$(call backup,$@)
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
@@ -242,5 +242,5 @@ else ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig)
 endif
 
 menuconfig: $(SRC)/scripts/Kconfig
-	$(Q)MENUCONFIG_STYLE="aquatic" python ${CONFIG_KLIPPER_HOME}/lib/kconfiglib/menuconfig.py $(SRC)/scripts/Kconfig
+	$(Q)MENUCONFIG_STYLE="aquatic" python $(CONFIG_KLIPPER_HOME)/lib/kconfiglib/menuconfig.py $(SRC)/scripts/Kconfig
 
