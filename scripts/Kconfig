@@ -125,7 +125,7 @@ endmenu
 
 menu "Advanced settings"
   menu "Paths"
-    config PRINTER_CONFIG 
+    config PRINTER_CONFIG_FILE
       string "Printer config file"
       depends on !REPETIER
       default "printer.cfg"

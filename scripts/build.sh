@@ -26,31 +26,6 @@ declare -A PARAMS_UNSTRIPPED
 # Keep track of where the parameters came from to detect deprecated parameters
 declare -A SECTION_ORIGIN
 
-# Screen Colors
-OFF='\033[0m'       # Text Reset
-BLACK='\033[0;30m'  # Black
-RED='\033[0;31m'    # Red
-GREEN='\033[0;32m'  # Green
-YELLOW='\033[0;33m' # Yellow
-BLUE='\033[0;34m'   # Blue
-PURPLE='\033[0;35m' # Purple
-CYAN='\033[0;36m'   # Cyan
-WHITE='\033[0;37m'  # White
-
-B_RED='\033[1;31m'    # Bold Red
-B_GREEN='\033[1;32m'  # Bold Green
-B_YELLOW='\033[1;33m' # Bold Yellow
-B_CYAN='\033[1;36m'   # Bold Cyan
-B_WHITE='\033[1;37m'  # Bold White
-
-TITLE="${B_WHITE}"
-DETAIL="${BLUE}"
-INFO="${CYAN}"
-EMPHASIZE="${B_CYAN}"
-ERROR="${B_RED}"
-WARNING="${B_YELLOW}"
-DIM="${PURPLE}"
-
 log_color() {
     local line
     for line in "${@:2}"; do
@@ -58,27 +33,27 @@ log_color() {
     done
 }
 
+log_info() {
+    log_color "${C_INFO}" "$@"
+}
+
+log_notice() {
+    log_color "${C_NOTICE}" "$@"
+}
+
 log_warning() {
-    log_color "${WARNING}" "$@"
+    log_color "${C_WARNING}" "$@"
 }
 
 log_error() {
-    log_color "${ERROR}" "$@"
+    log_color "${C_ERROR}" "$@"
     exit 1
-}
-
-log_info() {
-    log_color "${INFO}" "$@"
-}
-
-log_git() {
-    log_color "${B_GREEN}" "$@"
 }
 
 get_logo() {
     caption=$1
     cat <<EOF
- 
+
 (\_/)
 ( *,*)
 (")_(") ${caption}
@@ -580,7 +555,7 @@ copy_config_files() {
         return
     fi
 
-    log_info "Building file ${out}..."
+    log_info "Building file ${dest#"${SRC}"}..."
 
     cp --remove-destination "${src}" "${dest}"
 
@@ -725,7 +700,7 @@ install_include() {
     local dest=$2
 
     if ! grep -q "\[include ${include}\]" "${dest}"; then
-        log_info "Adding include ${include} from ${dest}"
+        log_info "Adding include ${1} to ${dest#"${SRC}/"}"
         sed -i "1i [include ${include}]" "${dest}"
     fi
 }
@@ -736,7 +711,7 @@ uninstall_include() {
     local dest=$2
 
     if grep -q "\[include ${include}\]" "${dest}"; then
-        log_info "Removing include ${1} from ${dest}"
+        log_info "Removing include ${1} from ${dest#"${SRC}/"}"
         sed -i "\%\[include ${include}\]% d" "${dest}"
     fi
 }
@@ -745,7 +720,7 @@ uninstall_include() {
 install_printer_includes() {
     local dest=$1
 
-    log_info "Installing MMU references in ${CONFIG_PRINTER_CONFIG}"
+    log_info "Installing MMU references in ${dest#"${SRC}/"}"
 
     if grep -q "\[include config/hardware/mmu.cfg\]" "${dest}"; then
         log_warning "This looks like a Klippain config installation - skipping automatic config install. Please add config includes by hand"
@@ -786,8 +761,8 @@ install_printer_includes() {
 }
 
 uninstall_printer_includes() {
-    log_info "Cleaning MMU references from ${CONFIG_PRINTER_CONFIG}"
     local dest=$1
+    log_info "Cleaning MMU references from ${dest}"
 
     for include in \
         'mmu/optional/mmu_menu.cfg' \
@@ -810,7 +785,7 @@ uninstall_printer_includes() {
     done
 }
 
-install_update_manager() {
+install_moonraker() {
     log_info "Adding update manager to moonraker.conf"
 
     local dest=$1
@@ -838,7 +813,7 @@ install_update_manager() {
     fi
 }
 
-uninstall_update_manager() {
+uninstall_moonraker() {
     log_info "Cleaning Happy Hare sections from moonraker.conf"
     local dest=$1
     for section in "update_manager happy-hare" "mmu_server"; do
@@ -853,7 +828,7 @@ uninstall_update_manager() {
 
 self_update() {
     if [ -n "${SKIP_UPDATE+x}" ]; then
-        log_info "Skipping self update"
+        log_notice "Skipping self update"
         return
     fi
 
@@ -876,14 +851,14 @@ self_update() {
         return
     fi
 
-    log_git "Running on '${current_branch}' branch" \
+    log_notice "Running on '${current_branch}' branch" \
         "Checking for updates..."
     # Both check for updates but also help me not loose changes accidently
     git fetch --quiet
 
     local switch=0
     if ! git diff --quiet --exit-code "origin/${current_branch}"; then
-        log_git "Found a new version of Happy Hare on github, updating..."
+        log_notice "Found a new version of Happy Hare on github, updating..."
         if [ -n "$(git status --porcelain)" ]; then
             git stash push -m 'local changes stashed before self update' --quiet
         fi
@@ -891,7 +866,7 @@ self_update() {
     fi
 
     if [ -n "${BRANCH}" ] && [ "${BRANCH}" != "${current_branch}" ]; then
-        log_git "Switching to '${current_branch}' branch"
+        log_notice "Switching to '${current_branch}' branch"
         current_branch=${BRANCH}
         switch=1
     fi
@@ -900,10 +875,10 @@ self_update() {
         git checkout "${current_branch}" --quiet
         git pull --quiet --force
         git_version=$(git describe --tags)
-        log_git "Now on git version: ${git_version}"
+        log_notice "Now on git version: ${git_version}"
     else
         git_version=$(git describe --tags)
-        log_git "Already on the latest version: ${git_version}"
+        log_notice "Already on the latest version: ${git_version}"
     fi
 }
 
@@ -969,11 +944,6 @@ build() {
     copy_config_files "$src" "$out"
 }
 
-uninstall() {
-    uninstall_update_manager "${CONFIG_KLIPPER_CONFIG_HOME}/moonraker.conf"
-    uninstall_printer_includes "${CONFIG_KLIPPER_CONFIG_HOME}/${CONFIG_PRINTER_CONFIG}"
-}
-
 cmp_version() {
     awk "BEGIN { exit !($1 < $2) }"
 }
@@ -1003,14 +973,17 @@ build)
 install-includes)
     install_printer_includes "$2"
     ;;
-install-update-manager)
-    install_update_manager "$2"
+install-moonraker)
+    install_moonraker "$2"
     ;;
 self-update)
     self_update
     ;;
-uninstall)
-    uninstall
+uninstall-includes)
+    uninstall_printer_includes "$2"
+    ;;
+uninstall-moonraker)
+    uninstall_moonraker "$2"
     ;;
 restart-service)
     restart_service "$2" "$3"
