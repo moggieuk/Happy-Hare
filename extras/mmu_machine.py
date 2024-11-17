@@ -49,9 +49,10 @@ VENDOR_ANGRY_BEAVER   = "AngryBeaver"
 VENDOR_BOX_TURTLE     = "BoxTurtle"
 VENDOR_NIGHT_OWL      = "NightOwl"
 VENDOR_3MS            = "3MS"
+VENDOR_3D_CHAMELEON   = "3D Chameleon"
 VENDOR_OTHER          = "Other"
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -122,6 +123,13 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 0
             filament_always_gripped = 1
+
+        elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
+            selector_type = 'RotarySelector'
+            variable_rotation_distances = 0
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector','RotarySelector']}, selector_type)
