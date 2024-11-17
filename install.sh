@@ -1179,6 +1179,7 @@ questionaire() {
     option BOX_TURTLE     'Box Turtle v1.0'
     option NIGHT_OWL      'Night Owl v1.0'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
+    option 3D_CHAMELEON   '3D Chameleon'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
     case $opt in
@@ -1375,6 +1376,26 @@ questionaire() {
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="extruder"
             _param_gate_homing_endstop="extruder"
+            _param_gate_homing_max=500
+            _param_gate_parking_distance=250
+            _param_gear_homing_speed=80
+            ;;
+
+        "$3D_CHAMELEON")
+            HAS_ENCODER=no
+            HAS_SELECTOR=yes
+            _hw_mmu_vendor="3DChameleon"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=RotarySelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=500
             _param_gate_parking_distance=250
             _param_gear_homing_speed=80
