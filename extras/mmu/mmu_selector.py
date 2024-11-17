@@ -1128,6 +1128,7 @@ class RotarySelector:
     def select_gate(self, gate):
         # Ensure gate filament drive is in the correct direction
         self.mmu_toolhead.get_kinematics().rails[1].set_direction(self.cad_gate_directions[gate])
+
         if gate == self.mmu.gate_selected: return
         with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
             self.filament_hold()
@@ -1146,14 +1147,11 @@ class RotarySelector:
 
     def filament_drive(self, buzz_gear=True):
         #self.servo.servo_down(buzz_gear=buzz_gear)
-        self.mmu.log_always("Griping Filament")
-        self.move("Griping Filament",self.selector_offsets[self.mmu.gate_selected])
+        self.move("Griping Filament", self.selector_offsets[self.mmu.gate_selected])
 
     def filament_release(self, measure=False):
         #return self.servo.servo_up(measure=measure)
-        self.mmu.log_always("Releasing Filament")
-        release_gate = self.cad_release_gates[self.mmu.gate_selected]
-        self.move("Releasing Filament",self.selector_offsets[release_gate])
+        self.move("Releasing Filament", self.selector_offsets[self.cad_release_gates[self.mmu.gate_selected]])
         return 1
     
     def filament_hold(self): # AKA position for selector movement
