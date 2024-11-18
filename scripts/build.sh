@@ -304,8 +304,8 @@ parse_file() {
 
         current_value="${current_value%$'\n'}"
         current_value_lines="${current_value_lines%$'\n'}"
-        current_value_lines="${current_value_lines##*:*([[:space:]])}" # Strip leading spaces and :
-        current_value_lines="${current_value_lines%%*([$' \t')}"       # Strip trailing spaces
+        current_value_lines="${current_value_lines#*:}"               # Select value after :
+        current_value_lines="${current_value_lines/#*([[:blank:]])/}" # Strip leading spaces
         set_param "${current_section}" "${current_parameter}" "${current_value}"
         PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]="${current_value_lines}"
         SECTION_ORIGIN["${current_section}"]="${file#*/config/mmu/}"
@@ -323,7 +323,8 @@ parse_file() {
         if [[ "${line}" =~ ^\[.*\] ]]; then
             # section
             set_parameter
-            current_section="${line%%*([[:space:]])?([#;]*)}"
+            current_section="${line%%[#;]*}"
+            current_section="${current_section/%*([[:blank:]])/}"
             current_parameter=
             current_value=
             current_value_lines=
@@ -365,14 +366,15 @@ parse_file() {
         fi
 
         # part of a possibly multiline value
-        local value="${line%%*([[:space:]])?([#\;]*)}" # Strip spaces and comments
-        value="${value#*:}"                            # Select value after :
-        value="${value##*([[:space:]])}"               # Strip leading spaces
+        local value="${line%%[#;]*}"      # Strip comment
+        value="${value/%*([[:blank:]])/}" # Strip trailing spaces
+        value="${value#*:}"               # Select value after :
+        value="${value/#*([[:blank:]])/}" # Strip leading spaces
         remaining_lines+=${line}$'\n'
         if [ -n "${value}" ]; then
             if [ -n "${current_value}" ]; then
                 # We are in a multiline value, add space infront
-                current_value+=${line%%[^[:space:]]*}${value}$'\n'
+                current_value+=${line%%[^[:blank:]]*}${value}$'\n'
             else
                 current_value+=${value}$'\n'
             fi
@@ -430,8 +432,8 @@ update_file() {
             echo "${current_value_lines/${current_value}/${existing_value}}" >>"${dest}.tmp"
         else
             # Multiline value. We can't retain the comments from the base files, so we will use the one in the user's config
-            unstripped_current_value="${current_value_lines##*:*([[:space:]])}" # Strip leading spaces and :
-            unstripped_current_value="${unstripped_current_value%%*([$' \t')}"  # Strip trailing spaces
+            unstripped_current_value="${current_value_lines#*:}"                    # Select value after :
+            unstripped_current_value="${unstripped_current_value/#*([[:blank:]])/}" # Strip leading spaces
             echo "${current_value_lines/${unstripped_current_value}/${unstripped_value}}" >>"${dest}.tmp"
         fi
 
@@ -452,7 +454,8 @@ update_file() {
         if [[ "${line}" =~ ^\[.*\] ]]; then
             # section
             check_parameter
-            current_section="${line%%*([[:space:]])?([#;]*)}"
+            current_section="${line%%[#;]*}"
+            current_section="${current_section/%*([[:blank:]])/}"
             current_parameter=
             current_value=
             current_value_lines=
@@ -494,15 +497,16 @@ update_file() {
         fi
 
         # part of a possibly multiline value
-        local value="${line%%*([[:space:]])?([#\;]*)}" # Strip spaces and comments
-        value="${value#*:}"                            # Select value after :
-        value="${value##*([[:space:]])}"               # Strip leading spaces
+        local value="${line%%[#;]*}"      # Strip comment
+        value="${value/%*([[:blank:]])/}" # Strip trailing spaces
+        value="${value#*:}"               # Select value after :
+        value="${value/#*([[:blank:]])/}" # Strip leading spaces
 
         remaining_lines+=${line}$'\n'
         if [ -n "${value}" ]; then
             if [ -n "${current_value}" ]; then
                 # We are in a multiline value, add space infront
-                current_value+=${line%%[^[:space:]]*}${value}$'\n'
+                current_value+=${line%%[^[:blank:]]*}${value}$'\n'
             else
                 current_value+=${value}$'\n'
             fi
