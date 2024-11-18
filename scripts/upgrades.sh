@@ -7,14 +7,13 @@ upgrade_2_70_to_2_71() {
 	if has_param "${sec}" "variable_park_xy"; then
 		local xy=$(param "${sec}" "variable_park_xy")
 		local z_hop_toolchange=$(param "[mmu]" "z_hop_height_toolchange")
-		# local z_hop_error=$(param "${sec}" "z_hop_height_error")
+		local z_hop_error=$(param "[mmu]" "z_hop_height_error")
 
-		set_param "${sec}" "variable_park_toolchange" "${xy}, ${z_hop_toolchange:-0}, 0, 2"
-		# TODO: This is not relevant anymore?
-		# set_param "${sec}" "variable_park_error" "${xy}, ${z_hop_error:-0}, 0, 2"
+		set_param "${sec}" "variable_park_toolchange" "${xy}, ${z_hop_toolchange:-1}, 0, 2"
+		set_param "${sec}" "variable_park_pause" "${xy}, ${z_hop_error:-5}, 0, 2"
 		remove_param "${sec}" "variable_park_xy"
-		remove_param "${sec}" "z_hop_height_toolchange"
-		# remove "${sec}" "z_hop_height_error"
+		remove_param "[mmu]" "z_hop_height_toolchange"
+		remove_param "[mmu]" "z_hop_height_error"
 	fi
 
 	param_change_var "${sec}" "variable_lift_speed" "variable_park_lift_speed"

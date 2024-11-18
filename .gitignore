@@ -3,3 +3,4 @@ out/
 out_*/
 *.config
 *.config.old
+test/build/**/test_out.cfg
