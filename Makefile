@@ -239,8 +239,8 @@ ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig)
 	$(Q)$(MAKE) -s MAKEFLAGS= menuconfig
 	$(Q)python $(CONFIG_KLIPPER_HOME)/lib/kconfiglib/olddefconfig.py $(SRC)/scripts/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)
-endif
 	$(Q)[ -f "$(KCONFIG_CONFIG)" ] || { echo "No config file found. run 'make menuconfig' to create one"; exit 1; }
+endif
 
 menuconfig: $(SRC)/scripts/Kconfig
 	$(Q)MENUCONFIG_STYLE="aquatic" python $(CONFIG_KLIPPER_HOME)/lib/kconfiglib/menuconfig.py $(SRC)/scripts/Kconfig
