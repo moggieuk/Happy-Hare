@@ -7,14 +7,13 @@ mainmenu "Happy Hare $(formatted_version) Configuration"
 # Used to convert a shell command result to a y/n value
 to_bool = $(shell, $(1) && echo y || echo n)
 
-# Used to get the serial device paths 
+# Used to get the serial device paths
 serial=$(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
 serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
 serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "HW_SERIAL_" toupper($0)}')
 
 ### Start of configuration
-
-config VERSION
+config PARAM_HAPPY_HARE_VERSION
   string	
   default "$(happy_hare_version)"
 
@@ -29,7 +28,7 @@ comment '(")_(") Happy Hare version $(formatted_version) 	'
 comment '					'
 
 config IS_MIPS
-  bool 
+  bool
   default $(to_bool, uname -m | grep -q 'mips')
 
 rsource "types/Kconfig"
@@ -62,7 +61,7 @@ rsource "boards/Kconfig"
 rsource "Kconfig.serial"
 
 choice CHOICE_SELECTOR_TYPE
-  prompt "Selector type" if HW_MMU_TYPE_CUSTOM 
+  prompt "Selector type" if HW_MMU_TYPE_CUSTOM
   default HW_SELECTOR_TYPE_LINEAR if MMU_HAS_SELECTOR
   default HW_SELECTOR_TYPE_VIRTUAL
   config HW_SELECTOR_TYPE_LINEAR
@@ -79,11 +78,11 @@ config HW_SELECTOR_TYPE
 rsource "servos/Kconfig"
 
 config HW_NUM_GATES
-  int "Number of gates" 
+  int "Number of gates"
   range 1 32
   default 12
 
-config ENABLE_LEDS 
+config ENABLE_LEDS
   bool "Enable neopixel LEDs support?"
 
 config ENABLE_SELECTOR_TOUCH
@@ -94,11 +93,11 @@ config ENABLE_SELECTOR_TOUCH
     The MCU must have DIAG output for steppers. Possible to configure later.
 
 if HW_BOARD_TYPE_EASY_BRD
-  comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! " 
+  comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
     depends on SELECTOR_TOUCH
-  comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! " 
+  comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
     depends on !SELECTOR_TOUCH
-endif 
+endif
 
 config ENABLE_CLOG_DETECT
   bool "Enable clog detection?"
@@ -110,7 +109,7 @@ config ENABLE_AUTO_CLOG_DETECT
 
 config ENABLE_ENDLESS_SPOOL
   bool "Enable EndlessSpool?"
-  help 
+  help
     This uses filament runout detection to automate switching to a new spool without interruption.
 
 config INSTALL_12864_MENU
@@ -131,7 +130,7 @@ menu "Advanced settings"
       default "printer.cfg"
     config KLIPPER_HOME
       string "Klipper directory"
-      # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture) 
+      # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture)
       # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
       default "$(CONFIG_KLIPPER_HOME)"
     config KLIPPER_CONFIG_HOME

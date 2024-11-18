@@ -3,46 +3,51 @@ SHELL=/usr/bin/env bash
 export KCONFIG_CONFIG ?= .config
 include $(KCONFIG_CONFIG)
 
-# kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target or if .config doesn't exist yet
-MAKEFLAGS += --jobs 16 $(if $(or $(findstring menuconfig,$(MAKECMDGOALS)),$(shell [ ! -e "$(KCONFIG_CONFIG)" ] && echo y)),,--output-sync)
 # For quiet builds, override with make Q= for verbose output
 Q ?= @
-
-# If CONFIG_IS_MIPS is not yet set by .config, set it here
-ifeq ($(shell uname -m),mips)
-  CONFIG_IS_MIPS ?= y
-endif
-
-# If CONFIG_KLIPPER_HOME is not yet set by .config, set it to the default value
-# this is required to make menuconfig work the first time
-# can be overridden with 'make CONFIG_KLIPPER_HOME=/path/to/klipper <target>'
-ifeq ($(CONFIG_IS_MIPS),y)
-  CONFIG_KLIPPER_HOME ?= /usr/share/klipper
-else
-  CONFIG_KLIPPER_HOME ?= ~/klipper
-endif
-
 export SRC ?= $(CURDIR)
 
-# Use the name of the 'name.config' file as the output directory, or 'out' if just '.config' is used
+# Use the name of the 'name.config' file as the out_name directory, or 'out' if just '.config' is used
 ifeq ($(basename $(KCONFIG_CONFIG)),)
   export OUT ?= $(CURDIR)/out
 else
   export OUT ?= $(CURDIR)/out_$(basename $(KCONFIG_CONFIG))
 endif
 
-# Screen Colors
-export OFF=\033[0m
-export CYAN=\033[0;36m
+# Print Colors (exported for use in scripts)
+export C_OFF=\033[0m
+# Cyan
+export C_INFO=\033[1;36m
+# Bold Green
+export C_NOTICE=\033[1;32m
+# Bold Yellow
+export C_WARNING=\033[1;33m
+# Bold Red
+export C_ERROR=\033[1;31m
 
-export B_RED=\033[1;31m
-export B_GREEN=\033[1;32m
-export B_YELLOW=\033[1;33m
 
-export C_INFO=$(CYAN)
-export C_NOTICE=$(B_GREEN)
-export C_WARNING=$(B_YELLOW)
-export C_ERROR=$(B_RED)
+MAKEFLAGS += --jobs 16 # Parallel build
+# kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target or if .config is outdated
+ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
+  ifeq ($(shell [ "$(KCONFIG_CONFIG)" -ot "$(SRC)/scripts/Kconfig" ] || echo y),y)
+    MAKEFLAGS += --output-sync
+  endif
+endif
+
+# If CONFIG_IS_MIPS is not yet set by .config, set it here
+ifeq ($(shell uname -m),mips)
+  CONFIG_IS_MIPS ?= y
+endif
+
+# If CONFIG_KLIPPER_HOME is not yet set by .config, set it to the default value.
+# This is required to make menuconfig work the first time.
+# If the klipper directory is not at one of the standard locations,
+# it can be overridden with 'make CONFIG_KLIPPER_HOME=/path/to/klipper <target>'
+ifeq ($(CONFIG_IS_MIPS),y)
+  CONFIG_KLIPPER_HOME ?= /usr/share/klipper
+else
+  CONFIG_KLIPPER_HOME ?= ~/klipper
+endif
 
 hh_klipper_extras_files = $(patsubst extras/%,%,$(wildcard extras/*.py extras/*/*.py))
 hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon install
@@ -78,7 +83,7 @@ link = \
 backup_ext :::= .old-$(shell date '+%Y%m%d-%H%M%S')
 backup = \
 	if [ -e "$(1)" ] && [ ! -e "$(addsuffix $(backup_ext),$(1))" ]; then \
-		echo -e "$(C_NOTICE)Making a backup of '$(1)' to '$(addsuffix $(backup_ext),$(1))'$(OFF)"; \
+		echo -e "$(C_NOTICE)Making a backup of '$(1)' to '$(addsuffix $(backup_ext),$(1))'$(C_OFF)"; \
 		cp -a "$(1)" "$(addsuffix $(backup_ext),$(1))"; \
 	fi
 
@@ -86,20 +91,21 @@ backup = \
 restart_moonraker = 0
 
 .DEFAULT_GOAL := build
-.NOPARALLEL: install
+.PRECIOUS: $(KCONFIG_CONFIG)
 .PHONY: update menuconfig install uninstall remove_old_klippy_modules check_root check_paths check_version diff build clean clean-all bnackup_mmu
 
+FORCE:
 
 ### Build targets
 ifneq ($(wildcard $(subst ",,$(KCONFIG_CONFIG))),) # To prevent make errors when .config is not yet created
 
 # Copy existing moonraker.conf and printer.cfg to the out directory
-$(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE):
+$(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE): FORCE
 	$(info Copying $(CONFIG_MOONRAKER_CONFIG_FILE) to '$(notdir $(OUT))' directory)
 	$(Q)cp -a "$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE)" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/scripts/build.sh install-moonraker "$@"
 
-$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE):
+$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE): FORCE
 	$(info Copying $(CONFIG_PRINTER_CONFIG_FILE) to '$(notdir $(OUT))' directory)
 	$(Q)cp -a "$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE)" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/scripts/build.sh install-includes "$@"
@@ -107,7 +113,7 @@ $(OUT)/$(CONFIG_PRINTER_CONFIG_FILE):
 endif
 
 # We link all config files, those that need to be updated will be written over in the install script
-$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg
+$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg FORCE
 	$(Q)$(call link,$<,$@)
 	$(Q)$(SRC)/scripts/build.sh build "$<" "$@"
 
@@ -160,7 +166,6 @@ install: $(install_targets)
 backup_mmu: | build
 	$(Q)$(call backup,$(CONFIG_KLIPPER_CONFIG_HOME)/mmu)
 
-
 uninstall:
 	$(Q)$(call backup,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE))
 	$(Q)$(call backup,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE))
@@ -179,14 +184,8 @@ uninstall:
 update: check_root
 	$(Q)$(SRC)/scripts/build.sh self-update
 
-# Remove old klippy modules that are no longer needed
-remove_old_modules:
-
 clean:
 	$(Q)rm -rf $(OUT)
-
-distclean: clean
-	$(Q)rm -f $(KCONFIG_CONFIG) $(KCONFIG_CONFIG).old
 
 diff_cmd = git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \
 	grep -v "diff --git " | grep -Ev "index [[:xdigit:]]+\.\.[[:xdigit:]]+" || true # Filter out command and index lines from the diff, they only muck up the information
@@ -231,15 +230,14 @@ ifneq ($(CONFIG_OCTOPRINT),y)
 endif
 
 $(KCONFIG_CONFIG): $(SRC)/scripts/Kconfig
-# If .config/$KCONFIG_CONFIG does not exist yet run menuconfig, else just update it
+# if KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig
 # touch in case .config does not get updated by olddefconfig.py
-ifneq ($(wildcard $(KCONFIG_CONFIG)),)
-	$(Q)python $(CONFIG_KLIPPER_HOME)/lib/kconfiglib/olddefconfig.py $(SRC)/scripts/Kconfig;
-	$(Q)touch $(KCONFIG_CONFIG);
-else ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig)
-	$(Q)$(MAKE) -s menuconfig;
-	$(Q)[ -e $(KCONFIG_CONFIG) ] || echo "No config file found. run 'make menuconfig' to create one" && false
+ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig)
+	$(Q)$(MAKE) -s MAKEFLAGS= menuconfig
+	$(Q)python $(CONFIG_KLIPPER_HOME)/lib/kconfiglib/olddefconfig.py $(SRC)/scripts/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
+	$(Q)touch $(KCONFIG_CONFIG)
 endif
+	$(Q)[ -f "$(KCONFIG_CONFIG)" ] || { echo "No config file found. run 'make menuconfig' to create one"; exit 1; }
 
 menuconfig: $(SRC)/scripts/Kconfig
 	$(Q)MENUCONFIG_STYLE="aquatic" python $(CONFIG_KLIPPER_HOME)/lib/kconfiglib/menuconfig.py $(SRC)/scripts/Kconfig

@@ -13,8 +13,12 @@
 
 shopt -s extglob
 
-source "${KCONFIG_CONFIG}"
-source "${SRC}/scripts/upgrades.sh"
+# shellcheck source=.config
+source "${KCONFIG_CONFIG:-.config}"
+source "scripts/upgrades.sh"
+
+SRC=${SRC:-.}
+OUT=${OUT:-out}
 
 set -e # Exit immediately on error
 
@@ -29,7 +33,7 @@ declare -A SECTION_ORIGIN
 log_color() {
     local line
     for line in "${@:2}"; do
-        echo -e "${1}${line}${OFF}"
+        echo -e "${1}${line}${C_OFF}"
     done
 }
 
@@ -76,17 +80,6 @@ calc() {
     awk "BEGIN { print $* }"
 }
 
-# Helper for upgrade logic
-convert_to_boolean_string() {
-    if [ "$1" -eq 1 ] 2>/dev/null; then
-        echo "True"
-    elif [ "$1" -eq 0 ] 2>/dev/null; then
-        echo "False"
-    else
-        echo "$1"
-    fi
-}
-
 # Change parameter name of section $1 from $2 to $3
 # e.g. param_change_var "[section]" "from_param" "to_param"
 param_change_var() {
@@ -127,12 +120,14 @@ param_change_key() {
     fi
 }
 
+# Get the value of a [section] parameter
 param() {
     local section=$1
     local param=$2
     echo "${PARAMS["${section},${param}"]}"
 }
 
+# Get all keys for a section
 param_keys_for() {
     local section=$1
     for key in "${!PARAMS[@]}"; do
@@ -151,6 +146,7 @@ copy_param() {
     set_param "${to_section}" "${to_param}" "$(param "${from_section}" "${from_param}")"
 }
 
+# Set a {section] parameter value
 set_param() {
     local section=$1
     local param=$2
@@ -158,13 +154,14 @@ set_param() {
     PARAMS["${section},${param}"]="${value}"
 }
 
-# check if a parameter is defined, an empty string returns true
+# Check if a [section] parameter is defined, an empty string returns true
 has_param() {
     local section=$1
     local param=$2
     [ -n "${PARAMS["${section},${param}"]+x}" ]
 }
 
+# Check if a section exists
 has_param_section() {
     local section=$1
     for key in "${!PARAMS[@]}"; do
@@ -211,6 +208,8 @@ delete_section() {
 
     per_section "${start_section}" "${end_section}" "d" "y" "${file}"
 }
+
+# Delete a single line
 delete_line() {
     local line_select=$1
     local file=$2
@@ -290,7 +289,6 @@ replace_placeholder() {
 }
 
 ### .cfg Processing fucntions
-
 parse_file() {
     local file=$1
     local prefix_filter=$2
@@ -306,32 +304,27 @@ parse_file() {
 
         current_value="${current_value%$'\n\t'}"
         set_param "${current_section}" "${current_parameter}" "${current_value}"
-        PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]="${current_lines%$'\n'}"
-        SECTION_ORIGIN["${current_section}"]="${file##*/}"
+        PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]="${current_value_lines%$'\n'}"
+        SECTION_ORIGIN["${current_section}"]="${file#*/config/mmu/}"
     }
 
     local current_section
     local current_parameter
-    local current_value
-    local current_lines
+    local current_value       # Stripped current value
+    local current_value_lines # Unstripped current value
+    local remaining_lines     # Unstripped remaining lines that don't belong to the current parameter
     local line
 
     # Read old config files
     while IFS="" read -r line; do
-
-        if [ -z "${line%%*([[:space:]])?([#\;]*)}" ]; then
-            current_lines+=${line}$'\n'
-            # Empty line
-            continue
-        fi
-
         if [[ "${line}" =~ ^\[.*\] ]]; then
             # section
             set_parameter
             current_section="${line%%*([[:space:]])?([#;]*)}"
             current_parameter=
             current_value=
-            current_lines=
+            current_value_lines=
+            remaining_lines=
             continue
         fi
 
@@ -345,11 +338,14 @@ parse_file() {
             set_parameter
             current_parameter="${line%%*([[:space:]]):*}" # Select parameter before :
             current_value=
-            current_lines=
+            current_value_lines=
+            remaining_lines=
 
-            if [[ "${current_section}" =~ ^\[gcode_macro ]] &&
+            # echo "current_section: '${current_section}'"
+            if [[ "${current_section}" =~ ^\[(gcode_macro|delayed_gcode) ]] &&
                 [[ ! "${current_parameter}" =~ ^variable_ ]]; then
                 # skip everything that is not a variable in gcode macros
+                # log_warning "Skipping gcode"
                 current_parameter=
             fi
 
@@ -357,6 +353,7 @@ parse_file() {
                 # We skip these parameters
                 current_parameter=
             fi
+            # echo "current_parameter: '${current_parameter}'"
         fi
 
         if [ -z "${current_parameter}" ]; then
@@ -368,10 +365,12 @@ parse_file() {
         local value="${line%%*([[:space:]])?([#\;]*)}" # Strip spaces and comments
         value="${value#*:}"                            # Select value after :
         value="${value##*([[:space:]])}"               # Strip leading spaces
+        remaining_lines+=${line}$'\n'
         if [ -n "${value}" ]; then
             current_value+=${value}$'\n\t'
+            current_value_lines+=${remaining_lines} # Line is still part of a value, add it to the value lines
+            remaining_lines=
         fi
-        current_lines+=${line}$'\n'
 
     done <"${file}"
 
@@ -389,6 +388,7 @@ update_file() {
         fi
 
         current_value="${current_value%$'\n\t'}"
+        remaining_lines=${remaining_lines%$'\n'}
         local existing_value="$(param "${current_section}" "${current_parameter}")"
         remove_param "${current_section}" "${current_parameter}"
         local unstripped_value="${PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]}"
@@ -397,7 +397,10 @@ update_file() {
         # Compare stripped parameter values
         if [ "${current_value}" == "${existing_value}" ]; then
             # No change, just print as is. This will remove any comments the user might have added
-            echo "${current_lines%$'\n'}" >>"${dest}.tmp"
+            echo "${current_value_lines%$'\n'}" >>"${dest}.tmp"
+            if [ -n "${remaining_lines}" ]; then
+                echo "${remaining_lines}" >>"${dest}.tmp"
+            fi
             return
         fi
 
@@ -409,12 +412,14 @@ update_file() {
 
         log_info "Reusing parameter value from existing install: ${current_section} ${current_parameter} = ${print_value}"
         echo "${unstripped_value}" >>"${dest}.tmp"
+        echo "${remaining_lines}" >>"${dest}.tmp"
     }
 
     local current_section
     local current_parameter
-    local current_value
-    local current_lines
+    local current_value       # Stripped current value
+    local current_value_lines # Unstripped current value
+    local remaining_lines     # Unstripped remaining lines that don't belong to the current parameter
     local line
 
     # Read the file line by line
@@ -425,7 +430,8 @@ update_file() {
             current_section="${line%%*([[:space:]])?([#;]*)}"
             current_parameter=
             current_value=
-            current_lines=
+            current_value_lines=
+            remaining_lines=
             echo "${line}" >>"${dest}.tmp"
             continue
         fi
@@ -440,7 +446,8 @@ update_file() {
             check_parameter
             current_parameter="${line%%*([[:space:]]):*}" # Select parameter before
             current_value=
-            current_lines=
+            current_value_lines=
+            remaining_lines=
 
             if [[ "${current_section}" = ^\[gcode_macro ]] &&
                 [[ ! "${current_parameter}" = ^variable_ ]]; then
@@ -466,10 +473,12 @@ update_file() {
         value="${value#*:}"                            # Select value after :
         value="${value##*([[:space:]])}"               # Strip leading spaces
 
+        remaining_lines+=${line}$'\n'
         if [ -n "${value}" ]; then
             current_value+=${value}$'\n\t'
+            current_value_lines+=${remaining_lines}
+            remaining_lines=
         fi
-        current_lines+=${line}$'\n'
     done <"${dest}"
 
     # after reaching end of file, check the last known parameter
@@ -486,7 +495,7 @@ read_previous_config() {
         fi
     done
 
-    # TODO namespace config in third-party addons separately
+    # parse_file "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/addons/blobifier.cfg"
     if [ -d "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
         for cfg in "${CONFIG_KLIPPER_CONFIG_HOME}"/mmu/addons/*.cfg; do
             if [[ ! "${cfg##*/}" =~ ^my_ ]]; then
@@ -536,17 +545,24 @@ process_upgrades() {
     process_upgrades "${highest_to_version}" "${final_version}"
 }
 
+# Now substitute tokens using Kconfig starting values
 copy_config_files() {
-    # Now substitute tokens using given brd_type and Kconfig starting values
-    local filename=${1##*/}
+    local filename=${1#"${SRC}/config/"} # Filename relevant to config directory
     local src=$1
     local dest=$2
 
     local sed_expr=""
 
-    local files_to_copy="mmu.cfg mmu_hardware.cfg mmu_parameters.cfg mmu_macro_vars.cfg mmu_vars.cfg"
-    if [[ ! "${files_to_copy}" =~ (^| )${filename}( |$) ]] && [[ ! ${src#"${SRC}"/config/} =~ ^addons/ ]]; then
-        # File doesn't need to be changed/copied
+    local files_to_copy=(
+        config/base/mmu.cfg
+        config/base/mmu_hardware.cfg
+        config/base/mmu_parameters.cfg
+        config/base/mmu_macro_vars.cfg
+        config/mmu_vars.cfg
+        config/addons/*.cfg
+    )
+    if [[ ! "${files_to_copy[*]#"config/"}" =~ (^| )${filename}( |$) ]]; then
+        # File doesn't need to be changed/copie
         return
     fi
 
@@ -555,7 +571,7 @@ copy_config_files() {
         return
     fi
 
-    log_info "Building file ${dest#"${SRC}"}..."
+    log_info "Building file ${src#"${SRC}/config/"}..."
 
     cp --remove-destination "${src}" "${dest}"
 
@@ -580,7 +596,7 @@ copy_config_files() {
 
     local num_gates=${CONFIG_HW_NUM_GATES}
 
-    if [ "${filename}" == "mmu.cfg" ]; then
+    if [ "${filename}" == "base/mmu.cfg" ]; then
         sed_expr+="s|{pin_.*}||g; " # Clear any remaining unprocessed pin placeholders
 
         duplicate_section "[[:space:]]*MMU_PRE_GATE_0=" "" "0" "${num_gates} - 1" "${dest}"
@@ -599,7 +615,7 @@ copy_config_files() {
         fi
     fi
 
-    if [ "${filename}" == "mmu_hardware.cfg" ]; then
+    if [ "${filename}" == "base/mmu_hardware.cfg" ]; then
         duplicate_section "pre_gate_switch_pin_0:" "" "0" "${num_gates} - 1" "${dest}"
         duplicate_section "post_gear_switch_pin_0:" "" "0" "${num_gates} - 1" "${dest}"
 
@@ -642,7 +658,7 @@ copy_config_files() {
     fi
 
     # Conifguration parameters -----------------------------------------------------------
-    if [ "${filename}" == "mmu_parameters.cfg" ]; then
+    if [ "${filename}" == "base/mmu_parameters.cfg" ]; then
         # Ensure that supplemental user added params are retained. These are those that are
         # by default set internally in Happy Hare based on vendor and version settings but
         # can be overridden.  This set also includes a couple of hidden test parameters.
@@ -678,7 +694,7 @@ copy_config_files() {
     fi
 
     # Variables macro ---------------------------------------------------------------------
-    if [ "${filename}" == "mmu_macro_vars.cfg" ]; then
+    if [ "${filename}" == "base/mmu_macro_vars.cfg" ]; then
         duplicate_section "\[gcode_macro T0\]" "$" "0" "${num_gates} - 1" "${dest}"
     fi
 
@@ -689,7 +705,7 @@ copy_config_files() {
     for key in "${!PARAMS[@]}"; do
         local section=${key%,*}
         if [ "${SECTION_ORIGIN["${section}"]}" == "${filename}" ]; then
-            log_warning "Following parameter in '${filename}' is deprecated and has been removed: ${section} ${key#*,} = ${PARAMS[$key]}"
+            log_warning "Following parameter in '${filename}' has been been removed or been deprecated: ${section} ${key#*,} = '${PARAMS[$key]}'"
         fi
     done
 }
@@ -914,7 +930,6 @@ restart_service() {
 set_extra_parameters() {
     # never use the version from the existing installation files
     remove_param "[mmu]" "happy_hare_version"
-    CONFIG_PARAM_HAPPY_HARE_VERSION="${CONFIG_VERSION}"
 
     CONFIG_HW_MMU_VERSION=${CONFIG_HW_MMU_BASE_VERSION}
     if [ "${CONFIG_HW_MMU_TYPE_ERCF_1_1}" == "y" ]; then
@@ -939,7 +954,7 @@ build() {
     local out=$2
 
     read_previous_config
-    process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_VERSION}"
+    process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_PARAM_HAPPY_HARE_VERSION}"
     set_extra_parameters
     copy_config_files "$src" "$out"
 }
@@ -950,16 +965,17 @@ cmp_version() {
 
 check_version() {
     if [ ! -f "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/mmu_parameters.cfg" ]; then
-        log_info "Fresh install detected"
+        log_notice "Fresh install detected"
         return
     fi
 
     parse_file "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/mmu_parameters.cfg" "happy_hare_version"
     # Important to update version
-    FROM_VERSION=$(param "[mmu]" "happy_hare_version")
-    if [ -n "${FROM_VERSION}" ]; then
-        if cmp_version "${CONFIG_VERSION}" "${FROM_VERSION}"; then
-            log_warning "Trying to update from version ${FROM_VERSION} to ${CONFIG_VERSION}" \
+    local from_version=$(param "[mmu]" "happy_hare_version")
+    log_notice "Current version: ${from_version}"
+    if [ -n "${from_version}" ]; then
+        if cmp_version "${CONFIG_PARAM_HAPPY_HARE_VERSION}" "${from_version}"; then
+            log_warning "Trying to update from version ${from_version} to ${CONFIG_PARAM_HAPPY_HARE_VERSION}" \
                 "Automatic 'downgrade' to earlier version is not guaranteed. If you encounter startup problems you may" \
                 "need to manually compare the backed-up 'mmu_parameters.cfg' with current one to restore differences"
         fi
@@ -989,7 +1005,7 @@ restart-service)
     restart_service "$2" "$3"
     ;;
 print-happy-hare)
-    log_info "$(get_logo "Happy Hare ${CONFIG_F_VERSION} Ready...")"
+    log_info "$(get_logo "Done! Happy Hare ${CONFIG_F_VERSION} ready...")"
     ;;
 print-unhappy-hare)
     log_info "${sad_logo}"
