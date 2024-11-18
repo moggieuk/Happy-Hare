@@ -302,9 +302,12 @@ parse_file() {
             return
         fi
 
-        current_value="${current_value%$'\n\t'}"
+        current_value="${current_value%$'\n'}"
+        current_value_lines="${current_value_lines%$'\n'}"
+        current_value_lines="${current_value_lines##*:*([[:space:]])}" # Strip leading spaces and :
+        current_value_lines="${current_value_lines%%*([$' \t')}"       # Strip trailing spaces
         set_param "${current_section}" "${current_parameter}" "${current_value}"
-        PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]="${current_value_lines%$'\n'}"
+        PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]="${current_value_lines}"
         SECTION_ORIGIN["${current_section}"]="${file#*/config/mmu/}"
     }
 
@@ -367,8 +370,14 @@ parse_file() {
         value="${value##*([[:space:]])}"               # Strip leading spaces
         remaining_lines+=${line}$'\n'
         if [ -n "${value}" ]; then
-            current_value+=${value}$'\n\t'
+            if [ -n "${current_value}" ]; then
+                # We are in a multiline value, add space infront
+                current_value+=${line%%[^[:space:]]*}${value}$'\n'
+            else
+                current_value+=${value}$'\n'
+            fi
             current_value_lines+=${remaining_lines} # Line is still part of a value, add it to the value lines
+
             remaining_lines=
         fi
 
@@ -383,12 +392,16 @@ update_file() {
     local prefix_filter=$2
 
     check_parameter() {
+        current_value="${current_value%$'\n'}"
+        current_value_lines="${current_value_lines%$'\n'}"
+
         if [ -z "${current_parameter}" ]; then
+            if [ -n "${remaining_lines}" ]; then
+                echo "${remaining_lines%$'\n'}" >>"${dest}.tmp"
+            fi
             return
         fi
 
-        current_value="${current_value%$'\n\t'}"
-        remaining_lines=${remaining_lines%$'\n'}
         local existing_value="$(param "${current_section}" "${current_parameter}")"
         remove_param "${current_section}" "${current_parameter}"
         local unstripped_value="${PARAMS_UNSTRIPPED["${current_section},${current_parameter}"]}"
@@ -397,9 +410,9 @@ update_file() {
         # Compare stripped parameter values
         if [ "${current_value}" == "${existing_value}" ]; then
             # No change, just print as is. This will remove any comments the user might have added
-            echo "${current_value_lines%$'\n'}" >>"${dest}.tmp"
+            echo "${current_value_lines}" >>"${dest}.tmp"
             if [ -n "${remaining_lines}" ]; then
-                echo "${remaining_lines}" >>"${dest}.tmp"
+                echo "${remaining_lines%$'\n'}" >>"${dest}.tmp"
             fi
             return
         fi
@@ -411,8 +424,20 @@ update_file() {
         fi
 
         log_info "Reusing parameter value from existing install: ${current_section} ${current_parameter} = ${print_value}"
-        echo "${unstripped_value}" >>"${dest}.tmp"
-        echo "${remaining_lines}" >>"${dest}.tmp"
+
+        if [[ ! "${current_value_lines}" =~ $'\n' ]]; then
+            # Single line value. We retain the comments in the base files
+            echo "${current_value_lines/${current_value}/${existing_value}}" >>"${dest}.tmp"
+        else
+            # Multiline value. We can't retain the comments from the base files, so we will use the one in the user's config
+            unstripped_current_value="${current_value_lines##*:*([[:space:]])}" # Strip leading spaces and :
+            unstripped_current_value="${unstripped_current_value%%*([$' \t')}"  # Strip trailing spaces
+            echo "${current_value_lines/${unstripped_current_value}/${unstripped_value}}" >>"${dest}.tmp"
+        fi
+
+        if [ -n "${remaining_lines}" ]; then
+            echo "${remaining_lines%$'\n'}" >>"${dest}.tmp"
+        fi
     }
 
     local current_section
@@ -475,7 +500,12 @@ update_file() {
 
         remaining_lines+=${line}$'\n'
         if [ -n "${value}" ]; then
-            current_value+=${value}$'\n\t'
+            if [ -n "${current_value}" ]; then
+                # We are in a multiline value, add space infront
+                current_value+=${line%%[^[:space:]]*}${value}$'\n'
+            else
+                current_value+=${value}$'\n'
+            fi
             current_value_lines+=${remaining_lines}
             remaining_lines=
         fi
@@ -982,6 +1012,36 @@ check_version() {
     fi
 }
 
+run_test() {
+    local test_dir=$1
+    parse_file "${test_dir}/in.cfg"
+
+    local test_name=${test_dir#test/build/}
+
+    if [[ "${test_name:0:4}" =~ ^[0-9]_[0-9][0-9]$ ]]; then
+        local to_version=${test_name:0:4}
+        local from_version=$(param "[mmu]" "happy_hare_version")
+        process_upgrades "${from_version}" "${to_version//_/.}"
+    fi
+
+    cp -f "${test_dir}/config.cfg" "${test_dir}/test_out.cfg"
+    update_file "${test_dir}/test_out.cfg"
+    if [ ! "$(diff -q "${test_dir}/out.cfg" "${test_dir}/test_out.cfg")" ]; then
+        log_notice "Test passed: ${test_name}"
+    else
+        diff -U1 --color=always "${test_dir}/out.cfg" "${test_dir}/test_out.cfg" || true
+        log_error "Test failed: ${test_name}"
+    fi
+}
+
+run_tests() {
+    for test_dir in test/build/* test/build/*/*; do
+        if [ -f "${test_dir}/config.cfg" ]; then
+            run_test "${test_dir}"
+        fi
+    done
+}
+
 case $1 in
 build)
     build "$2" "$3"
@@ -1018,6 +1078,9 @@ print-params)
     for key in "${!PARAMS[@]}"; do
         echo -e "${key%,*} ${key#*,}: ${PARAMS[${key}]}"
     done
+    ;;
+tests)
+    run_tests
     ;;
 *)
     log_error "
