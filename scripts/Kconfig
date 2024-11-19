@@ -102,9 +102,10 @@ endif
 config ENABLE_CLOG_DETECT
   bool "Enable clog detection?"
   depends on MMU_HAS_ENCODER
+  imply ENABLE_CLOG
 config ENABLE_AUTO_CLOG_DETECT
   bool "Enable automatic clog detection length?"
-  depends on MMU_ENABLE_CLOG_DETECT
+  depends on ENABLE_CLOG_DETECT
   default y
 
 config ENABLE_ENDLESS_SPOOL

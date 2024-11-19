@@ -994,13 +994,26 @@ set_extra_parameters() {
     CONFIG_HW_NUM_LEDS=$(calc "${CONFIG_HW_NUM_GATES} * 2 + 1")
     CONFIG_HW_NUM_LEDS_MINUS1=$(calc "${CONFIG_HW_NUM_LEDS} - 1")
     CONFIG_HW_NUM_GATES_PLUS1=$(calc "${CONFIG_HW_NUM_GATES} + 1")
+
+    if [ "${CONFIG_ENABLE_CLOG_DETECT}" == "y" ]; then
+        if [ "${CONFIG_ENABLE_AUTO_CLOG_DETECT}" == "y" ]; then
+            CONFIG_PARAM_ENABLE_CLOG_DETECTION=2
+        else
+            CONFIG_PARAM_ENABLE_CLOG_DETECTION=1
+        fi
+    else
+        CONFIG_PARAM_ENABLE_CLOG_DETECTION=0
+    fi
+
 }
 
 build() {
     local src=$1
     local out=$2
 
-    source "${OUT}"/params.tmp
+    if [ -f "${OUT}/params.tmp" ]; then
+        source "${OUT}/params.tmp"
+    fi
     set_extra_parameters
     copy_config_files "$src" "$out"
 }
@@ -1099,15 +1112,15 @@ parse-params)
     log_info "Parsing existing parameters..."
     read_previous_config
     process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_PARAM_HAPPY_HARE_VERSION}"
-    rm -f "${OUT}"/params.tmp
+    rm -f "${OUT}/params.tmp"
     for key in "${!PARAMS[@]}"; do
-        echo "PARAMS[${key}]=${PARAMS[${key}]@Q}" >>"${OUT}"/params.tmp
+        echo "PARAMS[${key}]=${PARAMS[${key}]@Q}" >>"${OUT}/params.tmp"
     done
     for key in "${!PARAMS_UNSTRIPPED[@]}"; do
-        echo "PARAMS_UNSTRIPPED[${key}]=${PARAMS_UNSTRIPPED[${key}]@Q}" >>"${OUT}"/params.tmp
+        echo "PARAMS_UNSTRIPPED[${key}]=${PARAMS_UNSTRIPPED[${key}]@Q}" >>"${OUT}/params.tmp"
     done
     for key in "${!SECTION_ORIGIN[@]}"; do
-        echo "SECTION_ORIGIN[${key}]=${SECTION_ORIGIN[${key}]@Q}" >>"${OUT}"/params.tmp
+        echo "SECTION_ORIGIN[${key}]=${SECTION_ORIGIN[${key}]@Q}" >>"${OUT}/params.tmp"
     done
     ;;
 tests)
