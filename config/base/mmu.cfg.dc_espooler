@@ -1,0 +1,4 @@
+
+    MMU_DC_MOT_0_EN={pin_dc_espooler_en_0},
+    MMU_DC_MOT_0_RWD={pin_dc_espooler_rwd_0},
+    MMU_DC_MOT_0_FWD={pin_dc_espooler_fwd_0},

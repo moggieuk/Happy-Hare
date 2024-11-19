@@ -1,0 +1,12 @@
+# ADDITIONAL FILAMENT DRIVE GEAR STEPPERS FOR TYPE-B MMU's -------------------------------------------------------------
+# Note that common parameters are inherited from base stepper_mmu_gear, but can be uniquely specified here too
+#
+# Filament Drive Gear_1 --------------------------
+[tmc2209 stepper_mmu_gear_1]
+uart_pin: mmu:MMU_GEAR_UART_1
+
+[stepper_mmu_gear_1]
+step_pin: mmu:MMU_GEAR_STEP_1
+dir_pin: !mmu:MMU_GEAR_DIR_1
+enable_pin: !mmu:MMU_GEAR_ENABLE_1
+

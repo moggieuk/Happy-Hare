@@ -1,0 +1,47 @@
+
+# MMU OPTIONAL NEOPIXEL LED SUPPORT ------------------------------------------------------------------------------------
+# ██╗     ███████╗██████╗ ███████╗
+# ██║     ██╔════╝██╔══██╗██╔════╝
+# ██║     █████╗  ██║  ██║███████╗
+# ██║     ██╔══╝  ██║  ██║╚════██║
+# ███████╗███████╗██████╔╝███████║
+# ╚══════╝╚══════╝╚═════╝ ╚══════╝
+# Define the led connection, type and length
+#
+# (comment out this section if you don't have leds)
+[neopixel mmu_leds]
+pin: mmu:MMU_NEOPIXEL
+chain_count: {num_leds}			# Number gates x1 or x2 + 1 (if you want status)
+color_order: GRBW		# Set based on your particular neopixel specification
+
+# MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
+# Define neopixel LEDs for your MMU. The chain_count must be large enough for your desired ranges:
+#   exit   .. this set of LEDs, one for every gate, usually would be mounted at the exit point of the gate
+#   entry  .. this set of LEDs, one for every gate, could be mounted at the entry point of filament into the MMU/buffer
+#   status .. this single LED represents the status of the currently selected filament
+#
+# Note that all sets are optional. You can opt simple to have just the 'exit' set for example. The advantage to having
+# both entry and exit LEDs is, for example, so that 'entry' can display gate status while 'exit' displays the color
+# 
+# The animation effects requires the installation of Julian Schill's awesome LED effect module otherwise the LEDs
+# will be static:
+#   https://github.com/julianschill/klipper-led_effect
+# LED's are indexed in the chain from 1..N. Thus to set up LED's on 'exit' and a single 'status' LED on a 4 gate MMU:
+#   exit_range:   1-4
+#   status_index: 5
+# In this example no 'entry' set is configured.
+#
+# Note the range order is important and depends on your wiring. Thus 1-4 and 4-1 both represent the same LED range
+# but mapped to increasing or decreasing gates respectively
+#
+# Note that Happy Hare provides a convenience wrapper [mmu_led_effect] that not only creates an effect on each of the
+# [mmu_leds] specified segments but also each individual LED for atomic control. See mmu_leds.cfg for examples
+#
+# (this section is harmless and ignored if the 'led_strip' obove doesn't exist - LED support will simply be disabled)
+[mmu_leds]
+led_strip: neopixel:mmu_leds
+exit_range: 1-{num_gates}
+entry_range: {num_leds_minus1}-{num_gates_plus1}
+status_index: {num_leds}
+frame_rate: 24
+

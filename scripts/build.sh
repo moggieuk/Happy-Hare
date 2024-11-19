@@ -288,6 +288,14 @@ replace_placeholder() {
     sed -i "s|{${placeholder}}|${value}|g" "${file}"
 }
 
+replace_cfg_placeholder() {
+    local placeholder=$1
+    local src=$2
+    local dest=$3
+
+    sed -i -e "/{cfg_${placeholder}}/ { r ${SRC}/config/${src}.${placeholder}" -e "; d }" "${dest}"
+}
+
 ### .cfg Processing fucntions
 parse_file() {
     local file=$1
@@ -628,6 +636,8 @@ copy_config_files() {
         sed_expr+="s|${pattern,,}|${!var}|g; "
     done
 
+    sed_expr+="/{cfg_.*}/d; " # Remove any remaining unprocessed cfg placeholders
+
     local num_gates=${CONFIG_HW_NUM_GATES}
 
     if [ "${filename}" == "base/mmu.cfg" ]; then
@@ -636,16 +646,20 @@ copy_config_files() {
         duplicate_section "[[:space:]]*MMU_PRE_GATE_0=" "" "0" "${num_gates} - 1" "${dest}"
         duplicate_section "[[:space:]]*MMU_POST_GEAR_0=" "" "0" "${num_gates} - 1" "${dest}"
 
-        if [ "${CONFIG_MMU_HAS_SELECTOR}" != "y" ]; then
-            duplicate_section "[[:space:]]*MMU_GEAR_UART_1" "$" "1" "${num_gates} - 1" "${dest}"
+        if [ "${CONFIG_MMU_HAS_SELECTOR}" == "y" ]; then
+            replace_cfg_placeholder "selector" "${filename}" "${dest}"
         else
-            delete_section "[[:space:]]*MMU_GEAR_UART_1" "$" "${dest}"
+            replace_cfg_placeholder "gears" "${filename}" "${dest}"
+            duplicate_section "[[:space:]]*MMU_GEAR_UART_1" "$" "1" "${num_gates} - 1" "${dest}"
         fi
 
-        if [ "${CONFIG_INSTALL_ESPOOLER}" == "y" ]; then
+        if [ "${CONFIG_MMU_HAS_ENCODER}" == "y" ]; then
+            replace_cfg_placeholder "encoder" "${filename}" "${dest}"
+        fi
+
+        if [ "${CONFIG_INSTALL_DC_ESPOOLER}" == "y" ]; then
+            replace_cfg_placeholder "dc_espooler" "${filename}" "${dest}"
             duplicate_section "[[:space:]]*MMU_DC_MOT_0_EN=" "$" "0" "${num_gates} - 1" "${dest}"
-        else
-            delete_section "[[:space:]]*MMU_DC_MOT_0_EN=" "$" "${dest}"
         fi
     fi
 
@@ -662,32 +676,29 @@ copy_config_files() {
             delete_line "uart_address:" "${dest}"
         fi
 
+        # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
+        if [ "${CONFIG_ENABLE_LED}" == "y" ]; then
+            replace_cfg_placeholder "leds" "${filename}" "${dest}"
+        fi
+
+        # Handle Encoder option - Delete if not required (section is 25 lines long)
+        if [ "${CONFIG_MMU_HAS_ENCODER}" == "y" ]; then
+            replace_cfg_placeholder "encoder" "${filename}" "${dest}"
+        fi
+        # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
+        if [ "${CONFIG_MMU_HAS_SELECTOR}" == "y" ]; then
+            replace_cfg_placeholder "selector_stepper" "${filename}" "${dest}"
+            replace_cfg_placeholder "selector_servo" "${filename}" "${dest}"
+        else
+            replace_cfg_placeholder "gear_steppers" "${filename}" "${dest}"
+            duplicate_section "\[tmc2209 stepper_mmu_gear_1\]" "$" "1" "${num_gates} - 1" "${dest}"
+            duplicate_section "\[stepper_mmu_gear_1\]" "$" "1" "${num_gates} - 1" "${dest}"
+        fi
+
         if [ "${CONFIG_ENABLE_SELECTOR_TOUCH}" == "y" ]; then
             uncomment_section "#diag_pin: ^mmu:MMU_GEAR_DIAG" "$" "${dest}"
             uncomment_section "#extra_endstop_pins" "$" "${dest}"
             comment_section "uart_address" "" "${dest}"
-        fi
-
-        # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
-        if [ "${CONFIG_ENABLE_LED}" != "y" ]; then
-            comment_section "\[neopixel mmu_leds\]" "$" "${dest}"
-            comment_section "\[mmu_leds\]" "$" "${dest}"
-        fi
-
-        # Handle Encoder option - Delete if not required (section is 25 lines long)
-        if [ "${CONFIG_MMU_HAS_ENCODER}" != "y" ]; then
-            delete_section "# ENCODER" "# FILAMENT SENSORS" "${dest}"
-        fi
-        # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
-        if [ "${CONFIG_MMU_HAS_SELECTOR}" != "y" ]; then
-            delete_section "# SELECTOR SERVO" "# OPTIONAL GANTRY" "${dest}"
-            delete_section "# SELECTOR STEPPER" "# SERVOS" "${dest}"
-
-            duplicate_section "\[tmc2209 stepper_mmu_gear_1\]" "$" "1" "${num_gates} - 1" "${dest}"
-            duplicate_section "\[stepper_mmu_gear_1\]" "$" "1" "${num_gates} - 1" "${dest}"
-        else
-            # Delete additional gear drivers template section
-            delete_section "# ADDITIONAL FILAMENT DRIVE" "# SELECTOR STEPPER" "${dest}"
         fi
     fi
 
@@ -697,11 +708,13 @@ copy_config_files() {
         # by default set internally in Happy Hare based on vendor and version settings but
         # can be overridden.  This set also includes a couple of hidden test parameters.
 
+        if [ "${CONFIG_HW_SELECTOR_TYPE}" == "LinearSelector" ]; then
+            replace_cfg_placeholder "selector_servo" "${filename}" "${dest}"
+            replace_cfg_placeholder "selector_speeds" "${filename}" "${dest}"
+            replace_cfg_placeholder "custom_mmu" "${filename}" "${dest}"
+        fi
+
         if [ "${CONFIG_HW_SELECTOR_TYPE}" == "VirtualSelector" ]; then
-            delete_section "# Servo configuration" "# Logging" "${dest}"
-            delete_section "# Selector movement speeds" "$" "${dest}"
-            delete_section "# Selector touch" "$" "${dest}"
-            delete_section "# ADVANCED/CUSTOM MMU" "$" "${dest}"
             delete_line "sync_to_extruder:" "${dest}"
             delete_line "sync_form_tip:" "${dest}"
             delete_line "preload_attempts:" "${dest}"
