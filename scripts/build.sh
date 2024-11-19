@@ -530,21 +530,11 @@ update_file() {
 
 # Pull parameters from previous installation
 read_previous_config() {
-    for cfg in mmu.cfg mmu_parameters.cfg mmu_hardware.cfg mmu_macro_vars.cfg; do
-        local dest_cfg=${CONFIG_KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
-        if [ -f "${dest_cfg}" ]; then
-            parse_file "${dest_cfg}"
+    for cfg in ${CONFIGS_TO_PARSE}; do
+        if [ -f "${cfg}" ]; then
+            parse_file "${cfg}"
         fi
     done
-
-    # parse_file "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/addons/blobifier.cfg"
-    if [ -d "${CONFIG_KLIPPER_CONFIG_HOME}/mmu/addons" ]; then
-        for cfg in "${CONFIG_KLIPPER_CONFIG_HOME}"/mmu/addons/*.cfg; do
-            if [[ ! "${cfg##*/}" =~ ^my_ ]]; then
-                parse_file "${cfg}"
-            fi
-        done
-    fi
 }
 
 # Runs the upgrades in upgrades.sh from the current version to the final version
@@ -615,7 +605,7 @@ copy_config_files() {
 
     log_info "Building file ${src#"${SRC}/config/"}..."
 
-    cp --remove-destination "${src}" "${dest}"
+    cp -a --remove-destination "${src}" "${dest}"
 
     local sed_expr=""
     for var in $(declare | grep '^CONFIG_HW_'); do
@@ -1011,9 +1001,8 @@ build() {
     local src=$1
     local out=$2
 
-    if [ -f "${OUT}/params.tmp" ]; then
-        source "${OUT}/params.tmp"
-    fi
+    source "${OUT}/params.tmp"
+
     set_extra_parameters
     copy_config_files "$src" "$out"
 }
@@ -1112,7 +1101,7 @@ parse-params)
     log_info "Parsing existing parameters..."
     read_previous_config
     process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_PARAM_HAPPY_HARE_VERSION}"
-    rm -f "${OUT}/params.tmp"
+    echo "" >"${OUT}/params.tmp"
     for key in "${!PARAMS[@]}"; do
         echo "PARAMS[${key}]=${PARAMS[${key}]@Q}" >>"${OUT}/params.tmp"
     done
@@ -1125,6 +1114,11 @@ parse-params)
     ;;
 tests)
     run_tests
+    ;;
+diff)
+    git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$2" "$3" |
+        # Filter out command and index lines from the diff, they only muck up the information
+        grep -v "diff --git " | grep -Ev "index [[:xdigit:]]+\.\.[[:xdigit:]]+" || true
     ;;
 *)
     log_error "

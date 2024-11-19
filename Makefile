@@ -14,6 +14,8 @@ else
   export OUT ?= $(CURDIR)/out_$(basename $(KCONFIG_CONFIG))
 endif
 
+export IN=$(OUT)/in
+
 # Print Colors (exported for use in scripts)
 export C_OFF=\033[0m
 # Cyan
@@ -49,10 +51,19 @@ else
   CONFIG_KLIPPER_HOME ?= ~/klipper
 endif
 
+CONFIG_KLIPPER_HOME:=$(patsubst "%",%,$(CONFIG_KLIPPER_HOME))
+CONFIG_KLIPPER_CONFIG_HOME:=$(patsubst "%",%,$(CONFIG_KLIPPER_CONFIG_HOME))
+CONFIG_MOONRAKER_HOME:=$(patsubst "%",%,$(CONFIG_MOONRAKER_HOME))
+CONFIG_PRINTER_CONFIG_FILE:=$(patsubst "%",%,$(CONFIG_PRINTER_CONFIG_FILE))
+CONFIG_MOONRAKER_CONFIG_FILE:=$(patsubst "%",%,$(CONFIG_MOONRAKER_CONFIG_FILE))
+
 hh_klipper_extras_files = $(patsubst extras/%,%,$(wildcard extras/*.py extras/*/*.py))
 hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon install
 hh_config_files = $(patsubst config/%,%,$(wildcard config/*.cfg config/**/*.cfg))
 hh_moonraker_components = $(patsubst components/%,%,$(wildcard components/*.py))
+
+export CONFIGS_TO_PARSE = $(subst $(CONFIG_KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(addprefix $(CONFIG_KLIPPER_CONFIG_HOME)/mmu/, \
+	base/mmu.cfg base/mmu_parameters.cfg base/mmu_hardware.cfg base/mmu_macro_vars.cfg addons/*.cfg)))
 
 # Files/targets that need to be build
 build_targets = \
@@ -60,60 +71,72 @@ build_targets = \
 	$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE) \
 	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
 	$(addprefix $(OUT)/klippy/extras/,$(hh_klipper_extras_files)) \
-	$(addprefix $(OUT)/moonraker/components/,$(hh_moonraker_components)) \
+	$(addprefix $(OUT)/moonraker/components/,$(hh_moonraker_components)) 
 
 # Files/targets that need to be installed
 install_targets = \
 	$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE) \
 	$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE) \
 	$(addprefix $(CONFIG_KLIPPER_CONFIG_HOME)/mmu/, $(hh_config_files)) \
-	$(addprefix $(CONFIG_MOONRAKER_HOME)/moonraker/component/, $(hh_moonraker_components)) \
-	$(addprefix $(CONFIG_KLIPPER_HOME)/klippy/extras/, $(hh_klipper_extras_files))
+	$(addprefix $(CONFIG_KLIPPER_HOME)/klippy/extras/, $(hh_klipper_extras_files)) \
+	$(addprefix $(CONFIG_MOONRAKER_HOME)/moonraker/components/, $(hh_moonraker_components)) \
+
 
 # Recipe functions
 install = \
 	$(info Installing $(subst ",,$(2))...) \
 	mkdir -p $(dir $(2)); \
-	cp -rdf $(3) "$(1)" "$(2)";
+	cp -af $(3) "$(1)" "$(2)";
 
 link = \
 	mkdir -p $(dir $(2)); \
 	ln -sf "$(1)" "$(2)";
 
 backup_ext :::= .old-$(shell date '+%Y%m%d-%H%M%S')
+backup_name = $(addsuffix $(backup_ext),$(1))
 backup = \
-	if [ -e "$(1)" ] && [ ! -e "$(addsuffix $(backup_ext),$(1))" ]; then \
-		echo -e "$(C_NOTICE)Making a backup of '$(1)' to '$(addsuffix $(backup_ext),$(1))'$(C_OFF)"; \
-		cp -a "$(1)" "$(addsuffix $(backup_ext),$(1))"; \
+	if [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
+		echo -e "$(C_NOTICE)Making a backup of '$(1)' to '$(call backup_name,$(1))'$(C_OFF)"; \
+		cp -a "$(1)" "$(call backup_name,$(1))"; \
 	fi
 
-# Bool to check if moonraker needs to be restarted
+# Bool to check if moonraker/klipper needs to be restarted
 restart_moonraker = 0
+restart_klipper = 0
 
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG)
-.PHONY: update menuconfig install uninstall remove_old_klippy_modules check_root check_paths check_version diff test build clean clean-all bnackup_mmu parse_params
+.PHONY: update menuconfig install uninstall check_root check_paths check_version diff test build clean
+.SECONDARY: $(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/mmu) \
+	$(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE)) \
+	$(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE)) \
+	$(OUT)/params.tmp
 
 FORCE:
 
 ### Build targets
 ifneq ($(wildcard $(subst ",,$(KCONFIG_CONFIG))),) # To prevent make errors when .config is not yet created
 
+# Copy existing config files to the in directory to break circular dependency
+$(IN)/%: FORCE 
+	$(Q)mkdir -p $(dir $@)
+	$(Q)rsync --checksum "$(CONFIG_KLIPPER_CONFIG_HOME)/$*" "$@"
+
 # Copy existing moonraker.conf and printer.cfg to the out directory
-$(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE): FORCE
+$(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE): $(IN)/$(CONFIG_MOONRAKER_CONFIG_FILE)
 	$(info Copying $(CONFIG_MOONRAKER_CONFIG_FILE) to '$(notdir $(OUT))' directory)
-	$(Q)cp -a "$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE)" "$@" # Copy the current version to the out directory
+	$(Q)cp -a "$<" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/scripts/build.sh install-moonraker "$@"
 
-$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE): FORCE
+$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE): $(IN)/$(CONFIG_PRINTER_CONFIG_FILE)
 	$(info Copying $(CONFIG_PRINTER_CONFIG_FILE) to '$(notdir $(OUT))' directory)
-	$(Q)cp -a "$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE)" "$@" # Copy the current version to the out directory
+	$(Q)cp -a "$<" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/scripts/build.sh install-includes "$@"
 
 endif
 
 # We link all config files, those that need to be updated will be written over in the install script
-$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg FORCE
+$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(OUT)/params.tmp 
 	$(Q)$(call link,$<,$@)
 	$(Q)$(SRC)/scripts/build.sh build "$<" "$@"
 
@@ -124,13 +147,13 @@ $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
 $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 	$(Q)$(call link,$<,$@)
 
+$(OUT)/params.tmp: $(CONFIGS_TO_PARSE)
+	$(Q)$(SRC)/scripts/build.sh parse-params
+
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-parse_params: update
-	$(Q)$(SRC)/scripts/build.sh parse-params
-
-$(build_targets): $(KCONFIG_CONFIG) | $(OUT) update check_paths check_version parse_params
+$(build_targets): $(KCONFIG_CONFIG) | $(OUT) update check_paths check_version 
 
 build: $(build_targets)
 
@@ -138,36 +161,41 @@ build: $(build_targets)
 ### Install targets
 $(CONFIG_KLIPPER_HOME)/%: $(OUT)/%
 	$(Q)$(call install,$<,$@)
+	$(Q)$(eval restart_klipper = 1)
 
 $(CONFIG_MOONRAKER_HOME)/%: $(OUT)/%
 	$(Q)$(call install,$<,$@)
+	$(Q)$(eval restart_moonraker = 1)
 
-$(CONFIG_KLIPPER_CONFIG_HOME)/%: $(OUT)/%
-	$(Q)$(call backup,$@)
+$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE): $(OUT)/$(CONFIG_PRINTER_CONFIG_FILE) | $(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE))
 	$(Q)$(call install,$<,$@)
+	$(Q)$(eval restart_klipper = 1)
 
-$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE): $(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE)
-	$(Q)$(call backup,$@)
+$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE): $(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE) | $(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE))
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
 
-$(CONFIG_KLIPPER_CONFIG_HOME)/mmu/%: $(OUT)/mmu/% | backup_mmu
+$(CONFIG_KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/mmu) 
 	$(Q)$(call install,$<,$@)
+	$(Q)$(eval restart_klipper = 1)
 
-# Special case for mmu_vars.cfg, we don't want to overwrite it
-$(CONFIG_KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: $(OUT)/mmu/mmu_vars.cfg | backup_mmu
-	$(Q)$(call install,$<,$@,--update=none)
+$(CONFIG_KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/mmu) 
+	$(Q)$(call install,$(OUT)/mmu/mmu_vars.cfg,$@,--update=none)
+	$(Q)$(eval restart_klipper = 1)
 
-$(install_targets): build | update check_root
+$(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
+	$(Q)$(call backup,$(basename $@))
+
+$(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
+	$(Q)$(call backup,$(basename $@))
+
+$(install_targets): | build update check_root check_paths check_version
 
 install: $(install_targets)
 	$(Q)rm -rf $(addprefix $(CONFIG_KLIPPER_HOME)/klippy/extras,$(hh_old_klipper_modules))
 	$(Q)[ "$(restart_moonraker)" -eq 0 ] || $(SRC)/scripts/build.sh restart-service "Moonraker" $(CONFIG_SERVICE_MOONRAKER)
-	$(Q)$(SRC)/scripts/build.sh restart-service "Klipper" $(CONFIG_SERVICE_KLIPPER)
+	$(Q)[ "$(restart_klipper)" -eq 0 ] || $(SRC)/scripts/build.sh restart-service "Klipper" $(CONFIG_SERVICE_KLIPPER)
 	$(Q)$(SRC)/scripts/build.sh print-happy-hare
-
-backup_mmu: | build
-	$(Q)$(call backup,$(CONFIG_KLIPPER_CONFIG_HOME)/mmu)
 
 uninstall:
 	$(Q)$(call backup,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE))
@@ -190,16 +218,10 @@ update: check_root
 clean:
 	$(Q)rm -rf $(OUT)
 
-diff_cmd = git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \
-	grep -v "diff --git " | grep -Ev "index [[:xdigit:]]+\.\.[[:xdigit:]]+" || true # Filter out command and index lines from the diff, they only muck up the information
-
-diff: | check_paths
-ifeq ($(wildcard $(OUT)/mmu),)
-	$(error No build directory found, exiting. Run 'make build' first)
-endif
-	$(Q)$(call diff_cmd,$(CONFIG_KLIPPER_CONFIG_HOME)/mmu,$(patsubst $(CURDIR)/%,%,$(OUT)/mmu))
-	$(Q)$(call diff_cmd,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE),$(patsubst $(CURDIR)/%,%,$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE)))
-	$(Q)$(call diff_cmd,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE),$(patsubst $(CURDIR)/%,%,$(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE)))
+diff: check_paths $(build_targets)
+	$(Q)$(SRC)/scripts/build.sh diff "$(CONFIG_KLIPPER_CONFIG_HOME)/mmu" "$(patsubst $(SRC)/%,%,$(OUT)/mmu)"
+	$(Q)$(SRC)/scripts/build.sh diff "$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE)" "$(patsubst $(SRC)/%,%,$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE))"
+	$(Q)$(SRC)/scripts/build.sh diff "$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE)" "$(patsubst $(SRC)/%,%,$(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE))"
 
 test: 
 	$(Q)$(SRC)/scripts/build.sh tests
