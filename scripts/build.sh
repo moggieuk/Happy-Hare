@@ -814,7 +814,7 @@ install_printer_includes() {
         uninstall_include "mmu/addons/blobifier.cfg" "${dest}"
     fi
 
-    if [ "${CONFIG_INSTALL_ESPOOLER}" == "y" ]; then
+    if [ "${CONFIG_INSTALL_DC_ESPOOLER}" == "y" ]; then
         install_include "mmu/addons/dc_espooler.cfg" "${dest}"
     else
         uninstall_include "mmu/addons/dc_espooler.cfg" "${dest}"
