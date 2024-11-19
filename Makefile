@@ -92,7 +92,7 @@ restart_moonraker = 0
 
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG)
-.PHONY: update menuconfig install uninstall remove_old_klippy_modules check_root check_paths check_version diff test build clean clean-all bnackup_mmu
+.PHONY: update menuconfig install uninstall remove_old_klippy_modules check_root check_paths check_version diff test build clean clean-all bnackup_mmu parse_params
 
 FORCE:
 
@@ -127,7 +127,10 @@ $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-$(build_targets): $(KCONFIG_CONFIG) | $(OUT) update check_paths check_version
+parse_params: update
+	$(Q)$(SRC)/scripts/build.sh parse-params
+
+$(build_targets): $(KCONFIG_CONFIG) | $(OUT) update check_paths check_version parse_params
 
 build: $(build_targets)
 

@@ -1000,8 +1000,7 @@ build() {
     local src=$1
     local out=$2
 
-    read_previous_config
-    process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_PARAM_HAPPY_HARE_VERSION}"
+    source "${OUT}"/params.tmp
     set_extra_parameters
     copy_config_files "$src" "$out"
 }
@@ -1094,6 +1093,21 @@ print-params)
     read_previous_config
     for key in "${!PARAMS[@]}"; do
         echo -e "${key%,*} ${key#*,}: ${PARAMS[${key}]}"
+    done
+    ;;
+parse-params)
+    log_info "Parsing existing parameters..."
+    read_previous_config
+    process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_PARAM_HAPPY_HARE_VERSION}"
+    rm -f "${OUT}"/params.tmp
+    for key in "${!PARAMS[@]}"; do
+        echo "PARAMS[${key}]=${PARAMS[${key}]@Q}" >>"${OUT}"/params.tmp
+    done
+    for key in "${!PARAMS_UNSTRIPPED[@]}"; do
+        echo "PARAMS_UNSTRIPPED[${key}]=${PARAMS_UNSTRIPPED[${key}]@Q}" >>"${OUT}"/params.tmp
+    done
+    for key in "${!SECTION_ORIGIN[@]}"; do
+        echo "SECTION_ORIGIN[${key}]=${SECTION_ORIGIN[${key}]@Q}" >>"${OUT}"/params.tmp
     done
     ;;
 tests)
