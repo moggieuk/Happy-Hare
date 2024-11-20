@@ -123,7 +123,7 @@ class MacroSelector:
     def filament_drive(self):
         pass
 
-    def filament_release(self):
+    def filament_release(self, measure=None):
         return 0. # Encoder movement
 
     def filament_hold(self):
