@@ -35,7 +35,7 @@ if MMU_TYPE_ERCF_2
   config PARAM_ENCODER_RESOLUTION
     default "1.0"
   config PARAM_GATE_PARKING_DISTANCE
-    default "11" if EXT_THUMPER_BLOCKS
+    default "18" if EXT_THUMPER_BLOCKS
     default "13"
 
   config PARAM_SELECTOR_TYPE

@@ -1,3 +1,5 @@
+# Savox SH-0255MG servo
+
 if PARAM_MMU_VENDOR = "ERCF"
   choice CHOICE_SERVO_TYPE 
     config SERVO_TYPE_GDW_DS041MG
@@ -13,10 +15,13 @@ if SERVO_TYPE_SAVOX_SH0255MG
   config PARAM_SERVO_MAX_ANGLE
     default 180
   config PARAM_SERVO_UP_ANGLE
+    default 120 if MMU_TYPE_ERCF_2 && EXT_THUMPER_BLOCKS
     default 140 
   config PARAM_SERVO_MOVE_ANGLE
+    default 135 if MMU_TYPE_ERCF_2 && EXT_THUMPER_BLOCKS
     default 109 if MMU_TYPE_ERCF_2
     default PARAM_SERVO_UP_ANGLE
   config PARAM_SERVO_DOWN_ANGLE
+    default 50 if MMU_TYPE_ERCF_2 && EXT_THUMPER_BLOCKS
     default 30 
 endif

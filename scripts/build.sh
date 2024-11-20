@@ -960,6 +960,8 @@ set_extra_parameters() {
         [ "${CONFIG_EXT_SPRINGY}" == "y" ] && CONFIG_PARAM_MMU_VERSION+="s"
         [ "${CONFIG_EXT_BINKY}" == "y" ] && CONFIG_PARAM_MMU_VERSION+="b"
         [ "${CONFIG_EXT_TRIPLE_DECK}" == "y" ] && CONFIG_PARAM_MMU_VERSION+="t"
+    elif [ "${CONFIG_MMU_TYPE_ERCF_2}" == "y" ]; then
+        [ "${CONFIG_EXT_THUMPER_BLOCKS}" == "y" ] && set_param "[mmu]" "cad_gate_width" "21.3"
     elif [ "${CONFIG_MMU_TYPE_TRADRACK}" == "y" ]; then
         [ "${CONFIG_EXT_BINKY}" == "y" ] && CONFIG_PARAM_MMU_VERSION+="e"
     fi
