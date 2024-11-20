@@ -13,7 +13,7 @@ if MMU_TYPE_NIGHT_OWL_1
     default "1.0"
 
   config PARAM_GEAR_GEAR_RATIO
-    default "1:1"
+    default "50:10"
   config PARAM_GEAR_RUN_CURRENT
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
