@@ -82,42 +82,9 @@ config HW_NUM_GATES
   range 1 32
   default 12
 
-config ENABLE_LEDS
-  bool "Enable neopixel LEDs support?"
-
-config ENABLE_SELECTOR_TOUCH
-  bool "Enable touch selector operation using TMC Stallguard?"
-  help
-    This allows for additional selector recovery steps but is difficult to tune.
-    Not recommended if you are new to MMU/Happy-Hare.
-    The MCU must have DIAG output for steppers. Possible to configure later.
-
-if HW_BOARD_TYPE_EASY_BRD
-  comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
-    depends on SELECTOR_TOUCH
-  comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
-    depends on !SELECTOR_TOUCH
-endif
-
-config ENABLE_CLOG_DETECT
-  bool "Enable clog detection?"
-  depends on MMU_HAS_ENCODER
-  imply ENABLE_CLOG
-config ENABLE_AUTO_CLOG_DETECT
-  bool "Enable automatic clog detection length?"
-  depends on ENABLE_CLOG_DETECT
-  default y
-
-config ENABLE_ENDLESS_SPOOL
-  bool "Enable EndlessSpool?"
-  help
-    This uses filament runout detection to automate switching to a new spool without interruption.
-
-config INSTALL_12864_MENU
-  bool "Install Mini 12864 menu configuration?"
-config INSTALL_CLIENT_MACROS
-  bool "Install default pause/resume macros supplied with Happy Hare? (recommended)"
-  default y
+menu "Options"
+  rsource "Kconfig.options"
+endmenu
 
 menu "Addons"
   rsource "addons/Kconfig.*"

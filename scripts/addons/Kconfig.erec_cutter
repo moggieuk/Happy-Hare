@@ -4,6 +4,7 @@ config ADDON_EREC_CUTTER
 if ADDON_EREC_CUTTER
   config INSTALL_EREC_CUTTER
     bool "Install EREC filament cutter include in printer.cfg?"
+    default y
 
   menu "EREC filament cutter pins"
     config PIN_EREC_CUTTER_SERVO

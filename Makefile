@@ -62,8 +62,12 @@ hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon in
 hh_config_files = $(patsubst config/%,%,$(wildcard config/*.cfg config/**/*.cfg))
 hh_moonraker_components = $(patsubst components/%,%,$(wildcard components/*.py))
 
-export CONFIGS_TO_PARSE = $(subst $(CONFIG_KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(addprefix $(CONFIG_KLIPPER_CONFIG_HOME)/mmu/, \
-	base/mmu.cfg base/mmu_parameters.cfg base/mmu_hardware.cfg base/mmu_macro_vars.cfg addons/*.cfg)))
+export CONFIGS_TO_PARSE = $(patsubst config/%,$(IN)/mmu/%,$(wildcard $(addprefix config/, \
+	base/mmu.cfg \
+	base/mmu_parameters.cfg \
+	base/mmu_hardware.cfg \
+	base/mmu_macro_vars.cfg \
+	addons/*.cfg)))
 
 # Files/targets that need to be build
 build_targets = \
@@ -79,7 +83,7 @@ install_targets = \
 	$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE) \
 	$(addprefix $(CONFIG_KLIPPER_CONFIG_HOME)/mmu/, $(hh_config_files)) \
 	$(addprefix $(CONFIG_KLIPPER_HOME)/klippy/extras/, $(hh_klipper_extras_files)) \
-	$(addprefix $(CONFIG_MOONRAKER_HOME)/moonraker/components/, $(hh_moonraker_components)) \
+	$(addprefix $(CONFIG_MOONRAKER_HOME)/moonraker/components/, $(hh_moonraker_components))
 
 
 # Recipe functions
@@ -104,6 +108,7 @@ backup = \
 restart_moonraker = 0
 restart_klipper = 0
 
+.SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG)
 .PHONY: update menuconfig install uninstall check_root check_paths check_version diff test build clean
@@ -115,28 +120,37 @@ restart_klipper = 0
 FORCE:
 
 ### Build targets
+
+# Copy existing config files to the out/in directory to break circular dependency
+$(IN)/%: FORCE 
+	$(Q)mkdir -p "${@D}"
+	$(Q)if [ -f "$(CONFIG_KLIPPER_CONFIG_HOME)/$*" ]; then \
+		cp -af "$(CONFIG_KLIPPER_CONFIG_HOME)/$*" "$@"; \
+	else \
+		[ -f "$@" ] || touch "$@"; \
+		[ ! -s "$@" ] || truncate -s 0 "$@"; \
+	fi
+
 ifneq ($(wildcard $(subst ",,$(KCONFIG_CONFIG))),) # To prevent make errors when .config is not yet created
 
-# Copy existing config files to the in directory to break circular dependency
-$(IN)/%: FORCE 
-	$(Q)mkdir -p $(dir $@)
-	$(Q)rsync --checksum "$(CONFIG_KLIPPER_CONFIG_HOME)/$*" "$@"
-
 # Copy existing moonraker.conf and printer.cfg to the out directory
-$(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE): $(IN)/$(CONFIG_MOONRAKER_CONFIG_FILE)
+$(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE): $(IN)/$$(@F)
 	$(info Copying $(CONFIG_MOONRAKER_CONFIG_FILE) to '$(notdir $(OUT))' directory)
 	$(Q)cp -a "$<" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/scripts/build.sh install-moonraker "$@"
 
-$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE): $(IN)/$(CONFIG_PRINTER_CONFIG_FILE)
+$(OUT)/$(CONFIG_PRINTER_CONFIG_FILE): $(IN)/$$(@F)
 	$(info Copying $(CONFIG_PRINTER_CONFIG_FILE) to '$(notdir $(OUT))' directory)
 	$(Q)cp -a "$<" "$@" # Copy the current version to the out directory
 	$(Q)$(SRC)/scripts/build.sh install-includes "$@"
 
 endif
 
+$(OUT)/params.tmp: $(CONFIGS_TO_PARSE)
+	$(Q)$(SRC)/scripts/build.sh parse-params
+
 # We link all config files, those that need to be updated will be written over in the install script
-$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(OUT)/params.tmp 
+$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(OUT)/params.tmp  
 	$(Q)$(call link,$<,$@)
 	$(Q)$(SRC)/scripts/build.sh build "$<" "$@"
 
@@ -146,9 +160,6 @@ $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
 
 $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 	$(Q)$(call link,$<,$@)
-
-$(OUT)/params.tmp: $(CONFIGS_TO_PARSE)
-	$(Q)$(SRC)/scripts/build.sh parse-params
 
 $(OUT):
 	$(Q)mkdir -p "$@"
@@ -167,11 +178,11 @@ $(CONFIG_MOONRAKER_HOME)/%: $(OUT)/%
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
 
-$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE): $(OUT)/$(CONFIG_PRINTER_CONFIG_FILE) | $(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE))
+$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_PRINTER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_name,$$@)
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 
-$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE): $(OUT)/$(CONFIG_MOONRAKER_CONFIG_FILE) | $(call backup_name,$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE))
+$(CONFIG_KLIPPER_CONFIG_HOME)/$(CONFIG_MOONRAKER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_name,$$@)
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
 

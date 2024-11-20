@@ -14,7 +14,7 @@
 shopt -s extglob
 
 # shellcheck source=.config
-source "${KCONFIG_CONFIG:-.config}"
+source "./${KCONFIG_CONFIG:-.config}"
 source "scripts/upgrades.sh"
 
 SRC=${SRC:-.}
@@ -290,10 +290,10 @@ replace_placeholder() {
 
 replace_cfg_placeholder() {
     local placeholder=$1
-    local src=$2
-    local dest=$3
+    local dest=$2
+    local src=${SRC}/config/${dest#"${OUT}/mmu/"}.${placeholder}
 
-    sed -i -e "/{cfg_${placeholder}}/ { r ${SRC}/config/${src}.${placeholder}" -e "; d }" "${dest}"
+    sed -i -e "/{cfg_${placeholder}}/ { r ${src}" -e "; d }" "${dest}"
 }
 
 ### .cfg Processing fucntions
@@ -583,7 +583,7 @@ copy_config_files() {
     local src=$1
     local dest=$2
 
-    local sed_expr=""
+    local sed_expr=
 
     local files_to_copy=(
         config/base/mmu.cfg
@@ -626,36 +626,33 @@ copy_config_files() {
         sed_expr+="s|${pattern,,}|${!var}|g; "
     done
 
-    sed_expr+="/{cfg_.*}/d; " # Remove any remaining unprocessed cfg placeholders
-
-    local num_gates=${CONFIG_HW_NUM_GATES}
+    sed_expr+="/{cfg_.*}/d; "   # Remove any remaining unprocessed cfg placeholders
+    sed_expr+="s/{pin_.*}//g; " # Clear any remaining unprocessed pin placeholders
 
     if [ "${filename}" == "base/mmu.cfg" ]; then
-        sed_expr+="s|{pin_.*}||g; " # Clear any remaining unprocessed pin placeholders
-
-        duplicate_section "[[:space:]]*MMU_PRE_GATE_0=" "" "0" "${num_gates} - 1" "${dest}"
-        duplicate_section "[[:space:]]*MMU_POST_GEAR_0=" "" "0" "${num_gates} - 1" "${dest}"
+        duplicate_section "[[:space:]]*MMU_PRE_GATE_0=" "" "0" "${NUM_GATES} - 1" "${dest}"
+        duplicate_section "[[:space:]]*MMU_POST_GEAR_0=" "" "0" "${NUM_GATES} - 1" "${dest}"
 
         if [ "${CONFIG_MMU_HAS_SELECTOR}" == "y" ]; then
-            replace_cfg_placeholder "selector" "${filename}" "${dest}"
+            replace_cfg_placeholder "selector" "${dest}"
         else
-            replace_cfg_placeholder "gears" "${filename}" "${dest}"
-            duplicate_section "[[:space:]]*MMU_GEAR_UART_1" "$" "1" "${num_gates} - 1" "${dest}"
+            replace_cfg_placeholder "gears" "${dest}"
+            duplicate_section "[[:space:]]*MMU_GEAR_UART_1" "$" "1" "${NUM_GATES} - 1" "${dest}"
         fi
 
         if [ "${CONFIG_MMU_HAS_ENCODER}" == "y" ]; then
-            replace_cfg_placeholder "encoder" "${filename}" "${dest}"
+            replace_cfg_placeholder "encoder" "${dest}"
         fi
 
         if [ "${CONFIG_INSTALL_DC_ESPOOLER}" == "y" ]; then
-            replace_cfg_placeholder "dc_espooler" "${filename}" "${dest}"
-            duplicate_section "[[:space:]]*MMU_DC_MOT_0_EN=" "$" "0" "${num_gates} - 1" "${dest}"
+            replace_cfg_placeholder "dc_espooler" "${dest}"
+            duplicate_section "[[:space:]]*MMU_DC_MOT_0_EN=" "$" "0" "${NUM_GATES} - 1" "${dest}"
         fi
     fi
 
     if [ "${filename}" == "base/mmu_hardware.cfg" ]; then
-        duplicate_section "pre_gate_switch_pin_0:" "" "0" "${num_gates} - 1" "${dest}"
-        duplicate_section "post_gear_switch_pin_0:" "" "0" "${num_gates} - 1" "${dest}"
+        duplicate_section "pre_gate_switch_pin_0:" "" "0" "${NUM_GATES} - 1" "${dest}"
+        duplicate_section "post_gear_switch_pin_0:" "" "0" "${NUM_GATES} - 1" "${dest}"
 
         # Correct shared uart_address for EASY-BRD
         if [ "${CONFIG_HW_MMU_BOARD_TYPE}" == "EASY-BRD" ]; then
@@ -668,21 +665,21 @@ copy_config_files() {
 
         # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
         if [ "${CONFIG_ENABLE_LED}" == "y" ]; then
-            replace_cfg_placeholder "leds" "${filename}" "${dest}"
+            replace_cfg_placeholder "leds" "${dest}"
         fi
 
         # Handle Encoder option - Delete if not required (section is 25 lines long)
         if [ "${CONFIG_MMU_HAS_ENCODER}" == "y" ]; then
-            replace_cfg_placeholder "encoder" "${filename}" "${dest}"
+            replace_cfg_placeholder "encoder" "${dest}"
         fi
         # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
         if [ "${CONFIG_MMU_HAS_SELECTOR}" == "y" ]; then
-            replace_cfg_placeholder "selector_stepper" "${filename}" "${dest}"
-            replace_cfg_placeholder "selector_servo" "${filename}" "${dest}"
+            replace_cfg_placeholder "selector_stepper" "${dest}"
+            replace_cfg_placeholder "selector_servo" "${dest}"
         else
-            replace_cfg_placeholder "gear_steppers" "${filename}" "${dest}"
-            duplicate_section "\[tmc2209 stepper_mmu_gear_1\]" "$" "1" "${num_gates} - 1" "${dest}"
-            duplicate_section "\[stepper_mmu_gear_1\]" "$" "1" "${num_gates} - 1" "${dest}"
+            replace_cfg_placeholder "gear_steppers" "${dest}"
+            duplicate_section "\[tmc2209 stepper_mmu_gear_1\]" "$" "1" "${NUM_GATES} - 1" "${dest}"
+            duplicate_section "\[stepper_mmu_gear_1\]" "$" "1" "${NUM_GATES} - 1" "${dest}"
         fi
 
         if [ "${CONFIG_ENABLE_SELECTOR_TOUCH}" == "y" ]; then
@@ -699,9 +696,9 @@ copy_config_files() {
         # can be overridden.  This set also includes a couple of hidden test parameters.
 
         if [ "${CONFIG_HW_SELECTOR_TYPE}" == "LinearSelector" ]; then
-            replace_cfg_placeholder "selector_servo" "${filename}" "${dest}"
-            replace_cfg_placeholder "selector_speeds" "${filename}" "${dest}"
-            replace_cfg_placeholder "custom_mmu" "${filename}" "${dest}"
+            replace_cfg_placeholder "selector_servo" "${dest}"
+            replace_cfg_placeholder "selector_speeds" "${dest}"
+            replace_cfg_placeholder "custom_mmu" "${dest}"
         fi
 
         if [ "${CONFIG_HW_SELECTOR_TYPE}" == "VirtualSelector" ]; then
@@ -732,7 +729,7 @@ copy_config_files() {
 
     # Variables macro ---------------------------------------------------------------------
     if [ "${filename}" == "base/mmu_macro_vars.cfg" ]; then
-        duplicate_section "\[gcode_macro T0\]" "$" "0" "${num_gates} - 1" "${dest}"
+        duplicate_section "\[gcode_macro T0\]" "$" "0" "${NUM_GATES} - 1" "${dest}"
     fi
 
     sed -i "${sed_expr}" "${dest}"
@@ -978,30 +975,24 @@ set_extra_parameters() {
     fi
 
     if has_param "[mmu_machine]" "num_gates"; then
-        CONFIG_HW_NUM_GATES=$(param "[mmu_machine]" "num_gates")
-    fi
-
-    CONFIG_HW_NUM_LEDS=$(calc "${CONFIG_HW_NUM_GATES} * 2 + 1")
-    CONFIG_HW_NUM_LEDS_MINUS1=$(calc "${CONFIG_HW_NUM_LEDS} - 1")
-    CONFIG_HW_NUM_GATES_PLUS1=$(calc "${CONFIG_HW_NUM_GATES} + 1")
-
-    if [ "${CONFIG_ENABLE_CLOG_DETECT}" == "y" ]; then
-        if [ "${CONFIG_ENABLE_AUTO_CLOG_DETECT}" == "y" ]; then
-            CONFIG_PARAM_ENABLE_CLOG_DETECTION=2
-        else
-            CONFIG_PARAM_ENABLE_CLOG_DETECTION=1
-        fi
+        NUM_GATES=$(param "[mmu_machine]" "num_gates")
     else
-        CONFIG_PARAM_ENABLE_CLOG_DETECTION=0
+        NUM_GATES=${CONFIG_HW_NUM_GATES}
     fi
 
+    CONFIG_HW_NUM_LEDS=$(calc "${NUM_GATES} * 2 + 1")
+    CONFIG_HW_NUM_LEDS_MINUS1=$(calc "${CONFIG_HW_NUM_LEDS} - 1")
+    CONFIG_HW_NUM_GATES_PLUS1=$(calc "${NUM_GATES} + 1")
 }
 
 build() {
     local src=$1
     local out=$2
 
-    source "${OUT}/params.tmp"
+    # if params.tmp doesn't exist, we are doing a fresh install
+    if [ -f "${OUT}/params.tmp" ]; then
+        source "${OUT}/params.tmp"
+    fi
 
     set_extra_parameters
     copy_config_files "$src" "$out"
@@ -1101,7 +1092,7 @@ parse-params)
     log_info "Parsing existing parameters..."
     read_previous_config
     process_upgrades "$(param "[mmu]" "happy_hare_version")" "${CONFIG_PARAM_HAPPY_HARE_VERSION}"
-    echo "" >"${OUT}/params.tmp"
+    echo -n "" >"${OUT}/params.tmp"
     for key in "${!PARAMS[@]}"; do
         echo "PARAMS[${key}]=${PARAMS[${key}]@Q}" >>"${OUT}/params.tmp"
     done
