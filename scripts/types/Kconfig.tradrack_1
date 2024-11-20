@@ -17,7 +17,7 @@ if MMU_TYPE_TRADRACK_1
     default "1.0"
 
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-    default 1
+    default 0
 
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"
