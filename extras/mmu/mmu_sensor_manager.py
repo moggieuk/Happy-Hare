@@ -32,7 +32,7 @@ class MmuSensorManager:
                 self.sensors[name] = sensor
 
         # Special case for "no bowden" designs where mmu_gate is an alias for extruder sensor
-        if not self.mmu.mmu_machine.require_bowden_move and self.sensors[self.mmu.ENDSTOP_EXTRUDER_ENTRY] and self.mmu.ENDSTOP_GATE not in self.sensors:
+        if not self.mmu.mmu_machine.require_bowden_move and self.sensors.get(self.mmu.ENDSTOP_EXTRUDER_ENTRY, None) and self.mmu.ENDSTOP_GATE not in self.sensors:
             self.sensors[self.mmu.ENDSTOP_GATE] = self.sensors[self.mmu.ENDSTOP_EXTRUDER_ENTRY]
 
     # Return dict of all sensor states (or None if sensor disabled)
