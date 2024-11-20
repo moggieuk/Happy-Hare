@@ -1,0 +1,65 @@
+choice CHOICE_SELECTOR_TYPE
+  prompt "Selector type"
+  config SELECTOR_TYPE_LINEAR
+    bool "Linear selector"
+  config SELECTOR_TYPE_VIRTUAL
+    bool "Virtual selector"
+endchoice
+
+config PARAM_SELECTOR_TYPE
+  string
+  default "LinearSelector" if SELECTOR_TYPE_LINEAR
+  default "VirtualSelector" if SELECTOR_TYPE_VIRTUAL
+
+config VARIABLE_BOWDEN_LENGTHS
+  bool "Variable bowden lengths?" 
+
+config PARAM_VARIABLE_BOWDEN_LENGTHS
+  int
+  default 1 if VARIABLE_BOWDEN_LENGTHS
+
+config VARIABLE_ROTATION_DISTANCES
+  bool "Variable rotation distances?"
+
+config PARAM_VARIABLE_ROTATION_DISTANCES
+  int
+  default 1 if VARIABLE_ROTATION_DISTANCES
+
+config REQUIRE_BOWDEN_MOVE
+  bool "Require bowden move?"
+
+config PARAM_REQUIRE_BOWDEN_MOVE
+  int
+  default 1 if REQUIRE_BOWDEN_MOVE
+
+config FILAMENT_ALWAYS_GRIPPED
+  bool "Filament always gripped?"
+
+config PARAM_FILAMENT_ALWAYS_GRIPPED
+  int 
+  default 1 if FILAMENT_ALWAYS_GRIPPED
+
+config PARAM_ENCODER_RESOLUTION
+  string "Encoder resolution"
+  depends on MMU_HAS_ENCODER
+  default "1.0"
+
+config PARAM_GATE_PARKING_DISTANCE
+  string "Gate parking distance (mm)"
+  default "23"
+
+config PARAM_GATE_ENDSTOP_TO_ENCODER
+  string "Gate endstop to encoder distance (mm)"
+  default "10"
+
+config PARAM_GATE_HOMING_MAX
+  string "Maximum homing distance to the gate (mm)"
+  default "70"
+
+config PARAM_GATE_FINAL_EJECT_DISTANCE
+  string "Distance to eject filament on eject rather than unload (mm)"
+  default "0"
+
+config PARAM_GEAR_HOMING_SPEED
+  string "Gear homing speed (mm/s)"
+  default "50"

@@ -1,31 +1,37 @@
 choice CHOICE_MMU_TYPE
-  config HW_MMU_TYPE_ANGRY_BEAVER_1
+  config MMU_TYPE_ANGRY_BEAVER_1
     bool "Angry Beaver v1.0"
-    select HW_VARIABLE_ROTATION_DISTANCES
-    select HW_FILAMENT_ALWAYS_GRIPPED
+    select VARIABLE_ROTATION_DISTANCES
+    select FILAMENT_ALWAYS_GRIPPED
 endchoice
 
-if HW_MMU_TYPE_ANGRY_BEAVER_1
-  config HW_MMU_VENDOR
+if MMU_TYPE_ANGRY_BEAVER_1
+  config PARAM_MMU_VENDOR
     default "AngryBeaver"
-  config HW_MMU_BASE_VERSION
+  config MMU_BASE_VERSION
     default "1.0"
 
-  config HW_GEAR_GEAR_RATIO
+  config PARAM_GEAR_GEAR_RATIO
     default "1:1"
-  config HW_GEAR_RUN_CURRENT
+  config PARAM_GEAR_RUN_CURRENT
     default "0.7"
-  config HW_GEAR_HOLD_CURRENT
+  config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+  config PARAM_GEAR_HOMING_SPEED
+    default "80"
+  config PARAM_GATE_HOMING_MAX
+    default "500"
+  config PARAM_GATE_PARKING_DISTANCE
+    default "50"
 
-  config HW_SELECTOR_TYPE
+  config PARAM_SELECTOR_TYPE
     default "VirtualSelector"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
-    default PARAM_GATE_HOMING_ENDSTOP_GATE
+    default GATE_HOMING_ENDSTOP_GATE
   endchoice
   
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default PARAM_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+    default EXTRUDER_HOMING_ENDSTOP_EXTRUDER
   endchoice
 endif 

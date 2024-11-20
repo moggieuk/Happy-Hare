@@ -1,33 +1,38 @@
 choice CHOICE_MMU_TYPE
-  config HW_MMU_TYPE_BOX_TURTLE_1
+  config MMU_TYPE_BOX_TURTLE_1
     bool "Box Turtle v1.0"
-    select HW_VARIABLE_BOWDEN_LENGTHS
-    select HW_VARIABLE_ROTATION_DISTANCES
-    select HW_REQUIRE_BOWDEN_MOVE
-    select HW_FILAMENT_ALWAYS_GRIPPED
+    select VARIABLE_ROTATION_DISTANCES
+    select REQUIRE_BOWDEN_MOVE
+    select FILAMENT_ALWAYS_GRIPPED
 endchoice
 
-if HW_MMU_TYPE_BOX_TURTLE_1
-  config HW_MMU_VENDOR
+if MMU_TYPE_BOX_TURTLE_1
+  config PARAM_MMU_VENDOR
     default "BoxTurtle"
-  config HW_MMU_BASE_VERSION
+  config MMU_BASE_VERSION
     default "1.0"
 
-  config HW_GEAR_GEAR_RATIO
+  config PARAM_GEAR_GEAR_RATIO
     default "1:1"
-  config HW_GEAR_RUN_CURRENT
+  config PARAM_GEAR_RUN_CURRENT
     default "0.7"
-  config HW_GEAR_HOLD_CURRENT
+  config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+  config PARAM_GATE_HOMING_MAX
+    default "300"
+  config PARAM_GATE_PARKING_DISTANCE
+    default "100"
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default "100"
 
-  config HW_SELECTOR_TYPE
+  config PARAM_SELECTOR_TYPE
     default "VirtualSelector"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
-    default PARAM_GATE_HOMING_ENDSTOP_GATE
+    default GATE_HOMING_ENDSTOP_GATE
   endchoice
   
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default PARAM_EXTRUDER_HOMING_ENDSTOP_NONE
+    default EXTRUDER_HOMING_ENDSTOP_NONE
   endchoice
 endif 

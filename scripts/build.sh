@@ -583,8 +583,6 @@ copy_config_files() {
     local src=$1
     local dest=$2
 
-    local sed_expr=
-
     local files_to_copy=(
         config/base/mmu.cfg
         config/base/mmu_hardware.cfg
@@ -607,13 +605,7 @@ copy_config_files() {
 
     cp -a --remove-destination "${src}" "${dest}"
 
-    local sed_expr=""
-    for var in $(declare | grep '^CONFIG_HW_'); do
-        local var=${var%%=*}
-        local pattern="{${var#CONFIG_HW_}}"
-        sed_expr+="s|${pattern,,}|${!var}|g; "
-    done
-
+    local sed_expr=
     for var in $(declare | grep "^CONFIG_PIN_"); do
         local var=${var%%=*}
         local pattern="{${var#CONFIG_}}"
@@ -633,9 +625,9 @@ copy_config_files() {
         duplicate_section "[[:space:]]*MMU_PRE_GATE_0=" "" "0" "${NUM_GATES} - 1" "${dest}"
         duplicate_section "[[:space:]]*MMU_POST_GEAR_0=" "" "0" "${NUM_GATES} - 1" "${dest}"
 
-        if [ "${CONFIG_MMU_HAS_SELECTOR}" == "y" ]; then
+        if [ "${CONFIG_PARAM_SELECTOR_TYPE}" == "LinearSelector" ]; then
             replace_cfg_placeholder "selector" "${dest}"
-        else
+        elif [ "${CONFIG_PARAM_SELECTOR_TYPE}" == "VirtualSelector" ]; then
             replace_cfg_placeholder "gears" "${dest}"
             duplicate_section "[[:space:]]*MMU_GEAR_UART_1" "$" "1" "${NUM_GATES} - 1" "${dest}"
         fi
@@ -655,7 +647,7 @@ copy_config_files() {
         duplicate_section "post_gear_switch_pin_0:" "" "0" "${NUM_GATES} - 1" "${dest}"
 
         # Correct shared uart_address for EASY-BRD
-        if [ "${CONFIG_HW_MMU_BOARD_TYPE}" == "EASY-BRD" ]; then
+        if [ "${CONFIG_MMU_BOARD_TYPE}" == "EASY-BRD" ]; then
             # Share uart_pin to avoid duplicate alias problem
             sed_expr+="s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; "
         else
@@ -673,10 +665,10 @@ copy_config_files() {
             replace_cfg_placeholder "encoder" "${dest}"
         fi
         # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
-        if [ "${CONFIG_MMU_HAS_SELECTOR}" == "y" ]; then
+        if [ "${CONFIG_PARAM_SELECTOR_TYPE}" == "LinearSelector" ]; then
             replace_cfg_placeholder "selector_stepper" "${dest}"
             replace_cfg_placeholder "selector_servo" "${dest}"
-        else
+        elif [ "${CONFIG_PARAM_SELECTOR_TYPE}" == "VirtualSelector" ]; then
             replace_cfg_placeholder "gear_steppers" "${dest}"
             duplicate_section "\[tmc2209 stepper_mmu_gear_1\]" "$" "1" "${NUM_GATES} - 1" "${dest}"
             duplicate_section "\[stepper_mmu_gear_1\]" "$" "1" "${NUM_GATES} - 1" "${dest}"
@@ -695,13 +687,11 @@ copy_config_files() {
         # by default set internally in Happy Hare based on vendor and version settings but
         # can be overridden.  This set also includes a couple of hidden test parameters.
 
-        if [ "${CONFIG_HW_SELECTOR_TYPE}" == "LinearSelector" ]; then
+        if [ "${CONFIG_PARAM_SELECTOR_TYPE}" == "LinearSelector" ]; then
             replace_cfg_placeholder "selector_servo" "${dest}"
             replace_cfg_placeholder "selector_speeds" "${dest}"
             replace_cfg_placeholder "custom_mmu" "${dest}"
-        fi
-
-        if [ "${CONFIG_HW_SELECTOR_TYPE}" == "VirtualSelector" ]; then
+        elif [ "${CONFIG_PARAM_SELECTOR_TYPE}" == "VirtualSelector" ]; then
             delete_line "sync_to_extruder:" "${dest}"
             delete_line "sync_form_tip:" "${dest}"
             delete_line "preload_attempts:" "${dest}"
@@ -965,24 +955,24 @@ set_extra_parameters() {
     # never use the version from the existing installation files
     remove_param "[mmu]" "happy_hare_version"
 
-    CONFIG_HW_MMU_VERSION=${CONFIG_HW_MMU_BASE_VERSION}
-    if [ "${CONFIG_HW_MMU_TYPE_ERCF_1_1}" == "y" ]; then
-        [ "${CONFIG_HW_EXT_SPRINGY}" == "y" ] && CONFIG_HW_MMU_VERSION+="s"
-        [ "${CONFIG_HW_EXT_BINKY}" == "y" ] && CONFIG_HW_MMU_VERSION+="b"
-        [ "${CONFIG_HW_EXT_TRIPLE_DECK}" == "y" ] && CONFIG_HW_MMU_VERSION+="t"
-    elif [ "${CONFIG_HW_MMU_TYPE_TRADRACK}" == "y" ]; then
-        [ "${CONFIG_HW_EXT_BINKY}" == "y" ] && CONFIG_HW_MMU_VERSION+="e"
+    CONFIG_PARAM_MMU_VERSION=${CONFIG_MMU_BASE_VERSION}
+    if [ "${CONFIG_MMU_TYPE_ERCF_1_1}" == "y" ]; then
+        [ "${CONFIG_EXT_SPRINGY}" == "y" ] && CONFIG_PARAM_MMU_VERSION+="s"
+        [ "${CONFIG_EXT_BINKY}" == "y" ] && CONFIG_PARAM_MMU_VERSION+="b"
+        [ "${CONFIG_EXT_TRIPLE_DECK}" == "y" ] && CONFIG_PARAM_MMU_VERSION+="t"
+    elif [ "${CONFIG_MMU_TYPE_TRADRACK}" == "y" ]; then
+        [ "${CONFIG_EXT_BINKY}" == "y" ] && CONFIG_PARAM_MMU_VERSION+="e"
     fi
 
     if has_param "[mmu_machine]" "num_gates"; then
         NUM_GATES=$(param "[mmu_machine]" "num_gates")
     else
-        NUM_GATES=${CONFIG_HW_NUM_GATES}
+        NUM_GATES=${CONFIG_PARAM_NUM_GATES}
     fi
 
-    CONFIG_HW_NUM_LEDS=$(calc "${NUM_GATES} * 2 + 1")
-    CONFIG_HW_NUM_LEDS_MINUS1=$(calc "${CONFIG_HW_NUM_LEDS} - 1")
-    CONFIG_HW_NUM_GATES_PLUS1=$(calc "${NUM_GATES} + 1")
+    CONFIG_PARAM_NUM_LEDS=$(calc "${NUM_GATES} * 2 + 1")
+    CONFIG_PARAM_NUM_LEDS_MINUS1=$(calc "${CONFIG_PARAM_NUM_LEDS} - 1")
+    CONFIG_PARAM_NUM_GATES_PLUS1=$(calc "${NUM_GATES} + 1")
 }
 
 build() {

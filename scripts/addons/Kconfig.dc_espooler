@@ -7,7 +7,7 @@ if ADDON_DC_ESPOOLER
     default y
   
   menu "eSpooler pins"
-    if HW_NUM_GATES > 0
+    if PARAM_NUM_GATES > 0
       config PIN_DC_ESPOOLER_EN_0
         string "eSpooler enable 0 pin"
       config PIN_DC_ESPOOLER_RWD_0
@@ -16,7 +16,7 @@ if ADDON_DC_ESPOOLER
         string "eSpooler forward 0 pin"
     endif
   
-    if HW_NUM_GATES > 1
+    if PARAM_NUM_GATES > 1
       config PIN_DC_ESPOOLER_EN_1
         string "eSpooler enable 1 pin"
       config PIN_DC_ESPOOLER_RWD_1
@@ -25,7 +25,7 @@ if ADDON_DC_ESPOOLER
         string "eSpooler forward 1 pin"
     endif
   
-    if HW_NUM_GATES > 2
+    if PARAM_NUM_GATES > 2
       config PIN_DC_ESPOOLER_EN_2
         string "eSpooler enable 2 pin"
       config PIN_DC_ESPOOLER_RWD_2
@@ -34,7 +34,7 @@ if ADDON_DC_ESPOOLER
         string "eSpooler forward 2 pin"
     endif
   
-    if HW_NUM_GATES > 3
+    if PARAM_NUM_GATES > 3
       config PIN_DC_ESPOOLER_EN_3
         string "eSpooler enable 3 pin"
       config PIN_DC_ESPOOLER_RWD_3

@@ -5,6 +5,6 @@ choice CHOICE_BOARD_TYPE
   help 
     Select the type of board you are using. This will configure the default pin layout for your setup.
 
-  config HW_BOARD_TYPE_OTHER
+  config BOARD_TYPE_OTHER
     bool "Not listed / Other"
 endchoice

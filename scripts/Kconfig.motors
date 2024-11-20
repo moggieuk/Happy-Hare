@@ -1,34 +1,37 @@
-config HW_GEAR_GEAR_RATIO
+config PARAM_GEAR_GEAR_RATIO
   string "Gear ratio"
-config HW_GEAR_RUN_CURRENT
+config PARAM_GEAR_RUN_CURRENT
   string "Gear run current"
-config HW_GEAR_HOLD_CURRENT
+config PARAM_GEAR_HOLD_CURRENT
   string "Gear hold current"
 
-if MMU_HAS_SELECTOR
-  config HW_SERVO_MAX_ANGLE
+if PARAM_SELECTOR_TYPE = "LinearSelector"
+  config PARAM_SERVO_MAX_ANGLE
     int "Servo maximum angle"
     range 0 360
     default 180
-  config HW_SERVO_MIN_PULSE_WIDTH
+  config PARAM_SERVO_MIN_PULSE_WIDTH
     string "Servo minimum pulse width"
-  config HW_SERVO_MAX_PULSE_WIDTH
+  config PARAM_SERVO_MAX_PULSE_WIDTH
     string "Servo maximum pulse width"
-  config HW_SERVO_UP_ANGLE
+  config PARAM_SERVO_UP_ANGLE
     int "Servo up angle"
-  config HW_SERVO_MOVE_ANGLE
+  config PARAM_SERVO_MOVE_ANGLE
     int "Servo move angle"
-  config HW_SERVO_DOWN_ANGLE
+  config PARAM_SERVO_DOWN_ANGLE
     int "Servo down angle"
-  config HW_SERVO_BUZZ_GEAR_ON_DOWN
+  config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     int "How often to buzz servo on down angle"
     default 1 
-  config HW_SERVO_ALWAYS_ACTIVE
+  config PARAM_SERVO_DURATION
+    string "Servo duration"
+    default "0.4"
+  config PARAM_SERVO_ALWAYS_ACTIVE
     bool "Servo always active?"
-  config HW_SELECTOR_RUN_CURRENT
+  config PARAM_SELECTOR_RUN_CURRENT
     string "Selector run current"
     default "0.5"
-  config HW_SELECTOR_HOLD_CURRENT
+  config PARAM_SELECTOR_HOLD_CURRENT
     string "Selector hold current"
     default "0.2"
 endif 

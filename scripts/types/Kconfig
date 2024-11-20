@@ -1,10 +1,10 @@
 rsource "Kconfig.*"
 
-config HW_MMU_VENDOR
+config PARAM_MMU_VENDOR
   string
   default "Other"
 
-config HW_MMU_BASE_VERSION
+config MMU_BASE_VERSION
   string
   default "0.1" 
 
@@ -14,11 +14,11 @@ choice CHOICE_MMU_TYPE
     Select the type of MMU you are using. 
     This will configure the default settings for your setup.
 
-  config HW_MMU_TYPE_CUSTOM
+  config MMU_TYPE_CUSTOM
     bool "Custom"
-    imply HW_REQUIRE_BOWDEN_MOVE
+    imply REQUIRE_BOWDEN_MOVE
 
-  if HW_MMU_TYPE_CUSTOM
+  if MMU_TYPE_CUSTOM
     rsource "starters/Kconfig.*"
 
     choice CHOICE_MMU_CUSTOM_TYPE

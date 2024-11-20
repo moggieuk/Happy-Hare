@@ -10,7 +10,7 @@ to_bool = $(shell, $(1) && echo y || echo n)
 # Used to get the serial device paths
 serial=$(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
 serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
-serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "HW_SERIAL_" toupper($0)}')
+serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 
 ### Start of configuration
 config PARAM_HAPPY_HARE_VERSION
@@ -35,52 +35,15 @@ rsource "types/Kconfig"
 
 config MMU_HAS_ENCODER
   bool
-  prompt "Does the MMU have an encoder?" if HW_MMU_TYPE_CUSTOM
-
-config MMU_HAS_SELECTOR
-  bool
-  prompt "Does the MMU have a selector?" if HW_MMU_TYPE_CUSTOM
-
-config HW_VARIABLE_BOWDEN_LENGTHS
-  bool
-  prompt "Variable bowden lengths?" if HW_MMU_TYPE_CUSTOM
-
-config HW_VARIABLE_ROTATION_DISTANCES
-  bool
-  prompt "Variable rotation distances?" if HW_MMU_TYPE_CUSTOM
-
-config HW_REQUIRE_BOWDEN_MOVE
-  bool
-  prompt "Require bowden move?" if HW_MMU_TYPE_CUSTOM
-
-config HW_FILAMENT_ALWAYS_GRIPPED
-  bool
-  prompt "Filament always gripped?" if HW_MMU_TYPE_CUSTOM
 
 rsource "boards/Kconfig"
 rsource "Kconfig.serial"
 
-choice CHOICE_SELECTOR_TYPE
-  prompt "Selector type" if HW_MMU_TYPE_CUSTOM
-  default HW_SELECTOR_TYPE_LINEAR if MMU_HAS_SELECTOR
-  default HW_SELECTOR_TYPE_VIRTUAL
-  config HW_SELECTOR_TYPE_LINEAR
-    bool "Linear selector"
-  config HW_SELECTOR_TYPE_VIRTUAL
-    bool "Virtual selector"
-endchoice
-
-config HW_SELECTOR_TYPE
-  string
-  default "LinearSelector" if HW_SELECTOR_TYPE_LINEAR
-  default "VirtualSelector" if HW_SELECTOR_TYPE_VIRTUAL
+config PARAM_NUM_GATES
+  int "Number of gates"
+  default 12
 
 rsource "servos/Kconfig"
-
-config HW_NUM_GATES
-  int "Number of gates"
-  range 1 32
-  default 12
 
 menu "Options"
   rsource "Kconfig.options"
@@ -91,53 +54,8 @@ menu "Addons"
 endmenu
 
 menu "Advanced settings"
-  menu "Paths"
-    config PRINTER_CONFIG_FILE
-      string "Printer config file"
-      depends on !REPETIER
-      default "printer.cfg"
-    config KLIPPER_HOME
-      string "Klipper directory"
-      # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture)
-      # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
-      default "$(CONFIG_KLIPPER_HOME)"
-    config KLIPPER_CONFIG_HOME
-      string "Klipper config directory"
-      default "/usr/data/printer_data/config" if IS_MIPS
-      default "~" if OCTOPRINT
-      default "~/printer_data/config"
-    config MOONRAKER_CONFIG_FILE
-      string "Moonraker config file"
-      default "moonraker.conf"
-    config MOONRAKER_HOME
-      string "Moonraker directory"
-      depends on !OCTOPRINT
-      default "/usr/data/moonraker" if IS_MIPS
-      default "~/moonraker"
-    config HAPPY_HARE_HOME
-      string "Happy Hare directory"
-      default "/usr/data/Happy-Hare" if IS_MIPS
-      default "$(shell,	pwd)"
-    config GCODES_PATH
-      string "Gcodes directory"
-      default "~/printer_data/gcodes"
-  endmenu
-
-  menu "Services"
-    config SERVICE_KLIPPER
-      string "Klipper service name"
-      depends on !REPETIER
-      default "klipper_service" if IS_MIPS
-      default "klipper.service"
-    config SERVICE_MOONRAKER
-      string "Moonraker service name"
-      depends on !OCTOPRINT
-      default "moonraker_service" if IS_MIPS
-      default "moonraker.service"
-    config SERVICE_OCTOPRINT
-      string "Octoprint service name"
-      depends on OCTOPRINT
-      default "octoprint.service"
+  menu "Paths & Services"
+    rsource "Kconfig.paths_services"
   endmenu
 
   menu "Pins"
@@ -152,10 +70,10 @@ menu "Advanced settings"
     rsource "Kconfig.endstops"
   endmenu
 
-  config HW_ENCODER_RESOLUTION
-    string "Encoder resolution"
-    depends on MMU_HAS_ENCODER
-    default "1.0"
+  menu "Parameters"
+    visible if MMU_TYPE_CUSTOM
+    rsource "Kconfig.params"
+  endmenu
 
   config REPETIER
     bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS

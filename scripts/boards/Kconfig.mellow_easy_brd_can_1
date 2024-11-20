@@ -1,5 +1,5 @@
 choice CHOICE_BOARD_TYPE
-  config HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
+  config BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
     bool "Mellow EASY-BRD v1.x (with CANbus)"
 endchoice
 
@@ -7,7 +7,7 @@ choice CHOICE_SERIAL_DEVICE
   default $(serial_config,1,rp2040)
 endchoice
 
-if HW_BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
+if BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
   config PIN_GEAR_UART
     default "gpio9" 
   config PIN_GEAR_STEP

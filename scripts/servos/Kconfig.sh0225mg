@@ -1,22 +1,22 @@
-if HW_MMU_VENDOR = "ERCF"
+if PARAM_MMU_VENDOR = "ERCF"
   choice CHOICE_SERVO_TYPE 
-    config HW_SERVO_TYPE_GDW_DS041MG
+    config SERVO_TYPE_GDW_DS041MG
       bool "GDW DS041MG"
   endchoice
 endif
 
-if HW_SERVO_TYPE_SAVOX_SH0255MG 
-  config HW_SERVO_MIN_PULSE_WIDTH
+if SERVO_TYPE_SAVOX_SH0255MG 
+  config PARAM_SERVO_MIN_PULSE_WIDTH
     default "0.00085"
-  config HW_SERVO_MAX_PULSE_WIDTH
+  config PARAM_SERVO_MAX_PULSE_WIDTH
     default "0.00240" 
-  config HW_SERVO_MAX_ANGLE
+  config PARAM_SERVO_MAX_ANGLE
     default 180
-  config HW_SERVO_UP_ANGLE
+  config PARAM_SERVO_UP_ANGLE
     default 140 
-  config HW_SERVO_MOVE_ANGLE
-    default 109 if HW_MMU_TYPE_ERCF_2
-    default HW_SERVO_UP_ANGLE
-  config HW_SERVO_DOWN_ANGLE
+  config PARAM_SERVO_MOVE_ANGLE
+    default 109 if MMU_TYPE_ERCF_2
+    default PARAM_SERVO_UP_ANGLE
+  config PARAM_SERVO_DOWN_ANGLE
     default 30 
 endif

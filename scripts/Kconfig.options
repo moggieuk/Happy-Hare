@@ -8,7 +8,7 @@ config ENABLE_SELECTOR_TOUCH
     Not recommended if you are new to MMU/Happy-Hare.
     The MCU must have DIAG output for steppers. Possible to configure later.
 
-if HW_BOARD_TYPE_EASY_BRD
+if BOARD_TYPE_EASY_BRD
   comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
     depends on SELECTOR_TOUCH
   comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
@@ -37,6 +37,29 @@ config ENABLE_ENDLESS_SPOOL
 config PARAM_ENABLE_ENDLESS_SPOOL
   int
   default 1 if ENABLE_ENDLESS_SPOOL
+
+choice CHOICE_SPOOLMAN_SUPPORT
+  prompt "Select spool manager support"
+  default SPOOLMAN_OFF
+  help
+    Select the spool manager support you want to use.
+
+  config SPOOLMAN_OFF
+    bool "Off"
+  config SPOOLMAN_RO
+    bool "Read-only"
+  config SPOOLMAN_PUSH
+    bool "Push"
+  config SPOOLMAN_PULL
+    bool "Pull"
+endchoice
+
+config PARAM_SPOOLMAN_SUPPORT
+  string
+  default "off" if SPOOLMAN_OFF
+  default "readonly" if SPOOLMAN_RO
+  default "push" if SPOOLMAN_PUSH
+  default "pull" if SPOOLMAN_PULL
 
 config INSTALL_12864_MENU
   bool "Install Mini 12864 menu configuration?"

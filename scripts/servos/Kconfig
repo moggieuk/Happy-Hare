@@ -1,4 +1,4 @@
-if MMU_HAS_SELECTOR
+if PARAM_SELECTOR_TYPE = "LinearSelector"
   rsource	"Kconfig.*"
 
   choice CHOICE_SERVO_TYPE 
@@ -6,7 +6,7 @@ if MMU_HAS_SELECTOR
     help
       Select the type of servo you are using for the selector. 
   
-    config HW_SERVO_TYPE_OTHER
+    config SERVO_TYPE_OTHER
       bool "Not listed / Other"
   endchoice
 endif

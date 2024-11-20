@@ -1,0 +1,44 @@
+
+    config KLIPPER_HOME
+      string "Klipper directory"
+      # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture)
+      # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
+      default "$(CONFIG_KLIPPER_HOME)"
+    config PRINTER_CONFIG_FILE
+      string "Printer config file"
+      depends on !REPETIER
+      default "printer.cfg"
+    config KLIPPER_CONFIG_HOME
+      string "Klipper config directory"
+      default "/usr/data/printer_data/config" if IS_MIPS
+      default "~" if OCTOPRINT
+      default "~/printer_data/config"
+    config MOONRAKER_CONFIG_FILE
+      string "Moonraker config file"
+      default "moonraker.conf"
+    config MOONRAKER_HOME
+      string "Moonraker directory"
+      depends on !OCTOPRINT
+      default "/usr/data/moonraker" if IS_MIPS
+      default "~/moonraker"
+    config HAPPY_HARE_HOME
+      string "Happy Hare directory"
+      default "/usr/data/Happy-Hare" if IS_MIPS
+      default "$(shell,	pwd)"
+    config GCODES_PATH
+      string "Gcodes directory"
+      default "~/printer_data/gcodes"
+    config SERVICE_KLIPPER
+      string "Klipper service name"
+      depends on !REPETIER
+      default "klipper_service" if IS_MIPS
+      default "klipper.service"
+    config SERVICE_MOONRAKER
+      string "Moonraker service name"
+      depends on !OCTOPRINT
+      default "moonraker_service" if IS_MIPS
+      default "moonraker.service"
+    config SERVICE_OCTOPRINT
+      string "Octoprint service name"
+      depends on OCTOPRINT
+      default "octoprint.service"

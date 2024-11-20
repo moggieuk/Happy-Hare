@@ -35,13 +35,13 @@ choice CHOICE_SERIAL_DEVICE
   config $(serial_config,10)
     bool "$(serial,10)"
     depends on $(serial_exists,10)
-  config HW_SERIAL_OTHER
+  config PARAM_SERIAL_OTHER
     bool "Other (specify in parent menu)"
 endchoice
 
-config HW_SERIAL
+config PARAM_SERIAL
   string
-  prompt "MCU serial device path" if HW_SERIAL_OTHER || !$(serial_exists,1)
+  prompt "MCU serial device path" if PARAM_SERIAL_OTHER || !$(serial_exists,1)
   help
     Specify the path of the serial device connected to the MMU MCU. 
     It's best to use the /dev/serial/by-id/ path, as it's unique and doesn't change when you plug in multiple serial devices.
