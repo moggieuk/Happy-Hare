@@ -1,10 +1,25 @@
 config ADDON_DC_ESPOOLER
   bool "Enable eSpooler support?"
 
+config PARAM_DC_ESPOOLER_START_MACRO
+  string
+  default "MMU_ESPOOLER_START" if ENABLE_DC_ESPOOLER_MACROS
+  default ""
+config PARAM_DC_ESPOOLER_STOP_MACRO
+  string
+  default "MMU_ESPOOLER_STOP" if ENABLE_DC_ESPOOLER_MACROS
+  default ""
+
 if ADDON_DC_ESPOOLER
   config INSTALL_DC_ESPOOLER
     bool "Install eSpooler include in printer.cfg?"
     default y
+
+  config ENABLE_DC_ESPOOLER_MACROS
+    bool "Configure eSpooler start and stop macros?"
+    depends on INSTALL_DC_ESPOOLER
+    default y
+
   
   menu "eSpooler pins"
     if PARAM_NUM_GATES > 0
