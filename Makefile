@@ -97,6 +97,7 @@ link = \
 	ln -sf "$(1)" "$(2)";
 
 backup_ext :::= .old-$(shell date '+%Y%m%d-%H%M%S')
+backup_ext ::= .old-$(shell date '+%Y%m%d-%H%M%S')
 backup_name = $(addsuffix $(backup_ext),$(1))
 backup = \
 	if [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
