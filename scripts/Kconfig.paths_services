@@ -10,8 +10,8 @@
       default "printer.cfg"
     config KLIPPER_CONFIG_HOME
       string "Klipper config directory"
-      default "/usr/data/printer_data/config" if IS_MIPS
       default "~" if OCTOPRINT
+      default "/usr/data/printer_data/config" if $(to_bool, [ -e "/usr/data/printer_data/config" ])
       default "~/printer_data/config"
     config MOONRAKER_CONFIG_FILE
       string "Moonraker config file"
@@ -19,25 +19,24 @@
     config MOONRAKER_HOME
       string "Moonraker directory"
       depends on !OCTOPRINT
-      default "/usr/data/moonraker" if IS_MIPS
+      default "/usr/data/moonraker" if $(to_bool, [ -e "/usr/data/moonraker" ])
       default "~/moonraker"
     config HAPPY_HARE_HOME
       string "Happy Hare directory"
-      default "/usr/data/Happy-Hare" if IS_MIPS
-      default "$(shell,	pwd)"
+      default "$(SRC)"
     config GCODES_PATH
       string "Gcodes directory"
       default "~/printer_data/gcodes"
     config SERVICE_KLIPPER
       string "Klipper service name"
       depends on !REPETIER
-      default "klipper_service" if IS_MIPS
-      default "klipper.service"
+      default "klipper.service" if CONFIG_INIT_SYSTEMD
+      default "klipper_service"
     config SERVICE_MOONRAKER
       string "Moonraker service name"
       depends on !OCTOPRINT
-      default "moonraker_service" if IS_MIPS
-      default "moonraker.service"
+      default "moonraker.service" if CONFIG_INIT_SYSTEMD 
+      default "moonraker_service"
     config SERVICE_OCTOPRINT
       string "Octoprint service name"
       depends on OCTOPRINT

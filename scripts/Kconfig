@@ -27,9 +27,9 @@ comment '( *,*)					'
 comment '(")_(") Happy Hare version $(formatted_version) 	'	
 comment '					'
 
-config IS_MIPS
+config INIT_SYSTEMD
   bool
-  default $(to_bool, uname -m | grep -q 'mips')
+  default $(to_bool, [ -d /etc/systemd/system ])
 
 rsource "types/Kconfig"
 
@@ -84,5 +84,4 @@ menu "Advanced settings"
 
   config OCTOPRINT
     bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
-    depends on !IS_MIPS
 endmenu

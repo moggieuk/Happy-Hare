@@ -873,8 +873,8 @@ self_update() {
     fi
 
     local git_cmd="git branch --show-current"
-    if [ "${CONFIG_IS_MIPS}" != "y" ]; then
-        # timeout is unavailable on MIPS
+    if which timeout &>/dev/null; then
+        # timeout is unavailable on some systems (e.g. Creality K1). So only add it if found
         git_cmd="timeout 3s ${git_cmd}"
     fi
 
@@ -933,17 +933,17 @@ restart_service() {
         return
     fi
 
-    if [ "${CONFIG_IS_MIPS}" == "y" ]; then
-        if [ -e "/etc/init.d/${service}" ]; then
-            set +e
-            /etc/init.d/"${service}" restart
-            set -e
+    if [ "${CONFIG_INIT_SYSTEMD}" == "y" ]; then
+        if systemctl list-unit-files "${service}" >/dev/null; then
+            sudo systemctl restart "${service}" 2>/dev/null
         else
             log_warning "Service '${service}' not found! Restart manually or check your config"
         fi
     else
-        if systemctl list-unit-files "${service}" >/dev/null; then
-            systemctl restart "${service}" 2>/dev/null
+        if [ -e "/etc/init.d/${service}" ]; then
+            set +e
+            sudo /etc/init.d/"${service}" restart
+            set -e
         else
             log_warning "Service '${service}' not found! Restart manually or check your config"
         fi
