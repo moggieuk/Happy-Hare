@@ -1147,11 +1147,11 @@ class RotarySelector:
 
     def filament_drive(self, buzz_gear=True):
         #self.servo.servo_down(buzz_gear=buzz_gear)
-        self.move("Griping Filament", self.selector_offsets[self.mmu.gate_selected])
+        self._position(self.selector_offsets[self.mmu.gate_selected])
 
     def filament_release(self, measure=False):
         #return self.servo.servo_up(measure=measure)
-        self.move("Releasing Filament", self.selector_offsets[self.cad_release_gates[self.mmu.gate_selected]])
+        self._position(self.selector_offsets[self.cad_release_gates[self.mmu.gate_selected]])
         return 1
     
     def filament_hold(self): # AKA position for selector movement
@@ -1473,8 +1473,8 @@ class RotarySelector:
         self.set_position(self.selector_stepper.get_rotation_distance()[0])
         self.move("Forceably detecting endstop of selector", new_pos=0, speed=self.selector_homing_speed)
         self.set_position(0) # reset pos
-        self.move("Correct for gate0 offset", new_pos=self.cad_gate0_pos, speed=self.selector_homing_speed)
-        self.set_position(0) # reset again
+        #self.move("Correct for gate0 offset", new_pos=self.cad_gate0_pos, speed=self.selector_homing_speed)
+        #self.set_position(0) # reset again
 
     def _position(self, target):
         if not self.use_touch_move():
