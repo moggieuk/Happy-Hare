@@ -90,7 +90,8 @@ class MacroSelector:
         self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def handle_ready(self):
-        pass
+        logging.info(f'HH MacroSelector: Gate {self.mmu.gate_selected}')
+        self.select_gate(self.mmu.gate_selected)
 
     def handle_disconnect(self):
         pass
