@@ -1,0 +1,22 @@
+services:
+  debian:
+    build: 
+      context: .
+      dockerfile: Dockerfile.debian
+    environment:
+      - PRINTER_DATA=/home/klippy/printer_data
+    env_file: .env
+    volumes:
+      - ./config:/home/klippy/printer_data/config
+      - ../:/home/klippy/Happy-Hare
+  
+  alpine:
+    build: 
+      context: .
+      dockerfile: Dockerfile.alpine
+    environment:
+      - PRINTER_DATA=/usr/data/printer_data
+    env_file: .env
+    volumes:
+      - ./config:/usr/data/printer_data/config
+      - ../:/usr/data/Happy-Hare

@@ -942,7 +942,7 @@ restart_service() {
     else
         if [ -e "/etc/init.d/${service}" ]; then
             set +e
-            sudo /etc/init.d/"${service}" restart
+            /etc/init.d/"${service}" restart
             set -e
         else
             log_warning "Service '${service}' not found! Restart manually or check your config"

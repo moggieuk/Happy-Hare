@@ -1,0 +1,67 @@
+## Get Klipper Source and Build venv
+##
+FROM python:3.11-alpine AS build
+
+RUN adduser -D klippy  
+
+RUN apk update \
+ && apk add make bash git sudo \
+ && apk cache clean
+
+ARG REPO=https://github.com/Klipper3d/klipper
+ARG VERSION=master
+
+RUN git clone ${REPO} /usr/share/klipper && \
+    cd /usr/share/klipper && \
+    git checkout ${VERSION} && \
+    rm -rf .git
+
+RUN mkdir -p /usr/data/moonraker/moonraker/components
+RUN mkdir -p /usr/data/printer_data
+RUN mkdir -p /usr/data/Happy-Hare
+VOLUME /usr/data/Happy-Hare
+VOLUME /usr/data/printer_data/config
+
+COPY ./service.sh /etc/init.d/klipper_service
+COPY ./service.sh /etc/init.d/moonraker_service
+
+RUN chown -R klippy /usr/share/klipper 
+RUN chown -R klippy /usr/data/moonraker
+RUN chown -R klippy /usr/data/printer_data
+RUN chown -R klippy /usr/data/Happy-Hare
+RUN chown klippy /etc/init.d/klipper_service 
+RUN chown klippy /etc/init.d/moonraker_service
+RUN echo 'klippy ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/klippy
+
+USER klippy
+
+WORKDIR /usr/data/Happy-Hare
+COPY ./entrypoint.sh /opt/entrypoint.sh
+ENTRYPOINT ["/opt/entrypoint.sh"]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

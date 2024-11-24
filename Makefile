@@ -42,20 +42,19 @@ ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
   endif
 endif
 
-CONFIG_INIT_SYSTEMD ?= $(shell [ -d /etc/systemd/system ] && echo y || echo n)
+# export CONFIG_INIT_SYSTEMD ?= $(shell [ -d /etc/systemd/system ] && echo y || echo n)
 
 # If CONFIG_KLIPPER_HOME is not yet set by .config, set it to the default value.
 # This is required to make menuconfig work the first time.
 # If the klipper directory is not at one of the standard locations,
 # it can be overridden with 'make CONFIG_KLIPPER_HOME=/path/to/klipper <target>'
 ifneq ($(wildcard /usr/share/klipper),)
-  CONFIG_KLIPPER_HOME ?= /usr/share/klipper
+  export CONFIG_KLIPPER_HOME ?= /usr/share/klipper
 else
-  CONFIG_KLIPPER_HOME ?= ~/klipper
+  export CONFIG_KLIPPER_HOME ?= ~/klipper
 endif
 
 # use sudo if the klipper home is at a system location
-SUDO:=$(shell [ "$(CONFIG_KLIPPER_HOME)" = "/usr/share/klipper" ] && echo "sudo " || echo "")
 
 KLIPPER_HOME:=$(patsubst "%",%,$(CONFIG_KLIPPER_HOME))
 KLIPPER_CONFIG_HOME:=$(patsubst "%",%,$(CONFIG_KLIPPER_CONFIG_HOME))
@@ -67,6 +66,8 @@ hh_klipper_extras_files = $(patsubst extras/%,%,$(wildcard extras/*.py extras/*/
 hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon install
 hh_config_files = $(patsubst config/%,%,$(wildcard config/*.cfg config/**/*.cfg))
 hh_moonraker_components = $(patsubst components/%,%,$(wildcard components/*.py))
+
+SUDO:=$(shell [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && echo "sudo " || echo "")
 
 export CONFIGS_TO_PARSE = $(patsubst config/%,$(IN)/mmu/%,$(wildcard $(addprefix config/, \
 	base/mmu.cfg \
@@ -175,6 +176,7 @@ $(build_targets): $(KCONFIG_CONFIG) | $(OUT) update check_files check_version
 build: $(build_targets)
 
 
+ifneq ($(wildcard $(KCONFIG_CONFIG)),) # To prevent make errors when .config is not yet created
 ### Install targets
 $(KLIPPER_HOME)/%: $(OUT)/% | $(KLIPPER_HOME)/klippy/extras
 	$(Q)$(call install,$<,$@)
@@ -197,7 +199,7 @@ $(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(KLIPPE
 	$(Q)$(eval restart_klipper = 1)
 
 $(KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) 
-	$(Q)$(call install,$(OUT)/mmu/mmu_vars.cfg,$@,--update=none)
+	$(Q)$(call install,$(OUT)/mmu/mmu_vars.cfg,$@,--no-clobber)
 	$(Q)$(eval restart_klipper = 1)
 
 $(call backup_name,$(KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
@@ -206,6 +208,7 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
 $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
 	$(Q)$(call backup,$(basename $@))
 
+endif
 $(install_targets): | build
 
 install: $(install_targets)

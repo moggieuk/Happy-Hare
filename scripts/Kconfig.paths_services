@@ -11,7 +11,7 @@
     config KLIPPER_CONFIG_HOME
       string "Klipper config directory"
       default "~" if OCTOPRINT
-      default "/usr/data/printer_data/config" if $(to_bool, [ -e "/usr/data/printer_data/config" ])
+      default "/usr/data/printer_data/config" if $(to_bool, [ -e "/usr/data/printer_data" ])
       default "~/printer_data/config"
     config MOONRAKER_CONFIG_FILE
       string "Moonraker config file"
@@ -26,16 +26,17 @@
       default "$(SRC)"
     config GCODES_PATH
       string "Gcodes directory"
+      default "/usr/data/printer_data/gcodes" if $(to_bool, [ -e "/usr/data/printer_data" ])
       default "~/printer_data/gcodes"
     config SERVICE_KLIPPER
       string "Klipper service name"
       depends on !REPETIER
-      default "klipper.service" if CONFIG_INIT_SYSTEMD
+      default "klipper.service" if INIT_SYSTEMD
       default "klipper_service"
     config SERVICE_MOONRAKER
       string "Moonraker service name"
       depends on !OCTOPRINT
-      default "moonraker.service" if CONFIG_INIT_SYSTEMD 
+      default "moonraker.service" if INIT_SYSTEMD 
       default "moonraker_service"
     config SERVICE_OCTOPRINT
       string "Octoprint service name"

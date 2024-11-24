@@ -1,0 +1,62 @@
+## Get Klipper Source and Build venv
+##
+FROM python:3.11-bullseye AS build
+
+RUN apt update \
+ && apt install -y make bash git sudo \
+ && apt clean
+
+RUN useradd -ms /bin/bash klippy && adduser klippy dialout
+USER klippy
+
+WORKDIR /home/klippy
+ARG REPO=https://github.com/Klipper3d/klipper
+ARG VERSION=master
+
+RUN git clone ${REPO} klipper && \
+    cd klipper && \
+    git checkout ${VERSION} && \
+    rm -rf .git
+
+RUN mkdir -p /home/klippy/moonraker/moonraker/components
+RUN mkdir -p /home/klippy/printer_data/config
+VOLUME /home/klippy/Happy-Hare
+VOLUME /home/klippy/printer_data/config
+COPY ./entrypoint.sh /home/klippy
+
+USER root
+
+COPY ./systemctl.sh /bin/systemctl
+RUN echo 'klippy ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/klippy
+
+USER klippy
+WORKDIR /home/klippy/Happy-Hare
+ENTRYPOINT [ "/home/klippy/entrypoint.sh" ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
