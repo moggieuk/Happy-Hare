@@ -2,7 +2,7 @@
 ##
 FROM python:3.11-alpine AS build
 
-RUN adduser -D klippy  
+RUN adduser -D klippy
 
 RUN apk update \
  && apk add make bash git sudo \
@@ -25,11 +25,11 @@ VOLUME /usr/data/printer_data/config
 COPY ./service.sh /etc/init.d/klipper_service
 COPY ./service.sh /etc/init.d/moonraker_service
 
-RUN chown -R klippy /usr/share/klipper 
+RUN chown -R klippy /usr/share/klipper
 RUN chown -R klippy /usr/data/moonraker
 RUN chown -R klippy /usr/data/printer_data
 RUN chown -R klippy /usr/data/Happy-Hare
-RUN chown klippy /etc/init.d/klipper_service 
+RUN chown klippy /etc/init.d/klipper_service
 RUN chown klippy /etc/init.d/moonraker_service
 RUN echo 'klippy ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/klippy
 
@@ -38,30 +38,3 @@ USER klippy
 WORKDIR /usr/data/Happy-Hare
 COPY ./entrypoint.sh /opt/entrypoint.sh
 ENTRYPOINT ["/opt/entrypoint.sh"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

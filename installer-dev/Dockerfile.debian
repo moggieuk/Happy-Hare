@@ -32,31 +32,3 @@ RUN echo 'klippy ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/klippy
 USER klippy
 WORKDIR /home/klippy/Happy-Hare
 ENTRYPOINT [ "/home/klippy/entrypoint.sh" ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

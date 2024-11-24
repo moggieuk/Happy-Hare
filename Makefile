@@ -42,7 +42,6 @@ ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
   endif
 endif
 
-# export CONFIG_INIT_SYSTEMD ?= $(shell [ -d /etc/systemd/system ] && echo y || echo n)
 
 # If CONFIG_KLIPPER_HOME is not yet set by .config, set it to the default value.
 # This is required to make menuconfig work the first time.
@@ -54,7 +53,6 @@ else
   export CONFIG_KLIPPER_HOME ?= ~/klipper
 endif
 
-# use sudo if the klipper home is at a system location
 
 KLIPPER_HOME:=$(patsubst "%",%,$(CONFIG_KLIPPER_HOME))
 KLIPPER_CONFIG_HOME:=$(patsubst "%",%,$(CONFIG_KLIPPER_CONFIG_HOME))
@@ -67,6 +65,7 @@ hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon in
 hh_config_files = $(patsubst config/%,%,$(wildcard config/*.cfg config/**/*.cfg))
 hh_moonraker_components = $(patsubst components/%,%,$(wildcard components/*.py))
 
+# use sudo if the klipper home is at a system location
 SUDO:=$(shell [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && echo "sudo " || echo "")
 
 export CONFIGS_TO_PARSE = $(patsubst config/%,$(IN)/mmu/%,$(wildcard $(addprefix config/, \

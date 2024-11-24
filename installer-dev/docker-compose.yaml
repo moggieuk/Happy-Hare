@@ -1,6 +1,6 @@
 services:
   debian:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.debian
     environment:
@@ -9,9 +9,9 @@ services:
     volumes:
       - ./config:/home/klippy/printer_data/config
       - ../:/home/klippy/Happy-Hare
-  
+
   alpine:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.alpine
     environment:
