@@ -999,7 +999,7 @@ class RotarySelector:
         #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
         #
         # Chameleon defaults
-        self.cad_gate0_pos = 2.0
+        self.cad_gate0_pos = 4.0
         self.cad_gate_width = 25.
         self.cad_bypass_offset = 0
         self.cad_last_gate_offset = 2.
