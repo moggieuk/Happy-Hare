@@ -663,7 +663,7 @@ class Mmu:
 
     def _setup_logging(self):
         # Setup background file based logging before logging any messages
-        if self.log_file_level >= 0:
+        if self.mmu_logger is None and self.log_file_level >= 0:
             logfile_path = self.printer.start_args['log_file']
             dirname = os.path.dirname(logfile_path)
             if dirname is None:
@@ -839,9 +839,7 @@ class Mmu:
         return lst
 
     def handle_disconnect(self):
-        self.log_debug('Klipper disconnected! MMU Shutdown')
-        if self.mmu_logger:
-            self.mmu_logger.shutdown()
+        self.log_debug('Klipper disconnected!')
 
         # Sub components
         self.selector.handle_disconnect()
@@ -2999,7 +2997,7 @@ class Mmu:
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.timeout_pause) # Set alternative pause idle_timeout
-                self.log_trace("Extruder heater will be disabled in %s" % (self._seconds_to_string(self.disable_heater))
+                self.log_trace("Extruder heater will be disabled in %s" % (self._seconds_to_string(self.disable_heater)))
                 self.log_trace("Idle timeout in %s" % self._seconds_to_string(self.timeout_pause))
                 self._save_toolhead_position_and_park('pause') # if already paused this is a no-op
                 run_error_macro = True
@@ -3078,7 +3076,6 @@ class Mmu:
             self.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed")
         elif self.is_mmu_paused():
-# PAUL what if mmu is not mmu_paused and we get a RESUME?
             # If paused we can only continue on resume
             return
 
@@ -3147,7 +3144,7 @@ class Mmu:
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
             # If this is the final "restore toolhead position" call then allow macro to restore position, then sanity check
-# PAUL dangerous .. what about CLEAR_PAUSE or call to BASE_RESUME!
+            # Note: if user calls BASE_RESUME, print will restart but from incorrect position that could be restored later!
             if not self.is_paused() or operation == "resume":
                 # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final unload)
                 if restore:
@@ -3171,13 +3168,13 @@ class Mmu:
                     return
                 else:
                     # Special case of not restoring so just clear all saved state
-                    self._wrap_gcode_command(self.clear_position_macro)
+                    self._clear_macro_state()
                     self._clear_saved_toolhead_position()
             else:
                 pass # Resume will call here again shortly so we can ignore for now
         else:
             # Ensure all saved state is cleared
-            self._wrap_gcode_command(self.clear_position_macro)
+            self._clear_macro_state()
             self._clear_saved_toolhead_position()
 
     def _clear_saved_toolhead_position(self):
@@ -4401,7 +4398,7 @@ class Mmu:
 
             self._ensure_safe_extruder_temperature(wait=False)
 
-            synced = self.selector.get_filament_grip_state() == self.FILAMENT_DRIVE_STATE and not extruder_only # PAUL why can't I used sync_form_tip?
+            synced = self.selector.get_filament_grip_state() == self.FILAMENT_DRIVE_STATE and not extruder_only
             if synced:
                 self.selector.filament_drive()
                 speed = self.extruder_sync_unload_speed
@@ -4796,19 +4793,7 @@ class Mmu:
         self.movequeues_wait()
 
         # Pre check to validate the presence of filament in the extruder and case where we don't need to form tip
-# PAUL this should only test toolhead sensor.. actually this logic is wrong!
-#        if self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY) or self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
-#            filament_initially_present = True
-#        else:
-#            # Only the "extruder" sensor can definitely answer but believe toolhead if that is all we have
-#            filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
-#            if filament_initially_present is None:
-#                filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
-        # Only the "extruder" sensor can definitely answer but believe toolhead if that is all we have
-        filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_EXTRUDER_ENTRY)
-        if filament_initially_present is None:
-            filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
-
+        filament_initially_present = self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD)
         if filament_initially_present is False:
             self.log_debug("Tip forming skipped because no filament was detected")
 
@@ -6256,8 +6241,7 @@ class Mmu:
             return
 
         self.log_debug("MMU RESUME wrapper called")
-        if not self._is_paused():
-# PAUL problem FIXME .. if CLEAR_PAUSE was called this will never resume!
+        if not self.is_paused():
             self.log_always("Print is not paused. Resume ignored.")
             return
 
@@ -6301,7 +6285,8 @@ class Mmu:
         if self.is_enabled:
             self.log_debug("MMU CLEAR_PAUSE wrapper called")
             self._clear_macro_state()
-# PAUL TODO need to also fix restore position logic
+            if self.saved_toolhead_operation == 'pause':
+                self._clear_saved_toolhead_position()
         self._wrap_gcode_command("__CLEAR_PAUSE", None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
@@ -7450,11 +7435,6 @@ class Mmu:
             self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
             if replace:
                 # Replace map
-# PAUL: Test changes to this block with:
-# MMU_GATE_MAP MAP="{2: {}}" REPLACE=1 QUIET=1
-# @npa62 user error when running:
-# MMU_SPOOLMAN GATE=2 SPOOLID=21
-# Also, why did spoolman send and empty list? Race condition? Check...
                 for gate, fil in gate_map.items():
                     spool_id = fil.get('spool_id', -1)
                     self.gate_spool_id[gate] = spool_id

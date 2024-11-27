@@ -274,7 +274,7 @@ class LinearSelector:
 
     def handle_disconnect(self):
         # Sub components
-        self.servo.handle_connect()
+        self.servo.handle_disconnect()
 
     def handle_ready(self):
         # Sub components
