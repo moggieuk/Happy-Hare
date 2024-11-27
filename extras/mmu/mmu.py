@@ -4789,7 +4789,6 @@ class Mmu:
             if not extruder_only:
                 self._set_action(current_action)
 
-
     # Form tip prior to extraction from the extruder. This can take the form of shaping the filament or could simply
     # activate a filament cutting mechanism. Sets filament position based on park pos
     # Returns True if filament is detected
