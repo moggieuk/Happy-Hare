@@ -773,6 +773,8 @@ METADATA_MATERIALS = "!materials!"
 PURGE_VOLUMES_REGEX = r"^;\s*(flush_volumes_matrix|wiping_volumes_matrix)\s*=\s*(.*)$" # flush.. in Orca/Bambu, wiping... in PS
 METADATA_PURGE_VOLUMES = "!purge_volumes!"
 
+FLUSH_MULTIPLIER_REGEX = r"^;\s*flush_multiplier\s*=\s*(.*)$" #flush multiplier in Orca/Bambu. Used to multiply the values in the purge volumes to match the slicer UI settings
+
 FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
@@ -792,7 +794,7 @@ def gcode_processed_already(file_path):
 def parse_gcode_file(file_path):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
     has_tools_placeholder = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = filament_names_placeholder = False
-    found_colors = found_temps = found_materials = found_purge_volumes = found_filament_names = False
+    found_colors = found_temps = found_materials = found_purge_volumes = found_filament_names = found_flush_multiplier = False
     slicer = None
 
     tools_used = set()
@@ -801,6 +803,7 @@ def parse_gcode_file(file_path):
     materials = []
     purge_volumes = []
     filament_names = []
+    flush_multiplier = 1.0 # Initialize flush_multiplier to 1.0
 
     with open(file_path, 'r') as in_file:
         for line in in_file:
@@ -834,6 +837,12 @@ def parse_gcode_file(file_path):
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX[slicer], re.IGNORECASE)
         else:
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX, re.IGNORECASE)
+        
+        if isinstance(FLUSH_MULTIPLIER_REGEX, dict):
+            flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX[slicer], re.IGNORECASE)
+        else:
+            flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX, re.IGNORECASE)   
+        
         with open(file_path, 'r') as in_file:
             for line in in_file:
                 # !referenced_tools! processing
@@ -881,6 +890,16 @@ def parse_gcode_file(file_path):
                         materials.extend(materials_csv)
                         found_materials = True
 
+                # flush_multiplier processing
+                if not found_flush_multiplier:
+                    match = flush_multiplier_regex.match(line)
+                    if match:
+                        try:
+                            flush_multiplier = float(match.group(1).strip())
+                        except ValueError:
+                            flush_multiplier = 1.0  # Default to 1.0 if conversion fails
+                        found_flush_multiplier = True
+
                 # !purge_volumes! processing
                 if not has_purge_volumes_placeholder and METADATA_PURGE_VOLUMES in line:
                     has_purge_volumes_placeholder = True
@@ -889,7 +908,15 @@ def parse_gcode_file(file_path):
                     match = purge_volumes_regex.match(line)
                     if match:
                         purge_volumes_csv = match.group(2).strip().split(',')
-                        purge_volumes.extend(purge_volumes_csv)
+                        # Multiply each value by flush_multiplier
+                        for volume_str in purge_volumes_csv:
+                            try:
+                                volume = float(volume_str)
+                                multiplied_volume = round(volume * flush_multiplier,1)
+                                purge_volumes.append(str(multiplied_volume))
+                            except ValueError:
+                                # If conversion fails, keep the original value
+                                purge_volumes.append(volume_str)
                         found_purge_volumes = True
 
                 # !filament_names! processing
@@ -901,7 +928,7 @@ def parse_gcode_file(file_path):
                     if match:
                         filament_names_csv = [e.strip() for e in re.split(',|;', match.group(2).strip())]
                         filament_names.extend(filament_names_csv)
-                        found_filament_names = True
+                        found_filament_names = True                    
 
     return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
             sorted(tools_used), colors, temps, materials, purge_volumes, filament_names, slicer)
