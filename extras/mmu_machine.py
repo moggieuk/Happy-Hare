@@ -49,9 +49,10 @@ VENDOR_ANGRY_BEAVER   = "AngryBeaver"
 VENDOR_BOX_TURTLE     = "BoxTurtle"
 VENDOR_NIGHT_OWL      = "NightOwl"
 VENDOR_3MS            = "3MS"
+VENDOR_3D_CHAMELEON   = "3DChameleon"
 VENDOR_OTHER          = "Other"
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -123,8 +124,15 @@ class MmuMachine:
             require_bowden_move = 0
             filament_always_gripped = 1
 
+        elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
+            selector_type = 'RotarySelector'
+            variable_rotation_distances = 0
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector']}, selector_type)
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector','RotarySelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
@@ -569,7 +577,7 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_machine.selector_type == 'LinearSelector':
+        if self.mmu_machine.selector_type == 'LinearSelector' or self.mmu_machine.selector_type == 'RotarySelector':
             self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         else:
