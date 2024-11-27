@@ -123,6 +123,7 @@ class VirtualSelector:
         return ""
 
 
+
 ################################################################################
 # Linear Selector
 # Implements Linear Selector for type-A MMU's that uses stepper conrolled
@@ -274,7 +275,7 @@ class LinearSelector:
 
     def handle_disconnect(self):
         # Sub components
-        self.servo.handle_connect()
+        self.servo.handle_disconnect()
 
     def handle_ready(self):
         # Sub components
@@ -1011,7 +1012,6 @@ class RotarySelector:
         self.cad_release_gates = [2, 3, 0, 1]
         self.cad_selector_hard_endstop = 1
 
-
         # But still allow all CAD parameters to be customized
         self.cad_gate0_pos = mmu.config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
         self.cad_gate_width = mmu.config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
@@ -1101,7 +1101,7 @@ class RotarySelector:
 
     def handle_disconnect(self):
         # Sub components
-        #self.servo.handle_connect()
+        #self.servo.handle_disconnect()
         pass
 
     def handle_ready(self):
@@ -1180,23 +1180,18 @@ class RotarySelector:
             self.move(None, pos + 5, wait=False)
             self.move(None, pos - 5, wait=False)
             self.move(None, pos, wait=False)
-        elif motor == "servo":
-            #self.servo.buzz_motor()
-            pass
         else:
             return False
         return True
 
     def has_bypass(self):
-        return self.bypass_offset >= 0
+        return False
 
     def get_status(self):
-        #return self.servo.get_status()
         return {}
 
     def get_mmu_status_config(self):
         msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
-        #msg += self.servo.get_mmu_status_config()
         return msg
 
     def set_test_config(self, gcmd):
@@ -1222,7 +1217,6 @@ class RotarySelector:
             self.filament_release()  # or whatever you need to do
         elif pos == "grip":
             self.filament_drive()  # or whatever you need to do
-
 
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
@@ -1607,5 +1601,3 @@ class RotarySelector:
 
     def use_touch_move(self):
         return self.selector_tmc and self.mmu.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
-
-
