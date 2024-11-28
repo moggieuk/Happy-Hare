@@ -31,36 +31,6 @@ happy_hare_version: {happy_hare_version}			# Don't mess, used for upgrade detect
 #
 gear_max_velocity: 300			# Never to be exceeded gear velocity regardless of specific parameters
 gear_max_accel: 1500			# Never to be exceeded gear accelaration regardless of specific parameters
-selector_max_velocity: 250		# Never to be exceeded selector velocity regardless of specific parameters
-selector_max_accel: 1200		# Never to be exceeded selector accelaration regardless of specific parameters
-
-
-# Servo configuration  -------------------------------------------------------------------------------------------------
-# ███████╗███████╗██████╗ ██╗   ██╗ ██████╗ 
-# ██╔════╝██╔════╝██╔══██╗██║   ██║██╔═══██╗
-# ███████╗█████╗  ██████╔╝██║   ██║██║   ██║
-# ╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██║   ██║
-# ███████║███████╗██║  ██║ ╚████╔╝ ╚██████╔╝
-# ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ 
-#
-# Angle of the servo in three named positions
-#   up   = tool is selected and filament is allowed to freely move through gate
-#   down = to grip filament
-#   move = ready the servo for selector move (optional - defaults to up)
-# V2.4 on: These positions are only for initial config they are replaced with calibrated servo positions in `mmu_vars.cfg`
-#
-# Note that leaving the servo active when down can stress the electronics and is not recommended with EASY-BRD or ERB board
-# unless the 5v power supply has been improved and it is not necessary with standard ERCF builds
-# Make sure your hardware is suitable for the job!
-#
-servo_up_angle: 145			# ERCF: MG90S: 30  ; SAVOX SH0255MG: 140 ; Tradrack: 145
-servo_down_angle: 30			# ERCF: MG90S: 140 ; SAVOX SH0255MG: 30  ; Tradrack: 1
-servo_move_angle: 109			# Optional angle used when selector is moved (defaults to up position)
-servo_duration: 0.4			# Duration of PWM burst sent to servo (default non-active mode, automatically turns off)
-servo_dwell: 0.5			# Minimum time given to servo to complete movement prior to next move
-servo_always_active: 0 			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
-servo_active_down: 0			# CAUTION: 1=Force servo to stay active when down only, 0=Release after movement
-servo_buzz_gear_on_down: 0		# Whether to "buzz" the gear stepper on down to aid engagement
 
 
 # Logging --------------------------------------------------------------------------------------------------------------
@@ -117,17 +87,6 @@ extruder_sync_load_speed: 18		# mm/s speed of synchronized extruder load moves
 extruder_sync_unload_speed: 18		# mm/s speed of synchronized extruder unload moves
 extruder_homing_speed: 18		# mm/s speed of extruder only homing moves (e.g. to toolhead sensor)
 
-# Selector movement speeds. (Accelaration is defined by physical MMU limits set above and passed to selector stepper driver)
-#
-selector_move_speed: 200		# mm/s speed of selector movement (not touch)
-selector_homing_speed: 60		# mm/s speed of initial selector homing move (not touch)
-selector_touch_speed: 80		# mm/s speed of all touch selector moves (if stallguard configured)
-
-# Selector touch (stallguard) operation. If stallguard is configured, then this can be used to switch on touch movement which
-# can detect blocked filament path and try to recover automatically but it is more difficult to set up
-#
-selector_touch_enable: 0		# If selector touch operation configured this can be used to disable it 1=enabled, 0=disabled
-
 
 # Gate loading/unloading -----------------------------------------------------------------------------------------------
 #  ██████╗  █████╗ ████████╗███████╗    ██╗      ██████╗  █████╗ ██████╗ 
@@ -151,9 +110,8 @@ selector_touch_enable: 0		# If selector touch operation configured this can be u
 #
 gate_homing_endstop: encoder		# Name of gate endstop, "encoder" forces use of encoder for parking
 gate_homing_max: 70			# Maximum move distance to home to the gate (actual move distance for encoder parking)
-gate_preload_homing_max: 70		# Maximum homing distance to the mmu_gear endstop (if MMU is fitted with one)
+gate_preload_homing_max: 70             # Maximum homing distance to the mmu_gear endstop (if MMU is fitted with one)
 gate_unload_buffer: 50			# Amount to reduce the fast unload so that filament doesn't overshoot when parking
-gate_load_retries: 2			# Number of times MMU will attempt to grab the filament on initial load (max 5)
 gate_parking_distance: 23 		# Parking postion in the gate (distance back from gate endstop/encoder point)
 gate_endstop_to_encoder: 10		# Distance between gate endstop and encoder (IF both fitted. +ve if encoder after endstop)
 gate_autoload: 1			# If pre-gate sensor fitted this controls the automatic loading of the gate
@@ -217,7 +175,7 @@ bowden_pre_unload_error_tolerance: 50
 #
 extruder_homing_max: 80			# Maximum distance to advance in order to attempt to home the extruder
 extruder_homing_endstop: collision	# Filament homing method/endstop name (fallback if toolhead sensor not available)
-extruder_homing_buffer: 25		# Amount to reduce the fast bowden load so filament doesn't overshoot the extruder homing point
+extruder_homing_buffer: 30		# Amount to reduce the fast bowden load so filament doesn't overshoot the extruder homing point
 extruder_collision_homing_current: 30	# % gear_stepper current (10%-100%) to use when homing to extruder homing (100 to disable)
 
 # In the absence of a toolhead sensor Happy Hare will automatically default to extruder entrance detection regardless
@@ -336,9 +294,7 @@ slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder 
 # If equipped with TMC drivers the current of the gear and extruder motors can be controlled to optimize performance.
 # This can be useful to control gear stepper temperature when printing with synchronized motor
 #
-sync_to_extruder: 0			# Gear motor is synchronized to extruder during print
 sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
-sync_form_tip: 0			# Synchronize during standalone tip formation (initial part of unload)
 
 # Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
 # extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
@@ -468,10 +424,9 @@ autotune_rotation_distance: 0   # Automated gate calibration/tuning (requires en
 #
 # Other workflow options
 #
-startup_home_if_unloaded: 0	# 1 = force mmu homing on startup if unloaded, 0 = do nothing
+startup_home_if_unloaded: 0	# 1 = force homing of MMU on startup if unloaded, 0 = do nothing
 startup_reset_ttg_map: 0	# 1 = reset TTG map on startup, 0 = do nothing
 show_error_dialog: 0		# 1 = show pop-up dialog in addition to console message, 0 = show error in console
-preload_attempts: 5		# How many "grabbing" attempts are made to pick up the filament with preload feature
 strict_filament_recovery: 0	# If enabled with MMU with toolhead sensor, this will cause filament position recovery to
 				# perform extra moves to look for filament trapped in the space after extruder but before sensor
 filament_recovery_on_pause: 1	# 1 = Run a quick check to determine current filament position on pause/error, 0 = disable
@@ -566,24 +521,3 @@ espooler_stop_macro: ''					# Called to stop eSpooler if fitted (params: GATE, D
 #
 # Tool:                T0      T1      T2      T3      T4      T5      T6      T7      T8
 #tool_to_gate_map:     0,      1,      2,      3,      4,      5,      6,      7,      8
-
-
-# ADVANCED/CUSTOM MMU: See documentation for use of these ------------------------------------------------------------
-#  ██████╗██╗   ██╗███████╗████████╗ ██████╗ ███╗   ███╗    ███╗   ███╗███╗   ███╗██╗   ██╗
-# ██╔════╝██║   ██║██╔════╝╚══██╔══╝██╔═══██╗████╗ ████║    ████╗ ████║████╗ ████║██║   ██║
-# ██║     ██║   ██║███████╗   ██║   ██║   ██║██╔████╔██║    ██╔████╔██║██╔████╔██║██║   ██║
-# ██║     ██║   ██║╚════██║   ██║   ██║   ██║██║╚██╔╝██║    ██║╚██╔╝██║██║╚██╔╝██║██║   ██║
-# ╚██████╗╚██████╔╝███████║   ██║   ╚██████╔╝██║ ╚═╝ ██║    ██║ ╚═╝ ██║██║ ╚═╝ ██║╚██████╔╝
-#  ╚═════╝ ╚═════╝ ╚══════╝   ╚═╝    ╚═════╝ ╚═╝     ╚═╝    ╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝ 
-#
-# Normally all these settings are set based on your choice of 'mmu_vendor' and 'mmu_version' in mmu_hardware.cfg, but they
-# can be overridden. If you have selected a vendor of "Other" and your MMU has a selector you must set these CAD based
-# dimensions else you will get arbitary defaults. You may also need to set additional attributes in '[mmu_machine]'
-# section of mmu_hardware.cfg.
-#
-#cad_gate0_pos: 4.2			# Approximate distance from endstop to first gate. Used for rough calibration only
-#cad_gate_width: 21.0			# Width of each gate
-#cad_bypass_offset: 0			# Distance from limit of travel back to the bypass (ERCF v2.0)
-#cad_last_gate_offset: 2.0		# Distance from limit of travel back to last gate
-#cad_selector_tolerance: 10.0 		# How much extra selector movement to allow
-
