@@ -1022,7 +1022,7 @@ class RotarySelector:
         self.cad_bypass_block_delta = mmu.config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1 only
         self.cad_selector_tolerance = mmu.config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
         self.cad_bypass_block_delta = mmu.config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.)
-        self.cad_gate_directions = list(mmu.config.getintlist('cad_gate_directions',self.cad_gate_directions))
+        self.cad_gate_directions = list(mmu.config.getintlist('cad_gate_directions', self.cad_gate_directions))
         self.cad_release_gates = list(mmu.config.getintlist('cad_release_gates', self.cad_release_gates))
         self.cad_selector_hard_endstop = mmu.config.getint('cad_selector_hard_endstop', self.cad_selector_hard_endstop, minval=0, maxval=1)
 
@@ -1241,13 +1241,20 @@ class RotarySelector:
                 self.mmu.reinit()
                 #self.servo.servo_move()
                 successful = False
-                if gate != -1:
-                    successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
-                else:
-                    successful = self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
 
-                if not any(x == -1 for x in self.selector_offsets):
-                    self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+                if not self.cad_selector_hard_endstop:
+                    if gate != -1:
+                        successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
+                    else:
+                        successful = self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
+
+                    if not any(x == -1 for x in self.selector_offsets):
+                        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+                else:
+                    self.mmu.log_always("NO Endstop will calculate gate offsets from cad_gate0_offset and cad_gate_width")
+                    self.selector_offsets = [round(self.cad_gate0_pos + i * self.cad_gate_width, 1) for i in range(self.mmu.num_gates)]
+                    self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
+                    successful = True
 
                 # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
                 if successful:
