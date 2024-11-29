@@ -116,9 +116,9 @@ if BOARD_TYPE_MMB_1_1
   endif
 
   config PIN_ENCODER
-    default "PA1" 
+    default "PA1" if MMU_HAS_ENCODER
   config PIN_NEOPIXEL
     default "PA2" 
   config PIN_GATE_SENSOR
-    default "PA3" 
+    default "PA3" if !MMU_HAS_ENCODER 
 endif

@@ -26,8 +26,12 @@ if PARAM_SELECTOR_TYPE = "LinearSelector"
   config PARAM_SERVO_DURATION
     string "Servo duration"
     default "0.4"
-  config PARAM_SERVO_ALWAYS_ACTIVE
+  config SERVO_ALWAYS_ACTIVE
     bool "Servo always active?"
+  config PARAM_SERVO_ALWAYS_ACTIVE
+    int
+    default 1 if SERVO_ALWAYS_ACTIVE
+    default 0
   config PARAM_SELECTOR_RUN_CURRENT
     string "Selector run current"
     default "0.5"

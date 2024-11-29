@@ -8,11 +8,16 @@ config ENABLE_SELECTOR_TOUCH
     Not recommended if you are new to MMU/Happy-Hare.
     The MCU must have DIAG output for steppers. Possible to configure later.
 
+config PARAM_ENABLE_SELECTOR_TOUCH
+  int
+  default 1 if ENABLE_SELECTOR_TOUCH
+  default 0
+
 if BOARD_TYPE_EASY_BRD
   comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
-    depends on SELECTOR_TOUCH
+    depends on ENABLE_SELECTOR_TOUCH
   comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
-    depends on !SELECTOR_TOUCH
+    depends on !ENABLE_SELECTOR_TOUCH
 endif
 
 config ENABLE_CLOG_DETECT
@@ -28,6 +33,7 @@ config PARAM_ENABLE_CLOG_DETECTION
   int 
   default 2 if ENABLE_AUTO_CLOG_DETECT
   default 1 if ENABLE_CLOG_DETECT
+  default 0
 
 config ENABLE_ENDLESS_SPOOL
   bool "Enable EndlessSpool?"
@@ -37,6 +43,7 @@ config ENABLE_ENDLESS_SPOOL
 config PARAM_ENABLE_ENDLESS_SPOOL
   int
   default 1 if ENABLE_ENDLESS_SPOOL
+  default 0
 
 choice CHOICE_SPOOLMAN_SUPPORT
   prompt "Select spool manager support"

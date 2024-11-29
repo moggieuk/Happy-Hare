@@ -35,5 +35,5 @@ if BOARD_TYPE_EASY_BRD_RP2040
   config PIN_ENCODER
     default "gpio3" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "gpio3"  
+    default "gpio3" if !MMU_HAS_ENCODER 
 endif

@@ -30,10 +30,10 @@ if BOARD_TYPE_EASY_BRD
   config PIN_SELECTOR_ENDSTOP
     default "PB9" if !MMU_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
-    default "PA4" 
+    default "PA5" 
 
   config PIN_ENCODER
     default "PA6" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "PA6"  
+    default "PA6" if !MMU_HAS_ENCODER
 endif

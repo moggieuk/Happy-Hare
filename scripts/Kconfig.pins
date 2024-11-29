@@ -160,6 +160,7 @@ config PIN_NEOPIXEL
 
 config PIN_GATE_SENSOR
   string "Gate sensor pin"
+  depends on !MMU_HAS_ENCODER
 
 config PIN_EXTRUDER_SENSOR
   string "Extruder sensor pin"

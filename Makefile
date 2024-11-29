@@ -14,10 +14,10 @@ Q ?= @
 export SRC ?= $(CURDIR)
 
 # Use the name of the 'name.config' file as the out_name directory, or 'out' if just '.config' is used
-ifeq ($(basename $(KCONFIG_CONFIG)),)
+ifeq ($(basename $(notdir $(KCONFIG_CONFIG))),)
   export OUT ?= $(CURDIR)/out
 else
-  export OUT ?= $(CURDIR)/out_$(basename $(KCONFIG_CONFIG))
+  export OUT ?= $(CURDIR)/out_$(basename $(notdir $(KCONFIG_CONFIG)))
 endif
 
 export IN=$(OUT)/in
@@ -66,9 +66,9 @@ hh_config_files = $(patsubst config/%,%,$(wildcard config/*.cfg config/**/*.cfg)
 hh_moonraker_components = $(patsubst components/%,%,$(wildcard components/*.py))
 
 # use sudo if the klipper home is at a system location
-SUDO:=$(shell [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && echo "sudo " || echo "")
+SUDO:=$(shell [ -d $(KLIPPER_HOME) ] && [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && echo "sudo " || echo "")
 
-export CONFIGS_TO_PARSE = $(patsubst config/%,$(IN)/mmu/%,$(wildcard $(addprefix config/, \
+hh_configs_to_parse = $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
 	base/mmu.cfg \
 	base/mmu_parameters.cfg \
 	base/mmu_hardware.cfg \
@@ -100,7 +100,7 @@ install = \
 
 link = \
 	mkdir -p $(dir $(2)); \
-	ln -sf "$(1)" "$(2)";
+	ln -sf "$(abspath $(1))" "$(2)";
 
 backup_ext ::= .old-$(shell date '+%Y%m%d-%H%M%S')
 backup_name = $(addsuffix $(backup_ext),$(1))
@@ -117,7 +117,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG)
-.PHONY: update menuconfig install uninstall check_root check_files check_version diff check build clean
+.PHONY: update menuconfig install uninstall check_root check_version diff check build clean
 .SECONDARY: $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE)) \
@@ -127,32 +127,28 @@ FORCE:
 
 ### Build targets
 
-# Copy existing config files to the out/in directory to break circular dependency
-$(IN)/%: FORCE 
-	$(Q)mkdir -p "${@D}"
-	$(Q)if [ -f "$(KLIPPER_CONFIG_HOME)/$*" ]; then \
-		cp -af "$(KLIPPER_CONFIG_HOME)/$*" "$@"; \
-	else \
-		[ -f "$@" ] || touch "$@"; \
-		[ ! -s "$@" ] || truncate -s 0 "$@"; \
-	fi
+# Link existing config files to the out/in directory to break circular dependency
+$(IN)/%:
+	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths"; exit 1; }
+	$(Q)$(call link,$(KLIPPER_CONFIG_HOME)/$*,$@)
 
 ifneq ($(wildcard $(KCONFIG_CONFIG)),) # To prevent make errors when .config is not yet created
 
 # Copy existing moonraker.conf and printer.cfg to the out directory
-$(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F)
+$(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F) 
 	$(info Copying $(MOONRAKER_CONFIG_FILE) to '$(notdir $(OUT))' directory)
-	$(Q)cp -a "$<" "$@" # Copy the current version to the out directory
+	$(Q)cp -aL "$<" "$@" # Copy the current version to the out directory
+	$(Q)chmod +w "$@" # Make sure the file is writable
 	$(Q)$(SRC)/scripts/build.sh install-moonraker "$@"
 
-$(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F)
+$(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F) 
 	$(info Copying $(PRINTER_CONFIG_FILE) to '$(notdir $(OUT))' directory)
-	$(Q)cp -a "$<" "$@" # Copy the current version to the out directory
+	$(Q)cp -aL "$<" "$@" # Copy the current version to the out directory
+	$(Q)chmod +w "$@" # Make sure the file is writable
 	$(Q)$(SRC)/scripts/build.sh install-includes "$@"
 
-endif
 
-$(OUT)/params.tmp: $(CONFIGS_TO_PARSE)
+$(OUT)/params.tmp: FORCE $(hh_configs_to_parse) | $(OUT)
 	$(Q)$(SRC)/scripts/build.sh parse-params
 
 # We link all config files, those that need to be updated will be written over in the install script
@@ -170,13 +166,16 @@ $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-$(build_targets): $(KCONFIG_CONFIG) | $(OUT) update check_files check_version 
+$(build_targets): $(KCONFIG_CONFIG) | $(OUT) update check_version 
 
 build: $(build_targets)
 
 
-ifneq ($(wildcard $(KCONFIG_CONFIG)),) # To prevent make errors when .config is not yet created
 ### Install targets
+# Check whether the required paths exist
+$(KLIPPER_HOME)/klippy/extras $(MOONRAKER_HOME)/moonraker/components:
+	$(error The directory '$@' does not exist. Please check your config for the correct paths)
+
 $(KLIPPER_HOME)/%: $(OUT)/% | $(KLIPPER_HOME)/klippy/extras
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
@@ -208,6 +207,7 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 	$(Q)$(call backup,$(basename $@))
 
 endif
+
 $(install_targets): | build
 
 install: $(install_targets)
@@ -247,14 +247,6 @@ check:
 
 check_version:
 	$(Q)$(SRC)/scripts/build.sh check-version
-
-# Check whether the required paths exist
-$(KLIPPER_HOME)/klippy/extras $(MOONRAKER_HOME)/moonraker/components:
-	$(error The directory '$@' does not exist. Please check your config for the correct paths)
-
-check_files:
-	$(Q)[ -f $(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE) ] || { echo "The file '$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE)' does not exist. Please check your config for the correct paths"; exit 1; }
-	$(Q)[ -f $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE) ] || { echo "The file '$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)' does not exist. Please check your config for the correct paths"; exit 1; }
 
 $(KCONFIG_CONFIG): $(SRC)/scripts/Kconfig
 # if KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig

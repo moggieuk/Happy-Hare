@@ -62,7 +62,7 @@ if BOARD_TYPE_ERB_2
   config PIN_ENCODER
     default "gpio22" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "gpio25"
+    default "gpio25" if !MMU_HAS_ENCODER
   config PIN_NEOPIXEL
     default "gpio21"
 endif

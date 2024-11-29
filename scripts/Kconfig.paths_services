@@ -24,7 +24,7 @@
     config HAPPY_HARE_HOME
       string "Happy Hare directory"
       default "$(SRC)"
-    config GCODES_PATH
+    config PARAM_GCODES_PATH
       string "Gcodes directory"
       default "/usr/data/printer_data/gcodes" if $(to_bool, [ -e "/usr/data/printer_data" ])
       default "~/printer_data/gcodes"

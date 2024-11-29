@@ -58,7 +58,7 @@ if BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
   config PIN_ENCODER
     default "gpio15" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "gpio15"
+    default "gpio15" if !MMU_HAS_ENCODER
   config PIN_NEOPIXEL
     default "gpio14"
 endif

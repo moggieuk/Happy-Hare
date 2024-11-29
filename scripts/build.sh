@@ -14,7 +14,7 @@
 shopt -s extglob
 
 # shellcheck source=.config
-source "./${KCONFIG_CONFIG:-.config}"
+source "${KCONFIG_CONFIG:-.config}"
 source "scripts/upgrades.sh"
 
 SRC=${SRC:-.}
@@ -603,7 +603,7 @@ copy_config_files() {
 
     log_info "Building file ${src#"${SRC}/config/"}..."
 
-    cp -a --remove-destination "${src}" "${dest}"
+    cp -aL --remove-destination "${src}" "${dest}"
 
     local sed_expr=
     for var in $(declare | grep "^CONFIG_PIN_"); do
@@ -647,7 +647,7 @@ copy_config_files() {
         duplicate_section "post_gear_switch_pin_0:" "" "0" "${NUM_GATES} - 1" "${dest}"
 
         # Correct shared uart_address for EASY-BRD
-        if [ "${CONFIG_MMU_BOARD_TYPE}" == "EASY-BRD" ]; then
+        if [ "${CONFIG_BOARD_TYPE_EASY_BRD}" == "y" ]; then
             # Share uart_pin to avoid duplicate alias problem
             sed_expr+="s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; "
         else
@@ -719,6 +719,7 @@ copy_config_files() {
 
     # Variables macro ---------------------------------------------------------------------
     if [ "${filename}" == "base/mmu_macro_vars.cfg" ]; then
+        sed_expr+="s|{mmu_vars_cfg}|${CONFIG_KLIPPER_CONFIG_HOME}/mmu/mmu_vars.cfg|; "
         duplicate_section "\[gcode_macro T0\]" "$" "0" "${NUM_GATES} - 1" "${dest}"
     fi
 
@@ -741,7 +742,11 @@ install_include() {
 
     if ! grep -q "\[include ${include}\]" "${dest}"; then
         log_info "Adding include ${1} to ${dest#"${SRC}/"}"
-        sed -i "1i [include ${include}]" "${dest}"
+        if [ -s "${dest}" ]; then
+            sed -i "1i [include ${include}]" "${dest}"
+        else
+            echo "[include ${1}]" >"${dest}"
+        fi
     fi
 }
 
