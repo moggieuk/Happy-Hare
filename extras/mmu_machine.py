@@ -788,6 +788,11 @@ class MmuPrinterRail(stepper.PrinterRail, object):
     def is_endstop_virtual(self, name):
         return name in self.virtual_endstops if name else False
 
+    def set_direction(self, direction):
+        for stepper in self.steppers:
+            stepper.set_dir_inverted(direction)
+            
+
     class MockEndstop:
         def add_stepper(self, *args, **kwargs):
             pass
