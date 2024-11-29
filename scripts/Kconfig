@@ -1,0 +1,87 @@
+happy_hare_version = 3.00
+formatted_version = $(shell, echo "$(happy_hare_version)" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
+
+mainmenu "Happy Hare $(formatted_version) Configuration"
+
+### Helper functions
+# Used to convert a shell command result to a y/n value
+to_bool = $(shell, $(1) && echo y || echo n)
+
+# Used to get the serial device paths
+serial=$(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
+serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
+serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "PARAM_SERIAL_" toupper($0)}')
+
+### Start of configuration
+config PARAM_HAPPY_HARE_VERSION
+  string	
+  default "$(happy_hare_version)"
+
+config F_VERSION
+  string
+  default "$(formatted_version)"
+
+comment '					'
+comment '(\\_/)					'
+comment '( *,*)					'
+comment '(")_(") Happy Hare version $(formatted_version) 	'	
+comment '					'
+
+config INIT_SYSTEMD
+  bool
+  default $(to_bool, [ -d /etc/systemd/system ])
+
+rsource "types/Kconfig"
+
+config MMU_HAS_ENCODER
+  bool
+
+rsource "boards/Kconfig"
+rsource "Kconfig.serial"
+
+config PARAM_NUM_GATES
+  int "Number of gates"
+  default 12
+
+rsource "servos/Kconfig"
+
+menu "Options"
+  rsource "Kconfig.options"
+endmenu
+
+menu "Addons"
+  rsource "addons/Kconfig.*"
+endmenu
+
+menu "Advanced settings"
+  menu "Paths & Services"
+    rsource "Kconfig.paths_services"
+  endmenu
+
+  menu "Pins"
+    rsource "Kconfig.pins"
+  endmenu
+
+  menu "Motors"
+    rsource "Kconfig.motors"
+  endmenu
+
+  menu "Endstops"
+    rsource "Kconfig.endstops"
+  endmenu
+
+  menu "Parameters"
+    visible if MMU_TYPE_CUSTOM
+    rsource "Kconfig.params"
+  endmenu
+
+  config REPETIER
+    bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS
+
+  config REPETIER_NAME
+    string "Repetier name"
+    depends on REPETIER
+
+  config OCTOPRINT
+    bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
+endmenu

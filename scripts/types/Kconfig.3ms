@@ -1,0 +1,37 @@
+choice CHOICE_MMU_TYPE
+  config MMU_TYPE_3MS_1
+    bool "3MS v1.0"
+    select VARIABLE_ROTATION_DISTANCES
+    select FILAMENT_ALWAYS_GRIPPED
+endchoice
+
+if MMU_TYPE_3MS_1
+  config PARAM_MMU_VENDOR
+    default "3MS"
+  config MMU_BASE_VERSION
+    default "1.0"
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "1:1"
+  config PARAM_GEAR_RUN_CURRENT
+    default "0.7"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.1"
+  config PARAM_GEAR_HOMING_SPEED
+    default "80"
+  config PARAM_GATE_HOMING_MAX
+    default "500"
+  config PARAM_GATE_PARKING_DISTANCE
+    default "250"
+
+  config PARAM_SELECTOR_TYPE
+    default "VirtualSelector"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_EXTRUDER
+  endchoice
+  
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+  endchoice
+endif 

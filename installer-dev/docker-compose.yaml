@@ -1,19 +1,22 @@
 services:
-  _base: &base
-    build: .
+  debian:
+    build:
+      context: .
+      dockerfile: Dockerfile.debian
     environment:
-      HOME: /opt
+      - PRINTER_DATA=/home/klippy/printer_data
+    env_file: .env
     volumes:
-      - ./entrypoint.sh:/entrypoint.sh
-      - ./config:/opt/printer_data/config
-      - ../:/opt/Happy-Hare
-    entrypoint: /entrypoint.sh
-    command: ./install.sh -sz
+      - ./config:/home/klippy/printer_data/config
+      - ../:/home/klippy/Happy-Hare
 
-  install: 
-    << : *base
-    command: ./install.sh -siz
-  
-  upgrade: 
-    << : *base
-    command: ./install.sh -sz
+  alpine:
+    build:
+      context: .
+      dockerfile: Dockerfile.alpine
+    environment:
+      - PRINTER_DATA=/usr/data/printer_data
+    env_file: .env
+    volumes:
+      - ./config:/usr/data/printer_data/config
+      - ../:/usr/data/Happy-Hare
