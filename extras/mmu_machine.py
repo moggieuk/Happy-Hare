@@ -132,7 +132,7 @@ class MmuMachine:
             filament_always_gripped = 1
 
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector','RotarySelector']}, selector_type)
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'RotarySelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
@@ -577,7 +577,7 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_machine.selector_type == 'LinearSelector' or self.mmu_machine.selector_type == 'RotarySelector':
+        if self.mmu_machine.selector_type in {'LinearSelector', 'RotarySelector'}:
             self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         else:

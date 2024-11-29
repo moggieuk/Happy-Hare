@@ -5568,7 +5568,9 @@ class Mmu:
 
     def select_gate(self, gate):
         #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected else ""))
-        if gate == self.gate_selected: return
+        # RotarySelector moves off gate to release so we must go through the process
+        if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)):
+            return
         try:
             self._next_gate = gate # Valid only during the gate selection process
             self.selector.select_gate(gate)
@@ -5584,7 +5586,7 @@ class Mmu:
         self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
 
     def select_tool(self, tool, move_servo=True):
-        #self.log_error("PAUL TEMP: selet_tool(%s)" % tool)
+        #self.log_error("PAUL TEMP: select_tool(%s)" % tool)
         if tool < 0 or tool >= self.num_gates:
             self.log_always("Tool %d does not exist" % tool)
             return
@@ -5623,9 +5625,8 @@ class Mmu:
 
     def _set_gate_selected(self, gate):
         #self.log_error("PAUL TEMP: _set_gate_selected(%d)" % gate)
-        if gate != self.gate_selected:
-            self.gate_selected = gate
-            self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
+        self.gate_selected = gate
+        self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
         self._update_sync_multiplier() # Refine rotation distance based on sync feedback status
         self.active_filament = {
