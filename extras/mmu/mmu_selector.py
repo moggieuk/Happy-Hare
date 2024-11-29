@@ -400,10 +400,10 @@ class LinearSelector:
                     self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
 
                 # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-                if successful:
-                    self.mmu.log_always("Selector calibration complete. Will home ready for use")
-                    self.mmu.home(tool=0, force_unload=False)
-                elif not self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR or not successful:
+                if successful and self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR:
+                    self.mmu.log_always("Selector calibration complete")
+                    self.mmu.select_tool(0)
+                else:
                     self.mmu.motors_off(motor="selector")
 
         except MmuError as ee:
@@ -499,7 +499,7 @@ class LinearSelector:
             else:
                 self.mmu.log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
                 if gate == 0:
-                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % self.mmu.num_gates - 1)
+                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % (self.mmu.num_gates - 1))
         return True
 
     # Fully automated selector offset calibration
@@ -1179,7 +1179,8 @@ class RotarySelector:
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', minval=0, maxval=self.mmu.mmu_machine.num_gates - 1)
+        quick = gcmd.get_int('QUICK', 0, minval=0, maxval=1)
+        gate = gcmd.get_int('GATE', 0, minval=0, maxval=self.mmu.mmu_machine.num_gates - 1)
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
@@ -1188,10 +1189,10 @@ class RotarySelector:
                 successful = False
 
                 endstop = self.selector_rail.get_endstops() # Have an endstop (most likely stallguard)?
-                if endstop:
+                if endstop and not quick:
                     successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
                 else:
-                    self.mmu.log_always("No endstop will calculate gate offsets from cad_gate0_offset and cad_gate_width")
+                    self.mmu.log_always("%s - will calculate gate offsets from cad_gate0_offset and cad_gate_width" % ("Quick method" if quick else "No endstop configured"))
                     self.selector_offsets = [round(self.cad_gate0_pos + i * self.cad_gate_width, 1) for i in range(self.mmu.num_gates)]
                     self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
                     successful = True
@@ -1200,10 +1201,10 @@ class RotarySelector:
                     self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
 
                 # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-                if successful:
-                    self.mmu.log_always("Selector calibration complete. Will home ready for use")
-                    self.mmu.home(tool=0, force_unload=False)
-                elif not self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR or not successful:
+                if successful and self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR:
+                    self.mmu.log_always("Selector calibration complete")
+                    self.mmu.select_tool(0)
+                else:
                     self.mmu.motors_off(motor="selector")
 
         except MmuError as ee:
@@ -1261,13 +1262,13 @@ class RotarySelector:
 
         if save:
             self.selector_offsets[gate] = round(traveled, 1)
-            if (
-                extrapolate and gate == self.mmu.num_gates - 1  and self.selector_offsets[0] > 0 or
-                extrapolate and gate == 0 and self.selector_offsets[-1] > 0
-            ):
-                # Distribute selector spacing
+            if extrapolate and gate == self.mmu.num_gates - 1 and self.selector_offsets[0] > 0:
+                # Distribute selector spacing based on measurements of first and last gate
                 spacing = (self.selector_offsets[-1] - self.selector_offsets[0]) / (self.mmu.num_gates - 1)
                 self.selector_offsets = [round(self.selector_offsets[0] + i * spacing, 1) for i in range(self.mmu.num_gates)]
+            elif extrapolate:
+                # Distribute using cad spacing
+                self.selector_offsets = [round(self.selector_offsets[0] + i * self.cad_gate_width, 1) for i in range(self.mmu.num_gates)]
             else:
                 extrapolate = False
             self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
@@ -1275,9 +1276,9 @@ class RotarySelector:
             if extrapolate:
                 self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
             else:
-                self.mmu.log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
+                self.mmu.log_always("Selector offset (%.1fmm) for gate %d has been saved" % (traveled, gate))
                 if gate == 0:
-                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % self.mmu.num_gates - 1)
+                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % (self.mmu.num_gates - 1))
         return True
 
     def _home_selector(self):
@@ -1296,8 +1297,9 @@ class RotarySelector:
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
 
     def _home_hard_endstop(self):
+        self.mmu.log_always("Forcing selector homing to hard endstop. Excuse the noise!\n(Configure stallguard endstop on selector stepper to avoid)")
         self.set_position(self._get_max_selector_movement()) # Worst case position to allow full movement
-        self.move("Forceably homing to hard endstop of selector. Excuse the noise!", new_pos=0, speed=self.selector_homing_speed)
+        self.move("Forceably homing to hard endstop", new_pos=0, speed=self.selector_homing_speed)
         self.set_position(0) # Reset pos
 
     def _position(self, target):
