@@ -419,7 +419,7 @@ class LinearSelector:
         if self.mmu.check_if_not_calibrated(self.mmu.CALIBRATED_SELECTOR): return
         loops = gcmd.get_int('LOOP', 100)
         servo = bool(gcmd.get_int('SERVO', 0))
-        home = bool(gcmd.get_int('HOME', 1))
+        home = bool(gcmd.get_int('HOME', 0))
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
                 if home:
@@ -1219,7 +1219,7 @@ class RotarySelector:
         if self.mmu.check_if_loaded(): return
         if self.mmu.check_if_not_calibrated(self.mmu.CALIBRATED_SELECTOR): return
         loops = gcmd.get_int('LOOP', 100)
-        home = bool(gcmd.get_int('HOME', 1))
+        home = bool(gcmd.get_int('HOME', 0))
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
                 if home:
