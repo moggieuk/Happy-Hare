@@ -3957,9 +3957,8 @@ class Mmu:
             if homed:
                 self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
             else:
-                self.log_info("Error ejecting filament - filament did not reach gate homing sensor: %s" % endstop_name)
-                return # TODO Check callers. Probably should be an MmuError()
-        
+                raise MmuError("Error ejecting filament - filament did not reach gate homing sensor: %s" % endstop_name)
+
         if self.gate_final_eject_distance > 0:
             self.trace_filament_move("Ejecting filament out of gate", -self.gate_final_eject_distance)
 
@@ -4584,6 +4583,10 @@ class Mmu:
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._initialize_filament_position(dwell=None)
 
+        # PRE_LOAD user defined macro
+        with self._wrap_track_time('pre_load'):
+            self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
+
         try:
             self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
 
@@ -4657,6 +4660,10 @@ class Mmu:
             if not self.is_printing():
                 self.selector.filament_release()
 
+            # POST_LOAD user defined macro
+            with self._wrap_track_time('post_load'):
+                self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True, restore_sync=True)
+
     def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False, runout=False):
         self.movequeues_wait()
 
@@ -4678,6 +4685,10 @@ class Mmu:
             self.log_debug("Filament already ejected")
             self._auto_filament_grip()
             return
+
+        # PRE_UNLOAD user defined macro
+        with self._wrap_track_time('pre_unload'):
+            self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True, restore_sync=True)
 
         try:
             self.log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
@@ -4761,9 +4772,8 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
                     self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
                     raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
-            else:
-                self.selector.filament_release()
 
+            self.selector.filament_release()
             self.movequeues_wait()
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
@@ -4785,6 +4795,10 @@ class Mmu:
                 self._track_gate_statistics('unloads', self.gate_selected)
             if not extruder_only:
                 self._set_action(current_action)
+
+            # POST_UNLOAD user defined macro
+            with self._wrap_track_time('post_unload'):
+                self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
     # Form tip prior to extraction from the extruder. This can take the form of shaping the filament or could simply
     # activate a filament cutting mechanism. Sets filament position based on park pos
@@ -5510,13 +5524,13 @@ class Mmu:
             else:
                 raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
 
-        with self._wrap_track_time('pre_load'):
-            self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
+#PAUL        with self._wrap_track_time('pre_load'):
+#PAUL            self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
         self.load_sequence()
         self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate the spool in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
-        with self._wrap_track_time('post_load'):
-            self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True, restore_sync=True)
+#PAUL        with self._wrap_track_time('post_load'):
+#PAUL            self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True, restore_sync=True)
 
     # Primary method to unload current tool but retain selection
     def _unload_tool(self, form_tip=None, runout=False):
@@ -5526,13 +5540,13 @@ class Mmu:
 
         self.log_debug("Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
-        with self._wrap_track_time('pre_unload'):
-            self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True, restore_sync=True)
+#PAUL        with self._wrap_track_time('pre_unload'):
+#PAUL            self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True, restore_sync=True)
         self._record_tool_override() # Remember M220 and M221 overrides
         self.unload_sequence(form_tip=form_tip if not None else self.FORM_TIP_STANDALONE, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
-        with self._wrap_track_time('post_unload'):
-            self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
+#PAUL        with self._wrap_track_time('post_unload'):
+#PAUL            self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
     def _auto_home(self, tool=0):
         if not self.selector.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
