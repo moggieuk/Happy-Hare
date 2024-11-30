@@ -4773,7 +4773,6 @@ class Mmu:
                     self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
                     raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
 
-            self.selector.filament_release()
             self.movequeues_wait()
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
@@ -4799,6 +4798,8 @@ class Mmu:
             # POST_UNLOAD user defined macro
             with self._wrap_track_time('post_unload'):
                 self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
+
+            self.selector.filament_release()
 
     # Form tip prior to extraction from the extruder. This can take the form of shaping the filament or could simply
     # activate a filament cutting mechanism. Sets filament position based on park pos
