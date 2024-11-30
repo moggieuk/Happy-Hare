@@ -4579,13 +4579,10 @@ class Mmu:
         if bowden_move > bowden_length:
             self.log_info("Warning: Restricting bowden load length to calibrated value of %.1fmm" % bowden_length)
         full = bowden_move == bowden_length
+        run_macros = full and not extruder_only
 
         self._set_filament_direction(self.DIRECTION_LOAD)
         self._initialize_filament_position(dwell=None)
-
-        # PRE_LOAD user defined macro
-        with self._wrap_track_time('pre_load'):
-            self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
 
         try:
             self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
@@ -4599,6 +4596,11 @@ class Mmu:
                 else:
                     skip_extruder = True
                 current_action = self._set_action(self.ACTION_LOADING)
+
+            # PRE_LOAD user defined macro
+            if run_macros:
+                with self._wrap_track_time('pre_load'):
+                    self._wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
 
             homing_movement = None # Track how much homing is done for calibrated bowden length optimization
             bowden_move_ratio = 0. # Track mismatch in moved vs measured bowden distance
@@ -4647,10 +4649,16 @@ class Mmu:
             if full and not extruder_only and not self.gcode_load_sequence:
                 self._autotune(self.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
 
+            # POST_LOAD user defined macro
+            if run_macros:
+                with self._wrap_track_time('post_load'):
+                    self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True, restore_sync=True)
+
         except MmuError as ee:
             if full:
                 self._track_gate_statistics('load_failures', self.gate_selected)
             raise MmuError("Load sequence failed: %s" % (str(ee)))
+
         finally:
             if full:
                 self._track_time_end('load')
@@ -4659,10 +4667,6 @@ class Mmu:
                 self._set_action(current_action)
             if not self.is_printing():
                 self.selector.filament_release()
-
-            # POST_LOAD user defined macro
-            with self._wrap_track_time('post_load'):
-                self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True, restore_sync=True)
 
     def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False, runout=False):
         self.movequeues_wait()
@@ -4673,6 +4677,7 @@ class Mmu:
         if bowden_move > bowden_length:
             self.log_info("Warning: Restricting bowden unload length to calibrated value of %.1fmm" % bowden_length)
         full = bowden_move == bowden_length
+        run_macros = full and not extruder_only
 
         self._set_filament_direction(self.DIRECTION_UNLOAD)
         self._initialize_filament_position(dwell=None)
@@ -4686,10 +4691,6 @@ class Mmu:
             self._auto_filament_grip()
             return
 
-        # PRE_UNLOAD user defined macro
-        with self._wrap_track_time('pre_unload'):
-            self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True, restore_sync=True)
-
         try:
             self.log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
 
@@ -4697,6 +4698,11 @@ class Mmu:
                 current_action = self._set_action(self.ACTION_UNLOADING)
                 self._display_visual_state()
                 self._track_time_start('unload')
+
+            # PRE_UNLOAD user defined macro
+            if run_macros:
+                with self._wrap_track_time('pre_unload'):
+                    self._wrap_gcode_command(self.pre_unload_macro, exception=True, wait=True, restore_sync=True)
 
             park_pos = 0.
             form_tip = form_tip if not None else self.FORM_TIP_STANDALONE
@@ -4765,13 +4771,14 @@ class Mmu:
             if runout:
                 self._eject_from_gate()
 
-            # Encoder based validation test
-            if self._can_use_encoder():
-                movement = self.selector.filament_release(measure=True)
-                if movement > self.encoder_min:
-                    self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
-                    self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
-                    raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
+# Disabled because it results in servo "flutter" that users don't like
+#            # Encoder based validation test
+#            if self._can_use_encoder():
+#                movement = self.selector.filament_release(measure=True)
+#                if movement > self.encoder_min:
+#                    self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
+#                    self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
+#                    raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
 
             self.movequeues_wait()
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
@@ -4782,6 +4789,11 @@ class Mmu:
             # Finally autotune calibrated bowden length
             if full and not extruder_only and not self.gcode_unload_sequence:
                 self._autotune(self.DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
+
+            # POST_UNLOAD user defined macro
+            if run_macros:
+                with self._wrap_track_time('post_unload'):
+                    self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
         except MmuError as ee:
             if not extruder_only:
@@ -4794,12 +4806,8 @@ class Mmu:
                 self._track_gate_statistics('unloads', self.gate_selected)
             if not extruder_only:
                 self._set_action(current_action)
-
-            # POST_UNLOAD user defined macro
-            with self._wrap_track_time('post_unload'):
-                self._wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
-
-            self.selector.filament_release()
+            if not self.is_printing():
+                self.selector.filament_release()
 
     # Form tip prior to extraction from the extruder. This can take the form of shaping the filament or could simply
     # activate a filament cutting mechanism. Sets filament position based on park pos
@@ -5166,7 +5174,7 @@ class Mmu:
             if self.filament_pos != self.FILAMENT_POS_UNLOADED and self.TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
                 self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER GATE=xx to correct state")
             elif self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
-                self.log_error("Filament not detected as unloaded or fully loaded. Please confirm and use MMU_RECOVER to correct state or fix before continuing")
+                self.log_error("Filament not detected as either unloaded or fully loaded. Please confirm and use MMU_RECOVER to correct state or fix before continuing")
 
     # This is a recovery routine to determine the most conservative location of the filament for unload purposes
     def recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
@@ -5322,17 +5330,17 @@ class Mmu:
             return self.mmu_toolhead.sync(new_sync_mode)
         return new_sync_mode
 
-    # This is used to protect the in print synchronization state and is used as an outermost wrapper for
-    # calls back into Happy Hare during a print. It ensures that grip (servo) and current are correctly restored,
-    # but like the rest of Happy Hare it employs lazy grip (servo) movement to reduce "flutter"
+    # This is used to protect the in print synchronization state and is used as an outermost wrapper for calls back
+    # into Happy Hare during a print. It ensures that grip (e.g. servo) and current are correctly restored
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
         prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
         prev_current = self.gear_percentage_run_current != 100
+        prev_grip = self.selector.get_filament_grip_state()
         try:
             yield self
         finally:
-            self.sync_gear_to_extruder(prev_sync, grip=True, current=prev_current)
+            self.sync_gear_to_extruder(prev_sync, grip=prev_grip != self.selector.get_filament_grip_state(), current=prev_current)
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
     # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
