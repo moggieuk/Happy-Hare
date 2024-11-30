@@ -779,10 +779,10 @@ copy_config_files() {
                 sed "/^# ENCODER/,+24 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-            # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
+            # Handle Selector options - Delete if not required (sections are 8 and 38 lines respectively)
             if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_SELECTOR" == "no" ]; then
                 sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                sed "/^# SELECTOR STEPPER/,+35 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                sed "/^# SELECTOR STEPPER/,+37 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
 
                 # Expand out the additional filament drive for each gate
                 additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
