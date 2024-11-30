@@ -981,8 +981,8 @@ class RotarySelector:
         # Process config
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
         self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', 100, minval=1.)
-        self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.) # Not used with 3DChameleon
-        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1) # Not used with 3DChameleon
+        self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.) # Not used with 3DChameleon but allows for param in config
+        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1) # Not used with 3DChameleon but allows for param in config
 
         # To simplfy config CAD related parameters are set based on vendor and version setting
         #
@@ -1033,6 +1033,10 @@ class RotarySelector:
         self.mmu_toolhead = self.mmu.mmu_toolhead
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
+
+        # Have an endstop (most likely stallguard)?
+        endstops = self.selector_rail.get_endstops()
+        self.has_endstop = bool(endstops) and endstops[0][0].__class__.__name__ != "MockEndstop"
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
         self.selector_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
@@ -1188,8 +1192,7 @@ class RotarySelector:
                 self.mmu.reinit()
                 successful = False
 
-                endstop = self.selector_rail.get_endstops() # Have an endstop (most likely stallguard)?
-                if endstop and not quick:
+                if self.has_endstop and not quick:
                     successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
                 else:
                     self.mmu.log_always("%s - will calculate gate offsets from cad_gate0_offset and cad_gate_width" % ("Quick method" if quick else "No endstop configured"))
@@ -1285,8 +1288,7 @@ class RotarySelector:
         self.mmu.unselect_gate()
         self.mmu.movequeues_wait()
         try:
-            endstop = self.selector_rail.get_endstops() # Have an endstop (most likely stallguard)?
-            if endstop:
+            if self.has_endstop:
                 homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
                 homing_state.set_axes([0])
                 self.mmu.mmu_toolhead.get_kinematics().home(homing_state)
