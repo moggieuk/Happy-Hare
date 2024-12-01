@@ -12,11 +12,12 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import ast, random, logging, time, contextlib, math, os.path, re, unicodedata
+import gc, ast, random, logging, time, contextlib, math, os.path, re, unicodedata
 
 # Klipper imports
 import chelper
 from extras.homing import Homing, HomingMove
+from extras.tmc import TMCCommandHelper
 
 # Happy Hare imports
 from extras              import mmu_machine
@@ -35,7 +36,7 @@ from .mmu_sensor_manager import MmuSensorManager
 
 # Main klipper module
 class Mmu:
-    VERSION = 3.00 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 3.01 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
@@ -708,6 +709,12 @@ class Mmu:
         self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
         self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
+        # Use gc to find all TMC current helpers indexed by stepper name - used for direct stepper current control
+        self.tmc_current_helpers = {
+            obj.stepper_name: obj.current_helper
+            for obj in gc.get_objects() if isinstance(obj, TMCCommandHelper)
+        }
+
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
         if self.print_stats is None:
@@ -1227,9 +1234,6 @@ class Mmu:
 
     def _wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
-#            if restore_sync and self.selector.get_filament_grip_state() == self.FILAMENT_DRIVE_STATE:
-#                # If filament is gripped then we must be synced for this macro but don't mess with stepper current
-#                self.sync_gear_to_extruder(True, current=None)
             macro = command.split()[0]
             if variables is not None:
                 gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro)
@@ -4432,9 +4436,8 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY)
                     self._set_filament_position(-(self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder))
 
-                # Extra pedantic validation if we have toolhead sensor
-                # TODO There have been reports of this failing, perhaps because of klipper's late update of sensor state?
-                #      So fromer MmuError() has been changed to error message
+                # TODO There have been reports of this failing, perhaps because of klipper's late update of sensor state? Maybe query_endstop instead
+                #      So former MmuError() has been changed to error message
                 if self.sensor_manager.check_sensor(self.ENDSTOP_TOOLHEAD):
                     self.log_error("Warning: Toolhead sensor still reports filament is present in toolhead! Possible sensor malfunction\nWill attempt to continue...")
 
@@ -5395,23 +5398,27 @@ class Mmu:
 
     def _adjust_extruder_current(self, percent=100, reason=""):
         if self.extruder_tmc and 0 < percent < 200 and percent != self.extruder_percentage_run_current:
-            self.log_info("Modifying extruder stepper run current to %d%% %s" % (percent, reason))
-            self._set_tmc_current(self.extruder_name, (self.extruder_default_run_current * percent) / 100., self.extruder_tmc)
+            msg = "Modifying extruder stepper run current to %d%% ({:.2f}A) %s" % (percent, reason)
+            self._set_tmc_current(self.extruder_name, (self.extruder_default_run_current * percent) / 100., msg)
             self.extruder_percentage_run_current = percent
 
     def _restore_extruder_current(self):
         if self.extruder_tmc and self.extruder_percentage_run_current != 100:
-            self.log_info("Restoring extruder stepper run current to 100% configured")
-            self._set_tmc_current(self.extruder_name, self.extruder_default_run_current, self.extruder_tmc)
+            msg="Restoring extruder stepper run current to 100% configured ({:.2f}A)"
+            self._set_tmc_current(self.extruder_name, self.extruder_default_run_current, msg)
             self.extruder_percentage_run_current = 100
 
-    def _set_tmc_current(self, stepper, run_current, tmc):
-        self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
-        # Duplicate klipper logic to avoid duplicate console messages (except klipper doesn't expose the cmdhelper object)
-        #if tmc:
-        #    print_time = self.toolhead.get_last_move_time()
-        #    prev_cur, prev_hold_cur, req_hold_cur, max_cur = tmc.current_helper.get_current()
-        #    tmc.current_helper.set_current(min(run_current, max_cur), req_hold_current, print_time)
+    # Alter the stepper current without console logging and not too early
+    def _set_tmc_current(self, stepper, run_current, msg):
+        current_helper = self.tmc_current_helpers.get(stepper, None)
+        if current_helper:
+            print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time())
+            prev_cur, prev_hold_cur, req_hold_cur, max_cur = current_helper.get_current()
+            new_cur = min(run_current, max_cur)
+            current_helper.set_current(new_cur, req_hold_cur, print_time)
+            self.log_info(msg.format(new_cur))
+        else:
+            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
 
     @contextlib.contextmanager
     def _wrap_pressure_advance(self, pa=0, reason=""):
@@ -5429,7 +5436,7 @@ class Mmu:
                 self._set_pressure_advance(initial_pa)
 
     def _set_pressure_advance(self, pa):
-        self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f" % pa) # TODO Possible to avoid klipper console messages?
+        self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f QUIET=1" % pa)
 
     # Logic shared with MMU_TEST_MOVE and _MMU_STEP_MOVE
     def _move_cmd(self, gcmd, trace_str):
@@ -5590,7 +5597,7 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected else ""))
+        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)) else ""))
         # RotarySelector moves off gate to release so we must go through the process
         if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)):
             return
