@@ -271,7 +271,7 @@ verify_home_dirs() {
 # Silently cleanup any potentially old klippy modules
 cleanup_old_klippy_modules() {
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        for file in mmu.py mmu_toolhead.py; do
+        for file in mmu.py mmu_toolhead.py mmu_config_setup.py; do
             rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
         done
     fi
