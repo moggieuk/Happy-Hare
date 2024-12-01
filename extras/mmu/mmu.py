@@ -710,10 +710,10 @@ class Mmu:
         self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
         # Use gc to find all TMC current helpers - used for direct stepper current control
-        tmc_current_helpers = {}
+        self.tmc_current_helpers = {}
         for obj in gc.get_objects():
             if isinstance(obj, TMCCommandHelper):
-                tmc_current_helpers[obj.stepper_name] = obj.current_helper
+                self.tmc_current_helpers[obj.stepper_name] = obj.current_helper
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
