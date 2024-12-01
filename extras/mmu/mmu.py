@@ -709,11 +709,11 @@ class Mmu:
         self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
         self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
-        # Use gc to find all TMC current helpers indexed by stepper name - used for direct stepper current control
-        self.tmc_current_helpers = {
-            obj.stepper_name: obj.current_helper
-            for obj in gc.get_objects() if isinstance(obj, TMCCommandHelper)
-        }
+        # Use gc to find all TMC current helpers - used for direct stepper current control
+        tmc_current_helpers = {}
+        for obj in gc.get_objects():
+            if isinstance(obj, TMCCommandHelper):
+                tmc_current_helpers[obj.stepper_name] = obj.current_helper
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
@@ -5368,14 +5368,14 @@ class Mmu:
 
     def _adjust_gear_current(self, percent=100, reason=""):
         if self.gear_tmc and 0 < percent < 200 and percent != self.gear_percentage_run_current:
-            self.log_info("Modifying MMU gear stepper run current to %d%% %s" % (percent, reason))
-            self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, (self.gear_default_run_current * percent) / 100., self.gear_tmc)
+            msg = "Modifying MMU gear stepper run current to %d%% ({:.2f}A) %s" % (percent, reason)
+            self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, (self.gear_default_run_current * percent) / 100., msg)
             self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
-            self.log_info("Restoring MMU gear stepper run current to %d%% configured" % self.gear_restore_percent_run_current)
-            self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, self.gear_default_run_current, self.gear_tmc)
+            msg="Restoring MMU gear stepper run current to %d%% configured ({:.2f}A)" % self.gear_restore_percent_run_current
+            self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, self.gear_default_run_current, msg)
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
     @contextlib.contextmanager
