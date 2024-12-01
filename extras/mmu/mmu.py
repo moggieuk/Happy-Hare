@@ -1189,7 +1189,8 @@ class Mmu:
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
+        fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<1}".format(d) for d in str(f).split('.')[1])
+
         try:
             # Splash...
             msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % fversion(self.config_version)
@@ -5374,7 +5375,7 @@ class Mmu:
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
-            msg="Restoring MMU gear stepper run current to %d%% configured ({:.2f}A)" % self.gear_restore_percent_run_current
+            msg = "Restoring MMU gear stepper run current to %d%% configured ({:.2f}A)" % self.gear_restore_percent_run_current
             self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, self.gear_default_run_current, msg)
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
@@ -5412,11 +5413,15 @@ class Mmu:
     def _set_tmc_current(self, stepper, run_current, msg):
         current_helper = self.tmc_current_helpers.get(stepper, None)
         if current_helper:
-            print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time())
-            prev_cur, prev_hold_cur, req_hold_cur, max_cur = current_helper.get_current()
-            new_cur = min(run_current, max_cur)
-            current_helper.set_current(new_cur, req_hold_cur, print_time)
-            self.log_info(msg.format(new_cur))
+            try:
+                print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time())
+                prev_cur, prev_hold_cur, req_hold_cur, max_cur = current_helper.get_current()
+                new_cur = min(run_current, max_cur)
+                current_helper.set_current(new_cur, req_hold_cur, print_time)
+                self.log_info(msg.format(new_cur))
+            except Exception as e:
+                # Fallback
+                self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
         else:
             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
 
