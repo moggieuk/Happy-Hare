@@ -5330,10 +5330,12 @@ class Mmu:
         if current and sync:
             self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
         else:
+# PAUL
 #    # current: True=optionally reduce, False=restore to current default, None=don't mess
 #        elif current is False:
             self._restore_gear_current()
 
+# PAUL
 # XXX We used to wait() every sync change call. Keeping this logic as a reminder in case of issues with new conditional logic
 #        self.movequeues_wait() # Safety but should not be required(?)
 #        return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
@@ -5370,12 +5372,14 @@ class Mmu:
     def _adjust_gear_current(self, percent=100, reason=""):
         if self.gear_tmc and 0 < percent < 200 and percent != self.gear_percentage_run_current:
             msg = "Modifying MMU gear stepper run current to %d%% ({:.2f}A) %s" % (percent, reason)
+# PAUL which gear stepper?
             self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, (self.gear_default_run_current * percent) / 100., msg)
             self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
             msg = "Restoring MMU gear stepper run current to %d%% configured ({:.2f}A)" % self.gear_restore_percent_run_current
+# PAUL which gear stepper?
             self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, self.gear_default_run_current, msg)
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
@@ -5416,11 +5420,12 @@ class Mmu:
             try:
                 print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time())
                 prev_cur, prev_hold_cur, req_hold_cur, max_cur = current_helper.get_current()
-                new_cur = min(run_current, max_cur)
+                new_cur = max(min(run_current, max_cur), 0)
                 current_helper.set_current(new_cur, req_hold_cur, print_time)
                 self.log_info(msg.format(new_cur))
             except Exception as e:
                 # Fallback
+                self.log_debug("Unexpected error setting stepper current: %s. Falling back to default approach" % str(e))
                 self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
         else:
             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
