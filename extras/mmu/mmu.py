@@ -12,7 +12,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import gc, ast, random, logging, time, contextlib, math, os.path, re, unicodedata
+import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unicodedata
 
 # Klipper imports
 import chelper
@@ -437,8 +437,9 @@ class Mmu:
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
-        self.test_always_wait = config.getint('test_always_wait', 0, minval=0, maxval=1)
-        self.test_sync_movequeues = config.getint('test_sync_movequeues', 0, minval=0, maxval=1)
+
+        self.test_always_wait = config.getint('test_always_wait', 0, minval=0, maxval=1) # PAUL TEMP
+        self.test_sync_movequeues = config.getint('test_sync_movequeues', 0, minval=0, maxval=1) # PAUL TEMP
 
         # Klipper tuning (aka hacks)
         # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing
@@ -714,9 +715,8 @@ class Mmu:
         # Use gc to find all TMC current helpers - used for direct stepper current control
         self.tmc_current_helpers = {}
         for obj in gc.get_objects():
-            if isinstance(obj, TMCCommandHelper):
+            if isinstance(obj, TMCCommandHelper) and sys.getrefcount(obj) > 2:
                 self.tmc_current_helpers[obj.stepper_name] = obj.current_helper
-                #self.log_debug("PAUL TEMP: stepper_name=%s" % obj.stepper_name)
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
@@ -4964,7 +4964,7 @@ class Mmu:
     # All moves return: actual (relative), homed, measured, delta; mmu_toolhead.get_position[1] holds absolute position
     #
     def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, sync=False, wait=False, encoder_dwell=False):
-        sync = sync or self.test_sync_movequeues # PAUL TEMP
+        sync = sync or self.test_sync_movequeues # PAUL TEMP added test_sync_movequeues
         self.mmu_toolhead.unsync() # Precaution
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         pos = self.mmu_toolhead.get_position()

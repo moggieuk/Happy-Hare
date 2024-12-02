@@ -251,7 +251,7 @@ class MmuTest:
             loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
             for i in range(loop):
                 stop_on_endstop = random.randint(0, 1) * 2 - 1
-                self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d" % stop_on_endstop)
+                self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d DEBUG=1" % stop_on_endstop)
                 self.mmu.mmu_toolhead.get_last_move_time() # Try to provoke TTC
 
         if gcmd.get_int('AUTO_CALIBRATE', 0, minval=0, maxval=1):
