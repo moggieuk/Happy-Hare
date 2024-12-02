@@ -437,6 +437,8 @@ class Mmu:
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
+        self.test_always_wait = config.getint('test_always_wait', 0, minval=0, maxval=1)
+        self.test_sync_movequeues = config.getint('test_sync_movequeues', 0, minval=0, maxval=1)
 
         # Klipper tuning (aka hacks)
         # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing
@@ -714,6 +716,7 @@ class Mmu:
         for obj in gc.get_objects():
             if isinstance(obj, TMCCommandHelper):
                 self.tmc_current_helpers[obj.stepper_name] = obj.current_helper
+                #self.log_debug("PAUL TEMP: stepper_name=%s" % obj.stepper_name)
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
@@ -4961,6 +4964,7 @@ class Mmu:
     # All moves return: actual (relative), homed, measured, delta; mmu_toolhead.get_position[1] holds absolute position
     #
     def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, sync=False, wait=False, encoder_dwell=False):
+        sync = sync or self.test_sync_movequeues # PAUL TEMP
         self.mmu_toolhead.unsync() # Precaution
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         pos = self.mmu_toolhead.get_position()
@@ -5316,7 +5320,7 @@ class Mmu:
 
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
-        if (gate is None and self.gate_selected < 0) or (gate is not None and gate < 0):
+        if (gate or self.gate_selected) < 0:
             sync = current = False
         elif self.mmu_machine.filament_always_gripped:
             sync = current = True
@@ -5327,18 +5331,19 @@ class Mmu:
             else:
                 self._auto_filament_grip()
 
-        if current and sync:
-            self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
-        else:
-# PAUL
-#    # current: True=optionally reduce, False=restore to current default, None=don't mess
-#        elif current is False:
-            self._restore_gear_current()
+        # Reduced gear current not supported for multi-gear designs
+        if not self.mmu_machine.multigear:
+            if current and sync:
+                self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
+            else:
+                self._restore_gear_current()
 
 # PAUL
 # XXX We used to wait() every sync change call. Keeping this logic as a reminder in case of issues with new conditional logic
-#        self.movequeues_wait() # Safety but should not be required(?)
-#        return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+        if self.test_always_wait:
+            self.movequeues_wait() # Safety but should not be required(?)
+            return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+# PAUL ^^^
         new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
         if new_sync_mode != self.mmu_toolhead.sync_mode:
             self.movequeues_wait() # Safety but should not be required(?)
@@ -5371,21 +5376,26 @@ class Mmu:
 
     def _adjust_gear_current(self, percent=100, reason=""):
         if self.gear_tmc and 0 < percent < 200 and percent != self.gear_percentage_run_current:
+            gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
+            if self.mmu_machine.multigear and self.gate_selected > 0:
+                gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, self.gate_selected)
             msg = "Modifying MMU gear stepper run current to %d%% ({:.2f}A) %s" % (percent, reason)
-# PAUL which gear stepper?
-            self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, (self.gear_default_run_current * percent) / 100., msg)
+            self._set_tmc_current(gear_stepper_name, (self.gear_default_run_current * percent) / 100., msg)
             self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
+            gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
+            if self.mmu_machine.multigear and self.gate_selected > 0:
+                gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, self.gate_selected)
             msg = "Restoring MMU gear stepper run current to %d%% configured ({:.2f}A)" % self.gear_restore_percent_run_current
-# PAUL which gear stepper?
-            self._set_tmc_current(mmu_machine.GEAR_STEPPER_CONFIG, self.gear_default_run_current, msg)
+            self._set_tmc_current(gear_stepper_name, self.gear_default_run_current, msg)
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
     @contextlib.contextmanager
     def _wrap_gear_current(self, percent=100, reason=""):
         self._adjust_gear_current(percent, reason)
+# PAUL don't understand comment below.. logic doesn't feel right
         self.gear_restore_percent_run_current = percent # This will force restoration to this current not original (collision detection case)
         try:
             yield self
