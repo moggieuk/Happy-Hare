@@ -438,7 +438,6 @@ class Mmu:
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
 
-        self.ttc_always_wait = bool(config.getint('ttc_always_wait', 0, minval=0, maxval=1)) # PAUL TEMP
         self.ttc_sync_movequeues = bool(config.getint('ttc_sync_movequeues', 0, minval=0, maxval=1)) # PAUL TEMP
 
         # Klipper tuning (aka hacks)
@@ -4964,7 +4963,7 @@ class Mmu:
     # All moves return: actual (relative), homed, measured, delta; mmu_toolhead.get_position[1] holds absolute position
     #
     def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, sync=False, wait=False, encoder_dwell=False):
-        sync = sync or self.ttc_sync_movequeues # PAUL TEMP added ttc_sync_movequeues
+        sync = sync or self.ttc_sync_movequeues # PAUL TEMP added
         self.mmu_toolhead.unsync() # Precaution
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         pos = self.mmu_toolhead.get_position()
@@ -5315,7 +5314,6 @@ class Mmu:
     # Sync/unsync gear motor with extruder, handle filament engagement and current control
     # grip: True=grip/release, False=don't mess
     # current: True=optionally reduce, False=restore to current default
-    # Returns True if the gear was previously synced, otherwise False
     def sync_gear_to_extruder(self, sync, gate=None, grip=False, current=False):
 
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
@@ -5331,24 +5329,18 @@ class Mmu:
             else:
                 self._auto_filament_grip()
 
-        # Reduced gear current not supported for multi-gear designs
+        # Sync / Unsync
+        new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
+        if new_sync_mode != self.mmu_toolhead.sync_mode:
+            self.movequeues_wait() # Safety but should not be required(?)
+            self.mmu_toolhead.sync(new_sync_mode)
+
+        # Set gear current (not supported for multi-gear designs)
         if not self.mmu_machine.multigear:
             if current and sync:
                 self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
             else:
                 self._restore_gear_current()
-
-# PAUL
-# XXX We used to wait() every sync change call. Keeping this logic as a reminder in case of issues with new conditional logic
-        if self.ttc_always_wait:
-            self.movequeues_wait() # Safety but should not be required(?)
-            return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
-# PAUL ^^^
-        new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
-        if new_sync_mode != self.mmu_toolhead.sync_mode:
-            self.movequeues_wait() # Safety but should not be required(?)
-            return self.mmu_toolhead.sync(new_sync_mode)
-        return new_sync_mode
 
     # This is used to protect the in print synchronization state and is used as an outermost wrapper for calls back
     # into Happy Hare during a print. It also ensures that grip (e.g. servo) and current are correctly restored
