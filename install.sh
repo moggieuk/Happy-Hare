@@ -772,6 +772,14 @@ copy_config_files() {
                     s/^#\(extra_endstop_names: mmu_sel_touch\)/\1/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+            elif [ "${SETUP_SELECTOR_STALLGUARD_HOMING}" == "yes" ]; then
+                cat ${dest} | sed -e "\
+                    s/^#\(diag_pin: \^mmu:MMU_SEL_DIAG\)/\1/; \
+                    s/^#\(driver_SGTHRS: 75\)/\1/; \
+                    s/^endstop_pin: ^mmu:MMU_SEL_ENDSTOP.*$/endstop_pin: tmc2209_stepper_mmu_selector:virtual_endstop/; \
+                    s/^#\(homing_retract_dist\)/\1/; \
+                        " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
             # Do all the token substitution
@@ -1421,6 +1429,8 @@ questionaire() {
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+            _hw_sel_run_current=0.63
+            _hw_sel_hold_current=0.2
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=500
@@ -1635,28 +1645,45 @@ questionaire() {
             ;;
     esac
 
-    if [ "${HAS_SELECTOR}" == "yes" -a "$SETUP_SELECTOR_TOUCH" != "no" ]; then
+    if [ "${HAS_SELECTOR}" == "yes" ]; then
 
-        echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
-        echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers. Can configure later${INPUT}"
-        yn=$(prompt_yn "Enable selector touch operation")
-        echo
-        case $yn in
-            y)
-                if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
-                    echo
-                    echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
-                fi
-                SETUP_SELECTOR_TOUCH=yes
-                ;;
-            n)
-                if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
-                    echo
-                    echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
-                fi
-                SETUP_SELECTOR_TOUCH=no
-                ;;
-        esac
+        if [ "$SETUP_SELECTOR_TOUCH" != "no" ]; then
+            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
+            echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for selector stepper. Can configure later${INPUT}"
+            yn=$(prompt_yn "Enable selector touch operation")
+            echo
+            case $yn in
+                y)
+                    if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
+                        echo
+                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
+                    fi
+                    SETUP_SELECTOR_TOUCH=yes
+                    ;;
+                n)
+                    if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
+                        echo
+                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
+                    fi
+                    SETUP_SELECTOR_TOUCH=no
+                    ;;
+            esac
+        fi
+
+        if [ "$SETUP_SELECTOR_TOUCH" == "no" ]; then
+            echo -e "${PROMPT}${SECTION}Selector homing using TMC Stallguard? This prevents the need for hard endstop homing but must be tuned"
+            echo -e "MCU must have DIAG output for selector stepper. Can configure later${INPUT}"
+            yn=$(prompt_yn "Enable selector stallguard homing")
+            echo
+            case $yn in
+                y)
+                    SETUP_SELECTOR_STALLGUARD_HOMING=yes
+                    ;;
+                n)
+                    SETUP_SELECTOR_STALLGUARD_HOMING=no
+                    ;;
+            esac
+        fi
 
         if [ "${_hw_mmu_vendor}" == "ERCF" ]; then
             _hw_maximum_servo_angle=180
