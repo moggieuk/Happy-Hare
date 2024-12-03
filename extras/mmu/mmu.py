@@ -438,8 +438,8 @@ class Mmu:
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
 
-        self.test_always_wait = config.getint('test_always_wait', 0, minval=0, maxval=1) # PAUL TEMP
-        self.test_sync_movequeues = config.getint('test_sync_movequeues', 0, minval=0, maxval=1) # PAUL TEMP
+        self.ttc_always_wait = bool(config.getint('ttc_always_wait', 0, minval=0, maxval=1)) # PAUL TEMP
+        self.ttc_sync_movequeues = bool(config.getint('ttc_sync_movequeues', 0, minval=0, maxval=1)) # PAUL TEMP
 
         # Klipper tuning (aka hacks)
         # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing
@@ -4964,7 +4964,7 @@ class Mmu:
     # All moves return: actual (relative), homed, measured, delta; mmu_toolhead.get_position[1] holds absolute position
     #
     def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, sync=False, wait=False, encoder_dwell=False):
-        sync = sync or self.test_sync_movequeues # PAUL TEMP added test_sync_movequeues
+        sync = sync or self.ttc_sync_movequeues # PAUL TEMP added ttc_sync_movequeues
         self.mmu_toolhead.unsync() # Precaution
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         pos = self.mmu_toolhead.get_position()
@@ -5340,7 +5340,7 @@ class Mmu:
 
 # PAUL
 # XXX We used to wait() every sync change call. Keeping this logic as a reminder in case of issues with new conditional logic
-        if self.test_always_wait:
+        if self.ttc_always_wait:
             self.movequeues_wait() # Safety but should not be required(?)
             return self.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None) == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
 # PAUL ^^^
@@ -5364,11 +5364,12 @@ class Mmu:
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
     # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
-    # grip (servo) movment or current control since that would lead to unecessary "flutter" and prematurely wear
+    # grip (servo) movment control since that would lead to unecessary "flutter" and prematurely wear
     @contextlib.contextmanager
     def _wrap_sync_mode(self, sync_mode):
         prev_sync_mode = self.mmu_toolhead.sync_mode
         self.mmu_toolhead.sync(sync_mode)
+        self._restore_gear_current() # PAUL added
         try:
             yield self
         finally:
@@ -5394,14 +5395,13 @@ class Mmu:
 
     @contextlib.contextmanager
     def _wrap_gear_current(self, percent=100, reason=""):
+        self.gear_restore_percent_run_current = self.gear_percentage_run_current
         self._adjust_gear_current(percent, reason)
-# PAUL don't understand comment below.. logic doesn't feel right
-        self.gear_restore_percent_run_current = percent # This will force restoration to this current not original (collision detection case)
         try:
             yield self
         finally:
-            self.gear_restore_percent_run_current = 100
             self._restore_gear_current()
+            self.gear_restore_percent_run_current = 100
 
     @contextlib.contextmanager
     def _wrap_extruder_current(self, percent=100, reason=""):

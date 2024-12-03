@@ -1,6 +1,9 @@
 ########################################################################################################################
 # Happy Hare MMU Software
 #
+# Template file for MMU's with Virtual Selector (Type-B designs like Box Turtle, Night Owl, Angry Beaver, ...)
+# This file omits selector and selector-servo configuration and a few other options that don't make sense
+#
 # EDIT THIS FILE BASED ON YOUR SETUP
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com

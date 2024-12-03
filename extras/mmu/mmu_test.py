@@ -250,9 +250,15 @@ class MmuTest:
         if gcmd.get_int('TTC_TEST', 0, minval=0, maxval=1):
             loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
             for i in range(loop):
+                if self.mmu.mmu_machine.multigear:
+                    self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
                 stop_on_endstop = random.randint(0, 1) * 2 - 1
-                self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=extruder MOVE=10 ENDSTOP=extruder STOP_ON_ENDSTOP=%d DEBUG=1" % stop_on_endstop)
-                self.mmu.mmu_toolhead.get_last_move_time() # Try to provoke TTC
+                motor = "extruder" if random.randint(0, 1) else "gear+extruder"
+                self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=5 ENDSTOP=toolhead STOP_ON_ENDSTOP=%d DEBUG=1" % (motor, stop_on_endstop))
+                if random.randint(0, 1):
+                    self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=5 DEBUG=1" % motor)
+                if random.randint(0, 1):
+                    self.mmu.mmu_toolhead.get_last_move_time() # Try to provoke TTC
 
         if gcmd.get_int('AUTO_CALIBRATE', 0, minval=0, maxval=1):
             gate = gcmd.get_int('GATE', 0, minval=-2, maxval=8)
