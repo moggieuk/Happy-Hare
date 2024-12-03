@@ -453,12 +453,20 @@ read_previous_mmu_type() {
             HAS_SELECTOR="no"
         fi
     fi
+    HAS_SERVO="yes"
+    dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    if [ -f "${dest_cfg}" ]; then
+        if ! grep -q "^\[mmu_servo selector_servo\]" "${dest_cfg}"; then
+            HAS_SERVO="no"
+        fi
+    fi
 }
 
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     if [ "$HAS_SELECTOR" == "no" ]; then
+        # Virtual Selector
         parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.vs" ""            "_param_" "checkdup"
     else
         parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""               "_param_" "checkdup"
@@ -780,23 +788,29 @@ copy_config_files() {
             fi
 
             # Handle Selector options - Delete if not required (sections are 8 and 38 lines respectively)
-            if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_SELECTOR" == "no" ]; then
-                sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                sed "/^# SELECTOR STEPPER/,+37 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            if [ "${file}" == "mmu_hardware.cfg" ]; then
+                if [ "$HAS_SELECTOR" == "no" ]; then
+                    sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    sed "/^# SELECTOR STEPPER/,+37 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
 
-                # Expand out the additional filament drive for each gate
-                additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
-                awk '{ print } /^# ADDITIONAL FILAMENT DRIVE/ { for (i=1; i<=11; i++) { getline; print }; exit }' ${dest} > ${dest}.tmp
-                for (( i=2; i<=$(expr $_hw_num_gates - 1); i++ ))
-                do
+                    # Expand out the additional filament drive for each gate
+                    additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
+                    awk '{ print } /^# ADDITIONAL FILAMENT DRIVE/ { for (i=1; i<=11; i++) { getline; print }; exit }' ${dest} > ${dest}.tmp
+                    for (( i=2; i<=$(expr $_hw_num_gates - 1); i++ ))
+                    do
                     echo "$(echo "${additional_gear_section}" | sed "s/_1/_$i/g")" >> ${dest}.tmp
-                    echo >> ${dest}.tmp
-                done
-                awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        echo >> ${dest}.tmp
+                    done
+                    awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
 
-            else
-                # Delete additional gear drivers template section
-                sed "/^# ADDITIONAL FILAMENT DRIVE/,+10 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                else
+                    if [ "$HAS_SERVO" == "no" ]; then
+                        sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    fi
+
+                    # Delete additional gear drivers template section
+                    sed "/^# ADDITIONAL FILAMENT DRIVE/,+10 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                fi
             fi
 
         # Configuration parameters -----------------------------------------------------------
@@ -806,6 +820,10 @@ copy_config_files() {
                 update_copy_file "${src}.vs" "$dest" "" "_param_"
             else
                 update_copy_file "$src" "$dest" "" "_param_"
+                if [ "$HAS_SERVO" == "no" ]; then
+                    # Remove selector servo section
+                    sed "/^# Servo configuration/,+27 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                fi
             fi
 
             # Ensure that supplemental user added params are retained. These are those that are
@@ -1186,6 +1204,7 @@ questionaire() {
         "$ERCF11")
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
+            HAS_SERVO=yes
             _hw_mmu_vendor="ERCF"
             _hw_mmu_version="1.1"
             _hw_selector_type=LinearSelector
@@ -1235,6 +1254,7 @@ questionaire() {
         "$ERCF20")
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
+            HAS_SERVO=yes
             _hw_mmu_vendor="ERCF"
             _hw_mmu_version="2.0"
             _hw_selector_type=LinearSelector
@@ -1260,6 +1280,7 @@ questionaire() {
         "$TRADRACK")
             HAS_ENCODER=no
             HAS_SELECTOR=yes
+            HAS_SERVO=yes
             _hw_mmu_vendor="Tradrack"
             _hw_mmu_version="1.0"
             _hw_selector_type=LinearSelector
@@ -1296,6 +1317,7 @@ questionaire() {
         "$ANGRY_BEAVER")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            HAS_SERVO=no
             _hw_mmu_vendor="AngryBeaver"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1316,6 +1338,7 @@ questionaire() {
         "$BOX_TURTLE")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            HAS_SERVO=no
             ADDONS_DC_ESPOOLER=1
             _hw_mmu_vendor="BoxTurtle"
             _hw_mmu_version="1.0"
@@ -1341,6 +1364,7 @@ questionaire() {
         "$NIGHT_OWL")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            HAS_SERVO=no
             _hw_mmu_vendor="NightOwl"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1364,6 +1388,7 @@ questionaire() {
         "$_3MS")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            HAS_SERVO=no
             _hw_mmu_vendor="3MS"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1384,6 +1409,8 @@ questionaire() {
         "$_3D_CHAMELEON")
             HAS_ENCODER=no
             HAS_SELECTOR=yes
+            HAS_SERVO=no
+            SETUP_SELECTOR_TOUCH=no
             _hw_mmu_vendor="3DChameleon"
             _hw_mmu_version="1.0"
             _hw_selector_type=RotarySelector
@@ -1404,6 +1431,7 @@ questionaire() {
         *)
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
+            HAS_SERVO=yes
             SETUP_LED=yes
             SETUP_SELECTOR_TOUCH=no
             _hw_mmu_vendor="Other"
@@ -1422,14 +1450,14 @@ questionaire() {
             # This isn't meant to be all-inclusive of options. It is just to provide a config starting point that is close
             echo -e "${PROMPT}${SECTION}Which of these most closely resembles your MMU design (this allows for some tuning of config files)?{$INPUT}"
             OPTIONS=() # reset option array
-            option TYPE_A_WITH_ENCODER                          'Type-A (selector) with Encoder'
-            option TYPE_A_NO_ENCODER                            'Type-A (selector), No Encoder'
-            option TYPE_B_WITH_ENCODER                          'Type-B (mutliple filament drive steppers) with Encoder'
-            option TYPE_B_WITH_SHARED_GATE_AND_ENCODER          'Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder'
-            option TYPE_B_WITH_SHARED_GATE_NO_ENCODER           'Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder'
+            option TYPE_A_WITH_ENCODER                            'Type-A (selector) with Encoder'
+            option TYPE_A_NO_ENCODER                              'Type-A (selector), No Encoder'
+            option TYPE_B_WITH_ENCODER                            'Type-B (mutliple filament drive steppers) with Encoder'
+            option TYPE_B_WITH_SHARED_GATE_AND_ENCODER            'Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder'
+            option TYPE_B_WITH_SHARED_GATE_NO_ENCODER             'Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder'
             option TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER 'Type-B (multiple filament drive steppers) with individual post-gear sensors and Encoder'
             option TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_NO_ENCODER  'Type-B (multiple filament drive steppers) with individual post-gear sensors, No Encoder'
-            option OTHER                                        'Just turn on all options and let me configure'
+            option OTHER                                          'Just turn on all options and let me configure'
             prompt_option opt 'Type' "${OPTIONS[@]}"
             case "$opt" in
                 "$TYPE_A_WITH_ENCODER")
@@ -1447,6 +1475,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
@@ -1456,6 +1485,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_SHARED_GATE_AND_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
@@ -1465,6 +1495,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_SHARED_GATE_NO_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     HAS_ENCODER=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
@@ -1475,6 +1506,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
@@ -1484,6 +1516,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_NO_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     HAS_ENCODER=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
@@ -1602,7 +1635,8 @@ questionaire() {
             ;;
     esac
 
-    if [ "${HAS_SELECTOR}" == "yes" ]; then
+    if [ "${HAS_SELECTOR}" == "yes" -a "$SETUP_SELECTOR_TOUCH" != "no" ]; then
+
         echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
         echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers. Can configure later${INPUT}"
         yn=$(prompt_yn "Enable selector touch operation")
