@@ -438,8 +438,6 @@ class Mmu:
         self.test_disable_encoder = config.getint('test_disable_encoder', 0, minval=0, maxval=1)
         self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
 
-        self.ttc_sync_movequeues = bool(config.getint('ttc_sync_movequeues', 0, minval=0, maxval=1)) # PAUL TEMP
-
         # Klipper tuning (aka hacks)
         # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing
         # operations especially so with CANbus connected mcus. Happy Hare using many homing moves for reliable extruder loading
@@ -4955,15 +4953,13 @@ class Mmu:
     #         "mmu_ext_touch"  - stallguard on nozzle (when motor includes "extruder", only useful for motor="extruder")
     #
     # All move distances are interpreted as relative
-    # 'sync' will synchronize the MMU toolhead and Printer toolhead move queues before move
     # 'wait' will wait on appropriate move queue(s) after completion of move (forced to True if need encoder reading)
     # 'measure' whether we need to wait and measure encoder for movement
     # 'encoder_dwell' delay some additional time to ensure we have accurate encoder reading (if encoder fitted and required for measuring)
     #
     # All moves return: actual (relative), homed, measured, delta; mmu_toolhead.get_position[1] holds absolute position
     #
-    def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, sync=False, wait=False, encoder_dwell=False):
-        sync = sync or self.ttc_sync_movequeues # PAUL TEMP added
+    def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, wait=False, encoder_dwell=False):
         self.mmu_toolhead.unsync() # Precaution
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         pos = self.mmu_toolhead.get_position()
@@ -5022,9 +5018,6 @@ class Mmu:
             adjust = self.gate_speed_override[self.gate_selected] / 100.
             speed *= adjust
             accel *= adjust
-
-        if sync:
-            self.movequeues_sync()
 
         with self._wrap_espooler(motor, dist, speed, homing_move):
             wait = wait or self._wait_for_espooler # Allow eSpooler wrapper to force wait
@@ -5112,11 +5105,10 @@ class Mmu:
                         ext_pos[3] += dist
                         self.toolhead.move(ext_pos, speed)
 
+            self.mmu_toolhead.flush_step_generation() # TTC mitigation
+            self.toolhead.flush_step_generation()     # TTC mitigation
             if wait:
                 self.movequeues_wait()
-            else:
-                self.mmu_toolhead.flush_step_generation() # TTC mitigation
-                self.toolhead.flush_step_generation()     # TTC mitigation
 
         encoder_end = self.get_encoder_distance(dwell=encoder_dwell)
         measured = encoder_end - encoder_start
@@ -5361,7 +5353,7 @@ class Mmu:
     def _wrap_sync_mode(self, sync_mode):
         prev_sync_mode = self.mmu_toolhead.sync_mode
         self.mmu_toolhead.sync(sync_mode)
-        self._restore_gear_current() # PAUL added
+        self._restore_gear_current()
         try:
             yield self
         finally:
@@ -5459,7 +5451,6 @@ class Mmu:
         accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
         wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
-        sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1)) # Hidden option to sync printer toolhead and mmu toolhead before moving
         if motor not in ["gear", "extruder", "gear+extruder", "synced", "both"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder', 'synced' or 'both'")
         if motor == "extruder":
@@ -5467,7 +5458,7 @@ class Mmu:
         else:
             self.selector.filament_drive()
         self.log_debug("Moving '%s' motor %.1fmm..." % (motor, move))
-        return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, sync=sync, wait=wait)
+        return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, wait=wait)
 
     # Logic shared with MMU_TEST_HOMING_MOVE and _MMU_STEP_HOMING_MOVE
     def _homing_move_cmd(self, gcmd, trace_str):
@@ -5478,7 +5469,6 @@ class Mmu:
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None) # Ignored for extruder led moves
         motor = gcmd.get('MOTOR', "gear")
-        sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1)) # Hidden option to sync printer toolhead and mmu toolhead before moving
         if motor not in ["gear", "extruder", "gear+extruder"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")
         direction = -1 if move < 0 else 1
@@ -5493,7 +5483,7 @@ class Mmu:
         else:
             self.selector.filament_drive()
         self.log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
-        return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop, sync=sync)
+        return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop)
 
 
 ############################

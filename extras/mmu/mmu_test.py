@@ -42,7 +42,7 @@ class MmuTest:
             self.mmu.log_info("SEL_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP")
             self.mmu.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
             self.mmu.log_info("SEL_LOAD_TEST=1 : Load test selector movements. Params: HOME|LOOP")
-            self.mmu.log_info("TTC_TEST=1 : Provoke known TTC condition. Parms: LOOP")
+            self.mmu.log_info("TTC_TEST=1 : Provoke known TTC condition. Parms: LOOP|MIX|DEBUG")
             self.mmu.log_info("SYNC_G2E=1 : Sync gear to extruder")
             self.mmu.log_info("SYNC_E2G=1 : Sync extruder to gear. Params: EXTRUDER_ONLY")
             self.mmu.log_info("UNSYNC=1 : Unsync")
@@ -262,6 +262,20 @@ class MmuTest:
                     self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=5 DEBUG=%d" % (motor, debug))
                 if random.randint(0, 1):
                     self.mmu.mmu_toolhead.get_last_move_time() # Try to provoke TTC
+
+        if gcmd.get_int('TTC_TEST2', 0, minval=0, maxval=1):
+            loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
+            debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
+            mix = gcmd.get_int('MIX', 0, minval=0, maxval=1)
+            for i in range(loop):
+                stop_on_endstop = random.randint(-1, 1)
+                wait = random.randint(0, 1)
+                self.mmu.log_info("Loop: %d" % i)
+                motor = "gear+extruder" if random.randint(0, mix) else "extruder"
+                self.mmu.trace_filament_move("test", 5, motor=motor, homing_move=stop_on_endstop, endstop_name="toolhead", wait=wait)
+                if random.randint(0, 1):
+                    self.mmu.gcode.run_script_from_command("M83")
+                    self.mmu.gcode.run_script_from_command("G1 E5 F300")
 
         if gcmd.get_int('AUTO_CALIBRATE', 0, minval=0, maxval=1):
             gate = gcmd.get_int('GATE', 0, minval=-2, maxval=8)
