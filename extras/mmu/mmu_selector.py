@@ -492,7 +492,7 @@ class LinearSelector:
             else:
                 self.bypass_offset = round(traveled, 1)
                 extrapolate = False
-                self.mmu.save_variable(self.mmu.VARS_MMU_SELECTOR_BYPASS, self.mmu.bypass_offset, write=True)
+                self.mmu.save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, write=True)
 
             if extrapolate:
                 self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
