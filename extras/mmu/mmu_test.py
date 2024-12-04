@@ -197,7 +197,7 @@ class MmuTest:
                 self.mmu.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD")
                 self.mmu.log_info("Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" % (total, self.mmu._get_filament_position()))
             finally:
-                self.mmu.internal_test = True
+                self.mmu.internal_test = False
 
         if gcmd.get_int('SEL_MOVE', 0, minval=0, maxval=1):
             move = gcmd.get_float('MOVE', 10.)
