@@ -1355,7 +1355,7 @@ questionaire() {
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=1
-            _hw_gear_gear_ratio="1:1"
+            _hw_gear_gear_ratio="50:10"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="none"
@@ -1380,7 +1380,7 @@ questionaire() {
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=1
-            _hw_gear_gear_ratio="1:1"
+            _hw_gear_gear_ratio="50:10"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="none"
