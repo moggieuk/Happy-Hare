@@ -1897,6 +1897,7 @@ questionaire() {
     echo "        * Configure your operational preferences in mmu_macro_vars.cfg"
     echo 
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."
+    echo -e "    Join the dedicated Happy Hare forum here: ${EMPHASIZE}https://discord.gg/98TYYUf6f2${INFO}"
     echo
     echo "    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
     echo
