@@ -9,7 +9,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=2.72 # Important: Keep synced with mmy.py
+VERSION=2.73 # Important: Keep synced with mmy.py
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
@@ -790,6 +790,16 @@ read_previous_config() {
     if [ "${_param_toolhead_residual_filament}" == "0" -a ! "${_param_toolhead_ooze_reduction}" == "0" ]; then
         _param_toolhead_residual_filament=$_param_toolhead_ooze_reduction
         _param_toolhead_ooze_reduction=0
+    fi
+
+    # Blobifer update - Oct 13th 20204
+    if [ ! "${variable_iteration_z_raise}" == "" ]; then
+        echo -e "${INFO}Setting Blobifier variable_z_raise and variable_purge_length_maximum from previous settings"
+        variable_z_raise=$(awk -v iter_z_raise="$variable_iteration_z_raise" -v max_iter="$variable_max_iterations_per_blob" -v z_change="$variable_iteration_z_change" 'BEGIN {
+            triangular_value = (max_iter - 1) * max_iter / 2;
+            print iter_z_raise * max_iter - triangular_value * z_change;
+        }')
+        variable_purge_length_maximum=$(awk -v max_len="$variable_max_iteration_length" -v max_iter="$variable_max_iterations_per_blob" 'BEGIN { print max_len * max_iter }')
     fi
 }
 
