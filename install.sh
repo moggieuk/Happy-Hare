@@ -1080,6 +1080,9 @@ uninstall_update_manager() {
         else
             cat "${file}" | sed -e " \
                 /\[mmu_server\]/,+1 d; \
+                /enable_file_preprocessor/ d; \
+                /enable_toolchange_next_pos/ d; \
+                /update_spoolman_location/ d; \
                     " > "${file}.new" && mv "${file}.new" "${file}"
             restart=1
         fi
