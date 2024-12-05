@@ -5431,8 +5431,10 @@ class Mmu:
             except Exception as e:
                 # Fallback
                 self.log_debug("Unexpected error setting stepper current: %s. Falling back to default approach" % str(e))
+                self.log_info(msg.format(run_current))
                 self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
         else:
+            self.log_info(msg.format(run_current))
             self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
 
     @contextlib.contextmanager
