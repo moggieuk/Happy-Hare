@@ -90,6 +90,12 @@ extruder_sync_load_speed: 18		# mm/s speed of synchronized extruder load moves
 extruder_sync_unload_speed: 18		# mm/s speed of synchronized extruder unload moves
 extruder_homing_speed: 18		# mm/s speed of extruder only homing moves (e.g. to toolhead sensor)
 
+# When Happy Hare calls out to a macro for user customization and for parking moves these settings are applied and the previous
+# values automatically restored afterwards. This allows for deterministic movement speed regardless of the starting state.
+#
+macro_toolhead_max_accel: 0		# Default printer toolhead accelaration applied when macros are run. 0 = use printer max
+macro_toolhead_min_cruise_ratio: 0.5	# Default printer cruise ratio applied when macros are run
+
 
 # Gate loading/unloading -----------------------------------------------------------------------------------------------
 #  ██████╗  █████╗ ████████╗███████╗    ██╗      ██████╗  █████╗ ██████╗ 
