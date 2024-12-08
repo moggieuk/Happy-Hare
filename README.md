@@ -30,16 +30,16 @@ It is implemented as a klipper extension (mostly as python modules) for controll
 Extensive documentation can be found in the <a href="https://github.com/moggieuk/Happy-Hare/wiki">Wiki<img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/wiki.svg" width="8%" align="center"></a>
 
 Happy Hare is actively being developed and strives to be maticulous about the quality of multi-colored printing learning from many thousands of users over the past 2+ years.  Whilst the experience is very complete today work is continuing in three important areas:
-- **Addtional MMU support:**  No one left behind - Prusa MMU, KMS, Open AMS, Pico MMU and others are in the works
-- **Multi-MMU support**: Type-A MMU designs are easy to scale through additional gates. Type-B designs are generally limited to a max of 4 gates. Therefore you might want to set up multiple (perhaps different MMU types) on the same printer.
-- **Mainsail/Fluidd plugin:** The klipperscreen extension provides a rich user interface but many have requested a similar treatment for Mainsail. The wait will be over soon!
+- **Addtional MMU support:**  <i>No one left behind - Prusa MMU, KMS, Open AMS, Pico MMU and others are in the works</i>
+- **Multi-MMU support**: <i>Type-A MMU designs are easy to scale through additional gates. Type-B designs are generally limited to a max of 4 gates. Therefore you might want to set up multiple (perhaps different MMU types) on the same printer.</i>
+- **Mainsail/Fluidd plugin:** <i>The klipperscreen extension provides a rich user interface but many have requested a similar treatment for Mainsail. The wait will be over soon!</i>
 
 Some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). Although I'm not doing this for any financial reward this is a BIG undertaking (13000 lines of python, 8500 lines of doc, 5500 lines of macros/config). I have put hundreds of hours into this project and if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable. Thank you!
 <p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="30%"></a></p>
 
 <br>
 
-**Don't forget to join the dedicated Happy Hare forum here: <a href="https://discord.gg/aABQUjkZPk">https://discord.gg/aABQUjkZPk</a>**
+**Don't forget to join the dedicated Happy Hare community forum here: <a href="https://discord.gg/aABQUjkZPk">https://discord.gg/aABQUjkZPk</a>**
 
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Just a few of the features:
 
