@@ -42,6 +42,8 @@ Some users have inquired about making donations to support this project (and to 
 
 **Don't forget to join the dedicated Happy Hare community forum here: <a href="https://discord.gg/aABQUjkZPk">https://discord.gg/aABQUjkZPk</a>**
 
+<br>
+
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Just a few of the features:
 
 - Support almost any brand of MMU or user defined monsters:
