@@ -310,7 +310,7 @@ check_klipper() {
             fi
         else
             # There is no systemd on MIPS, we can only check the running processes
-            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/usr/share/klipper/klippy/klippy.py | awk '{print $1}')
+            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/klipper/klippy/klippy.py | awk '{print $1}')
             KLIPPER_PID_FILE=/var/run/klippy.pid
 
             if [ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]; then
