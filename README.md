@@ -23,23 +23,23 @@ Universal Automated Filament Changer / MMU driver for Klipper
     <img src="https://img.shields.io/github/commit-activity/y/moggieuk/Happy-Hare"></a> &nbsp;
 </p>
 
-Happy Hare is the original open source filament changer controller for multi-colored printing. The philosophy behind it is to have a universal control system that can adapt to whatever MMU to choose - you change MMU, the software will go with you. Currently it fully supports **ERCF**, **Tradrack**, **Box Turtle**, **Angry Beaver**, **Night Owl**, **3MS**, **3D Chameleon**, as well as other custom designs.
+Happy Hare is the original open source filament changer controller for multi-colored printing. The philosophy behind it is to have a universal control system that can adapt to whatever MMU to choose - you change MMU, the software will go with you... Currently it fully supports **ERCF**, **Tradrack**, **Box Turtle**, **Angry Beaver**, **Night Owl**, **3MS**, **3D Chameleon**, as well as other custom designs.
 
-It is implemented as a klipper extension (mostly as python modules) for controlling MMU's / AFC's but implements functionaly that you may like to customize as klipper macros. It has extensive configuration options for customization but also has an tinstaller to help simplify the initial setup for common MMU types. The different conceptual types of MMUs and the function and operation of their various sensors can be [found here](https://github.com/moggieuk/Happy-Hare/wiki/Conceptual-MMU) and should be consulted for any customized setup.  It is best partnered with [KlipperScreen for Happy Hare](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) project at least until the Mainsail integration is complete :-)
+It is implemented as a klipper extension (mostly as python modules) for controlling MMU's / AFC's but implements functionaly that you may like to customize as klipper macros. It has extensive configuration options for customization but also has an installer to help simplify the initial setup for common MMU and MCU types. The different conceptual types of MMUs and the function and operation of their various sensors can be [found here](https://github.com/moggieuk/Happy-Hare/wiki/Conceptual-MMU) and should be consulted for any customized setup.  It is best partnered with [KlipperScreen for Happy Hare](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) project at least until the Mainsail integration is complete :-)
 
 Extensive documentation can be found in the <a href="https://github.com/moggieuk/Happy-Hare/wiki">Wiki<img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/wiki.svg" width="8%" align="center"></a>
 
-Happy Hare is actively being developed and strives to be maticulous about the quality of multi-colored printing learning from many thousands of users over the past 2+ years.  Whilst the experience if very complete today work is continuing in three important areas:
-- Addtional MMU support:  Prusa MMU, KMS, Open AMS, Pico MMU and others are in the works
-- Multi-MMU support: Type-A MMU designs are easy to scale through additional gates. Type-B designs are generally limited to a max of 4 gates. Therefore you might want to set up multiple (perhaps different MMU's) on the same printer.
-- Mainsail/Fluidd plugin: The klipperscreen extension provides a rich user interface but many have requested a similar treatment for Mainsail. The wait will be over soon.
+Happy Hare is actively being developed and strives to be maticulous about the quality of multi-colored printing learning from many thousands of users over the past 2+ years.  Whilst the experience is very complete today work is continuing in three important areas:
+- **Addtional MMU support:**  No one left behind - Prusa MMU, KMS, Open AMS, Pico MMU and others are in the works
+- **Multi-MMU support**: Type-A MMU designs are easy to scale through additional gates. Type-B designs are generally limited to a max of 4 gates. Therefore you might want to set up multiple (perhaps different MMU types) on the same printer.
+- **Mainsail/Fluidd plugin:** The klipperscreen extension provides a rich user interface but many have requested a similar treatment for Mainsail. The wait will be over soon!
 
 Some folks have asked about making a donation to cover the cost of the all the coffee I'm drinking (actually it's been G&T lately!). Although I'm not doing this for any financial reward this is a BIG undertaking (13000 lines of python, 8500 lines of doc, 5500 lines of macros/config). I have put hundreds of hours into this project and if you find value and feel inclined a donation to PayPal https://www.paypal.me/moggieuk will certainly be spent making your life with your favorate MMU more enjoyable. Thank you!
 <p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="30%"></a></p>
 
 <br>
 
-**Don't forget to join the dedicated Happy Hare forum here: https://discord.gg/aABQUjkZPk**
+**Don't forget to join the dedicated Happy Hare forum here: <a href="https://discord.gg/aABQUjkZPk">https://discord.gg/aABQUjkZPk</a>**
 
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Just a few of the features:
 
@@ -83,7 +83,7 @@ Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https:/
  
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Installation
 
-The module can be installed into an existing Klipper setup with the supplied install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins. Full installation documentation is in the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki/Home) but start with cloning the repo onto your rpi:
+Ok, ready to get started? The module can be installed into an existing Klipper setup with the supplied install script. Once installed it will be added to Moonraker update-manager to easy updates like other Klipper plugins. Full installation documentation is in the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki/Home) but start with cloning the repo onto your rpi:
 
 ```
 cd ~
