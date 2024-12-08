@@ -713,13 +713,18 @@ class Mmu:
         self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
         self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
-        # Use gc to find all TMC current helpers - used for direct stepper current control
+        # Use gc to find all active TMC current helpers - used for direct stepper current control
         self.tmc_current_helpers = {}
+        refcounts = {}
         for obj in gc.get_objects():
-            if isinstance(obj, TMCCommandHelper): # PAUL
-                self.log_debug("PAUL: current_helpers: %s, refcount=%s" % (obj.stepper_name, sys.getrefcount(obj)))
-            if isinstance(obj, TMCCommandHelper) and sys.getrefcount(obj) > 2:
-                self.tmc_current_helpers[obj.stepper_name] = obj.current_helper
+            if isinstance(obj, TMCCommandHelper):
+                ref_count = sys.getrefcount(obj)
+                stepper_name = obj.stepper_name
+                self.log_error("PAUL TEMP: current helper for %s with refcount=%d" % (stepper_name, ref_count))
+                if stepper_name not in refcounts or ref_count > refcounts[stepper_name]:
+                    refcounts[stepper_name] = ref_count
+                    self.tmc_current_helpers[stepper_name] = obj.current_helper
+                    self.log_error("PAUL TEMP: recorded")
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
