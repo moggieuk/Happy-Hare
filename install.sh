@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.00 # Important: Keep synced with mmy.py
+VERSION=3.01 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -215,7 +215,7 @@ check_klipper() {
             fi
         else
             # There is no systemd on MIPS, we can only check the running processes
-            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/usr/share/klipper/klippy/klippy.py | awk '{print $1}')
+            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/klipper/klippy/klippy.py | awk '{print $1}')
             KLIPPER_PID_FILE=/var/run/klippy.pid
 
             if [ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]; then
@@ -271,7 +271,7 @@ verify_home_dirs() {
 # Silently cleanup any potentially old klippy modules
 cleanup_old_klippy_modules() {
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        for file in mmu.py mmu_toolhead.py; do
+        for file in mmu.py mmu_toolhead.py mmu_config_setup.py; do
             rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
         done
     fi
@@ -453,12 +453,20 @@ read_previous_mmu_type() {
             HAS_SELECTOR="no"
         fi
     fi
+    HAS_SERVO="yes"
+    dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    if [ -f "${dest_cfg}" ]; then
+        if ! grep -q "^\[mmu_servo selector_servo\]" "${dest_cfg}"; then
+            HAS_SERVO="no"
+        fi
+    fi
 }
 
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
     if [ "$HAS_SELECTOR" == "no" ]; then
+        # Virtual Selector
         parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.vs" ""            "_param_" "checkdup"
     else
         parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""               "_param_" "checkdup"
@@ -764,6 +772,14 @@ copy_config_files() {
                     s/^#\(extra_endstop_names: mmu_sel_touch\)/\1/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+            elif [ "${SETUP_SELECTOR_STALLGUARD_HOMING}" == "yes" ]; then
+                cat ${dest} | sed -e "\
+                    s/^#\(diag_pin: \^mmu:MMU_SEL_DIAG\)/\1/; \
+                    s/^#\(driver_SGTHRS: 75\)/\1/; \
+                    s/^endstop_pin: ^mmu:MMU_SEL_ENDSTOP.*$/endstop_pin: tmc2209_stepper_mmu_selector:virtual_endstop/; \
+                    s/^#\(homing_retract_dist\)/\1/; \
+                        " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
             # Do all the token substitution
@@ -779,24 +795,30 @@ copy_config_files() {
                 sed "/^# ENCODER/,+24 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-            # Handle Selector options - Delete if not required (sections are 8 and 36 lines respectively)
-            if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_SELECTOR" == "no" ]; then
-                sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                sed "/^# SELECTOR STEPPER/,+35 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            # Handle Selector options - Delete if not required (sections are 8 and 38 lines respectively)
+            if [ "${file}" == "mmu_hardware.cfg" ]; then
+                if [ "$HAS_SELECTOR" == "no" ]; then
+                    sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    sed "/^# SELECTOR STEPPER/,+37 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
 
-                # Expand out the additional filament drive for each gate
-                additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
-                awk '{ print } /^# ADDITIONAL FILAMENT DRIVE/ { for (i=1; i<=11; i++) { getline; print }; exit }' ${dest} > ${dest}.tmp
-                for (( i=2; i<=$(expr $_hw_num_gates - 1); i++ ))
-                do
+                    # Expand out the additional filament drive for each gate
+                    additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
+                    awk '{ print } /^# ADDITIONAL FILAMENT DRIVE/ { for (i=1; i<=11; i++) { getline; print }; exit }' ${dest} > ${dest}.tmp
+                    for (( i=2; i<=$(expr $_hw_num_gates - 1); i++ ))
+                    do
                     echo "$(echo "${additional_gear_section}" | sed "s/_1/_$i/g")" >> ${dest}.tmp
-                    echo >> ${dest}.tmp
-                done
-                awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        echo >> ${dest}.tmp
+                    done
+                    awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
 
-            else
-                # Delete additional gear drivers template section
-                sed "/^# ADDITIONAL FILAMENT DRIVE/,+10 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                else
+                    if [ "$HAS_SERVO" == "no" ]; then
+                        sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    fi
+
+                    # Delete additional gear drivers template section
+                    sed "/^# ADDITIONAL FILAMENT DRIVE/,+10 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                fi
             fi
 
         # Configuration parameters -----------------------------------------------------------
@@ -806,6 +828,10 @@ copy_config_files() {
                 update_copy_file "${src}.vs" "$dest" "" "_param_"
             else
                 update_copy_file "$src" "$dest" "" "_param_"
+                if [ "$HAS_SERVO" == "no" ]; then
+                    # Remove selector servo section
+                    sed "/^# Servo configuration/,+27 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                fi
             fi
 
             # Ensure that supplemental user added params are retained. These are those that are
@@ -1054,6 +1080,9 @@ uninstall_update_manager() {
         else
             cat "${file}" | sed -e " \
                 /\[mmu_server\]/,+1 d; \
+                /enable_file_preprocessor/ d; \
+                /enable_toolchange_next_pos/ d; \
+                /update_spoolman_location/ d; \
                     " > "${file}.new" && mv "${file}.new" "${file}"
             restart=1
         fi
@@ -1179,12 +1208,14 @@ questionaire() {
     option BOX_TURTLE     'Box Turtle v1.0'
     option NIGHT_OWL      'Night Owl v1.0'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
+    option _3D_CHAMELEON  '3D Chameleon'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
     case $opt in
         "$ERCF11")
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
+            HAS_SERVO=yes
             _hw_mmu_vendor="ERCF"
             _hw_mmu_version="1.1"
             _hw_selector_type=LinearSelector
@@ -1234,6 +1265,7 @@ questionaire() {
         "$ERCF20")
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
+            HAS_SERVO=yes
             _hw_mmu_vendor="ERCF"
             _hw_mmu_version="2.0"
             _hw_selector_type=LinearSelector
@@ -1259,6 +1291,7 @@ questionaire() {
         "$TRADRACK")
             HAS_ENCODER=no
             HAS_SELECTOR=yes
+            HAS_SERVO=yes
             _hw_mmu_vendor="Tradrack"
             _hw_mmu_version="1.0"
             _hw_selector_type=LinearSelector
@@ -1295,6 +1328,7 @@ questionaire() {
         "$ANGRY_BEAVER")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            HAS_SERVO=no
             _hw_mmu_vendor="AngryBeaver"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1315,6 +1349,7 @@ questionaire() {
         "$BOX_TURTLE")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            HAS_SERVO=no
             ADDONS_DC_ESPOOLER=1
             _hw_mmu_vendor="BoxTurtle"
             _hw_mmu_version="1.0"
@@ -1323,7 +1358,7 @@ questionaire() {
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=1
-            _hw_gear_gear_ratio="1:1"
+            _hw_gear_gear_ratio="50:10"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="none"
@@ -1340,6 +1375,7 @@ questionaire() {
         "$NIGHT_OWL")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            HAS_SERVO=no
             _hw_mmu_vendor="NightOwl"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1347,7 +1383,7 @@ questionaire() {
             _hw_variable_rotation_distances=1
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=1
-            _hw_gear_gear_ratio="1:1"
+            _hw_gear_gear_ratio="50:10"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="none"
@@ -1363,6 +1399,7 @@ questionaire() {
         "$_3MS")
             HAS_ENCODER=no
             HAS_SELECTOR=no
+            HAS_SERVO=no
             _hw_mmu_vendor="3MS"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1380,9 +1417,34 @@ questionaire() {
             _param_gear_homing_speed=80
             ;;
 
+        "$_3D_CHAMELEON")
+            HAS_ENCODER=no
+            HAS_SELECTOR=yes
+            HAS_SERVO=no
+            SETUP_SELECTOR_TOUCH=no
+            _hw_mmu_vendor="3DChameleon"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=RotarySelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _hw_sel_run_current=0.63
+            _hw_sel_hold_current=0.2
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=500
+            _param_gate_parking_distance=250
+            _param_gear_homing_speed=80
+            ;;
+
         *)
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
+            HAS_SERVO=yes
             SETUP_LED=yes
             SETUP_SELECTOR_TOUCH=no
             _hw_mmu_vendor="Other"
@@ -1401,14 +1463,14 @@ questionaire() {
             # This isn't meant to be all-inclusive of options. It is just to provide a config starting point that is close
             echo -e "${PROMPT}${SECTION}Which of these most closely resembles your MMU design (this allows for some tuning of config files)?{$INPUT}"
             OPTIONS=() # reset option array
-            option TYPE_A_WITH_ENCODER                          'Type-A (selector) with Encoder'
-            option TYPE_A_NO_ENCODER                            'Type-A (selector), No Encoder'
-            option TYPE_B_WITH_ENCODER                          'Type-B (mutliple filament drive steppers) with Encoder'
-            option TYPE_B_WITH_SHARED_GATE_AND_ENCODER          'Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder'
-            option TYPE_B_WITH_SHARED_GATE_NO_ENCODER           'Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder'
+            option TYPE_A_WITH_ENCODER                            'Type-A (selector) with Encoder'
+            option TYPE_A_NO_ENCODER                              'Type-A (selector), No Encoder'
+            option TYPE_B_WITH_ENCODER                            'Type-B (mutliple filament drive steppers) with Encoder'
+            option TYPE_B_WITH_SHARED_GATE_AND_ENCODER            'Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder'
+            option TYPE_B_WITH_SHARED_GATE_NO_ENCODER             'Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder'
             option TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER 'Type-B (multiple filament drive steppers) with individual post-gear sensors and Encoder'
             option TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_NO_ENCODER  'Type-B (multiple filament drive steppers) with individual post-gear sensors, No Encoder'
-            option OTHER                                        'Just turn on all options and let me configure'
+            option OTHER                                          'Just turn on all options and let me configure'
             prompt_option opt 'Type' "${OPTIONS[@]}"
             case "$opt" in
                 "$TYPE_A_WITH_ENCODER")
@@ -1426,6 +1488,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
@@ -1435,6 +1498,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_SHARED_GATE_AND_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
@@ -1444,6 +1508,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_SHARED_GATE_NO_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     HAS_ENCODER=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
@@ -1454,6 +1519,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
@@ -1463,6 +1529,7 @@ questionaire() {
                     ;;
                 "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_NO_ENCODER")
                     HAS_SELECTOR=no
+                    HAS_SERVO=no
                     HAS_ENCODER=no
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
@@ -1582,26 +1649,44 @@ questionaire() {
     esac
 
     if [ "${HAS_SELECTOR}" == "yes" ]; then
-        echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
-        echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers. Can configure later${INPUT}"
-        yn=$(prompt_yn "Enable selector touch operation")
-        echo
-        case $yn in
-            y)
-                if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
-                    echo
-                    echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
-                fi
-                SETUP_SELECTOR_TOUCH=yes
-                ;;
-            n)
-                if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
-                    echo
-                    echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
-                fi
-                SETUP_SELECTOR_TOUCH=no
-                ;;
-        esac
+
+        if [ "$SETUP_SELECTOR_TOUCH" != "no" ]; then
+            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
+            echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for selector stepper. Can configure later${INPUT}"
+            yn=$(prompt_yn "Enable selector touch operation")
+            echo
+            case $yn in
+                y)
+                    if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
+                        echo
+                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
+                    fi
+                    SETUP_SELECTOR_TOUCH=yes
+                    ;;
+                n)
+                    if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
+                        echo
+                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
+                    fi
+                    SETUP_SELECTOR_TOUCH=no
+                    ;;
+            esac
+        fi
+
+        if [ "$SETUP_SELECTOR_TOUCH" == "no" ]; then
+            echo -e "${PROMPT}${SECTION}Selector homing using TMC Stallguard? This prevents the need for hard endstop homing but must be tuned"
+            echo -e "MCU must have DIAG output for selector stepper. Can configure later${INPUT}"
+            yn=$(prompt_yn "Enable selector stallguard homing")
+            echo
+            case $yn in
+                y)
+                    SETUP_SELECTOR_STALLGUARD_HOMING=yes
+                    ;;
+                n)
+                    SETUP_SELECTOR_STALLGUARD_HOMING=no
+                    ;;
+            esac
+        fi
 
         if [ "${_hw_mmu_vendor}" == "ERCF" ]; then
             _hw_maximum_servo_angle=180
@@ -1815,6 +1900,7 @@ questionaire() {
     echo "        * Configure your operational preferences in mmu_macro_vars.cfg"
     echo 
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."
+    echo -e "    Join the dedicated Happy Hare forum here: ${EMPHASIZE}https://discord.gg/98TYYUf6f2${INFO}"
     echo
     echo "    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
     echo

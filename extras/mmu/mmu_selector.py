@@ -215,7 +215,7 @@ class VirtualSelector:
     def filament_drive(self):
         pass
 
-    def filament_release(self):
+    def filament_release(self, measure=False):
         return 0. # Encoder movement
 
     def filament_hold(self):
@@ -248,6 +248,7 @@ class VirtualSelector:
 
     def get_test_config(self):
         return ""
+
 
 
 ################################################################################
@@ -380,8 +381,7 @@ class LinearSelector:
             self.bypass_offset = -1 # Ensure -1 value for uncalibrated / non-existent
         self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_BYPASS] = self.bypass_offset
 
-        # See if we have a TMC controller capable of current control for filament collision detection and syncing
-        # on gear_stepper and tip forming on extruder
+        # See if we have a TMC controller setup with stallguard
         self.selector_tmc = None
         for chip in mmu_machine.TMC_CHIPS:
             if self.selector_tmc is None:
@@ -401,7 +401,7 @@ class LinearSelector:
 
     def handle_disconnect(self):
         # Sub components
-        self.servo.handle_connect()
+        self.servo.handle_disconnect()
 
     def handle_ready(self):
         # Sub components
@@ -411,7 +411,6 @@ class LinearSelector:
         if self.mmu.check_if_bypass(): return
         with self.mmu.wrap_action(self.mmu.ACTION_HOMING):
             self.mmu.log_info("Homing MMU...")
-
             if force_unload is not None:
                 self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
             if force_unload is True:
@@ -528,10 +527,10 @@ class LinearSelector:
                     self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
 
                 # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-                if successful:
-                    self.mmu.log_always("Selector calibration complete. Will home ready for use")
-                    self.mmu.home(tool=0, force_unload=False)
-                elif not self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR or not successful:
+                if successful and self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR:
+                    self.mmu.log_always("Selector calibration complete")
+                    self.mmu.select_tool(0)
+                else:
                     self.mmu.motors_off(motor="selector")
 
         except MmuError as ee:
@@ -547,7 +546,7 @@ class LinearSelector:
         if self.mmu.check_if_not_calibrated(self.mmu.CALIBRATED_SELECTOR): return
         loops = gcmd.get_int('LOOP', 100)
         servo = bool(gcmd.get_int('SERVO', 0))
-        home = bool(gcmd.get_int('HOME', 1))
+        home = bool(gcmd.get_int('HOME', 0))
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
                 if home:
@@ -620,14 +619,14 @@ class LinearSelector:
             else:
                 self.bypass_offset = round(traveled, 1)
                 extrapolate = False
-                self.mmu.save_variable(self.mmu.VARS_MMU_SELECTOR_BYPASS, self.mmu.bypass_offset, write=True)
+                self.mmu.save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, write=True)
 
             if extrapolate:
                 self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
             else:
                 self.mmu.log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
                 if gate == 0:
-                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % self.mmu.num_gates - 1)
+                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % (self.mmu.num_gates - 1))
         return True
 
     # Fully automated selector offset calibration
@@ -732,9 +731,9 @@ class LinearSelector:
         self.mmu.unselect_gate()
         self.servo.servo_move()
         self.mmu.movequeues_wait()
-        homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
-        homing_state.set_axes([0])
         try:
+            homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
+            homing_state.set_axes([0])
             self.mmu.mmu_toolhead.get_kinematics().home(homing_state)
             self.is_homed = True
         except Exception as e: # Homing failed
@@ -758,7 +757,7 @@ class LinearSelector:
                         found = self.mmu.check_filament_in_gate()
                         if not found:
                             # Push filament into view of the gate endstop
-                            self.servo_down()
+                            self.servo.servo_down()
                             _,_,measured,_ = self.mmu.trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
                             if self.mmu.has_encoder() and measured < self.mmu.encoder_min:
                                 raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
@@ -946,7 +945,7 @@ class LinearSelectorServo:
             if save:
                 self._servo_save_pos(pos)
             else:
-                self.mmu.selector.filament_release()
+                self.servo_up()
         elif pos == "move":
             if save:
                 self._servo_save_pos(pos)
@@ -1089,3 +1088,394 @@ class LinearSelectorServo:
                      "Move" if self.servo_state == self.SERVO_MOVE_STATE else
                      "Unknown",
         }
+
+
+################################################################################
+# Rotary Selector
+# Implements Rotary Selector for type-A MMU's that uses stepper controlled
+# rail[0] on mmu toolhead (3D Chameleon)
+################################################################################
+
+class RotarySelector:
+
+    # mmu_vars.cfg variables
+    VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
+
+    def __init__(self, mmu):
+        self.mmu = mmu
+        self.is_homed = False
+
+        # Process config
+        self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
+        self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', 100, minval=1.)
+        self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.) # Not used with 3DChameleon but allows for param in config
+        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1) # Not used with 3DChameleon but allows for param in config
+
+        # To simplfy config CAD related parameters are set based on vendor and version setting
+        #
+        #  cad_gate0_pos          - approximate distance from endstop to first gate
+        #  cad_gate_width         - width of each gate
+        #  cad_last_gate_offset   - distance from end of travel to last gate
+        #
+        # Chameleon defaults
+        self.cad_gate0_pos = 4.0
+        self.cad_gate_width = 25.
+        self.cad_last_gate_offset = 2.
+        self.cad_bypass_offset = 0 # Doesn't have bypass
+        self.cad_selector_tolerance = 15.
+
+        self.cad_gate_directions = [1, 1, 0, 0]
+        self.cad_release_gates = [2, 3, 0, 1]
+
+        # But still allow all CAD parameters to be customized
+        self.cad_gate0_pos = mmu.config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
+        self.cad_gate_width = mmu.config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
+        self.cad_last_gate_offset = mmu.config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
+        self.cad_selector_tolerance = mmu.config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
+
+        self.cad_gate_directions = list(mmu.config.getintlist('cad_gate_directions',self.cad_gate_directions))
+        self.cad_release_gates = list(mmu.config.getintlist('cad_release_gates', self.cad_release_gates))
+
+        # Register GCODE commands specific to this module
+        gcode = mmu.printer.lookup_object('gcode')
+        gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
+        gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc=self.cmd_MMU_SOAKTEST_SELECTOR_help)
+        gcode.register_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
+        gcode.register_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
+
+        # Selector stepper setup before MMU toolhead is instantiated
+        section = mmu_machine.SELECTOR_STEPPER_CONFIG
+        if mmu.config.has_section(section):
+            # Inject options into selector stepper config regardless or what user sets
+            mmu.config.fileconfig.set(section, 'position_min', -1.)
+            mmu.config.fileconfig.set(section, 'position_max', self._get_max_selector_movement())
+            mmu.config.fileconfig.set(section, 'homing_speed', self.selector_homing_speed)
+
+    # Selector "Interface" methods ---------------------------------------------
+
+    def reinit(self):
+        self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
+
+    def handle_connect(self):
+        self.mmu_toolhead = self.mmu.mmu_toolhead
+        self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
+        self.selector_stepper = self.selector_rail.steppers[0]
+
+        # Have an endstop (most likely stallguard)?
+        endstops = self.selector_rail.get_endstops()
+        self.has_endstop = bool(endstops) and endstops[0][0].__class__.__name__ != "MockEndstop"
+
+        # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
+        self.selector_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
+        if self.selector_offsets:
+            # Ensure list size
+            if len(self.selector_offsets) == self.mmu.num_gates:
+                self.mmu.log_debug("Loaded saved selector offsets: %s" % self.selector_offsets)
+            else:
+                self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_SELECTOR_OFFSETS)
+                self.selector_offsets = self._ensure_list_size(self.selector_offsets, self.mmu.num_gates)
+
+            if not any(x == -1 for x in self.selector_offsets):
+                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+        else:
+            self.mmu.log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
+            self.selector_offsets = [-1] * self.mmu.num_gates
+        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_OFFSETS] = self.selector_offsets
+
+    def _ensure_list_size(self, lst, size, default_value=-1):
+        lst = lst[:size]
+        lst.extend([default_value] * (size - len(lst)))
+        return lst
+
+    def handle_disconnect(self):
+        pass
+
+    def handle_ready(self):
+        pass
+
+    def home(self, force_unload = None):
+        if self.mmu.check_if_bypass(): return
+        with self.mmu.wrap_action(self.mmu.ACTION_HOMING):
+            self.mmu.log_info("Homing MMU...")
+            if force_unload is not None:
+                self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
+            if force_unload is True:
+                # Forced unload case for recovery
+                self.mmu.unload_sequence(check_state=True)
+            elif force_unload is False and self.mmu.filament_pos != self.mmu.FILAMENT_POS_UNLOADED:
+                # Automatic unload case
+                self.mmu.unload_sequence()
+            self._home_selector()
+
+    # Physically move selector to correct gate position
+    def select_gate(self, gate):
+        if gate >= 0:
+            self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
+            if gate != self.mmu.gate_selected:
+                with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
+                    self._position(self.selector_offsets[gate])
+            else:
+                # Always move because filament release could have changed selector position
+                self._position(self.selector_offsets[gate])
+
+            # Ensure gate filament drive is in the correct direction
+            self.mmu_toolhead.get_kinematics().rails[1].set_direction(self.cad_gate_directions[gate])
+
+    # Correct rail position for selector
+    def restore_gate(self, gate):
+        if gate >= 0:
+            self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
+            self.set_position(self.selector_offsets[gate])
+
+    def filament_drive(self, buzz_gear=False):
+        pass
+
+    def filament_release(self, measure=False):
+        return 0. # Encoder movement
+
+    def filament_hold(self): # AKA position for selector movement
+        pass
+
+    def get_filament_grip_state(self):
+        return self.grip_state
+
+    def disable_motors(self):
+        stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
+        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
+        se.motor_disable(self.mmu_toolhead.get_last_move_time())
+        self.is_homed = False
+
+    def enable_motors(self):
+        stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
+        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
+        se.motor_enable(self.mmu_toolhead.get_last_move_time())
+
+    def buzz_motor(self, motor):
+        if motor == "selector":
+            pos = self.mmu_toolhead.get_position()[0]
+            self.move(None, pos + 5, wait=False)
+            self.move(None, pos - 5, wait=False)
+            self.move(None, pos, wait=False)
+        else:
+            return False
+        return True
+
+    def has_bypass(self):
+        return False
+
+    def get_status(self):
+        return {
+            'grip': "Gripped" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
+        }
+
+    def get_mmu_status_config(self):
+        msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
+        msg += ". Filament is %s" % ("GRIPPED" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "RELEASED")
+        return msg
+
+    def set_test_config(self, gcmd):
+        self.selector_move_speed = gcmd.get_float('SELECTOR_MOVE_SPEED', self.selector_move_speed, minval=1.)
+        self.selector_homing_speed = gcmd.get_float('SELECTOR_HOMING_SPEED', self.selector_homing_speed, minval=1.)
+
+    def get_test_config(self):
+        msg = "\n\nSELECTOR:"
+        msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
+        msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
+        return msg
+
+    # Internal Implementation --------------------------------------------------
+
+    cmd_MMU_GRIP_help = "Grip filament in current gate"
+    def cmd_MMU_GRIP(self, gcmd):
+        if self.mmu.gate_selected >= 0:
+            self._position(self.selector_offsets[self.mmu.gate_selected])
+            self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
+
+            # Precaution to ensure correct postion/gate restoration on restart
+            self.mmu.save_variable(self.mmu.VARS_MMU_GATE_SELECTED, self.mmu.gate_selected, write=True)
+
+    cmd_MMU_RELEASE_help = "Ungrip filament in current gate"
+    def cmd_MMU_RELEASE(self, gcmd):
+        if self.mmu.gate_selected >= 0:
+            self._position(self.selector_offsets[self.cad_release_gates[self.mmu.gate_selected]])
+            self.grip_state = self.mmu.FILAMENT_RELEASE_STATE
+
+            # Precaution to ensure correct postion/gate restoration on restart
+            self.mmu.save_variable(self.mmu.VARS_MMU_GATE_SELECTED, self.cad_release_gates[self.mmu.gate_selected], write=True)
+
+    cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
+    def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
+        self.mmu.log_to_file(gcmd.get_commandline())
+        if self.mmu.check_if_disabled(): return
+
+        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
+        quick = gcmd.get_int('QUICK', 0, minval=0, maxval=1)
+        gate = gcmd.get_int('GATE', 0, minval=0, maxval=self.mmu.mmu_machine.num_gates - 1)
+
+        try:
+            with self.mmu.wrap_sync_gear_to_extruder():
+                self.mmu.calibrating = True
+                self.mmu.reinit()
+                successful = False
+
+                if self.has_endstop and not quick:
+                    successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
+                else:
+                    self.mmu.log_always("%s - will calculate gate offsets from cad_gate0_offset and cad_gate_width" % ("Quick method" if quick else "No endstop configured"))
+                    self.selector_offsets = [round(self.cad_gate0_pos + i * self.cad_gate_width, 1) for i in range(self.mmu.num_gates)]
+                    self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
+                    successful = True
+
+                if not any(x == -1 for x in self.selector_offsets):
+                    self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+
+                # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
+                if successful and self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR:
+                    self.mmu.log_always("Selector calibration complete")
+                    self.mmu.select_tool(0)
+                else:
+                    self.mmu.motors_off(motor="selector")
+
+        except MmuError as ee:
+            self.mmu.handle_mmu_error(str(ee))
+        finally:
+            self.mmu.calibrating = False
+
+    cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
+    def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
+        self.mmu.log_to_file(gcmd.get_commandline())
+        if self.mmu.check_if_disabled(): return
+        if self.mmu.check_if_loaded(): return
+        if self.mmu.check_if_not_calibrated(self.mmu.CALIBRATED_SELECTOR): return
+        loops = gcmd.get_int('LOOP', 100)
+        home = bool(gcmd.get_int('HOME', 0))
+        try:
+            with self.mmu.wrap_sync_gear_to_extruder():
+                if home:
+                    self.home()
+                for l in range(loops):
+                    self.mmu.log_always("Testing loop %d / %d" % (l + 1, loops))
+                    tool = random.randint(0, self.mmu.num_gates - 1)
+                    if random.randint(0, 10) == 0 and home:
+                        self.mmu.home(tool=tool)
+                    else:
+                        self.mmu.select_tool(tool)
+        except MmuError as ee:
+            self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
+
+    def _get_max_selector_movement(self, gate=-1):
+        n = gate if gate >= 0 else self.mmu.num_gates - 1
+
+        max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
+        max_movement += self.cad_last_gate_offset if gate in [self.mmu.TOOL_GATE_UNKNOWN] else 0.
+        max_movement += self.cad_selector_tolerance
+        return max_movement
+
+    # Manual selector offset calibration
+    def _calibrate_selector(self, gate, extrapolate=True, save=True):
+        max_movement = self._get_max_selector_movement(gate)
+        self.mmu.log_always("Measuring the selector position for gate %d..." % gate)
+        traveled, found_home = self.measure_to_home()
+
+        # Test we actually homed
+        if not found_home:
+            self.mmu.log_error("Selector didn't find home position")
+            return False
+
+        # Warn and don't save if the measurement is unexpected
+        if traveled > max_movement:
+            self.mmu.log_always("Selector move measured %.1fmm. More than the anticipated maximum of %.1fmm. Save disabled\nIt is likely that your basic MMU dimensions are incorrect in mmu_parameters.cfg. Check vendor/version and optional 'cad_*' parameters" % (traveled, max_movement))
+            save = 0
+        else:
+            self.mmu.log_always("Selector move measured %.1fmm" % traveled)
+
+        if save:
+            self.selector_offsets[gate] = round(traveled, 1)
+            if extrapolate and gate == self.mmu.num_gates - 1 and self.selector_offsets[0] > 0:
+                # Distribute selector spacing based on measurements of first and last gate
+                spacing = (self.selector_offsets[-1] - self.selector_offsets[0]) / (self.mmu.num_gates - 1)
+                self.selector_offsets = [round(self.selector_offsets[0] + i * spacing, 1) for i in range(self.mmu.num_gates)]
+            elif extrapolate:
+                # Distribute using cad spacing
+                self.selector_offsets = [round(self.selector_offsets[0] + i * self.cad_gate_width, 1) for i in range(self.mmu.num_gates)]
+            else:
+                extrapolate = False
+            self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
+
+            if extrapolate:
+                self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
+            else:
+                self.mmu.log_always("Selector offset (%.1fmm) for gate %d has been saved" % (traveled, gate))
+                if gate == 0:
+                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % (self.mmu.num_gates - 1))
+        return True
+
+    def _home_selector(self):
+        self.mmu.unselect_gate()
+        self.mmu.movequeues_wait()
+        try:
+            if self.has_endstop:
+                homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
+                homing_state.set_axes([0])
+                self.mmu.mmu_toolhead.get_kinematics().home(homing_state)
+            else:
+                self._home_hard_endstop()
+            self.is_homed = True
+        except Exception as e: # Homing failed
+            raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
+
+    def _home_hard_endstop(self):
+        self.mmu.log_always("Forcing selector homing to hard endstop. Excuse the noise!\n(Configure stallguard endstop on selector stepper to avoid)")
+        self.set_position(self._get_max_selector_movement()) # Worst case position to allow full movement
+        self.move("Forceably homing to hard endstop", new_pos=0, speed=self.selector_homing_speed)
+        self.set_position(0) # Reset pos
+
+    def _position(self, target):
+        self.move("Positioning selector", target)
+
+    def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
+        return self._trace_selector_move(trace_str, new_pos, speed=speed, accel=accel, wait=wait)
+
+    # Internal raw wrapper around all selector moves except rail homing
+    # Returns position after move, if homed (homing moves)
+    def _trace_selector_move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
+        if trace_str:
+            self.mmu.log_trace(trace_str)
+
+        # Set appropriate speeds and accel if not supplied
+        speed = speed or self.selector_move_speed
+        accel = accel or self.mmu_toolhead.get_selector_limits()[1]
+
+        pos = self.mmu_toolhead.get_position()
+        with self.mmu.wrap_accel(accel):
+            pos[0] = new_pos
+            self.mmu_toolhead.move(pos, speed)
+        if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
+            self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
+        if wait:
+            self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
+        return pos[0]
+
+    def set_position(self, position):
+        pos = self.mmu_toolhead.get_position()
+        pos[0] = position
+        self.mmu_toolhead.set_position(pos, homing_axes=(0,))
+        self.enable_motors()
+        self.is_homed = True
+        return position
+
+    def measure_to_home(self):
+        self.mmu.movequeues_wait()
+        init_mcu_pos = self.selector_stepper.get_mcu_position()
+        homed = False
+        try:
+            homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
+            homing_state.set_axes([0])
+            self.mmu_toolhead.get_kinematics().home(homing_state)
+            homed = True
+        except Exception:
+            pass # Home not found
+        mcu_position = self.selector_stepper.get_mcu_position()
+        traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
+        return traveled, homed

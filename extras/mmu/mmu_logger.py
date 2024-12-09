@@ -15,25 +15,23 @@ import logging, logging.handlers, threading, os, queue, atexit
 class MmuLogger:
     def __init__(self, logfile_path):
         name = os.path.splitext(os.path.basename(logfile_path))[0]
-        handler = logging.handlers.TimedRotatingFileHandler(logfile_path, when='midnight', backupCount=3)
-        handler.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S'))
-
-        self.queue_listener = QueueListener(handler)
-        queue_handler = QueueHandler(self.queue_listener.bg_queue)
-
         self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.INFO)
-        self.logger.addHandler(queue_handler)
-        self.logger.propagate = False
 
-        # Ensure we shutdown on exit
+        self.queue_listener = None
+        if not any(isinstance(h, QueueHandler) for h in self.logger.handlers):
+            handler = logging.handlers.TimedRotatingFileHandler(logfile_path, when='midnight', backupCount=3)
+            handler.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S'))
+            self.queue_listener = QueueListener(handler)
+            self.logger.addHandler(QueueHandler(self.queue_listener.bg_queue))
+
+        self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False
         atexit.register(self.shutdown)
 
     def log(self, message):
         self.logger.info(message)
 
     def shutdown(self):
-        self.logger.info("Shutting down the MMU logger")
         if self.queue_listener is not None:
             self.queue_listener.stop()
 

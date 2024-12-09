@@ -49,9 +49,10 @@ VENDOR_ANGRY_BEAVER   = "AngryBeaver"
 VENDOR_BOX_TURTLE     = "BoxTurtle"
 VENDOR_NIGHT_OWL      = "NightOwl"
 VENDOR_3MS            = "3MS"
+VENDOR_3D_CHAMELEON   = "3DChameleon"
 VENDOR_OTHER          = "Other"
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -123,8 +124,15 @@ class MmuMachine:
             require_bowden_move = 0
             filament_always_gripped = 1
 
+        elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
+            selector_type = 'RotarySelector'
+            variable_rotation_distances = 0
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector']}, selector_type)
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
@@ -177,11 +185,6 @@ class MmuMachine:
         # TODO add more h/w validation here based on num_gates & vendor, virtual selector, etc
         # TODO would allow for easier to understand error messages for conflicting or missing
         # TODO hardware definitions.
-        # TODO Can also automatically remove config sections that aren't required. E.g. if VirtualSelector
-        # TODO then remove like:
-        # TODO if config.has_section(section_to_remove):
-        # TODO     config.remove_section("mmu_servo selector_servo")
-        # TODO     config.remove_section("stepper_mmu_selector") & "tmc2209 stepper_mmu_selector" where TMC is dynamic
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
@@ -189,9 +192,9 @@ class MmuMachine:
 class MmuToolHead(toolhead.ToolHead, object):
 
     # Gear/Extruder synchronization modes (None = unsynced)
-    EXTRUDER_SYNCED_TO_GEAR = 1
-    EXTRUDER_ONLY_ON_GEAR   = 2
-    GEAR_SYNCED_TO_EXTRUDER = 3
+    EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
+    EXTRUDER_ONLY_ON_GEAR   = 2 # Aka 'extruder' (only)
+    GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
 
     def __init__(self, config, mmu):
         self.mmu = mmu
@@ -406,9 +409,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         prev_sync_mode = self.sync_mode
         self.unsync()
         if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
-        self.mmu.log_stepper("sync(mode=%s)" % new_sync_mode)
+        self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
+        self.mmu.movequeues_sync()
 
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -462,6 +466,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         prev_sync_mode = self.sync_mode
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
+        self.mmu.movequeues_sync()
 
         if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead = self.mmu_toolhead
@@ -548,14 +553,14 @@ class MmuToolHead(toolhead.ToolHead, object):
                 if self.is_extruder_synced_to_gear():
                     msg += "SYNCHRONIZED: Extruder '%s' synced to gear rail\n" % extruder_name
 
-        e_stepper = self.printer_toolhead.get_extruder().extruder_stepper.stepper
+        e_stepper = self.printer_toolhead.get_extruder().extruder_stepper
         msg +=  "\nPRINTER TOOLHEAD: %s\n" % self.printer_toolhead.get_position()
-        header = "Extruder Stepper: %s %s %s" % (extruder_name, "(MmuExtruderStepper)" if isinstance(self.printer_toolhead.get_extruder().extruder_stepper, MmuExtruderStepper) else "", '-' * 100)
+        header = "Extruder Stepper: %s %s %s" % (extruder_name, "(MmuExtruderStepper)" if isinstance(e_stepper, MmuExtruderStepper) else "(Non Homing Default)", '-' * 100)
         msg += header[:100] + "\n"
-        msg += "- Commanded Pos: %.2f, " % e_stepper.get_commanded_position()
-        msg += "MCU Pos: %.2f, " % e_stepper.get_mcu_position()
-        rd = e_stepper.get_rotation_distance()
-        msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], e_stepper.get_step_dist())
+        msg += "- Commanded Pos: %.2f, " % e_stepper.stepper.get_commanded_position()
+        msg += "MCU Pos: %.2f, " % e_stepper.stepper.get_mcu_position()
+        rd = e_stepper.stepper.get_rotation_distance()
+        msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], e_stepper.stepper.get_step_dist())
         return msg
 
 
@@ -569,7 +574,7 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_machine.selector_type == 'LinearSelector':
+        if self.mmu_machine.selector_type in {'LinearSelector', 'RotarySelector'}:
             self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         else:
@@ -788,6 +793,10 @@ class MmuPrinterRail(stepper.PrinterRail, object):
     def is_endstop_virtual(self, name):
         return name in self.virtual_endstops if name else False
 
+    def set_direction(self, direction):
+        for stepper in self.steppers:
+            stepper.set_dir_inverted(direction)
+
     class MockEndstop:
         def add_stepper(self, *args, **kwargs):
             pass
@@ -822,6 +831,16 @@ class MmuExtruderStepper(ExtruderStepper, object):
         if endstop_pin:
             mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=True)
             mcu_endstop.add_stepper(self.stepper)
+
+    # Override to add QUIET option to control console logging
+    def cmd_SET_PRESSURE_ADVANCE(self, gcmd):
+        pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
+        smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)
+        self._set_pressure_advance(pressure_advance, smooth_time)
+        msg = ("pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time))
+        self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
+        if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
+            gcmd.respond_info(msg, log=False)
 
 class DummyRail:
     def __init__(self):
