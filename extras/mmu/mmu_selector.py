@@ -70,7 +70,7 @@ class MacroSelector:
             max_num_tools = 2**self.select_tool_num_switches
             # Verify that there aren't too many tools for the demultiplexer
             if mmu.num_gates > max_num_tools:
-                raise mmu.config.error(f'Maximum number of allowed tools is {max_num_tools}, but {mmu.num_gates} are present.')
+                raise mmu.config.error('Maximum number of allowed tools is %d, but %d are present.' % (max_num_tools, mmu.num_gates))
         else:
             self.binary_mode = False
 
@@ -90,7 +90,7 @@ class MacroSelector:
         self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def handle_ready(self):
-        logging.info(f'HH MacroSelector: Gate {self.mmu.gate_selected}')
+        logging.info('HH MacroSelector: Gate %d' % self.mmu.gate_selected)
         self.select_gate(self.mmu.gate_selected)
 
     def handle_disconnect(self):
@@ -101,16 +101,16 @@ class MacroSelector:
 
     def select_gate(self, gate):
         # Store parameters as list
-        params = [f'GATE={gate}']
+        params = ['GATE=' + str(gate)]
         if self.binary_mode: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
-            binary = '{0:b}'.format(gate).zfill(self.select_tool_num_switches)[::-1]
+            binary = list(reversed('{0:b}'.format(gate).zfill(self.select_tool_num_switches)))
             for i in range(self.select_tool_num_switches):
                 char = binary[i]
-                params.append(f'S{i}={char}')
+                params.append('S' + str(i) + '=' + str(char))
         params = ' '.join(params)
 
         # Call selector macro
-        self.gcode.run_script_from_command(f'{self.select_tool_macro} {params}')
+        self.mmu._wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
 
         # Sync MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
@@ -149,7 +149,7 @@ class MacroSelector:
         return {}
 
     def get_mmu_status_config(self):
-        msg = "\nVirtual selector"
+        msg = "\nMacro selector"
         return msg
 
     def set_test_config(self, gcmd):
