@@ -21,6 +21,9 @@ Universal Automated Filament Changer / MMU driver for Klipper
     <img src="https://img.shields.io/github/license/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
   <a aria-label="Commits" href="">
     <img src="https://img.shields.io/github/commit-activity/y/moggieuk/Happy-Hare"></a> &nbsp;
+  <a aria-label="Last commit" href="https://github.com/moggieuk/Happy-Hare/commits/">
+    <img src="https://img.shields.io/github/last-commit/moggieuk/Happy-Hare?style=flat-square">
+  </a>
 </p>
 
 Happy Hare is the original open-source filament changer controller for multi-color printing. Its philosophy is to provide a universal control system that adapts to your choice of MMU (Multi-Material Unit). If you switch MMUs, the software transitions seamlessly with you. Currently, it fully supports **ERCF**, **Tradrack**, **Box Turtle**, **Angry Beaver**, **Night Owl**, **3MS**, **3D Chameleon**, and various custom designs.
