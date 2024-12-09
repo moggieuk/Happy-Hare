@@ -3364,7 +3364,7 @@ class Mmu:
 
     def check_if_not_homed(self):
         if not self.selector.is_homed:
-            self.log_error("Operation not possible. MMU is not homed")
+            self.log_error("Operation not possible. MMU selector is not homed")
             return True
         return False
 
@@ -5586,7 +5586,7 @@ class Mmu:
 
     def _auto_home(self, tool=0):
         if not self.selector.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
-            self.log_info("MMU not homed, will home before continuing")
+            self.log_info("MMU selector not homed, will home before continuing")
             self.home(tool)
         elif self.filament_pos == self.FILAMENT_POS_UNKNOWN and self.selector.is_homed:
             self.recover_filament_pos(message=True)
