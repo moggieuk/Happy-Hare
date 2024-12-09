@@ -720,11 +720,9 @@ class Mmu:
             if isinstance(obj, TMCCommandHelper):
                 ref_count = sys.getrefcount(obj)
                 stepper_name = obj.stepper_name
-                self.log_error("PAUL TEMP: current helper for %s with refcount=%d" % (stepper_name, ref_count))
                 if stepper_name not in refcounts or ref_count > refcounts[stepper_name]:
                     refcounts[stepper_name] = ref_count
                     self.tmc_current_helpers[stepper_name] = obj.current_helper
-                    self.log_error("PAUL TEMP: recorded")
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
