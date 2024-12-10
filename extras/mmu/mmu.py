@@ -1211,10 +1211,12 @@ class Mmu:
             self.gate_status = self._validate_gate_status(self.gate_status)
 
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
-            if (
+            if self.sensor_manager.check_all_sensors_after(self.FILAMENT_POS_END_BOWDEN, self.gate_selected):
+                self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
+            elif (
                 (self.filament_pos == self.FILAMENT_POS_LOADED and self.sensor_manager.check_any_sensors_after(self.FILAMENT_POS_END_BOWDEN, self.gate_selected) is False) or
                 (self.filament_pos == self.FILAMENT_POS_UNLOADED and self.sensor_manager.check_any_sensors_in_path()) or
-                self.filament_pos == self.FILAMENT_POS_UNKNOWN
+                self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]
             ):
                 self.recover_filament_pos(can_heat=False, message=True, silent=True)
 
