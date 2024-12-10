@@ -6374,6 +6374,7 @@ class Mmu:
                     self._set_gate_selected(self.TOOL_GATE_BYPASS)
                     self._set_tool_selected(self.TOOL_GATE_BYPASS)
                     self._ensure_ttg_match()
+
                 elif tool >= 0: # If tool is specified then use and optionally override the gate
                     self._set_tool_selected(tool)
                     gate = self.ttg_map[tool]
@@ -6382,7 +6383,13 @@ class Mmu:
                     if gate >= 0:
                         self.selector.restore_gate(gate)
                         self._set_gate_selected(gate)
+                        self.log_info("Remapping T%d to gate %d" % (tool, gate))
                         self._remap_tool(tool, gate, loaded)
+
+                elif mod_gate >= 0: # If only gate specified then just reset and ensure tool is correct
+                    self._set_gate_selected(mod_gate)
+                    self._ensure_ttg_match()
+
                 elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
                     # This is to be able to get out of "stuck in bypass" state
                     self.log_info("Warning: Making assumption that bypass is unloaded")
