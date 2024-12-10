@@ -272,6 +272,7 @@ class MmuTest:
             debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
             mix = gcmd.get_int('MIX', 0, minval=0, maxval=1)
             try:
+                self.mmu.internal_test = True
                 for i in range(loop):
                     stop_on_endstop = random.randint(-1, 1)
                     wait = random.randint(0, 1)
