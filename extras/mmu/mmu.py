@@ -1224,7 +1224,7 @@ class Mmu:
             if self.startup_reset_ttg_map:
                 self._reset_ttg_map()
 
-            if self.startup_home_if_unloaded and self.check_if_not_calibrated(self.CALIBRATED_SELECTOR) and self.filament_pos == self.FILAMENT_POS_UNLOADED:
+            if self.startup_home_if_unloaded and not self.check_if_not_calibrated(self.CALIBRATED_SELECTOR) and self.filament_pos == self.FILAMENT_POS_UNLOADED:
                 self.home(0)
 
             if self.log_startup_status:
