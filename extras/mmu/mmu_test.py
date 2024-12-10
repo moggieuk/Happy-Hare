@@ -359,3 +359,7 @@ class MmuTest:
                     self.mmu.log_always("check_all_sensors_after(%s,%s)=%s" % (pos, gate, self.mmu.sensor_manager.check_all_sensors_after(pos, gate, loading=loading)))
             self.mmu.log_always("check_any_sensors_in_path()=%s" % self.mmu.sensor_manager.check_any_sensors_in_path())
             self.mmu.log_always("check_for_runout()=%s" % self.mmu.sensor_manager.check_for_runout())
+
+        fil_pos = gcmd.get_int('FILAMENT_POS', -2, minval=-1, maxval=10)
+        if fil_pos != -2:
+            self.mmu._set_filament_pos_state(fil_pos)

@@ -289,7 +289,7 @@ class LinearSelector:
             if force_unload is True:
                 # Forced unload case for recovery
                 self.mmu.unload_sequence(check_state=True)
-            elif force_unload is False and self.mmu.filament_pos != self.mmu.FILAMENT_POS_UNLOADED:
+            elif force_unload is None and self.mmu.filament_pos != self.mmu.FILAMENT_POS_UNLOADED:
                 # Automatic unload case
                 self.mmu.unload_sequence()
             self._home_selector()
