@@ -456,7 +456,7 @@ read_previous_mmu_type() {
     HAS_SERVO="yes"
     dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
     if [ -f "${dest_cfg}" ]; then
-        if ! grep -q "^\[mmu_servo selector_servo\]" "${dest_cfg}"; then
+        if ! grep -q "^\[mmu_servo selector_servo\]" "${dest_cfg}" && ! grep -q "^\[mmu_servo mmu_servo\]" "${dest_cfg}"; then
             HAS_SERVO="no"
         fi
     fi
