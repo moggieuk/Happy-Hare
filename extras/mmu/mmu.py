@@ -5182,6 +5182,8 @@ class Mmu:
         try:
             yield self
         finally:
+            #self.mmu_toolhead.flush_step_generation() # TTC mitigation PAUL
+            #self.toolhead.flush_step_generation()     # TTC mitigation PAUL
             self._wait_for_espooler = False
             if active and self.espooler_stop_macro and self.espooler_stop_macro != "''":
                 moved = abs(self.mmu_toolhead.get_position()[1] - initial_pos)
