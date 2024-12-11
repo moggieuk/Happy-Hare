@@ -163,7 +163,10 @@ self_update() {
 
     if [ -n "${RESTART}" ]; then
         git checkout $BRANCH --quiet
-        git pull --quiet --force
+        if git symbolic-ref -q HEAD > /dev/null; then
+            # On a branch (if using tags we will be detached)
+            git pull --quiet --force
+        fi
         GIT_VER=$(git describe --tags)
         echo -e "${B_GREEN}Now on git version ${GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
