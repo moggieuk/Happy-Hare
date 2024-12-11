@@ -1213,10 +1213,12 @@ class Mmu:
             self.gate_status = self._validate_gate_status(self.gate_status)
 
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
-            if (
+            if self.sensor_manager.check_all_sensors_after(self.FILAMENT_POS_END_BOWDEN, self.gate_selected):
+                self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
+            elif (
                 (self.filament_pos == self.FILAMENT_POS_LOADED and self.sensor_manager.check_any_sensors_after(self.FILAMENT_POS_END_BOWDEN, self.gate_selected) is False) or
                 (self.filament_pos == self.FILAMENT_POS_UNLOADED and self.sensor_manager.check_any_sensors_in_path()) or
-                self.filament_pos == self.FILAMENT_POS_UNKNOWN
+                self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]
             ):
                 self.recover_filament_pos(can_heat=False, message=True, silent=True)
 
@@ -1224,7 +1226,7 @@ class Mmu:
             if self.startup_reset_ttg_map:
                 self._reset_ttg_map()
 
-            if self.startup_home_if_unloaded and self.check_if_not_calibrated(self.CALIBRATED_SELECTOR) and self.filament_pos == self.FILAMENT_POS_UNLOADED:
+            if self.startup_home_if_unloaded and not self.check_if_not_calibrated(self.CALIBRATED_SELECTOR) and self.filament_pos == self.FILAMENT_POS_UNLOADED:
                 self.home(0)
 
             if self.log_startup_status:
@@ -3129,8 +3131,11 @@ class Mmu:
 
                 # Save toolhead velocity limits and set user defined for macros
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
-                self.saved_toolhead_min_cruise_ratio = self.toolhead.min_cruise_ratio
-                self.gcode.run_script_from_command("SET_VELOCITY_LIMIT ACCEL=%.6f MINIMUM_CRUISE_RATIO=%.6f" % (self.macro_toolhead_max_accel, self.macro_toolhead_min_cruise_ratio))
+                self.saved_toolhead_min_cruise_ratio = self.toolhead.get_status(eventtime).get('minimum_cruise_ratio', None)
+                cmd = "SET_VELOCITY_LIMIT ACCEL=%.6f" % self.macro_toolhead_max_accel
+                if self.saved_toolhead_min_cruise_ratio is not None:
+                    cmd += " MINIMUM_CRUISE_RATIO=%.6f" % self.macro_toolhead_min_cruise_ratio
+                self.gcode.run_script_from_command(cmd)
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
                 if next_pos:
@@ -3192,7 +3197,10 @@ class Mmu:
 
                 # Always restore toolhead velocity limits
                 if self.saved_toolhead_max_accel:
-                    self.gcode.run_script_from_command("SET_VELOCITY_LIMIT ACCEL=%.6f MINIMUM_CRUISE_RATIO=%.6f" % (self.saved_toolhead_max_accel, self.saved_toolhead_min_cruise_ratio))
+                    cmd = "SET_VELOCITY_LIMIT ACCEL=%.6f" % self.saved_toolhead_max_accel
+                    if self.saved_toolhead_min_cruise_ratio is not None:
+                        cmd += " MINIMUM_CRUISE_RATIO=%.6f" % self.saved_toolhead_min_cruise_ratio
+                    self.gcode.run_script_from_command(cmd)
                     self.saved_toolhead_max_accel = None
             else:
                 pass # Resume will call here again shortly so we can ignore for now
@@ -4910,8 +4918,7 @@ class Mmu:
             with self._wrap_pressure_advance(0., "for tip forming"):
                 gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
                 self.log_info("Forming tip...")
-                self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
-                self.movequeues_wait()
+                self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True, wait=True)
 
             final_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
             stepper_movement = (initial_mcu_pos - final_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
@@ -6376,6 +6383,7 @@ class Mmu:
                     self._set_gate_selected(self.TOOL_GATE_BYPASS)
                     self._set_tool_selected(self.TOOL_GATE_BYPASS)
                     self._ensure_ttg_match()
+
                 elif tool >= 0: # If tool is specified then use and optionally override the gate
                     self._set_tool_selected(tool)
                     gate = self.ttg_map[tool]
@@ -6384,7 +6392,13 @@ class Mmu:
                     if gate >= 0:
                         self.selector.restore_gate(gate)
                         self._set_gate_selected(gate)
+                        self.log_info("Remapping T%d to gate %d" % (tool, gate))
                         self._remap_tool(tool, gate, loaded)
+
+                elif mod_gate >= 0: # If only gate specified then just reset and ensure tool is correct
+                    self._set_gate_selected(mod_gate)
+                    self._ensure_ttg_match()
+
                 elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
                     # This is to be able to get out of "stuck in bypass" state
                     self.log_info("Warning: Making assumption that bypass is unloaded")

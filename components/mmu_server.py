@@ -267,7 +267,7 @@ class MmuServer:
         filament = spool_info["filament"]
         name = filament.get('name', '')
         material = filament.get('material', '')
-        color_hex = filament.get('color_hex', '')[:6].lower() # Strip alpha channel if it exists
+        color_hex = filament.get('color_hex', '').strip('#')[:6].lower() # First remove # character if present then strip alpha channel if it exists
         temp = filament.get('settings_extruder_temp', '')
         return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp}
 
@@ -837,12 +837,12 @@ def parse_gcode_file(file_path):
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX[slicer], re.IGNORECASE)
         else:
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX, re.IGNORECASE)
-        
+
         if isinstance(FLUSH_MULTIPLIER_REGEX, dict):
             flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX[slicer], re.IGNORECASE)
         else:
-            flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX, re.IGNORECASE)   
-        
+            flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX, re.IGNORECASE)
+
         with open(file_path, 'r') as in_file:
             for line in in_file:
                 # !referenced_tools! processing
@@ -928,7 +928,7 @@ def parse_gcode_file(file_path):
                     if match:
                         filament_names_csv = [e.strip() for e in re.split(',|;', match.group(2).strip())]
                         filament_names.extend(filament_names_csv)
-                        found_filament_names = True                    
+                        found_filament_names = True
 
     return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
             sorted(tools_used), colors, temps, materials, purge_volumes, filament_names, slicer)

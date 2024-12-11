@@ -163,7 +163,10 @@ self_update() {
 
     if [ -n "${RESTART}" ]; then
         git checkout $BRANCH --quiet
-        git pull --quiet --force
+        if git symbolic-ref -q HEAD > /dev/null; then
+            # On a branch (if using tags we will be detached)
+            git pull --quiet --force
+        fi
         GIT_VER=$(git describe --tags)
         echo -e "${B_GREEN}Now on git version ${GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
@@ -456,7 +459,7 @@ read_previous_mmu_type() {
     HAS_SERVO="yes"
     dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
     if [ -f "${dest_cfg}" ]; then
-        if ! grep -q "^\[mmu_servo selector_servo\]" "${dest_cfg}"; then
+        if ! grep -q "^\[mmu_servo selector_servo\]" "${dest_cfg}" && ! grep -q "^\[mmu_servo mmu_servo\]" "${dest_cfg}"; then
             HAS_SERVO="no"
         fi
     fi
