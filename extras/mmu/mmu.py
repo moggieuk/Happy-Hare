@@ -3129,8 +3129,11 @@ class Mmu:
 
                 # Save toolhead velocity limits and set user defined for macros
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
-                self.saved_toolhead_min_cruise_ratio = self.toolhead.min_cruise_ratio
-                self.gcode.run_script_from_command("SET_VELOCITY_LIMIT ACCEL=%.6f MINIMUM_CRUISE_RATIO=%.6f" % (self.macro_toolhead_max_accel, self.macro_toolhead_min_cruise_ratio))
+                self.saved_toolhead_min_cruise_ratio = self.toolhead.get_status(eventtime).get('minimum_cruise_ratio', None)
+                cmd = "SET_VELOCITY_LIMIT ACCEL=%.6f" % self.macro_toolhead_max_accel
+                if self.saved_toolhead_min_cruise_ratio is not None:
+                    cmd += " MINIMUM_CRUISE_RATIO=%.6f" % self.macro_toolhead_min_cruise_ratio
+                self.gcode.run_script_from_command(cmd)
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
                 if next_pos:
@@ -3192,7 +3195,10 @@ class Mmu:
 
                 # Always restore toolhead velocity limits
                 if self.saved_toolhead_max_accel:
-                    self.gcode.run_script_from_command("SET_VELOCITY_LIMIT ACCEL=%.6f MINIMUM_CRUISE_RATIO=%.6f" % (self.saved_toolhead_max_accel, self.saved_toolhead_min_cruise_ratio))
+                    cmd = "SET_VELOCITY_LIMIT ACCEL=%.6f" % self.saved_toolhead_max_accel
+                    if self.saved_toolhead_min_cruise_ratio is not None:
+                        cmd += " MINIMUM_CRUISE_RATIO=%.6f" % self.saved_toolhead_min_cruise_ratio
+                    self.gcode.run_script_from_command(cmd)
                     self.saved_toolhead_max_accel = None
             else:
                 pass # Resume will call here again shortly so we can ignore for now
@@ -4912,8 +4918,7 @@ class Mmu:
             with self._wrap_pressure_advance(0., "for tip forming"):
                 gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
                 self.log_info("Forming tip...")
-                self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True)
-                self.movequeues_wait()
+                self._wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True, wait=True)
 
             final_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
             stepper_movement = (initial_mcu_pos - final_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
