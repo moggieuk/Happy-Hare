@@ -4013,7 +4013,6 @@ class Mmu:
                 endstop_name = self._get_gate_endstop_name()
                 msg = ("Initial homing to %s sensor" % endstop_name) if i == 0 else ("Retry homing to gate sensor (retry #%d)" % i)
                 actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
-                #homed = True # PAUL for a test
                 if homed:
                     self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
@@ -4076,7 +4075,6 @@ class Mmu:
                 else:
                     self.log_trace("Unloading gate using the encoder")
                 success = self._reverse_home_to_encoder(homing_max)
-                #success = True # PAUL for a test
                 if success:
                     actual,park,_ = success
                     _,_,measured,_ = self.trace_filament_move("Final parking", -park)
@@ -5184,8 +5182,6 @@ class Mmu:
         try:
             yield self
         finally:
-            #self.mmu_toolhead.flush_step_generation() # TTC mitigation PAUL
-            #self.toolhead.flush_step_generation()     # TTC mitigation PAUL
             self._wait_for_espooler = False
             if active and self.espooler_stop_macro and self.espooler_stop_macro != "''":
                 moved = abs(self.mmu_toolhead.get_position()[1] - initial_pos)
