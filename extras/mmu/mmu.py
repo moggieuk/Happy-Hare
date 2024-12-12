@@ -2035,6 +2035,7 @@ class Mmu:
                 se = stepper_enable.lookup_enable(stepper.get_name())
                 se.motor_disable(self.mmu_toolhead.get_last_move_time())
         if motor in ["all", "selector"]:
+            self.selector.restore_gate(self.TOOL_GATE_UNKNOWN) # PAUL added to reset tmc current
             self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
             self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
             self.selector.disable_motors()
@@ -4019,6 +4020,7 @@ class Mmu:
                 endstop_name = self._get_gate_endstop_name()
                 msg = ("Initial homing to %s sensor" % endstop_name) if i == 0 else ("Retry homing to gate sensor (retry #%d)" % i)
                 actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
+                #homed=True # PAUL temp
                 if homed:
                     self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
@@ -4094,6 +4096,7 @@ class Mmu:
         else: # Using mmu_gate or mmu_gear_N sensor
             endstop_name = self._get_gate_endstop_name()
             actual,homed,_,_ = self.trace_filament_move("Reverse homing to %s sensor" % endstop_name, -homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
+            #homed=True # PAUL temp
             if homed:
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
                 self.trace_filament_move("Final parking", -self.gate_parking_distance)
@@ -5333,7 +5336,8 @@ class Mmu:
 
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
-        if (gate or self.gate_selected) < 0:
+        gate = gate if gate is not None else self.gate_selected
+        if gate < 0:
             sync = current = False
         elif self.mmu_machine.filament_always_gripped:
             sync = current = True
@@ -5350,12 +5354,15 @@ class Mmu:
             self.movequeues_wait() # Safety but should not be required(?)
             self.mmu_toolhead.sync(new_sync_mode)
 
-        # Set gear current (not supported for multi-gear designs)
-        if not self.mmu_machine.multigear:
-            if current and sync:
-                self._adjust_gear_current(self.sync_gear_current, "for extruder syncing")
-            else:
+        # See if we need to set a reduced gear current. If we do then make sure it is
+        # restored on previous gear stepper if we are on a multigear MMU
+        if current and sync:
+            # Reset current on old gear stepper before adjusting new
+            if self.mmu_machine.multigear and gate != self.gate_selected:
                 self._restore_gear_current()
+            self._adjust_gear_current(gate=gate, percent=self.sync_gear_current, reason="for extruder syncing")
+        else:
+            self._restore_gear_current()
 
     # This is used to protect the in print synchronization state and is used as an outermost wrapper for calls back
     # into Happy Hare during a print. It also ensures that grip (e.g. servo) and current are correctly restored
@@ -5382,21 +5389,23 @@ class Mmu:
         finally:
             self.mmu_toolhead.sync(prev_sync_mode)
 
-    def _adjust_gear_current(self, percent=100, reason=""):
-        if self.gear_tmc and 0 < percent < 200 and percent != self.gear_percentage_run_current:
-            gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
-            if self.mmu_machine.multigear and self.gate_selected > 0:
-                gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, self.gate_selected)
-            msg = "Modifying MMU gear stepper run current to %d%% ({:.2f}A) %s" % (percent, reason)
-            self._set_tmc_current(gear_stepper_name, (self.gear_default_run_current * percent) / 100., msg)
-            self.gear_percentage_run_current = percent
+    def _adjust_gear_current(self, gate=None, percent=100, reason=""):
+        gate = gate if gate is not None else self.gate_selected
+        if gate >= 0:
+            if self.gear_tmc and 0 < percent < 200 and percent != self.gear_percentage_run_current:
+                gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
+                if self.mmu_machine.multigear and gate > 0:
+                    gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
+                msg = "Modifying MMU %s run current to %d%% ({:.2f}A) %s" % (gear_stepper_name, percent, reason)
+                self._set_tmc_current(gear_stepper_name, (self.gear_default_run_current * percent) / 100., msg)
+                self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
             gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
             if self.mmu_machine.multigear and self.gate_selected > 0:
                 gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, self.gate_selected)
-            msg = "Restoring MMU gear stepper run current to %d%% configured ({:.2f}A)" % self.gear_restore_percent_run_current
+            msg = "Restoring MMU %s run current to %d%% ({:.2f}A)" % (gear_stepper_name, self.gear_restore_percent_run_current)
             self._set_tmc_current(gear_stepper_name, self.gear_default_run_current, msg)
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
@@ -5426,7 +5435,7 @@ class Mmu:
 
     def _restore_extruder_current(self):
         if self.extruder_tmc and self.extruder_percentage_run_current != 100:
-            msg="Restoring extruder stepper run current to 100% configured ({:.2f}A)"
+            msg="Restoring extruder stepper run current to 100% ({:.2f}A)"
             self._set_tmc_current(self.extruder_name, self.extruder_default_run_current, msg)
             self.extruder_percentage_run_current = 100
 
@@ -6394,6 +6403,7 @@ class Mmu:
                         self._remap_tool(tool, gate, loaded)
 
                 elif mod_gate >= 0: # If only gate specified then just reset and ensure tool is correct
+                    self.selector.restore_gate(mod_gate) # PAUL added to manage stepper current
                     self._set_gate_selected(mod_gate)
                     self._ensure_ttg_match()
 
