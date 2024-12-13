@@ -67,23 +67,19 @@ class VirtualSelector:
         pass
 
     def select_gate(self, gate):
-        #self.mmu.log_error("PAUL TEMP: -------selector.select_gate(%d)%s" % (gate, " - IGNORED" if gate == self.mmu.gate_selected else ""))
-        #if gate == self.mmu.gate_selected: return # TODO: there appears to be a corner case where this fails, so for now always select
+        if gate == self.mmu.gate_selected: return
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync new MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
-        #self.mmu.log_error("PAUL TEMP: -------selector.select_gate(END)")
 
     def restore_gate(self, gate):
-        #self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(%s)" % gate)
         self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
-        #self.mmu.log_error("PAUL TEMP: -------selector.restore_gate(END)")
 
     def filament_drive(self):
         pass
