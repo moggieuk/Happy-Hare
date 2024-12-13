@@ -103,7 +103,7 @@ class VirtualSelector:
         pass
 
     def has_bypass(self):
-        return mmu.mmu_machine.has_bypass
+        return self.mmu.mmu_machine.has_bypass
 
     def get_status(self):
         return {
@@ -346,7 +346,7 @@ class LinearSelector:
         return True
 
     def has_bypass(self):
-        return self.bypass_offset >= 0
+        return self.mmu.mmu_machine.has_bypass and self.bypass_offset >= 0
 
     def get_status(self):
         status = {
@@ -1137,11 +1137,11 @@ class RotarySelector:
         return True
 
     def has_bypass(self):
-        return mmu.mmu_machine.has_bypass
+        return self.mmu.mmu_machine.has_bypass
 
     def get_status(self):
         return {
-            'has_bypass': self.has_bypass()
+            'has_bypass': self.has_bypass(),
             'grip': "Gripped" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
         }
 
