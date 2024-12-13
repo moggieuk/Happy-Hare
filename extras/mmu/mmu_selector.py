@@ -103,10 +103,12 @@ class VirtualSelector:
         pass
 
     def has_bypass(self):
-        return False
+        return mmu.mmu_machine.has_bypass
 
     def get_status(self):
-        return {}
+        return {
+            'has_bypass': self.has_bypass()
+        }
 
     def get_mmu_status_config(self):
         msg = "\nVirtual selector"
@@ -347,7 +349,11 @@ class LinearSelector:
         return self.bypass_offset >= 0
 
     def get_status(self):
-        return self.servo.get_status()
+        status = {
+            'has_bypass': self.has_bypass()
+        }
+        status.update(self.servo.get_status())
+        return status
 
     def get_mmu_status_config(self):
         msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
@@ -1131,10 +1137,11 @@ class RotarySelector:
         return True
 
     def has_bypass(self):
-        return False
+        return mmu.mmu_machine.has_bypass
 
     def get_status(self):
         return {
+            'has_bypass': self.has_bypass()
             'grip': "Gripped" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
         }
 

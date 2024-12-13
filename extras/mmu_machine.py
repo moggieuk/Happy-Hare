@@ -75,23 +75,28 @@ class MmuMachine:
         #  - Does each gate of the MMU have different bowden path
         #  - Does design require "bowden move" (i.e. non zero length bowden)
         #  - Is filament always gripped by MMU
+        #  - Does design has a filament bypass
         selector_type = 'LinearSelector'
         variable_rotation_distances = 1
         variable_bowden_lengths = 0
         require_bowden_move = 1 # Will allow mmu_gate sensor and extruder sensor to share the same pin
         filament_always_gripped = 0 # Whether MMU design has ability to release filament (overrides gear/extruder syncing)
+        has_bypass = 0 # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearSelector)
 
         if self.mmu_vendor == VENDOR_ERCF:
             selector_type = 'LinearSelector'
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
+            require_bowden_move = 1
+            has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_TRADRACK:
             selector_type = 'LinearSelector'
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
             require_bowden_move = 1
+            has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_PRUSA:
             raise config.error("Prusa MMU is not yet supported")
@@ -102,6 +107,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 0
             filament_always_gripped = 1
+            has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_BOX_TURTLE:
             selector_type = 'VirtualSelector'
@@ -109,6 +115,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
+            has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_NIGHT_OWL:
             selector_type = 'VirtualSelector'
@@ -116,6 +123,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
+            has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_3MS:
             selector_type = 'VirtualSelector'
@@ -123,6 +131,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 0
             filament_always_gripped = 1
+            has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
             selector_type = 'RotarySelector'
@@ -130,6 +139,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
+            has_bypass = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'RotarySelector']}, selector_type)
@@ -137,6 +147,7 @@ class MmuMachine:
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
+        self.has_bypass = bool(config.getint('has_bypass', has_bypass))
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
