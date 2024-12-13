@@ -2084,8 +2084,9 @@ class Mmu:
         grip = gcmd.get_int('GRIP', 1, minval=0, maxval=1)
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # Deprecated (use GRIP=0 instead)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
-        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print current
-        self.sync_gear_to_extruder(sync, grip=(grip and servo), current=self.is_in_print(force_in_print))
+# PAUL        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print current
+        # PAUL self.sync_gear_to_extruder(sync, grip=(grip and servo), current=self.is_in_print(force_in_print))
+        self.sync_gear_to_extruder(sync, grip=(grip and servo), current=True)
 
 
 #########################
@@ -5333,6 +5334,7 @@ class Mmu:
     # grip: True=grip/release, False=don't mess
     # current: True=optionally reduce, False=restore to current default
     def sync_gear_to_extruder(self, sync, gate=None, grip=False, current=False):
+        self.log_error("sync_gear_to_extruder(sync=%s, gate=%s, grip=%s, current=%s)" % (sync, gate, grip, current))
 
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
@@ -5368,13 +5370,19 @@ class Mmu:
     # into Happy Hare during a print. It also ensures that grip (e.g. servo) and current are correctly restored
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
+        self.log_error("wrap_sync_gear_to_extruder() ENTRY")
         prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
         prev_current = self.gear_percentage_run_current != 100
         prev_grip = self.selector.get_filament_grip_state()
         try:
             yield self
         finally:
-            self.sync_gear_to_extruder(prev_sync, grip=prev_grip != self.selector.get_filament_grip_state(), current=prev_current)
+            self.log_error("wrap_sync_gear_to_extruder() FINALLY")
+            if self.gate_selected >= 0: # PAUL new check
+                self.sync_gear_to_extruder(prev_sync, grip=prev_grip != self.selector.get_filament_grip_state(), current=prev_current)
+            else: # PAUL new
+                self.sync_gear_to_extruder(False, grip=True, current=False) # PAUL new
+            self.log_error("wrap_sync_gear_to_extruder() END")
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
     # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
@@ -5951,10 +5959,10 @@ class Mmu:
             force_unload = gcmd.get_int('FORCE_UNLOAD', None, minval=0, maxval=1)
 
         try:
-            with self.wrap_sync_gear_to_extruder():
-                self.home(tool, force_unload=force_unload)
-                if tool == -1:
-                    self.log_always("Homed")
+# PAUL            with self.wrap_sync_gear_to_extruder():
+            self.home(tool, force_unload=force_unload)
+            if tool == -1:
+                self.log_always("Homed")
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
@@ -6001,6 +6009,7 @@ class Mmu:
         try:
             if bypass != -1:
                 self.select_bypass()
+# PAUL TODO should this unsync gear? problem is that callers will resync it afterwads..
             elif tool != -1:
                 self.select_tool(tool)
             else:
