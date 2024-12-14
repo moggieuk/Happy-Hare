@@ -28,7 +28,7 @@ from ..mmu_sensors       import MmuRunoutHelper
 # MMU subcomponent clases
 from .mmu_shared         import *
 from .mmu_logger         import MmuLogger
-from .mmu_selector       import VirtualSelector, LinearSelector, RotarySelector
+from .mmu_selector       import VirtualSelector, LinearSelector, MacroSelector, RotarySelector
 from .mmu_test           import MmuTest
 from .mmu_utils          import DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager import MmuSensorManager
@@ -423,6 +423,8 @@ class Mmu:
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
         self.tool_extrusion_multipliers = []
         self.tool_speed_multipliers = []
+        self.select_tool_macro = config.get('select_tool_macro', default=None)
+        self.select_tool_num_switches = config.getint('select_tool_num_switches', default=0, minval=0)
 
         # Logging
         self.log_level = config.getint('log_level', 1, minval=0, maxval=4)
