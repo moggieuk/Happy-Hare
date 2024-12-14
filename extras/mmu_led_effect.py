@@ -21,8 +21,8 @@ class MmuLedEffect:
 
     def __init__(self, config):
         self.printer = config.get_printer()
-        chains = MmuLeds.chains
-        led_strip = MmuLeds.led_strip
+#        chains = MmuLeds.chains
+#        led_strip = MmuLeds.led_strip
         define_on_str = config.get('define_on', "").strip()
         define_on = [segment.strip() for segment in define_on_str.split(',') if segment.strip()]
         if define_on and not all(e in MmuLeds.SEGMENTS for e in define_on):
@@ -32,7 +32,7 @@ class MmuLedEffect:
         led_effect_section = config.get_name()[4:]
 
         # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed
-        if chains and MmuLeds.led_effect_module:
+        if MmuLeds.led_effect_module:
             for segment in MmuLeds.SEGMENTS:
                 if chains[segment] and (not define_on or segment in define_on):
                     section_to = "%s_%s" % (led_effect_section, segment)

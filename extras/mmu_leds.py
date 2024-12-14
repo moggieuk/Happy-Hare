@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
-# Wrapper around led_effect klipper module to replicate any effect on entire strip as well
-# as on each individual LED for per-gate effects. The implements the shared definition for
-# intuitive configuration and minimising errors
+#
+# Allows for flexible creation of virtual leds chains - one for each of the supported
+# segments (exit, entry, status). Entry and exit are indexed by gate number.
 #
 # Copyright (C) 2023  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
@@ -13,69 +13,129 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging
+from functools import partial
+
+from . import led as klipper_led
+
+class VirtualMmuLedChain:
+    def __init__(self, config, segment, config_chains):
+        self.printer = printer = config.get_printer()
+        self.name = " mmu_%s_leds" % segment
+        self.config_chains = config_chains
+
+        # Create temporary config section just to access led helper
+        led_section = "led %s" % self.name
+        config.fileconfig.add_section(led_section)
+        led_config = config.getsection(led_section)
+        self.led_helper = klipper_led.LEDHelper(led_config, self.update_leds, sum(len(leds) for chain_name, leds in config_chains))
+        config.fileconfig.remove_section(led_section)
+
+        # We need to configure the chain now so we can validate
+        self.leds = []
+        for chain_name, leds in self.config_chains:
+            chain = self.printer.lookup_object(chain_name)
+            #chain = printer.load_object(config, chain_name) # PAUL is trying to load now better?
+            for led in leds:
+                self.leds.append((chain, led))
+
+    def update_leds(self, led_state, print_time):
+        chains_to_update = set()
+        for color, (chain, led) in zip(led_state, self.leds):
+            chain.led_helper.led_state[led] = color
+            chains_to_update.add(chain)
+        for chain in chains_to_update:
+            chain.led_helper.update_func(chain.led_helper.led_state, None)
+
+    def get_status(self, eventtime=None):
+        state = []
+        chain_status = {}
+        for chain, led in self.leds:
+            if chain not in chain_status:
+                status = chain.led_helper.get_status(eventtime)['color_data']
+                chain_status[chain] = status
+            state.append(chain_status[chain][led])
+        return dict(color_data=state)
+
 
 class MmuLeds:
 
-    SEGMENTS = ['exit', 'entry', 'status']
+    PER_GATE_SEGMENTS = ['exit', 'entry']
+    SEGMENTS = PER_GATE_SEGMENTS + ['status']
 
     # Shared by all [mmu_led_effect] definitions
     num_gates = None
-    led_strip = None
     frame_rate = 24
-    chains = {}
+    led_strip = None # PAUL probably not needed because move to fixed names
+    chains = {} # PAUL probably not needed
+    leds_configured = False
     led_effect_module = False
 
     def __init__(self, config):
-        led_strip = config.get('led_strip')
+        self.printer = printer = config.get_printer()
+
         MmuLeds.num_gates = config.getsection("mmu_machine").getint("num_gates")
         MmuLeds.frame_rate = config.getint('frame_rate', MmuLeds.frame_rate)
 
-        if config.get_printer().lookup_object(led_strip.replace(':', ' '), None) is None:
-            logging.warning("MMU: Happy Hare LED support cannot be loaded. Led strip '%s' not defined" % led_strip)
-        else:
-            try:
-                l = config.get_printer().load_object(config, led_strip.replace(':', ' '))
-                led_count = l.led_helper.led_count
-                MmuLeds.led_strip = led_strip
-            except Exception as e:
-                raise config.error("Unable to load LED strip '%s': %s" % (led_strip, str(e)))
+        # Create virtual led chains
+        self.virtual_chains = {}
+        for segment in self.SEGMENTS:
+            name = "%s_leds" % segment
+            config_chains = [self.parse_chain(line) for line in config.get(name).split('\n') if line.strip()]
+            self.virtual_chains[segment] = VirtualMmuLedChain(config, segment, config_chains)
+            printer.add_object("mmu_%s" % name, self.virtual_chains[segment])
 
-        indicies_used = set()
-        try:
-            for segment in self.SEGMENTS:
-                MmuLeds.chains[segment] = None
-                if segment == 'status':
-                    sidx = config.getint("%s_index" % segment, None)
-                    if sidx and not (1 <= sidx <= led_count):
-                        raise config.error("Status LED must be between 1 and %s" % led_count)
-                    MmuLeds.chains[segment] = [sidx] if sidx else None
+            if segment in self.PER_GATE_SEGMENTS and len(self.virtual_chains[segment].leds) != MmuLeds.num_gates:
+                raise config.error("Number of MMU '%s' LEDs doesn't match num_gates (%s)" % (segment, MmuLeds.num_gates))
+
+        # Check for LED chain overlap or unavailable LED
+        used = {}
+        for segment in self.SEGMENTS:
+            for led in self.virtual_chains[segment].leds:
+                obj, index = led
+                if index >= obj.led_helper.led_count:
+                    raise config.error("MMU LED (with index %d) on segment %s isn't available" % (index + 1, segment))
+                if led in used:
+                    raise config.error("Same MMU LED (with index %d) used more than one segment: %s and %s" % (index + 1, used[led], segment))
                 else:
-                    led_range = config.get("%s_range" % segment, None)
-                    if led_range:
-                        first, last = map(int, led_range.split('-'))
-                        if not (1 <= first <= led_count and 1 <= last <= led_count):
-                            raise config.error("Range of '%s' LEDS must be between 1 and %s" % (segment, led_count))
-                        if abs(first - last) + 1 != MmuLeds.num_gates:
-                            raise config.error("Range of '%s' LEDS doesn't match num_gates (%s)" % (segment, MmuLeds.num_gates))
-                        MmuLeds.chains[segment] = list(range(first, last + 1) if first <= last else range(first, last - 1, -1))
-                if MmuLeds.chains[segment]:
-                    as_set = set(MmuLeds.chains[segment])
-                    if indicies_used.isdisjoint(as_set):
-                        indicies_used.update(as_set)
-                    else:
-                        raise config.error("Overlapping LED indicies")
-        except Exception as e:
-            raise config.error("Invalid 'mmu_leds' specification. Exception: %s" % str(e))
+                    used[led] = segment
 
-        # Lack of this module loading will make future mmu_led_effect definitions a no-op. This provides an easy way to disable
-        if MmuLeds.led_strip is None:
-            MmuLeds.chains = {}
+        MmuLeds.leds_configured = True
+
+        # See if LED effects module is installed
+        try:
+           _ = config.get_printer().load_object(config, 'led_effect')
+           MmuLeds.led_effect_module = True
+        except Exception:
+            pass
+
+    def parse_chain(self, chain):
+        chain = chain.strip()
+        leds=[]
+        parms = [parameter.strip() for parameter in chain.split() if parameter.strip()]
+        if parms:
+            chain_name = parms[0].replace(':',' ')
+            led_indices = ''.join(parms[1:]).strip('()').split(',')
+            for led in led_indices:
+                if led:
+                    if '-' in led:
+                        start, stop = map(int,led.split('-'))
+                        if stop == start:
+                            ledList = [start-1]
+                        elif stop > start:
+                            ledList = list(range(start-1, stop))
+                        else:
+                            ledList = list(reversed(range(stop-1, start)))
+                        for i in ledList:
+                            leds.append(int(i))
+                    else:
+                        for i in led.split(','):
+                            leds.append(int(i)-1)
+            return chain_name, leds
         else:
-            try:
-                _ = config.get_printer().load_object(config, 'led_effect')
-                MmuLeds.led_effect_module = True
-            except Exception:
-                MmuLeds.led_effect_module = False
+            return None, None
+
+    def get_status(self, eventtime=None):
+        return {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
 
 def load_config(config):
     return MmuLeds(config)

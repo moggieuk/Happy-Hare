@@ -927,30 +927,15 @@ class Mmu:
         except Exception as e:
             self.log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
-        # Ensure that the LED control macro knows the indices of the segments of the LED chain and other essential data
+        # Basic LED validation
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
         if gcode_macro:
-            try:
-                led_chains = MmuLeds.chains
-                self.has_led_animation = MmuLeds.led_effect_module
-                led_vars = {}
-                if led_chains:
-                    self.has_leds = True
-                    c_exit = led_chains['exit']
-                    led_vars['exit_first_led_index'] = c_exit[0] if c_exit else -1
-                    led_vars['exit_reverse_order'] = int(c_exit[0] > c_exit[-1]) if c_exit else 0
-                    entry = led_chains['entry']
-                    led_vars['entry_first_led_index'] = entry[0] if entry else -1
-                    led_vars['entry_reverse_order'] = int(entry[0] > entry[-1]) if entry else 0
-                    led_vars['status_led_index'] = led_chains['status'][0] if led_chains['status'] else -1
-                    led_vars['led_strip'] = MmuLeds.led_strip
-                    self.log_debug("LEDs support enabled %s" % "with optional animation" if MmuLeds.led_effect_module else "")
-                else:
-                    self.has_leds = False
-                    self.log_debug("LEDs support is not configured")
-                gcode_macro.variables.update(led_vars)
-            except Exception as e:
-                self.log_error('Error setting up the _MMU_SET_LED macro: %s' % str(e))
+            self.has_led_animation = MmuLeds.led_effect_module
+            self.has_leds = MmuLeds.leds_configured
+            if self.has_leds:
+                self.log_debug("LEDs support enabled %s" % "with optional animation" if MmuLeds.led_effect_module else "")
+            else:
+                self.log_debug("LEDs support is not configured")
         else:
             self.log_error("LEDs macro _MMU_SET_LED not available")
 
