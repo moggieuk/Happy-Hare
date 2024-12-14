@@ -1,14 +1,22 @@
 # Happy Hare MMU Software
 # Implementation of various selector variations:
 #
-# LinearSelector
-#  - Stepper controlled linear movement with endstop
-#  - Servo controlled filament gripping
-#  + Supports type-A classic MMU's like ERCF and Tradrack
+# Macro Selector
+#  - Universal selector control via macros
+#  - Great for experimention
 #
 # VirtualSelector
 #  - Used to simply select correct gear stepper
 #  - For type-B AMS-like designs like 8-track
+#
+# LinearSelector
+#  - Stepper controlled linear movement with endstop
+#  - Servo controlled filament gripping
+#  - Supports type-A classic MMU's like ERCF and Tradrack
+#
+# Rotary Selector
+# - Rotary Selector for 3D Chamelon using stepper selection
+#   without servo
 #
 # Copyright (C) 2022  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
@@ -30,6 +38,8 @@ from extras import mmu_machine
 # MMU subcomponent clases
 from .mmu_shared import MmuError
 
+
+
 ################################################################################
 # Macro Selector
 # Implements macro-based selector for MMU's
@@ -42,8 +52,6 @@ gcode:
     SET_PIN PIN=d0 VALUE={params.S0}
     SET_PIN PIN=d1 VALUE={params.S1}
     SET_PIN PIN=d2 VALUE={params.S2}
-
-
 
 Example optocoupler-style SELECT_TOOL macro:
 [gcode_macro SELECT_TOOL]
@@ -90,7 +98,7 @@ class MacroSelector:
         self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def handle_ready(self):
-        logging.info('HH MacroSelector: Gate %d' % self.mmu.gate_selected)
+        logging.info("Happy Hare MacroSelector: Gate %d" % self.mmu.gate_selected)
         self.select_gate(self.mmu.gate_selected)
 
     def handle_disconnect(self):
@@ -157,6 +165,8 @@ class MacroSelector:
 
     def get_test_config(self):
         return ""
+
+
 
 ################################################################################
 # Virtual Selector
