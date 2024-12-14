@@ -7157,7 +7157,7 @@ class Mmu:
                         if gm == tool_to_remap['material'].lower():
                             color_list.append(color)
                     if not color_list:
-                        errors.append("Gates with %s aree missing color information..." % tool_to_remap['material'])
+                        errors.append("Gates with %s are missing color information..." % tool_to_remap['material'])
 
                 if not errors:
                     closest, distance = self._find_closest_color(tool_to_remap['color'], color_list)
