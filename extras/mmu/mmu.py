@@ -6180,7 +6180,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
+                with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament unload
                     self._mmu_unload_eject(gcmd)
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
@@ -6216,18 +6216,19 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                current_gate = self.gate_selected
-                self.select_gate(gate)
-                self._mmu_unload_eject(gcmd)
-                if can_eject_from_gate:
-                    self.log_always("Ejecting filament out of %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
-                    self._eject_from_gate()
-                # If necessary or easy restore previous gate
-                if self.is_in_print() or self.mmu_machine.multigear:
-                    self.select_gate(current_gate)
-                else:
-                    self._initialize_encoder() # Encoder 0000
-                    self._auto_filament_grip()
+                with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament eject
+                    current_gate = self.gate_selected
+                    self.select_gate(gate)
+                    self._mmu_unload_eject(gcmd)
+                    if can_eject_from_gate:
+                        self.log_always("Ejecting filament out of %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
+                        self._eject_from_gate()
+                    # If necessary or easy restore previous gate
+                    if self.is_in_print() or self.mmu_machine.multigear:
+                        self.select_gate(current_gate)
+                    else:
+                        self._initialize_encoder() # Encoder 0000
+                        self._auto_filament_grip()
         except MmuError as ee:
             self.handle_mmu_error("Filament eject for gate %d failed: %s" % (gate, str(ee)))
 
