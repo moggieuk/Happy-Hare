@@ -1065,7 +1065,7 @@ class Mmu:
         weighted_euclidean_distance = lambda color1, color2, weights=(0.3, 0.59, 0.11): (
             sum(weights[i] * (a - b) ** 2 for i, (a, b) in enumerate(zip(color1, color2)))
         )
-        ref_rgb = self._color_to_rgb_tuple(ref_color, fraction=False)
+        ref_rgb = self._color_to_rgb_tuple(ref_color)
         min_distance = float('inf')
         closest_color = None
         for color in color_list:
@@ -7171,16 +7171,16 @@ class Mmu:
                     color_list = []
                     for gn, color in enumerate(search_in):
                         gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
-                        if gm == tool_to_remap['material']:
+                        if gm == tool_to_remap['material'].lower():
                             color_list.append(color)
                     if not color_list:
-                        errors.append("Gates with %s are mssing color information..." % tool_to_remap['material'])
+                        errors.append("Gates with %s are missing color information..." % tool_to_remap['material'])
 
                 if not errors:
                     closest, distance = self._find_closest_color(tool_to_remap['color'], color_list)
                     for gn, color in enumerate(search_in):
                         gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
-                        if gm == tool_to_remap['material']:
+                        if gm == tool_to_remap['material'].lower():
                             if closest == color:
                                 t = self.console_gate_stat
                                 if distance > 0.5:
