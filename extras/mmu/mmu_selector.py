@@ -151,10 +151,12 @@ class MacroSelector:
         pass
 
     def has_bypass(self):
-        return False
+        return self.mmu.mmu_machine.has_bypass
 
     def get_status(self):
-        return {}
+        return {
+            'has_bypass': self.has_bypass()
+        }
 
     def get_mmu_status_config(self):
         msg = "\nMacro selector"
