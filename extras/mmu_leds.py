@@ -85,7 +85,7 @@ class MmuLeds:
             printer.add_object("mmu_%s" % name, self.virtual_chains[segment])
 
             num_leds = len(self.virtual_chains[segment].leds)
-            if segment in self.PER_GATE_SEGMENTS and num_leds != MmuLeds.num_gates:
+            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds != MmuLeds.num_gates:
                 raise config.error("Number of MMU '%s' LEDs (%d) doesn't match num_gates (%d)" % (segment, num_leds, MmuLeds.num_gates))
 
         # Check for LED chain overlap or unavailable LED

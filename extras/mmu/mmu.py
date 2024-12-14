@@ -3717,7 +3717,7 @@ class Mmu:
             if not quiet:
                 effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled > 0 else "Unavailable"
                 msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
-                msg = "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
+                msg += "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
                 msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, mmu_leds.get_status()['exit'])
                 msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, mmu_leds.get_status()['entry'])
                 msg += "Default status effect: %s\n" % effect_string(default_status_effect, mmu_leds.get_status()['status'])
