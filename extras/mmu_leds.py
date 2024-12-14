@@ -13,14 +13,13 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging
-from functools import partial
 
 from . import led as klipper_led
 
 class VirtualMmuLedChain:
     def __init__(self, config, segment, config_chains):
         self.printer = printer = config.get_printer()
-        self.name = " mmu_%s_leds" % segment
+        self.name = "mmu_%s_leds" % segment
         self.config_chains = config_chains
 
         # Create temporary config section just to access led helper
@@ -33,10 +32,13 @@ class VirtualMmuLedChain:
         # We need to configure the chain now so we can validate
         self.leds = []
         for chain_name, leds in self.config_chains:
-            chain = self.printer.lookup_object(chain_name)
-            #chain = printer.load_object(config, chain_name) # PAUL is trying to load now better?
-            for led in leds:
-                self.leds.append((chain, led))
+            #chain = printer.load_object(config, chain_name) # PAUL is trying to load now better for error feedback?
+            chain = self.printer.lookup_object(chain_name, None)
+            if chain:
+                for led in leds:
+                    self.leds.append((chain, led))
+            else:
+                raise config.error("MMU LED chain '%s' referenced in '%s' doesn't exist" % (chain_name, self.name))
 
     def update_leds(self, led_state, print_time):
         chains_to_update = set()
@@ -65,8 +67,6 @@ class MmuLeds:
     # Shared by all [mmu_led_effect] definitions
     num_gates = None
     frame_rate = 24
-    led_strip = None # PAUL probably not needed because move to fixed names
-    chains = {} # PAUL probably not needed
     leds_configured = False
     led_effect_module = False
 
@@ -80,12 +80,13 @@ class MmuLeds:
         self.virtual_chains = {}
         for segment in self.SEGMENTS:
             name = "%s_leds" % segment
-            config_chains = [self.parse_chain(line) for line in config.get(name).split('\n') if line.strip()]
+            config_chains = [self.parse_chain(line) for line in config.get(name, '').split('\n') if line.strip()]
             self.virtual_chains[segment] = VirtualMmuLedChain(config, segment, config_chains)
             printer.add_object("mmu_%s" % name, self.virtual_chains[segment])
 
-            if segment in self.PER_GATE_SEGMENTS and len(self.virtual_chains[segment].leds) != MmuLeds.num_gates:
-                raise config.error("Number of MMU '%s' LEDs doesn't match num_gates (%s)" % (segment, MmuLeds.num_gates))
+            num_leds = len(self.virtual_chains[segment].leds)
+            if segment in self.PER_GATE_SEGMENTS and num_leds != MmuLeds.num_gates:
+                raise config.error("Number of MMU '%s' LEDs (%d) doesn't match num_gates (%d)" % (segment, num_leds, MmuLeds.num_gates))
 
         # Check for LED chain overlap or unavailable LED
         used = {}

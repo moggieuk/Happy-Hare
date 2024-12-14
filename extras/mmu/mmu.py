@@ -3682,7 +3682,8 @@ class Mmu:
 
         set_led_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
         led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
-        if led_vars_macro and set_led_macro:
+        mmu_leds = self.printer.lookup_object('mmu_leds', None)
+        if led_vars_macro and set_led_macro and mmu_leds:
 
             current_led_enable = led_vars_macro.variables['led_enable']
             current_led_animation = led_vars_macro.variables['led_animation']
@@ -3714,12 +3715,12 @@ class Mmu:
                 self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default")
 
             if not quiet:
-                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled != -1 else "Unavailable"
+                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled > 0 else "Unavailable"
                 msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
                 msg = "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
-                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, set_led_macro.variables['exit_first_led_index'])
-                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, set_led_macro.variables['entry_first_led_index'])
-                msg += "Default status effect: %s\n" % effect_string(default_status_effect, set_led_macro.variables['status_led_index'])
+                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, mmu_leds.get_status()['exit'])
+                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, mmu_leds.get_status()['entry'])
+                msg += "Default status effect: %s\n" % effect_string(default_status_effect, mmu_leds.get_status()['status'])
                 msg += "\nOptions:\nENABLE=[0|1]\nANIMATION=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|slicer_color]\nENTRY_EFFECT=[off|gate_status|filament_color|slicer_color]\nSTATUS_EFFECT=[off|on|filament_color|slicer_color]"
                 self.log_always(msg)
         else:
