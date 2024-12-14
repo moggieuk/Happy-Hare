@@ -14,12 +14,12 @@
 import random
 
 # Happy Hare imports
-from extras import mmu_machine
-from extras.mmu_machine import MmuToolHead
+from ..            import mmu_machine
+from ..mmu_machine import MmuToolHead
 
 # MMU subcomponent clases
-from .mmu_shared import *
-from .mmu_utils import PurgeVolCalculator
+from .mmu_shared   import *
+from .mmu_utils    import PurgeVolCalculator
 
 class MmuTest:
 

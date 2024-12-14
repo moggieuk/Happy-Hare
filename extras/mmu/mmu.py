@@ -16,14 +16,14 @@ import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unico
 
 # Klipper imports
 import chelper
-from extras.homing import Homing, HomingMove
-from extras.tmc import TMCCommandHelper
+from ..homing            import Homing, HomingMove
+from ..tmc               import TMCCommandHelper
 
 # Happy Hare imports
-from extras              import mmu_machine
-from extras.mmu_machine  import MmuToolHead
-from extras.mmu_leds     import MmuLeds
-from extras.mmu_sensors  import MmuRunoutHelper
+from ..                  import mmu_machine
+from ..mmu_machine       import MmuToolHead
+from ..mmu_leds          import MmuLeds
+from ..mmu_sensors       import MmuRunoutHelper
 
 # MMU subcomponent clases
 from .mmu_shared         import *
@@ -261,6 +261,9 @@ class Mmu:
         self.config_version = config.getfloat('happy_hare_version', 2.2) # v2.2 was the last release before versioning
         if self.config_version is not None and self.config_version < self.VERSION:
             raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.config_version, self.VERSION, self.UPGRADE_REMINDER))
+
+        # Detect Kalico (Danger Klipper) installation
+        self.kalico = bool(self.printer.lookup_object('danger_options', False))
 
         # Setup remaining hardware like MMU toolhead --------------------------------------------------------
         #
@@ -1205,6 +1208,8 @@ class Mmu:
             # Splash...
             msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % fversion(self.config_version)
             self.log_always(msg, color=True)
+            if self.kalico:
+                self.log_error("Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!")
             self._set_print_state("initialized")
 
             # Use pre-gate sensors to adjust gate map

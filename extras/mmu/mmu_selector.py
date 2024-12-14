@@ -22,10 +22,10 @@
 import random, logging, math, re
 
 # Klipper imports
-from extras.homing import Homing, HomingMove
+from ..homing    import Homing, HomingMove
 
 # Happy Hare imports
-from extras import mmu_machine
+from ..          import mmu_machine
 
 # MMU subcomponent clases
 from .mmu_shared import MmuError

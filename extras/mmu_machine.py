@@ -26,7 +26,7 @@ import logging, importlib, math, os, time, re
 # Klipper imports
 import stepper, chelper, toolhead
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
-from extras.homing import Homing, HomingMove
+from .homing import Homing, HomingMove
 
 
 # TMC chips to search for
