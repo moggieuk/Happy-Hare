@@ -1,6 +1,9 @@
 ########################################################################################################################
 # Happy Hare MMU Software
 #
+# Template file for MMU's with Virtual Selector (Type-B designs like Box Turtle, Night Owl, Angry Beaver, ...)
+# This file omits selector and selector-servo configuration and a few other options that don't make sense
+#
 # EDIT THIS FILE BASED ON YOUR SETUP
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
@@ -69,13 +72,13 @@ log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = sum
 #
 # NOTE: Encoder cannot keep up much above 350mm/s so make sure 'bowden_apply_correction' is off at very high speeds!
 #
-gear_from_buffer_speed: 150		# mm/s Normal speed when loading filament. Conservative is 100mm/s, Max around 300mm/s
-gear_from_buffer_accel: 400		# Normal accelaration when loading filament
-gear_from_spool_speed: 80		# mm/s Use (lower) speed when loading for the first time (i.e. pulling from spool)
-gear_from_spool_accel: 100		# Accelaration when loading from spool
+gear_from_buffer_speed: 100		# mm/s Normal speed when loading filament. Conservative is 100mm/s, Max around 300mm/s
+gear_from_buffer_accel: 200		# Normal accelaration when loading filament
+gear_from_spool_speed: 100		# mm/s Use (lower) speed when loading for the first time (i.e. pulling from spool)
+gear_from_spool_accel: 200		# Accelaration when loading from spool
 #
-gear_short_move_speed: 80		# mm/s Speed when making short moves (like incremental retracts with encoder)
-gear_short_move_accel: 600		# Usually the same as gear_from_buffer_accel (for short movements)
+gear_short_move_speed: 100		# mm/s Speed when making short moves (like incremental retracts with encoder)
+gear_short_move_accel: 200		# Usually the same as gear_from_buffer_accel (for short movements)
 gear_short_move_threshold: 70		# Move distance that controls application of 'short_move' speed/accel
 gear_homing_speed: 50			# mm/s Speed of gear stepper only homing moves (e.g. homing to gate or extruder)
 
@@ -86,6 +89,12 @@ extruder_unload_speed: 16		# mm/s speed of unload moves inside of extruder (very
 extruder_sync_load_speed: 18		# mm/s speed of synchronized extruder load moves
 extruder_sync_unload_speed: 18		# mm/s speed of synchronized extruder unload moves
 extruder_homing_speed: 18		# mm/s speed of extruder only homing moves (e.g. to toolhead sensor)
+
+# When Happy Hare calls out to a macro for user customization and for parking moves these settings are applied and the previous
+# values automatically restored afterwards. This allows for deterministic movement speed regardless of the starting state.
+#
+macro_toolhead_max_accel: 0		# Default printer toolhead accelaration applied when macros are run. 0 = use printer max
+macro_toolhead_min_cruise_ratio: 0.5	# Default printer cruise ratio applied when macros are run
 
 
 # Gate loading/unloading -----------------------------------------------------------------------------------------------
