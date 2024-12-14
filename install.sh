@@ -546,17 +546,19 @@ read_previous_config() {
     if [ ! "${variable_lift_speed}" == "" ]; then
         variable_park_lift_speed="${variable_lift_speed}"
     fi
+
     if [ "${variable_enable_park}" == "False" ]; then
         variable_enable_park_printing="'pause,cancel'"
         if [ "${variable_enable_park_runout}" == "True" ]; then
             variable_enable_park_printing="'toolchange,load,unload,runout,pause,cancel'"
         fi
-    else
+    elif [ "${variable_enable_park_printing}" == "" ]; then
         variable_enable_park_printing="'toolchange,load,unload,pause,cancel'"
     fi
+
     if [ "${variable_enable_park_standalone}" == "False" ]; then
         variable_enable_park_standalone="'pause,cancel'"
-    else
+    elif [ "${variable_enable_park_standalone}" == "" ]; then
         variable_enable_park_standalone="'toolchange,load,unload,pause,cancel'"
     fi
 
