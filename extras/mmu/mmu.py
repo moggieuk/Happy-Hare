@@ -5413,7 +5413,7 @@ class Mmu:
     @contextlib.contextmanager
     def _wrap_gear_current(self, percent=100, reason=""):
         self.gear_restore_percent_run_current = self.gear_percentage_run_current
-        self._adjust_gear_current(percent, reason)
+        self._adjust_gear_current(percent=percent, reason=reason)
         try:
             yield self
         finally:
