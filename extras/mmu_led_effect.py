@@ -21,32 +21,38 @@ class MmuLedEffect:
 
     def __init__(self, config):
         self.printer = config.get_printer()
-        define_on_str = config.get('define_on', "").strip()
-        define_on = [segment.strip() for segment in define_on_str.split(',') if segment.strip()]
-        if define_on and not all(e in MmuLeds.SEGMENTS for e in define_on):
-            raise config.error("Unknown LED segment name specified in '%s'" % define_on_str)
-        config.fileconfig.set(config.get_name(), 'frame_rate', config.get('frame_rate', MmuLeds.frame_rate))
-        _ = config.get('layers')
-        led_effect_section = config.get_name()[4:] # Remove "mmu_"
+        mmu_leds = self.printer.lookup_object('mmu_leds', None)
+        leds_configured = mmu_leds.get_status().get('leds_configured') if mmu_leds else False
+        has_led_effects = mmu_leds.get_status().get('led_effect_module') if mmu_leds else False
+        frame_rate = mmu_leds.get_status().get('default_frame_rate') if mmu_leds else 24
 
-        # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed
-        if MmuLeds.led_effect_module:
-            for segment in MmuLeds.SEGMENTS:
-                led_segment_name = "mmu_%s_leds" % segment
-                led_chain = self.printer.lookup_object("mmu_%s_leds" % segment)
-                num_leds = led_chain.led_helper.led_count
+        if leds_configured:
+            define_on_str = config.get('define_on', "").strip()
+            define_on = [segment.strip() for segment in define_on_str.split(',') if segment.strip()]
+            if define_on and not all(e in MmuLeds.SEGMENTS for e in define_on):
+                raise config.error("Unknown LED segment name specified in '%s'" % define_on_str)
+            config.fileconfig.set(config.get_name(), 'frame_rate', config.get('frame_rate', frame_rate))
+            _ = config.get('layers')
+            led_effect_section = config.get_name()[4:] # Remove "mmu_"
 
-                if num_leds > 0:
-                    # Full segment effects
-                    if not define_on or segment in define_on:
-                        section_to = "%s_%s" % (led_effect_section, segment)
-                        self._add_led_effect(config, section_to, led_segment_name)
+            # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed
+            if has_led_effects:
+                for segment in MmuLeds.SEGMENTS:
+                    led_segment_name = "mmu_%s_leds" % segment
+                    led_chain = self.printer.lookup_object("mmu_%s_leds" % segment)
+                    num_leds = led_chain.led_helper.led_count
 
-                    # Per gate 
-                    if segment in MmuLeds.PER_GATE_SEGMENTS and not define_on and segment != 'status':
-                        for idx in range(num_leds):
-                            section_to = "%s_%s_%d" % (led_effect_section, segment, idx + 1)
-                            self._add_led_effect(config, section_to, "%s (%d)" % (led_segment_name, idx + 1))
+                    if num_leds > 0:
+                        # Full segment effects
+                        if not define_on or segment in define_on:
+                            section_to = "%s_%s" % (led_effect_section, segment)
+                            self._add_led_effect(config, section_to, led_segment_name)
+
+                        # Per gate 
+                        if segment in MmuLeds.PER_GATE_SEGMENTS and not define_on and segment != 'status':
+                            for idx in range(num_leds):
+                                section_to = "%s_%s_%d" % (led_effect_section, segment, idx + 1)
+                                self._add_led_effect(config, section_to, "%s (%d)" % (led_segment_name, idx + 1))
 
     def _add_led_effect(self, config, section_to, leds):
         config.fileconfig.add_section(section_to)

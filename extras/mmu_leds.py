@@ -64,17 +64,11 @@ class MmuLeds:
     PER_GATE_SEGMENTS = ['exit', 'entry']
     SEGMENTS = PER_GATE_SEGMENTS + ['status']
 
-    # Shared by all [mmu_led_effect] definitions
-    num_gates = None
-    frame_rate = 24
-    leds_configured = False
-    led_effect_module = False
-
     def __init__(self, config):
         self.printer = printer = config.get_printer()
 
-        MmuLeds.num_gates = config.getsection("mmu_machine").getint("num_gates")
-        MmuLeds.frame_rate = config.getint('frame_rate', MmuLeds.frame_rate)
+        self.num_gates = config.getsection("mmu_machine").getint("num_gates")
+        self.frame_rate = config.getint('frame_rate', self.frame_rate)
 
         # Create virtual led chains
         self.virtual_chains = {}
@@ -85,8 +79,8 @@ class MmuLeds:
             printer.add_object("mmu_%s" % name, self.virtual_chains[segment])
 
             num_leds = len(self.virtual_chains[segment].leds)
-            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds != MmuLeds.num_gates:
-                raise config.error("Number of MMU '%s' LEDs (%d) doesn't match num_gates (%d)" % (segment, num_leds, MmuLeds.num_gates))
+            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds != self.num_gates:
+                raise config.error("Number of MMU '%s' LEDs (%d) doesn't match num_gates (%d)" % (segment, num_leds, self.num_gates))
 
         # Check for LED chain overlap or unavailable LEDs
         used = {}
@@ -100,12 +94,13 @@ class MmuLeds:
                 else:
                     used[led] = segment
 
-        MmuLeds.leds_configured = True
+        self.leds_configured = True
 
         # Check if LED effects module is installed
+        self.led_effect_module = False
         try:
            _ = config.get_printer().load_object(config, 'led_effect')
-           MmuLeds.led_effect_module = True
+           self.led_effect_module = True
         except Exception:
             pass
 
@@ -136,7 +131,13 @@ class MmuLeds:
             return None, None
 
     def get_status(self, eventtime=None):
-        return {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
+        return {
+            segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS,
+            'leds_configured': self.leds_configured,
+            'led_effect_module': self.led_effect_module,
+            'num_gates': self.num_gates,
+            'default_frame_rate': self.frame_rate
+        }
 
 def load_config(config):
     return MmuLeds(config)
