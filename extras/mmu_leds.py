@@ -14,6 +14,7 @@
 #
 import logging
 
+# Klipper imports
 from . import led as klipper_led
 
 class VirtualMmuLedChain:
@@ -32,7 +33,6 @@ class VirtualMmuLedChain:
         # We need to configure the chain now so we can validate
         self.leds = []
         for chain_name, leds in self.config_chains:
-            #chain = printer.load_object(config, chain_name) # PAUL is trying to load now better for error feedback?
             chain = self.printer.lookup_object(chain_name, None)
             if chain:
                 for led in leds:
@@ -88,7 +88,7 @@ class MmuLeds:
             if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds != MmuLeds.num_gates:
                 raise config.error("Number of MMU '%s' LEDs (%d) doesn't match num_gates (%d)" % (segment, num_leds, MmuLeds.num_gates))
 
-        # Check for LED chain overlap or unavailable LED
+        # Check for LED chain overlap or unavailable LEDs
         used = {}
         for segment in self.SEGMENTS:
             for led in self.virtual_chains[segment].leds:
@@ -102,7 +102,7 @@ class MmuLeds:
 
         MmuLeds.leds_configured = True
 
-        # See if LED effects module is installed
+        # Check if LED effects module is installed
         try:
            _ = config.get_printer().load_object(config, 'led_effect')
            MmuLeds.led_effect_module = True
