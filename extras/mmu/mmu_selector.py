@@ -1002,7 +1002,7 @@ class LinearSelectorServo:
         if self.mmu.internal_test: return # Save servo while testing
         if self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS: return
         if self.servo_state == self.SERVO_DOWN_STATE: return
-        self.mmu.log_debug("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
+        self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down']) # PAUL changed to trace
         self.mmu.movequeues_wait()
         self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
@@ -1017,7 +1017,7 @@ class LinearSelectorServo:
     def servo_move(self): # Position servo for selector movement
         if self.mmu.internal_test: return # Save servo while testing
         if self.servo_state == self.SERVO_MOVE_STATE: return
-        self.mmu.log_debug("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
+        self.mmu.log_trace("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move']) # PAUL changed to trace
         if self.servo_angle != self.servo_angles['move']:
             self.mmu.movequeues_wait()
             self.servo.set_position(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
@@ -1028,7 +1028,7 @@ class LinearSelectorServo:
     def servo_up(self, measure=False):
         if self.mmu.internal_test: return 0. # Save servo while testing
         if self.servo_state == self.SERVO_UP_STATE: return 0.
-        self.mmu.log_debug("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up'])
+        self.mmu.log_trace("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up']) # PAUL changed to trace
         delta = 0.
         if self.servo_angle != self.servo_angles['up']:
             self.mmu.movequeues_wait()
