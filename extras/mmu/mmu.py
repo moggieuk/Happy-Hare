@@ -1120,9 +1120,9 @@ class Mmu:
         purge_volumes = [
             [
                 purge_vol_calc.calc_purge_vol_by_hex(tool_colors[y], tool_colors[x]) if should_calc(x,y) else 0
-                for y in range(self.num_gates)
+                for x in range(self.num_gates)
             ]
-            for x in range(self.num_gates)
+            for y in range(self.num_gates)
         ]
         return purge_volumes
 
