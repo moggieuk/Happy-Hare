@@ -131,13 +131,14 @@ class MmuLeds:
             return None, None
 
     def get_status(self, eventtime=None):
-        return {
-            segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS,
+        status = {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
+        status.update({
             'leds_configured': self.leds_configured,
             'led_effect_module': self.led_effect_module,
             'num_gates': self.num_gates,
             'default_frame_rate': self.frame_rate
-        }
+        })
+        return status
 
 def load_config(config):
     return MmuLeds(config)

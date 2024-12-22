@@ -747,6 +747,9 @@ class Mmu:
             revision_var = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, None)
             if revision_var is None:
                 self.save_variables.allVariables[self.VARS_MMU_REVISION] = 0
+        else:
+            rd_var = None
+            revision_var = None
         if not self.save_variables or (rd_var is None and revision_var is None):
             raise self.config.error("Calibration settings file (mmu_vars.cfg) not found. Check [save_variables] section in mmu_macro_vars.cfg\nAlso ensure you only have a single [save_variables] section defined in your printer config and it contains the line: mmu__revision = 0. If not, add this line and restart")
 
@@ -3832,7 +3835,7 @@ class Mmu:
     def cmd_MMU_STEP_LOAD_GATE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-             self._load_gate()
+            self._load_gate()
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
 
@@ -3867,7 +3870,7 @@ class Mmu:
     def cmd_MMU_STEP_HOME_EXTRUDER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-             self._home_to_extruder(self.extruder_homing_max)
+            self._home_to_extruder(self.extruder_homing_max)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
 

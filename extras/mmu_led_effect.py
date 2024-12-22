@@ -48,7 +48,7 @@ class MmuLedEffect:
                             section_to = "%s_%s" % (led_effect_section, segment)
                             self._add_led_effect(config, section_to, led_segment_name)
 
-                        # Per gate 
+                        # Per gate
                         if segment in MmuLeds.PER_GATE_SEGMENTS and not define_on and segment != 'status':
                             for idx in range(num_leds):
                                 section_to = "%s_%s_%d" % (led_effect_section, segment, idx + 1)
