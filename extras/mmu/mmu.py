@@ -1106,9 +1106,9 @@ class Mmu:
         purge_volumes = [
             [
                 purge_vol_calc.calc_purge_vol_by_hex(tool_colors[y], tool_colors[x]) if should_calc(x,y) else 0
-                for y in range(self.num_gates)
+                for x in range(self.num_gates)
             ]
-            for x in range(self.num_gates)
+            for y in range(self.num_gates)
         ]
         return purge_volumes
 
@@ -4732,7 +4732,7 @@ class Mmu:
                 self._display_visual_state()
 
             park_pos = 0.
-            form_tip = form_tip if not None else self.FORM_TIP_STANDALONE
+            form_tip = form_tip if form_tip is not None else self.FORM_TIP_STANDALONE
             if form_tip == self.FORM_TIP_SLICER:
                 # Slicer was responsible for the tip, but the user must set the slicer_tip_park_pos
                 park_pos = self.slicer_tip_park_pos
@@ -5592,7 +5592,7 @@ class Mmu:
         self.log_debug("Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
         self._record_tool_override() # Remember M220 and M221 overrides
-        self.unload_sequence(form_tip=form_tip if not None else self.FORM_TIP_STANDALONE, runout=runout)
+        self.unload_sequence(form_tip=form_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
 
     def _auto_home(self, tool=0):
@@ -7832,7 +7832,6 @@ class Mmu:
                         with self.wrap_action(self.ACTION_CHECKING):
                             tool_selected = self.tool_selected
                             filament_pos = self.filament_pos
-                            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                             gates_tools = []
                             if gate >= 0:
                                 # Individual gate
@@ -7882,6 +7881,7 @@ class Mmu:
                             if len(gates_tools) > 1:
                                 self.log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
                             with self.wrap_suppress_visual_log():
+                                self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                                 for gate, tool in gates_tools:
                                     try:
                                         self.select_gate(gate)
