@@ -1103,13 +1103,12 @@ class Mmu:
 
         # Build purge volume map (x=to_tool, y=from_tool)
         should_calc = lambda x,y: x < len(tool_colors) and y < len(tool_colors) and x != y
-# PAUL x and y may be reversed..
         purge_volumes = [
             [
                 purge_vol_calc.calc_purge_vol_by_hex(tool_colors[y], tool_colors[x]) if should_calc(x,y) else 0
-                for y in range(self.num_gates) # PAUL should be x?
+                for y in range(self.num_gates)
             ]
-            for x in range(self.num_gates) # PAUL should be y?
+            for x in range(self.num_gates)
         ]
         return purge_volumes
 
@@ -1212,14 +1211,12 @@ class Mmu:
                 (self.filament_pos == self.FILAMENT_POS_UNLOADED and self.sensor_manager.check_any_sensors_in_path()) or
                 self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]
             ):
-# PAUL can this be made not to activate any stepper? and controlled via parameter?
                 self.recover_filament_pos(can_heat=False, message=True, silent=True)
 
             # Apply startup options
             if self.startup_reset_ttg_map:
                 self._reset_ttg_map()
 
-# PAUL can this be made not to activate any stepper? and controlled via parameter?
             if self.startup_home_if_unloaded and not self.check_if_not_calibrated(self.CALIBRATED_SELECTOR) and self.filament_pos == self.FILAMENT_POS_UNLOADED:
                 self.home(0)
 
@@ -1232,7 +1229,7 @@ class Mmu:
                 self.encoder_sensor.set_clog_detection_length(self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, 15))
                 self._disable_runout() # Initially disable clog/runout detection
 
-            self.selector.filament_hold() # PAUL can this be made not to activate any stepper? and controlled via parameter?
+            self.selector.filament_hold()
             self.movequeues_wait()
 
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
