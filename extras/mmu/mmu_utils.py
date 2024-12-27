@@ -89,7 +89,9 @@ class PurgeVolCalculator:
         return purge_volume
 
     def calc_purge_vol_by_hex(self, src_clr, dst_clr):
-        return self.calc_purge_vol_by_rgb(*self.hex_to_rgb(src_clr), *self.hex_to_rgb(dst_clr))
+        src_rgb = self.hex_to_rgb(src_clr)
+        dst_rgb = self.hex_to_rgb(dst_clr)
+        return self.calc_purge_vol_by_rgb(*(src_rgb + dst_rgb))
 
     @staticmethod
     def RGB2HSV(r, g, b):

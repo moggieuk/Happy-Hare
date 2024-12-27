@@ -13,8 +13,8 @@
 import random, logging, math, re
 
 # Happy Hare imports
-from extras.mmu_sensors  import MmuRunoutHelper
-from extras.mmu.mmu_shared import MmuError
+from ..mmu_sensors import MmuRunoutHelper
+from .mmu_shared   import MmuError
 
 class MmuSensorManager:
     def __init__(self, mmu):

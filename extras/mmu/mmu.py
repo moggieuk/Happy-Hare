@@ -16,19 +16,19 @@ import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unico
 
 # Klipper imports
 import chelper
-from extras.homing import Homing, HomingMove
-from extras.tmc import TMCCommandHelper
+from ..homing            import Homing, HomingMove
+from ..tmc               import TMCCommandHelper
 
 # Happy Hare imports
-from extras              import mmu_machine
-from extras.mmu_machine  import MmuToolHead
-from extras.mmu_leds     import MmuLeds
-from extras.mmu_sensors  import MmuRunoutHelper
+from ..                  import mmu_machine
+from ..mmu_machine       import MmuToolHead
+from ..mmu_leds          import MmuLeds
+from ..mmu_sensors       import MmuRunoutHelper
 
 # MMU subcomponent clases
 from .mmu_shared         import *
 from .mmu_logger         import MmuLogger
-from .mmu_selector       import VirtualSelector, LinearSelector, RotarySelector
+from .mmu_selector       import VirtualSelector, LinearSelector, MacroSelector, RotarySelector
 from .mmu_test           import MmuTest
 from .mmu_utils          import DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager import MmuSensorManager
@@ -262,6 +262,9 @@ class Mmu:
         if self.config_version is not None and self.config_version < self.VERSION:
             raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.config_version, self.VERSION, self.UPGRADE_REMINDER))
 
+        # Detect Kalico (Danger Klipper) installation
+        self.kalico = bool(self.printer.lookup_object('danger_options', False))
+
         # Setup remaining hardware like MMU toolhead --------------------------------------------------------
         #
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
@@ -420,6 +423,8 @@ class Mmu:
         self.default_endless_spool_groups = list(config.getintlist('endless_spool_groups', []))
         self.tool_extrusion_multipliers = []
         self.tool_speed_multipliers = []
+        self.select_tool_macro = config.get('select_tool_macro', default=None)
+        self.select_tool_num_switches = config.getint('select_tool_num_switches', default=0, minval=0)
 
         # Logging
         self.log_level = config.getint('log_level', 1, minval=0, maxval=4)
@@ -1062,7 +1067,7 @@ class Mmu:
         weighted_euclidean_distance = lambda color1, color2, weights=(0.3, 0.59, 0.11): (
             sum(weights[i] * (a - b) ** 2 for i, (a, b) in enumerate(zip(color1, color2)))
         )
-        ref_rgb = self._color_to_rgb_tuple(ref_color, fraction=False)
+        ref_rgb = self._color_to_rgb_tuple(ref_color)
         min_distance = float('inf')
         closest_color = None
         for color in color_list:
@@ -1115,9 +1120,9 @@ class Mmu:
         purge_volumes = [
             [
                 purge_vol_calc.calc_purge_vol_by_hex(tool_colors[y], tool_colors[x]) if should_calc(x,y) else 0
-                for y in range(self.num_gates)
+                for x in range(self.num_gates)
             ]
-            for x in range(self.num_gates)
+            for y in range(self.num_gates)
         ]
         return purge_volumes
 
@@ -1205,6 +1210,8 @@ class Mmu:
             # Splash...
             msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % fversion(self.config_version)
             self.log_always(msg, color=True)
+            if self.kalico:
+                self.log_error("Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!")
             self._set_print_state("initialized")
 
             # Use pre-gate sensors to adjust gate map
@@ -4738,7 +4745,7 @@ class Mmu:
                 self._display_visual_state()
 
             park_pos = 0.
-            form_tip = form_tip if not None else self.FORM_TIP_STANDALONE
+            form_tip = form_tip if form_tip is not None else self.FORM_TIP_STANDALONE
             if form_tip == self.FORM_TIP_SLICER:
                 # Slicer was responsible for the tip, but the user must set the slicer_tip_park_pos
                 park_pos = self.slicer_tip_park_pos
@@ -5413,7 +5420,7 @@ class Mmu:
     @contextlib.contextmanager
     def _wrap_gear_current(self, percent=100, reason=""):
         self.gear_restore_percent_run_current = self.gear_percentage_run_current
-        self._adjust_gear_current(percent, reason)
+        self._adjust_gear_current(percent=percent, reason=reason)
         try:
             yield self
         finally:
@@ -5598,7 +5605,7 @@ class Mmu:
         self.log_debug("Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
         self._record_tool_override() # Remember M220 and M221 overrides
-        self.unload_sequence(form_tip=form_tip if not None else self.FORM_TIP_STANDALONE, runout=runout)
+        self.unload_sequence(form_tip=form_tip, runout=runout)
         self._spoolman_activate_spool(0) # Deactivate in SpoolMan
 
     def _auto_home(self, tool=0):
@@ -6180,7 +6187,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
+                with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament unload
                     self._mmu_unload_eject(gcmd)
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
@@ -6216,18 +6223,19 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                current_gate = self.gate_selected
-                self.select_gate(gate)
-                self._mmu_unload_eject(gcmd)
-                if can_eject_from_gate:
-                    self.log_always("Ejecting filament out of %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
-                    self._eject_from_gate()
-                # If necessary or easy restore previous gate
-                if self.is_in_print() or self.mmu_machine.multigear:
-                    self.select_gate(current_gate)
-                else:
-                    self._initialize_encoder() # Encoder 0000
-                    self._auto_filament_grip()
+                with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament eject
+                    current_gate = self.gate_selected
+                    self.select_gate(gate)
+                    self._mmu_unload_eject(gcmd)
+                    if can_eject_from_gate:
+                        self.log_always("Ejecting filament out of %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
+                        self._eject_from_gate()
+                    # If necessary or easy restore previous gate
+                    if self.is_in_print() or self.mmu_machine.multigear:
+                        self.select_gate(current_gate)
+                    else:
+                        self._initialize_encoder() # Encoder 0000
+                        self._auto_filament_grip()
         except MmuError as ee:
             self.handle_mmu_error("Filament eject for gate %d failed: %s" % (gate, str(ee)))
 
@@ -7165,16 +7173,16 @@ class Mmu:
                     color_list = []
                     for gn, color in enumerate(search_in):
                         gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
-                        if gm == tool_to_remap['material']:
+                        if gm == tool_to_remap['material'].lower():
                             color_list.append(color)
                     if not color_list:
-                        errors.append("Gates with %s are mssing color information..." % tool_to_remap['material'])
+                        errors.append("Gates with %s are missing color information..." % tool_to_remap['material'])
 
                 if not errors:
                     closest, distance = self._find_closest_color(tool_to_remap['color'], color_list)
                     for gn, color in enumerate(search_in):
                         gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
-                        if gm == tool_to_remap['material']:
+                        if gm == tool_to_remap['material'].lower():
                             if closest == color:
                                 t = self.console_gate_stat
                                 if distance > 0.5:
@@ -7837,7 +7845,6 @@ class Mmu:
                         with self.wrap_action(self.ACTION_CHECKING):
                             tool_selected = self.tool_selected
                             filament_pos = self.filament_pos
-                            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                             gates_tools = []
                             if gate >= 0:
                                 # Individual gate
@@ -7887,6 +7894,7 @@ class Mmu:
                             if len(gates_tools) > 1:
                                 self.log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
                             with self.wrap_suppress_visual_log():
+                                self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
                                 for gate, tool in gates_tools:
                                     try:
                                         self.select_gate(gate)

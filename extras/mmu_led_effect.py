@@ -15,7 +15,7 @@
 import logging
 
 # Klipper imports
-from extras.mmu_leds import MmuLeds
+from .mmu_leds import MmuLeds
 
 class MmuLedEffect:
 

@@ -32,7 +32,6 @@
 #
 import logging, time
 
-
 # Enhanced "runout helper" that gives greater control of when filament sensor events are fired in
 # addition to creating a "remove" / "runout" distinction
 class MmuRunoutHelper:
@@ -131,9 +130,9 @@ class MmuRunoutHelper:
     cmd_QUERY_FILAMENT_SENSOR_help = "Query the status of the Filament Sensor"
     def cmd_QUERY_FILAMENT_SENSOR(self, gcmd):
         if self.filament_present:
-            msg = "Pre-gate MMU Sensor %s: filament detected" % (self.name)
+            msg = "MMU Sensor %s: filament detected" % (self.name)
         else:
-            msg = "Pre-gate MMU Sensor %s: filament not detected" % (self.name)
+            msg = "MMU Sensor %s: filament not detected" % (self.name)
         gcmd.respond_info(msg)
 
     cmd_SET_FILAMENT_SENSOR_help = "Sets the filament sensor on/off"
@@ -211,9 +210,9 @@ class MmuSensors:
         insert_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
         remove_gcode = ("%s SENSOR=%s%s" % (self.REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
         runout_gcode = ("%s SENSOR=%s%s" % (self.RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
-        gate_helper = MmuRunoutHelper(self.printer, sensor, event_delay, insert_gcode, remove_gcode, runout_gcode, allow_in_print)
-        fs.runout_helper = gate_helper
-        fs.get_status = gate_helper.get_status
+        ro_helper = MmuRunoutHelper(self.printer, sensor, event_delay, insert_gcode, remove_gcode, runout_gcode, allow_in_print)
+        fs.runout_helper = ro_helper
+        fs.get_status = ro_helper.get_status
 
     def _is_empty_pin(self, switch_pin):
         if switch_pin == '': return True

@@ -18,7 +18,7 @@
 import logging, time
 
 # Klipper imports
-from extras import pulse_counter
+from . import pulse_counter
 
 class MmuEncoder:
     CHECK_MOVEMENT_TIMEOUT = 0.250
