@@ -617,6 +617,8 @@ convert_to_boolean_string() {
 # I'd prefer not to attempt to upgrade mmu_hardware.cfg but these will ease pain
 # and are relatively safe
 upgrade_mmu_hardware() {
+    echo -e "${INFO}Checking for need to upgrade mmu_hardware.cfg..."
+
     hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
 
     # v3.0.0: Upgrade mmu_servo to mmu_selector_servo
@@ -673,14 +675,12 @@ EOF
     fi
 
     # v3.0.2: LED rework
-    led_strip_value=$(sed -n 's/^#\? *led_strip: \(.*\)/\1/p' "$hardware_cfg")
-    if [ ! "$led_strip_value" ]; then
-        sed -i \
-            -e '/^#led_strip:/d' \
-            -e '/^led_strip:/d' \
-            -e "s/^\(#*\)\(exit_range:\) \(.*\)/\1exit_leds: \$led_strip \3/" \
-            -e "s/^\(#*\)\(entry_range:\) \(.*\)/\1entry_leds: \$led_strip \3/" \
-            -e "s/^\(#*\)\(status_index:\) \(.*\)/\1status_leds: \$led_strip \3/" \
+    led_strip_value=$(sed -n 's/^led_strip: \(.*\)/\1/p' "$hardware_cfg")
+    if [ ! "$led_strip_value" == "" ]; then
+        sed -e '/^led_strip:/d' \
+            -e "s|^\(#*\)\(exit_range:\) \(.*\)|\1exit_leds: ${led_strip_value} (\3)|" \
+            -e "s|^\(#*\)\(entry_range:\) \(.*\)|\1entry_leds: ${led_strip_value} (\3)|" \
+            -e "s|^\(#*\)\(status_index:\) \(.*\)|\1status_leds: ${led_strip_value} (\3)|" \
             "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
 
         echo -e "${INFO}Updated [mmu_leds] section in mmu_hardware.cfg..."
