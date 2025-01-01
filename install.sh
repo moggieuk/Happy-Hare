@@ -671,7 +671,21 @@ EOF
 
         echo -e "${INFO}Added new [mmu_machine] section to mmu_hardware.cfg..."
     fi
-}  
+
+    # v3.0.2: LED rework
+    led_strip_value=$(sed -n 's/^#\? *led_strip: \(.*\)/\1/p' "$hardware_cfg")
+    if [ ! "$led_strip_value" ]; then
+        sed -i \
+            -e '/^#led_strip:/d' \
+            -e '/^led_strip:/d' \
+            -e "s/^\(#*\)\(exit_range:\) \(.*\)/\1exit_leds: \$led_strip \3/" \
+            -e "s/^\(#*\)\(entry_range:\) \(.*\)/\1entry_leds: \$led_strip \3/" \
+            -e "s/^\(#*\)\(status_index:\) \(.*\)/\1status_leds: \$led_strip \3/" \
+            "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
+
+        echo -e "${INFO}Updated [mmu_leds] section in mmu_hardware.cfg..."
+    fi
+}
 
 copy_config_files() {
     mmu_dir="${KLIPPER_CONFIG_HOME}/mmu"

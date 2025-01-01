@@ -67,7 +67,7 @@ class MmuLeds:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
 
-        self.num_gates = config.getsection("mmu_machine").getint("num_gates")
+        self.num_gates = config.getsection("mmu_machine").getint("num_gates") # PAUL change to use mmu_machine class variable
         self.frame_rate = config.getint('frame_rate', self.frame_rate)
 
         # Create virtual led chains
