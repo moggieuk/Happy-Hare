@@ -22,17 +22,15 @@ class MmuLedEffect:
     def __init__(self, config):
         self.printer = config.get_printer()
         mmu_leds = self.printer.lookup_object('mmu_leds', None)
-        leds_configured = mmu_leds.get_status().get('leds_configured') if mmu_leds else False
-        has_led_effects = mmu_leds.get_status().get('led_effect_module') if mmu_leds else False
-        frame_rate = mmu_leds.get_status().get('default_frame_rate') if mmu_leds else 24
-
-        if leds_configured:
-            define_on_str = config.get('define_on', "").strip()
+        define_on_str = config.get('define_on', "").strip()
+        _ = config.get('layers')
+        if mmu_leds:
+            has_led_effects = mmu_leds.get_status().get('led_effect_module')
+            frame_rate = mmu_leds.get_status().get('default_frame_rate')
             define_on = [segment.strip() for segment in define_on_str.split(',') if segment.strip()]
             if define_on and not all(e in MmuLeds.SEGMENTS for e in define_on):
                 raise config.error("Unknown LED segment name specified in '%s'" % define_on_str)
             config.fileconfig.set(config.get_name(), 'frame_rate', config.get('frame_rate', frame_rate))
-            _ = config.get('layers')
             led_effect_section = config.get_name()[4:] # Remove "mmu_"
 
             # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed

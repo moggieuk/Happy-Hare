@@ -93,8 +93,8 @@ class MmuLeds:
                     raise config.error("Same MMU LED (with index %d) used more than one segment: %s and %s" % (index + 1, used[led], segment))
                 else:
                     used[led] = segment
-
-        self.leds_configured = True
+# PAUL
+# PAUL       self.leds_configured = True
 
         # Check if LED effects module is installed
         self.led_effect_module = False
@@ -133,7 +133,7 @@ class MmuLeds:
     def get_status(self, eventtime=None):
         status = {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
         status.update({
-            'leds_configured': self.leds_configured,
+# PAUL            'leds_configured': self.leds_configured,
             'led_effect_module': self.led_effect_module,
             'num_gates': self.num_gates,
             'default_frame_rate': self.frame_rate

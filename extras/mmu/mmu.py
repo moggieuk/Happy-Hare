@@ -933,7 +933,7 @@ class Mmu:
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
         if gcode_macro:
             mmu_leds = self.printer.lookup_object('mmu_leds', None)
-            self.has_leds = mmu_leds.get_status().get('leds_configured', False) if mmu_leds else False
+            self.has_leds = True if mmu_leds else False
             self.has_led_animation = mmu_leds.get_status().get('led_effect_module', False) if mmu_leds else False
 
             if self.has_leds:
