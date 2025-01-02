@@ -95,7 +95,7 @@ class Mmu:
     # Standard sensor and endstop or pseudo endstop names
     ENDSTOP_ENCODER             = "encoder"        # Fake Gate endstop
     ENDSTOP_GATE                = "mmu_gate"       # Gate
-    ENDSTOP_GEAR_PREFIX         = "mmu_gear"
+    ENDSTOP_GEAR_PREFIX         = "mmu_gear"       # Per-gate "Gate" endstop option
 
     ENDSTOP_EXTRUDER_NONE       = "none"           # Fake Extruder endstop aka don't attempt home
     ENDSTOP_EXTRUDER_COLLISION  = "collision"      # Fake Extruder endstop
