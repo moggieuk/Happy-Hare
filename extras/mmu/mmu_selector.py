@@ -662,7 +662,7 @@ class LinearSelector:
         max_movement = self._get_max_selector_movement()
         self.mmu.log_always("Searching for end of selector... (up to %.1fmm)" % max_movement)
         if self.use_touch_move():
-            _,found_home = self.homing_move("Detecting end of selector movement", max_movement, homing_move=1, endstop_name=self.mmu.ENDSTOP_SELECTOR_TOUCH)
+            _,found_home = self.homing_move("Detecting end of selector movement", max_movement, homing_move=1, endstop_name=self.mmu.SENSOR_SELECTOR_TOUCH)
         else:
             # This might not sound good!
             self.move("Ensure we are clear off the physical endstop", self.cad_gate0_pos)
@@ -758,7 +758,7 @@ class LinearSelector:
             self.move("Positioning selector", target)
         else:
             init_pos = self.mmu_toolhead.get_position()[0]
-            halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=self.mmu.ENDSTOP_SELECTOR_TOUCH)
+            halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=self.mmu.SENSOR_SELECTOR_TOUCH)
             if homed: # Positioning move was not successful
                 with self.mmu.wrap_suppress_visual_log():
                     travel = abs(init_pos - halt_pos)
@@ -784,7 +784,7 @@ class LinearSelector:
 
                         # Check if selector can now reach proper target
                         self._home_selector()
-                        halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=self.mmu.ENDSTOP_SELECTOR_TOUCH)
+                        halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=self.mmu.SENSOR_SELECTOR_TOUCH)
                         if homed: # Positioning move was not successful
                             self.is_homed = False
                             raise MmuError("Unblocking selector recovery failed. Path is probably internally blocked")
@@ -807,7 +807,7 @@ class LinearSelector:
 
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
-            speed = speed or (self.selector_touch_speed if self.selector_touch_enable or endstop_name == self.mmu.ENDSTOP_SELECTOR_TOUCH else self.selector_homing_speed)
+            speed = speed or (self.selector_touch_speed if self.selector_touch_enable or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
         else:
             speed = speed or self.selector_move_speed
         accel = accel or self.mmu_toolhead.get_selector_limits()[1]
@@ -883,7 +883,7 @@ class LinearSelector:
         return traveled, homed
 
     def use_touch_move(self):
-        return self.selector_tmc and self.mmu.ENDSTOP_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
+        return self.selector_tmc and self.mmu.SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
 
 
 

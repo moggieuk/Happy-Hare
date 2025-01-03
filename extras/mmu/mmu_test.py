@@ -218,7 +218,7 @@ class MmuTest:
             accel = gcmd.get_float('ACCEL', None)
             wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
             loop = gcmd.get_int('LOOP', 1, minval=1)
-            endstop = gcmd.get('ENDSTOP', self.mmu.ENDSTOP_SELECTOR_TOUCH if self.mmu.selector.use_touch_move() else self.mmu.ENDSTOP_SELECTOR_HOME)
+            endstop = gcmd.get('ENDSTOP', self.mmu.SENSOR_SELECTOR_TOUCH if self.mmu.selector.use_touch_move() else self.mmu.SENSOR_SELECTOR_HOME)
             for i in range(loop):
                 pos = self.mmu.mmu_toolhead.get_position()[0]
                 self.mmu.log_always("Rail starting pos: %s" % pos)

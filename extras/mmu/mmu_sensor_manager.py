@@ -1,8 +1,8 @@
 # Happy Hare MMU Software
 # Manager to centralize mmu_sensor operations
 #
-# Copyright (C) 2024  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2024-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # (\_/)
 # ( *,*)
@@ -22,9 +22,9 @@ class MmuSensorManager:
         self.sensors = {}
 
         for name in (
-            [self.mmu.ENDSTOP_TOOLHEAD, self.mmu.ENDSTOP_GATE, self.mmu.ENDSTOP_EXTRUDER_ENTRY] +
-            [self.get_gate_sensor_name(self.mmu.PRE_GATE_SENSOR_PREFIX, i) for i in range(self.mmu.num_gates)] +
-            [self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)]
+            [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_GATE, self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION] +
+            [self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, i) for i in range(self.mmu.num_gates)] +
+            [self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)]
         ):
             sensor_name = name if re.search(r"_[0-9]+$", name) else "%s_sensor" % name
             sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
@@ -32,8 +32,8 @@ class MmuSensorManager:
                 self.sensors[name] = sensor
 
         # Special case for "no bowden" designs where mmu_gate is an alias for extruder sensor
-        if not self.mmu.mmu_machine.require_bowden_move and self.sensors.get(self.mmu.ENDSTOP_EXTRUDER_ENTRY, None) and self.mmu.ENDSTOP_GATE not in self.sensors:
-            self.sensors[self.mmu.ENDSTOP_GATE] = self.sensors[self.mmu.ENDSTOP_EXTRUDER_ENTRY]
+        if not self.mmu.mmu_machine.require_bowden_move and self.sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.sensors:
+            self.sensors[self.mmu.SENSOR_GATE] = self.sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
 
     # Return dict of all sensor states (or None if sensor disabled)
     def get_all_sensors(self):
@@ -159,11 +159,11 @@ class MmuSensorManager:
         result = {}
         if gate >= 0:
             sensor_selection = [
-                (self.get_gate_sensor_name(self.mmu.PRE_GATE_SENSOR_PREFIX, gate), None),
-                (self.get_gate_sensor_name(self.mmu.ENDSTOP_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.ENDSTOP_GEAR_PREFIX else None),
-                (self.mmu.ENDSTOP_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
-                (self.mmu.ENDSTOP_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
-                (self.mmu.ENDSTOP_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
+                (self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, gate), None),
+                (self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.SENSOR_GEAR_PREFIX else None),
+                (self.mmu.SENSOR_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
+                (self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
+                (self.mmu.SENSOR_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
             ]
             for name, position_check in sensor_selection:
                 sensor = self.sensors.get(name, None)
