@@ -848,7 +848,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
         smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)
         self._set_pressure_advance(pressure_advance, smooth_time)
-        msg = ("pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time))
+        msg = "pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time)
         self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
         if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
             gcmd.respond_info(msg, log=False)
