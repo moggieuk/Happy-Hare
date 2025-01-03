@@ -3004,7 +3004,7 @@ class Mmu:
             self.sync_gear_to_extruder(False, grip=True)
         if state == "standby" and not self.is_in_standby():
             self._set_print_state(state)
-        self._clear_macro_state()
+        self._clear_macro_state(reset=True)
 
     def handle_mmu_error(self, reason, force_in_print=False):
         self._fix_started_state() # Get out of 'started' state before transistion to mmu pause
@@ -3116,9 +3116,9 @@ class Mmu:
 
         # Ready to continue printing...
 
-    def _clear_macro_state(self):
+    def _clear_macro_state(self, reset=False):
         if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
-            self._wrap_gcode_command(self.clear_position_macro)
+            self._wrap_gcode_command("%s%s" % (self.clear_position_macro, " RESET=1" if reset else ""))
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
         eventtime = self.reactor.monotonic()
@@ -6267,7 +6267,7 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if not self.is_in_print():
             self._on_print_start()
-            self._clear_macro_state()
+            self._clear_macro_state(reset=True)
 
     cmd_MMU_PRINT_END_help = "Forces clean up of state after after print end"
     def cmd_MMU_PRINT_END(self, gcmd):
