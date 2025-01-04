@@ -19,8 +19,8 @@
 #   Creates buttons handlers (with filament_switch_sensor for visibility and control) and publishes events based on state change
 #   Named `sync_feedback_compression` & `sync_feedback_tension`
 #
-# Copyright (C) 2023  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # RunoutHelper based on:
 # Generic Filament Sensor Module Copyright (C) 2019  Eric Callahan <arksine.code@gmail.com>

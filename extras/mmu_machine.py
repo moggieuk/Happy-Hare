@@ -10,8 +10,8 @@
 #   - extruder endstops and extruder only homing
 #   - switchable drive steppers on rails
 #
-# Copyright (C) 2023  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # Based on code by Kevin O'Connor <kevin@koconnor.net>
 #

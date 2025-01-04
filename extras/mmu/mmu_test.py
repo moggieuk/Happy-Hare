@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # Goal: Define internal test operations to aid development
 #

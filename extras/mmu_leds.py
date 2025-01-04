@@ -3,8 +3,8 @@
 # as on each individual LED for per-gate effects. The implements the shared definition for
 # intuitive configuration and minimising errors
 #
-# Copyright (C) 2023  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # (\_/)
 # ( *,*)
