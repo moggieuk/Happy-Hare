@@ -2012,21 +2012,22 @@ class Mmu:
 
         eventtime = self.reactor.monotonic()
         if self.mmu_sensors:
-            msg = self.sensor_manager.get_sensor_summary(include_disabled=detail)
+            msg = self.sensor_manager.get_sensor_summary(detail=detail)
             if self.has_encoder():
-                msg += self._get_encoder_summary()
+                msg += self._get_encoder_summary(detail=detail)
             self.log_always(msg)
         else:
             self.log_always("No MMU sensors configured")
 
-    def _get_encoder_summary(self): # PAUL move to mmu_sensor_manager?
+    def _get_encoder_summary(self, detail=False): # PAUL move to mmu_sensor_manager?
         status = self.encoder_sensor.get_status(0)
         msg = "Encoder position: %.1f" % status['encoder_pos']
-        msg += "\n- Runout detection: %s" % ("Enabled" if status['enabled'] else "Disabled")
-        clog = "Automatic" if status['detection_mode'] == 2 else "On" if status['detection_mode'] == 1 else "Off"
-        msg += "\n- Clog/Runout mode: %s (Detection length: %.1f)" % (clog, status['detection_length'])
-        msg += "\n- Trigger headroom: %.1f (Minimum observed: %.1f)" % (status['headroom'], status['min_headroom'])
-        msg += "\n- Flowrate: %d %%" % status['flow_rate']
+        if detail:
+            msg += "\n- Runout detection: %s" % ("Enabled" if status['enabled'] else "Disabled")
+            clog = "Automatic" if status['detection_mode'] == 2 else "On" if status['detection_mode'] == 1 else "Off"
+            msg += "\n- Clog/Runout mode: %s (Detection length: %.1f)" % (clog, status['detection_length'])
+            msg += "\n- Trigger headroom: %.1f (Minimum observed: %.1f)" % (status['headroom'], status['min_headroom'])
+            msg += "\n- Flowrate: %d %%" % status['flow_rate']
         return msg
 
     # Instruct the selector to enguage the desired method of filament gripping based on MMU state
@@ -2844,25 +2845,24 @@ class Mmu:
 
     # Ensure correct sync_feedback starting assumption by generating a fake event
     def _update_sync_starting_state(self):
-        if not self.mmu_sensors: return
         eventtime = self.reactor.monotonic()
-        sss = self.SYNC_STATE_NEUTRAL
+        has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
+        has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
 
-        if self.mmu_sensors.has_tension_switch and not self.mmu_sensors.has_compression_switch:
-            sss = self.SYNC_STATE_EXPANDED if self.mmu_sensors.get_status(eventtime)['sync_feedback_tension'] else self.SYNC_STATE_COMPRESSED
-        elif self.mmu_sensors.has_compression_switch and not self.mmu_sensors.has_tension_switch:
-            sss = self.SYNC_STATE_COMPRESSED if self.mmu_sensors.get_status(eventtime)['sync_feedback_compression'] else self.SYNC_STATE_EXPANDED
-        elif self.mmu_sensors.has_compression_switch and self.mmu_sensors.has_tension_switch:
-            state_expanded = self.mmu_sensors.get_status(eventtime)['sync_feedback_tension']
-            state_compressed = self.mmu_sensors.get_status(eventtime)['sync_feedback_compression']
+        sss = self.SYNC_STATE_NEUTRAL
+        if has_tension and not has_compression:
+            sss = self.SYNC_STATE_EXPANDED if self.sensor_manager.check_sensor(self.SENSOR_TENSION) else self.SYNC_STATE_COMPRESSED
+        elif has_compression and not has_tension:
+            sss = self.SYNC_STATE_COMPRESSED if self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION) else self.SYNC_STATE_EXPANDED
+        elif has_compression and has_tension:
+            state_expanded = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
+            state_compressed = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
             if state_expanded and state_compressed:
                 self.log_error("Both expanded and compressed sync feedback sensors are triggered at the same time. Check hardware!")
             elif state_expanded:
                 sss = self.SYNC_STATE_EXPANDED
             elif state_compressed:
                 sss = self.SYNC_STATE_COMPRESSED
-            else:
-                pass # Assume neutral
 
         self._handle_sync_feedback(eventtime, sss)
         self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string())
@@ -3691,7 +3691,7 @@ class Mmu:
         elif value >= 0.:
             self.set_encoder_distance(value)
             return
-        self.log_info(self._get_encoder_summary())
+        self.log_info(self._get_encoder_summary(detail=True))
 
     cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
     def cmd_MMU_LED(self, gcmd):

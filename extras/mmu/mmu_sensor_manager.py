@@ -22,9 +22,9 @@ class MmuSensorManager:
         self.sensors = {}
 
         for name in (
-            [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_GATE, self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION] +
             [self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, i) for i in range(self.mmu.num_gates)] +
-            [self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)]
+            [self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)] +
+            [self.mmu.SENSOR_GATE, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION, self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.SENSOR_TOOLHEAD]
         ):
             sensor_name = name if re.search(r"_[0-9]+$", name) else "%s_sensor" % name
             sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
@@ -131,12 +131,17 @@ class MmuSensorManager:
         if any(state is False for state in sensors.values()):
             MmuError("Loaded check failed:\nFilament not detected by sensors: %s" % ', '.join([name for name, state in sensors.items() if state is False]))
 
-    def get_sensor_summary(self, include_disabled=False):
+    def get_sensor_summary(self, detail=False):
         summary = ""
         sensors = self.get_all_sensors()
         for name, state in sensors.items():
-            if state is not None or include_disabled:
-                summary += "%s: %s\n" % (name, 'TRIGGERED' if state is True else 'open' if state is False else '(disabled)')
+            if state is not None or detail:
+                sensor = self.sensors.get(name)
+                trig = "%s" % 'TRIGGERED' if sensor.runout_helper.filament_present else 'Open'
+                summary += "%s: %s" % (name, ("(%s, currently disabled)" % trig) if state is None else trig)
+                if detail and sensor.runout_helper.runout_suspended is not None and state is not None:
+                    summary += "%s" % (", Runout enabled" if not sensor.runout_helper.runout_suspended else "")
+                summary += "\n"
         return summary
 
     def enable_runout(self, gate):
