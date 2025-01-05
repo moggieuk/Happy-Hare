@@ -22,13 +22,12 @@ from ..tmc               import TMCCommandHelper
 # Happy Hare imports
 from ..                  import mmu_machine
 from ..mmu_machine       import MmuToolHead
-from ..mmu_leds          import MmuLeds
 from ..mmu_sensors       import MmuRunoutHelper
 
 # MMU subcomponent clases
 from .mmu_shared         import *
 from .mmu_logger         import MmuLogger
-from .mmu_selector       import VirtualSelector, LinearSelector, MacroSelector, RotarySelector
+from .mmu_selector       import *
 from .mmu_test           import MmuTest
 from .mmu_utils          import DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager import MmuSensorManager
@@ -636,6 +635,8 @@ class Mmu:
 
         # Dynamically instantiate the selector class
         self.selector = globals()[self.mmu_machine.selector_type](self)
+        if not isinstance(self.selector, BaseSelector):
+            raise self.config.error("Invalid Selector class for MMU")
 
         # Now we can instantiate the MMU toolhead
         self.mmu_toolhead = MmuToolHead(config, self)
@@ -749,6 +750,9 @@ class Mmu:
             revision_var = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, None)
             if revision_var is None:
                 self.save_variables.allVariables[self.VARS_MMU_REVISION] = 0
+        else:
+            rd_var = None
+            revision_var = None
         if not self.save_variables or (rd_var is None and revision_var is None):
             raise self.config.error("Calibration settings file (mmu_vars.cfg) not found. Check [save_variables] section in mmu_macro_vars.cfg\nAlso ensure you only have a single [save_variables] section defined in your printer config and it contains the line: mmu__revision = 0. If not, add this line and restart")
 
@@ -928,30 +932,17 @@ class Mmu:
         except Exception as e:
             self.log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
-        # Ensure that the LED control macro knows the indices of the segments of the LED chain and other essential data
+        # Basic LED validation
         gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
         if gcode_macro:
-            try:
-                led_chains = MmuLeds.chains
-                self.has_led_animation = MmuLeds.led_effect_module
-                led_vars = {}
-                if led_chains:
-                    self.has_leds = True
-                    c_exit = led_chains['exit']
-                    led_vars['exit_first_led_index'] = c_exit[0] if c_exit else -1
-                    led_vars['exit_reverse_order'] = int(c_exit[0] > c_exit[-1]) if c_exit else 0
-                    entry = led_chains['entry']
-                    led_vars['entry_first_led_index'] = entry[0] if entry else -1
-                    led_vars['entry_reverse_order'] = int(entry[0] > entry[-1]) if entry else 0
-                    led_vars['status_led_index'] = led_chains['status'][0] if led_chains['status'] else -1
-                    led_vars['led_strip'] = MmuLeds.led_strip
-                    self.log_debug("LEDs support enabled %s" % "with optional animation" if MmuLeds.led_effect_module else "")
-                else:
-                    self.has_leds = False
-                    self.log_debug("LEDs support is not configured")
-                gcode_macro.variables.update(led_vars)
-            except Exception as e:
-                self.log_error('Error setting up the _MMU_SET_LED macro: %s' % str(e))
+            mmu_leds = self.printer.lookup_object('mmu_leds', None)
+            self.has_leds = True if mmu_leds else False
+            self.has_led_animation = mmu_leds.get_status().get('led_effect_module', False) if mmu_leds else False
+
+            if self.has_leds:
+                self.log_debug("LEDs support enabled %s" % "with optional animation" if self.has_led_animation else "")
+            else:
+                self.log_debug("LEDs support is not configured")
         else:
             self.log_error("LEDs macro _MMU_SET_LED not available")
 
@@ -3702,7 +3693,8 @@ class Mmu:
 
         set_led_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
         led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
-        if led_vars_macro and set_led_macro:
+        mmu_leds = self.printer.lookup_object('mmu_leds', None)
+        if led_vars_macro and set_led_macro and mmu_leds:
 
             current_led_enable = led_vars_macro.variables['led_enable']
             current_led_animation = led_vars_macro.variables['led_animation']
@@ -3734,12 +3726,12 @@ class Mmu:
                 self._wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default")
 
             if not quiet:
-                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled != -1 else "Unavailable"
+                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled > 0 else "Unavailable"
                 msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
-                msg = "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
-                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, set_led_macro.variables['exit_first_led_index'])
-                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, set_led_macro.variables['entry_first_led_index'])
-                msg += "Default status effect: %s\n" % effect_string(default_status_effect, set_led_macro.variables['status_led_index'])
+                msg += "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
+                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, mmu_leds.get_status()['exit'])
+                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, mmu_leds.get_status()['entry'])
+                msg += "Default status effect: %s\n" % effect_string(default_status_effect, mmu_leds.get_status()['status'])
                 msg += "\nOptions:\nENABLE=[0|1]\nANIMATION=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|slicer_color]\nENTRY_EFFECT=[off|gate_status|filament_color|slicer_color]\nSTATUS_EFFECT=[off|on|filament_color|slicer_color]"
                 self.log_always(msg)
         else:
@@ -3850,7 +3842,7 @@ class Mmu:
     def cmd_MMU_STEP_LOAD_GATE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-             self._load_gate()
+            self._load_gate()
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
 
@@ -3885,7 +3877,7 @@ class Mmu:
     def cmd_MMU_STEP_HOME_EXTRUDER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-             self._home_to_extruder(self.extruder_homing_max)
+            self._home_to_extruder(self.extruder_homing_max)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
 

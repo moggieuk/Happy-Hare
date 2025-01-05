@@ -60,7 +60,9 @@ class MmuMachine:
 
     def __init__(self, config):
         # Essential information for validation and setup
-        self.num_gates = config.getint('num_gates')
+        self.units = list(config.getintlist('num_gates'))
+        self.num_units = len(self.units)
+        self.num_gates = sum(self.units)
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
         self.mmu_version_string = config.get('mmu_version', "1.0")
         version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
@@ -848,7 +850,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
         smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)
         self._set_pressure_advance(pressure_advance, smooth_time)
-        msg = ("pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time))
+        msg = "pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time)
         self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
         if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
             gcmd.respond_info(msg, log=False)

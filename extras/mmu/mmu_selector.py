@@ -39,162 +39,22 @@ from ..          import mmu_machine
 from .mmu_shared import MmuError
 
 
-
 ################################################################################
-# Macro Selector
-# Implements macro-based selector for MMU's
+# Base Selector Class
 ################################################################################
 
-"""
-Example demultiplexer-style SELECT_TOOL macro:
-[gcode_macro SELECT_TOOL]
-gcode:
-    SET_PIN PIN=d0 VALUE={params.S0}
-    SET_PIN PIN=d1 VALUE={params.S1}
-    SET_PIN PIN=d2 VALUE={params.S2}
-
-Example optocoupler-style SELECT_TOOL macro:
-[gcode_macro SELECT_TOOL]
-gcode:
-    SET_PIN PIN=o{printer.mmu.gate} VALUE=0
-    SET_PIN PIN=o{params.GATE} VALUE=1
-"""
-
-class MacroSelector:
+class BaseSelector:
 
     def __init__(self, mmu):
         self.mmu = mmu
-        self.is_homed = True
-
-        self.printer = mmu.printer
-        self.gcode = self.printer.lookup_object('gcode')
-
-        self.select_tool_macro = mmu.config.get('select_tool_macro')
-        self.select_tool_num_switches = mmu.config.getint('select_tool_num_switches', default=0, minval=1)
-
-        # Check if using a demultiplexer-style setup
-        if self.select_tool_num_switches > 0:
-            self.binary_mode = True
-            max_num_tools = 2**self.select_tool_num_switches
-            # Verify that there aren't too many tools for the demultiplexer
-            if mmu.num_gates > max_num_tools:
-                raise mmu.config.error('Maximum number of allowed tools is %d, but %d are present.' % (max_num_tools, mmu.num_gates))
-        else:
-            self.binary_mode = False
-
-        # Read all controller parameters related to selector or servo to stop klipper complaining. This
-        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
-        for option in ['selector_', 'servo_', 'cad_']:
-            for key in mmu.config.get_prefix_options(option):
-                _ = mmu.config.get(key)
-
-    # Selector "Interface" methods ---------------------------------------------
+        self.is_homed = False
+        self.mmu_unit = 0
 
     def reinit(self):
         pass
 
     def handle_connect(self):
-        self.mmu_toolhead = self.mmu.mmu_toolhead
-        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
-
-    def handle_ready(self):
-        logging.info("Happy Hare MacroSelector: Gate %d" % self.mmu.gate_selected)
-        self.select_gate(self.mmu.gate_selected)
-
-    def handle_disconnect(self):
         pass
-
-    def home(self, tool = None, force_unload = None):
-        pass
-
-    def select_gate(self, gate):
-        # Store parameters as list
-        params = ['GATE=' + str(gate)]
-        if self.binary_mode: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
-            binary = list(reversed('{0:b}'.format(gate).zfill(self.select_tool_num_switches)))
-            for i in range(self.select_tool_num_switches):
-                char = binary[i]
-                params.append('S' + str(i) + '=' + str(char))
-        params = ' '.join(params)
-
-        # Call selector macro
-        self.mmu._wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
-
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
-
-    def restore_gate(self, gate):
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
-
-    def filament_drive(self):
-        pass
-
-    def filament_release(self, measure=None):
-        return 0. # Encoder movement
-
-    def filament_hold(self):
-        pass
-
-    def get_filament_grip_state(self):
-        return self.mmu.FILAMENT_DRIVE_STATE
-
-    def disable_motors(self):
-        pass
-
-    def enable_motors(self):
-        pass
-
-    def buzz_motor(self, motor):
-        pass
-
-    def has_bypass(self):
-        return self.mmu.mmu_machine.has_bypass
-
-    def get_status(self):
-        return {
-            'has_bypass': self.has_bypass()
-        }
-
-    def get_mmu_status_config(self):
-        msg = "\nMacro selector"
-        return msg
-
-    def set_test_config(self, gcmd):
-        pass
-
-    def get_test_config(self):
-        return ""
-
-
-
-################################################################################
-# Virtual Selector
-# Implements selector for type-B MMU's with gear driver per gate
-################################################################################
-
-class VirtualSelector:
-
-    def __init__(self, mmu):
-        self.mmu = mmu
-        self.is_homed = True
-
-        # Read all controller parameters related to selector or servo to stop klipper complaining. This
-        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
-        for option in ['selector_', 'servo_', 'cad_']:
-            for key in mmu.config.get_prefix_options(option):
-                _ = mmu.config.get(key)
-
-    # Selector "Interface" methods ---------------------------------------------
-
-    def reinit(self):
-        pass
-
-    def handle_connect(self):
-        self.mmu_toolhead = self.mmu.mmu_toolhead
-        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def handle_ready(self):
         pass
@@ -206,19 +66,10 @@ class VirtualSelector:
         pass
 
     def select_gate(self, gate):
-        if gate == self.mmu.gate_selected: return
-        self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
-
-        # Sync new MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
+        self.mmu_unit = self._find_unit_by_gate(self.mmu.mmu_machine.units, gate)
 
     def restore_gate(self, gate):
-        self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
-
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
+        self.mmu_unit = self._find_unit_by_gate(self.mmu.mmu_machine.units, gate)
 
     def filament_drive(self):
         pass
@@ -250,14 +101,158 @@ class VirtualSelector:
         }
 
     def get_mmu_status_config(self):
-        msg = "\nVirtual selector"
-        return msg
+        return "\nNo selector defined!"
 
     def set_test_config(self, gcmd):
         pass
 
     def get_test_config(self):
         return ""
+
+    def _find_unit_by_gate(self, units, gate):
+        if gate >= 0:
+            sum = 0
+            for unit_index, gate_count in enumerate(units):
+                sum += gate_count
+                if gate < sum:
+                    return unit_index
+        return 0
+
+
+
+################################################################################
+# Macro Selector
+# Implements macro-based selector for MMU's
+################################################################################
+
+"""
+Example demultiplexer-style SELECT_TOOL macro:
+[gcode_macro SELECT_TOOL]
+gcode:
+    SET_PIN PIN=d0 VALUE={params.S0}
+    SET_PIN PIN=d1 VALUE={params.S1}
+    SET_PIN PIN=d2 VALUE={params.S2}
+
+Example optocoupler-style SELECT_TOOL macro:
+[gcode_macro SELECT_TOOL]
+gcode:
+    SET_PIN PIN=o{printer.mmu.gate} VALUE=0
+    SET_PIN PIN=o{params.GATE} VALUE=1
+"""
+
+class MacroSelector(BaseSelector, object):
+
+    def __init__(self, mmu):
+        super(MacroSelector, self).__init__(mmu)
+
+        self.printer = mmu.printer
+        self.gcode = self.printer.lookup_object('gcode')
+
+        self.select_tool_macro = mmu.config.get('select_tool_macro')
+        self.select_tool_num_switches = mmu.config.getint('select_tool_num_switches', default=0, minval=1)
+
+        # Check if using a demultiplexer-style setup
+        if self.select_tool_num_switches > 0:
+            self.binary_mode = True
+            max_num_tools = 2**self.select_tool_num_switches
+            # Verify that there aren't too many tools for the demultiplexer
+            if mmu.num_gates > max_num_tools:
+                raise mmu.config.error('Maximum number of allowed tools is %d, but %d are present.' % (max_num_tools, mmu.num_gates))
+        else:
+            self.binary_mode = False
+
+        # Read all controller parameters related to selector or servo to stop klipper complaining. This
+        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
+        for option in ['selector_', 'servo_', 'cad_']:
+            for key in mmu.config.get_prefix_options(option):
+                _ = mmu.config.get(key)
+
+    # Selector "Interface" methods ---------------------------------------------
+
+    def handle_connect(self):
+        self.mmu_toolhead = self.mmu.mmu_toolhead
+        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
+
+    def handle_ready(self):
+        logging.info("Happy Hare MacroSelector: Gate %d" % self.mmu.gate_selected)
+        self.select_gate(self.mmu.gate_selected)
+
+    def select_gate(self, gate):
+        super(MacroSelector, self).select_gate(gate)
+
+        # Store parameters as list
+        params = ['GATE=' + str(gate)]
+        if self.binary_mode: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
+            binary = list(reversed('{0:b}'.format(gate).zfill(self.select_tool_num_switches)))
+            for i in range(self.select_tool_num_switches):
+                char = binary[i]
+                params.append('S' + str(i) + '=' + str(char))
+        params = ' '.join(params)
+
+        # Call selector macro
+        self.mmu._wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
+
+        # Sync MMU gear stepper now if design requires it
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+
+    def restore_gate(self, gate):
+        super(MacroSelector, self).restore_gate(gate)
+
+        # Sync MMU gear stepper now if design requires it
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+
+    def get_mmu_status_config(self):
+        msg = "\nMacro selector"
+        return msg
+
+
+
+################################################################################
+# Virtual Selector
+# Implements selector for type-B MMU's with gear driver per gate
+################################################################################
+
+class VirtualSelector(BaseSelector, object):
+
+    def __init__(self, mmu):
+        super(VirtualSelector, self).__init__(mmu)
+
+        # Read all controller parameters related to selector or servo to stop klipper complaining. This
+        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
+        for option in ['selector_', 'servo_', 'cad_']:
+            for key in mmu.config.get_prefix_options(option):
+                _ = mmu.config.get(key)
+
+    # Selector "Interface" methods ---------------------------------------------
+
+    def handle_connect(self):
+        self.mmu_toolhead = self.mmu.mmu_toolhead
+        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
+
+    def select_gate(self, gate):
+        super(VirtualSelector, self).select_gate(gate)
+
+        if gate == self.mmu.gate_selected: return
+        self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
+
+        # Sync new MMU gear stepper now if design requires it
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
+
+    def restore_gate(self, gate):
+        super(VirtualSelector, self).restore_gate(gate)
+
+        self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
+
+        # Sync MMU gear stepper now if design requires it
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
+
+    def get_mmu_status_config(self):
+        msg = "\nVirtual selector"
+        return msg
 
 
 
@@ -267,15 +262,14 @@ class VirtualSelector:
 # rail[0] on mmu toolhead
 ################################################################################
 
-class LinearSelector:
+class LinearSelector(BaseSelector, object):
 
     # mmu_vars.cfg variables
     VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
     VARS_MMU_SELECTOR_BYPASS  = "mmu_selector_bypass"
 
     def __init__(self, mmu):
-        self.mmu = mmu
-        self.is_homed = False
+        super(LinearSelector, self).__init__(mmu)
         self.bypass_offset = -1
 
         # Process config
@@ -433,6 +427,8 @@ class LinearSelector:
 
     # Physically move selector to correct gate position
     def select_gate(self, gate):
+        super(LinearSelector, self).select_gate(gate)
+
         if gate == self.mmu.gate_selected: return
         with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
             self.filament_hold()
@@ -443,6 +439,8 @@ class LinearSelector:
 
     # Correct rail position for selector
     def restore_gate(self, gate):
+        super(LinearSelector, self).restore_gate(gate)
+
         if gate == self.mmu.TOOL_GATE_BYPASS:
             self.set_position(self.bypass_offset)
         elif gate >= 0:
@@ -488,9 +486,7 @@ class LinearSelector:
         return self.mmu.mmu_machine.has_bypass and self.bypass_offset >= 0
 
     def get_status(self):
-        status = {
-            'has_bypass': self.has_bypass()
-        }
+        status = super(LinearSelector, self).get_status()
         status.update(self.servo.get_status())
         return status
 
@@ -1002,7 +998,7 @@ class LinearSelectorServo:
         if self.mmu.internal_test: return # Save servo while testing
         if self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS: return
         if self.servo_state == self.SERVO_DOWN_STATE: return
-        self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down']) # PAUL changed to trace
+        self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
         self.mmu.movequeues_wait()
         self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
@@ -1017,7 +1013,7 @@ class LinearSelectorServo:
     def servo_move(self): # Position servo for selector movement
         if self.mmu.internal_test: return # Save servo while testing
         if self.servo_state == self.SERVO_MOVE_STATE: return
-        self.mmu.log_trace("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move']) # PAUL changed to trace
+        self.mmu.log_trace("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self.mmu.movequeues_wait()
             self.servo.set_position(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
@@ -1028,7 +1024,7 @@ class LinearSelectorServo:
     def servo_up(self, measure=False):
         if self.mmu.internal_test: return 0. # Save servo while testing
         if self.servo_state == self.SERVO_UP_STATE: return 0.
-        self.mmu.log_trace("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up']) # PAUL changed to trace
+        self.mmu.log_trace("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up'])
         delta = 0.
         if self.servo_angle != self.servo_angles['up']:
             self.mmu.movequeues_wait()
@@ -1111,14 +1107,13 @@ class LinearSelectorServo:
 # rail[0] on mmu toolhead (3D Chameleon)
 ################################################################################
 
-class RotarySelector:
+class RotarySelector(BaseSelector, object):
 
     # mmu_vars.cfg variables
     VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
 
     def __init__(self, mmu):
-        self.mmu = mmu
-        self.is_homed = False
+        super(RotarySelector, self).__init__(mmu)
 
         # Process config
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
@@ -1202,12 +1197,6 @@ class RotarySelector:
         lst.extend([default_value] * (size - len(lst)))
         return lst
 
-    def handle_disconnect(self):
-        pass
-
-    def handle_ready(self):
-        pass
-
     def home(self, force_unload = None):
         if self.mmu.check_if_bypass(): return
         with self.mmu.wrap_action(self.mmu.ACTION_HOMING):
@@ -1224,6 +1213,8 @@ class RotarySelector:
 
     # Physically move selector to correct gate position
     def select_gate(self, gate):
+        super(RotarySelector, self).select_gate(gate)
+
         if gate >= 0:
             self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
             if gate != self.mmu.gate_selected:
@@ -1238,18 +1229,11 @@ class RotarySelector:
 
     # Correct rail position for selector
     def restore_gate(self, gate):
+        super(RotarySelector, self).restore_gate(gate)
+
         if gate >= 0:
             self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
             self.set_position(self.selector_offsets[gate])
-
-    def filament_drive(self, buzz_gear=False):
-        pass
-
-    def filament_release(self, measure=False):
-        return 0. # Encoder movement
-
-    def filament_hold(self): # AKA position for selector movement
-        pass
 
     def get_filament_grip_state(self):
         return self.grip_state
@@ -1275,14 +1259,11 @@ class RotarySelector:
             return False
         return True
 
-    def has_bypass(self):
-        return self.mmu.mmu_machine.has_bypass
-
     def get_status(self):
-        return {
-            'has_bypass': self.has_bypass(),
+        status = super(RotarySelector, self).get_status()
+        status.update({
             'grip': "Gripped" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
-        }
+        })
 
     def get_mmu_status_config(self):
         msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
