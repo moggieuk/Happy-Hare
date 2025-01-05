@@ -62,14 +62,14 @@ class BaseSelector:
     def handle_disconnect(self):
         pass
 
-    def home(self, tool = None, force_unload = None):
+    def home(self, force_unload = None):
         pass
 
     def select_gate(self, gate):
-        self.mmu_unit = self._find_unit_by_gate(self.mmu.mmu_machine.units, gate)
+        pass
 
     def restore_gate(self, gate):
-        self.mmu_unit = self._find_unit_by_gate(self.mmu.mmu_machine.units, gate)
+        pass
 
     def filament_drive(self):
         pass
@@ -109,15 +109,6 @@ class BaseSelector:
     def get_test_config(self):
         return ""
 
-    def _find_unit_by_gate(self, units, gate):
-        if gate >= 0:
-            sum = 0
-            for unit_index, gate_count in enumerate(units):
-                sum += gate_count
-                if gate < sum:
-                    return unit_index
-        return 0
-
 
 
 ################################################################################
@@ -144,6 +135,7 @@ class MacroSelector(BaseSelector, object):
 
     def __init__(self, mmu):
         super(MacroSelector, self).__init__(mmu)
+        self.is_homed = True
 
         self.printer = mmu.printer
         self.gcode = self.printer.lookup_object('gcode')
@@ -178,8 +170,6 @@ class MacroSelector(BaseSelector, object):
         self.select_gate(self.mmu.gate_selected)
 
     def select_gate(self, gate):
-        super(MacroSelector, self).select_gate(gate)
-
         # Store parameters as list
         params = ['GATE=' + str(gate)]
         if self.binary_mode: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
@@ -190,15 +180,13 @@ class MacroSelector(BaseSelector, object):
         params = ' '.join(params)
 
         # Call selector macro
-        self.mmu._wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
+        self.mmu.wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
 
         # Sync MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.sync_gear_to_extruder(gate >= 0, gate)
 
     def restore_gate(self, gate):
-        super(MacroSelector, self).restore_gate(gate)
-
         # Sync MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.sync_gear_to_extruder(gate >= 0, gate)
@@ -218,6 +206,7 @@ class VirtualSelector(BaseSelector, object):
 
     def __init__(self, mmu):
         super(VirtualSelector, self).__init__(mmu)
+        self.is_homed = True
 
         # Read all controller parameters related to selector or servo to stop klipper complaining. This
         # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
@@ -232,8 +221,6 @@ class VirtualSelector(BaseSelector, object):
         self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def select_gate(self, gate):
-        super(VirtualSelector, self).select_gate(gate)
-
         if gate == self.mmu.gate_selected: return
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
@@ -242,8 +229,6 @@ class VirtualSelector(BaseSelector, object):
             self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
 
     def restore_gate(self, gate):
-        super(VirtualSelector, self).restore_gate(gate)
-
         self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync MMU gear stepper now if design requires it
@@ -427,8 +412,6 @@ class LinearSelector(BaseSelector, object):
 
     # Physically move selector to correct gate position
     def select_gate(self, gate):
-        super(LinearSelector, self).select_gate(gate)
-
         if gate == self.mmu.gate_selected: return
         with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
             self.filament_hold()
@@ -439,8 +422,6 @@ class LinearSelector(BaseSelector, object):
 
     # Correct rail position for selector
     def restore_gate(self, gate):
-        super(LinearSelector, self).restore_gate(gate)
-
         if gate == self.mmu.TOOL_GATE_BYPASS:
             self.set_position(self.bypass_offset)
         elif gate >= 0:
@@ -1213,8 +1194,6 @@ class RotarySelector(BaseSelector, object):
 
     # Physically move selector to correct gate position
     def select_gate(self, gate):
-        super(RotarySelector, self).select_gate(gate)
-
         if gate >= 0:
             self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
             if gate != self.mmu.gate_selected:
@@ -1229,8 +1208,6 @@ class RotarySelector(BaseSelector, object):
 
     # Correct rail position for selector
     def restore_gate(self, gate):
-        super(RotarySelector, self).restore_gate(gate)
-
         if gate >= 0:
             self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
             self.set_position(self.selector_offsets[gate])

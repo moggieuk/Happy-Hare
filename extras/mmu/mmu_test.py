@@ -67,17 +67,17 @@ class MmuTest:
             with self.mmu._wrap_track_time('total'):
                 with self.mmu._wrap_track_time('unload'):
                     with self.mmu._wrap_track_time('pre_unload'):
-                        self.mmu._wrap_gcode_command(self.mmu.pre_unload_macro, exception=False, wait=True)
-                    self.mmu._wrap_gcode_command(self.mmu.post_form_tip_macro, exception=False, wait=True)
+                        self.mmu.wrap_gcode_command(self.mmu.pre_unload_macro, exception=False, wait=True)
+                    self.mmu.wrap_gcode_command(self.mmu.post_form_tip_macro, exception=False, wait=True)
                     with self.mmu._wrap_track_time('post_unload'):
-                        self.mmu._wrap_gcode_command(self.mmu.post_unload_macro, exception=False, wait=True)
+                        self.mmu.wrap_gcode_command(self.mmu.post_unload_macro, exception=False, wait=True)
                 with self.mmu._wrap_track_time('load'):
                     with self.mmu._wrap_track_time('pre_load'):
-                        self.mmu._wrap_gcode_command(self.mmu.pre_load_macro, exception=False, wait=True)
+                        self.mmu.wrap_gcode_command(self.mmu.pre_load_macro, exception=False, wait=True)
                     with self.mmu._wrap_track_time('post_load'):
-                        self.mmu._wrap_gcode_command(self.mmu.post_load_macro, exception=False, wait=False)
+                        self.mmu.wrap_gcode_command(self.mmu.post_load_macro, exception=False, wait=False)
                         if error:
-                            self.mmu._wrap_gcode_command("MMU_PAUSE")
+                            self.mmu.wrap_gcode_command("MMU_PAUSE")
             self.mmu.log_info("Statistics:%s" % self.mmu.last_statistics)
             self.mmu._set_print_state("idle")
 
@@ -86,7 +86,7 @@ class MmuTest:
             next_pos = gcmd.get('NEXT_POS', "last")
             goto_pos = None
             if next_pos == 'next':
-                self.mmu._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
+                self.mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
                 goto_pos = [11, 11]
                 self.mmu._set_next_position(goto_pos)
             if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
@@ -96,18 +96,18 @@ class MmuTest:
                 try:
                     with self.mmu._wrap_track_time('unload'):
                         with self.mmu._wrap_track_time('pre_unload'):
-                            self.mmu._wrap_gcode_command(self.mmu.pre_unload_macro, exception=False, wait=True)
-                        self.mmu._wrap_gcode_command(self.mmu.post_form_tip_macro, exception=False, wait=True)
+                            self.mmu.wrap_gcode_command(self.mmu.pre_unload_macro, exception=False, wait=True)
+                        self.mmu.wrap_gcode_command(self.mmu.post_form_tip_macro, exception=False, wait=True)
                         with self.mmu._wrap_track_time('post_unload'):
-                            self.mmu._wrap_gcode_command(self.mmu.post_unload_macro, exception=False, wait=True)
+                            self.mmu.wrap_gcode_command(self.mmu.post_unload_macro, exception=False, wait=True)
                     with self.mmu._wrap_track_time('load'):
                         with self.mmu._wrap_track_time('pre_load'):
-                            self.mmu._wrap_gcode_command(self.mmu.pre_load_macro, exception=False, wait=True)
+                            self.mmu.wrap_gcode_command(self.mmu.pre_load_macro, exception=False, wait=True)
                         if pause:
                             raise MmuError("TEST ERROR")
                         else:
                             with self.mmu._wrap_track_time('post_load'):
-                                self.mmu._wrap_gcode_command(self.mmu.post_load_macro, exception=False, wait=True)
+                                self.mmu.wrap_gcode_command(self.mmu.post_load_macro, exception=False, wait=True)
                             self.mmu._restore_toolhead_position('toolchange')
                 except MmuError as ee:
                     self.mmu.handle_mmu_error(str(ee))
