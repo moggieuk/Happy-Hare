@@ -5699,6 +5699,7 @@ class Mmu:
         #self.log_error("PAUL TEMP: _set_gate_selected(%d)" % gate)
         self.gate_selected = gate
         self.unit_selected = self._find_unit_by_gate(gate)
+# PAUL TODO .. unknown unit state? Tell sensor manager or let sensor manager query?
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
         self._update_sync_multiplier() # Refine rotation distance based on sync feedback status
@@ -6975,11 +6976,11 @@ class Mmu:
     def _mmu_visual_to_string(self):
         divider = UI_SPACE + UI_SEPARATOR + UI_SPACE
         c_sum = 0
-        msg_gates = "Gates: "
+        msg_units = "Unit : "
+        msg_gates = "Gate : "
         msg_avail = "Avail: "
         msg_tools = "Tools: "
         msg_selct = "Selct: "
-
         for unit_index, gate_count in enumerate(self.mmu_machine.units):
             gate_indices = range(c_sum, c_sum + gate_count)
             c_sum += gate_count
@@ -6996,12 +6997,15 @@ class Mmu:
                     select_strings.append(("| %s |" % self._get_filament_char(g, no_space=True)))
                 else:
                     select_strings.append("----")
+            unit_str = "{0:-^{width}}".format( " " + str(unit_index) + " ", width=len(gate_indices) * 4 + 1)
+            msg_units += unit_str + (divider if not last_gate else "")
             msg_gates += sep
             msg_avail += sep
             msg_tools += "".join(tool_strings) + sep
             msg_selct += ("".join(select_strings) + "-")[:len(gate_indices) * 4 + 1] + (divider if not last_gate else "")
-
-        msg = "\n".join([msg_gates, msg_tools, msg_avail, msg_selct])
+        lines = [msg_units] if len(self.mmu_machine.units) > 1 else []
+        lines.extend([msg_gates, msg_tools, msg_avail, msg_selct])
+        msg = "\n".join(lines)
         if self.selector.is_homed:
             msg += " " + self._selected_tool_string()
         else:

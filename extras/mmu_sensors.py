@@ -244,12 +244,5 @@ class MmuSensors:
         else:
             self.printer.send_event("mmu:sync_feedback", eventtime, state & int(compression_enabled)) # 1 or 0 (neutral)
 
-# PAUL?
-#    def get_status(self, eventtime):
-#        return {
-#            "sync_feedback_tension": self.tension_switch_state,
-#            "sync_feedback_compression": self.compression_switch_state,
-#        }
-
 def load_config(config):
     return MmuSensors(config)
