@@ -35,7 +35,7 @@ from .mmu_sensor_manager import MmuSensorManager
 
 # Main klipper module
 class Mmu:
-    VERSION = 3.01 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 3.02 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
@@ -6990,11 +6990,11 @@ class Mmu:
             select_strings = []
             for g in gate_indices:
                 msg_gates += "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g))
-                msg_avail += "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True))
+                msg_avail += "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True)) # PAUL show_source=False if no buffer? Effectively always from_spool speed
                 tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
                 tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
                 if self.gate_selected == g and self.gate_selected != self.TOOL_GATE_UNKNOWN:
-                    select_strings.append(("| %s |" % self._get_filament_char(g, no_space=True)))
+                    select_strings.append(("|\%s/|" % self._get_filament_char(g, no_space=True)))
                 else:
                     select_strings.append("----")
             unit_str = "{0:-^{width}}".format( " " + str(unit_index) + " ", width=len(gate_indices) * 4 + 1)
