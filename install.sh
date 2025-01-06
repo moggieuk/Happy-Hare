@@ -1017,10 +1017,7 @@ uninstall_printer_includes() {
         echo -e "${INFO}Copying original ${PRINTER_CONFIG} file to ${next_dest} before cleaning"
         cp ${dest} ${next_dest}
         cat "${dest}" | sed -e " \
-            /\[include mmu\/optional\/client_macros.cfg\]/ d; \
-            /\[include mmu\/optional\/mmu_menu.cfg\]/ d; \
-            /\[include mmu\/base\/\*.cfg\]/ d; \
-            /\[include mmu\/addon\/\*.cfg\]/ d; \
+            /\[include mmu\/*.cfg\]/ d; \
                 " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
     fi
 }
