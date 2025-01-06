@@ -3008,7 +3008,7 @@ class Mmu:
             self.sync_gear_to_extruder(False, grip=True)
         if state == "standby" and not self.is_in_standby():
             self._set_print_state(state)
-        self._clear_macro_state()
+        self._clear_macro_state(reset=True)
 
     def handle_mmu_error(self, reason, force_in_print=False):
         self._fix_started_state() # Get out of 'started' state before transistion to mmu pause
@@ -3120,9 +3120,9 @@ class Mmu:
 
         # Ready to continue printing...
 
-    def _clear_macro_state(self):
+    def _clear_macro_state(self, reset=False):
         if self.printer.lookup_object('gcode_macro %s' % self.clear_position_macro, None) is not None:
-            self.wrap_gcode_command(self.clear_position_macro)
+            self.wrap_gcode_command("%s%s" % (self.clear_position_macro, " RESET=1" if reset else ""))
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
         eventtime = self.reactor.monotonic()
@@ -4188,9 +4188,10 @@ class Mmu:
                         if delta >= self.bowden_allowable_load_delta:
                             msg = "Correction load move #%d into bowden" % (i+1)
                             _,_,_,d = self.trace_filament_move(msg, delta, track=True)
-                            delta -= d
+                            delta = d
                             self.log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self.get_encoder_distance())
                         else:
+                            self.log_debug("Correction load complete, delta %.1fmm is less than 'bowden_allowable_unload_delta' (%.1fmm)" % (delta, self.bowden_allowable_load_delta))
                             break
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
                     if delta >= self.bowden_allowable_load_delta:
@@ -6277,7 +6278,7 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if not self.is_in_print():
             self._on_print_start()
-            self._clear_macro_state()
+            self._clear_macro_state(reset=True)
 
     cmd_MMU_PRINT_END_help = "Forces clean up of state after after print end"
     def cmd_MMU_PRINT_END(self, gcmd):
