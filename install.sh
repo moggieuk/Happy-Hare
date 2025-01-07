@@ -488,13 +488,19 @@ read_previous_config() {
     cfg="mmu_hardware.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
     if [ -f "${dest_cfg}" ]; then
-        _hw_num_gates=$(sed -n 's/^[[:space:]]*num_gates:[[:space:]]*\([0-9]\{1,\}\)[[:space:]]*.*$/\1/p' "${dest_cfg}")
+        num_gates=$(sed -n 's/^num_gates[[:space:]]*[:=][[:space:]]*\([0-9,[:space:]]*\)\([[:space:]]*#.*\)\{0,1\}$/\1/p' "${dest_cfg}")
+        num_gates="${num_gates// /}"
+        IFS=', ' read -r -a gates_array <<< "$num_gates"
+        _hw_num_gates=0
+        for gate in "${gates_array[@]}"; do
+          ((_hw_num_gates += gate))
+        done
     fi
 
     cfg="mmu_parameters.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
     if [ -f "${dest_cfg}" -a "$_hw_num_gates" == "" ]; then
-        _hw_num_gates=$(sed -n 's/^[[:space:]]*mmu_num_gates[:=][[:space:]]*\([0-9]\{1,\}\)[[:space:]]*.*$/\1/p' "${dest_cfg}")
+        _hw_num_gates=$(sed -n 's/^mmu_num_gates[[:space:]]*[:=][[:space:]]*\([0-9]\{1,\}\)[[:space:]]*.*$/\1/p' "${dest_cfg}")
     fi
 
     if [ ! -f "${dest_cfg}" ]; then

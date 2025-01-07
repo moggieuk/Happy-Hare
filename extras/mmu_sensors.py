@@ -36,12 +36,13 @@ import logging, time
 # Enhanced "runout helper" that gives greater control of when filament sensor events are fired and
 # direct access to button events in addition to creating a "remove" / "runout" distinction
 class MmuRunoutHelper:
-    def __init__(self, printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode, insert_remove_in_print, button_handler):
+    def __init__(self, printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode, insert_remove_in_print, button_handler, switch_pin):
 
         self.printer, self.name = printer, name
         self.insert_gcode, self.remove_gcode, self.runout_gcode = insert_gcode, remove_gcode, runout_gcode
         self.insert_remove_in_print = insert_remove_in_print
         self.button_handler = button_handler
+        self.switch_pin = switch_pin
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
@@ -50,6 +51,7 @@ class MmuRunoutHelper:
         self.filament_present = False
         self.sensor_enabled = True
         self.runout_suspended = None
+        self.button_handler_suspended = False
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
@@ -89,15 +91,15 @@ class MmuRunoutHelper:
         eventtime = self.reactor.monotonic()
 
         # Button handlers are used for sync feedback state switches
-        if self.button_handler:
+        if self.button_handler and not self.button_handler_suspended:
             self.button_handler(eventtime, is_filament_present, self)
 
         if is_filament_present == self.filament_present: return
         self.filament_present = is_filament_present
 
         # Don't handle too early or if disabled
-        if eventtime < self.min_event_systime or not self.sensor_enabled: return
-        self._process_state_change(eventtime, is_filament_present)
+        if eventtime >= self.min_event_systime and self.sensor_enabled:
+            self._process_state_change(eventtime, is_filament_present)
 
     def _process_state_change(self, eventtime, is_filament_present):
         # Determine "printing" status
@@ -125,8 +127,10 @@ class MmuRunoutHelper:
                 self.reactor.register_callback(lambda reh: self._remove_event_handler(eventtime))
 
     def enable_runout(self, restore):
-        if self.runout_gcode:
-            self.runout_suspended = not restore
+        self.runout_suspended = not restore
+
+    def enable_button_feedback(self, restore):
+        self.button_handler_suspended = not restore
 
     def get_status(self, eventtime):
         return {
@@ -158,59 +162,72 @@ class MmuSensors:
         self.RUNOUT_GCODE = "__MMU_SENSOR_RUNOUT"
 
         self.printer = config.get_printer()
+        mmu_machine = self.printer.lookup_object("mmu_machine", None)
+        num_units = mmu_machine.num_units if mmu_machine else 1
         event_delay = config.get('event_delay', 0.5)
 
         # Setup "mmu_pre_gate" sensors...
         for gate in range(23):
             switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
-            if switch_pin is not None and not self._is_empty_pin(switch_pin):
+            if switch_pin:
                 self._create_mmu_sensor(config, Mmu.SENSOR_PRE_GATE_PREFIX, gate, switch_pin, event_delay, insert=True, remove=True, runout=True, insert_remove_in_print=True)
 
-        # Setup single "mmu_gate" sensor...
-        switch_pin = config.get('gate_switch_pin', None)
-        if switch_pin is not None and not self._is_empty_pin(switch_pin):
-            self._create_mmu_sensor(config, Mmu.SENSOR_GATE, None, switch_pin, event_delay, runout=True)
+        # Setup single "mmu_gate" sensor(s)...
+        # (possible to be multiplexed on type-B designs)
+        switch_pins = list(config.getlist('gate_switch_pin', []))
+        if switch_pins:
+            if len(switch_pins) not in [ 1, num_units]:
+                raise config.error("Invalid number of pins specified with gate_switch_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
+            self._create_mmu_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, event_delay, runout=True)
 
         # Setup "mmu_gear" sensors...
         for gate in range(23):
             switch_pin = config.get('post_gear_switch_pin_%d' % gate, None)
-            if switch_pin is not None and not self._is_empty_pin(switch_pin):
+            if switch_pin:
                 self._create_mmu_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
 
         # Setup single extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
-        if switch_pin is not None and not self._is_empty_pin(switch_pin):
+        if switch_pin:
             self._create_mmu_sensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, event_delay, insert=True, runout=True)
 
         # Setup single toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
-        if switch_pin is not None and not self._is_empty_pin(switch_pin):
+        if switch_pin:
             self._create_mmu_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, event_delay)
 
         # Setup motor syncing feedback sensors...
-        switch_pin = config.get('sync_feedback_tension_pin', None)
-        if switch_pin is not None and not self._is_empty_pin(switch_pin):
-            self._create_mmu_sensor(config, Mmu.SENSOR_TENSION, None, switch_pin, 0, button_handler=self._sync_tension_callback)
-        switch_pin = config.get('sync_feedback_compression_pin', None)
-        if switch_pin is not None and not self._is_empty_pin(switch_pin):
-            self._create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pin, 0, button_handler=self._sync_compression_callback)
+        # (possible to be multiplexed on type-B designs)
+        switch_pins = list(config.getlist('sync_feedback_tension_pin', []))
+        if switch_pins:
+            if len(switch_pins) not in [ 1, num_units]:
+                raise config.error("Invalid number of pins specified with sync_feedback_tension_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
+            self._create_mmu_sensor(config, Mmu.SENSOR_TENSION, None, switch_pins, 0, button_handler=self._sync_tension_callback)
+        switch_pins = list(config.getlist('sync_feedback_compression_pin', []))
+        if switch_pins:
+            if len(switch_pins) not in [ 1, num_units]:
+                raise config.error("Invalid number of pins specified with sync_feedback_compression_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
+            self._create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pins, 0, button_handler=self._sync_compression_callback)
 
-    def _create_mmu_sensor(self, config, name_prefix, gate, switch_pin, event_delay, insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None):
-        name = "%s_%d" % (name_prefix, gate) if gate is not None else "%s" % name_prefix
-        sensor = name if gate is not None else "%s_sensor" % name
-        section = "filament_switch_sensor %s" % sensor
-        config.fileconfig.add_section(section)
-        config.fileconfig.set(section, "switch_pin", switch_pin)
-        config.fileconfig.set(section, "pause_on_runout", "False")
-        fs = self.printer.load_object(config, section)
+    def _create_mmu_sensor(self, config, name_prefix, gate, switch_pins, event_delay, insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None):
+        switch_pins = [switch_pins] if not isinstance(switch_pins, list) else switch_pins
+        for unit, switch_pin in enumerate(switch_pins):
+            if not self._is_empty_pin(switch_pin):
+                name = "%s_%d" % (name_prefix, gate) if gate is not None else "unit_%d_%s" % (unit, name_prefix) if len(switch_pins) > 1 else name_prefix # Must match mmu_sensor_manager
+                sensor = name if gate is not None else "%s_sensor" % name
+                section = "filament_switch_sensor %s" % sensor
+                config.fileconfig.add_section(section)
+                config.fileconfig.set(section, "switch_pin", switch_pin)
+                config.fileconfig.set(section, "pause_on_runout", "False")
+                fs = self.printer.load_object(config, section)
 
-        # Replace with custom runout_helper because of state specific behavior
-        insert_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
-        remove_gcode = ("%s SENSOR=%s%s" % (self.REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
-        runout_gcode = ("%s SENSOR=%s%s" % (self.RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
-        ro_helper = MmuRunoutHelper(self.printer, sensor, event_delay, insert_gcode, remove_gcode, runout_gcode, insert_remove_in_print, button_handler)
-        fs.runout_helper = ro_helper
-        fs.get_status = ro_helper.get_status
+                # Replace with custom runout_helper because of state specific behavior
+                insert_gcode = ("%s SENSOR=%s%s" % (self.INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
+                remove_gcode = ("%s SENSOR=%s%s" % (self.REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
+                runout_gcode = ("%s SENSOR=%s%s" % (self.RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
+                ro_helper = MmuRunoutHelper(self.printer, sensor, event_delay, insert_gcode, remove_gcode, runout_gcode, insert_remove_in_print, button_handler, switch_pin)
+                fs.runout_helper = ro_helper
+                fs.get_status = ro_helper.get_status
 
     def _is_empty_pin(self, switch_pin):
         if switch_pin == '': return True

@@ -60,8 +60,10 @@ class MmuMachine:
 
     def __init__(self, config):
         # Essential information for validation and setup
-        self.units = list(config.getintlist('num_gates'))
+        self.units = list(config.getintlist('num_gates', []))
         self.num_units = len(self.units)
+        if self.num_units < 1:
+            raise config.error("Invalid or missing num_gates parameter in section [mmu_machine]")
         self.num_gates = sum(self.units)
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
         self.mmu_version_string = config.get('mmu_version', "1.0")
