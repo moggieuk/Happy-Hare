@@ -2892,7 +2892,6 @@ class Mmu:
 
         self._handle_sync_feedback(eventtime, sss)
         self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string(detail=True))
-        self.log_error("PAUL: Set initial sync feedback state to: %s" % self._get_sync_feedback_string(detail=True))
 
     def is_printing(self, force_in_print=False): # Actively printing and not paused
         return self.print_state in ["started", "printing"] or force_in_print or self.test_force_in_print
@@ -5041,11 +5040,14 @@ class Mmu:
 
         if homing_move != 0:
             # Check for valid endstop
-# PAUL todo .. add unit endstop name mapping
-            endstop = self.gear_rail.get_extra_endstop(endstop_name) if endstop_name is not None else self.gear_rail.get_endstops()
-            if endstop is None:
-                self.log_error("Endstop '%s' not found" % endstop_name)
-                return null_rtn
+            if endstop_name is None:
+                endstop = self.gear_rail.get_endstops()
+            else:
+                endstop_name = self.sensor_manager.get_unit_endstop_name(endstop_name)
+                endstop = self.gear_rail.get_extra_endstop(endstop_name)
+                if endstop is None:
+                    self.log_error("Endstop '%s' not found" % endstop_name)
+                    return null_rtn
 
         # Set sensible speeds and accelaration if not supplied
         if motor in ["gear"]:
@@ -5557,7 +5559,7 @@ class Mmu:
         direction = -1 if move < 0 else 1
         stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', direction, minval=-1, maxval=1)
         valid_endstops = list(self.gear_rail.get_extra_endstop_names())
-        if endstop not in valid_endstops:
+        if self.sensor_manager.get_unit_endstop_name(endstop) not in valid_endstops:
             raise gcmd.error("Endstop name '%s' is not valid for motor '%s'. Options are: %s" % (endstop, motor, ', '.join(valid_endstops)))
         if self.gear_rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
             raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
@@ -5682,7 +5684,7 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)) else ""))
+        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)) else ""))
         # RotarySelector moves off gate to release so we must go through the process
         if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)): # PAUL similar logic for new ServoSelector .. maybe need "lazy" flag in BaseSelector?
             return
@@ -5733,7 +5735,7 @@ class Mmu:
         self._auto_filament_grip()
 
     def _set_tool_selected(self, tool):
-        self.log_error("PAUL TEMP: _set_tool_selected(%d)" % tool)
+        #self.log_error("PAUL TEMP: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
@@ -5741,7 +5743,7 @@ class Mmu:
     def _set_gate_selected(self, gate):
         #self.log_error("PAUL TEMP: _set_gate_selected(%d)" % gate)
         self.gate_selected = gate
-        new_unit = self.find_unit_by_gate(gate) # PAUL new vvv
+        new_unit = self.find_unit_by_gate(gate)
         if new_unit != self.unit_selected:
             self.sensor_manager.set_active_unit(new_unit)
             self.unit_selected = new_unit
@@ -5777,7 +5779,7 @@ class Mmu:
         else:
             self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
         if self.gear_rail.steppers:
-            self.log_error("PAUL TEMP: _set_rotation_distance(%s)%s" % (rd, " - NO-OP" if rd == self.gear_rail.steppers[0].get_rotation_distance()[0] else ""))
+            #self.log_error("PAUL TEMP: _set_rotation_distance(%s)%s" % (rd, " - NO-OP" if rd == self.gear_rail.steppers[0].get_rotation_distance()[0] else ""))
             self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_bowden_length(self, gate):

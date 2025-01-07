@@ -44,27 +44,25 @@ class MmuSensorManager:
             if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
                 self.all_sensors[name] = sensor
 
-# PAUL how does this work with multi-mmu units?
-# PAUL maybe set all gate sensors? or do we need to?
-        # Special case for "no bowden" designs where mmu_gate is an alias for extruder sensor
+        # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
         if not self.mmu.mmu_machine.require_bowden_move and self.sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.sensors:
             self.all_sensors[self.mmu.SENSOR_GATE] = self.sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
 
         # Setup subset of filament sensors that are also used for homing (endstops)
-        endstop_names = []
-        endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
-        endstop_names.extend([
+        self.endstop_names = []
+        self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
+        self.endstop_names.extend([
             self.mmu.SENSOR_GATE, 
             self.mmu.SENSOR_COMPRESSION
         ])
         for i in range(self.mmu.mmu_machine.num_units):
-            endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_GATE, i))
-            endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
-        endstop_names.extend([
+            self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_GATE, i))
+            self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
+        self.endstop_names.extend([
             self.mmu.SENSOR_EXTRUDER_ENTRY, 
             self.mmu.SENSOR_TOOLHEAD
         ])
-        for name in endstop_names:
+        for name in self.endstop_names:
             sensor_name = name if re.search(r'_(\d+)$', name) else "%s_sensor" % name # Must match mmu_sensors
             sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
             if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
@@ -97,7 +95,6 @@ class MmuSensorManager:
                     sensor.runout_helper.enable_button_feedback(False)
             else:
                 self.sensors[name] = sensor
-# PAUL need method to get adjusted endstop name based on unit number..
 
     # Return dict of all sensor states (or None if sensor disabled)
     def get_all_sensors(self, inactive=False):
@@ -117,6 +114,11 @@ class MmuSensorManager:
 
     def get_unit_sensor_name(self, name, unit):
         return "unit_%d_%s" % (unit, name) # Must match mmu_sensors
+
+    # Get unit specific endstop if it exists
+    def get_unit_endstop_name(self, endstop_name):
+        unit_endstop_name = self.get_unit_sensor_name(endstop_name, self.mmu.unit_selected)
+        return unit_endstop_name if unit_endstop_name in self.endstop_names else endstop_name
 
     # Return sensor state or None if not installed
     def check_sensor(self, name):
