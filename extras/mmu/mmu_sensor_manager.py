@@ -78,7 +78,7 @@ class MmuSensorManager:
 
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 # otherwise the extruder can continue to move a small (speed dependent) distance
-                if self.mmu.homing_extruder and name == self.SENSOR_TOOLHEAD:
+                if self.mmu.homing_extruder and name == self.mmu.SENSOR_TOOLHEAD:
                     mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
             else:
                 logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
