@@ -7042,7 +7042,7 @@ class Mmu:
                 tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
                 tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
                 if self.gate_selected == g and self.gate_selected != self.TOOL_GATE_UNKNOWN:
-                    select_strings.append(("|\%s/|" % self._get_filament_char(g, no_space=True)))
+                    select_strings.append("|\%s/|" % (UI_SEPARATOR if self.filament_pos < self.FILAMENT_POS_START_BOWDEN else "*"))
                 else:
                     select_strings.append("----")
             unit_str = "{0:-^{width}}".format( " " + str(unit_index) + " ", width=len(gate_indices) * 4 + 1)
@@ -7438,7 +7438,7 @@ class Mmu:
                         msg = "bypass not selected"
                     elif self.is_printing():
                         msg = "actively printing" # Should not get here!
-                    elif self.filament_pos != self.FILAMENT_POS_UNLOADED :
+                    elif self.filament_pos != self.FILAMENT_POS_UNLOADED:
                         msg = "extruder cannot be verified as unloaded"
                     elif not self.bypass_autoload:
                         msg = "bypass autoload is disabled"

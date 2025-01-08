@@ -92,7 +92,7 @@ class MmuMachine:
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
-            require_bowden_move = 1
+            filament_always_gripped = 0
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_TRADRACK:
@@ -100,6 +100,7 @@ class MmuMachine:
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
             require_bowden_move = 1
+            filament_always_gripped = 0
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_PRUSA:
@@ -200,6 +201,7 @@ class MmuMachine:
         # TODO add more h/w validation here based on num_gates & vendor, virtual selector, etc
         # TODO would allow for easier to understand error messages for conflicting or missing
         # TODO hardware definitions.
+
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"

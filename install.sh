@@ -478,7 +478,6 @@ read_default_config() {
     for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw" | grep -v "my_"`; do
         parse_file "${SRCDIR}/config/addons/${file}"      "variable_"          ""        "checkdup"
     done
-
 }
 
 # Pull parameters from previous installation
