@@ -254,7 +254,7 @@ PIN[MMB10,gear_sensor_7_pin]="";                           PIN[MMB11,gear_sensor
 PIN[MMB10,gear_sensor_8_pin]="";                           PIN[MMB11,gear_sensor_8_pin]="";
 PIN[MMB10,gear_sensor_9_pin]="";                           PIN[MMB11,gear_sensor_9_pin]="";
 PIN[MMB10,gear_sensor_10_pin]="";                          PIN[MMB11,gear_sensor_10_pin]="";
-PIN[MMB10,gear_sensor_11_pin]="";                          PIN[MMB11,gear_sensor_10_pin]="";
+PIN[MMB10,gear_sensor_11_pin]="";                          PIN[MMB11,gear_sensor_11_pin]="";
 #
 # Common Type-B MMU pin utilization
 #
