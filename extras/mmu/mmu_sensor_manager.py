@@ -115,10 +115,18 @@ class MmuSensorManager:
     def get_unit_sensor_name(self, name, unit):
         return "unit_%d_%s" % (unit, name) # Must match mmu_sensors
 
-    # Get unit specific endstop if it exists
-    def get_unit_endstop_name(self, endstop_name):
-        unit_endstop_name = self.get_unit_sensor_name(endstop_name, self.mmu.unit_selected)
-        return unit_endstop_name if unit_endstop_name in self.endstop_names else endstop_name
+    # Get unit or gate specific endstop if it exists
+    # Take generic name and look for "<unit>_genericName" and "genericName_<gate>"
+    def get_mapped_endstop_name(self, endstop_name):
+        mapped_name = self.get_unit_sensor_name(endstop_name, self.mmu.unit_selected)
+        if mapped_name in self.endstop_names:
+            return mapped_name
+
+        mapped_name = self.get_gate_sensor_name(endstop_name, self.mmu.gate_selected)
+        if mapped_name in self.endstop_names:
+            return mapped_name
+
+        return endstop_name
 
     # Return sensor state or None if not installed
     def check_sensor(self, name):

@@ -650,59 +650,6 @@ class Mmu:
         # Setup filament sensors that are also used for homing (endstops). Must be done during initialization
         self.sensor_manager = MmuSensorManager(self)
 
-#        sensor_names = []
-#        sensor_names.extend([self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, i) for i in range(self.num_gates)])
-#        sensor_names.extend([
-#            self.SENSOR_GATE, 
-#            self.SENSOR_COMPRESSION
-#        ])
-#        for i in range(self.mmu_machine.num_units):
-#            sensor_names.append(self.sensor_manager.get_unit_sensor_name(self.SENSOR_GATE, i))
-#            sensor_names.append(self.sensor_manager.get_unit_sensor_name(self.SENSOR_COMPRESSION, i))
-#        sensor_names.extend([
-#            self.SENSOR_EXTRUDER_ENTRY, 
-#            self.SENSOR_TOOLHEAD
-#        ])
-#        for name, sensor in self.sensor_manager.endstop:
-#            if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
-#                # Add sensor pin as an extra endstop for gear rail
-#                sensor_pin = self.config.getsection("filament_switch_sensor %s" % sensor_name).get("switch_pin")
-#                ppins = self.printer.lookup_object('pins')
-#                pin_params = ppins.parse_pin(sensor_pin, True, True)
-#                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-#                ppins.allow_multi_use_pin(share_name)
-#                mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
-#
-#                # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-#                # otherwise the extruder can continue to move a small (speed dependent) distance
-#                if self.homing_extruder and name == self.SENSOR_TOOLHEAD:
-#                    mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
-#            else:
-#                logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
-
-#        for name in (
-#            [self.SENSOR_TOOLHEAD, self.SENSOR_GATE, self.SENSOR_EXTRUDER_ENTRY, self.SENSOR_COMPRESSION] +
-#            ["%s_%d" % (self.SENSOR_GEAR_PREFIX, i) for i in range(self.num_gates)]
-#        ):
-#            sensor_name = name if re.search(r"_[0-9]+$", name) else "%s_sensor" % name
-#            sensor = self.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
-#            if sensor is not None:
-#                if isinstance(sensor.runout_helper, MmuRunoutHelper):
-#                    # Add sensor pin as an extra endstop for gear rail
-#                    sensor_pin = self.config.getsection("filament_switch_sensor %s" % sensor_name).get("switch_pin")
-#                    ppins = self.printer.lookup_object('pins')
-#                    pin_params = ppins.parse_pin(sensor_pin, True, True)
-#                    share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-#                    ppins.allow_multi_use_pin(share_name)
-#                    mcu_endstop = self.gear_rail.add_extra_endstop(sensor_pin, name)
-#
-#                    # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-#                    # otherwise the extruder can continue to move a small (speed dependent) distance
-#                    if self.homing_extruder and name == self.SENSOR_TOOLHEAD:
-#                        mcu_endstop.add_stepper(self.mmu_extruder_stepper.stepper)
-#                else:
-#                    logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
-
         # Get optional encoder setup
         self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
         if not self.encoder_sensor:
@@ -1874,9 +1821,10 @@ class Mmu:
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
         on_off = lambda x: "ON" if x else "OFF"
 
-        fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<2}".format(int(str(f).split('.')[1])))
+        fversion = lambda f: "v{}.".format(int(f)) + '.'.join("{:0<1}".format(d) for d in str(f).split('.')[1])
         msg = "MMU: Happy Hare %s running %s v%s" % (fversion(self.config_version), self.mmu_machine.mmu_vendor, self.mmu_machine.mmu_version_string)
-        msg += " with %d gates" % (self.num_gates)
+        msg += " with %d gates" % self.num_gates
+        msg += (" over %d units" % self.mmu_machine.num_units) if self.mmu_machine.num_units > 1 else ""
         msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_mmu_paused() else "OPERATIONAL")
         msg += self.selector.get_mmu_status_config()
         if self.has_encoder():
@@ -2207,7 +2155,7 @@ class Mmu:
                         homed = True
 
             else: # Gate sensor... SENSOR_GATE is shared, but SENSOR_GEAR_PREFIX is specific
-                actual,homed,measured,_ = self.trace_filament_move("Reverse homing to gate sensor", -approx_bowden_length, motor="gear", homing_move=-1, endstop_name=self._get_gate_endstop_name())
+                actual,homed,measured,_ = self.trace_filament_move("Reverse homing to gate sensor", -approx_bowden_length, motor="gear", homing_move=-1, endstop_name=self.gate_homing_endstop)
 
             if not homed:
                 raise MmuError("Did not home to gate sensor after moving %.1fmm" % approx_bowden_length)
@@ -4044,7 +3992,7 @@ class Mmu:
 
         else: # Gate sensor... SENSOR_GATE is shared, but SENSOR_GEAR_PREFIX is specific
             for i in range(retries):
-                endstop_name = self._get_gate_endstop_name()
+                endstop_name = self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop)
                 msg = ("Initial homing to %s sensor" % endstop_name) if i == 0 else ("Retry homing to gate sensor (retry #%d)" % i)
                 actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
                 if homed:
@@ -4091,7 +4039,8 @@ class Mmu:
             if self.gate_homing_endstop == self.SENSOR_ENCODER:
                 _,_,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder")
             else:
-                actual,homed,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder", homing_move=-1, endstop_name=self._get_gate_endstop_name())
+                endstop_name = self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop)
+                actual,homed,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder", homing_move=-1, endstop_name=endstop_name)
                 # In case we ended up homing during the safety pre-unload, lets just do our parking and be done
                 # This can easily happen when your parking distance is configured to park the filament past the
                 # gate sensor instead of behind the gate sensor and the filament position is determined to be
@@ -4120,7 +4069,7 @@ class Mmu:
                 msg = "did not clear the encoder after moving %.1fmm" % homing_max
 
         else: # Using mmu_gate or mmu_gear_N sensor
-            endstop_name = self._get_gate_endstop_name()
+            endstop_name = self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop)
             actual,homed,_,_ = self.trace_filament_move("Reverse homing to %s sensor" % endstop_name, -homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
@@ -5026,7 +4975,7 @@ class Mmu:
             if endstop_name is None:
                 endstop = self.gear_rail.get_endstops()
             else:
-                endstop_name = self.sensor_manager.get_unit_endstop_name(endstop_name)
+                endstop_name = self.sensor_manager.get_mapped_endstop_name(endstop_name)
                 endstop = self.gear_rail.get_extra_endstop(endstop_name)
                 if endstop is None:
                     self.log_error("Endstop '%s' not found" % endstop_name)
@@ -5245,7 +5194,7 @@ class Mmu:
 
         ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
-        gs = self.sensor_manager.check_sensor(self._get_gate_endstop_name())
+        gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
         filament_detected = self.sensor_manager.check_any_sensors_in_path()
         if not filament_detected:
             filament_detected = self.check_filament_in_mmu() # Include encoder detection method
@@ -5540,8 +5489,9 @@ class Mmu:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")
         direction = -1 if move < 0 else 1
         stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', direction, minval=-1, maxval=1)
+        endstop = self.sensor_manager.get_mapped_endstop_name(endstop)
         valid_endstops = list(self.gear_rail.get_extra_endstop_names())
-        if self.sensor_manager.get_unit_endstop_name(endstop) not in valid_endstops:
+        if endstop not in valid_endstops:
             raise gcmd.error("Endstop name '%s' is not valid for motor '%s'. Options are: %s" % (endstop, motor, ', '.join(valid_endstops)))
         if self.gear_rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
             raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
@@ -6956,9 +6906,6 @@ class Mmu:
                 elif detected is False and status != self.GATE_EMPTY:
                     v_gate_status[gate] = self.GATE_EMPTY
         return v_gate_status
-
-    def _get_gate_endstop_name(self):
-        return self.sensor_manager.get_gate_sensor_name(self.gate_homing_endstop, self.gate_selected) if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX else self.gate_homing_endstop
 
     def _get_filament_char(self, gate, no_space=False, show_source=False):
         gate_status = self.gate_status[gate]

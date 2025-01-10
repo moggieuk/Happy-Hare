@@ -737,6 +737,7 @@ class MmuHoming(Homing, object):
 class MmuPrinterRail(stepper.PrinterRail, object):
     def __init__(self, config, **kwargs):
         self.printer = config.get_printer()
+        self.config = config
         self.rail_name = config.get_name()
         self.query_endstops = self.printer.load_object(config, 'query_endstops')
         self.extra_endstops = []
@@ -781,13 +782,17 @@ class MmuPrinterRail(stepper.PrinterRail, object):
                 self.add_extra_endstop(pin, name)
 
     def add_extra_endstop(self, pin, name, register=True, bind_rail_steppers=True):
-        if 'virtual_endstop' in pin:
-            self.virtual_endstops.append(name)
+        is_virtual = 'virtual_endstop' in pin
+        if is_virtual:
+            if name not in self.virtual_endstops:
+                self.virtual_endstops.append(name)
+            else:
+                raise self.config.error("Extra virtual endstop '%s' defined more than once" % name)
         ppins = self.printer.lookup_object('pins')
         mcu_endstop = ppins.setup_pin('endstop', pin)
         self.extra_endstops.append((mcu_endstop, name))
         if bind_rail_steppers:
-            for s in self.steppers:
+            for s in self.steppers if not is_virtual else [self.steppers[-1]]:
                 try:
                     mcu_endstop.add_stepper(s)
                 except Exception as e:
@@ -846,7 +851,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         # This allows for setup of stallguard as an option for nozzle homing
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin:
-            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=True)
+            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False)
             mcu_endstop.add_stepper(self.stepper)
 
     # Override to add QUIET option to control console logging
