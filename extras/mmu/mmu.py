@@ -498,8 +498,7 @@ class Mmu:
             else:
                 default_attr.extend([default] * self.num_gates)
             setattr(self, attr, list(default_attr))
-            if attr == 'gate_color':
-                self._update_gate_color(getattr(self, attr))
+        self._update_gate_color_rgb()
 
         # Tool to gate mapping
         if len(self.default_ttg_map) > 0:
@@ -1107,14 +1106,12 @@ class Mmu:
         return closest_color, min_distance
 
     # Helper to keep parallel RGB color map updated when color changes
-    def _update_gate_color(self, new_color_map):
-        self.gate_color = new_color_map
-
+    def _update_gate_color_rgb(self):
         # Recalculate RGB map for easy LED support
         self.gate_color_rgb = [self._color_to_rgb_tuple(i) for i in self.gate_color]
 
     # Helper to keep parallel RGB color map updated when slicer color or TTG changes
-    def _update_slicer_color(self):
+    def _update_slicer_color_rgb(self):
         self.slicer_color_rgb = [(0.,0.,0.)] * self.num_gates
         for tool_key, tool_value in self.slicer_tool_map['tools'].items():
             tool = int(tool_key)
@@ -1181,12 +1178,10 @@ class Mmu:
         for var, attr, _ in self.gate_map_vars:
             value = self.save_variables.allVariables.get(var, getattr(self, attr))
             if len(value) == self.num_gates:
-                if attr == "gate_color":
-                    self._update_gate_color(value)
-                else:
-                    setattr(self, attr, value)
+                setattr(self, attr, value)
             else:
                 errors.append("Incorrect number of gates specified with %s" % var)
+        self._update_gate_color_rgb()
 
         # Load selected tool and gate
         tool_selected = self.save_variables.allVariables.get(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
@@ -1220,7 +1215,7 @@ class Mmu:
 
         self.statistics.update(swap_stats)
         for gate in range(self.num_gates):
-            self.gate_statistics[gate] = self.EMPTY_GATE_STATS_ENTRY.copy()
+            self.gate_statistics[gate] = dict(self.EMPTY_GATE_STATS_ENTRY)
             gstats = self.save_variables.allVariables.get("%s%d" % (self.VARS_MMU_GATE_STATISTICS_PREFIX, gate), None)
             if gstats:
                 self.gate_statistics[gate].update(gstats)
@@ -1384,16 +1379,16 @@ class Mmu:
             'filament_position': self.mmu_toolhead.get_position()[1],
             'filament_pos': self.filament_pos,
             'filament_direction': self.filament_direction,
-            'ttg_map': list(self.ttg_map),
+            'ttg_map': self.ttg_map,
+            'endless_spool_groups': self.endless_spool_groups,
             'gate_status': list(self.gate_status),
             'gate_filament_name': list(self.gate_filament_name),
             'gate_material': list(self.gate_material),
             'gate_color': list(self.gate_color),
             'gate_temperature': list(self.gate_temperature),
-            'gate_color_rgb': self.gate_color_rgb,
             'gate_spool_id': list(self.gate_spool_id),
+            'gate_color_rgb': self.gate_color_rgb,
             'slicer_color_rgb': self.slicer_color_rgb,
-            'endless_spool_groups': list(self.endless_spool_groups),
             'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
             'tool_speed_multipliers': self.tool_speed_multipliers,
             'slicer_tool_map': self.slicer_tool_map,
@@ -1420,7 +1415,7 @@ class Mmu:
         self.track = {}
         self.gate_statistics = []
         for _ in range(self.num_gates):
-            self.gate_statistics.append(self.EMPTY_GATE_STATS_ENTRY.copy())
+            self.gate_statistics.append(dict(self.EMPTY_GATE_STATS_ENTRY))
         self._reset_job_statistics()
 
     def _reset_job_statistics(self):
@@ -2045,7 +2040,7 @@ class Mmu:
             msg += self._get_encoder_summary(detail=detail)
         self.log_always(msg)
 
-    def _get_encoder_summary(self, detail=False): # PAUL move to mmu_sensor_manager?
+    def _get_encoder_summary(self, detail=False): # TODO move to mmu_sensor_manager?
         status = self.encoder_sensor.get_status(0)
         msg = "Encoder position: %.1f" % status['encoder_pos']
         if detail:
@@ -3788,26 +3783,13 @@ class Mmu:
             return
         self.reinit()
         self._reset_statistics()
-        self.enable_endless_spool = self.default_enable_endless_spool
-        self.save_variable(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
-        self.endless_spool_groups = list(self.default_endless_spool_groups)
-        self.save_variable(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
-        self.ttg_map = list(self.default_ttg_map)
-        self.save_variable(self.VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map)
-
-        self.gate_status = self._validate_gate_status(list(self.default_gate_status))
-        self.gate_filament_name = list(self.default_gate_filament_name)
-        self.gate_material = list(self.default_gate_material)
-        self._update_gate_color(list(self.default_gate_color))
-        self.gate_temperature = list(self.default_gate_temperature)
-        self.gate_spool_id = list(self.default_gate_spool_id)
-        self.gate_speed_override = list(self.default_gate_speed_override)
-
+        self._reset_endless_spool()
+        self._reset_ttg_map()
+        self._reset_gate_map()
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected)
         self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected)
         self.save_variable(self.VARS_MMU_FILAMENT_POS, self.filament_pos)
         self.write_variables()
-        self._persist_gate_map(sync=True)
         self.log_always("MMU state reset")
         self._schedule_mmu_bootup_tasks()
 
@@ -4013,6 +3995,7 @@ class Mmu:
         else:
             self.select_gate(gate)
 
+        self.selector.filament_drive()
         self.log_always("Ejecting...")
         if self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate):
             endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, gate)
@@ -5381,7 +5364,6 @@ class Mmu:
     # current: True=optionally reduce, False=restore to current default
     def sync_gear_to_extruder(self, sync, gate=None, grip=False, current=False):
         #self.log_error("PAUL TEMP: sync_gear_to_extruder(sync=%s, gate=%s, grip=%s, current=%s)" % (sync, gate, grip, current))
-
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
         gate = gate if gate is not None else self.gate_selected
@@ -5686,7 +5668,7 @@ class Mmu:
     def select_gate(self, gate):
         #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)) else ""))
         # RotarySelector moves off gate to release so we must go through the process
-        if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)): # PAUL similar logic for new ServoSelector .. maybe need "lazy" flag in BaseSelector?
+        if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)): # TODO make a flag on selector rather than list?
             return
         try:
             self._next_gate = gate # Valid only during the gate selection process
@@ -6959,27 +6941,21 @@ class Mmu:
         msg = "for T%d in EndlessSpool Group %s %s" % (tool, chr(ord('A') + group), checked_gates)
         return next_gate, msg
 
-    def _set_gate_status(self, gate, state):
-        if gate >= 0:
-            if state != self.gate_status[gate]:
-                self.gate_status[gate] = state
-                self.save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status, write=True)
-                self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
-
     # Use pre-gate (and gear) sensors to "correct" gate status
     # Return updated gate_status
     def _validate_gate_status(self, gate_status):
-        for gate, status in enumerate(gate_status):
+        v_gate_status = list(gate_status) # Ensure that webhooks sees get_status() change
+        for gate, status in enumerate(v_gate_status):
             detected = self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
             if detected is True:
-                gate_status[gate] = self.GATE_AVAILABLE
+                v_gate_status[gate] = self.GATE_AVAILABLE
             else:
                 detected = self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate)
                 if detected is True and status == self.GATE_EMPTY:
-                    gate_status[gate] = self.GATE_UNKNOWN
+                    v_gate_status[gate] = self.GATE_UNKNOWN
                 elif detected is False and status != self.GATE_EMPTY:
-                    gate_status[gate] = self.GATE_EMPTY
-        return gate_status
+                    v_gate_status[gate] = self.GATE_EMPTY
+        return v_gate_status
 
     def _get_gate_endstop_name(self):
         return self.sensor_manager.get_gate_sensor_name(self.gate_homing_endstop, self.gate_selected) if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX else self.gate_homing_endstop
@@ -7117,10 +7093,11 @@ class Mmu:
 
     # Remap a tool/gate relationship and gate filament availability
     def _remap_tool(self, tool, gate, available=None):
+        self.ttg_map = list(self.ttg_map) # Ensure that webhook sees get_status() change
         self.ttg_map[tool] = gate
         self._persist_ttg_map()
         self._ensure_ttg_match()
-        self._update_slicer_color() # Indexed by gate
+        self._update_slicer_color_rgb() # Indexed by gate
         if available is not None:
             self._set_gate_status(gate, available)
 
@@ -7146,9 +7123,42 @@ class Mmu:
         self.ttg_map = list(self.default_ttg_map)
         self._persist_ttg_map()
         self._ensure_ttg_match()
-        self._update_slicer_color() # Indexed by gate
+        self._update_slicer_color_rgb() # Indexed by gate
 
-    def _persist_gate_map(self, sync=False, gate_ids=None):
+    def _persist_endless_spool(self):
+        self.save_variable(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.enable_endless_spool)
+        self.save_variable(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
+        self.write_variables()
+
+    def _reset_endless_spool(self):
+        self.log_debug("Resetting Endless Spool mapping")
+        self.enable_endless_spool = self.default_enable_endless_spool
+        self.endless_spool_groups = list(self.default_endless_spool_groups)
+        self._persist_endless_spool()
+
+    def _set_gate_status(self, gate, state):
+        if gate >= 0:
+            if state != self.gate_status[gate]:
+                self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
+                self.gate_status[gate] = state
+                self._persist_gate_status()
+                self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
+
+    def _persist_gate_status(self):
+        self.save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status, write=True)
+
+    # Ensure that webhooks sees get_status() change after gate map update. It is important to call this priot to
+    # updating gate_map so change is always seen. This approach removes need to copy lists on every call to get_status()
+    def _renew_gate_map(self):
+        self.gate_status = list(self.gate_status)
+        self.gate_filament_name = list(self.gate_filament_name)
+        self.gate_material = list(self.gate_material)
+        self.gate_color = list(self.gate_color)
+        self.gate_temperature = list(self.gate_temperature)
+        self.gate_spool_id = list(self.gate_spool_id)
+        self.gate_speed_override = list(self.gate_speed_override)
+
+    def _persist_gate_map(self, spoolman_sync=False, gate_ids=None):
         self.save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status)
         self.save_variable(self.VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
         self.save_variable(self.VARS_MMU_GATE_MATERIAL, self.gate_material)
@@ -7160,7 +7170,7 @@ class Mmu:
         self._update_t_macros()
 
         # Also persist to spoolman db if pushing updates for visability
-        if sync and self.spoolman_support == self.SPOOLMAN_PUSH:
+        if spoolman_sync and self.spoolman_support == self.SPOOLMAN_PUSH:
             if gate_ids is None:
                 gate_ids = list(enumerate(self.gate_spool_id))
             if gate_ids:
@@ -7171,14 +7181,15 @@ class Mmu:
 
     def _reset_gate_map(self):
         self.log_debug("Resetting gate map")
-        self.gate_status = self._validate_gate_status(list(self.default_gate_status))
+        self.gate_status = self._validate_gate_status(self.default_gate_status)
         self.gate_filament_name = list(self.default_gate_filament_name)
         self.gate_material = list(self.default_gate_material)
-        self._update_gate_color(list(self.default_gate_color))
+        self.gate_color = list(self.default_gate_color)
         self.gate_temperature = list(self.default_gate_temperature)
         self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
-        self._persist_gate_map(sync=True)
+        self._update_gate_color_rgb()
+        self._persist_gate_map(spoolman_sync=True)
 
     def _automap_gate(self, tool, strategy):
         if tool is None:
@@ -7529,36 +7540,35 @@ class Mmu:
         available = gcmd.get_int('AVAILABLE', self.GATE_UNKNOWN, minval=self.GATE_EMPTY, maxval=self.GATE_AVAILABLE)
 
         try:
-            with self.wrap_sync_gear_to_extruder():
-                if reset == 1:
-                    self._reset_ttg_map()
-                elif ttg_map != "!":
-                    ttg_map = gcmd.get('MAP').split(",")
-                    if len(ttg_map) != self.num_gates:
-                        self.log_always("The number of map values (%d) is not the same as number of gates (%d)" % (len(ttg_map), self.num_gates))
-                        return
-                    self.ttg_map = []
-                    for gate in ttg_map:
-                        if gate.isdigit():
-                            self.ttg_map.append(int(gate))
-                        else:
-                            self.ttg_map.append(0)
-                    self._persist_ttg_map()
-                elif gate != -1:
-                    status = self.gate_status[gate]
-                    if not available == self.GATE_UNKNOWN or (available == self.GATE_UNKNOWN and status == self.GATE_EMPTY):
-                        status = available
-                    if tool == -1:
-                        self._set_gate_status(gate, status)
+            if reset == 1:
+                self._reset_ttg_map()
+            elif ttg_map != "!":
+                ttg_map = gcmd.get('MAP').split(",")
+                if len(ttg_map) != self.num_gates:
+                    self.log_always("The number of map values (%d) is not the same as number of gates (%d)" % (len(ttg_map), self.num_gates))
+                    return
+                self.ttg_map = []
+                for gate in ttg_map:
+                    if gate.isdigit():
+                        self.ttg_map.append(int(gate))
                     else:
-                        self._remap_tool(tool, gate, status)
+                        self.ttg_map.append(0)
+                self._persist_ttg_map()
+            elif gate != -1:
+                status = self.gate_status[gate]
+                if not available == self.GATE_UNKNOWN or (available == self.GATE_UNKNOWN and status == self.GATE_EMPTY):
+                    status = available
+                if tool == -1:
+                    self._set_gate_status(gate, status)
                 else:
-                    quiet = False # Display current TTG map
-                if not quiet:
-                    msg = self._ttg_map_to_string(show_groups=detail)
-                    if not detail and self.enable_endless_spool:
-                        msg += "\nDETAIL=1 to see EndlessSpool map"
-                    self.log_info(msg)
+                    self._remap_tool(tool, gate, status)
+            else:
+                quiet = False # Display current TTG map
+            if not quiet:
+                msg = self._ttg_map_to_string(show_groups=detail)
+                if not detail and self.enable_endless_spool:
+                    msg += "\nDETAIL=1 to see EndlessSpool map"
+                self.log_info(msg)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
@@ -7589,6 +7599,7 @@ class Mmu:
 
         if gate_map:
             self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
+            self._renew_gate_map()
             if replace:
                 # Replace map
                 for gate, fil in gate_map.items():
@@ -7617,7 +7628,7 @@ class Mmu:
                     else:
                         self.log_debug("Assertion failure: Spool_id changed for gate %d in MMU_GATE_MAP. Attributes=%s" % (gate, fil))
 
-            self._update_gate_color(self.gate_color)
+            self._update_gate_color_rgb()
             self._persist_gate_map() # This will also update LED status
 
         elif gates != "!" or gate >= 0:
@@ -7636,6 +7647,7 @@ class Mmu:
                 gatelist.append(gate)
 
             gate_ids = []
+            self._renew_gate_map()
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
                 name = gcmd.get('NAME', None)
@@ -7679,8 +7691,8 @@ class Mmu:
                         self.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % self.SPOOLMAN_PULL)
                         return
 
-            self._update_gate_color(self.gate_color)
-            self._persist_gate_map(sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
+            self._update_gate_color_rgb()
+            self._persist_gate_map(spoolman_sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
 
         if not quiet:
             self.log_info(self._gate_map_to_string(detail))
@@ -7704,9 +7716,7 @@ class Mmu:
             return
 
         if reset:
-            self.log_debug("Resetting EndlessSpool groups")
-            self.enable_endless_spool = self.default_enable_endless_spool
-            self.endless_spool_groups = self.default_endless_spool_groups
+            self._reset_endless_spool()
 
         elif groups != "!":
             groups = gcmd.get('GROUPS', ",".join(map(str, self.endless_spool_groups))).split(",")
@@ -7719,7 +7729,7 @@ class Mmu:
                     self.endless_spool_groups.append(int(group))
                 else:
                     self.endless_spool_groups.append(0)
-            self.save_variable(self.VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups, write=True)
+            self._persist_endless_spool()
 
         else:
             quiet = False # Display current map
@@ -7787,7 +7797,7 @@ class Mmu:
                 if automap_strategy and automap_strategy != self.AUTOMAP_NONE:
                     self._automap_gate(tool, automap_strategy)
             if color:
-                self._update_slicer_color()
+                self._update_slicer_color_rgb()
             quiet = True
 
         if initial_tool is not None:
