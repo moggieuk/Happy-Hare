@@ -251,6 +251,7 @@ class Mmu:
         self._can_write_variables = True
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None # Setup on connect
+        self._standalone_sync = False # Used to indicate synced extruder intention whilst out of print
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -4688,7 +4689,7 @@ class Mmu:
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
                     # Restore the expected sync state now before running this macro
-                    sync = self.is_printing() and self.sync_to_extruder
+                    sync = (self.is_printing() and self.sync_to_extruder) or self._standalone_sync
                     self.sync_gear_to_extruder(sync, grip=True, current=True)
                     self._wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
@@ -5374,7 +5375,7 @@ class Mmu:
     # into Happy Hare during a print. It also ensures that grip (e.g. servo) and current are correctly restored
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
-        prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+        self._standalone_sync = prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
         prev_current = self.gear_percentage_run_current != 100
         prev_grip = self.selector.get_filament_grip_state()
         try:
@@ -7521,6 +7522,9 @@ class Mmu:
             if replace:
                 # Replace map
                 for gate, fil in gate_map.items():
+                    if not (0 <= gate < self.num_gates):
+                        self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
+                        continue
                     spool_id = fil.get('spool_id', -1)
                     self.gate_spool_id[gate] = spool_id
                     if spool_id >= 0:
@@ -7538,6 +7542,9 @@ class Mmu:
             else:
                 # Update map
                 for gate, fil in gate_map.items():
+                    if not (0 <= gate < self.num_gates):
+                        self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
+                        continue
                     if fil and self.gate_spool_id[gate] == fil.get('spool_id', None):
                         self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
