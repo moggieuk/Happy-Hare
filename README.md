@@ -76,7 +76,7 @@ Some users have inquired about making donations to support this project (and to 
 - Automated calibration for easy setup
 - Supports MMU "bypass" gate functionality
 - Moonraker update-manager support
-- Moonraker gcode pre-parsing to extract important print infomation
+- Moonraker gcode pre-parsing to extract important print information
 - Complete persistence of state and statistics across restarts
 - Highly configurable speed control
 - Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!
