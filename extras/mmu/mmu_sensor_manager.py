@@ -45,9 +45,8 @@ class MmuSensorManager:
                 self.all_sensors[name] = sensor
 
         # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
-# PAUL FIXME
-#        if not self.mmu.mmu_machine.require_bowden_move and self.sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.sensors:
-#            self.all_sensors[self.mmu.SENSOR_GATE] = self.sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
+        if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
+            self.all_sensors[self.mmu.SENSOR_GATE] = self.all_sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
 
         # Setup subset of filament sensors that are also used for homing (endstops)
         self.endstop_names = []
