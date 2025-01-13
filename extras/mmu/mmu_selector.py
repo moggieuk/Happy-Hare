@@ -1640,7 +1640,7 @@ class ServoSelector(BaseSelector, object):
         angle = gcmd.get_int('ANGLE', None)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
-        spacing = gcmd.get_float('SPACING', 25., above=0, below=180) # TiPicoMMU is 25 degrees
+        spacing = gcmd.get_float('SPACING', 50., above=0, below=180) # TiPicoMMU is 50 degrees between gates
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.mmu_machine.num_gates - 1)
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = self.mmu.TOOL_GATE_BYPASS

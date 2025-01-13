@@ -1230,6 +1230,7 @@ questionaire() {
     option NIGHT_OWL      'Night Owl v1.0'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
     option _3D_CHAMELEON  '3D Chameleon'
+    option PICO_MMU       'PicoMMU (TiPicoMMU)'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
     case $opt in
@@ -1459,6 +1460,28 @@ questionaire() {
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=500
             _param_gate_parking_distance=250
+            _param_gear_homing_speed=80
+            ;;
+
+        "$PICO_MMU")
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            HAS_SERVO=yes
+            SETUP_SELECTOR_TOUCH=no
+            _hw_mmu_vendor="PicoMMU"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=ServoSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=1
+            _hw_gear_gear_ratio="1.28:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=100
+            _param_gate_parking_distance=25
             _param_gear_homing_speed=80
             ;;
 
@@ -1710,11 +1733,6 @@ questionaire() {
         fi
 
         if [ "${_hw_mmu_vendor}" == "ERCF" ]; then
-            _hw_maximum_servo_angle=180
-            _hw_minimum_pulse_width=0.00085
-            _hw_maximum_pulse_width=0.00215
-            _param_servo_always_active=0
-
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
             OPTIONS=()
             option MG90S    'MG-90S'
@@ -1724,6 +1742,10 @@ questionaire() {
             prompt_option opt 'Servo' "${OPTIONS[@]}"
             case $opt in
                 "$MG90S")
+                    _hw_maximum_servo_angle=180
+                    _hw_minimum_pulse_width=0.00085
+                    _hw_maximum_pulse_width=0.00215
+                    _param_servo_always_active=0
                     _param_servo_up_angle=30
                     if [ "${_hw_mmu_version}" == "2.0" ]; then
                         _param_servo_move_angle=61
@@ -1733,6 +1755,10 @@ questionaire() {
                     _param_servo_down_angle=140
                     ;;
                 "$SH0255MG")
+                    _hw_maximum_servo_angle=180
+                    _hw_minimum_pulse_width=0.00085
+                    _hw_maximum_pulse_width=0.00215
+                    _param_servo_always_active=0
                     _param_servo_up_angle=140
                     if [ "${_hw_mmu_version}" == "2.0" ]; then
                         _param_servo_move_angle=109
@@ -1753,14 +1779,16 @@ questionaire() {
                         _param_servo_move_angle=${servo_up_angle}
                     fi
                     _param_servo_down_angle=100
+                    ;;
+                *)
+                    _hw_maximum_servo_angle=180
+                    _hw_minimum_pulse_width=0.00085
+                    _hw_maximum_pulse_width=0.00215
+                    _param_servo_always_active=0
+                    ;;
             esac
 
         elif [ "${_hw_mmu_vendor}" == "Tradrack" ]; then
-            _hw_maximum_servo_angle=131
-            _hw_minimum_pulse_width=0.00070
-            _hw_maximum_pulse_width=0.00220
-            _param_servo_always_active=1
-
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
             OPTIONS=()
             option TRADRACK_BOM 'PS-1171MG or FT1117M (Tradrack)'
@@ -1768,14 +1796,51 @@ questionaire() {
             prompt_option opt 'Servo' "${OPTIONS[@]}"
             case $opt in
                 "$TRADRACK_BOM")
+                    _hw_maximum_servo_angle=131
+                    _hw_minimum_pulse_width=0.00070
+                    _hw_maximum_pulse_width=0.00220
+                    _param_servo_always_active=1
                     _param_servo_up_angle=145
                     _param_servo_move_angle=${servo_up_angle}
                     _param_servo_down_angle=1
                     ;;
                 *)
+                    _hw_maximum_servo_angle=131
+                    _hw_minimum_pulse_width=0.00070
+                    _hw_maximum_pulse_width=0.00230
+                    _param_servo_always_active=1
                     _param_servo_up_angle=145
                     _param_servo_move_angle=${servo_up_angle}
                     _param_servo_down_angle=1
+                    ;;
+            esac
+
+        elif [ "${_hw_mmu_vendor}" == "PicoMMU" ]; then
+            _param_servo_up_angle=0
+            _param_servo_move_angle=0
+            _param_servo_down_angle=0
+
+            echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
+            OPTIONS=()
+            option PICOMMU_BOM 'MG996R'
+            option OTHER 'Not listed / Other'
+            prompt_option opt 'Servo' "${OPTIONS[@]}"
+            case $opt in
+                "$PICOMMU_BOM")
+                    _hw_maximum_servo_angle=180
+                    _hw_minimum_pulse_width=0.00070
+                    _hw_maximum_pulse_width=0.00230
+                    _param_servo_always_active=1
+                    _param_servo_duration=0.6
+                    _param_servo_dwell=0.8 
+                    ;;
+                *)
+                    _hw_maximum_servo_angle=180
+                    _hw_minimum_pulse_width=0.001
+                    _hw_maximum_pulse_width=0.002
+                    _param_servo_always_active=0
+                    _param_servo_duration=0.5
+                    _param_servo_dwell=0.8 
                     ;;
             esac
 

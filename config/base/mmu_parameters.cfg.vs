@@ -6,7 +6,8 @@
 #
 # EDIT THIS FILE BASED ON YOUR SETUP
 #
-# Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 # Goal: Main configuration parameters for the klipper module

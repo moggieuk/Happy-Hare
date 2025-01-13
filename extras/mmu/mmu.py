@@ -2326,7 +2326,7 @@ class Mmu:
             self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
         except MmuError as ee:
             # Add some more context to the error and re-raise
-            raise MmuError("Calibration for gate %d failed. Aborting, because: %s" % (gate, str(ee)))
+            raise MmuError("Calibration for gate %d failed. Aborting, because:\n%s" % (gate, str(ee)))
         finally:
             self._auto_filament_grip()
 
@@ -4084,7 +4084,8 @@ class Mmu:
 
     # Shared with manual bowden calibration routine
     def _reverse_home_to_encoder(self, homing_max):
-        max_steps = int(homing_max / self.encoder_move_step_size) + 5
+        math.ceil(number)
+        max_steps = math.ceil(homing_max / self.encoder_move_step_size)
         delta = 0.
         actual = 0.
         for i in range(max_steps):
@@ -4665,7 +4666,7 @@ class Mmu:
 
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
-            raise MmuError("Load sequence failed: %s" % (str(ee)))
+            raise MmuError("Load sequence failed because:\n%s" % (str(ee)))
 
         finally:
             self._track_gate_statistics('loads', self.gate_selected)
@@ -4809,7 +4810,7 @@ class Mmu:
 
         except MmuError as ee:
             self._track_gate_statistics('unload_failures', self.gate_selected)
-            raise MmuError("Unload sequence failed: %s" % (str(ee)))
+            raise MmuError("Unload sequence failed because:\n%s" % (str(ee)))
 
         finally:
             self._track_gate_statistics('unloads', self.gate_selected)
@@ -7942,7 +7943,7 @@ class Mmu:
                                         try:
                                             self._unload_gate()
                                         except MmuError as ee:
-                                            raise MmuError("Failure during check gate %d %s: %s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
+                                            raise MmuError("Failure during check gate %d %s:\n%s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
                                     except MmuError as ee:
                                         self._set_gate_status(gate, self.GATE_EMPTY)
                                         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
@@ -7971,7 +7972,7 @@ class Mmu:
                                         else:
                                             self.select_tool(tool_selected)
                                 except MmuError as ee:
-                                    raise MmuError("Failure re-selecting Tool %d: %s" % (tool_selected, str(ee)))
+                                    raise MmuError("Failure re-selecting Tool %d:\n%s" % (tool_selected, str(ee)))
                             else:
                                 # At least restore the selected tool, but don't re-load filament
                                 self.select_tool(tool_selected)
