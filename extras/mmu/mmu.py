@@ -3401,9 +3401,9 @@ class Mmu:
             # We have to be more methodical and consider just gates of interest
             msg = ""
             if required & self.CALIBRATED_SELECTOR and not self.calibration_status & self.CALIBRATED_SELECTOR:
-                uncalibrated = [gate for gate, value in enumerate(self.selector.selector_offsets) if value == -1 and gate in check_gates]
+                uncalibrated = self.selector.get_uncalibrated_gates(check_gates)
                 if uncalibrated:
-                    msg += "\nUse MMU_CALIBRATE_SELECTOR to calibrate selector offset on gates: %s" % ",".join(map(str, uncalibrated))
+                    msg += "\nUse MMU_CALIBRATE_SELECTOR to calibrate selector for gates: %s" % ",".join(map(str, uncalibrated))
 
             if required & self.CALIBRATED_GEAR_0 and not self.calibration_status & self.CALIBRATED_GEAR_0:
                 if self.mmu_machine.variable_rotation_distances:
@@ -5617,9 +5617,9 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)) else ""))
-        # RotarySelector moves off gate to release so we must go through the process
-        if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector)): # TODO make a flag on selector rather than list?
+        #self.log_error("PAUL TEMP: select_gate(%s)%s" % (gate, " - IGNORED" if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector, ServoSelector)) else ""))
+        # RotarySelector and ServoSelector moves off gate to release so we must go through the process
+        if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector, ServoSelector)): # TODO make a flag on selector rather than list?
             return
         try:
             self._next_gate = gate # Valid only during the gate selection process
@@ -5643,6 +5643,7 @@ class Mmu:
 
         gate = self.ttg_map[tool]
         if tool == self.tool_selected and gate == self.gate_selected:
+            self.select_gate(gate) # Some selectors need to be re-synced
             return
 
         self.log_debug("Selecting tool T%d on gate %d..." % (tool, gate))
@@ -5668,13 +5669,11 @@ class Mmu:
         self._auto_filament_grip()
 
     def _set_tool_selected(self, tool):
-        #self.log_error("PAUL TEMP: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.save_variable(self.VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
 
     def _set_gate_selected(self, gate):
-        #self.log_error("PAUL TEMP: _set_gate_selected(%d)" % gate)
         self.gate_selected = gate
         new_unit = self.find_unit_by_gate(gate)
         if new_unit != self.unit_selected:
@@ -5712,7 +5711,6 @@ class Mmu:
         else:
             self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
         if self.gear_rail.steppers:
-            #self.log_error("PAUL TEMP: _set_rotation_distance(%s)%s" % (rd, " - NO-OP" if rd == self.gear_rail.steppers[0].get_rotation_distance()[0] else ""))
             self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_bowden_length(self, gate):

@@ -50,9 +50,11 @@ VENDOR_BOX_TURTLE     = "BoxTurtle"
 VENDOR_NIGHT_OWL      = "NightOwl"
 VENDOR_3MS            = "3MS"
 VENDOR_3D_CHAMELEON   = "3DChameleon"
+VENDOR_PICO_MMU       = "PicoMMU"
+VENDOR_QUATTRO_BOX    = "QuattroBox"
 VENDOR_OTHER          = "Other"
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -146,8 +148,24 @@ class MmuMachine:
             filament_always_gripped = 1
             has_bypass = 0
 
+        elif self.mmu_vendor == VENDOR_PICO_MMU:
+            selector_type = 'ServoSelector'
+            variable_rotation_distances = 0
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_QUATTRO_BOX:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 0
+
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector']}, selector_type)
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
