@@ -62,7 +62,7 @@ class VirtualMmuLedChain:
 class MmuLeds:
 
     PER_GATE_SEGMENTS = ['exit', 'entry']
-    SEGMENTS = PER_GATE_SEGMENTS + ['status']
+    SEGMENTS = PER_GATE_SEGMENTS + ['status', 'logo']
 
     def __init__(self, config):
         self.printer = config.get_printer()

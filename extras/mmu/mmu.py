@@ -3691,6 +3691,7 @@ class Mmu:
             default_exit_effect = gcmd.get('EXIT_EFFECT', led_vars_macro.variables['default_exit_effect'])
             default_entry_effect = gcmd.get('ENTRY_EFFECT', led_vars_macro.variables['default_entry_effect'])
             default_status_effect = gcmd.get('STATUS_EFFECT', led_vars_macro.variables['default_status_effect'])
+            default_logo_effect = gcmd.get('LOGO_EFFECT', led_vars_macro.variables['default_logo_effect'])
 
             led_vars = {}
             led_vars['led_enable'] = led_enable
@@ -3698,17 +3699,18 @@ class Mmu:
             led_vars['default_exit_effect'] = default_exit_effect
             led_vars['default_entry_effect'] = default_entry_effect
             led_vars['default_status_effect'] = default_status_effect
+            led_vars['default_logo_effect'] = default_logo_effect
 
             if current_led_enable and not led_enable:
                 # Enabled to disabled
-                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off")
+                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off LOGO_EFFECT=off")
                 led_vars_macro.variables.update(led_vars)
             else:
                 if current_led_animation and not led_animation:
                     # Turning animation off so clear existing effects
-                    self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off FADETIME=0")
+                    self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off LOGO_EFFECT=off FADETIME=0")
                 led_vars_macro.variables.update(led_vars)
-                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default")
+                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default LOGO_EFFECT=default")
 
             if not quiet:
                 effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled > 0 else "Unavailable"
@@ -3717,7 +3719,8 @@ class Mmu:
                 msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, mmu_leds.get_status()['exit'])
                 msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, mmu_leds.get_status()['entry'])
                 msg += "Default status effect: %s\n" % effect_string(default_status_effect, mmu_leds.get_status()['status'])
-                msg += "\nOptions:\nENABLE=[0|1]\nANIMATION=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|slicer_color]\nENTRY_EFFECT=[off|gate_status|filament_color|slicer_color]\nSTATUS_EFFECT=[off|on|filament_color|slicer_color]"
+                msg += "Default logo effect: %s\n" % effect_string(default_logo_effect, mmu_leds.get_status()['logo'])
+                msg += "\nOptions:\nENABLE=[0|1]\nANIMATION=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\nENTRY_EFFECT=[off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\nSTATUS_EFFECT=[off|on|filament_color|slicer_color|r,g,b|_effect_]\nLOGO_EFFECT=[off|r,g,b|_effect_]"
                 self.log_always(msg)
         else:
             self.log_error("LEDs not available")
@@ -5429,7 +5432,8 @@ class Mmu:
         if current_helper:
             try:
                 print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time())
-                prev_cur, prev_hold_cur, req_hold_cur, max_cur = current_helper.get_current()
+                c = list(current_helper.get_current())
+                req_hold_cur, max_cur = c[2], c[3] # Kalico now has 5 elements rather than 4 in tuple, so unpack just what we need...
                 new_cur = max(min(run_current, max_cur), 0)
                 current_helper.set_current(new_cur, req_hold_cur, print_time)
                 self.log_debug(msg.format(new_cur))
