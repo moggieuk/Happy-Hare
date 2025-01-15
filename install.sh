@@ -599,12 +599,10 @@ read_previous_config() {
     if [ "${_variable_eject_tool_on_cancel}" != "" ]; then
         _variable_unload_tool_on_cancel=${_variable_eject_tool_on_cancel}
     fi
-    # Temp for alpha testers..
-    if [ "${_param_respooler_start_macro}" != "" ]; then
-        _param_espooler_start_macro=${_param_respooler_start_macro}
-    fi
-    if [ "${_param_respooler_stop_macro}" != "" ]; then
-        _param_espooler_stop_macro=${_param_respooler_stop_macro}
+
+    # v3.0.2
+    if [ "${_param_homing_extruder}" != "" ]; then
+        _hw_homing_extruder=${_param_homing_extruder}
     fi
 }
 
@@ -1830,21 +1828,22 @@ questionaire() {
                     _hw_maximum_servo_angle=180
                     _hw_minimum_pulse_width=0.00070
                     _hw_maximum_pulse_width=0.00230
-                    _param_servo_always_active=1
+                    _param_servo_always_active=0
                     _param_servo_duration=0.6
-                    _param_servo_dwell=0.8 
+                    _param_servo_dwell=1.0
                     ;;
                 *)
                     _hw_maximum_servo_angle=180
                     _hw_minimum_pulse_width=0.001
                     _hw_maximum_pulse_width=0.002
-                    _param_servo_always_active=0
-                    _param_servo_duration=0.5
-                    _param_servo_dwell=0.8 
+                    _param_servo_always_active=1
+                    _param_servo_duration=0.6
+                    _param_servo_dwell=1.0
                     ;;
             esac
 
         else
+            # Other (unknown) vendor
             _hw_maximum_servo_angle=180
             _hw_minimum_pulse_width=0.001
             _hw_maximum_pulse_width=0.002

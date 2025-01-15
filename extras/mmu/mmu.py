@@ -254,6 +254,7 @@ class Mmu:
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None # Setup on connect
         self._standalone_sync = False # Used to indicate synced extruder intention whilst out of print
+        self.has_leds = self.has_led_animation = False
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -269,12 +270,6 @@ class Mmu:
         self.kalico = bool(self.printer.lookup_object('danger_options', False))
 
         # Setup remaining hardware like MMU toolhead --------------------------------------------------------
-        #
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
-        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
-        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
-
         # We setup MMU hardware during configuration since some hardware like endstop requires
         # configuration during the MCU config phase, which happens before klipper connection
         # This assumes that the hardware definition appears before the '[mmu]' section.
@@ -635,7 +630,7 @@ class Mmu:
 
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.num_gates = self.mmu_machine.num_gates
-        self.has_leds = self.has_led_animation = False
+        self.homing_extruder = self.mmu_machine.homing_extruder
 
         # Dynamically instantiate the selector class
         self.selector = globals()[self.mmu_machine.selector_type](self)
@@ -651,8 +646,9 @@ class Mmu:
         # Setup filament sensors that are also used for homing (endstops). Must be done during initialization
         self.sensor_manager = MmuSensorManager(self)
 
-        # Get optional encoder setup
-        self.encoder_sensor = self.printer.lookup_object('mmu_encoder mmu_encoder', None)
+        # Get optional encoder setup. TODO Multi-encoder: rework to default name to None and then use lookup to determine if present
+        self.encoder_name = config.get('encoder_name', 'mmu_encoder')
+        self.encoder_sensor = self.printer.lookup_object('mmu_encoder %s' % self.encoder_name, None)
         if not self.encoder_sensor:
             logging.warning("MMU: No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
 
@@ -3982,8 +3978,9 @@ class Mmu:
                     msg = "Initial load into encoder" if i == 0 else ("Retry load into encoder (reetry #%d)" % i)
                     _,_,m,_ = self.trace_filament_move(msg, self.gate_homing_max)
                     measured += m
-                    if (m) > 6.0:
+                    if m > 6.0:
                         self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
+                        # For consistent distance reporting assume perfect starting parking position
                         self._set_filament_position(measured + self.gate_parking_distance)
                         self.set_encoder_distance(measured + self.gate_parking_distance)
                         self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
@@ -3998,10 +3995,12 @@ class Mmu:
             for i in range(retries):
                 endstop_name = self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop)
                 msg = ("Initial homing to %s sensor" % endstop_name) if i == 0 else ("Retry homing to gate sensor (retry #%d)" % i)
-                actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
+                h_dir = -1 if self.gate_parking_distance < 0 and self.sensor_manager.check_sensor(endstop_name) else 1 # Reverse home?
+                actual,homed,measured,_ = self.trace_filament_move(msg, h_dir * self.gate_homing_max, motor="gear", homing_move=h_dir, endstop_name=endstop_name)
                 if homed:
                     self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
+                    # For consistent distance reporting assume perfect starting parking position
                     self._set_filament_position(self.gate_parking_distance)
                     self.set_encoder_distance(self.gate_parking_distance)
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
@@ -4080,14 +4079,12 @@ class Mmu:
                 self.trace_filament_move("Final parking", -self.gate_parking_distance)
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                 return max(actual - self.gate_unload_buffer, 0)
-            else:
-                msg = "did not home to gate sensor %s after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
+            msg = "did not home to gate sensor %s after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
 
         raise MmuError("Failed to unload gate because %s" % msg)
 
     # Shared with manual bowden calibration routine
     def _reverse_home_to_encoder(self, homing_max):
-        math.ceil(number)
         max_steps = math.ceil(homing_max / self.encoder_move_step_size)
         delta = 0.
         actual = 0.
@@ -6627,7 +6624,7 @@ class Mmu:
         self.gate_endstop_to_encoder = gcmd.get_float('GATE_SENSOR_TO_ENCODER', self.gate_endstop_to_encoder)
         self.gate_parking_distance = gcmd.get_float('GATE_PARKING_DISTANCE', self.gate_parking_distance)
         self.gate_autoload = gcmd.get_int('GATE_AUTOLOAD', self.gate_autoload, minval=0, maxval=1)
-        self.gate_final_eject_distance = gcmd.get_float('GATE_FINAL_PARKING_DISTANCE', self.gate_final_eject_distance)
+        self.gate_final_eject_distance = gcmd.get_float('GATE_FINAL_EJECT_DISTANCE', self.gate_final_eject_distance)
         self.gate_unload_buffer = gcmd.get_float('GATE_UNLOAD_BUFFER', self.gate_unload_buffer, minval=0.)
         self.gate_homing_max = gcmd.get_float('GATE_HOMING_MAX', self.gate_homing_max)
         self.gate_preload_homing_max = gcmd.get_float('GATE_PRELOAD_HOMING_MAX', self.gate_preload_homing_max)

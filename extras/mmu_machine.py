@@ -172,6 +172,11 @@ class MmuMachine:
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
         self.has_bypass = bool(config.getint('has_bypass', has_bypass))
 
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
+        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
+        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
 
@@ -332,7 +337,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.mmu_extruder_stepper = None
-        if self.mmu.homing_extruder:
+        if self.mmu_machine.homing_extruder:
             # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
             self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
 
@@ -358,7 +363,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
 
         printer_extruder = self.printer_toolhead.get_extruder()
-        if self.mmu.homing_extruder:
+        if self.mmu_machine.homing_extruder:
             # Restore original extruder options in case user macros reference them
             for key, value in self.old_ext_options.items():
                 self.config.fileconfig.set('extruder', key, value)
