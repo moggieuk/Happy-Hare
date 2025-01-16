@@ -723,9 +723,15 @@ copy_config_files() {
     fi
 
     # Now substitute tokens using given brd_type and "questionaire" starting values
-    _hw_num_leds=$(expr $_hw_num_gates \* 2 + 1)
-    _hw_num_leds_minus1=$(expr $_hw_num_leds - 1)
-    _hw_num_gates_plus1=$(expr $_hw_num_gates + 1)
+    : ${_hw_chain_count:=$(expr $_hw_num_gates \* 2 + 2)}
+    num_leds_minus1=$(expr $_hw_chain_count - 1)
+    num_gates_plus1=$(expr $_hw_num_gates + 1)
+    num_gates_mult2=$(expr $_hw_num_gates + $_hw_num_gates)
+
+    : ${_hw_exit_leds="neopixel:mmu_leds (1-${_hw_num_gates})"}
+    : ${_hw_entry_leds="neopixel:mmu_leds (${num_gates_plus1}-${num_gates_mult2})"}
+    : ${_hw_status_leds="neopixel:mmu_leds (${num_leds_minus1})"}
+    : ${_hw_logo_leds="neopixel:mmu_leds (${_hw_chain_count})"}
 
     # Find all variables that start with _hw_
     for var in $(compgen -v | grep '^_hw_'); do
@@ -879,7 +885,7 @@ copy_config_files() {
             for var in $(set | grep '^_param_' | cut -d= -f1); do
                 param=${var#_param_}
                 value=$(eval echo \$$var)
-                echo "Parameter: '$param: $value' is deprecated and has been removed"
+                echo "Parameter: '$param: $value' is not required or deprecated and has been removed"
             done
 
         # Variables macro ---------------------------------------------------------------------
@@ -1228,7 +1234,8 @@ questionaire() {
     option NIGHT_OWL      'Night Owl v1.0'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
     option _3D_CHAMELEON  '3D Chameleon'
-    option PICO_MMU       'PicoMMU (TiPicoMMU)'
+#   option PICO_MMU       'PicoMMU'
+    option QUATTRO_BOX    'QuattroBox'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
     case $opt in
@@ -1481,6 +1488,32 @@ questionaire() {
             _param_gate_homing_max=100
             _param_gate_parking_distance=25
             _param_gear_homing_speed=80
+            ;;
+
+        "$QUATTRO_BOX")
+            HAS_ENCODER=yes
+            HAS_SELECTOR=no
+            HAS_SERVO=no
+            _hw_mmu_vendor="QuattroBox"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=1
+            _hw_gear_gear_ratio="50:17"
+            _hw_gear_run_current=1.27
+            _hw_gear_hold_current=0.2
+            _hw_chain_count=32
+            _hw_exit_leds="neopixel:mmu_leds (4-1)"
+            _hw_entry_leds=""
+            _hw_status_leds="neopixel:mmu_leds (5-32)"
+            _hw_logo_leds=""
+            _param_extruder_homing_endstop="collision"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=100
+            _param_gate_parking_distance=35
+            _param_gate_final_eject_distance=100
             ;;
 
         *)
