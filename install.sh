@@ -463,15 +463,26 @@ read_previous_mmu_type() {
             HAS_SERVO="no"
         fi
     fi
+    HAS_ENCODER="yes"
+    dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    if [ -f "${dest_cfg}" ]; then
+        if ! grep -q "^\[mmu_encoder mmu_encoder\]" "${dest_cfg}"; then
+            HAS_ENCODER="no"
+        fi
+    fi
 }
 
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
-    if [ "$HAS_SELECTOR" == "no" ]; then
-        # Virtual Selector
+    if [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "no" ]; then
         parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.vs" ""            "_param_" "checkdup"
+    elif [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "yes" ]; then
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.ss" ""            "_param_" "checkdup"
+    elif [ "$HAS_SELECTOR" == "yes" -a "$HAS_SERVO" == "no" ]; then
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.rs" ""            "_param_" "checkdup"
     else
+        # All other selector types
         parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""               "_param_" "checkdup"
     fi
     parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_|filename" ""        "checkdup"
@@ -826,8 +837,11 @@ copy_config_files() {
             # Handle Selector options - Delete if not required (sections are 8 and 38 lines respectively)
             if [ "${file}" == "mmu_hardware.cfg" ]; then
                 if [ "$HAS_SELECTOR" == "no" ]; then
-                    sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
                     sed "/^# SELECTOR STEPPER/,+37 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+                    if [ "$HAS_SERVO" == "no" ]; then
+                        sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    fi
 
                     # Expand out the additional filament drive for each gate
                     additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
@@ -851,9 +865,15 @@ copy_config_files() {
 
         # Configuration parameters -----------------------------------------------------------
         elif [ "${file}" == "mmu_parameters.cfg" ]; then
-            if [ "${HAS_SELECTOR}" == "no" ]; then
-                # Use truncated VirtualSelector parameter file
+            if [ "$_hw_selector_type" == "VirtualSelector" ] ; then
+                # Use truncated VirtualSelector parameter file (no selector, no servo)
                 update_copy_file "${src}.vs" "$dest" "" "_param_"
+            elif [ "$_hw_selector_type" == "ServoSelector" ] ; then
+                # Use truncated ServoSelector parameter file (no selector, with servo)
+                update_copy_file "${src}.ss" "$dest" "" "_param_"
+            elif [ "$_hw_selector_type" == "RotarySelector" ] ; then
+                # Use truncated RotarySelector parameter file (with selector, no servo)
+                update_copy_file "${src}.rs" "$dest" "" "_param_"
             else
                 update_copy_file "$src" "$dest" "" "_param_"
                 if [ "$HAS_SERVO" == "no" ]; then
@@ -1234,7 +1254,7 @@ questionaire() {
     option NIGHT_OWL      'Night Owl v1.0'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
     option _3D_CHAMELEON  '3D Chameleon'
-#   option PICO_MMU       'PicoMMU'
+    option PICO_MMU       'PicoMMU'
     option QUATTRO_BOX    'QuattroBox'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
@@ -1762,6 +1782,9 @@ questionaire() {
                     ;;
             esac
         fi
+    fi
+
+    if [ "${HAS_SERVO}" == "yes" ]; then
 
         if [ "${_hw_mmu_vendor}" == "ERCF" ]; then
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
@@ -1847,10 +1870,6 @@ questionaire() {
             esac
 
         elif [ "${_hw_mmu_vendor}" == "PicoMMU" ]; then
-            _param_servo_up_angle=0
-            _param_servo_move_angle=0
-            _param_servo_down_angle=0
-
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
             OPTIONS=()
             option PICOMMU_BOM 'MG996R'
