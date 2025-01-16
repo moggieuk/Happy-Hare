@@ -1503,6 +1503,11 @@ questionaire() {
             _hw_gear_gear_ratio="1.28:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+            _hw_chain_count=4
+            _hw_exit_leds="neopixel:mmu_leds (1-4)"
+            _hw_entry_leds=""
+            _hw_status_leds=""
+            _hw_logo_leds=""
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=100
