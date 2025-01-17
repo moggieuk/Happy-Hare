@@ -1435,12 +1435,10 @@ questionaire() {
             _hw_gear_hold_current=0.1
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gear"
-            _param_gate_parking_distance=100
+            _param_gate_homing_max=100
+            _param_gate_homing_buffer=50
+            _param_gate_parking_distance=0
             _param_gate_final_eject_distance=100
-
-            # Macro variable config
-            _param_espooler_start_macro="MMU_ESPOOLER_START"
-            _param_espooler_stop_macro="MMU_ESPOOLER_STOP"
             ;;
 
         "$_3MS")
@@ -1536,9 +1534,13 @@ questionaire() {
             _hw_logo_leds=""
             _param_extruder_homing_endstop="collision"
             _param_gate_homing_endstop="mmu_gate"
-            _param_gate_homing_max=100
-            _param_gate_parking_distance=35
-            _param_gate_final_eject_distance=100
+            _param_gate_homing_max=200
+            _param_gate_preload_homing_max=200
+            _param_gate_unload_buffer=50
+            _param_gate_parking_distance=30
+            _param_gate_endstop_to_encoder=18
+            _param_gate_autoload=1
+            _param_gate_final_eject_distance=200
             ;;
 
         *)
