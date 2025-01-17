@@ -113,7 +113,7 @@ class BaseSelector:
     def get_test_config(self):
         return ""
 
-    def get_uncalibrated_gates(self):
+    def get_uncalibrated_gates(self, check_gates=[]):
         return []
 
 
@@ -905,6 +905,7 @@ class LinearSelectorServo:
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
         self.mmu.movequeues_wait()
+        initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
         self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             for _ in range(self.servo_buzz_gear_on_down):
@@ -913,6 +914,7 @@ class LinearSelectorServo:
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
         self.servo_angle = self.servo_angles['down']
         self.servo_state = self.SERVO_DOWN_STATE
+        self.mmu.set_encoder_distance(initial_encoder_position)
         self.mmu.mmu_macro_event(self.mmu.MACRO_EVENT_FILAMENT_GRIPPED)
 
     def servo_move(self): # Position servo for selector movement
