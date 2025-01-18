@@ -470,6 +470,16 @@ read_previous_mmu_type() {
             HAS_ENCODER="no"
         fi
     fi
+    # set the selector type
+    if [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "no" ]; then
+        _hw_selector_type='VirtualSelector'
+    elif [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "yes" ]; then
+        _hw_selector_type='ServoSelector'
+    elif [ "$HAS_SELECTOR" == "yes" -a "$HAS_SERVO" == "no" ]; then
+        _hw_selector_type='RotarySelector'
+    else
+        _hw_selector_type='LinearSelector'
+    fi
 }
 
 # Set default parameters from the distribution (reference) config files
