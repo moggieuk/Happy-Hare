@@ -739,16 +739,30 @@ copy_config_files() {
     num_gates_plus1=$(expr $_hw_num_gates + 1)
     num_gates_mult2=$(expr $_hw_num_gates + $_hw_num_gates)
 
+    # Comment some LEDs unless set by questionaire
+    vars=("_hw_entry_leds" "_hw_status_leds" "_hw_logo_leds")
+    for var in "${vars[@]}"; do
+        if [ -z "${!var+set}" ]; then
+            declare "_comment${var}=true"
+        fi
+    done
+
+    # But still given suggested values even if commented
     : ${_hw_exit_leds="neopixel:mmu_leds (1-${_hw_num_gates})"}
     : ${_hw_entry_leds="neopixel:mmu_leds (${num_gates_plus1}-${num_gates_mult2})"}
     : ${_hw_status_leds="neopixel:mmu_leds (${num_leds_minus1})"}
     : ${_hw_logo_leds="neopixel:mmu_leds (${_hw_chain_count})"}
 
-    # Find all variables that start with _hw_
+    # Find all variables that start with _hw_, substitute values and comment is necessary
     for var in $(compgen -v | grep '^_hw_'); do
         value=${!var}
         pattern="{${var#_hw_}}"
-        sed_expr="${sed_expr}s|${pattern}|${value}|g; "
+        comment="_comment${var}"
+        if [ "${!comment}" == "true" ]; then
+            sed_expr="${sed_expr}/${pattern}/ { s|^|#|; s|${pattern}|${value}|g; }; "
+        else
+            sed_expr="${sed_expr}s|${pattern}|${value}|g; "
+        fi
     done
 
     # Find all variables in the form of PIN[$_hw_brd_type,*]
@@ -826,12 +840,14 @@ copy_config_files() {
 
             # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
             if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" == "no" ]; then
-                sed "/^# MMU OPTIONAL NEOPIXEL/,$ {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                sed "/^\[neopixel mmu_leds\]/,+4 {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                sed "/^\[mmu_leds\]/,+6 {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-            # Handle Encoder option - Delete if not required (section is 25 lines long)
+            # Handle Encoder option - Comment out if not fitted so can easily be added later
             if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_ENCODER" == "no" ]; then
-                sed "/^# ENCODER/,+24 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                sed "/^\[mmu_encoder mmu_encoder\]/,+6 {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                #sed "/^# ENCODER/,+24 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
             # Handle Selector options - Delete if not required (sections are 8 and 38 lines respectively)
@@ -1239,6 +1255,11 @@ option() {
 }
 
 questionaire() {
+
+    # Establish baseline hardware config placeholders to ensure all tokens are expanded
+    _hw_color_order="GRBW"
+    _hw_has_bypass=0
+
     echo
     echo -e "${INFO}Let me see if I can get you started with initial configuration"
     echo -e "You will still have some manual editing to perform but I will explain that later"
@@ -1517,6 +1538,8 @@ questionaire() {
             HAS_ENCODER=yes
             HAS_SELECTOR=no
             HAS_SERVO=no
+
+            # mmu_hardware config
             _hw_mmu_vendor="QuattroBox"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1528,10 +1551,12 @@ questionaire() {
             _hw_gear_run_current=1.27
             _hw_gear_hold_current=0.2
             _hw_chain_count=32
-            _hw_exit_leds="neopixel:mmu_leds (4-1)"
-            _hw_entry_leds=""
-            _hw_status_leds="neopixel:mmu_leds (5-32)"
-            _hw_logo_leds=""
+            _hw_color_order="GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
+            _hw_exit_leds="neopixel:mmu_leds (1-4)"
+            _hw_status_leds="neopixel:mmu_leds (5-14)"
+            _hw_logo_leds="neopixel:mmu_leds (15-32)"
+
+            # mmu_parameters config
             _param_extruder_homing_endstop="collision"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=200
@@ -1541,6 +1566,10 @@ questionaire() {
             _param_gate_endstop_to_encoder=18
             _param_gate_autoload=1
             _param_gate_final_eject_distance=200
+
+            # mmu_macro_vars config
+            variable_default_status_effect='1, 0.15, 0.66'
+            variable_default_logo_effect='1, 0.15, 0.66'
             ;;
 
         *)
