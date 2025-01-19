@@ -391,6 +391,8 @@ class Mmu:
         self.gear_from_buffer_accel = config.getfloat('gear_from_buffer_accel', 400, minval=10.)
         self.gear_from_spool_speed = config.getfloat('gear_from_spool_speed', 60, minval=10.)
         self.gear_from_spool_accel = config.getfloat('gear_from_spool_accel', 100, minval=10.)
+        self.gear_unload_speed = config.getfloat('gear_unload_speed', self.gear_from_spool_speed, minval=10.)
+        self.gear_unload_accel = config.getfloat('gear_unload_accel', self.gear_from_spool_accel, minval=10.)
         self.gear_short_move_speed = config.getfloat('gear_short_move_speed', 60., minval=1.)
         self.gear_short_move_accel = config.getfloat('gear_short_move_accel', 400, minval=10.)
         self.gear_short_move_threshold = config.getfloat('gear_short_move_threshold', self.gate_homing_max, minval=1.)
@@ -411,6 +413,7 @@ class Mmu:
             self.macro_toolhead_max_accel = config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
 
         # Optional features
+        self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
         self.espooler_min_distance = config.getfloat('espooler_min_distance', 50., above=0) # Not exposed
         self.preload_attempts = config.getint('preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
@@ -1892,7 +1895,7 @@ class Mmu:
             if self.sensor_manager.has_sensor(self.SENSOR_EXTRUDER_ENTRY):
                 msg += "\n- Extruder (synced) unloads by reverse homing a maximum of %s to EXTRUDER sensor" % self._f_calc("toolhead_entry_to_extruder + toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
             elif self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD):
-                msg += "\n- Extruder (optionally synced) unloads by reverse homing a maximum %s to TOOLHEAD SENSOR" % self._f_calc("toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
+                msg += "\n- Extruder (optionally synced) unloads by reverse homing a maximum %s to TOOLHEAD sensor" % self._f_calc("toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin")
                 msg += ", then unloads by moving %s to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle + toolhead_unload_safety_margin")
             else:
                 msg += "\n- Extruder (optionally synced) unloads by moving %s less tip-cutting reported park position to exit extruder" % self._f_calc("toolhead_extruder_to_nozzle + toolhead_unload_safety_margin")
@@ -3561,7 +3564,7 @@ class Mmu:
         self._load_persisted_state()
         self.is_enabled = True
         self.printer.send_event("mmu:enabled")
-        self.log_always("MMU enabled and reset")
+        self.log_always("MMU enabled")
         self._schedule_mmu_bootup_tasks()
 
     def _disable_mmu(self):
@@ -3570,6 +3573,7 @@ class Mmu:
         self._disable_runout()
         self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
+        self.motors_off(motor="gears") # Will also unsync gear
         self.is_enabled = False
         self.printer.send_event("mmu:disabled")
         self._set_print_state("standby")
@@ -4990,7 +4994,10 @@ class Mmu:
                 accel = accel or min(self.gear_from_buffer_accel, self.gear_from_spool_accel)
             else:
                 if abs(dist) > self.gear_short_move_threshold:
-                    if self.gate_selected >= 0 and self.gate_status[self.gate_selected] != self.GATE_AVAILABLE_FROM_BUFFER and dist > 0:
+                    if dist < 0:
+                        speed = speed or self.gear_unload_speed
+                        accel = accel or self.gear_unload_accel
+                    elif (not self.has_filament_buffer or (self.gate_selected >= 0 and self.gate_status[self.gate_selected] != self.GATE_AVAILABLE_FROM_BUFFER)):
                         speed = speed or self.gear_from_spool_speed
                         accel = accel or self.gear_from_spool_accel
                     else:
@@ -6575,6 +6582,8 @@ class Mmu:
         self.gear_from_buffer_accel = gcmd.get_float('GEAR_FROM_BUFFER_ACCEL', self.gear_from_buffer_accel, minval=10.)
         self.gear_from_spool_speed = gcmd.get_float('GEAR_FROM_SPOOL_SPEED', self.gear_from_spool_speed, minval=10.)
         self.gear_from_spool_accel = gcmd.get_float('GEAR_FROM_SPOOL_ACCEL', self.gear_from_spool_accel, above=10.)
+        self.gear_unload_speed = gcmd.get_float('GEAR_UNLOAD_SPEED', self.gear_unload_speed, minval=10.)
+        self.gear_unload_accel = gcmd.get_float('GEAR_UNLOAD_ACCEL', self.gear_unload_accel, above=10.)
         self.gear_short_move_speed = gcmd.get_float('GEAR_SHORT_MOVE_SPEED', self.gear_short_move_speed, minval=10.)
         self.gear_short_move_accel = gcmd.get_float('GEAR_SHORT_MOVE_ACCEL', self.gear_short_move_accel, minval=10.)
         self.gear_short_move_threshold = gcmd.get_float('GEAR_SHORT_MOVE_THRESHOLD', self.gear_short_move_threshold, minval=0.)
@@ -6714,10 +6723,13 @@ class Mmu:
 
         if not quiet:
             msg = "FILAMENT MOVEMENT SPEEDS:"
-            msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
-            msg += "\ngear_from_buffer_accel = %.1f" % self.gear_from_buffer_accel
             msg += "\ngear_from_spool_speed = %.1f" % self.gear_from_spool_speed
             msg += "\ngear_from_spool_accel = %.1f" % self.gear_from_spool_accel
+            msg += "\ngear_unload_speed = %.1f" % self.gear_unload_speed
+            msg += "\ngear_unload_accel = %.1f" % self.gear_unload_accel
+            if self.has_filament_buffer:
+                msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
+                msg += "\ngear_from_buffer_accel = %.1f" % self.gear_from_buffer_accel
             msg += "\ngear_short_move_speed = %.1f" % self.gear_short_move_speed
             msg += "\ngear_short_move_accel = %.1f" % self.gear_short_move_accel
             msg += "\ngear_short_move_threshold = %.1f" % self.gear_short_move_threshold
@@ -6906,6 +6918,7 @@ class Mmu:
         return v_gate_status
 
     def _get_filament_char(self, gate, no_space=False, show_source=False):
+        show_source &= self.has_filament_buffer
         gate_status = self.gate_status[gate]
         if self.enable_endless_spool and gate == self.endless_spool_eject_gate:
             return "W"
@@ -6959,7 +6972,7 @@ class Mmu:
             select_strings = []
             for g in gate_indices:
                 msg_gates += "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g))
-                msg_avail += "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True)) # PAUL show_source=False if no buffer? Effectively always from_spool speed
+                msg_avail += "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True))
                 tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
                 tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
                 if self.gate_selected == g and self.gate_selected != self.TOOL_GATE_UNKNOWN:

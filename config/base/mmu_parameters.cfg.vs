@@ -66,17 +66,18 @@ log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = sum
 # ███████║██║     ███████╗███████╗██████╔╝███████║
 # ╚══════╝╚═╝     ╚══════╝╚══════╝╚═════╝ ╚══════╝
 #
-# Long moves are faster than the small ones and used for the bulk of the bowden movement. Note that you can set two fast
-# load speeds depending on whether MMU thinks it is pulling from the buffer or from the spool. It is often helpful to
-# use a lower speed when pulling from the spool because more force is required to overcome friction and this prevents
-# loosing steps. 100mm/s should be "quiet" with the NEMA14 motor but you can go lower for really low noise
+# Long moves are faster than the small ones and used for the bulk of the bowden movement. You can set two fast load speeds
+# depending on whether pulling from the spool or filament buffer (if fitted and not the first time load). This can be helpful
+# in allowing faster loading from buffer and slower when pulling from the spool because of the additional friction (prevents
+# loosing steps). Unloading speed can be tuning if you have a rewinder system that imposes additional limits.
+# NOTE: Encoder cannot keep up much above 450mm/s so make sure 'bowden_apply_correction' is off at very high speeds!
 #
-# NOTE: Encoder cannot keep up much above 350mm/s so make sure 'bowden_apply_correction' is off at very high speeds!
-#
-gear_from_buffer_speed: 150		# mm/s Normal speed when loading filament. Conservative is 100mm/s, Max around 300mm/s
-gear_from_buffer_accel: 400		# Normal acceleration when loading filament
-gear_from_spool_speed: 80		# mm/s Use (lower) speed when loading for the first time (i.e. pulling from spool)
-gear_from_spool_accel: 100		# Acceleration when loading from spool
+gear_from_spool_speed: 80               # mm/s Speed when loading from the spool (for the first time if has_filament_buffer: 1)
+gear_from_spool_accel: 100              # Acceleration when loading from spool
+gear_from_buffer_speed: 150             # mm/s Speed when loading filament from buffer. Conservative is 100mm/s, Max around 400mm/s
+gear_from_buffer_accel: 400             # Normal acceleration when loading filament
+gear_unload_speed: 80                   # mm/s Use (lower) speed when unloading filament (defaults to "from spool" speed)
+gear_unload_accel: 100                  # Acceleration when unloading filament (defaults to "from spool" accel)
 #
 gear_short_move_speed: 80		# mm/s Speed when making short moves (like incremental retracts with encoder)
 gear_short_move_accel: 600		# Usually the same as gear_from_buffer_accel (for short movements)
@@ -449,6 +450,7 @@ retry_tool_change_on_error: 0	# Whether to automatically retry a failed tool cha
 				# the equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary
 				# to recover. Note that enabling this can mask problems with your MMU
 bypass_autoload: 1		# If extruder sensor fitted this controls the automatic loading of extruder for bypass operation
+has_filament_buffer: 1          # Whether the MMU has a filament buffer. Set to 0 if using Filamentalist or DC eSpooler, etc
 #
 # Advanced options. Don't mess unless you fully understand. Read documentation.
 #
