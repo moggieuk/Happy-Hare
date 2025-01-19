@@ -1039,6 +1039,13 @@ install_printer_includes() {
                     sed -i "1i ${i}" ${dest}
                 fi
             fi
+            if [ ${ADDONS_EJECT_BUTTONS} -eq 1 ]; then
+                i='\[include mmu/addons/mmu_eject_buttons.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
             if [ ${MENU_12864} -eq 1 ]; then
                 i='\[include mmu/optional/mmu_menu.cfg\]'
                 already_included=$(grep -c "${i}" ${dest} || true)
@@ -1549,6 +1556,7 @@ questionaire() {
             HAS_ENCODER=yes
             HAS_SELECTOR=no
             HAS_SERVO=no
+            ADDONS_EJECT_BUTTONS=1
 
             # mmu_hardware config
             _hw_mmu_vendor="QuattroBox"
@@ -2078,6 +2086,9 @@ questionaire() {
     if [ "${ADDONS_DC_ESPOOLER:-0}" -eq 1 ]; then
         echo "        [include mmu/addons/dc_espooler.cfg]"
     fi
+    if [ "${ADDONS_EJECT_BUTTONS:-0}" -eq 1 ]; then
+        echo "        [include mmu/addons/mmu_eject_buttons.cfg]"
+    fi
     echo -e "${INFO}"
     echo "    Later:"
     echo "        * Tweak configurations like speed and distance in mmu_parameters.cfg"
@@ -2132,6 +2143,7 @@ HAS_SELECTOR=yes
 ADDONS_EREC=0
 ADDONS_BLOBIFIER=0
 ADDONS_DC_ESPOOLER=0
+ADDONS_EJECT_BUTTONS=0
 
 INSTALL=0
 UNINSTALL=0
