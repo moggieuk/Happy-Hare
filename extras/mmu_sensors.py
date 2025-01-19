@@ -7,7 +7,11 @@
 #   Essentially this uses the default `filament_switch_sensor` but then replaces the runout_helper
 #   Each has name `mmu_pre_gate_X` where X is gate number
 #
-# mmu_gate sensor:
+# mmu_gear sensor(s):
+#   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks with modified runout event handling
+#   Named `mmu_gear`
+#
+# mmu_gate sensor(s):
 #   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks with modified runout event handling
 #   Named `mmu_gate`
 #
@@ -15,7 +19,7 @@
 #   Wrapper around `filament_switch_sensor` disabling all functionality - just for visability
 #   Named `extruder` & `toolhead`
 #
-# sync feedback sensor:
+# sync feedback sensor(s):
 #   Creates buttons handlers (with filament_switch_sensor for visibility and control) and publishes events based on state change
 #   Named `sync_feedback_compression` & `sync_feedback_tension`
 #
