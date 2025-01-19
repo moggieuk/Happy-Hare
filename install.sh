@@ -470,7 +470,8 @@ read_previous_mmu_type() {
             HAS_ENCODER="no"
         fi
     fi
-    # set the selector type
+
+    # Figure out the selector type based on h/w presence
     if [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "no" ]; then
         _hw_selector_type='VirtualSelector'
     elif [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "yes" ]; then

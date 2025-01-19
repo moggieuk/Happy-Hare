@@ -10,8 +10,10 @@ An addon used to control filament cutting at the MMU rather than the toolhead
 ### Compatibility
 **MMU:** ERCFv2<br>
 **Printer:** _Any_
+
 ### Github
 https://github.com/kevinakasam/ERCF_Filament_Cutter
+
 ### Config
 1. Add `[include mmu/addons/mmu_erec_cutter.cfg]` to your `printer.cfg`
 1. Edit `mmu_erec_cutter.cfg` and `mmu_erec_cutter_hw.cfg` to work with your setup
@@ -29,8 +31,10 @@ An addon used to create purge blobs instead of using a wipe tower
 ### Compatibility
 **MMU:** _Any_<br>
 **Printer:** Voron v2, others in the works
+
 ### Github
 https://github.com/Dendrowen/Blobifier
+
 ### Config
 1. Add `[include mmu/addons/blobifier.cfg]` to your `printer.cfg`
 1. Edit `blobifier.cfg` and `blobifier_hw.cfg` to work with your setup
@@ -43,11 +47,12 @@ https://github.com/Dendrowen/Blobifier
 
 An addon used to control a DC motor based eSpooler that is active when the MMU is unloaded
 
-<img src="https://github.com/moggieuk/Happy-Hare/wiki/Addon-Feature-Setup/TODO.png" width=60%>
+<!--<img src="https://github.com/moggieuk/Happy-Hare/wiki/Addon-Feature-Setup/TODO.png" width=60%>-->
 
 ### Compatibility
 **MMU:** _Any_<br>
 **Printer:** _Any_
+
 ### Github
 
 ### Config
@@ -55,5 +60,23 @@ An addon used to control a DC motor based eSpooler that is active when the MMU i
 1. Set `espooler_start_macro: MMU_ESPOOLER_START` in `mmu_parameters.cfg` to start eSpooler movement
 1. Set `espooler_stopt_macro: MMU_ESPOOLER_STOP` in `mmu_parameters.cfg` to stop eSspooler movement
 1. Update the `mmu/addon/dc_espooler_hw.cfg` for your configuration.
+
+<hr>
+
+## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Eject Buttons
+
+If the MMU is equipped with a per-gate eject button (like QuattroBox) this addon is used for control
+
+<!--<img src="https://github.com/moggieuk/Happy-Hare/wiki/Addon-Feature-Setup/TODO.png" width=60%>-->
+
+### Compatibility
+**MMU:** _Any_<br>
+**Printer:** _Any_
+
+### Github
+
+### Config
+1. Add `[include mmu/addons/mmu_eject_buttons.cfg]` to your `printer.cfg`
+1. Ensure the eject button pins are defined. Add `EJECT_BUTTON_x` aliases to `mmu.cfg` or define pins directly in `mmu_eject_buttons_hw.cfg`
 
 <hr>

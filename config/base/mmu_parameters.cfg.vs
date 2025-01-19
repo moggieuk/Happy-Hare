@@ -522,7 +522,13 @@ espooler_stop_macro: ''					# Called to stop eSpooler if fitted (params: GATE, D
 # ██║  ██║███████╗███████║███████╗   ██║       ██████╔╝███████╗██║     ███████║
 # ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝   ╚═╝       ╚═════╝ ╚══════╝╚═╝     ╚══════╝
 #
-# Examples...
+# These are the values that the various "RESET" commands will reset too rather than the built-in defaults. The lenght
+# of the lists must match the number of gates on your MMU
+#
+# e.g. MMU_GATE_MAP RESET=1              - will use all the 'gate_XXX' values
+#      MMU_TTG_MAP RESET=1               - will use the 'tool_to_gate_map'
+#      MMU_ENDLESS_SPOOL_GROUPS RESET=1  - will use the 'endless_spool_groups'
+#
 # Gate:                #0      #1      #2      #3      #4      #5      #6      #7      #8
 #gate_status:          1,      0,      1,      2,      2,     -1,     -1,      0,      1
 #gate_filament_name:   one,    two,    three,  four,   five,   six,    seven,  eight,  nine
