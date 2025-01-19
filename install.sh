@@ -1425,11 +1425,13 @@ questionaire() {
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+
             _param_extruder_homing_endstop="extruder"
             _param_gate_homing_endstop="extruder"
             _param_gate_homing_max=500
             _param_gate_parking_distance=50
             _param_gear_homing_speed=80
+            _param_has_filament_buffer=0
             ;;
 
         "$BOX_TURTLE")
@@ -1447,11 +1449,13 @@ questionaire() {
             _hw_gear_gear_ratio="50:10"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=300
             _param_gate_parking_distance=100
             _param_gate_final_eject_distance=100
+            _param_has_filament_buffer=0
 
             # Macro variable config
             _param_espooler_start_macro="MMU_ESPOOLER_START"
@@ -1472,12 +1476,14 @@ questionaire() {
             _hw_gear_gear_ratio="50:10"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gear"
             _param_gate_homing_max=100
             _param_gate_homing_buffer=50
             _param_gate_parking_distance=0
             _param_gate_final_eject_distance=100
+            _param_has_filament_buffer=0
             ;;
 
         "$_3MS")
@@ -1585,6 +1591,7 @@ questionaire() {
             _param_gate_endstop_to_encoder=18
             _param_gate_autoload=1
             _param_gate_final_eject_distance=200
+            _param_has_filament_buffer=0
 
             # mmu_macro_vars config
             variable_default_status_effect='1, 0.15, 0.66'
