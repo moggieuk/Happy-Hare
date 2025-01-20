@@ -36,7 +36,7 @@ class MmuServo:
         else:
             iwidth = config.getfloat('initial_pulse_width', 0., minval=0., maxval=self.max_width)
             initial_pwm = self._get_pwm_from_pulse_width(iwidth)
-        self.last_value = initial_pwm 
+        self.last_value = initial_pwm
 
         # 50% of the "off" period is the best place to change PWM signal
         self.pwm_period_safe_offset = SERVO_SIGNAL_PERIOD - (SERVO_SIGNAL_PERIOD - self.max_width) / 2

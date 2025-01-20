@@ -1,5 +1,6 @@
 #!/bin/bash
 # Happy Hare MMU Software
+#
 # Installer / Updater script
 #
 # Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
@@ -9,8 +10,9 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=2.73 # Important: Keep synced with mmy.py
+VERSION=3.01 # Important: Keep synced with mmy.py
 
+F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
 SCRIPTFILE="$(basename "$SCRIPT")"
 SCRIPTPATH="$(dirname "$SCRIPT")"
@@ -30,8 +32,6 @@ KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
 OCTOPRINT_KLIPPER_CONFIG_HOME="${HOME}"
 KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
-SENSORS_SECTION="FILAMENT SENSORS"
-LED_SECTION="MMU OPTIONAL NEOPIXEL"
 
 if [ "$IS_MIPS" -eq 1 ]; then
     KLIPPER_HOME="/usr/share/klipper"
@@ -41,6 +41,7 @@ if [ "$IS_MIPS" -eq 1 ]; then
     unset OLD_KLIPPER_CONFIG_HOME
 fi
 
+clear
 set -e # Exit immediately on error
 
 declare -A PIN 2>/dev/null || {
@@ -48,135 +49,16 @@ declare -A PIN 2>/dev/null || {
     exit 1
 }
 
-# Pins for original EASY-BRD and EASY-BRD with Seed Studio XIAO RP2040
-# Note: uart pin is shared on original EASY-BRD (with different uart addresses)
-#
-PIN[EASY-BRD,gear_uart_pin]="PA8";                         PIN[EASY-BRD-RP2040,gear_uart_pin]="gpio6"
-PIN[EASY-BRD,gear_step_pin]="PA4";                         PIN[EASY-BRD-RP2040,gear_step_pin]="gpio27"
-PIN[EASY-BRD,gear_dir_pin]="PA10";                         PIN[EASY-BRD-RP2040,gear_dir_pin]="gpio28"
-PIN[EASY-BRD,gear_enable_pin]="PA2";                       PIN[EASY-BRD-RP2040,gear_enable_pin]="gpio26"
-PIN[EASY-BRD,gear_diag_pin]="";                            PIN[EASY-BRD-RP2040,gear_diag_pin]=""
-PIN[EASY-BRD,selector_uart_pin]="PA8";                     PIN[EASY-BRD-RP2040,selector_uart_pin]="gpio6"
-PIN[EASY-BRD,selector_step_pin]="PA9";                     PIN[EASY-BRD-RP2040,selector_step_pin]="gpio7"
-PIN[EASY-BRD,selector_dir_pin]="PB8";                      PIN[EASY-BRD-RP2040,selector_dir_pin]="gpio0"
-PIN[EASY-BRD,selector_enable_pin]="PA11";                  PIN[EASY-BRD-RP2040,selector_enable_pin]="gpio29"
-PIN[EASY-BRD,selector_diag_pin]="PA7";                     PIN[EASY-BRD-RP2040,selector_diag_pin]="gpio2"
-PIN[EASY-BRD,selector_endstop_pin]="PB9";                  PIN[EASY-BRD-RP2040,selector_endstop_pin]="gpio1"
-PIN[EASY-BRD,servo_pin]="PA5";                             PIN[EASY-BRD-RP2040,servo_pin]="gpio4"
-PIN[EASY-BRD,encoder_pin]="PA6";                           PIN[EASY-BRD-RP2040,encoder_pin]="gpio3"
-PIN[EASY-BRD,neopixel_pin]="";                             PIN[EASY-BRD-RP2040,neopixel_pin]=""
-PIN[EASY-BRD,gate_sensor_pin]="PA6";                       PIN[EASY-BRD-RP2040,gate_sensor_pin]="gpio3";
-PIN[EASY-BRD,pre_gate_0_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_0_pin]="";
-PIN[EASY-BRD,pre_gate_1_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_1_pin]="";
-PIN[EASY-BRD,pre_gate_2_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_2_pin]="";
-PIN[EASY-BRD,pre_gate_3_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_3_pin]="";
-PIN[EASY-BRD,pre_gate_4_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_4_pin]="";
-PIN[EASY-BRD,pre_gate_5_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_5_pin]="";
-PIN[EASY-BRD,pre_gate_6_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_6_pin]="";
-PIN[EASY-BRD,pre_gate_7_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_7_pin]="";
-PIN[EASY-BRD,pre_gate_8_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_8_pin]="";
-PIN[EASY-BRD,pre_gate_9_pin]="";                           PIN[EASY-BRD-RP2040,pre_gate_9_pin]="";
-PIN[EASY-BRD,pre_gate_10_pin]="";                          PIN[EASY-BRD-RP2040,pre_gate_10_pin]="";
-PIN[EASY-BRD,pre_gate_11_pin]="";                          PIN[EASY-BRD-RP2040,pre_gate_11_pin]="";
-
-# Pins for Mellow EASY-BRD with CANbus (original v1.x and v2)
-#
-PIN[MELLOW-EASY-BRD-CAN,gear_uart_pin]="gpio9";            PIN[MELLOW-EASY-BRD-CANv2,gear_uart_pin]="gpio9";
-PIN[MELLOW-EASY-BRD-CAN,gear_step_pin]="gpio7";            PIN[MELLOW-EASY-BRD-CANv2,gear_step_pin]="gpio7";
-PIN[MELLOW-EASY-BRD-CAN,gear_dir_pin]="gpio8";             PIN[MELLOW-EASY-BRD-CANv2,gear_dir_pin]="gpio8";
-PIN[MELLOW-EASY-BRD-CAN,gear_enable_pin]="gpio6";          PIN[MELLOW-EASY-BRD-CANv2,gear_enable_pin]="gpio6";
-PIN[MELLOW-EASY-BRD-CAN,gear_diag_pin]="gpio23";           PIN[MELLOW-EASY-BRD-CANv2,gear_diag_pin]="";               # v2: Dup with encoder (gpio15)
-PIN[MELLOW-EASY-BRD-CAN,selector_uart_pin]="gpio0";        PIN[MELLOW-EASY-BRD-CANv2,selector_uart_pin]="gpio2";
-PIN[MELLOW-EASY-BRD-CAN,selector_step_pin]="gpio2";        PIN[MELLOW-EASY-BRD-CANv2,selector_step_pin]="gpio4";
-PIN[MELLOW-EASY-BRD-CAN,selector_dir_pin]="gpio1";         PIN[MELLOW-EASY-BRD-CANv2,selector_dir_pin]="gpio3";
-PIN[MELLOW-EASY-BRD-CAN,selector_enable_pin]="gpio3";      PIN[MELLOW-EASY-BRD-CANv2,selector_enable_pin]="gpio5";
-PIN[MELLOW-EASY-BRD-CAN,selector_diag_pin]="gpio22";       PIN[MELLOW-EASY-BRD-CANv2,selector_diag_pin]="gpio20";     # v2: Dup with endstop (gpio20)
-PIN[MELLOW-EASY-BRD-CAN,selector_endstop_pin]="gpio20";	   PIN[MELLOW-EASY-BRD-CANv2,selector_endstop_pin]="gpio20";  # Endstop
-PIN[MELLOW-EASY-BRD-CAN,servo_pin]="gpio21";		   PIN[MELLOW-EASY-BRD-CANv2,servo_pin]="gpio21";             # Servo
-PIN[MELLOW-EASY-BRD-CAN,encoder_pin]="gpio15";		   PIN[MELLOW-EASY-BRD-CANv2,encoder_pin]="gpio15";           # Encoder
-PIN[MELLOW-EASY-BRD-CAN,neopixel_pin]="gpio14";		   PIN[MELLOW-EASY-BRD-CANv2,neopixel_pin]="gpio14";          # v1: Extra  / v2: RGB
-PIN[MELLOW-EASY-BRD-CAN,gate_sensor_pin]="gpio15";	   PIN[MELLOW-EASY-BRD-CANv2,gate_sensor_pin]="gpio15";       # Encoder (Alt)
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_0_pin]="gpio10";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_0_pin]="gpio24";        # v1: Exp 5  / v2: Exp 3
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_1_pin]="gpio26";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_1_pin]="gpio22";        # v1: Exp 6  / v2: Exp 4
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_2_pin]="gpio11";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_2_pin]="gpio25";        # v1: Exp 7  / v2: Exp 5
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_3_pin]="gpio27";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_3_pin]="gpio23";        # v1: Exp 8  / v2: Exp 6
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_4_pin]="gpio12";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_4_pin]="gpio13";        # v1: Exp 9  / v2: Exp 7
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_5_pin]="gpio28";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_5_pin]="gpio26";        # v1: Exp 10 / v2: Exp 8
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_6_pin]="gpio24";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_6_pin]="gpio12";        # v1: Exp 11 / v2: Exp 9
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_7_pin]="gpio29";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_7_pin]="gpio27";        # v1: Exp 12 / v2: Exp 10
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_8_pin]="gpio13";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_8_pin]="gpio11";        # v1: Exp 13 / v2: Exp 11
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_9_pin]="gpio25";	   PIN[MELLOW-EASY-BRD-CANv2,pre_gate_9_pin]="gpio28";        # v1: Exp 14 / v2: Exp 12
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_10_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_10_pin]="gpio10";       #              v2: Exp 13
-PIN[MELLOW-EASY-BRD-CAN,pre_gate_11_pin]="";               PIN[MELLOW-EASY-BRD-CANv2,pre_gate_11_pin]="gpio29";       #              v2: Exp 14
-
-# Pins for Fysetc Burrows ERB board (original v1 and v2)
-#
-PIN[ERB,gear_uart_pin]="gpio20";                           PIN[ERBv2,gear_uart_pin]="gpio11";
-PIN[ERB,gear_step_pin]="gpio10";                           PIN[ERBv2,gear_step_pin]="gpio10";
-PIN[ERB,gear_dir_pin]="gpio9";                             PIN[ERBv2,gear_dir_pin]="gpio9";
-PIN[ERB,gear_enable_pin]="gpio8";                          PIN[ERBv2,gear_enable_pin]="gpio8";
-PIN[ERB,gear_diag_pin]="gpio13";                           PIN[ERBv2,gear_diag_pin]="gpio13";
-PIN[ERB,selector_uart_pin]="gpio17";                       PIN[ERBv2,selector_uart_pin]="gpio17";
-PIN[ERB,selector_step_pin]="gpio16";                       PIN[ERBv2,selector_step_pin]="gpio16";
-PIN[ERB,selector_dir_pin]="gpio15";                        PIN[ERBv2,selector_dir_pin]="gpio15";
-PIN[ERB,selector_enable_pin]="gpio14";                     PIN[ERBv2,selector_enable_pin]="gpio14";
-PIN[ERB,selector_diag_pin]="gpio19";                       PIN[ERBv2,selector_diag_pin]="gpio19";
-PIN[ERB,selector_endstop_pin]="gpio24";                    PIN[ERBv2,selector_endstop_pin]="gpio24";
-PIN[ERB,servo_pin]="gpio23";                               PIN[ERBv2,servo_pin]="gpio23";
-PIN[ERB,encoder_pin]="gpio22";                             PIN[ERBv2,encoder_pin]="gpio22";
-PIN[ERB,neopixel_pin]="gpio21";                            PIN[ERBv2,neopixel_pin]="gpio21";
-PIN[ERB,gate_sensor_pin]="gpio22";                         PIN[ERBv2,gate_sensor_pin]="gpio25";  # Hall Effect
-PIN[ERB,pre_gate_0_pin]="gpio0";                           PIN[ERBv2,pre_gate_0_pin]="gpio12";
-PIN[ERB,pre_gate_1_pin]="gpio1";                           PIN[ERBv2,pre_gate_1_pin]="gpio18";
-PIN[ERB,pre_gate_2_pin]="gpio2";                           PIN[ERBv2,pre_gate_2_pin]="gpio2";
-PIN[ERB,pre_gate_3_pin]="gpio3";                           PIN[ERBv2,pre_gate_3_pin]="gpio3";
-PIN[ERB,pre_gate_4_pin]="gpio4";                           PIN[ERBv2,pre_gate_4_pin]="gpio4";
-PIN[ERB,pre_gate_5_pin]="gpio5";                           PIN[ERBv2,pre_gate_5_pin]="gpio5";
-PIN[ERB,pre_gate_6_pin]="gpio6";                           PIN[ERBv2,pre_gate_6_pin]="gpio6";
-PIN[ERB,pre_gate_7_pin]="gpio7";                           PIN[ERBv2,pre_gate_7_pin]="gpio7";
-PIN[ERB,pre_gate_8_pin]="gpio26";                          PIN[ERBv2,pre_gate_8_pin]="gpio26";
-PIN[ERB,pre_gate_9_pin]="gpio27";                          PIN[ERBv2,pre_gate_9_pin]="gpio27";
-PIN[ERB,pre_gate_10_pin]="gpio28";                         PIN[ERBv2,pre_gate_10_pin]="gpio28";
-PIN[ERB,pre_gate_11_pin]="gpio29";                         PIN[ERBv2,pre_gate_11_pin]="gpio29";
-
-# Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
-# Note BTT MMB v1.1 Board switched gear_enable and pre_gate_1 pins
-#
-PIN[MMB10,gear_uart_pin]="PA10";                           PIN[MMB11,gear_uart_pin]="PA10";       # M1
-PIN[MMB10,gear_step_pin]="PB15";                           PIN[MMB11,gear_step_pin]="PB15";
-PIN[MMB10,gear_dir_pin]="PB14";                            PIN[MMB11,gear_dir_pin]="PB14";
-PIN[MMB10,gear_enable_pin]="PA8";                          PIN[MMB11,gear_enable_pin]="PB8";
-PIN[MMB10,gear_diag_pin]="PA3";                            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1
-PIN[MMB10,selector_uart_pin]="PC7";                        PIN[MMB11,selector_uart_pin]="PC7";    # M2
-PIN[MMB10,selector_step_pin]="PD2";                        PIN[MMB11,selector_step_pin]="PD2";
-PIN[MMB10,selector_dir_pin]="PB13";                        PIN[MMB11,selector_dir_pin]="PB13";
-PIN[MMB10,selector_enable_pin]="PD1";                      PIN[MMB11,selector_enable_pin]="PD1";
-PIN[MMB10,selector_diag_pin]="PA4";                        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2
-PIN[MMB10,selector_endstop_pin]="PB2";                     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
-PIN[MMB10,servo_pin]="PA0";                                PIN[MMB11,servo_pin]="PA0";
-PIN[MMB10,encoder_pin]="PA1";                              PIN[MMB11,encoder_pin]="PA1";
-PIN[MMB10,neopixel_pin]="PA2";                             PIN[MMB11,neopixel_pin]="PA2";
-PIN[MMB10,gate_sensor_pin]="PA3";                          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
-PIN[MMB10,pre_gate_0_pin]="PB9";                           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3
-PIN[MMB10,pre_gate_1_pin]="PB8";                           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4
-PIN[MMB10,pre_gate_2_pin]="PC15";                          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5
-PIN[MMB10,pre_gate_3_pin]="PC13";                          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6
-PIN[MMB10,pre_gate_4_pin]="PC14";                          PIN[MMB11,pre_gate_4_pin]="PC14";      # STP7
-PIN[MMB10,pre_gate_5_pin]="PB12";                          PIN[MMB11,pre_gate_5_pin]="PB12";      # STP8
-PIN[MMB10,pre_gate_6_pin]="PB11";                          PIN[MMB11,pre_gate_6_pin]="PB11";      # STP9
-PIN[MMB10,pre_gate_7_pin]="PB10";                          PIN[MMB11,pre_gate_7_pin]="PB10";      # STP10
-PIN[MMB10,pre_gate_8_pin]="";                              PIN[MMB11,pre_gate_8_pin]="";
-PIN[MMB10,pre_gate_9_pin]="";                              PIN[MMB11,pre_gate_9_pin]="";
-PIN[MMB10,pre_gate_10_pin]="";                             PIN[MMB11,pre_gate_10_pin]="";
-PIN[MMB10,pre_gate_11_pin]="";                             PIN[MMB11,pre_gate_11_pin]="";
+# Source pin defs for common MCU's
+source ${SCRIPTPATH}/pin_defs
 
 # These pins will usually be on main mcu for wiring simplification
 #
-PIN[toolhead_sensor_pin]=""
-PIN[extruder_sensor_pin]=""
-PIN[gantry_servo_pin]=""
-PIN[sync_feedback_tension_pin]=""
-PIN[sync_feedback_compression_pin]=""
+_hw_toolhead_sensor_pin=""
+_hw_extruder_sensor_pin=""
+_hw_gantry_servo_pin=""
+_hw_sync_feedback_tension_pin=""
+_hw_sync_feedback_compression_pin=""
 
 # Screen Colors
 OFF='\033[0m'             # Text Reset
@@ -202,8 +84,31 @@ EMPHASIZE="${B_CYAN}"
 ERROR="${B_RED}"
 WARNING="${B_YELLOW}"
 PROMPT="${CYAN}"
+DIM="${PURPLE}"
 INPUT="${OFF}"
-SECTION="----------\n"
+SECTION="----------------\n"
+
+get_logo() {
+    caption=$1
+    logo=$(cat <<EOF
+${INFO}
+(\_/)
+( *,*)
+(")_(") ${caption}
+${OFF}
+EOF
+    )
+    echo -e "$logo"
+}
+
+sad_logo=$(cat <<EOF
+${INFO}
+(\_/)
+( v,v)
+(")^(") Very Unhappy Hare
+${OFF}
+EOF
+)
 
 self_update() {
     [ "$UPDATE_GUARD" ] && return
@@ -258,7 +163,10 @@ self_update() {
 
     if [ -n "${RESTART}" ]; then
         git checkout $BRANCH --quiet
-        git pull --quiet --force
+        if git symbolic-ref -q HEAD > /dev/null; then
+            # On a branch (if using tags we will be detached)
+            git pull --quiet --force
+        fi
         GIT_VER=$(git describe --tags)
         echo -e "${B_GREEN}Now on git version ${GIT_VER}"
         echo -e "${B_GREEN}Running the new install script..."
@@ -303,18 +211,18 @@ check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         if [ "$IS_MIPS" -ne 1 ]; then
             if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
-                echo -e "${INFO}Klipper ${KLIPPER_SERVICE} systemd service found"
+                echo -e "${DIM}Klipper ${KLIPPER_SERVICE} systemd service found"
             else
                 echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
                 exit -1
             fi
         else
             # There is no systemd on MIPS, we can only check the running processes
-            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/usr/share/klipper/klippy/klippy.py | awk '{print $1}')
+            running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/klipper/klippy/klippy.py | awk '{print $1}')
             KLIPPER_PID_FILE=/var/run/klippy.pid
 
             if [ $(cat $KLIPPER_PID_FILE) = $running_klipper_pid ]; then
-                echo -e "${INFO}Klipper service found"
+                echo -e "${DIM}Klipper service found"
             else
                 echo -e "${ERROR}Klipper service not found! Please install Klipper first"
                 exit -1
@@ -328,7 +236,7 @@ check_octoprint() {
         OCTOPRINT=0 # Octoprint can not be set up on MIPS
     elif [ "$NOSERVICE" -ne 1 ]; then
         if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
-            echo -e "${INFO}OctoPrint service found"
+            echo -e "${DIM}OctoPrint service found"
             OCTOPRINT=1
         else
             OCTOPRINT=0
@@ -352,7 +260,7 @@ verify_home_dirs() {
             KLIPPER_CONFIG_HOME="${OLD_KLIPPER_CONFIG_HOME}"
         fi
     fi
-    echo -e "${INFO}Klipper config directory (${KLIPPER_CONFIG_HOME}) found"
+    echo -e "${DIM}Klipper config directory (${KLIPPER_CONFIG_HOME}) found"
 
     if [ ! -d "${MOONRAKER_HOME}" ]; then
         if [ "${OCTOPRINT}" -eq 0 ]; then
@@ -366,74 +274,20 @@ verify_home_dirs() {
 # Silently cleanup any potentially old klippy modules
 cleanup_old_klippy_modules() {
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        for file in mmu_config_setup.py; do
+        for file in mmu.py mmu_toolhead.py mmu_config_setup.py; do
             rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
         done
-    fi
-}
-
-# TEMPORARY: Upgrade mmu sensors part of mmu_hardware.cfg
-upgrade_mmu_sensors() {
-    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_mmu_sensors=$(grep -E -c "${SENSORS_SECTION}" ${hardware_cfg} || true)
-
-    if [ "${found_mmu_sensors}" -eq 0 ]; then
-        # Form new section ready for insertion at end of existing mmu_hardware.cfg
-        sed -n "/${SENSORS_SECTION}/,+26p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
-                    s/^/#/; \
-                " > "${hardware_cfg}.tmp"
-
-        # Add new mmu sensors config section
-        echo -e "${INFO}Adding new mmu sensors section (commented out) to mmu_hardware.cfg..."
-        cat "${hardware_cfg}.tmp" >> "${hardware_cfg}" && rm "${hardware_cfg}.tmp"
-    fi
-}
-
-# TEMPORARY: Upgrade led effects part of mmu_hardware.cfg (assumed last part of file)
-upgrade_led_effects() {
-    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
-    found_led_effects=$(grep -E -c "${LED_SECTION}" ${hardware_cfg} || true)
-    led_effects_enabled=$(grep -E -c "^\[mmu_led_effect" ${hardware_cfg} || true)
-
-    # Form new section ready for insertion at end of existing mmu_hardware.cfg
-    if [ "${led_effects_enabled}" -ne 0 ]; then
-        # Was enabled
-        sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
-                    s/{mmu_num_gates}/${mmu_num_gates}/; \
-                    s/{mmu_num_leds}/${mmu_num_leds}/g; \
-                " > "${hardware_cfg}.add"
-    else
-        # Was disabled
-        sed -n "/${LED_SECTION}/,\$p" "${SRCDIR}/config/base/mmu_hardware.cfg" | sed -e " \
-                    s/^/#/; \
-                    s/{mmu_num_gates}/${mmu_num_gates}/; \
-                    s/{mmu_num_leds}/${mmu_num_leds}/g; \
-                " > "${hardware_cfg}.add"
-    fi
-
-    if [ "${found_led_effects}" -ne 0 ]; then
-        if echo "$FROM_VERSION 2.40" | awk '{exit !(($1 < $2))}'; then
-            cat "${hardware_cfg}" | sed -e "\
-                    /${LED_SECTION}/,\$ d \
-                        " > ${hardware_cfg}.tmp && mv ${hardware_cfg}.tmp ${hardware_cfg}
-            # Upgrade led config section
-            echo -e "${INFO}Updating LED control section in mmu_hardware.cfg..."
-            cat "${hardware_cfg}.add" >> "${hardware_cfg}" && rm "${hardware_cfg}.add"
-        else
-            rm "${hardware_cfg}.add"
-        fi
-    else
-        # Add new led config section
-        echo -e "${INFO}Adding new LED control section (commented out) to mmu_hardware.cfg..."
-        cat "${hardware_cfg}.add" >> "${hardware_cfg}" && rm "${hardware_cfg}.add"
     fi
 }
 
 link_mmu_plugins() {
     echo -e "${INFO}Linking mmu extensions to Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        for file in `cd ${SRCDIR}/extras ; ls *.py`; do
-            ln -sf "${SRCDIR}/extras/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
+        mkdir -p "${KLIPPER_HOME}/klippy/extras/mmu"
+        for dir in extras extras/mmu; do
+            for file in ${SRCDIR}/${dir}/*.py; do
+                ln -sf "$file" "${KLIPPER_HOME}/klippy/${dir}/$(basename "$file")"
+            done
         done
     else
         echo -e "${WARNING}Klipper extensions not installed because Klipper 'extras' directory not found!"
@@ -452,9 +306,12 @@ link_mmu_plugins() {
 unlink_mmu_plugins() {
     echo -e "${INFO}Unlinking mmu extensions from Klipper..."
     if [ -d "${KLIPPER_HOME}/klippy/extras" ]; then
-        for file in `cd ${SRCDIR}/extras ; ls *.py`; do
-            rm -f "${KLIPPER_HOME}/klippy/extras/${file}"
+        for dir in extras extras/mmu; do
+            for file in ${SRCDIR}/${dir}/*.py; do
+                rm -f "${KLIPPER_HOME}/klippy/${dir}/$(basename "$file")"
+            done
         done
+        rm -rf "${KLIPPER_HOME}/klippy/extras/mmu"
     else
         echo -e "${WARNING}MMU modules not uninstalled because Klipper 'extras' directory not found!"
     fi
@@ -469,6 +326,7 @@ unlink_mmu_plugins() {
     fi
 }
 
+# Parse file config settings into memory
 parse_file() {
     file="$1"
     prefix_filter="$2"
@@ -499,7 +357,7 @@ parse_file() {
             # Need to be more careful with value because it can be quoted
             value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
-	    # If parameter is one of interest and it has a value remember it
+            # If parameter is one of interest and it has a value remember it
             if echo "$parameter" | grep -E -q "${prefix_filter}"; then
                 if [ "${value}" != "" ]; then
                     combined="${namespace}${parameter}"
@@ -519,6 +377,7 @@ parse_file() {
     done < "${file}"
 }
 
+# Copy config file substituting in memory values from past config or initial interview
 update_copy_file() {
     src="$1"
     dest="$2"
@@ -588,45 +447,67 @@ update_copy_file() {
     done < "$src" >"$dest"
 }
 
-# Set default token values to the tokens themselves to avoid being parsed out
-set_default_tokens() {
-    brd_type="unknown"
-    for var in mmu_num_gates mmu_num_leds serial servo_up_angle servo_move_angle servo_down_angle; do
-        eval "${var}='{$var}'"
-    done
+# Get MMU type info first
+read_previous_mmu_type() {
+    HAS_SELECTOR="yes"
+    dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    if [ -f "${dest_cfg}" ]; then
+        if ! grep -q "^\[stepper_mmu_selector\]" "${dest_cfg}"; then
+            HAS_SELECTOR="no"
+        fi
+    fi
+    HAS_SERVO="yes"
+    dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    if [ -f "${dest_cfg}" ]; then
+        if ! grep -q "^\[mmu_servo selector_servo\]" "${dest_cfg}" && ! grep -q "^\[mmu_servo mmu_servo\]" "${dest_cfg}"; then
+            HAS_SERVO="no"
+        fi
+    fi
 }
-
 
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
     echo -e "${INFO}Reading default configuration parameters..."
-    parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""          "_param_" "checkdup"
-    parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_" ""        "checkdup"
+    if [ "$HAS_SELECTOR" == "no" ]; then
+        # Virtual Selector
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.vs" ""            "_param_" "checkdup"
+    else
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""               "_param_" "checkdup"
+    fi
+    parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_|filename" ""        "checkdup"
     for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw" | grep -v "my_"`; do
-        parse_file "${SRCDIR}/config/addons/${file}"      "variable_" ""        "checkdup"
+        parse_file "${SRCDIR}/config/addons/${file}"      "variable_"          ""        "checkdup"
     done
+
 }
 
 # Pull parameters from previous installation
 read_previous_config() {
+
+    # Get a few vital bits of information stored in mmu_hardware.cfg if available
+    cfg="mmu_hardware.cfg"
+    dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
+    if [ -f "${dest_cfg}" ]; then
+        _hw_num_gates=$(sed -n 's/^[[:space:]]*num_gates:[[:space:]]*\([0-9]\{1,\}\)[[:space:]]*.*$/\1/p' "${dest_cfg}")
+    fi
+
     cfg="mmu_parameters.cfg"
     dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
+    if [ -f "${dest_cfg}" -a "$_hw_num_gates" == "" ]; then
+        _hw_num_gates=$(sed -n 's/^[[:space:]]*mmu_num_gates[:=][[:space:]]*\([0-9]\{1,\}\)[[:space:]]*.*$/\1/p' "${dest_cfg}")
+    fi
 
     if [ ! -f "${dest_cfg}" ]; then
-        echo -e "${WARNING}No previous ${cfg} found."
+        echo -e "${WARNING}No previous ${cfg} found. Will install default"
     else
         echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
         parse_file "${dest_cfg}" "" "_param_"
     fi
 
-    # TODO Remove 'mmu_variables' from list once everybody has upgraded
-    for cfg in mmu_variables.cfg mmu_software.cfg mmu_sequence.cfg mmu_cut_tip.cfg mmu_form_tip.cfg mmu_macro_vars.cfg; do
+    for cfg in mmu_macro_vars.cfg; do
         dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/base/${cfg}
-
         if [ ! -f "${dest_cfg}" ]; then
-            if [ "$cfg" != "mmu_variables.cfg" ]; then # TODO remove me with mmu_variables
-                echo -e "${WARNING}No previous ${cfg} found. Will install"
-            fi
+            echo -e "${WARNING}No previous ${cfg} found. Will install default"
         else
             echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
             if [ "${cfg}" == "mmu_macro_vars.cfg" ]; then
@@ -642,7 +523,7 @@ read_previous_config() {
         for cfg in `cd ${KLIPPER_CONFIG_HOME}/mmu/addons ; ls *.cfg | grep -v "_hw"`; do
             dest_cfg=${KLIPPER_CONFIG_HOME}/mmu/addons/${cfg}
             if [ ! -f "${dest_cfg}" ]; then
-                echo -e "${WARNING}No previous ${cfg} found. Will install"
+                echo -e "${WARNING}No previous ${cfg} found. Will install default"
             else
                 echo -e "${INFO}Reading ${cfg} configuration from previous installation..."
                 parse_file "${dest_cfg}" "variable_"
@@ -650,114 +531,7 @@ read_previous_config() {
         done
     fi
 
-    # Upgrade / map / force old parameters
-    if [ "${_param_form_tip_macro}" == "_MMU_FORM_TIP_STANDALONE" ]; then
-        _param_form_tip_macro="_MMU_FORM_TIP"
-    fi
-    if [ ! "${_param_encoder_unload_buffer}" == "" ]; then
-        _param_gate_unload_buffer=${_param_encoder_unload_buffer}
-    fi
-    if [ ! "${_param_encoder_unload_max}" == "" ]; then
-        _param_gate_homing_max=${_param_encoder_unload_max}
-    fi
-    if [ ! "${_param_encoder_load_retries}" == "" ]; then
-        _param_gate_load_retries=${_param_encoder_load_retries}
-    fi
-    if [ "${_param_toolhead_ignore_load_error}" == "1" ]; then
-        _param_toolhead_move_error_tolerance=100
-    fi
-    if [ ! "${_param_bowden_load_tolerance}" == "" ]; then
-        _param_bowden_allowable_load_delta=${_param_bowden_load_tolerance}
-    fi
-    if [ ! "${_param_extruder_homing_current}" == "" ]; then
-        _param_extruder_collision_homing_current=${_param_extruder_homing_current}
-    fi
-    if [ "${_param_log_visual}" == "2" ]; then
-        _param_log_visual=1
-    fi
-    if [ "${_param_servo_buzz_gear_on_down}" == "" ]; then
-        if [ "${_param_mmu_vendor}" == "Tradrack" ]; then
-            _param_servo_buzz_gear_on_down=0
-        else
-            _param_servo_buzz_gear_on_down=3
-        fi
-    fi
-    if [ "${_param_gate_parking_distance}" == "" ]; then
-        if [ ! "${_param_mmu_version}" == "1.1" ]; then
-            _param_gate_parking_distance=23
-        else
-            _param_gate_parking_distance=13
-        fi
-    fi
-    if [ "${_param_gate_endstop_to_encoder}" == "" ]; then
-        _param_gate_endstop_to_encoder=0
-    fi
-    if [ ! "${_param_servo_up_angle}" == "" ]; then
-        _param_servo_up_angle=$(echo "$_param_servo_up_angle" | awk '{print int($1)}')
-    fi
-    if [ ! "${_param_servo_down_angle}" == "" ]; then
-        _param_servo_down_angle=$(echo "$_param_servo_down_angle" | awk '{print int($1)}')
-    fi
-    if [ ! "${_param_servo_move_angle}" == "" ]; then
-        _param_servo_move_angle=$(echo "$_param_servo_move_angle" | awk '{print int($1)}')
-    fi
-    if [ "${_param_servo_always_active}" == "" ]; then
-        _param_servo_always_active=0
-    fi
-    if [ "${_param_toolhead_post_load_tighten}" == "1" ]; then
-        # Old Boolean -> New Percent
-        _param_toolhead_post_load_tighten=60
-    fi
-    if [ "${_param_log_file_level}" -gt 2 ]; then
-        _param_log_file_level=2
-    fi
-    if [ ! "${_param_enable_spoolman}" == "" ]; then
-        if [ ! "${_param_enable_spoolman}" == "1" ]; then
-            _param_spoolman_support="readonly"
-        else
-            _param_spoolman_support="off"
-        fi
-    fi
-    if [ ! "${variable_enable_park}" == "" ]; then
-        variable_enable_park=$(convert_to_boolean_string ${variable_enable_park})
-    fi
-    if [ ! "${variable_ramming_volume}" == "" ]; then
-        variable_ramming_volume_standalone=${variable_ramming_volume}
-    fi
-    if [ ! "${variable_auto_home}" == "" ]; then
-        variable_auto_home=$(convert_to_boolean_string ${variable_auto_home})
-    fi
-    if [ ! "${variable_park_after_form_tip}" == "" ]; then
-        variable_park_after_form_tip=$(convert_to_boolean_string ${variable_park_after_form_tip})
-    fi
-    if [ ! "${variable_restore_position}" == "" ]; then
-        variable_restore_position=$(convert_to_boolean_string ${variable_restore_position})
-    fi
-    if [ ! "${variable_gantry_servo_enabled}" == "" ]; then
-        variable_gantry_servo_enabled=$(convert_to_boolean_string ${variable_gantry_servo_enabled})
-    fi
-    if [ ! "${variable_use_skinnydip}" == "" ]; then
-        variable_use_skinnydip=$(convert_to_boolean_string ${variable_use_skinnydip})
-    fi
-    if [ ! "${variable_use_fast_skinnydip}" == "" ]; then
-        variable_use_fast_skinnydip=$(convert_to_boolean_string ${variable_use_fast_skinnydip})
-    fi
-    if [ ! "${variable_pin_loc_x}" == "" ]; then
-        variable_pin_loc_xy="${variable_pin_loc_x}, ${variable_pin_loc_y}"
-    fi
-    if [ ! "${variable_safe_margin_x}" == "" ]; then
-        variable_safe_margin_xy="${variable_safe_margin_x}, ${variable_safe_margin_y}"
-    fi
-    if [ "${variable_restore_xy_pos}" == "True" ]; then
-        variable_restore_xy_pos="\"last\""
-    elif [ "${variable_restore_xy_pos}" == "False" ]; then
-        variable_restore_xy_pos="\"none\""
-    fi
-    if [ ! "${_param_mmu_num_gates}" == "{mmu_num_gates}" -a ! "${_param_mmu_num_gates}" == "" ] 2>/dev/null; then
-        mmu_num_gates=$_param_mmu_num_gates
-        mmu_num_leds=$(expr $mmu_num_gates + 1)
-    fi
-
+    # Upgrade / map / force old parameters...
     # v2.7.1
     if [ ! "${variable_pin_park_x_dist}" == "" ]; then
         variable_pin_park_dist="${variable_pin_park_x_dist}"
@@ -772,17 +546,19 @@ read_previous_config() {
     if [ ! "${variable_lift_speed}" == "" ]; then
         variable_park_lift_speed="${variable_lift_speed}"
     fi
+
     if [ "${variable_enable_park}" == "False" ]; then
         variable_enable_park_printing="'pause,cancel'"
         if [ "${variable_enable_park_runout}" == "True" ]; then
             variable_enable_park_printing="'toolchange,load,unload,runout,pause,cancel'"
         fi
-    else
+    elif [ "${variable_enable_park_printing}" == "" ]; then
         variable_enable_park_printing="'toolchange,load,unload,pause,cancel'"
     fi
+
     if [ "${variable_enable_park_standalone}" == "False" ]; then
         variable_enable_park_standalone="'pause,cancel'"
-    else
+    elif [ "${variable_enable_park_standalone}" == "" ]; then
         variable_enable_park_standalone="'toolchange,load,unload,pause,cancel'"
     fi
 
@@ -792,7 +568,7 @@ read_previous_config() {
         _param_toolhead_ooze_reduction=0
     fi
 
-    # Blobifer update - Oct 13th 20204
+    # v2.7.3 - Blobifer update - Oct 13th 20204
     if [ ! "${variable_iteration_z_raise}" == "" ]; then
         echo -e "${INFO}Setting Blobifier variable_z_raise and variable_purge_length_maximum from previous settings"
         variable_z_raise=$(awk -v iter_z_raise="$variable_iteration_z_raise" -v max_iter="$variable_max_iterations_per_blob" -v z_change="$variable_iteration_z_change" 'BEGIN {
@@ -801,8 +577,33 @@ read_previous_config() {
         }')
         variable_purge_length_maximum=$(awk -v max_len="$variable_max_iteration_length" -v max_iter="$variable_max_iterations_per_blob" 'BEGIN { print max_len * max_iter }')
     fi
+
+    # v3.0.0
+    if [ "${_param_auto_calibrate_gates}" != "" ]; then
+        _param_autotune_rotation_distance=${_param_auto_calibrate_gates}
+    fi
+    if [ "${_param_auto_calibrate_bowden}" != "" ]; then
+        _param_autotune_bowden_length=${_param_auto_calibrate_bowden}
+    fi
+    if [ "${_param_endless_spool_final_eject}" != "" ]; then
+        _param_gate_final_eject_distance=${_param_endless_spool_final_eject}
+    fi
+    if [ "${_variable_eject_tool}" != "" ]; then
+        _variable_unload_tool=${_variable_eject_tool}
+    fi
+    if [ "${_variable_eject_tool_on_cancel}" != "" ]; then
+        _variable_unload_tool_on_cancel=${_variable_eject_tool_on_cancel}
+    fi
+    # Temp for alpha testers..
+    if [ "${_param_respooler_start_macro}" != "" ]; then
+        _param_espooler_start_macro=${_param_respooler_start_macro}
+    fi
+    if [ "${_param_respooler_stop_macro}" != "" ]; then
+        _param_espooler_stop_macro=${_param_respooler_stop_macro}
+    fi
 }
 
+# Helper for upgrade logic
 convert_to_boolean_string() {
     if [ "$1" -eq 1 ] 2>/dev/null; then
         echo "True"
@@ -812,6 +613,65 @@ convert_to_boolean_string() {
         echo "$1"
     fi
 }
+
+# I'd prefer not to attempt to upgrade mmu_hardware.cfg but these will ease pain
+# and are relatively safe
+upgrade_mmu_hardware() {
+    hardware_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+
+    # v3.0.0: Upgrade mmu_servo to mmu_selector_servo
+    found_mmu_servo=$(grep -E -c "^\[mmu_servo mmu_servo\]" ${hardware_cfg} || true)
+    if [ "${found_mmu_servo}" -eq 1 ]; then
+        sed "s/\[mmu_servo mmu_servo\]/\[mmu_servo selector_servo\]/g" "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+        echo -e "${INFO}Updated [mmu_servo mmu_servo] in mmu_hardware.cfg..."
+    fi
+
+    found_mmu_machine=$(grep -E -c "^\[mmu_machine\]" ${hardware_cfg} || true)
+
+    # v3.0.0: Remove num_gates in led section
+    found_num_gates=$(grep -E -c "^(#?num_gates)" ${hardware_cfg} || true)
+    if [ "${found_num_gates}" -gt 0 -a "${found_mmu_machine}" -eq 0 ]; then
+        sed "/^\(#\?num_gates\)/d" "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+        echo -e "${INFO}Removed 'num_gates' from [mmu_leds] section in mmu_hardware.cfg..."
+    fi
+
+    # v3.0.0: Add minimal [mmu_machine] section as first section
+    if [ "${found_mmu_machine}" -eq 0 ]; then
+
+        # Note params will be comming from mmu_parameters
+        new_section=$(cat <<EOF
+# MMU MACHINE / TYPE ---------------------------------------------------------------------------------------------------
+# ███╗   ███╗███╗   ███╗██╗   ██╗    ███╗   ███╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗███████╗
+# ████╗ ████║████╗ ████║██║   ██║    ████╗ ████║██╔══██╗██╔════╝██║  ██║██║████╗  ██║██╔════╝
+# ██╔████╔██║██╔████╔██║██║   ██║    ██╔████╔██║███████║██║     ███████║██║██╔██╗ ██║█████╗  
+# ██║╚██╔╝██║██║╚██╔╝██║██║   ██║    ██║╚██╔╝██║██╔══██║██║     ██╔══██║██║██║╚██╗██║██╔══╝  
+# ██║ ╚═╝ ██║██║ ╚═╝ ██║╚██████╔╝    ██║ ╚═╝ ██║██║  ██║╚██████╗██║  ██║██║██║ ╚████║███████╗
+# ╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝     ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝
+[mmu_machine]
+num_gates: ${_param_mmu_num_gates}				# Number of selectable gates on MMU
+mmu_vendor: ${_param_mmu_vendor}			# MMU family
+mmu_version: ${_param_mmu_version}			# MMU hardware version number (add mod suffix documented above)
+
+EOF
+)
+        temp_file=$(mktemp)
+        echo "$new_section" > "$temp_file"
+        awk '
+            BEGIN { found = 0 }
+            /^[[:space:]]*$/ && !found {
+                print
+                while ((getline line < "'"$temp_file"'") > 0) print line
+                close("'"$temp_file"'")
+                found = 1
+                next
+            }
+            { print }
+        ' "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
+        rm "$temp_file"
+
+        echo -e "${INFO}Added new [mmu_machine] section to mmu_hardware.cfg..."
+    fi
+}  
 
 copy_config_files() {
     mmu_dir="${KLIPPER_CONFIG_HOME}/mmu"
@@ -835,9 +695,43 @@ copy_config_files() {
         mkdir -p ${mmu_dir}/addons
     fi
 
-    if [ ! "${_param_mmu_num_gates}" == "" ]; then
-        mmu_num_gates=${_param_mmu_num_gates}
-    fi 
+    _hw_additional_pins=
+    if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
+        for i in $(seq 0 $(expr $_hw_num_gates - 1)); do
+            espooler_pins="    MMU_DC_MOT_$(expr $i + 1)_EN={spooler_en_${i}_pin},\n"
+            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_A={spooler_rwd_${i}_pin},\n"
+            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_B={spooler_fwd_${i}_pin},\n"
+            _hw_additional_pins="${_hw_additional_pins}\n${espooler_pins}"
+        done
+    fi
+
+    # Now substitute tokens using given brd_type and "questionaire" starting values
+    _hw_num_leds=$(expr $_hw_num_gates \* 2 + 1)
+    _hw_num_leds_minus1=$(expr $_hw_num_leds - 1)
+    _hw_num_gates_plus1=$(expr $_hw_num_gates + 1)
+
+    # Find all variables that start with _hw_
+    for var in $(compgen -v | grep '^_hw_'); do
+        value=${!var}
+        pattern="{${var#_hw_}}"
+        sed_expr="${sed_expr}s|${pattern}|${value}|g; "
+    done
+
+    # Find all variables in the form of PIN[$_hw_brd_type,*]
+    if [ "$HAS_SELECTOR" == "yes" ]; then
+        key_match="$_hw_brd_type"
+    else
+        # Type-B MMU has alternative pin allocation
+        key_match="B,$_hw_brd_type"
+    fi
+    for key in "${!PIN[@]}"; do
+        if [[ $key == "$key_match"* ]]; then
+            value="${PIN[$key]}"
+            pin_var=$(echo "$key" | sed "s/^$key_match,//")
+            pattern="{${pin_var}}"
+            sed_expr="${sed_expr}s|${pattern}|${value}|g; "
+        fi
+    done
 
     for file in `cd ${SRCDIR}/config/base ; ls *.cfg`; do
         src=${SRCDIR}/config/base/${file}
@@ -854,16 +748,16 @@ copy_config_files() {
                 else
                     echo -e "${INFO}Installing configuration file ${file}"
                 fi
-                mv ${dest} ${next_dest}
+                mv ${dest} ${next_dest} # Backup old config file
             fi
         fi
 
         # Hardware files: Special token substitution -----------------------------------------
-	if [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
+        if [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
             cp ${src} ${dest}
 
             # Correct shared uart_address for EASY-BRD
-            if [ "${brd_type}" == "EASY-BRD" ]; then
+            if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
                 # Share uart_pin to avoid duplicate alias problem
                 cat ${dest} | sed -e "\
                     s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
@@ -875,73 +769,75 @@ copy_config_files() {
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-            if [ "${SETUP_SELECTOR_TOUCH}" -eq 1 ]; then
+            if [ "${SETUP_SELECTOR_TOUCH}" == "yes" ]; then
                 cat ${dest} | sed -e "\
                     s/^#\(diag_pin: \^mmu:MMU_SEL_DIAG\)/\1/; \
                     s/^#\(driver_SGTHRS: 75\)/\1/; \
-		    s/^#\(extra_endstop_pins: tmc2209_stepper_mmu_selector:virtual_endstop\)/\1/; \
-		    s/^#\(extra_endstop_names: mmu_sel_touch\)/\1/; \
+                    s/^#\(extra_endstop_pins: tmc2209_stepper_mmu_selector:virtual_endstop\)/\1/; \
+                    s/^#\(extra_endstop_names: mmu_sel_touch\)/\1/; \
                     s/^uart_address:/${uart_comment}uart_address:/; \
+                        " > ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+            elif [ "${SETUP_SELECTOR_STALLGUARD_HOMING}" == "yes" ]; then
+                cat ${dest} | sed -e "\
+                    s/^#\(diag_pin: \^mmu:MMU_SEL_DIAG\)/\1/; \
+                    s/^#\(driver_SGTHRS: 75\)/\1/; \
+                    s/^endstop_pin: ^mmu:MMU_SEL_ENDSTOP.*$/endstop_pin: tmc2209_stepper_mmu_selector:virtual_endstop/; \
+                    s/^#\(homing_retract_dist\)/\1/; \
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-            # Now substitute tokens given brd_type
-            cat ${dest} | sed -e "\
-                s/{brd_type}/${brd_type}/; \
-                s%{serial}%${serial}%; \
-                s/{mmu_num_gates}/${mmu_num_gates}/; \
-                s/{mmu_num_leds}/${mmu_num_leds}/; \
-                s/{gear_gear_ratio}/${gear_gear_ratio}/; \
-                s/{gear_run_current}/${gear_run_current}/; \
-                s/{gear_hold_current}/${gear_hold_current}/; \
-                s/{sel_run_current}/${sel_run_current}/; \
-                s/{sel_hold_current}/${sel_hold_current}/; \
-                s/{maximum_servo_angle}/${maximum_servo_angle}/; \
-                s/{minimum_pulse_width}/${minimum_pulse_width}/; \
-                s/{maximum_pulse_width}/${maximum_pulse_width}/; \
-                s/{toolhead_sensor_pin}/${PIN[toolhead_sensor_pin]}/; \
-                s/{extruder_sensor_pin}/${PIN[extruder_sensor_pin]}/; \
-                s/{gantry_servo_pin}/${PIN[gantry_servo_pin]}/; \
-                s/{sync_feedback_tension_pin}/${PIN[sync_feedback_tension_pin]}/; \
-                s/{sync_feedback_compression_pin}/${PIN[sync_feedback_compression_pin]}/; \
-                s/{gate_sensor_pin}/${PIN[$brd_type,gate_sensor_pin]}/; \
-                s/{pre_gate_0_pin}/${PIN[$brd_type,pre_gate_0_pin]}/; \
-                s/{pre_gate_1_pin}/${PIN[$brd_type,pre_gate_1_pin]}/; \
-                s/{pre_gate_2_pin}/${PIN[$brd_type,pre_gate_2_pin]}/; \
-                s/{pre_gate_3_pin}/${PIN[$brd_type,pre_gate_3_pin]}/; \
-                s/{pre_gate_4_pin}/${PIN[$brd_type,pre_gate_4_pin]}/; \
-                s/{pre_gate_5_pin}/${PIN[$brd_type,pre_gate_5_pin]}/; \
-                s/{pre_gate_6_pin}/${PIN[$brd_type,pre_gate_6_pin]}/; \
-                s/{pre_gate_7_pin}/${PIN[$brd_type,pre_gate_7_pin]}/; \
-                s/{pre_gate_8_pin}/${PIN[$brd_type,pre_gate_8_pin]}/; \
-                s/{pre_gate_9_pin}/${PIN[$brd_type,pre_gate_9_pin]}/; \
-                s/{pre_gate_10_pin}/${PIN[$brd_type,pre_gate_10_pin]}/; \
-                s/{pre_gate_11_pin}/${PIN[$brd_type,pre_gate_11_pin]}/; \
-                s/{gear_gear_ratio}/${gear_gear_ratio}/; \
-                s/{gear_uart_pin}/${PIN[$brd_type,gear_uart_pin]}/; \
-                s/{gear_step_pin}/${PIN[$brd_type,gear_step_pin]}/; \
-                s/{gear_dir_pin}/${PIN[$brd_type,gear_dir_pin]}/; \
-                s/{gear_enable_pin}/${PIN[$brd_type,gear_enable_pin]}/; \
-                s/{gear_diag_pin}/${PIN[$brd_type,gear_diag_pin]}/; \
-                s/{selector_uart_pin}/${PIN[$brd_type,selector_uart_pin]}/; \
-                s/{selector_step_pin}/${PIN[$brd_type,selector_step_pin]}/; \
-                s/{selector_dir_pin}/${PIN[$brd_type,selector_dir_pin]}/; \
-                s/{selector_enable_pin}/${PIN[$brd_type,selector_enable_pin]}/; \
-                s/{selector_diag_pin}/${PIN[$brd_type,selector_diag_pin]}/; \
-                s/{selector_endstop_pin}/${PIN[$brd_type,selector_endstop_pin]}/; \
-                s/{servo_pin}/${PIN[$brd_type,servo_pin]}/; \
-                s/{encoder_pin}/${PIN[$brd_type,encoder_pin]}/; \
-                s/{neopixel_pin}/${PIN[$brd_type,neopixel_pin]}/; \
-                    " > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            # Do all the token substitution
+            cat ${dest} | sed -e "$sed_expr" "${dest}" > "${dest}.tmp" > ${dest}.tmp && mv ${dest}.tmp ${dest}
 
-            # Handle LED option - Comment out if disabled
-	    if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" -eq 0 ]; then
-                sed "/${LED_SECTION}/,\$s/^/#/" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
+            if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" == "no" ]; then
+                sed "/^# MMU OPTIONAL NEOPIXEL/,$ {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
-        # Conifguration parameters -----------------------------------------------------------
+            # Handle Encoder option - Delete if not required (section is 25 lines long)
+            if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_ENCODER" == "no" ]; then
+                sed "/^# ENCODER/,+24 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            fi
+
+            # Handle Selector options - Delete if not required (sections are 8 and 38 lines respectively)
+            if [ "${file}" == "mmu_hardware.cfg" ]; then
+                if [ "$HAS_SELECTOR" == "no" ]; then
+                    sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    sed "/^# SELECTOR STEPPER/,+37 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+                    # Expand out the additional filament drive for each gate
+                    additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
+                    awk '{ print } /^# ADDITIONAL FILAMENT DRIVE/ { for (i=1; i<=11; i++) { getline; print }; exit }' ${dest} > ${dest}.tmp
+                    for (( i=2; i<=$(expr $_hw_num_gates - 1); i++ ))
+                    do
+                    echo "$(echo "${additional_gear_section}" | sed "s/_1/_$i/g")" >> ${dest}.tmp
+                        echo >> ${dest}.tmp
+                    done
+                    awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+                else
+                    if [ "$HAS_SERVO" == "no" ]; then
+                        sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    fi
+
+                    # Delete additional gear drivers template section
+                    sed "/^# ADDITIONAL FILAMENT DRIVE/,+10 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                fi
+            fi
+
+        # Configuration parameters -----------------------------------------------------------
         elif [ "${file}" == "mmu_parameters.cfg" ]; then
-            update_copy_file "$src" "$dest" "" "_param_"
+            if [ "${HAS_SELECTOR}" == "no" ]; then
+                # Use truncated VirtualSelector parameter file
+                update_copy_file "${src}.vs" "$dest" "" "_param_"
+            else
+                update_copy_file "$src" "$dest" "" "_param_"
+                if [ "$HAS_SERVO" == "no" ]; then
+                    # Remove selector servo section
+                    sed "/^# Servo configuration/,+27 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                fi
+            fi
 
             # Ensure that supplemental user added params are retained. These are those that are
             # by default set internally in Happy Hare based on vendor and version settings but
@@ -949,8 +845,8 @@ copy_config_files() {
             echo "" >> $dest
             echo "# SUPPLEMENTAL USER CONFIG retained after upgrade --------------------------------------------------------------------" >> $dest
             echo "#" >> $dest
-            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance gate_parking_distance variable_gate_ratios encoder_default_resolution gate_material gate_color gate_spool_id gate_status gate_filament_name gate_speed_override endless_spool_groups tool_to_gate_map"
-            hidden_params="virtual_selector homing_extruder test_random_failures test_random_failures test_disable_encoder test_force_in_print serious mitigate_ttc"
+            supplemental_params="cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance gate_material gate_color gate_spool_id gate_status gate_filament_name gate_temperature gate_speed_override endless_spool_groups tool_to_gate_map"
+            hidden_params="test_random_failures test_random_failures test_disable_encoder test_force_in_print serious"
             for var in $(set | grep '^_param_' | cut -d'=' -f1 | sort); do
                 param=${var#_param_}
                 for item in ${supplemental_params} ${hidden_params}; do
@@ -962,30 +858,24 @@ copy_config_files() {
                 done
             done >> $dest
 
-            # If any params are still left worn the user because they will be lost (should have been upgraded)
+            # If any params are still left warn the user because they will be lost (should have been upgraded)
             for var in $(set | grep '^_param_' | cut -d= -f1); do
-                value=$(eval echo \$$var)
                 param=${var#_param_}
+                value=$(eval echo \$$var)
                 echo "Parameter: '$param: $value' is deprecated and has been removed"
             done
 
         # Variables macro ---------------------------------------------------------------------
         elif [ "${file}" == "mmu_macro_vars.cfg" ]; then
             tx_macros=""
-            if [ "$mmu_num_gates" -eq "$mmu_num_gates" ] 2>/dev/null; then
-                for (( i=0; i<=$(expr $mmu_num_gates - 1); i++ ))
-                do
-                    tx_macros+="[gcode_macro T${i}]\n"
-                    tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
-                done
-            else
-                # Skeleton config file case
-                for (( i=0; i<=11; i++ ))
-                do
-                    tx_macros+="#[gcode_macro T${i}]\n"
-                    tx_macros+="#gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
-                done
+            if [ "$_hw_num_gates" == "" -o "$_hw_num_gates" == "{num_gates}" ]; then
+                _hw_num_gates=12
             fi
+            for (( i=0; i<=$(expr $_hw_num_gates - 1); i++ ))
+            do
+                tx_macros+="[gcode_macro T${i}]\n"
+                tx_macros+="gcode: MMU_CHANGE_TOOL TOOL=${i}\n"
+            done
 
             if [ "${INSTALL}" -eq 1 ]; then
                 cat ${src} | sed -e "\
@@ -1001,15 +891,6 @@ copy_config_files() {
         # Everything else is read-only symlink ------------------------------------------------
         else
             ln -sf ${src} ${dest}
-	fi
-    done
-
-    # Handle deprecated files -----------------------------------------------------------------
-    for file in mmu_filametrix.cfg mmu_variables.cfg; do
-        dest=${mmu_dir}/base/${file}
-        if [ -f "${dest}" ]; then
-            echo -e "${WARNING}Removing deprecated config files ${file}"
-            rm -f ${dest}
         fi
     done
 
@@ -1020,7 +901,7 @@ copy_config_files() {
         ln -sf ${src} ${dest}
     done
 
-    # Don't stompt on existing persisted state ------------------------------------------------
+    # Don't stomp on existing persisted state ------------------------------------------------
     src=${SRCDIR}/config/mmu_vars.cfg
     dest=${mmu_dir}/mmu_vars.cfg
     if [ -f "${dest}" ]; then
@@ -1067,27 +948,6 @@ install_printer_includes() {
             next_dest="$(nextfilename "$dest")"
             echo -e "${INFO}Copying original ${PRINTER_CONFIG} file to ${next_dest}"
             cp ${dest} ${next_dest}
-            if [ ${MENU_12864} -eq 1 ]; then
-                i='\[include mmu/optional/mmu_menu.cfg\]'
-                already_included=$(grep -c "${i}" ${dest} || true)
-                if [ "${already_included}" -eq 0 ]; then
-                    sed -i "1i ${i}" ${dest}
-                fi
-            fi
-            if [ ${ERCF_COMPAT} -eq 1 ]; then
-                i='\[include mmu/optional/mmu_ercf_compat.cfg\]'
-                already_included=$(grep -c "${i}" ${dest} || true)
-                if [ "${already_included}" -eq 0 ]; then
-                    sed -i "1i ${i}" ${dest}
-                fi
-            fi
-            if [ ${CLIENT_MACROS} -eq 1 ]; then
-                i='\[include mmu/optional/client_macros.cfg\]'
-                already_included=$(grep -c "${i}" ${dest} || true)
-                if [ "${already_included}" -eq 0 ]; then
-                    sed -i "1i ${i}" ${dest}
-                fi
-            fi
             if [ ${ADDONS_EREC} -eq 1 ]; then
                 i='\[include mmu/addons/mmu_erec_cutter.cfg\]'
                 already_included=$(grep -c "${i}" ${dest} || true)
@@ -1097,6 +957,27 @@ install_printer_includes() {
             fi
             if [ ${ADDONS_BLOBIFIER} -eq 1 ]; then
                 i='\[include mmu/addons/blobifier.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
+            if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
+                i='\[include mmu/addons/dc_espooler.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
+            if [ ${MENU_12864} -eq 1 ]; then
+                i='\[include mmu/optional/mmu_menu.cfg\]'
+                already_included=$(grep -c "${i}" ${dest} || true)
+                if [ "${already_included}" -eq 0 ]; then
+                    sed -i "1i ${i}" ${dest}
+                fi
+            fi
+            if [ ${CLIENT_MACROS} -eq 1 ]; then
+                i='\[include mmu/optional/client_macros.cfg\]'
                 already_included=$(grep -c "${i}" ${dest} || true)
                 if [ "${already_included}" -eq 0 ]; then
                     sed -i "1i ${i}" ${dest}
@@ -1124,18 +1005,9 @@ uninstall_printer_includes() {
         cat "${dest}" | sed -e " \
             /\[include mmu\/optional\/client_macros.cfg\]/ d; \
             /\[include mmu\/optional\/mmu_menu.cfg\]/ d; \
-            /\[include mmu\/optional\/mmu_ercf_compat.cfg\]/ d; \
-            /\[include mmu\/mmu_software.cfg\]/ d; \
-            /\[include mmu\/mmu_parameters.cfg\]/ d; \
-            /\[include mmu\/mmu_hardware.cfg\]/ d; \
-            /\[include mmu\/mmu_filametrix.cfg\]/ d; \
-            /\[include mmu\/mmu_sequence.cfg\]/ d; \
-            /\[include mmu\/mmu_form_tip.cfg\]/ d; \
-            /\[include mmu\/mmu_cut_tip.cfg\]/ d; \
-            /\[include mmu\/mmu.cfg\]/ d; \
             /\[include mmu\/base\/\*.cfg\]/ d; \
             /\[include mmu\/addon\/\*.cfg\]/ d; \
-	        " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
+                " > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
     fi
 }
 
@@ -1213,6 +1085,9 @@ uninstall_update_manager() {
         else
             cat "${file}" | sed -e " \
                 /\[mmu_server\]/,+1 d; \
+                /enable_file_preprocessor/ d; \
+                /enable_toolchange_next_pos/ d; \
+                /update_spoolman_location/ d; \
                     " > "${file}.new" && mv "${file}.new" "${file}"
             restart=1
         fi
@@ -1262,11 +1137,13 @@ prompt_yn() {
         read -n1 -p "$@ (y/n)? " yn
         case "${yn}" in
             Y|y)
-                echo "y" 
-                break;;
+                echo -n "y" 
+                break
+                ;;
             N|n)
-                echo "n" 
-                break;;
+                echo -n "n" 
+                break
+                ;;
             *)
                 ;;
         esac
@@ -1277,54 +1154,93 @@ prompt_123() {
     prompt=$1
     max=$2
     while true; do
-        read -p "${prompt} (1-${max})? " -n 1 number
-        if [[ "$number" =~ [1-${max}] ]]; then
-            echo ${number}
-            break
+        if [ -z "${max}" ]; then
+            read -ep "${prompt}? " number
+        elif [[ "${max}" -lt 10 ]]; then
+            read -ep "${prompt} (1-${max})? " -n1 number
+        else
+            read -ep "${prompt} (1-${max})? " number
         fi
+        if ! [[ "$number" =~ ^-?[0-9]+$ ]] ; then
+            echo -e "Invalid value." >&2
+            continue
+        fi
+        if [ "$number" -lt 1 ]; then
+            echo -e "Value must be greater than 0." >&2
+            continue
+        fi
+        if [ -n "$max" ] && [ "$number" -gt "$max" ]; then
+            echo -e "Value must be less than $((max+1))." >&2
+            continue
+        fi
+        echo ${number}
+        break
     done
 }
 
+prompt_option() {
+    local var_name="$1"
+    local query="$2"
+    shift 2
+    local i=0
+    for val in "$@"; do
+        i=$((i+1))
+        echo "$i) $val"
+    done
+    REPLY=$(prompt_123 "$query" "$#")
+    declare -g $var_name="${!REPLY}"
+}
+
+option() {
+    local var_name="$1"
+    local desc="$2"
+    declare -g $var_name="${desc}"
+    OPTIONS+=("$desc")
+}
+
 questionaire() {
-    # Set default substitution tokens
-    mmu_vendor="Other"
-    mmu_version="1.0"
-    extruder_homing_endstop="collision"
-    gate_homing_endstop="encoder"
-    gate_parking_distance=23.0
-    gate_endstop_to_encoder=0
-    servo_buzz_gear_on_down=0
-    servo_always_active=0
-    servo_duration=0.3
-
-    # mmu_hardware.cfg only...
-    gear_gear_ratio="80:20"
-    gear_run_current=0.5
-    gear_hold_current=0.1
-    sel_run_current=0.4
-    sel_hold_current=0.2
-    maximum_servo_angle=180
-    minimum_pulse_width=0.001
-    maximum_pulse_width=0.002
-
     echo
     echo -e "${INFO}Let me see if I can get you started with initial configuration"
     echo -e "You will still have some manual editing to perform but I will explain that later"
     echo -e "(Note that all this script does is set a lot of the time consuming parameters in the config"
     echo
     echo -e "${PROMPT}${SECTION}What type of MMU are you running?${INPUT}"
-    echo -e "1) ERCF v1.1 (inc TripleDecky, Springy, Binky mods)"
-    echo -e "2) ERCF v2.0"
-    echo -e "3) Tradrack v1.0"
-    echo -e "4) Other (or just want starter config files)"
-    num=$(prompt_123 "MMU Type?" 4)
-    echo
-    case $num in
-        1)
+    OPTIONS=()
+    option ERCF11         'ERCF v1.1 (inc TripleDecky, Springy, Binky mods)'
+    option ERCF20         'ERCF v2.0'
+    option TRADRACK       'Tradrack v1.0'
+    option ANGRY_BEAVER   'Angry Beaver v1.0'
+    option BOX_TURTLE     'Box Turtle v1.0'
+    option NIGHT_OWL      'Night Owl v1.0'
+    option _3MS           '3MS (Modular Multi Material System) v1.0'
+    option _3D_CHAMELEON  '3D Chameleon'
+    option OTHER          'Other / Custom (or just want starter config files)'
+    prompt_option opt 'MMU Type' "${OPTIONS[@]}"
+    case $opt in
+        "$ERCF11")
             HAS_ENCODER=yes
-            mmu_vendor="ERCF"
-            mmu_version="1.1"
-            servo_buzz_gear_on_down=3
+            HAS_SELECTOR=yes
+            HAS_SERVO=yes
+            _hw_mmu_vendor="ERCF"
+            _hw_mmu_version="1.1"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="80:20"
+            _hw_gear_run_current=0.5
+            _hw_gear_hold_current=0.1
+            _hw_sel_run_current=0.4
+            _hw_sel_hold_current=0.2
+            _hw_encoder_resolution=0.7059
+            _param_extruder_homing_endstop="collision"
+            _param_gate_homing_endstop="encoder"
+            _param_gate_parking_distance=23
+            _param_servo_buzz_gear_on_down=3
+            _param_servo_duration=0.4
+            _param_servo_always_active=0
+            _param_servo_buzz_gear_on_down=1
 
             echo
             echo -e "${PROMPT}Some popular upgrade options for ERCF v1.1 can automatically be setup. Let me ask you about them...${INPUT}"
@@ -1332,142 +1248,379 @@ questionaire() {
             echo
             case $yn in
             y)
-                mmu_version+="s"
+                _hw_mmu_version+="s"
                 ;;
             esac
             yn=$(prompt_yn "Are you using the improved 'Binky' encoder")
             echo
             case $yn in
             y)
-                mmu_version+="b"
+                _hw_mmu_version+="b"
                 ;;
             esac
             yn=$(prompt_yn "Are you using the wider 'Triple-Decky' filament blocks")
             echo
             case $yn in
             y)
-                mmu_version+="t"
+                _hw_mmu_version+="t"
                 ;;
             esac
             ;;
-        2)
-            HAS_ENCODER=yes
-            mmu_vendor="ERCF"
-            mmu_version="2.0"
-            gate_parking_distance=13.0 # ThumperBlocks is 11.0
-            servo_buzz_gear_on_down=3
-            ;;
-        3)
-            HAS_ENCODER=no
-            mmu_vendor="Tradrack"
-            mmu_version="1.0"
-            extruder_homing_endstop="none"
-            gate_homing_endstop="mmu_gate"
-            gate_parking_distance=17.5
-            servo_buzz_gear_on_down=0
 
-            gear_gear_ratio="50:17"
-            gear_run_current=1.27
-            gear_hold_current=0.2
-            sel_run_current=0.63
-            sel_hold_current=0.2
+        "$ERCF20")
+            HAS_ENCODER=yes
+            HAS_SELECTOR=yes
+            HAS_SERVO=yes
+            _hw_mmu_vendor="ERCF"
+            _hw_mmu_version="2.0"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="80:20"
+            _hw_gear_run_current=0.5
+            _hw_gear_hold_current=0.1
+            _hw_sel_run_current=0.4
+            _hw_sel_hold_current=0.2
+            _hw_encoder_resolution=1.0
+            _param_extruder_homing_endstop="collision"
+            _param_gate_homing_endstop="encoder"
+            _param_gate_parking_distance=13 # ThumperBlocks is 11
+            _param_servo_buzz_gear_on_down=3
+            _param_servo_duration=0.4
+            _param_servo_always_active=0
+            _param_servo_buzz_gear_on_down=1
+            ;;
+
+        "$TRADRACK")
+            HAS_ENCODER=no
+            HAS_SELECTOR=yes
+            HAS_SERVO=yes
+            _hw_mmu_vendor="Tradrack"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="50:17"
+            _hw_gear_run_current=1.27
+            _hw_gear_hold_current=0.2
+            _hw_sel_run_current=0.63
+            _hw_sel_hold_current=0.2
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_parking_distance=17.5
+            _param_servo_buzz_gear_on_down=0
+            _param_servo_always_active=1
+
             echo -e "${PROMPT}Some popular upgrade options for Tradrack v1.0 can automatically be setup. Let me ask you about them...${INPUT}"
             yn=$(prompt_yn "Are you using the 'Binky' encoder modification")
             echo
             case $yn in
             y)
                 HAS_ENCODER=yes
-                mmu_version+="e"
-                extruder_homing_endstop="collision"
-                gate_homing_endstop="encoder"
-                gate_parking_distance=48.0
-                gate_endstop_to_encoder=31.0
+                _hw_mmu_version+="e"
+                _param_extruder_homing_endstop="collision"
+                _param_gate_homing_endstop="encoder"
+                _param_gate_parking_distance=48.0
+                _param_gate_endstop_to_encoder=31.0
                 ;;
             esac
             ;;
-        4)
+
+        "$ANGRY_BEAVER")
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            HAS_SERVO=no
+            _hw_mmu_vendor="AngryBeaver"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=0
+            _hw_filament_always_gripped=1
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="extruder"
+            _param_gate_homing_endstop="extruder"
+            _param_gate_homing_max=500
+            _param_gate_parking_distance=50
+            _param_gear_homing_speed=80
+            ;;
+
+        "$BOX_TURTLE")
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            HAS_SERVO=no
+            ADDONS_DC_ESPOOLER=1
+            _hw_mmu_vendor="BoxTurtle"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=1
+            _hw_gear_gear_ratio="50:10"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=300
+            _param_gate_parking_distance=100
+            _param_gate_final_eject_distance=100
+
+            # Macro variable config
+            _param_espooler_start_macro="MMU_ESPOOLER_START"
+            _param_espooler_stop_macro="MMU_ESPOOLER_STOP"
+            ;;
+
+        "$NIGHT_OWL")
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            HAS_SERVO=no
+            _hw_mmu_vendor="NightOwl"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=1
+            _hw_gear_gear_ratio="50:10"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="mmu_gear"
+            _param_gate_parking_distance=100
+            _param_gate_final_eject_distance=100
+
+            # Macro variable config
+            _param_espooler_start_macro="MMU_ESPOOLER_START"
+            _param_espooler_stop_macro="MMU_ESPOOLER_STOP"
+            ;;
+
+        "$_3MS")
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            HAS_SERVO=no
+            _hw_mmu_vendor="3MS"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=0
+            _hw_filament_always_gripped=1
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _param_extruder_homing_endstop="extruder"
+            _param_gate_homing_endstop="extruder"
+            _param_gate_homing_max=500
+            _param_gate_parking_distance=250
+            _param_gear_homing_speed=80
+            ;;
+
+        "$_3D_CHAMELEON")
+            HAS_ENCODER=no
+            HAS_SELECTOR=yes
+            HAS_SERVO=no
+            SETUP_SELECTOR_TOUCH=no
+            _hw_mmu_vendor="3DChameleon"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=RotarySelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _hw_sel_run_current=0.63
+            _hw_sel_hold_current=0.2
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=500
+            _param_gate_parking_distance=250
+            _param_gear_homing_speed=80
+            ;;
+
+        *)
             HAS_ENCODER=yes
-            echo
-            echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU you will need to setup some CAD dimensions and other key parameters... See doc"
-            ;;
-    esac
+            HAS_SELECTOR=yes
+            HAS_SERVO=yes
+            SETUP_LED=yes
+            SETUP_SELECTOR_TOUCH=no
+            _hw_mmu_vendor="Other"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _hw_sel_run_current=0.5
+            _hw_sel_hold_current=0.1
 
-    mmu_num_gates=12
-    echo
+            # This isn't meant to be all-inclusive of options. It is just to provide a config starting point that is close
+            echo -e "${PROMPT}${SECTION}Which of these most closely resembles your MMU design (this allows for some tuning of config files)?{$INPUT}"
+            OPTIONS=() # reset option array
+            option TYPE_A_WITH_ENCODER                            'Type-A (selector) with Encoder'
+            option TYPE_A_NO_ENCODER                              'Type-A (selector), No Encoder'
+            option TYPE_B_WITH_ENCODER                            'Type-B (mutliple filament drive steppers) with Encoder'
+            option TYPE_B_WITH_SHARED_GATE_AND_ENCODER            'Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder'
+            option TYPE_B_WITH_SHARED_GATE_NO_ENCODER             'Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder'
+            option TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER 'Type-B (multiple filament drive steppers) with individual post-gear sensors and Encoder'
+            option TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_NO_ENCODER  'Type-B (multiple filament drive steppers) with individual post-gear sensors, No Encoder'
+            option OTHER                                          'Just turn on all options and let me configure'
+            prompt_option opt 'Type' "${OPTIONS[@]}"
+            case "$opt" in
+                "$TYPE_A_WITH_ENCODER")
+                    _param_gate_homing_endstop="encoder"
+                    _param_extruder_homing_endstop="collision"
+                    echo
+                    echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU with selector you will need to setup some CAD dimensions in mmu_parameters.cfg... See doc"
+                    ;;
+                "$TYPE_A_NO_ENCODER")
+                    HAS_ENCODER=no
+                    _param_gate_homing_endstop="mmu_gate"
+                    _param_extruder_homing_endstop="none"
+                    echo
+                    echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU with selector you will need to setup some CAD dimensions in mmu_parameters.cfg... See doc"
+                    ;;
+                "$TYPE_B_WITH_ENCODER")
+                    HAS_SELECTOR=no
+                    HAS_SERVO=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
+                    _param_gate_homing_endstop="mmu_gate"
+                    _param_extruder_homing_endstop="none"
+                    ;;
+                "$TYPE_B_WITH_SHARED_GATE_AND_ENCODER")
+                    HAS_SELECTOR=no
+                    HAS_SERVO=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
+                    _param_gate_homing_endstop="mmu_gate"
+                    _param_extruder_homing_endstop="none"
+                    ;;
+                "$TYPE_B_WITH_SHARED_GATE_NO_ENCODER")
+                    HAS_SELECTOR=no
+                    HAS_SERVO=no
+                    HAS_ENCODER=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
+                    _param_gate_homing_endstop="mmu_gate"
+                    _param_extruder_homing_endstop="none"
+                    ;;
+                "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_AND_ENCODER")
+                    HAS_SELECTOR=no
+                    HAS_SERVO=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
+                    _param_gate_homing_endstop="mmu_gear"
+                    _param_extruder_homing_endstop="none"
+                    ;;
+                "$TYPE_B_WITH_INDIVIDUAL_GEAR_SENSOR_NO_ENCODER")
+                    HAS_SELECTOR=no
+                    HAS_SERVO=no
+                    HAS_ENCODER=no
+                    _hw_selector_type=VirtualSelector
+                    _hw_variable_bowden_lengths=1
+                    _hw_variable_rotation_distances=1
+                    _hw_filament_always_gripped=1
+                    _param_gate_homing_endstop="mmu_gear"
+                    _param_extruder_homing_endstop="none"
+                    ;;
+                *)
+                    _param_gate_homing_endstop="mmu_gate"
+                    _param_extruder_homing_endstop="none"
+                    ;;
+            esac
+            ;;
+        esac
+
     echo -e "${PROMPT}${SECTION}How many gates (selectors) do you have?${INPUT}"
-    while true; do
-        read -p "Number of gates? " mmu_num_gates
-        if ! [ "${mmu_num_gates}" -ge 1 ] 2> /dev/null ;then
-            echo -e "${INFO}Positive integer value only"
-      else
-           break
-       fi
-    done
-    mmu_num_leds=$(expr $mmu_num_gates + 1)
+    _hw_num_gates=$(prompt_123 "Number of gates")
 
-    brd_type="unknown"
-    echo
+    _hw_brd_type="unknown"
     echo -e "${PROMPT}${SECTION}Select mcu board type used to control MMU${INPUT}"
-    echo -e " 1) BTT MMB v1.0 (with CANbus)"
-    echo -e " 2) BTT MMB v1.1 (with CANbus)"
-    echo -e " 3) Fysetc Burrows ERB v1"
-    echo -e " 4) Fysetc Burrows ERB v2"
-    echo -e " 5) Standard EASY-BRD (with SAMD21)"
-    echo -e " 6) EASY-BRD with RP2040"
-    echo -e " 7) Mellow EASY-BRD v1.x (with CANbus)"
-    echo -e " 8) Mellow EASY-BRD v2.x (with CANbus)"
-    echo -e " 9) Not in list / Unknown"
-    num=$(prompt_123 "MCU type?" 9)
-    echo
-    case $num in
-        1)
-            brd_type="MMB10"
+    # Perhaps consider just supporting the BTT MMB (and eventually AFC) when mmu_vendor is BoxTurtle
+    # as many of these other boards may not work (due lack of exposed gpio)
+    OPTIONS=()
+    option MMB10                'BTT MMB v1.0 (with CANbus)'
+    option MMB11                'BTT MMB v1.1 (with CANbus)'
+    option FYSETC_BURROWS_ERB_1 'Fysetc Burrows ERB v1'
+    option FYSETC_BURROWS_ERB_2 'Fysetc Burrows ERB v2'
+    option EASY_BRD_SAMD21      'Standard EASY-BRD (with SAMD21)'
+    option EASY_BRD_RP2040      'EASY-BRD with RP2040'
+    option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
+    option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
+    option AFC_LITE_1           'AFC Lite v1.0'
+    option OTHER                'Not in list / Unknown'
+    prompt_option opt 'MCU Type' "${OPTIONS[@]}"
+    case $opt in
+        "$MMB10")
+            _hw_brd_type="MMB10"
             pattern="Klipper_stm32"
             ;;
-        2)
-            brd_type="MMB11"
+        "$MMB11")
+            _hw_brd_type="MMB11"
             pattern="Klipper_stm32"
             ;;
-        3)
-            brd_type="ERB"
+        "$FYSETC_BURROWS_ERB_1")
+            _hw_brd_type="ERB"
             pattern="Klipper_rp2040"
             ;;
-        4)
-            brd_type="ERBv2"
+        "$FYSETC_BURROWS_ERB_2")
+            _hw_brd_type="ERBv2"
             pattern="Klipper_rp2040"
             ;;
-        5)
-            brd_type="EASY-BRD"
+        "$EASY_BRD_SAMD21")
+            _hw_brd_type="EASY-BRD"
             pattern="Klipper_samd21"
             ;;
-        6)
-            brd_type="EASY-BRD-RP2040"
+        "$EASY_BRD_RP2040")
+            _hw_brd_type="EASY-BRD-RP2040"
             pattern="Klipper_rp2040"
             ;;
-        7)
-            brd_type="MELLOW-EASY-BRD-CAN"
+        "$MELLOW_BRD_1")
+            _hw_brd_type="MELLOW-EASY-BRD-CAN"
             pattern="Klipper_rp2040"
             ;;
-        8)
-            brd_type="MELLOW-EASY-BRD-CANv2"
+        "$MELLOW_BRD_2")
+            _hw_brd_type="MELLOW-EASY-BRD-CANv2"
             pattern="Klipper_rp2040"
             ;;
-        9)
-            brd_type="unknown"
+        "$AFC_LITE_1")
+            _hw_brd_type="AFC_LITE_1"
+            pattern="Klipper_stm32"
+            ;;
+        *)
+            _hw_brd_type="unknown"
             pattern="Klipper_"
             ;;
     esac
 
-    serial=""
-    echo
     for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
         if echo ${line} | grep --quiet "${pattern}"; then
-            echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
+            echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${_hw_brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
             yn=$(prompt_yn "/dev/serial/by-id/${line}")
             echo
             case $yn in
                 y)
-                    serial="/dev/serial/by-id/${line}"
+                    _hw_serial="/dev/serial/by-id/${line}"
                     break
                     ;;
                 n)
@@ -1475,174 +1628,193 @@ questionaire() {
             esac
         fi
     done
-    if [ "${serial}" == "" ]; then
+    if [ "${_hw_serial}" == "" ]; then
         echo
         echo -e "${WARNING}    Couldn't find your serial port, but no worries - I'll configure the default and you can manually change later"
-        serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+        _hw_serial='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
     fi
 
-    # Avoid pin duplication
+    # Avoid pin duplication. Most type-A MMU's have either encoder or gate. If both, user will have to fix
     if [ "${HAS_ENCODER}" == "yes" ]; then
-        eval PIN[${brd_type},gate_sensor_pin]=""
+        eval PIN[${_hw_brd_type},gate_sensor_pin]=""
     else
-        eval PIN[${brd_type},encoder_pin]=""
+        eval PIN[${_hw_brd_type},encoder_pin]=""
     fi
 
-    echo
-    echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
-    echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for steppers. Can configure later${INPUT}"
-    yn=$(prompt_yn "Enable selector touch operation")
-    echo
-    case $yn in
-        y)
-            if [ "${brd_type}" == "EASY-BRD" ]; then
-                echo
-                echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
-            fi
-            SETUP_SELECTOR_TOUCH=1
-            ;;
-        n)
-            if [ "${brd_type}" == "EASY-BRD" ]; then
-                echo
-                echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
-            fi
-            SETUP_SELECTOR_TOUCH=0
-            ;;
-    esac
-
-    echo
     echo -e "${PROMPT}${SECTION}Would you like to have neopixel LEDs setup now for your MMU?${INPUT}"
     yn=$(prompt_yn "Enable LED support?")
     echo
     case $yn in
         y)
-            SETUP_LED=1
+            SETUP_LED=yes
             ;;
         n)
-            SETUP_LED=0
+            SETUP_LED=no
             ;;
     esac
 
-    if [ "${mmu_vendor}" == "ERCF" ]; then
-        maximum_servo_angle=180
-        minimum_pulse_width=0.00085
-        maximum_pulse_width=0.00215
+    if [ "${HAS_SELECTOR}" == "yes" ]; then
 
-        echo
-        echo -e "${PROMPT}${SECTION}Which servo are you using?"
-        echo -e "1) MG-90S"
-        echo -e "2) Savox SH0255MG"
-        echo -e "3) GDW DS041MG"
-        echo -e "4) Not listed / Other${INPUT}"
-        num=$(prompt_123 "Servo?" 4)
-        echo
-        case $num in
-            1)
-                # MG-90S
-                servo_up_angle=30
-                if [ "${mmu_version}" == "2.0" ]; then
-                    servo_move_angle=61
-                else
-                    servo_move_angle=${servo_up_angle}
-                fi
-                servo_down_angle=140
-                ;;
-            2)
-                # Savox SH0255MG
-                servo_up_angle=140
-                if [ "${mmu_version}" == "2.0" ]; then
-                    servo_move_angle=109
-                else
-                    servo_move_angle=${servo_up_angle}
-                fi
-                servo_down_angle=30
-                ;;
-            3)
-                # GDW DS041MG
-                servo_always_active=1
-                maximum_servo_angle=180
-                minimum_pulse_width=0.00050
-                maximum_pulse_width=0.00250
-                servo_up_angle=30
-                if [ "${mmu_version}" == "2.0" ]; then
-                    servo_move_angle=50
-                else
-                    servo_move_angle=${servo_up_angle}
-                fi
-                servo_down_angle=100
-        esac
+        if [ "$SETUP_SELECTOR_TOUCH" != "no" ]; then
+            echo -e "${PROMPT}${SECTION}Touch selector operation using TMC Stallguard? This allows for additional selector recovery steps but is difficult to tune"
+            echo -e "Not recommend if you are new to MMU/Happy Hare & MCU must have DIAG output for selector stepper. Can configure later${INPUT}"
+            yn=$(prompt_yn "Enable selector touch operation")
+            echo
+            case $yn in
+                y)
+                    if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
+                        echo
+                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW!!"
+                    fi
+                    SETUP_SELECTOR_TOUCH=yes
+                    ;;
+                n)
+                    if [ "${_hw_brd_type}" == "EASY-BRD" ]; then
+                        echo
+                        echo -e "${WARNING}    IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW!!"
+                    fi
+                    SETUP_SELECTOR_TOUCH=no
+                    ;;
+            esac
+        fi
 
-    elif [ "${mmu_vendor}" == "Tradrack" ]; then
-        maximum_servo_angle=131
-        minimum_pulse_width=0.00070
-        maximum_pulse_width=0.00220
+        if [ "$SETUP_SELECTOR_TOUCH" == "no" ]; then
+            echo -e "${PROMPT}${SECTION}Selector homing using TMC Stallguard? This prevents the need for hard endstop homing but must be tuned"
+            echo -e "MCU must have DIAG output for selector stepper. Can configure later${INPUT}"
+            yn=$(prompt_yn "Enable selector stallguard homing")
+            echo
+            case $yn in
+                y)
+                    SETUP_SELECTOR_STALLGUARD_HOMING=yes
+                    ;;
+                n)
+                    SETUP_SELECTOR_STALLGUARD_HOMING=no
+                    ;;
+            esac
+        fi
 
-        echo
-        echo -e "${PROMPT}${SECTION}Which servo are you using?"
-        echo -e "1) PS-1171MG or FT1117M (Tradrack)"
-        echo -e "2) Not listed / Other${INPUT}"
-        num=$(prompt_123 "Servo?" 2)
-        echo
-        case $num in
-            1)
-                servo_up_angle=145
-                servo_move_angle=${servo_up_angle}
-                servo_down_angle=1
-                ;;
-        esac
+        if [ "${_hw_mmu_vendor}" == "ERCF" ]; then
+            _hw_maximum_servo_angle=180
+            _hw_minimum_pulse_width=0.00085
+            _hw_maximum_pulse_width=0.00215
+            _param_servo_always_active=0
 
-    else
-        servo_up_angle=0
-        servo_move_angle=0
-        servo_down_angle=0
+            echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
+            OPTIONS=()
+            option MG90S    'MG-90S'
+            option SH0255MG 'Savox SH0255MG'
+            option DS041MG  'GDW DS041MG'
+            option OTHER    'Not listed / Other'
+            prompt_option opt 'Servo' "${OPTIONS[@]}"
+            case $opt in
+                "$MG90S")
+                    _param_servo_up_angle=30
+                    if [ "${_hw_mmu_version}" == "2.0" ]; then
+                        _param_servo_move_angle=61
+                    else
+                        _param_servo_move_angle=${_param_servo_up_angle}
+                    fi
+                    _param_servo_down_angle=140
+                    ;;
+                "$SH0255MG")
+                    _param_servo_up_angle=140
+                    if [ "${_hw_mmu_version}" == "2.0" ]; then
+                        _param_servo_move_angle=109
+                    else
+                        _param_servo_move_angle=${_param_servo_up_angle}
+                    fi
+                    _param_servo_down_angle=30
+                    ;;
+                "$DS041MG")
+                    _hw_maximum_servo_angle=180
+                    _hw_minimum_pulse_width=0.00050
+                    _hw_maximum_pulse_width=0.00250
+                    _param_servo_always_active=1
+                    _param_servo_up_angle=30
+                    if [ "${_hw_mmu_version}" == "2.0" ]; then
+                        _param_servo_move_angle=50
+                    else
+                        _param_servo_move_angle=${servo_up_angle}
+                    fi
+                    _param_servo_down_angle=100
+            esac
+
+        elif [ "${_hw_mmu_vendor}" == "Tradrack" ]; then
+            _hw_maximum_servo_angle=131
+            _hw_minimum_pulse_width=0.00070
+            _hw_maximum_pulse_width=0.00220
+            _param_servo_always_active=1
+
+            echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
+            OPTIONS=()
+            option TRADRACK_BOM 'PS-1171MG or FT1117M (Tradrack)'
+            option OTHER 'Not listed / Other'
+            prompt_option opt 'Servo' "${OPTIONS[@]}"
+            case $opt in
+                "$TRADRACK_BOM")
+                    _param_servo_up_angle=145
+                    _param_servo_move_angle=${servo_up_angle}
+                    _param_servo_down_angle=1
+                    ;;
+                *)
+                    _param_servo_up_angle=145
+                    _param_servo_move_angle=${servo_up_angle}
+                    _param_servo_down_angle=1
+                    ;;
+            esac
+
+        else
+            _hw_maximum_servo_angle=180
+            _hw_minimum_pulse_width=0.001
+            _hw_maximum_pulse_width=0.002
+            _param_servo_always_active=0
+            _param_servo_up_angle=0
+            _param_servo_move_angle=0
+            _param_servo_down_angle=0
+        fi
     fi
 
-    if [ "${mmu_vendor}" == "ERCF" -o "${HAS_ENCODER}" == "yes" ]; then
-        echo
+    if [ "${HAS_ENCODER}" == "yes" ]; then
         echo -e "${PROMPT}${SECTION}Clog detection? This uses the MMU encoder movement to detect clogs and can call your filament runout logic${INPUT}"
         yn=$(prompt_yn "Enable clog detection")
         echo
         case $yn in
             y)
-                enable_clog_detection=1
+                _param_enable_clog_detection=1
                 echo -e "${PROMPT}    Would you like MMU to automatically adjust clog detection length (recommended)?${INPUT}"
                 yn=$(prompt_yn "    Automatic")
                 echo
                 if [ "${yn}" == "y" ]; then
-                    enable_clog_detection=2
+                    _param_enable_clog_detection=2
                 fi
                 ;;
             n)
-                enable_clog_detection=0
+                _param_enable_clog_detection=0
                 ;;
         esac
     else
-        enable_clog_detection=0
+        _param_enable_clog_detection=0
     fi
 
-    echo
     echo -e "${PROMPT}${SECTION}EndlessSpool? This uses filament runout detection to automate switching to new spool without interruption${INPUT}"
     yn=$(prompt_yn "Enable EndlessSpool")
     echo
     case $yn in
         y)
-            enable_endless_spool=1
+            _param_enable_endless_spool=1
             ;;
         n)
-            enable_endless_spool=0
+            _param_enable_endless_spool=0
             ;;
     esac
 
-    echo
-    MENU_12864=0
-    ERCF_COMPAT=0
     echo -e "${PROMPT}${SECTION}Finally, would you like me to include all the MMU config files into your ${PRINTER_CONFIG} file${INPUT}"
     yn=$(prompt_yn "Add include?")
     echo
     case $yn in
         y)
-            INSTALL_PRINTER_INCLUDES=1
-            echo -e "${PROMPT}    Would you like to include Mini 12864 menu configuration extension for MMU${INPUT}"
+            INSTALL_PRINTER_INCLUDES=yes
+            echo -e "${PROMPT}    Would you like to include Mini 12864 screen menu configuration extension for MMU (only if you have one!)${INPUT}"
             yn=$(prompt_yn "    Include menu")
             echo
             case $yn in
@@ -1654,19 +1826,7 @@ questionaire() {
                     ;;
             esac
 
-            echo -e "${PROMPT}    Would you like to include subset of the legacy ERCF_ command set compatibility module${INPUT}"
-            yn=$(prompt_yn "    Include legacy ERCF command set (not recommended)")
-            echo
-            case $yn in
-                y)
-                    ERCF_COMPAT=1
-                    ;;
-                n)
-                    ERCF_COMPAT=0
-                    ;;
-            esac
-
-            echo -e "${PROMPT}    Would you like to include the default pause/resume macros supplied with Happy Hare${INPUT}"
+            echo -e "${PROMPT}    Recommended: Would you like to include the default pause/resume macros supplied with Happy Hare${INPUT}"
             yn=$(prompt_yn "    Include client_macros.cfg")
             echo
             case $yn in
@@ -1701,41 +1861,51 @@ questionaire() {
                     ADDONS_BLOBIFIER=0
                     ;;
             esac
-	    ;;
+            ;;
         n)
-            INSTALL_PRINTER_INCLUDES=0
+            INSTALL_PRINTER_INCLUDES=no
             ;;
     esac
 
-    echo -e "${WARNING}"
-    echo -e "mmu_vendor: ${mmu_vendor}"
-    echo -e "mmu_version: ${mmu_version}"
-    echo -e "mmu_num_gates: ${mmu_num_gates}"
-    echo -e "servo_up_angle: ${servo_up_angle}"
-    echo -e "servo_move_angle: ${servo_move_angle}"
-    echo -e "servo_down_angle: ${servo_down_angle}"
-    echo -e "enable_clog_detection: ${enable_clog_detection}"
-    echo -e "enable_endless_spool: ${enable_endless_spool}"
+# Too verbose..
+#    echo -e "${EMPHASIZE}"
+#    echo -e "Summary of hardware config set by questionaire:${INFO}"
+#    for var in $(set | grep '^_hw_' | cut -d '=' -f 1); do
+#        short_name=$(echo "$var" | sed 's/^_hw_//')
+#        eval "echo -e \"$short_name: \${$var}\""
+#    done
 
-    echo
     echo -e "${INFO}"
     echo "    vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
     echo
     echo "    NOTES:"
-    echo "     What still needs to be done:"
-    if [ "${brd_type}" == "unknown" ]; then
-        echo "         * Edit *.cfg files and substitute all missing pins"
+    echo "    What still needs to be done:"
+    echo "    Edit mmu.cfg and mmu_hardware.cfg to get hardware correctly setup"
+    if [ "${_hw_brd_type}" == "unknown" ]; then
+        echo "        * Edit *.cfg files and substitute all missing pins"
     else
-        echo "         * Review all pin configuration and change to match your mcu"
+        echo "        * Review all pin configuration and change to match your mcu"
     fi
-    echo "         * Verify motor current, especially if using non BOM motors"
-    echo "         * Adjust motor direction with '!' on pin if necessary. No way to know here"
-    echo "         * Adjust your config for loading and unloading preferences"
-    echo 
+    echo "        * Verify motor current, especially if using non BOM motors"
+    echo "        * Adjust motor direction with '!' on pin if necessary. No way to know here"
+    echo "        * Adjust your config for loading and unloading preferences"
+    echo -e "${WARNING}"
+    echo "    Make sure you that you have these near the top of your printer.cfg:"
+    echo "        # Happy Hare"
+    echo "        [include mmu/base/*.cfg]"
+    echo "        [include mmu/optional/client_macros.cfg]"
+    echo "        [include mmu/addons/blobifier.cfg]"
+    echo "        [include mmu/addons/mmu_erec_cutter.cfg]"
+    if [ "${ADDONS_DC_ESPOOLER:-0}" -eq 1 ]; then
+        echo "        [include mmu/addons/dc_espooler.cfg]"
+    fi
+    echo -e "${INFO}"
     echo "    Later:"
-    echo "         * Tweak configurations like speed and distance in mmu/base/mmu_parameter.cfg"
+    echo "        * Tweak configurations like speed and distance in mmu_parameters.cfg"
+    echo "        * Configure your operational preferences in mmu_macro_vars.cfg"
     echo 
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."
+    echo -e "    Join the dedicated Happy Hare forum here: ${EMPHASIZE}https://discord.gg/98TYYUf6f2${INFO}"
     echo
     echo "    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
     echo
@@ -1743,16 +1913,21 @@ questionaire() {
 
 usage() {
     echo -e "${EMPHASIZE}"
-    echo "Usage: $0 [-a <kiauh_alternate_klipper>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-b <branch>] [-r <repetier_server stub>] [-i] [-d] [-z]"
+    echo "Usage: $0 [-i] [-e] [-d] [-z] [-s]"
+    echo "                    [-b <branch>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
+    echo "                    [-a <kiauh_alternate_klipper>] [-r <repetier_server stub>]"
     echo
     echo "-i for interactive install"
+    echo "-e for install of default starter config files for manual configuration"
     echo "-d for uninstall"
+    echo "-z skip github update check (nullifies -b <branch>)"
+    echo "-s to skip restart of services"
     echo "-b to switch to specified feature branch (sticky)"
-    echo "-z skip github check (nullifies -b <branch>)"
+    echo "-k <dir> to specify location of non-default klipper home directory"
+    echo "-c <dir> to specify location of non-default klipper config directory"
+    echo "-m <dir> to specify location of non-default moonraker home directory"
     echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "-a <name> to specify alternative klipper-service-name when installed with Kiauh"
-    echo "-c <dir> to specify location of non-default klipper config directory"
-    echo "-k <dir> to specify location of non-default klipper home directory"
     echo "(no flags for safe re-install / upgrade)"
     echo
     exit 1
@@ -1760,18 +1935,33 @@ usage() {
 
 # Find SRCDIR from the pathname of this script
 SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/ && pwd )"
-SETUP_TOOLHEAD_SENSOR=0
-SETUP_SELECTOR_TOUCH=0
-SETUP_LED=0
+
+# Defaults for first time run without running interview/questionaire
+_hw_brd_type="unknown"
+_hw_serial="/dev/serial/by-id/XXX"
+_hw_num_gates=12
+_hw_mmu_vendor=Custom
+_hw_mmu_version=1.0
+_hw_selector_type=LinearSelector
+_hw_variable_bowden_lengths=1
+_hw_variable_rotation_distances=1
+_hw_encoder_resolution=1.0
+SETUP_SELECTOR_TOUCH=no
+SETUP_LED=yes
+HAS_ENCODER=yes
+HAS_SELECTOR=yes
+ADDONS_EREC=0
+ADDONS_BLOBIFIER=0
+ADDONS_DC_ESPOOLER=0
 
 INSTALL=0
 UNINSTALL=0
 NOSERVICE=0
-INSTALL_KLIPPER_SCREEN_ONLY=0
+STARTER=0
 PRINTER_CONFIG=printer.cfg
 KLIPPER_SERVICE=klipper.service
 
-while getopts "a:b:k:c:m:r:idsz" arg; do
+while getopts "a:b:k:c:m:r:idsze" arg; do
     case $arg in
         a) KLIPPER_SERVICE=${OPTARG}.service;;
         b) N_BRANCH=${OPTARG};;
@@ -1779,11 +1969,12 @@ while getopts "a:b:k:c:m:r:idsz" arg; do
         m) MOONRAKER_HOME=${OPTARG};;
         c) KLIPPER_CONFIG_HOME=${OPTARG};;
         r) PRINTER_CONFIG=${OPTARG}.cfg
-	   KLIPPER_SERVICE=klipper_${OPTARG}.service
+           KLIPPER_SERVICE=klipper_${OPTARG}.service
            echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
-	   ;;
+           ;;
         i) INSTALL=1;;
         d) UNINSTALL=1;;
+        e) STARTER=1;;
         s) NOSERVICE=1;;
         z) SKIP_UPDATE=1;;
         *) usage;;
@@ -1803,45 +1994,57 @@ check_octoprint
 verify_home_dirs
 check_klipper
 cleanup_old_klippy_modules
+
 if [ "$UNINSTALL" -eq 0 ]; then
-
-    # Set in memory parameters from default file
-    set_default_tokens
-
     if [ "${INSTALL}" -eq 1 ]; then
-        # Update in memory parameters from questionaire
-        questionaire
-        read_default_config
+        echo -e "${TITLE}$(get_logo "Happy Hare interactive installer...")"
+        read_default_config  # Parses template file parameters into memory
+        questionaire         # Update in memory parameters from questionaire
 
-        if [ "${INSTALL_PRINTER_INCLUDES}" -eq 1 ]; then
+        if [ "${INSTALL_PRINTER_INCLUDES}" == "yes" ]; then
             install_printer_includes
         fi
     else
-        read_default_config
-        read_previous_config # Update in memory parameters from previous install
+        hardware_config="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+        if [ -f "${hardware_config}" ]; then
+            echo -e "${TITLE}$(get_logo "Happy Hare upgrading previous install...")"
+            read_previous_mmu_type # Get MMU type info first
+            read_default_config  # Parses template file parameters into memory
+            read_previous_config # Update in memory parameters from previous install
+        elif [ "${STARTER}" -eq 0 ]; then
+            echo -e "${ERROR}Nothing to upgrade. If you want a new install run with '-i' (interactive) or '-e' (empty config)"
+            usage
+        else
+            # Starter blank install
+            echo -e "${TITLE}$(get_logo "Happy Hare generating skeletal config...")"
+            read_default_config  # Parses template file parameters into memory
+        fi
     fi
 
     # Important to update version
     FROM_VERSION=${_param_happy_hare_version}
     if [ ! "${FROM_VERSION}" == "" ]; then
-        result=$(awk -v n1="$VERSION" -v n2="$FROM_VERSION" 'BEGIN {print (n1<n2) ? "1" : "0"}')
-        if [ "$result" -eq 1 ]; then
+        downgrade=$(awk -v to="$VERSION" -v from="$FROM_VERSION" 'BEGIN {print (to < from) ? "1" : "0"}')
+        bad_v2v3=$(awk -v to="$VERSION" -v from="$FROM_VERSION" 'BEGIN {print (from < 2.70 && to >= 3.0) ? "1" : "0"}')
+        if [ "$downgrade" -eq 1 ]; then
             echo -e "${WARNING}Trying to update from version ${FROM_VERSION} to ${VERSION}"
             echo -e "${ERROR}Automatic 'downgrade' to earlier version is not garanteed. If you encounter startup problems you may"
             echo -e "${ERROR}need to manually compare the backed-up 'mmu_parameters.cfg' with current one to restore differences"
-#            echo -e "${ERROR}Cannot automatically 'upgrade' to earlier version. You must do this by hand"
-#            exit 1
+        elif [ "$bad_v2v3" -eq 1 ]; then
+            echo -e "${ERROR}Cannot automatically 'upgrade' from version ${FROM_VERSION} to ${VERSION}..."
+            echo -e "${ERROR}Please upgrade to v2.7.0 or later before attempting v3.0 upgrade"
+            exit 1
         elif [ ! "${FROM_VERSION}" == "${VERSION}" ]; then
             echo -e "${WARNING}Upgrading from version ${FROM_VERSION} to ${VERSION}..."
         fi
     fi
     _param_happy_hare_version=${VERSION}
 
+    # Copy config files updating from in memory parmameters or h/w settings
     copy_config_files
 
-    # Temp upgrades
-    upgrade_mmu_sensors
-    upgrade_led_effects
+    # Special upgrades of mmu_hardware.cfg
+    upgrade_mmu_hardware
 
     # Link in new components
     link_mmu_plugins
@@ -1864,7 +2067,7 @@ else
         n)
             echo -e "${INFO}Well that was a close call!  Everything still intact"
             echo
-	    exit 0
+            exit 0
             ;;
     esac
 fi
@@ -1878,19 +2081,11 @@ else
     echo -e "${WARNING}Klipper not restarted automatically because you need to validate and complete config first"
 fi
 
-if [ "$UNINSTALL" -eq 0 ]; then
-    echo -e "${TITLE}Done."
-    echo -e "${INFO}"
-    echo '(\_/)'
-    echo '( *,*)'
-    echo '(")_(") Happy Hare Ready'
-    echo
-else
+if [ "$UNINSTALL" -eq 1 ]; then
     echo -e "${EMPHASIZE}"
     echo "Done.  Sad to see you go (but maybe you'll be back)..."
-    echo -e "${INFO}"
-    echo '(\_/)'
-    echo '( v,v)'
-    echo '(")^(") Very Unhappy Hare'
-    echo
+    echo -e "${sad_logo}"
+else
+    echo -e "${TITLE}Done."
+    echo -e "$(get_logo "Happy Hare ${F_VERSION} Ready...")"
 fi

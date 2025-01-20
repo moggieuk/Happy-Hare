@@ -1,0 +1,19 @@
+services:
+  _base: &base
+    build: .
+    environment:
+      HOME: /opt
+    volumes:
+      - ./entrypoint.sh:/entrypoint.sh
+      - ./config:/opt/printer_data/config
+      - ../:/opt/Happy-Hare
+    entrypoint: /entrypoint.sh
+    command: ./install.sh -sz
+
+  install: 
+    << : *base
+    command: ./install.sh -siz
+  
+  upgrade: 
+    << : *base
+    command: ./install.sh -sz

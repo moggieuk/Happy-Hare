@@ -16,6 +16,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, time
+
+# Klipper imports
 from . import pulse_counter
 
 class MmuEncoder:
@@ -55,7 +57,6 @@ class MmuEncoder:
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
         self.event_delay = config.getfloat('event_delay', 2., above=0.)
         self.pause_delay = config.getfloat('pause_delay', 0, above=0.)
-        gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.runout_gcode = '__MMU_ENCODER_RUNOUT'
         self.insert_gcode = '__MMU_ENCODER_INSERT'
         self._enabled = True # Runout/Clog functionality
@@ -191,13 +192,13 @@ class MmuEncoder:
             if not is_printing and self.insert_gcode is not None:
                 # Insert detected
                 self.min_event_systime = self.reactor.NEVER
-                logging.info("Encoder Sensor %s: insert event detected, Time %.2f" % (self.name, eventtime))
+                logging.info("MMU: Encoder Sensor %s: insert event detected, Time %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._insert_event_handler)
         else:
             if is_printing and self.runout_gcode is not None:
                 # Runout detected
                 self.min_event_systime = self.reactor.NEVER
-                logging.info("Encoder Sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
+                logging.info("MMU: Encoder Sensor %s: runout event detected, Time %.2f" % (self.name, eventtime))
                 self.reactor.register_callback(self._runout_event_handler)
 
     def _runout_event_handler(self, eventtime):
@@ -215,7 +216,7 @@ class MmuEncoder:
         try:
             self.gcode.run_script(command)
         except Exception:
-            logging.exception("Error running mmu encoder handler: `%s`" % command)
+            logging.exception("MMU: Error running mmu encoder handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def get_clog_detection_length(self):
@@ -230,7 +231,7 @@ class MmuEncoder:
         self._update_detection_length()
 
     def set_mode(self, mode):
-        if mode >= self.RUNOUT_DISABLED and mode <= self.RUNOUT_AUTOMATIC:
+        if self.RUNOUT_DISABLED <= mode <= self.RUNOUT_AUTOMATIC:
             self.detection_mode = mode
 
     def set_extruder(self, extruder_name):
@@ -263,16 +264,16 @@ class MmuEncoder:
         self.extrusion_flowrate = (self.extrusion_flowrate + new_extrusion_flowrate) / 2.
 
     # Callback for MCU_counter
-    def _counter_callback(self, time, count, count_time):
+    def _counter_callback(self, print_time, count, count_time):
         if self._last_time is None:  # First sample
-            self._last_time = time
+            self._last_time = print_time
         elif count_time > self._last_time:
             self._last_time = count_time
             new_counts = count - self._last_count
             self._counts += new_counts
             self._movement = new_counts > 0
         else:  # No counts since last sample
-            self._last_time = time
+            self._last_time = print_time
         self._last_count = count
 
     def set_resolution(self, resolution):

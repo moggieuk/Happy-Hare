@@ -265,10 +265,11 @@ class MmuServer:
     def _get_filament_attr(self, spool_info) -> dict:
         spool_id = spool_info["id"]
         filament = spool_info["filament"]
-        material = filament.get('material', '')
-        color_hex = filament.get('color_hex', '')[:6].lower() # Strip alpha channel if it exists
         name = filament.get('name', '')
-        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name}
+        material = filament.get('material', '')
+        color_hex = filament.get('color_hex', '').strip('#')[:6].lower() # First remove # character if present then strip alpha channel if it exists
+        temp = filament.get('settings_extruder_temp', '')
+        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp}
 
     async def _build_spool_location_cache(self, fix=False, silent=False) -> bool:
         '''
@@ -327,7 +328,7 @@ class MmuServer:
                 if result:
                     old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
                     self.spool_location[sid] = ('', -1, filament_attr)
-                    await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate}", silent=silent)
+                    await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
         return True
 
     # Function to find the first spool_id with a matching 'printer/gate', just 'gate' or just 'printer'
@@ -400,7 +401,7 @@ class MmuServer:
         Retrieve filament attributes for list of (gate, spool_id) tuples
         Pass back to Happy Hare.
 
-        If not mmu backend has been detected, ignore the request
+        If no mmu backend has been detected, ignore the request
         '''
         if self._mmu_backend_enabled():
             gate_dict = {
@@ -490,11 +491,11 @@ class MmuServer:
                     if updates[sid] < 0: # 'unset' case
                         self.spool_location[sid] = ('', -1, filament_attr)
                         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
-                        await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
+                        await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else: # 'set' case
                         self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
                         self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
-                        await self._log_n_send(f"Spool {sid} set for printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
+                        await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
             # Send update of filament attributes back to Happy Hare
             return await self._send_gate_map_update(gate_ids, silent=silent)
@@ -537,7 +538,7 @@ class MmuServer:
                         updated_gate_ids[old_gate] = -1
                     self.spool_location[sid] = ('', -1, filament_attr)
                     self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
-                    await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate}", silent=silent)
+                    await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
 
             self.server.send_event("spoolman:clear_spool_gates", {"printer": printer_name})
             if sync and updated_gate_ids:
@@ -597,7 +598,7 @@ class MmuServer:
                             updated_gate_ids[old_gate] = -1
                         self.spool_location[sid] = ('', -1, filament_attr)
                         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
-                        await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
+                        await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else:
                         # 'set' case
                         if 0 <= gate < self.nb_gates:
@@ -606,7 +607,7 @@ class MmuServer:
                             updated_gate_ids[gate] = sid
                         self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
                         self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
-                        await self._log_n_send(f"Spool {sid} set for printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
+                        await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
             # Sync with Happy Hare if required
             if sync and updated_gate_ids:
@@ -648,7 +649,7 @@ class MmuServer:
                         updated_gate_ids[old_gate] = -1
                     self.spool_location[sid] = ('', -1, filament_attr)
                     self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "old_printer": self.printer_hostname, "old_gate": gate})
-                    await self._log_n_send(f"Spool {sid} cleared of printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
+                    await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
 
             # Sync with Happy Hare if required
             if sync and updated_gate_ids:
@@ -836,12 +837,12 @@ def parse_gcode_file(file_path):
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX[slicer], re.IGNORECASE)
         else:
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX, re.IGNORECASE)
-        
+
         if isinstance(FLUSH_MULTIPLIER_REGEX, dict):
             flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX[slicer], re.IGNORECASE)
         else:
-            flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX, re.IGNORECASE)   
-        
+            flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX, re.IGNORECASE)
+
         with open(file_path, 'r') as in_file:
             for line in in_file:
                 # !referenced_tools! processing
@@ -927,7 +928,7 @@ def parse_gcode_file(file_path):
                     if match:
                         filament_names_csv = [e.strip() for e in re.split(',|;', match.group(2).strip())]
                         filament_names.extend(filament_names_csv)
-                        found_filament_names = True                    
+                        found_filament_names = True
 
     return (has_tools_placeholder or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
             sorted(tools_used), colors, temps, materials, purge_volumes, filament_names, slicer)
