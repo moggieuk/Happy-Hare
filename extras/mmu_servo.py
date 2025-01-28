@@ -108,10 +108,8 @@ class MmuServo:
         duration = max(duration, SERVO_SIGNAL_PERIOD) if duration else None
         if width is not None or angle is not None:
             value = self._get_pwm_from_pulse_width(width) if width is not None else self._get_pwm_from_angle(angle)
-            #pt = self.printer.lookup_object('toolhead').get_last_move_time()
-            #self._set_pwm(pt, value, duration)
-            toolhead = self.printer.lookup_object('toolhead')
-            toolhead.register_lookahead_callback((lambda pt: self._set_pwm(pt, value, duration)))
+            pt = self.printer.lookup_object('toolhead').get_last_move_time()
+            self._set_pwm(pt, value, duration)
 
 def load_config_prefix(config):
     return MmuServo(config)
