@@ -54,6 +54,12 @@ VENDOR_PICO_MMU       = "PicoMMU" # Not yet ready
 VENDOR_QUATTRO_BOX    = "QuattroBox"
 VENDOR_OTHER          = "Other"
 
+UNIT_ALT_DISPLAY_NAMES = {
+    VENDOR_ANGRY_BEAVER: "Angry Beaver",
+    VENDOR_BOX_TURTLE:   "Box Turtle",
+    VENDOR_NIGHT_OWL:    "Night Owl",
+}
+
 VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_OTHER]
 
 
@@ -225,6 +231,28 @@ class MmuMachine:
         # TODO would allow for easier to understand error messages for conflicting or missing
         # TODO hardware definitions.
 
+        # TODO: Temp until restructured to allow multiple MMU's of different types. Used by
+        gate_count = 0
+        self.unit_status = {}
+        for i, unit in enumerate(self.units):
+            unit_info = {}
+            unit_info['name'] = UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor)
+            unit_info['version'] = self.mmu_version_string
+            unit_info['num_gates'] = unit
+            unit_info['first_gate'] = gate_count
+            unit_info['selector_type'] = self.selector_type
+            unit_info['variable_rotation_distances'] = self.variable_rotation_distances
+            unit_info['variable_bowden_lengths'] = self.variable_bowden_lengths
+            unit_info['require_bowden_move'] = self.require_bowden_move
+            unit_info['filament_always_gripped'] = self.filament_always_gripped
+            unit_info['has_bypass'] = self.has_bypass
+            unit_info['multi_gear'] = self.multigear
+            gate_count += unit
+            self.unit_status["unit_%d" % i] = unit_info
+            self.unit_status['num_units'] = len(self.units)
+
+    def get_status(self, eventtime):
+        return self.unit_status
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"

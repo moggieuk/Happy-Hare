@@ -19,7 +19,9 @@ from .mmu_shared   import MmuError
 class MmuSensorManager:
     def __init__(self, mmu):
         self.mmu = mmu
-        self.all_sensors = {}
+        self.all_sensors = {}      # All sensors on mmu unit optionally with unit prefix and gate suffix
+        self.sensors = {}          # All (presence detection) sensors on active unit stripped of unit prefix
+        self.viewable_sensors = {} # Sensors of all types for current gate/unit renamed with simple names
 
         # Assemble all possible switch sensors in desired display order
         sensor_names = []
@@ -54,12 +56,14 @@ class MmuSensorManager:
         self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
         self.endstop_names.extend([
             self.mmu.SENSOR_GATE, 
+            self.mmu.SENSOR_TENSION,
             self.mmu.SENSOR_COMPRESSION
         ])
         if self.mmu.mmu_machine.num_units > 1:
             for i in range(self.mmu.mmu_machine.num_units):
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_GATE, i))
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
+                self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
         self.endstop_names.extend([
             self.mmu.SENSOR_EXTRUDER_ENTRY, 
             self.mmu.SENSOR_TOOLHEAD
@@ -83,8 +87,25 @@ class MmuSensorManager:
             else:
                 logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
 
+    # Reset the "viewable" sensors used in UI (unit must be updated first)
+    def reset_active_gate(self, gate):
+        sensor_name_map = {
+            self.mmu.SENSOR_PRE_GATE_PREFIX: self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, gate),
+            self.mmu.SENSOR_GEAR_PREFIX: self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, gate),
+            self.mmu.SENSOR_GATE: self.get_mapped_endstop_name(self.mmu.SENSOR_GATE),
+            self.mmu.SENSOR_COMPRESSION: self.get_mapped_endstop_name(self.mmu.SENSOR_COMPRESSION),
+            self.mmu.SENSOR_TENSION: self.get_mapped_endstop_name(self.mmu.SENSOR_TENSION),
+            self.mmu.SENSOR_EXTRUDER_ENTRY: self.mmu.SENSOR_EXTRUDER_ENTRY,
+            self.mmu.SENSOR_TOOLHEAD: self.mmu.SENSOR_TOOLHEAD
+        }
+        self.viewable_sensors = {
+            name: self.all_sensors.get(mapped_name)
+            for name, mapped_name in sensor_name_map.items()
+            if self.all_sensors.get(mapped_name) is not None
+        }
+
     # Activate only sensors for current unit and rename for access
-    def set_active_unit(self, unit):
+    def reset_active_unit(self, unit):
         self.sensors = {}
         for name, sensor in self.all_sensors.items():
             if name.startswith("unit_"):
@@ -253,7 +274,6 @@ class MmuSensorManager:
                 sensor = self.sensors.get(name, None)
                 if sensor and position_condition(pos, position_check):
                     result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-            self.mmu.log_debug("Sensors: %s" % result)
         return result
 
     def _get_sensors_before(self, pos, gate, loading=True):
@@ -264,3 +284,10 @@ class MmuSensorManager:
 
     def _get_all_sensors_for_gate(self,  gate):
         return self._get_sensors(-1, gate, lambda p, pc: pc is not None)
+
+    def get_status(self):
+        result = {
+            name: bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
+            for name, sensor in self.viewable_sensors.items()
+        }
+        return result

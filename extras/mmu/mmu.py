@@ -672,7 +672,7 @@ class Mmu:
         self._setup_logging()
 
         self.toolhead = self.printer.lookup_object('toolhead')
-        self.sensor_manager.set_active_unit(self.UNIT_UNKNOWN)
+        self.sensor_manager.reset_active_unit(self.UNIT_UNKNOWN)
 
         # Sanity check extruder name
         extruder = self.printer.lookup_object(self.extruder_name, None)
@@ -1344,8 +1344,8 @@ class Mmu:
             'sync_drive': self.mmu_toolhead.is_synced(),
             'sync_feedback_state': self._get_sync_feedback_string(),
             'print_state': self.print_state,
-            'clog_detection': self.enable_clog_detection,
-            'endless_spool': self.enable_endless_spool,
+            'clog_detection': self.enable_clog_detection, # TODO: Rename clog_detection_enabled
+            'endless_spool': self.enable_endless_spool, # TODO: Rename endless_spool_enabled
             'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
             'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
@@ -1354,6 +1354,9 @@ class Mmu:
             'selector_type': self.mmu_machine.selector_type,
         })
         status.update(self.selector.get_status())
+        status['sensors'] = self.sensor_manager.get_status()
+        if self.has_encoder():
+            status['encoder'] = self.encoder_sensor.get_status(eventtime)
         return status
 
     def _reset_statistics(self):
@@ -5683,9 +5686,10 @@ class Mmu:
         self.gate_selected = gate
         new_unit = self.find_unit_by_gate(gate)
         if new_unit != self.unit_selected:
-            self.sensor_manager.set_active_unit(new_unit)
             self.unit_selected = new_unit
+            self.sensor_manager.reset_active_unit(self.unit_selected)
             self._update_sync_starting_state()
+        self.sensor_manager.reset_active_gate(self.gate_selected) # Call after unit_selected is set
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
         self._update_sync_multiplier() # Refine rotation distance based on sync feedback status
