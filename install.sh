@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.02 # Important: Keep synced with mmy.py
+VERSION=3.1 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
