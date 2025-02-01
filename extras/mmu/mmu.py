@@ -4716,8 +4716,8 @@ class Mmu:
                     # Restore the expected sync state now before running this macro
                     sync = (self.is_printing() and self.sync_to_extruder) or self._standalone_sync
                     self.sync_gear_to_extruder(sync, grip=True, current=True)
-                    if self.has_blobifier: # TODO
-                        with self.wrap_action(self.ACTION_BLOBING):
+                    if self.has_blobifier:
+                        with self.wrap_action(self.ACTION_PURGING):
                             self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
                     else:
                         self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
