@@ -3,8 +3,8 @@
 # Allows for flexible creation of virtual leds chains - one for each of the supported
 # segments (exit, entry, status). Entry and exit are indexed by gate number.
 #
-# Copyright (C) 2023  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # (\_/)
 # ( *,*)
@@ -19,7 +19,7 @@ from . import led as klipper_led
 
 class VirtualMmuLedChain:
     def __init__(self, config, segment, config_chains):
-        self.printer = printer = config.get_printer()
+        self.printer = config.get_printer()
         self.name = "mmu_%s_leds" % segment
         self.config_chains = config_chains
 
@@ -56,18 +56,18 @@ class VirtualMmuLedChain:
                 status = chain.led_helper.get_status(eventtime)['color_data']
                 chain_status[chain] = status
             state.append(chain_status[chain][led])
-        return dict(color_data=state)
+        return {"color_data": state}
 
 
 class MmuLeds:
 
     PER_GATE_SEGMENTS = ['exit', 'entry']
-    SEGMENTS = PER_GATE_SEGMENTS + ['status']
+    SEGMENTS = PER_GATE_SEGMENTS + ['status', 'logo']
 
     def __init__(self, config):
-        self.printer = printer = config.get_printer()
+        self.printer = config.get_printer()
 
-        self.num_gates = printer.lookup_object("mmu_machine").num_gates
+        self.num_gates = self.printer.lookup_object("mmu_machine").num_gates
         self.frame_rate = config.getint('frame_rate', 24)
 
         # Create virtual led chains
@@ -76,7 +76,7 @@ class MmuLeds:
             name = "%s_leds" % segment
             config_chains = [self.parse_chain(line) for line in config.get(name, '').split('\n') if line.strip()]
             self.virtual_chains[segment] = VirtualMmuLedChain(config, segment, config_chains)
-            printer.add_object("mmu_%s" % name, self.virtual_chains[segment])
+            self.printer.add_object("mmu_%s" % name, self.virtual_chains[segment])
 
             num_leds = len(self.virtual_chains[segment].leds)
             if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds != self.num_gates:
@@ -93,14 +93,12 @@ class MmuLeds:
                     raise config.error("Same MMU LED (with index %d) used more than one segment: %s and %s" % (index + 1, used[led], segment))
                 else:
                     used[led] = segment
-# PAUL
-# PAUL       self.leds_configured = True
 
         # Check if LED effects module is installed
         self.led_effect_module = False
         try:
-           _ = config.get_printer().load_object(config, 'led_effect')
-           self.led_effect_module = True
+            _ = config.get_printer().load_object(config, 'led_effect')
+            self.led_effect_module = True
         except Exception:
             pass
 
@@ -133,7 +131,6 @@ class MmuLeds:
     def get_status(self, eventtime=None):
         status = {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
         status.update({
-# PAUL            'leds_configured': self.leds_configured,
             'led_effect_module': self.led_effect_module,
             'num_gates': self.num_gates,
             'default_frame_rate': self.frame_rate

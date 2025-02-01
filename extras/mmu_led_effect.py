@@ -3,8 +3,8 @@
 # as on each individual LED for per-gate effects. This relies on a previous shared
 # [mmu_leds] section for the shared part of the config
 #
-# Copyright (C) 2023  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # (\_/)
 # ( *,*)

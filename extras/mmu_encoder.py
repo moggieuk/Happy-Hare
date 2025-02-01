@@ -1,8 +1,8 @@
 # Happy Hare MMU Software
 # Driver for encoder that supports movement measurement, runout/clog detection and flow rate calc
 #
-# Copyright (C) 2022  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # Based on:
 # Original Enraged Rabbit Carrot Feeder Project  Copyright (C) 2021  Ette
@@ -249,6 +249,7 @@ class MmuEncoder:
         self._enabled = True
 
     def disable(self):
+        self.last_extruder_pos = self.filament_runout_pos = 0.
         self._enabled = False
 
     def is_enabled(self):
