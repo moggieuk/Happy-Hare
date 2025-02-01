@@ -137,6 +137,10 @@ class MmuTest:
         if gcmd.get_int('GET_POSITION', 0, minval=0, maxval=1):
             self.mmu.log_info("Filament position: %s" % self.mmu._get_filament_position())
 
+        action = gcmd.get_float('SET_ACTION', -1, minval=0)
+        if action >= 0:
+            self.mmu.action = action
+
         if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
             try:
                 self.mmu.internal_test = True
