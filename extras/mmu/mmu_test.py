@@ -36,8 +36,10 @@ class MmuTest:
             self.mmu.log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
             self.mmu.log_info("DUMP_UNICODE=1 : Display special characters used in display")
             self.mmu.log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
-            self.mmu.log_info("GET_POS=1 : Fetch the current filament position")
-            self.mmu.log_info("SET_POS=<pos> : Set the current filament position")
+            self.mmu.log_info("GET_POS=1 : Fetch the current filament position state")
+            self.mmu.log_info("SET_POS=<pos_state> : Set the current filament position state")
+            self.mmu.log_info("GET_POSITION=1 : Fetch the current filament position")
+            self.mmu.log_info("SET_POSITION=<pos> : Fetch the current filament position")
             self.mmu.log_info("SYNC_LOAD_TEST=1 : Hammer stepper syncing and movement. Parama: LOOP|HOME")
             self.mmu.log_info("SEL_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP")
             self.mmu.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
@@ -124,11 +126,15 @@ class MmuTest:
         if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
             self.mmu.mmu_toolhead.unsync()
 
-        pos = gcmd.get_float('SET_POS', -1, minval=0)
+        pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
         if pos >= 0:
-            self.mmu._set_filament_position(pos)
+            self.mmu._set_filament_pos_state(pos)
 
-        if gcmd.get_int('GET_POS', 0, minval=0, maxval=1):
+        position = gcmd.get_float('SET_POSITION', -1, minval=0)
+        if position >= 0:
+            self.mmu._set_filament_position(position)
+
+        if gcmd.get_int('GET_POSITION', 0, minval=0, maxval=1):
             self.mmu.log_info("Filament position: %s" % self.mmu._get_filament_position())
 
         if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):

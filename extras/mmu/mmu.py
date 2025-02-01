@@ -89,6 +89,9 @@ class Mmu:
     ACTION_CHECKING = 7
     ACTION_HOMING = 8
     ACTION_SELECTING = 9
+    ACTION_CUTTING_TIP = 10      # New _MMU_CUT_TIP macro
+    ACTION_CUTTING_FILAMENT = 11 # New when using EREC cutting macro
+    ACTION_PURGING = 12          # New when running blobifier
 
     MACRO_EVENT_RESTART          = "restart"          # Params: None
     MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE=-1 for all
@@ -150,34 +153,35 @@ class Mmu:
     FILAMENT_HOLD_STATE    = 2
 
     # mmu_vars.cfg variables
-    VARS_MMU_REVISION                = "mmu__revision"
-    VARS_MMU_CALIB_CLOG_LENGTH       = "mmu_calibration_clog_length"
-    VARS_MMU_ENABLE_ENDLESS_SPOOL    = "mmu_state_enable_endless_spool"
-    VARS_MMU_ENDLESS_SPOOL_GROUPS    = "mmu_state_endless_spool_groups"
-    VARS_MMU_TOOL_TO_GATE_MAP        = "mmu_state_tool_to_gate_map"
-    VARS_MMU_GATE_STATUS             = "mmu_state_gate_status"
-    VARS_MMU_GATE_MATERIAL           = "mmu_state_gate_material"
-    VARS_MMU_GATE_COLOR              = "mmu_state_gate_color"
-    VARS_MMU_GATE_FILAMENT_NAME      = "mmu_state_gate_filament_name"
-    VARS_MMU_GATE_TEMPERATURE        = "mmu_state_gate_temperature"
-    VARS_MMU_GATE_SPOOL_ID           = "mmu_state_gate_spool_id"
-    VARS_MMU_GATE_SPEED_OVERRIDE     = "mmu_state_gate_speed_override"
-    VARS_MMU_GATE_SELECTED           = "mmu_state_gate_selected"
-    VARS_MMU_TOOL_SELECTED           = "mmu_state_tool_selected"
-    VARS_MMU_LAST_TOOL               = "mmu_state_last_tool"
-    VARS_MMU_FILAMENT_POS            = "mmu_state_filament_pos"
-    VARS_MMU_FILAMENT_REMAINING      = "mmu_state_filament_remaining"
-    VARS_MMU_CALIB_BOWDEN_LENGTHS    = "mmu_calibration_bowden_lengths" # Per-gate calibrated bowden lengths
-    VARS_MMU_CALIB_BOWDEN_HOME       = "mmu_calibration_bowden_home"    # Was encoder, gate or gear sensor used as reference point
-    VARS_MMU_GATE_STATISTICS_PREFIX  = "mmu_statistics_gate_"
-    VARS_MMU_SWAP_STATISTICS         = "mmu_statistics_swaps"
-    VARS_MMU_COUNTERS                = "mmu_statistics_counters"
-    VARS_MMU_ENCODER_RESOLUTION      = "mmu_encoder_resolution"
-    VARS_MMU_GEAR_ROTATION_DISTANCES = "mmu_gear_rotation_distances"
+    VARS_MMU_REVISION                 = "mmu__revision"
+    VARS_MMU_CALIB_CLOG_LENGTH        = "mmu_calibration_clog_length"
+    VARS_MMU_ENABLE_ENDLESS_SPOOL     = "mmu_state_enable_endless_spool"
+    VARS_MMU_ENDLESS_SPOOL_GROUPS     = "mmu_state_endless_spool_groups"
+    VARS_MMU_TOOL_TO_GATE_MAP         = "mmu_state_tool_to_gate_map"
+    VARS_MMU_GATE_STATUS              = "mmu_state_gate_status"
+    VARS_MMU_GATE_MATERIAL            = "mmu_state_gate_material"
+    VARS_MMU_GATE_COLOR               = "mmu_state_gate_color"
+    VARS_MMU_GATE_FILAMENT_NAME       = "mmu_state_gate_filament_name"
+    VARS_MMU_GATE_TEMPERATURE         = "mmu_state_gate_temperature"
+    VARS_MMU_GATE_SPOOL_ID            = "mmu_state_gate_spool_id"
+    VARS_MMU_GATE_SPEED_OVERRIDE      = "mmu_state_gate_speed_override"
+    VARS_MMU_GATE_SELECTED            = "mmu_state_gate_selected"
+    VARS_MMU_TOOL_SELECTED            = "mmu_state_tool_selected"
+    VARS_MMU_LAST_TOOL                = "mmu_state_last_tool"
+    VARS_MMU_FILAMENT_POS             = "mmu_state_filament_pos"
+    VARS_MMU_FILAMENT_REMAINING       = "mmu_state_filament_remaining"
+    VARS_MMU_FILAMENT_REMAINING_COLOR = "mmu_state_filament_remaining_color"
+    VARS_MMU_CALIB_BOWDEN_LENGTHS     = "mmu_calibration_bowden_lengths" # Per-gate calibrated bowden lengths
+    VARS_MMU_CALIB_BOWDEN_HOME        = "mmu_calibration_bowden_home"    # Was encoder, gate or gear sensor used as reference point
+    VARS_MMU_GATE_STATISTICS_PREFIX   = "mmu_statistics_gate_"
+    VARS_MMU_SWAP_STATISTICS          = "mmu_statistics_swaps"
+    VARS_MMU_COUNTERS                 = "mmu_statistics_counters"
+    VARS_MMU_ENCODER_RESOLUTION       = "mmu_encoder_resolution"
+    VARS_MMU_GEAR_ROTATION_DISTANCES  = "mmu_gear_rotation_distances"
 
-    VARS_MMU_CALIB_BOWDEN_LENGTH     = "mmu_calibration_bowden_length" # Deprecated (for upgrade only)
-    VARS_MMU_GEAR_ROTATION_DISTANCE  = "mmu_gear_rotation_distance"    # Deprecated (for upgrade only)
-    VARS_MMU_CALIB_PREFIX            = "mmu_calibration_"              # Deprecated (for upgrade only)
+    VARS_MMU_CALIB_BOWDEN_LENGTH      = "mmu_calibration_bowden_length" # Deprecated (for upgrade only)
+    VARS_MMU_GEAR_ROTATION_DISTANCE   = "mmu_gear_rotation_distance"    # Deprecated (for upgrade only)
+    VARS_MMU_CALIB_PREFIX             = "mmu_calibration_"              # Deprecated (for upgrade only)
 
     # Mainsail/Fluid visualization of extruder colors and other attributes
     T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled
@@ -255,6 +259,10 @@ class Mmu:
         self.mmu_logger = None # Setup on connect
         self._standalone_sync = False # Used to indicate synced extruder intention whilst out of print
         self.has_leds = self.has_led_animation = False
+        self.bowden_start_pos = None
+        self.espooler_active = False
+        self.has_blobifier = False # Post load blobbling macro (like BLOBIFIER)
+        self.has_mmu_cutter = False # Post unload cutting macro (like EREC)
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -837,6 +845,13 @@ class Mmu:
         # The threshold (mm) that determines real encoder movement (set to 1.5 pulses of encoder. i.e. to allow one rougue pulse)
         self.encoder_min = 1.5 * self.encoder_resolution
 
+        # Establish existence of Blobifier and MMU tip cutter
+        # TODO: A little bit hacky until a more universal approach is implemented
+        sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+        if sequence_vars_macro:
+            self.has_blobifier = sequence_vars_macro.variables.get('user_post_load_extension', '') == "BLOBIFIER"
+            self.has_mmu_cutter = sequence_vars_macro.variables.get('user_post_unload_extension', '') == "EREC_CUTTER_ACTION"
+
         # Sub components
         self.selector.handle_connect()
 
@@ -993,6 +1008,7 @@ class Mmu:
         return a == b
 
     # This retuns the hex color format without leading '#' E.g. ff00e0
+    # PAUL TODO support alpha channel for color (Mainsail plugin supports)
     def _color_to_rgb_hex(self, color):
         if color in self.w3c_colors:
             color = self.w3c_colors.get(color)
@@ -1288,10 +1304,13 @@ class Mmu:
                 "Loading Ext" if action == self.ACTION_LOADING_EXTRUDER else
                 "Exiting Ext" if action == self.ACTION_UNLOADING_EXTRUDER else
                 "Forming Tip" if action == self.ACTION_FORMING_TIP else
+                "Cutting Tip" if action == self.ACTION_CUTTING_TIP else
                 "Heating" if action == self.ACTION_HEATING else
                 "Checking" if action == self.ACTION_CHECKING else
                 "Homing" if action == self.ACTION_HOMING else
                 "Selecting" if action == self.ACTION_SELECTING else
+                "Cutting Filament" if action == self.ACTION_CUTTING_FILAMENT else
+                "Purging" if action == self.ACTION_PURGING else
                 "Unknown") # Error case - should not happen
 
     def _get_sync_feedback_string(self, detail=False):
@@ -1299,13 +1318,21 @@ class Mmu:
             return 'compressed' if self.sync_feedback_last_state > 0.5 else 'expanded' if self.sync_feedback_last_state < -0.5 else 'neutral'
         return "disabled"
 
+    def _get_bowden_progress(self):
+        if (self.bowden_start_pos is not None):
+            bowden_length = self._get_bowden_length(self.gate_selected)
+            if bowden_length > 0:
+                progress = (self.get_encoder_distance(dwell=None) - self.bowden_start_pos) / bowden_length
+                if self.filament_direction == self.DIRECTION_UNLOAD:
+                    progress = 1 - progress
+                return round(max(0, min(100, progress * 100)))
+        return -1
+
     # Returning new list() is so that clients like KlipperScreen sees the change
     def get_status(self, eventtime):
         status = {
             'enabled': self.is_enabled,
-        }
-        # TODO Should this section be in a conditional if self.is_enabled: block for performance?
-        status.update({
+             # TODO Should rest of this section be in a conditional if self.is_enabled: block for performance?
             'num_gates': self.num_gates,
             'is_paused': self.is_mmu_paused(),
             'is_locked': self.is_mmu_paused(), # Alias for is_paused (deprecated)
@@ -1324,16 +1351,17 @@ class Mmu:
                         "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
                         "Unknown",
             'filament_position': self.mmu_toolhead.get_position()[1],
-            'filament_pos': self.filament_pos,
+            'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
             'ttg_map': self.ttg_map,
             'endless_spool_groups': self.endless_spool_groups,
-            'gate_status': list(self.gate_status),
-            'gate_filament_name': list(self.gate_filament_name),
-            'gate_material': list(self.gate_material),
-            'gate_color': list(self.gate_color),
-            'gate_temperature': list(self.gate_temperature),
-            'gate_spool_id': list(self.gate_spool_id),
+            'gate_status': self.gate_status,
+            'gate_filament_name': self.gate_filament_name,
+            'gate_material': self.gate_material,
+            'gate_color': self.gate_color,
+            'gate_temperature': self.gate_temperature,
+            'gate_spool_id': self.gate_spool_id,
+            'gate_speed_override': self.gate_speed_override,
             'gate_color_rgb': self.gate_color_rgb,
             'slicer_color_rgb': self.slicer_color_rgb,
             'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
@@ -1343,6 +1371,7 @@ class Mmu:
             'has_bypass': self.selector.has_bypass(),
             'sync_drive': self.mmu_toolhead.is_synced(),
             'sync_feedback_state': self._get_sync_feedback_string(),
+            'sync_feedback_enabled': bool(self.sync_feedback_enable),
             'print_state': self.print_state,
             'clog_detection': self.enable_clog_detection, # TODO: Rename clog_detection_enabled
             'endless_spool': self.enable_endless_spool, # TODO: Rename endless_spool_enabled
@@ -1352,7 +1381,9 @@ class Mmu:
             'spoolman_support': self.spoolman_support,
             'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
             'selector_type': self.mmu_machine.selector_type,
-        })
+            'bowden_progress': self._get_bowden_progress(),
+            'espooler_active': 'rewind' if self.espooler_active else '' # 'assist' not supported yet
+        }
         status.update(self.selector.get_status())
         status['sensors'] = self.sensor_manager.get_status()
         if self.has_encoder():
@@ -1844,7 +1875,7 @@ class Mmu:
             msg += "\nSync feedback is disabled"
 
         if config:
-            self.calibrated_bowden_length = self._get_bowden_length(self.gate_selected) # Temp scalar pulled from list
+            self.calibrated_bowden_length = self._get_bowden_length(self.gate_selected) # Temp scalar pulled from list for _f_calc()
             msg += "\n\nLoad Sequence:"
 
             # Gate loading
@@ -3323,9 +3354,10 @@ class Mmu:
         self.mmu_toolhead.set_position(pos)
         return position
 
-    def _set_filament_remaining(self, length):
+    def _set_filament_remaining(self, length, color=''):
         self.filament_remaining = length
-        self.save_variable(self.VARS_MMU_FILAMENT_REMAINING, round(length, 1), write=True)
+        self.save_variable(self.VARS_MMU_FILAMENT_REMAINING, round(length, 1))
+        self.save_variable(self.VARS_MMU_FILAMENT_REMAINING_COLOR, color, write=True)
 
     def _set_last_tool(self, tool):
         self._last_tool = tool
@@ -4042,6 +4074,7 @@ class Mmu:
             # Safety step because this method is used as a defensive way to unload the entire bowden from unknown position
             # It handles the cases of filament still in extruder with not toolhead sensor or the small window where filament
             # is between extruder entrance and toolhead sensor (if toolhead sensor is available)
+            homing_max += self.gate_homing_max # Full bowden may not be quite enough
             length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD) else self.toolhead_extruder_to_nozzle
             length = min(length + self.toolhead_unload_safety_margin, homing_max)
             self.log_debug("Performing synced pre-unload bowden move to ensure filament is not trapped in extruder")
@@ -4136,64 +4169,71 @@ class Mmu:
         # Compensate for distance already moved for gate homing endstop (e.g. overshoot after encoder based gate homing)
         length -= start_pos
 
-        # Do we need to reduce by buffer amount to ensure we don't overshoot homing sensor
-        if full:
-            if self._must_buffer_extruder_homing():
-                length -= self.extruder_homing_buffer
-                # Further reduce to compensate for distance from extruder sensor to extruder entry gear
-                length -= self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.SENSOR_EXTRUDER_ENTRY else 0
+        try:
+            # Do we need to reduce by buffer amount to ensure we don't overshoot homing sensor
+            if full:
+                if self._must_buffer_extruder_homing():
+                    length -= self.extruder_homing_buffer
+                    # Further reduce to compensate for distance from extruder sensor to extruder entry gear
+                    length -= self.toolhead_entry_to_extruder if self.extruder_homing_endstop == self.SENSOR_EXTRUDER_ENTRY else 0
 
-        if length > 0:
-            self.log_debug("Loading bowden tube")
-            self._set_filament_direction(self.DIRECTION_LOAD)
-            self.selector.filament_drive()
-            if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
-                self.log_info("Warning: gate %d not calibrated! Using default rotation distance from gate 0" % self.gate_selected)
+            if length > 0:
+                self.log_debug("Loading bowden tube")
+                self._set_filament_direction(self.DIRECTION_LOAD)
+                self.selector.filament_drive()
 
-            # "Fast" load
-            _,_,_,delta = self.trace_filament_move("Fast loading move through bowden", length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
-            delta -= self._get_encoder_dead_space()
-            ratio = (length - delta) / length
+                # Record starting position for bowden progress tracking 
+                self.bowden_start_pos = self.get_encoder_distance(dwell=None) - start_pos
 
-            # Encoder based validation test
-            if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
-                raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
+                if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
+                    self.log_info("Warning: gate %d not calibrated! Using default rotation distance from gate 0" % self.gate_selected)
 
-            # Encoder based validation test
-            if self._can_use_encoder() and delta >= self.bowden_allowable_load_delta and not self.calibrating:
-                ratio = 0. # Not considered valid for auto-calibration
-                # Correction attempts to load the filament according to encoder reporting
-                if self.bowden_apply_correction:
-                    for i in range(2):
+                # "Fast" load
+                _,_,_,delta = self.trace_filament_move("Fast loading move through bowden", length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
+                delta -= self._get_encoder_dead_space()
+                ratio = (length - delta) / length
+
+                # Encoder based validation test
+                if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
+                    raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
+
+                # Encoder based validation test
+                if self._can_use_encoder() and delta >= self.bowden_allowable_load_delta and not self.calibrating:
+                    ratio = 0. # Not considered valid for auto-calibration
+                    # Correction attempts to load the filament according to encoder reporting
+                    if self.bowden_apply_correction:
+                        for i in range(2):
+                            if delta >= self.bowden_allowable_load_delta:
+                                msg = "Correction load move #%d into bowden" % (i+1)
+                                _,_,_,d = self.trace_filament_move(msg, delta, track=True)
+                                delta = d
+                                self.log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self.get_encoder_distance())
+                            else:
+                                self.log_debug("Correction load complete, delta %.1fmm is less than 'bowden_allowable_unload_delta' (%.1fmm)" % (delta, self.bowden_allowable_load_delta))
+                                break
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
                         if delta >= self.bowden_allowable_load_delta:
-                            msg = "Correction load move #%d into bowden" % (i+1)
-                            _,_,_,d = self.trace_filament_move(msg, delta, track=True)
-                            delta = d
-                            self.log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self.get_encoder_distance())
-                        else:
-                            self.log_debug("Correction load complete, delta %.1fmm is less than 'bowden_allowable_unload_delta' (%.1fmm)" % (delta, self.bowden_allowable_load_delta))
-                            break
-                    self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+                            self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details"% (length, length - delta))
+                    else:
+                        self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
+    
                     if delta >= self.bowden_allowable_load_delta:
-                        self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details"% (length, length - delta))
-                else:
-                    self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
+                        self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
 
-                if delta >= self.bowden_allowable_load_delta:
-                    self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
+                self._random_failure() # Testing
+                self.movequeues_wait()
+            else:
+                # No bowden movement required
+                ratio = 1.
 
-            self._random_failure() # Testing
-            self.movequeues_wait()
-        else:
-            # No bowden movement required
-            ratio = 1.
-
-        if full:
-            self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
-        elif self.filament_pos != self.FILAMENT_POS_IN_BOWDEN:
-            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
-            ratio = 0.
-        return ratio # For auto-calibration
+            if full:
+                self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
+            elif self.filament_pos != self.FILAMENT_POS_IN_BOWDEN:
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+                ratio = 0.
+            return ratio # For auto-calibration
+        finally:
+            self.bowden_start_pos = None
 
     # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (gate_unload_buffer away)
     def _unload_bowden(self, length=None):
@@ -4207,50 +4247,57 @@ class Mmu:
         # Shorten move by gate buffer used to ensure we don't overshoot homing point
         length -= self.gate_unload_buffer
 
-        if length > 0:
-            self.log_debug("Unloading bowden tube")
-            self._set_filament_direction(self.DIRECTION_UNLOAD)
-            self.selector.filament_drive()
+        try:
+            if length > 0:
+                self.log_debug("Unloading bowden tube")
+                self._set_filament_direction(self.DIRECTION_UNLOAD)
+                self.selector.filament_drive()
 
-            # Optional pre-unload safety step
-            if (full and self.has_encoder() and self.bowden_pre_unload_test and
-                self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY) is not False and
-                self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is not False
-            ):
-                with self._require_encoder():
-                    self.log_debug("Performing bowden pre-unload test")
-                    _,_,_,delta = self.trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size)
-                    if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100.):
-                        self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                        raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded")
-                    length -= self.encoder_move_step_size
-                    self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+                # Record starting position for bowden progress tracking 
+                self.bowden_start_pos = self.get_encoder_distance(dwell=None)
 
-            # "Fast" unload
-            ratio = 0.
-            if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is not False:
-                _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
-                delta -= self._get_encoder_dead_space()
-                ratio = (length - delta) / length
+                # Optional pre-unload safety step
+                if (full and self.has_encoder() and self.bowden_pre_unload_test and
+                    self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY) is not False and
+                    self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is not False
+                ):
+                    with self._require_encoder():
+                        self.log_debug("Performing bowden pre-unload test")
+                        _,_,_,delta = self.trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size)
+                        if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100.):
+                            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+                            raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded")
+                        length -= self.encoder_move_step_size
+                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
-                # Encoder based validation test
-                if self._can_use_encoder() and delta >= self.bowden_allowable_unload_delta and not self.calibrating:
-                    ratio = 0.
-                    # Only a warning because _unload_gate() will deal with it
-                    self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
+                # "Fast" unload
+                ratio = 0.
+                if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is not False:
+                    _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
+                    delta -= self._get_encoder_dead_space()
+                    ratio = (length - delta) / length
 
-            self._random_failure() # Testing
-            self.movequeues_wait()
-        else:
-            # No bowden movement required
-            ratio = 1.
+                    # Encoder based validation test
+                    if self._can_use_encoder() and delta >= self.bowden_allowable_unload_delta and not self.calibrating:
+                        ratio = 0.
+                        # Only a warning because _unload_gate() will deal with it
+                        self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
-        if full:
-            self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
-        elif self.filament_pos != self.FILAMENT_POS_IN_BOWDEN:
-            self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
-            ratio = 0.
-        return ratio # For auto-calibration
+                self._random_failure() # Testing
+                self.movequeues_wait()
+            else:
+                # No bowden movement required
+                ratio = 1.
+
+            if full:
+                self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
+            elif self.filament_pos != self.FILAMENT_POS_IN_BOWDEN:
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+                ratio = 0.
+            return ratio # For auto-calibration
+
+        finally:
+            self.bowden_start_pos = None
 
     # Optionally home filament to designated homing location at the extruder
     # Returns any homing distance for automatic calibration logic or None if not applicable
@@ -4363,9 +4410,9 @@ class Mmu:
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
             d = self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD) else self.toolhead_extruder_to_nozzle
             length = max(d - self.filament_remaining - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract, 0)
-            self._set_filament_remaining(0.)
             self.log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
+            self._set_filament_remaining(0.)
 
             # Encoder based validation test if short of deterministic sensors and test makes sense
             if self._can_use_encoder() and not fhomed and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS:
@@ -4669,7 +4716,11 @@ class Mmu:
                     # Restore the expected sync state now before running this macro
                     sync = (self.is_printing() and self.sync_to_extruder) or self._standalone_sync
                     self.sync_gear_to_extruder(sync, grip=True, current=True)
-                    self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
+                    if self.has_blobifier: # TODO
+                        with self.wrap_action(self.ACTION_BLOBING):
+                            self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
+                    else:
+                        self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
@@ -4813,7 +4864,11 @@ class Mmu:
             # POST_UNLOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_unload'):
-                    self.wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
+                    if self.has_mmu_cutter:
+                        with self.wrap_action(self.ACTION_CUTTING_FILAMENT):
+                            self.wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
+                    else:
+                        self.wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
 
         except MmuError as ee:
             self._track_gate_statistics('unload_failures', self.gate_selected)
@@ -4854,7 +4909,7 @@ class Mmu:
         if gcode_macro is None:
             raise MmuError("Filament tip forming macro '%s' not found" % self.form_tip_macro)
 
-        with self.wrap_action(self.ACTION_FORMING_TIP):
+        with self.wrap_action(self.ACTION_CUTTING_TIP if self.form_tip_macro == '_MMU_CUT_TIP' else self.ACTION_FORMING_TIP):
             synced = self.sync_form_tip and not extruder_only
             self.sync_gear_to_extruder(synced, grip=True, current=False)
             self._ensure_safe_extruder_temperature(wait=True)
@@ -4863,7 +4918,7 @@ class Mmu:
             initial_encoder_position = self.get_encoder_distance()
             park_pos, remaining, reported = self._do_form_tip()
             measured = self.get_encoder_distance(dwell=None) - initial_encoder_position
-            self._set_filament_remaining(remaining)
+            self._set_filament_remaining(remaining, self.gate_color[self.gate_selected] if self.gate_selected != self.TOOL_GATE_UNKNOWN else '')
 
             # Encoder based validation test
             detected = True # Start with assumption that filament was present
@@ -5171,18 +5226,18 @@ class Mmu:
     @contextlib.contextmanager
     def _wrap_espooler(self, motor, dist, speed, homing_move):
         if motor in ['gear', 'synced', 'both'] and dist < -self.espooler_min_distance and self.espooler_start_macro and self.espooler_start_macro != "''":
-            active = True
+            self.espooler_active = True
             self.wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d STEP_SPEED=%d HOMING_MOVE=%d" % (self.espooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
             self._wait_for_espooler = not homing_move
             initial_pos = self.mmu_toolhead.get_position()[1]
         else:
             self._wait_for_espooler = False
-            active = False
+            self.espooler_active = False
         try:
             yield self
         finally:
             self._wait_for_espooler = False
-            if active and self.espooler_stop_macro and self.espooler_stop_macro != "''":
+            if self.espooler_active and self.espooler_stop_macro and self.espooler_stop_macro != "''":
                 moved = abs(self.mmu_toolhead.get_position()[1] - initial_pos)
                 self.wrap_gcode_command("%s GATE=%d DISTANCE=%d" % (self.espooler_stop_macro, self.gate_selected, moved))
 
