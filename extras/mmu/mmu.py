@@ -1338,6 +1338,7 @@ class Mmu:
             'is_locked': self.is_mmu_paused(), # Alias for is_paused (deprecated)
             'is_homed': self.selector.is_homed,
             'is_in_print': self.is_in_print(),
+            'unit': self.unit_selected,
             'tool': self.tool_selected,
             'gate': self._next_gate if self._next_gate is not None else self.gate_selected,
             'active_filament': self.active_filament,
@@ -1373,15 +1374,16 @@ class Mmu:
             'sync_feedback_state': self._get_sync_feedback_string(),
             'sync_feedback_enabled': bool(self.sync_feedback_enable),
             'print_state': self.print_state,
-            'clog_detection': self.enable_clog_detection, # TODO: Rename clog_detection_enabled
-            'endless_spool': self.enable_endless_spool, # TODO: Rename endless_spool_enabled
+            'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
+            'clog_detection_enabled': self.enable_clog_detection,
+            'endless_spool': self.enable_endless_spool, # DEPRECATED use endless_spool_enabled
+            'endless_spool_enabled': self.enable_endless_spool,
             'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
             'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
             'spoolman_support': self.spoolman_support,
             'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
-            'selector_type': self.mmu_machine.selector_type,
-            'bowden_progress': self._get_bowden_progress(),
+            'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
             'espooler_active': 'rewind' if self.espooler_active else '' # 'assist' not supported yet
         }
         status.update(self.selector.get_status())
@@ -2029,7 +2031,7 @@ class Mmu:
             msg += "\n- Runout detection: %s" % ("Enabled" if status['enabled'] else "Disabled")
             clog = "Automatic" if status['detection_mode'] == 2 else "On" if status['detection_mode'] == 1 else "Off"
             msg += "\n- Clog/Runout mode: %s (Detection length: %.1f)" % (clog, status['detection_length'])
-            msg += "\n- Trigger headroom: %.1f (Minimum observed: %.1f)" % (status['headroom'], status['min_headroom'])
+            msg += "\n- Remaining headroom before trigger: %.1f (min: %.1f)" % (status['headroom'], status['min_headroom'])
             msg += "\n- Flowrate: %d %%" % status['flow_rate']
         return msg
 
@@ -3110,7 +3112,8 @@ class Mmu:
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.paused_extruder_temp = None
             self._track_pause_end()
-            self._enable_runout() # Enable runout/clog detection while printing
+            if self.is_printing(force_in_print):
+                self._enable_runout() # Enable runout/clog detection while printing
             self._set_print_state(self.resume_to_state)
             self.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed")
@@ -3235,6 +3238,7 @@ class Mmu:
     def _disable_runout(self):
         enabled = self.runout_enabled
         if enabled:
+            logging.info("PAUL: Disabled runout detection")
             self.log_trace("Disabled runout detection")
             if self.has_encoder() and self.encoder_sensor.is_enabled():
                 self.encoder_sensor.disable()
@@ -3244,6 +3248,7 @@ class Mmu:
 
     def _enable_runout(self):
         self.runout_enabled = True
+        logging.info("PAUL: Enabled runout detection")
         self.log_trace("Enabled runout detection")
         if self.has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
