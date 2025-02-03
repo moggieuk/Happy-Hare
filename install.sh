@@ -1490,6 +1490,8 @@ questionaire() {
             HAS_ENCODER=no
             HAS_SELECTOR=no
             HAS_SERVO=no
+            HELP_URL="https://github.com/moggieuk/Happy-Hare/wiki/Quick-Start-3MS"
+            HELP_URL_B="https://3dcoded.github.io/3MS/instructions/"
             _hw_mmu_vendor="3MS"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -2103,6 +2105,13 @@ questionaire() {
     echo 
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."
     echo -e "    Join the dedicated Happy Hare forum here: ${EMPHASIZE}https://discord.gg/98TYYUf6f2${INFO}"
+    if [ -n "${HELP_URL}" ]; then
+        echo -e "    Make sure to follow these instructions while setting up your MMU:"
+        echo -e "    ${EMPHASIZE}${HELP_URL}"
+        if [ -n "${HELP_URL_B}" ]; then
+            echo -e "    ${EMPHASIZE}${HELP_URL_B}"
+        fi
+    fi
     echo
     echo "    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
     echo
