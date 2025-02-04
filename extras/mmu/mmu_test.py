@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # Goal: Define internal test operations to aid development
 #
@@ -36,8 +36,10 @@ class MmuTest:
             self.mmu.log_info("SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event")
             self.mmu.log_info("DUMP_UNICODE=1 : Display special characters used in display")
             self.mmu.log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
-            self.mmu.log_info("GET_POS=1 : Fetch the current filament position")
-            self.mmu.log_info("SET_POS=<pos> : Set the current filament position")
+            self.mmu.log_info("GET_POS=1 : Fetch the current filament position state")
+            self.mmu.log_info("SET_POS=<pos_state> : Set the current filament position state")
+            self.mmu.log_info("GET_POSITION=1 : Fetch the current filament position")
+            self.mmu.log_info("SET_POSITION=<pos> : Fetch the current filament position")
             self.mmu.log_info("SYNC_LOAD_TEST=1 : Hammer stepper syncing and movement. Parama: LOOP|HOME")
             self.mmu.log_info("SEL_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP")
             self.mmu.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
@@ -67,17 +69,17 @@ class MmuTest:
             with self.mmu._wrap_track_time('total'):
                 with self.mmu._wrap_track_time('unload'):
                     with self.mmu._wrap_track_time('pre_unload'):
-                        self.mmu._wrap_gcode_command(self.mmu.pre_unload_macro, exception=False, wait=True)
-                    self.mmu._wrap_gcode_command(self.mmu.post_form_tip_macro, exception=False, wait=True)
+                        self.mmu.wrap_gcode_command(self.mmu.pre_unload_macro, exception=False, wait=True)
+                    self.mmu.wrap_gcode_command(self.mmu.post_form_tip_macro, exception=False, wait=True)
                     with self.mmu._wrap_track_time('post_unload'):
-                        self.mmu._wrap_gcode_command(self.mmu.post_unload_macro, exception=False, wait=True)
+                        self.mmu.wrap_gcode_command(self.mmu.post_unload_macro, exception=False, wait=True)
                 with self.mmu._wrap_track_time('load'):
                     with self.mmu._wrap_track_time('pre_load'):
-                        self.mmu._wrap_gcode_command(self.mmu.pre_load_macro, exception=False, wait=True)
+                        self.mmu.wrap_gcode_command(self.mmu.pre_load_macro, exception=False, wait=True)
                     with self.mmu._wrap_track_time('post_load'):
-                        self.mmu._wrap_gcode_command(self.mmu.post_load_macro, exception=False, wait=False)
+                        self.mmu.wrap_gcode_command(self.mmu.post_load_macro, exception=False, wait=False)
                         if error:
-                            self.mmu._wrap_gcode_command("MMU_PAUSE")
+                            self.mmu.wrap_gcode_command("MMU_PAUSE")
             self.mmu.log_info("Statistics:%s" % self.mmu.last_statistics)
             self.mmu._set_print_state("idle")
 
@@ -86,7 +88,7 @@ class MmuTest:
             next_pos = gcmd.get('NEXT_POS', "last")
             goto_pos = None
             if next_pos == 'next':
-                self.mmu._wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
+                self.mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_SEQUENCE_VARS VARIABLE=restore_xy_pos VALUE='\"%s\"'" % next_pos)
                 goto_pos = [11, 11]
                 self.mmu._set_next_position(goto_pos)
             if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
@@ -96,18 +98,18 @@ class MmuTest:
                 try:
                     with self.mmu._wrap_track_time('unload'):
                         with self.mmu._wrap_track_time('pre_unload'):
-                            self.mmu._wrap_gcode_command(self.mmu.pre_unload_macro, exception=False, wait=True)
-                        self.mmu._wrap_gcode_command(self.mmu.post_form_tip_macro, exception=False, wait=True)
+                            self.mmu.wrap_gcode_command(self.mmu.pre_unload_macro, exception=False, wait=True)
+                        self.mmu.wrap_gcode_command(self.mmu.post_form_tip_macro, exception=False, wait=True)
                         with self.mmu._wrap_track_time('post_unload'):
-                            self.mmu._wrap_gcode_command(self.mmu.post_unload_macro, exception=False, wait=True)
+                            self.mmu.wrap_gcode_command(self.mmu.post_unload_macro, exception=False, wait=True)
                     with self.mmu._wrap_track_time('load'):
                         with self.mmu._wrap_track_time('pre_load'):
-                            self.mmu._wrap_gcode_command(self.mmu.pre_load_macro, exception=False, wait=True)
+                            self.mmu.wrap_gcode_command(self.mmu.pre_load_macro, exception=False, wait=True)
                         if pause:
                             raise MmuError("TEST ERROR")
                         else:
                             with self.mmu._wrap_track_time('post_load'):
-                                self.mmu._wrap_gcode_command(self.mmu.post_load_macro, exception=False, wait=True)
+                                self.mmu.wrap_gcode_command(self.mmu.post_load_macro, exception=False, wait=True)
                             self.mmu._restore_toolhead_position('toolchange')
                 except MmuError as ee:
                     self.mmu.handle_mmu_error(str(ee))
@@ -124,12 +126,20 @@ class MmuTest:
         if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
             self.mmu.mmu_toolhead.unsync()
 
-        pos = gcmd.get_float('SET_POS', -1, minval=0)
+        pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
         if pos >= 0:
-            self.mmu._set_filament_position(pos)
+            self.mmu._set_filament_pos_state(pos)
 
-        if gcmd.get_int('GET_POS', 0, minval=0, maxval=1):
+        position = gcmd.get_float('SET_POSITION', -1, minval=0)
+        if position >= 0:
+            self.mmu._set_filament_position(position)
+
+        if gcmd.get_int('GET_POSITION', 0, minval=0, maxval=1):
             self.mmu.log_info("Filament position: %s" % self.mmu._get_filament_position())
+
+        action = gcmd.get_float('SET_ACTION', -1, minval=0)
+        if action >= 0:
+            self.mmu.action = action
 
         if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
             try:
@@ -218,7 +228,7 @@ class MmuTest:
             accel = gcmd.get_float('ACCEL', None)
             wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
             loop = gcmd.get_int('LOOP', 1, minval=1)
-            endstop = gcmd.get('ENDSTOP', self.mmu.ENDSTOP_SELECTOR_TOUCH if self.mmu.selector.use_touch_move() else self.mmu.ENDSTOP_SELECTOR_HOME)
+            endstop = gcmd.get('ENDSTOP', self.mmu.SENSOR_SELECTOR_TOUCH if self.mmu.selector.use_touch_move() else self.mmu.SENSOR_SELECTOR_HOME)
             for i in range(loop):
                 pos = self.mmu.mmu_toolhead.get_position()[0]
                 self.mmu.log_always("Rail starting pos: %s" % pos)

@@ -1,6 +1,9 @@
 ########################################################################################################################
 # Happy Hare MMU Software
 #
+# Template file for MMU's with Selector Stepper but no servo (Type-A designs like 3DChameleon)
+# This file omits servo parts of the configuration
+#
 # EDIT THIS FILE BASED ON YOUR SETUP
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
@@ -34,34 +37,6 @@ gear_max_velocity: 300			# Never to be exceeded gear velocity regardless of spec
 gear_max_accel: 1500			# Never to be exceeded gear acceleration regardless of specific parameters
 selector_max_velocity: 250		# Never to be exceeded selector velocity regardless of specific parameters
 selector_max_accel: 1200		# Never to be exceeded selector acceleration regardless of specific parameters
-
-
-# Servo configuration  -------------------------------------------------------------------------------------------------
-# ███████╗███████╗██████╗ ██╗   ██╗ ██████╗ 
-# ██╔════╝██╔════╝██╔══██╗██║   ██║██╔═══██╗
-# ███████╗█████╗  ██████╔╝██║   ██║██║   ██║
-# ╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██║   ██║
-# ███████║███████╗██║  ██║ ╚████╔╝ ╚██████╔╝
-# ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ 
-#
-# Angle of the servo in three named positions
-#   up   = tool is selected and filament is allowed to freely move through gate
-#   down = to grip filament
-#   move = ready the servo for selector move (optional - defaults to up)
-# V2.4.0 on: These positions are only for initial config they are replaced with calibrated servo positions in `mmu_vars.cfg`
-#
-# Note that leaving the servo active when down can stress the electronics and is not recommended with EASY-BRD or ERB board
-# unless the 5v power supply has been improved and it is not necessary with standard ERCF builds
-# Make sure your hardware is suitable for the job!
-#
-servo_up_angle: 145			# ERCF: MG90S: 30  ; SAVOX SH0255MG: 140 ; Tradrack: 145
-servo_down_angle: 30			# ERCF: MG90S: 140 ; SAVOX SH0255MG: 30  ; Tradrack: 1
-servo_move_angle: 109			# Optional angle used when selector is moved (defaults to up position)
-servo_duration: 0.4			# Duration of PWM burst sent to servo (default non-active mode, automatically turns off)
-servo_dwell: 0.5			# Minimum time given to servo to complete movement prior to next move
-servo_always_active: 0 			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
-servo_active_down: 0			# CAUTION: 1=Force servo to stay active when down only, 0=Release after movement
-servo_buzz_gear_on_down: 0		# Whether to "buzz" the gear stepper on down to aid engagement
 
 
 # Logging --------------------------------------------------------------------------------------------------------------
@@ -99,12 +74,12 @@ log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = sum
 # loosing steps). Unloading speed can be tuning if you have a rewinder system that imposes additional limits.
 # NOTE: Encoder cannot keep up much above 450mm/s so make sure 'bowden_apply_correction' is off at very high speeds!
 #
-gear_from_spool_speed: 80		# mm/s Speed when loading from the spool (for the first time if has_filament_buffer: 1)
-gear_from_spool_accel: 100		# Acceleration when loading from spool
-gear_from_buffer_speed: 150		# mm/s Speed when loading filament from buffer. Conservative is 100mm/s, Max around 400mm/s
-gear_from_buffer_accel: 400		# Normal acceleration when loading filament
-gear_unload_speed: 80			# mm/s Use (lower) speed when unloading filament (defaults to "from spool" speed)
-gear_unload_accel: 100			# Acceleration when unloading filament (defaults to "from spool" accel)
+gear_from_spool_speed: 80               # mm/s Speed when loading from the spool (for the first time if has_filament_buffer: 1)
+gear_from_spool_accel: 100              # Acceleration when loading from spool
+gear_from_buffer_speed: 150             # mm/s Speed when loading filament from buffer. Conservative is 100mm/s, Max around 400mm/s
+gear_from_buffer_accel: 400             # Normal acceleration when loading filament
+gear_unload_speed: 80                   # mm/s Use (lower) speed when unloading filament (defaults to "from spool" speed)
+gear_unload_accel: 100                  # Acceleration when unloading filament (defaults to "from spool" accel)
 #
 gear_short_move_speed: 80		# mm/s Speed when making short moves (like incremental retracts with encoder)
 gear_short_move_accel: 600		# Usually the same as gear_from_buffer_accel (for short movements)

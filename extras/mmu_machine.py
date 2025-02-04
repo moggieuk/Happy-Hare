@@ -10,8 +10,8 @@
 #   - extruder endstops and extruder only homing
 #   - switchable drive steppers on rails
 #
-# Copyright (C) 2023  moggieuk#6538 (discord)
-#                     moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # Based on code by Kevin O'Connor <kevin@koconnor.net>
 #
@@ -50,9 +50,17 @@ VENDOR_BOX_TURTLE     = "BoxTurtle"
 VENDOR_NIGHT_OWL      = "NightOwl"
 VENDOR_3MS            = "3MS"
 VENDOR_3D_CHAMELEON   = "3DChameleon"
+VENDOR_PICO_MMU       = "PicoMMU" # Not yet ready
+VENDOR_QUATTRO_BOX    = "QuattroBox"
 VENDOR_OTHER          = "Other"
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_OTHER]
+UNIT_ALT_DISPLAY_NAMES = {
+    VENDOR_ANGRY_BEAVER: "Angry Beaver",
+    VENDOR_BOX_TURTLE:   "Box Turtle",
+    VENDOR_NIGHT_OWL:    "Night Owl",
+}
+
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -60,7 +68,11 @@ class MmuMachine:
 
     def __init__(self, config):
         # Essential information for validation and setup
-        self.num_gates = config.getint('num_gates')
+        self.units = list(config.getintlist('num_gates', []))
+        self.num_units = len(self.units)
+        if self.num_units < 1:
+            raise config.error("Invalid or missing num_gates parameter in section [mmu_machine]")
+        self.num_gates = sum(self.units)
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
         self.mmu_version_string = config.get('mmu_version', "1.0")
         version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
@@ -88,7 +100,7 @@ class MmuMachine:
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
-            require_bowden_move = 1
+            filament_always_gripped = 0
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_TRADRACK:
@@ -96,6 +108,7 @@ class MmuMachine:
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
             require_bowden_move = 1
+            filament_always_gripped = 0
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_PRUSA:
@@ -141,13 +154,34 @@ class MmuMachine:
             filament_always_gripped = 1
             has_bypass = 0
 
+        elif self.mmu_vendor == VENDOR_PICO_MMU:
+            selector_type = 'ServoSelector'
+            variable_rotation_distances = 0
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_QUATTRO_BOX:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 0
+
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector']}, selector_type)
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
         self.has_bypass = bool(config.getint('has_bypass', has_bypass))
+
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
+        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
+        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
@@ -196,6 +230,29 @@ class MmuMachine:
         # TODO add more h/w validation here based on num_gates & vendor, virtual selector, etc
         # TODO would allow for easier to understand error messages for conflicting or missing
         # TODO hardware definitions.
+
+        # TODO: Temp until restructured to allow multiple MMU's of different types. Used by
+        gate_count = 0
+        self.unit_status = {}
+        for i, unit in enumerate(self.units):
+            unit_info = {}
+            unit_info['name'] = UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor)
+            unit_info['version'] = self.mmu_version_string
+            unit_info['num_gates'] = unit
+            unit_info['first_gate'] = gate_count
+            unit_info['selector_type'] = self.selector_type
+            unit_info['variable_rotation_distances'] = self.variable_rotation_distances
+            unit_info['variable_bowden_lengths'] = self.variable_bowden_lengths
+            unit_info['require_bowden_move'] = self.require_bowden_move
+            unit_info['filament_always_gripped'] = self.filament_always_gripped
+            unit_info['has_bypass'] = self.has_bypass
+            unit_info['multi_gear'] = self.multigear
+            gate_count += unit
+            self.unit_status["unit_%d" % i] = unit_info
+            self.unit_status['num_units'] = len(self.units)
+
+    def get_status(self, eventtime):
+        return self.unit_status
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
@@ -308,7 +365,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.mmu_extruder_stepper = None
-        if self.mmu.homing_extruder:
+        if self.mmu_machine.homing_extruder:
             # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
             self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
 
@@ -334,7 +391,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
 
         printer_extruder = self.printer_toolhead.get_extruder()
-        if self.mmu.homing_extruder:
+        if self.mmu_machine.homing_extruder:
             # Restore original extruder options in case user macros reference them
             for key, value in self.old_ext_options.items():
                 self.config.fileconfig.set('extruder', key, value)
@@ -731,6 +788,7 @@ class MmuHoming(Homing, object):
 class MmuPrinterRail(stepper.PrinterRail, object):
     def __init__(self, config, **kwargs):
         self.printer = config.get_printer()
+        self.config = config
         self.rail_name = config.get_name()
         self.query_endstops = self.printer.load_object(config, 'query_endstops')
         self.extra_endstops = []
@@ -775,13 +833,17 @@ class MmuPrinterRail(stepper.PrinterRail, object):
                 self.add_extra_endstop(pin, name)
 
     def add_extra_endstop(self, pin, name, register=True, bind_rail_steppers=True):
-        if 'virtual_endstop' in pin:
-            self.virtual_endstops.append(name)
+        is_virtual = 'virtual_endstop' in pin
+        if is_virtual:
+            if name not in self.virtual_endstops:
+                self.virtual_endstops.append(name)
+            else:
+                raise self.config.error("Extra virtual endstop '%s' defined more than once" % name)
         ppins = self.printer.lookup_object('pins')
         mcu_endstop = ppins.setup_pin('endstop', pin)
         self.extra_endstops.append((mcu_endstop, name))
         if bind_rail_steppers:
-            for s in self.steppers:
+            for s in self.steppers if not is_virtual else [self.steppers[-1]]:
                 try:
                     mcu_endstop.add_stepper(s)
                 except Exception as e:
@@ -840,7 +902,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         # This allows for setup of stallguard as an option for nozzle homing
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin:
-            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=True)
+            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False)
             mcu_endstop.add_stepper(self.stepper)
 
     # Override to add QUIET option to control console logging
@@ -848,7 +910,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
         smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)
         self._set_pressure_advance(pressure_advance, smooth_time)
-        msg = ("pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time))
+        msg = "pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time)
         self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
         if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
             gcmd.respond_info(msg, log=False)

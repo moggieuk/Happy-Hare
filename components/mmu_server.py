@@ -1,7 +1,8 @@
 # Happy Hare MMU Software
 # Moonraker support for a file-preprocessor that injects MMU metadata into gcode files
 #
-# Copyright (C) 2023  moggieuk#6538 (discord) moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
 # Original slicer parsing
 # Copyright (C) 2023  Kieran Eglin <@kierantheman (discord)>, <kieran.eglin@gmail.com>
@@ -113,7 +114,7 @@ class MmuServer:
             for _ in range(retry):
                 self.spoolman_version = await self._get_spoolman_version()
                 if self.spoolman_version:
-                    logging.info(f"Contacted Spoolman")
+                    logging.info("Contacted Spoolman")
                     break
                 logging.warning(f"Spoolman not available. {'Retrying in 2 seconds...' if retry > 1 else ''}")
                 await asyncio.sleep(2)
@@ -136,7 +137,7 @@ class MmuServer:
             elif self.spoolman_version:
                 logging.error(f"Could not initialize Spoolman db for Happy Hare. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})")
             else:
-                logging.error(f"Could not connect to Spoolman db. Perhaps it is not initialized yet? Will try again on next request")
+                logging.error("Could not connect to Spoolman db. Perhaps it is not initialized yet? Will try again on next request")
                 return False
         return True
 
@@ -145,9 +146,9 @@ class MmuServer:
             db_awake = await self._init_spoolman()
             if not silent:
                 if not db_awake:
-                    await self._log_n_send(f"Couldn't connect to Spoolman. Maybe not configured/running yet (check moonraker.log).\nUse MMU_SPOOLMAN REFRESH=1 to force retry")
+                    await self._log_n_send("Couldn't connect to Spoolman. Maybe not configured/running yet (check moonraker.log).\nUse MMU_SPOOLMAN REFRESH=1 to force retry")
                 elif not self.spoolman_has_extras:
-                    await self._log_n_send(f"Incompatible Spoolman version for this feature. Check moonraker.log")
+                    await self._log_n_send("Incompatible Spoolman version for this feature. Check moonraker.log")
         return self.spoolman_has_extras
 
     # !TODO: implement mainsail/fluidd gui prompts?
