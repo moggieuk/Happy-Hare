@@ -179,9 +179,9 @@ class Mmu:
     VARS_MMU_ENCODER_RESOLUTION       = "mmu_encoder_resolution"
     VARS_MMU_GEAR_ROTATION_DISTANCES  = "mmu_gear_rotation_distances"
 
-    VARS_MMU_CALIB_BOWDEN_LENGTH      = "mmu_calibration_bowden_length" # Deprecated (for upgrade only)
-    VARS_MMU_GEAR_ROTATION_DISTANCE   = "mmu_gear_rotation_distance"    # Deprecated (for upgrade only)
-    VARS_MMU_CALIB_PREFIX             = "mmu_calibration_"              # Deprecated (for upgrade only)
+    VARS_MMU_CALIB_BOWDEN_LENGTH      = "mmu_calibration_bowden_length" # DEPRECATED (for upgrade only)
+    VARS_MMU_GEAR_ROTATION_DISTANCE   = "mmu_gear_rotation_distance"    # DEPRECATED (for upgrade only)
+    VARS_MMU_CALIB_PREFIX             = "mmu_calibration_"              # DEPRECATED (for upgrade only)
 
     # Mainsail/Fluid visualization of extruder colors and other attributes
     T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled
@@ -1174,7 +1174,7 @@ class Mmu:
         # Auto upgrade old names
         key_map = {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause"}
         swap_stats = {key_map.get(key, key): swap_stats[key] for key in swap_stats}
-        swap_stats.pop('servo_retries', None) # Deprecated
+        swap_stats.pop('servo_retries', None) # DEPRECATED
 
         self.statistics.update(swap_stats)
         for gate in range(self.num_gates):
@@ -1334,10 +1334,11 @@ class Mmu:
             'enabled': self.is_enabled,
              # TODO Should rest of this section be in a conditional if self.is_enabled: block for performance?
             'num_gates': self.num_gates,
-            'is_paused': self.is_mmu_paused(),
-            'is_locked': self.is_mmu_paused(), # Alias for is_paused (deprecated)
             'is_homed': self.selector.is_homed,
-            'is_in_print': self.is_in_print(),
+            'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused)
+            'is_paused': self.is_mmu_paused(), # DEPRECATED (use print_state)
+            'is_in_print': self.is_in_print(), # DEPRECATED (use print_state)
+            'print_state': self.print_state,
             'unit': self.unit_selected,
             'tool': self.tool_selected,
             'gate': self._next_gate if self._next_gate is not None else self.gate_selected,
@@ -1346,7 +1347,7 @@ class Mmu:
             'next_tool': self._next_tool,
             'toolchange_purge_volume': self.toolchange_purge_volume,
             'last_toolchange': self._last_toolchange,
-            'runout': self.is_handling_runout, # Deprecated (use operation)
+            'runout': self.is_handling_runout, # DEPRECATED (use operation)
             'operation': self.saved_toolhead_operation,
             'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
                         "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
@@ -1373,10 +1374,9 @@ class Mmu:
             'sync_drive': self.mmu_toolhead.is_synced(),
             'sync_feedback_state': self._get_sync_feedback_string(),
             'sync_feedback_enabled': bool(self.sync_feedback_enable),
-            'print_state': self.print_state,
             'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
             'clog_detection_enabled': self.enable_clog_detection,
-            'endless_spool': self.enable_endless_spool, # DEPRECATED use endless_spool_enabled
+            'endless_spool': self.enable_endless_spool,   # DEPRECATED use endless_spool_enabled
             'endless_spool_enabled': self.enable_endless_spool,
             'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
@@ -2100,7 +2100,7 @@ class Mmu:
         if self.check_if_not_homed(): return
         if self.check_if_always_synced(): return
         grip = gcmd.get_int('GRIP', 1, minval=0, maxval=1)
-        servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # Deprecated (use GRIP=0 instead)
+        servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # DEPRECATED (use GRIP=0 instead)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         self.sync_gear_to_extruder(sync, grip=(grip and servo), current=True)
 
