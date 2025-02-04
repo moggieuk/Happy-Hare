@@ -4715,6 +4715,9 @@ class Mmu:
             if full and not extruder_only and not self.gcode_load_sequence:
                 self._autotune(self.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
 
+            # Activate loaded spool in Spoolman
+            self._spoolman_activate_spool(self.gate_spool_id[gate])
+            
             # POST_LOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
@@ -5640,7 +5643,6 @@ class Mmu:
                 raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
 
         self.load_sequence()
-        self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
     # Primary method to unload current tool but retain selection
