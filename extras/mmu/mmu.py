@@ -4129,7 +4129,7 @@ class Mmu:
 
     # Shared with manual bowden calibration routine
     def _reverse_home_to_encoder(self, homing_max):
-        max_steps = math.ceil(homing_max / self.encoder_move_step_size)
+        max_steps = int(math.ceil(homing_max / self.encoder_move_step_size))
         delta = 0.
         actual = 0.
         for i in range(max_steps):
