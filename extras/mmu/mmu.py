@@ -4258,7 +4258,7 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_UNLOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking  
+                # Record starting position for bowden progress tracking 
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None)
 
                 # Optional pre-unload safety step
