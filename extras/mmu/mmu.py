@@ -3112,7 +3112,7 @@ class Mmu:
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.paused_extruder_temp = None
             self._track_pause_end()
-            if self.is_printing(force_in_print):
+            if self.is_in_print(force_in_print):
                 self._enable_runout() # Enable runout/clog detection while printing
             self._set_print_state(self.resume_to_state)
             self.resume_to_state = "ready"
@@ -7159,7 +7159,7 @@ class Mmu:
         self._persist_endless_spool()
 
     def _set_gate_status(self, gate, state):
-        if gate >= 0:
+        if 0 <= gate < self.num_gates:
             if state != self.gate_status[gate]:
                 self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
                 self.gate_status[gate] = state
