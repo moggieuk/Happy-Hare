@@ -4187,7 +4187,7 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_LOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking 
+                # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None) - start_pos
 
                 if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
@@ -4715,6 +4715,9 @@ class Mmu:
             if full and not extruder_only and not self.gcode_load_sequence:
                 self._autotune(self.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
 
+            # Activate loaded spool in Spoolman
+            self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
+            
             # POST_LOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
@@ -4866,6 +4869,9 @@ class Mmu:
             if full and not extruder_only and not self.gcode_unload_sequence:
                 self._autotune(self.DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
 
+            # Deactivate spool in Spoolman as it is now unloaded.
+            self._spoolman_activate_spool(0)
+            
             # POST_UNLOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_unload'):
@@ -5640,7 +5646,6 @@ class Mmu:
                 raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
 
         self.load_sequence()
-        self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
     # Primary method to unload current tool but retain selection
@@ -5653,7 +5658,6 @@ class Mmu:
         self._set_last_tool(self.tool_selected)
         self._record_tool_override() # Remember M220 and M221 overrides
         self.unload_sequence(form_tip=form_tip, runout=runout)
-        self._spoolman_activate_spool(0) # Deactivate in SpoolMan
 
     def _auto_home(self, tool=0):
         if not self.selector.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
