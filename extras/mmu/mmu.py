@@ -4297,7 +4297,7 @@ class Mmu:
                                     self.log_debug("Correction unload complete, delta %.1fmm is less than 'bowden_allowable_unload_delta' (%.1fmm)" % (delta, self.bowden_allowable_unload_delta))
                                     break
                             if delta >= self.bowden_allowable_unload_delta:
-                                self.log_info("Warning: Excess slippage was detected in bowden tube unload after correction moves.Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
+                                self.log_info("Warning: Excess slippage was detected in bowden tube unload after correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
                         else:
                             self.log_info("Warning: Excess slippage was detected in bowden tube unload but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
 
