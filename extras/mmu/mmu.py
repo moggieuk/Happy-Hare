@@ -4210,8 +4210,7 @@ class Mmu:
                         for i in range(2):
                             if delta >= self.bowden_allowable_load_delta:
                                 msg = "Correction load move #%d into bowden" % (i+1)
-                                _,_,_,d = self.trace_filament_move(msg, delta, track=True)
-                                delta = d
+                                _,_,_,delta = self.trace_filament_move(msg, delta, track=True)
                                 self.log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self.get_encoder_distance())
                             else:
                                 self.log_debug("Correction load complete, delta %.1fmm is less than 'bowden_allowable_unload_delta' (%.1fmm)" % (delta, self.bowden_allowable_load_delta))
@@ -4293,7 +4292,6 @@ class Mmu:
                                     msg = "Correction unload move #%d from bowden" % (i + 1)
                                     # Move "backwards" by delta since we still haven't offloaded enough
                                     _, _, _, delta = self.trace_filament_move(msg, -delta, track=True)
-                                    delta = d
                                     self.log_debug("Correction unload move was necessary, encoder now measures %.1fmm" % self.get_encoder_distance())
                                 else:
                                     self.log_debug("Correction unload complete, delta %.1fmm is less than 'bowden_allowable_unload_delta' (%.1fmm)" % (delta, self.bowden_allowable_unload_delta))
