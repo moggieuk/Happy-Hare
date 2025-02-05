@@ -4285,8 +4285,23 @@ class Mmu:
                     # Encoder based validation test
                     if self._can_use_encoder() and delta >= self.bowden_allowable_unload_delta and not self.calibrating:
                         ratio = 0.
-                        # Only a warning because _unload_gate() will deal with it
-                        self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
+                        # Check and attempt correction if bowden_apply_correction is enabled
+                        if self.bowden_apply_correction:
+                            self.log_debug("Checking if correction move is needed on unload bowden")
+                            for i in range(2):
+                                if delta >= self.bowden_allowable_unload_delta:
+                                    msg = "Correction unload move #%d from bowden" % (i + 1)
+                                    # Move "backwards" by delta since we still haven't offloaded enough
+                                    _, _, _, d = self.trace_filament_move(msg, -delta, track=True)
+                                    delta = d
+                                    self.log_debug("Correction unload move was necessary, encoder now measures %.1fmm" % self.get_encoder_distance())
+                                else:
+                                    self.log_debug("Correction unload complete, delta %.1fmm is less than 'bowden_allowable_unload_delta' (%.1fmm)" % (delta, self.bowden_allowable_unload_delta))
+                                    break
+                            if delta >= self.bowden_allowable_unload_delta:
+                                self.log_info("Warning: Excess slippage was detected in bowden tube unload after correction moves.Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
+                        else:
+                            self.log_info("Warning: Excess slippage was detected in bowden tube unload but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
 
                 self._random_failure() # Testing
                 self.movequeues_wait()
