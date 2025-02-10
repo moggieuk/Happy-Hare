@@ -1696,6 +1696,7 @@ class ServoSelector(BaseSelector, object):
 
     def _set_servo_angle(self, angle):
         if angle >= 0 and angle != self.servo_angle:
+            self.mmu.movequeues_wait();
             self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
             self.servo_angle = angle
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
