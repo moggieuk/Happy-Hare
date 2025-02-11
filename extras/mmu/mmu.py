@@ -979,12 +979,13 @@ class Mmu:
         self._clear_slicer_tool_map()
         self.pending_spool_id = None # For automatic assignment of spool_id if set perhaps by rfid reader
         self.saved_toolhead_max_accel = None
+        self.num_toolchanges = 0
 
         # Sub components
         self.selector.reinit()
 
     def _clear_slicer_tool_map(self):
-        self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': []}
+        self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': [], 'total_toolchanges': None}
         self.slicer_color_rgb = [(0.,0.,0.)] * self.num_gates
         self._update_t_macros() # Clear 'color' on Tx macros if displaying slicer colors
 
@@ -1008,7 +1009,7 @@ class Mmu:
         return a == b
 
     # This retuns the hex color format without leading '#' E.g. ff00e0
-    # PAUL TODO support alpha channel for color (Mainsail plugin supports)
+    # TODO support alpha channel for color (Mainsail plugin supports)
     def _color_to_rgb_hex(self, color):
         if color in self.w3c_colors:
             color = self.w3c_colors.get(color)
@@ -1343,6 +1344,7 @@ class Mmu:
             'tool': self.tool_selected,
             'gate': self._next_gate if self._next_gate is not None else self.gate_selected,
             'active_filament': self.active_filament,
+            'num_toolchanges': self.num_toolchanges,
             'last_tool': self._last_tool,
             'next_tool': self._next_tool,
             'toolchange_purge_volume': self.toolchange_purge_volume,
@@ -1591,12 +1593,12 @@ class Mmu:
                 column_extra_header_widths[i] = sum(column_widths[start:end]) + (end - start - 1)
 
             # Build the table header
-            msg += UI_BOX_TL    + UI_BOX_T.join([UI_BOX_H * width for width in column_extra_header_widths]) + UI_BOX_TR + "\n"
-            msg += UI_BOX_V     + UI_BOX_V.join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPARATOR)
+            msg += UI_BOX_TL + UI_BOX_T.join([UI_BOX_H * width for width in column_extra_header_widths]) + UI_BOX_TR + "\n"
+            msg += UI_BOX_V  + UI_BOX_V.join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPARATOR)
                 for i in range(len(column_extra_header_widths))]) + UI_BOX_V + "\n"
-            msg += UI_BOX_V     + UI_BOX_V.join([table_headers[i].center(column_widths[i], UI_SEPARATOR)
+            msg += UI_BOX_V  + UI_BOX_V.join([table_headers[i].center(column_widths[i], UI_SEPARATOR)
                 for i in range(len(column_widths))]) + UI_BOX_V + "\n"
-            msg += UI_BOX_L     + UI_BOX_M.join([UI_BOX_H * (width) for width in column_widths]) + UI_BOX_R + "\n"
+            msg += UI_BOX_L  + UI_BOX_M.join([UI_BOX_H * (width) for width in column_widths]) + UI_BOX_R + "\n"
 
             # Build the table body
             for row in table:
@@ -1611,6 +1613,10 @@ class Mmu:
             msg += "\n%s spent paused over %d pauses (All time)" % (self._seconds_to_short_string(lifetime.get('pause', 0)), lifetime.get('total_pauses', 0))
         if self.is_in_print():
             msg += "\n%s spent paused over %d pauses (This job)" % (self._seconds_to_short_string(job.get('pause', 0)), job.get('total_pauses', 0))
+            if self.slicer_tool_map['total_toolchanges'] is not None:
+                msg += "\n%d / %d toolchanges" % (self.num_toolchanges, self.slicer_tool_map['total_toolchanges'])
+            else:
+                msg += "\n%d toolchanges" % self.num_toolchanges
         msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (lifetime.get('swaps_since_pause', 0), lifetime.get('swaps_since_pause_record', 0))
 
         return msg
@@ -2974,6 +2980,7 @@ class Mmu:
         if self.print_state not in ["started", "printing"]:
             self.log_trace("_on_print_start(->started)")
             self._clear_saved_toolhead_position()
+            self.num_toolchanges = 0
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
@@ -3238,7 +3245,6 @@ class Mmu:
     def _disable_runout(self):
         enabled = self.runout_enabled
         if enabled:
-            logging.info("PAUL: Disabled runout detection")
             self.log_trace("Disabled runout detection")
             if self.has_encoder() and self.encoder_sensor.is_enabled():
                 self.encoder_sensor.disable()
@@ -3248,7 +3254,6 @@ class Mmu:
 
     def _enable_runout(self):
         self.runout_enabled = True
-        logging.info("PAUL: Enabled runout detection")
         self.log_trace("Enabled runout detection")
         if self.has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
@@ -6193,6 +6198,7 @@ class Mmu:
                             self._next_tool = self.TOOL_GATE_UNKNOWN
 
                     # Updates swap statistics
+                    self.num_toolchanges += 1
                     self._dump_statistics(job=not quiet, gate=not quiet)
                     self._persist_swap_statistics()
                     self._persist_gate_statistics()
@@ -7807,6 +7813,7 @@ class Mmu:
         sparse_purge_map = bool(gcmd.get_int('SPARSE_PURGE_MAP', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.num_gates - 1)
+        total_toolchanges = gcmd.get_int('TOTAL_TOOLCHANGES', None, minval=0)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.num_gates - 1)
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
@@ -7834,6 +7841,10 @@ class Mmu:
 
         if initial_tool is not None:
             self.slicer_tool_map['initial_tool'] = initial_tool
+            quiet = True
+
+        if total_toolchanges is not None:
+            self.slicer_tool_map['total_toolchanges'] = total_toolchanges
             quiet = True
 
         if purge_volumes != "":
