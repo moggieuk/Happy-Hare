@@ -7856,10 +7856,10 @@ class Mmu:
                     calc = lambda x,y: volumes[0] * 2 # Build a single value matrix
                 elif n == num_slicer_tools:
                     calc = lambda x,y: volumes[y] + volumes[x] # Will build symmetrical purge matrix "from" followed by "to"
-                elif n == num_slicer_tools * 2:
-                    calc = lambda x,y: volumes[y] + volumes[num_slicer_tools + x] # Build matrix with sum of "from" list then "to" list
                 elif n == num_slicer_tools ** 2:
                     calc = lambda x,y: volumes[y + x * num_slicer_tools] # Full NxN matrix supplied in rows of "from" for each "to"
+                elif n == num_slicer_tools * 2:
+                    calc = lambda x,y: volumes[y] + volumes[num_slicer_tools + x] # Build matrix with sum of "from" list then "to" list
                 else:
                     raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expected 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n))
                 # Build purge volume map (x=to_tool, y=from_tool)
