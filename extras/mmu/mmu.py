@@ -7828,6 +7828,8 @@ class Mmu:
         if reset:
             self._clear_slicer_tool_map()
             quiet = True
+        else:
+            self.slicer_tool_map = dict(self.slicer_tool_map) # Ensure that webhook sees get_status() change
 
         if tool >= 0:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
