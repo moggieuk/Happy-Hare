@@ -55,7 +55,7 @@ class MmuTest:
             compression_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION, None)
             tension_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION, None)
             if sync_state == 'loop':
-                nb_iterations = gcmd.get_int('LOOP', 1000, minval=1, maxval=1000000)
+                nb_iterations = gcmd.get_int('LOOP', 1000, minval=1, maxval=10000000)
                 gathered_states = []
                 tests = []
                 def test_2_string(test):
@@ -136,6 +136,9 @@ class MmuTest:
                     compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
                 if tension_sensor is not None:
                     tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
+            # remove event handlers
+            self.mmu.printer.event_handlers.pop("mmu:sync_feedback_finished", None)
+            self.mmu.printer.event_handlers.pop("mmu:state_gathering_finished", None)
             return
 
 
