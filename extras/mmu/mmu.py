@@ -2820,7 +2820,7 @@ class Mmu:
             # Disable sync feedback
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
             self.sync_feedback_operational = False
-            self.sync_feedback_last_direction = self.SYNC_STATE_NEUTRAL
+            self.sync_feedback_last_state = self.SYNC_STATE_NEUTRAL
             self.log_trace("Reset sync multiplier")
             self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
 
