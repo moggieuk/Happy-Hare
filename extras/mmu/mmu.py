@@ -2841,7 +2841,7 @@ class Mmu:
 
     def _update_sync_multiplier(self):
         if not self.sync_feedback_enable or not self.sync_feedback_operational: return
-        if self.sync_feedback_last_direction == self.SYNC_STATE_NEUTRAL:
+        if self.sync_feedback_last_state == self.SYNC_STATE_NEUTRAL:
             multiplier = 1.
         else:
             go_slower = lambda s, d: abs(s - d) < abs(s + d)
