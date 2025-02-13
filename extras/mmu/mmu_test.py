@@ -67,9 +67,9 @@ class MmuTest:
                 def display_mimatches():
                     mismatches = {}
                     for i, (test, sync_state_float) in enumerate(tests):
+                        if test not in mismatches :
+                            mismatches.update({test: 0})
                         if sync_state_float != gathered_states[i]:
-                            if test not in mismatches :
-                                mismatches.update({test: 0})
                             mismatches[test] += 1
                     # display mismatches
                     self.mmu.log_info("Total Mismatches: "+str(sum(mismatches.values())) + '/' + str(nb_iterations) + ' (' + str(sum(mismatches.values()) / nb_iterations * 100) +' %)')
