@@ -247,7 +247,7 @@ class MmuSensors:
         from .mmu import Mmu # For sensor names
         tension_enabled = runout_helper.sensor_enabled
         compression_sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % Mmu.SENSOR_COMPRESSION, None)
-        has_active_compression = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
+        has_active_compression = (compression_sensor.runout_helper.sensor_enabled and compression_sensor.runout_helper.filament_present) if compression_sensor else False
 
         if tension_enabled and not has_active_compression:
             self.printer.send_event("mmu:sync_feedback", eventtime, -(state * 2 - 1)) # -1 or 1
@@ -258,7 +258,7 @@ class MmuSensors:
         from .mmu import Mmu # For sensor names
         compression_enabled = runout_helper.sensor_enabled
         tension_sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % Mmu.SENSOR_TENSION, None)
-        has_active_tension = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False
+        has_active_tension = (tension_sensor.runout_helper.sensor_enabled and tension_sensor.runout_helper.filament_present) if tension_sensor else False
 
         if compression_enabled and not has_active_tension:
             self.printer.send_event("mmu:sync_feedback", eventtime, state * 2 - 1) # 1 or -1

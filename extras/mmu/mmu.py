@@ -2793,6 +2793,9 @@ class Mmu:
             self.sync_feedback_last_state = float(state)
             if self.sync_feedback_enable and self.sync_feedback_operational:
                 self._update_sync_multiplier()
+        else :
+            self.log_error("Invalid sync feedback state: %s" % state)
+        self.printer.send_event("mmu:sync_feedback_finished", state)
 
     def _handle_mmu_synced(self):
         if not self.is_enabled: return
@@ -2820,7 +2823,7 @@ class Mmu:
             # Disable sync feedback
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
             self.sync_feedback_operational = False
-            self.sync_feedback_last_direction = self.SYNC_STATE_NEUTRAL
+            self.sync_feedback_last_state = self.SYNC_STATE_NEUTRAL
             self.log_trace("Reset sync multiplier")
             self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
 
@@ -2831,17 +2834,25 @@ class Mmu:
             pos = extruder.find_past_position(estimated_print_time)
             past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIMERANGE))
             if abs(pos - past_pos) >= self.SYNC_POSITION_MIN_DELTA:
+                # change in direction
                 prev_direction = self.sync_feedback_last_direction
                 self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
                 if self.sync_feedback_last_direction != prev_direction:
                     d = self.sync_feedback_last_direction
                     self.log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
                     self._update_sync_multiplier()
+                # change in state
+                prev_state = self.sync_feedback_last_state
+                self.sync_feedback_last_state = self._get_current_sync_state()
+                if self.sync_feedback_last_state != prev_state:
+                    self.log_trace("New sync state: %s" % self._get_sync_feedback_string())
+                    self._update_sync_multiplier()
+
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
     def _update_sync_multiplier(self):
         if not self.sync_feedback_enable or not self.sync_feedback_operational: return
-        if self.sync_feedback_last_direction == self.SYNC_STATE_NEUTRAL:
+        if self.sync_feedback_last_state == self.SYNC_STATE_NEUTRAL:
             multiplier = 1.
         else:
             go_slower = lambda s, d: abs(s - d) < abs(s + d)
@@ -2854,9 +2865,7 @@ class Mmu:
         self.log_trace("Updated sync multiplier: %.4f" % multiplier)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected) / multiplier)
 
-    # Ensure correct sync_feedback starting assumption by generating a fake event
-    def _update_sync_starting_state(self):
-        eventtime = self.reactor.monotonic()
+    def _get_current_sync_state(self):
         has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
         has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
 
@@ -2874,7 +2883,12 @@ class Mmu:
                 sss = self.SYNC_STATE_EXPANDED
             elif state_compressed:
                 sss = self.SYNC_STATE_COMPRESSED
+        return sss
 
+    # Ensure correct sync_feedback starting assumption by generating a fake event
+    def _update_sync_starting_state(self):
+        eventtime = self.reactor.monotonic()
+        sss = self._get_current_sync_state()
         self._handle_sync_feedback(eventtime, sss)
         self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string(detail=True))
 
