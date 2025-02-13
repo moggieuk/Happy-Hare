@@ -2795,6 +2795,7 @@ class Mmu:
                 self._update_sync_multiplier()
         else :
             self.log_error("Invalid sync feedback state: %s" % state)
+        self.printer.send_event("mmu:sync_feedback_finished", state)
 
     def _handle_mmu_synced(self):
         if not self.is_enabled: return
