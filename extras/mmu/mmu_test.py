@@ -87,7 +87,6 @@ class MmuTest:
                     compression_sensor_filament_present = random.choice([True, False])
                     tension_sensor_filament_present = random.choice([True, False])
                     order = random.choice([0,1])
-                    # self.mmu.log_info("Testing confugaration: compression=%s, tension=%s, order=%s" % (compression_sensor_filament_present, tension_sensor_filament_present, 'compression -> tension' if not order else 'tension -> compression'))
                     if order == 0:
                         if compression_sensor is not None:
                             if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present: toggle_compression = True
@@ -102,11 +101,9 @@ class MmuTest:
                         if compression_sensor is not None:
                             if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present: toggle_compression = True
                             compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                    # check state and try to find problematic sync state
                     if compression_sensor_filament_present and not tension_sensor_filament_present: sync_state_float = 1.0
                     elif not compression_sensor_filament_present and tension_sensor_filament_present: sync_state_float = -1.0
                     else: sync_state_float = 0.0
-                    # wait for callback to be finished
                     tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, order, toggle_compression, toggle_tension), sync_state_float])
 
             else :
