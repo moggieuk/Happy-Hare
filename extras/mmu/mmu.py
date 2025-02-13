@@ -2793,6 +2793,8 @@ class Mmu:
             self.sync_feedback_last_state = float(state)
             if self.sync_feedback_enable and self.sync_feedback_operational:
                 self._update_sync_multiplier()
+        else :
+            self.log_error("Invalid sync feedback state: %s" % state)
 
     def _handle_mmu_synced(self):
         if not self.is_enabled: return
