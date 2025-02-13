@@ -78,7 +78,7 @@ class MmuTest:
                         # sort by most mismatches.values (highest first)
                         mismatches = dict(sorted(mismatches.items(), key=lambda item: item[1], reverse=True))
                         for test, count in mismatches.items():
-                            self.mmu.log_trace("MISMATCH: %s -> %s" % (test_2_string(test), count))
+                            self.mmu.log_debug("MISMATCH: %s -> %s" % (test_2_string(test), count))
 
                 self.mmu.printer.register_event_handler("mmu:sync_feedback_finished", gather_state)
                 self.mmu.printer.register_event_handler("mmu:state_gathering_finished", display_mimatches)
