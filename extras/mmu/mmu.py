@@ -3005,6 +3005,9 @@ class Mmu:
             self.log_info(msg)
             self._set_print_state("printing")
 
+            # Establish syncing state and grip (servo) position
+            self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
+
     # Hack: Force state transistion to printing for any early moves if MMU_PRINT_START not yet run
     def _fix_started_state(self):
         if self.is_printer_printing() and not self.is_in_print():
@@ -3026,6 +3029,7 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
             self._set_print_state(state) # Must be before the unsyncing below for grip (servo) to operate
             self.sync_gear_to_extruder(False, grip=True)
+
         if state == "standby" and not self.is_in_standby():
             self._set_print_state(state)
         self._clear_macro_state(reset=True)
