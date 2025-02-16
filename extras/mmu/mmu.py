@@ -3634,6 +3634,11 @@ class Mmu:
         if write:
             self.write_variables()
 
+    def delete_variable(self, variable, write=False):
+        _ = self.save_variables.allVariables.pop(variable, None)
+        if write:
+            self.write_variables()
+
     def write_variables(self):
         if self._can_write_variables:
             mmu_vars_revision = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, 0) + 1
