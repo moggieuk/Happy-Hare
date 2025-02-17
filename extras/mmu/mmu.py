@@ -519,6 +519,8 @@ class Mmu:
         self.tool_extrusion_multipliers.extend([1.] * self.num_gates)
         self.tool_speed_multipliers.extend([1.] * self.num_gates)
 
+        # Soak Testing
+        self._is_running_test = False
         # Register GCODE commands ---------------------------------------------------------------------------
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
@@ -2802,7 +2804,8 @@ class Mmu:
                 self._update_sync_multiplier()
         else :
             self.log_error("Invalid sync feedback state: %s" % state)
-        self.printer.send_event("mmu:sync_feedback_finished", state)
+        if self._is_running_test:
+            self.printer.send_event("mmu:sync_feedback_finished", state)
 
     def _handle_mmu_synced(self):
         if not self.is_enabled: return

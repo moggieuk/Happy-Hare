@@ -28,6 +28,7 @@ class MmuTest:
 
     cmd_MMU_TEST_help = "Internal Happy Hare development tests"
     def cmd_MMU_TEST(self, gcmd):
+        self.mmu._is_running_test = True
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
 
@@ -542,3 +543,5 @@ class MmuTest:
         fil_pos = gcmd.get_int('FILAMENT_POS', -2, minval=-1, maxval=10)
         if fil_pos != -2:
             self.mmu._set_filament_pos_state(fil_pos)
+        # Restore non testing context
+        self.mmu._is_running_test = False
