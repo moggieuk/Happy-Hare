@@ -57,13 +57,50 @@ class MmuTest:
                 nb_iterations = gcmd.get_int('LOOP', 1000, minval=1, maxval=10000000)
                 gathered_states = []
                 tests = []
+                def get_float_state(compression=None, tension=None):
+                    '''
+                    Return the expected flaot state with given inputs and current sensor states.
+                    '''
+                    if (not compression and not tension) or (compression and tension):
+                        return 0.
+                    elif compression:
+                        return 1.
+                    else:
+                        return -1.
+
                 def test_2_string(test):
-                    return "compression=%s, tension=%s, order=%s, toggle_compression=%s, toggle_tension=%s" % (test[0], test[1], 'compression -> tension' if not test[2] else 'tension -> compression', test[3], test[4])
+                    return "compression=%s, tension=%s, toggle_compression=%s, toggle_tension=%s" % (test[0], test[1], test[2], test[3])
                 def gather_state(state):
                     gathered_states.append(state)
-                    if len(gathered_states) == nb_iterations:
+                    if len(gathered_states) == nb_iterations :
                         self.mmu.printer.send_event("mmu:state_gathering_finished")
-                def display_mimatches():
+                def display_results():
+                    nb_tests_by_expected = {}
+                    self.mmu.log_info("NB Gathered states: %s" % len(gathered_states))
+                    self.mmu.log_info("NB Tests: %s" % len(tests))
+                    # for each configuration print the number of times it was run
+                    self.mmu.log_info("Configuration repartition")
+                    nb_hits = {}
+                    for comp in [True, False]:
+                        for tens in [True, False]:
+                            for t in tests:
+                                if (comp, tens) not in nb_hits:
+                                    nb_hits.update({(comp, tens): 0})
+                                if (t[0][0], t[0][1]) == (comp, tens):
+                                    nb_hits[(comp, tens)] += 1
+                    # print the hits from most to least frequent
+                    for key, value in sorted(nb_hits.items(), key=lambda item: item[1], reverse=True):
+                        self.mmu.log_debug("   compression : %s - tension : %s -> %s" % (key[0], key[1], value))
+
+                    # group by expected result and print how many tests should result in that state
+                    self.mmu.log_info("Expected state repartition")
+                    for expected in [1,0,-1]:
+                        count = sum([1 for test, sync_state_float in tests if sync_state_float == expected])
+                        self.mmu.log_debug("   Expected state %s -> %s" % (expected, count))
+                        if expected not in nb_tests_by_expected:
+                            nb_tests_by_expected.update({expected: 0})
+                        nb_tests_by_expected[expected] += count
+
                     mismatches = {}
                     for i, (test, sync_state_float) in enumerate(tests):
                         if test not in mismatches :
@@ -72,6 +109,7 @@ class MmuTest:
                             mismatches[test] += 1
                     # display mismatches
                     self.mmu.log_info("Total Mismatches: "+str(sum(mismatches.values())) + '/' + str(nb_iterations) + ' (' + str(round(sum(mismatches.values()) / nb_iterations * 100, 2)) +' %)')
+
                     if mismatches :
                         self.mmu.log_info("See mmu.log for a detailed list")
                         # sort by most mismatches.values (highest first)
@@ -80,60 +118,47 @@ class MmuTest:
                             self.mmu.log_debug("MISMATCH: %s -> %s" % (test_2_string(test), count))
                         # Summary displaying which expected state has which percentage of total errors
                         for expected in [1,0,-1]:
-                            count = sum([count for test, count in mismatches.items() if test[1] == expected])
-                            self.mmu.log_debug(">>>>>> Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %)')
-                            # group by transition direction
-                            for order in [0,1]:
-                                self.mmu.log_debug("   Events: " + ('compression -> tension' if not order else 'tension -> compression'))
-                                count = sum([count for test, count in mismatches.items() if test[1] == expected and test[2] == order])
-                                self.mmu.log_debug("      Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %) ')
-
+                            count = sum([c for test, c in mismatches.items() if test[1] == expected])
+                            self.mmu.log_debug(">>>>>> Expected state " + str(expected) + " -> " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %)')
                             self.mmu.log_debug("   Edge detection error repartition")
                             # group by compression rising edge
-                            count = sum([count for test, count in mismatches.items() if test[1] == expected and test[3] == 'rising edge'])
-                            self.mmu.log_debug("      Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %) ' + 'compression rising edge')
+                            count = sum([c for test, c in mismatches.items() if test[1] == expected and test[2] == 'rising edge'])
+                            self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'compression rising edge')
                             # group by compression falling edge
-                            count = sum([count for test, count in mismatches.items() if test[1] == expected and test[3] == 'falling edge'])
-                            self.mmu.log_debug("      Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %) ' + 'compression falling edge')
+                            count = sum([c for test, c in mismatches.items() if test[1] == expected and test[2] == 'falling edge'])
+                            self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'compression falling edge')
                             # group by tension rising edge
-                            count = sum([count for test, count in mismatches.items() if test[1] == expected and test[4] == 'rising edge'])
-                            self.mmu.log_debug("      Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %) ' + 'tension rising edge')
+                            count = sum([c for test, c in mismatches.items() if test[1] == expected and test[3] == 'rising edge'])
+                            self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'tension rising edge')
                             # group by tension falling edge
-                            count = sum([count for test, count in mismatches.items() if test[1] == expected and test[4] == 'falling edge'])
-                            self.mmu.log_debug("      Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %) ' + 'tension falling edge')
+                            count = sum([c for test, c in mismatches.items() if test[1] == expected and test[3] == 'falling edge'])
+                            self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'tension falling edge')
 
                     else:
                         self.mmu.log_info("No mismatches")
 
                 self.mmu.printer.register_event_handler("mmu:sync_feedback_finished", gather_state)
-                self.mmu.printer.register_event_handler("mmu:state_gathering_finished", display_mimatches)
+                self.mmu.printer.register_event_handler("mmu:state_gathering_finished", display_results)
                 for __ in range(nb_iterations):
-                    toggle_tension = toggle_compression = None
-                    compression_sensor_filament_present = random.choice([True, False])
                     tension_sensor_filament_present = random.choice([True, False])
-                    order = random.choice([0,1])
-                    if order == 0:
-                        if compression_sensor is not None:
-                            if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
-                                toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
+                    compression_sensor_filament_present = random.choice([True, False])
+                    sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
+                    if compression_sensor is not None:
+                        if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
+                            toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
                             compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                        if tension_sensor is not None:
-                            if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
-                                toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
+                        else :
+                            toggle_compression = "no change"
+                    if tension_sensor is not None:
+                        if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
+                            toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
                             tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
-                    else :
-                        if tension_sensor is not None:
-                            if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
-                                toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
-                            tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
-                        if compression_sensor is not None:
-                            if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
-                                toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
-                            compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                    if compression_sensor_filament_present and not tension_sensor_filament_present: sync_state_float = 1.0
-                    elif not compression_sensor_filament_present and tension_sensor_filament_present: sync_state_float = -1.0
-                    else: sync_state_float = 0.0
-                    tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, order, toggle_compression, toggle_tension), sync_state_float])
+                        else :
+                            toggle_tension = "no change"
+
+                    if toggle_compression == "no change" and toggle_tension == "no change":
+                        self.mmu.printer.send_event("mmu:sync_feedback", self.mmu.reactor.monotonic, sync_state_float)
+                    tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
 
             else :
                 if sync_state == 'compression':
