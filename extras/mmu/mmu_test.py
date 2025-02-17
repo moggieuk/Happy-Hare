@@ -86,7 +86,7 @@ class MmuTest:
                     self.mmu.log_info("NB Gathered states: %s" % len(gathered_states))
                     self.mmu.log_info("NB Tests: %s" % len(tests))
                     # for each configuration print the number of times it was run
-                    self.mmu.log_info("Configuration repartition")
+                    self.mmu.log_debug("Configuration repartition")
                     nb_hits = {}
                     for comp in [None, True, False]:
                         for tens in [None, True, False]:
@@ -100,7 +100,7 @@ class MmuTest:
                         self.mmu.log_debug("   compression : %s - tension : %s -> %s" % (key[0], key[1], value))
 
                     # group by expected result and print how many tests should result in that state
-                    self.mmu.log_info("Expected state repartition")
+                    self.mmu.log_debug("Expected state repartition")
                     for expected in [1.,0.,-1.]:
                         count = len([1 for __, sync_state_float in tests if sync_state_float == expected])
                         self.mmu.log_debug("   Expected state %s -> %s" % (expected, count))
@@ -145,7 +145,7 @@ class MmuTest:
 
                 self.mmu.printer.register_event_handler("mmu:sync_feedback_finished", gather_state)
                 self.mmu.printer.register_event_handler("mmu:test_gen_finished", wait_for_results)
-                for __ in range(nb_iterations):
+                while len(tests) < nb_iterations:
                     compression_sensor_filament_present = None
                     tension_sensor_filament_present = None
                     toggle_compression = "no change"
@@ -165,6 +165,8 @@ class MmuTest:
                                 toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
                                 tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
                                 tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
+                        if len(tests) >= nb_iterations:
+                            break
                     else :
                         if tension_sensor is not None:
                             tension_sensor_filament_present = random.choice([True, False])
