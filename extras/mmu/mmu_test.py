@@ -12,7 +12,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import random
-
 # Happy Hare imports
 from ..            import mmu_machine
 from ..mmu_machine import MmuToolHead
@@ -72,13 +71,32 @@ class MmuTest:
                         if sync_state_float != gathered_states[i]:
                             mismatches[test] += 1
                     # display mismatches
-                    self.mmu.log_info("Total Mismatches: "+str(sum(mismatches.values())) + '/' + str(nb_iterations) + ' (' + str(sum(mismatches.values()) / nb_iterations * 100) +' %)')
+                    self.mmu.log_info("Total Mismatches: "+str(sum(mismatches.values())) + '/' + str(nb_iterations) + ' (' + str(round(sum(mismatches.values()) / nb_iterations * 100, 2)) +' %)')
                     if mismatches :
                         self.mmu.log_info("See mmu.log for a detailed list")
                         # sort by most mismatches.values (highest first)
                         mismatches = dict(sorted(mismatches.items(), key=lambda item: item[1], reverse=True))
                         for test, count in mismatches.items():
                             self.mmu.log_debug("MISMATCH: %s -> %s" % (test_2_string(test), count))
+                        # Summary displaying which expected state has which percentage of total errors
+                        for expected in [1,0,-1]:
+                            count = sum([count for test, count in mismatches.items() if test[1] == expected])
+                            self.mmu.log_info("Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %)')
+                            # group by transition direction
+                            for order in [0,1]:
+                                count = sum([count for test, count in mismatches.items() if test[1] == expected and test[2] == order])
+                                self.mmu.log_debug("Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %) ' + ('compression -> tension' if not order else 'tension -> compression'))
+                            # group by sensor state
+                            for toggle_compression in [True, False]:
+                                count = sum([count for test, count in mismatches.items() if test[1] == expected and test[3] == toggle_compression])
+                                self.mmu.log_debug("Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %) ' + ('toggle compression' if toggle_compression else 'no toggle compression'))
+                            # group by sensor state
+                            for toggle_tension in [True, False]:
+                                count = sum([count for test, count in mismatches.items() if test[1] == expected and test[4] == toggle_tension])
+                                self.mmu.log_debug("Expected state " + str(expected) + " -> " + str(count) + '/' + str(sum(mismatches.values())) + ' (' + str(round(count / sum(mismatches.values()) * 100, 2)) + ' %) ' + ('toggle tension' if toggle_tension else 'no toggle tension'))
+
+                    else:
+                        self.mmu.log_info("No mismatches")
 
                 self.mmu.printer.register_event_handler("mmu:sync_feedback_finished", gather_state)
                 self.mmu.printer.register_event_handler("mmu:state_gathering_finished", display_mimatches)
