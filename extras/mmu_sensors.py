@@ -251,10 +251,13 @@ class MmuSensors:
 
         if tension_enabled:
             if has_active_compression and compression_state:
-                logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
-                event_value = 0  # neutral for malfunction
-            elif has_active_compression:
-                event_value = -(tension_state * 2 - 1) # -1 or 1
+                if tension_state and compression_state:
+                    logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
+                    event_value = 0
+                elif tension_state and not compression_state:
+                    event_value = -1
+                elif not tension_state and compression_state:
+                    event_value = 1
             else:
                 event_value = -tension_state # -1 or 0 (neutral)
         else:
@@ -271,10 +274,13 @@ class MmuSensors:
 
         if compression_enabled:
             if has_active_tension and tension_state:
-                logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
-                event_value = 0  # neutral for malfunction
-            elif has_active_tension:
-                event_value = compression_state * 2 - 1  # 1 or -1
+                if compression_state and tension_state:
+                    logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
+                    event_value = 0
+                elif compression_state and not tension_state:
+                    event_value = 1
+                elif not compression_state and tension_state:
+                    event_value = -1
             else:
                 event_value = compression_state  # 1 or 0 (neutral)
         else:
