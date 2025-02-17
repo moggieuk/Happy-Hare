@@ -241,29 +241,48 @@ class MmuSensors:
         real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
         return real_pin == ''
 
-    # Button event handlers for sync-feedback
+        # Button event handlers for sync-feedback
     # Feedback state should be between -1 (expanded) and 1 (compressed)
-    def _sync_tension_callback(self, eventtime, state, runout_helper):
+    def _sync_tension_callback(self, eventtime, tension_state, runout_helper):
         from .mmu import Mmu # For sensor names
         tension_enabled = runout_helper.sensor_enabled
         compression_sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % Mmu.SENSOR_COMPRESSION, None)
-        has_active_compression = (compression_sensor.runout_helper.sensor_enabled and compression_sensor.runout_helper.filament_present) if compression_sensor else False
+        has_active_compression = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
+        compression_state = compression_sensor.runout_helper.filament_present if has_active_compression else False
 
-        if tension_enabled and not has_active_compression:
-            self.printer.send_event("mmu:sync_feedback", eventtime, -(state * 2 - 1)) # -1 or 1
+        if tension_enabled:
+            if has_active_compression:
+                if compression_state:
+                    logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
+                    event_value = 0  # neutral for malfunction
+                else:
+                    event_value = -(tension_state * 2 - 1) # -1 or 1
+            else:
+                event_value = -tension_state # -1 or 0 (neutral)
         else:
-            self.printer.send_event("mmu:sync_feedback", eventtime, -(state & int(tension_enabled))) # -1 or 0 (neutral)
+            event_value = 0  # neutral
 
-    def _sync_compression_callback(self, eventtime, state, runout_helper):
-        from .mmu import Mmu # For sensor names
+        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
+
+    def _sync_compression_callback(self, eventtime, compression_state, runout_helper):
+        from .mmu import Mmu
         compression_enabled = runout_helper.sensor_enabled
         tension_sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % Mmu.SENSOR_TENSION, None)
-        has_active_tension = (tension_sensor.runout_helper.sensor_enabled and tension_sensor.runout_helper.filament_present) if tension_sensor else False
+        has_active_tension = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False
+        tension_state = tension_sensor.runout_helper.filament_present if has_active_tension else False
 
-        if compression_enabled and not has_active_tension:
-            self.printer.send_event("mmu:sync_feedback", eventtime, state * 2 - 1) # 1 or -1
+        if compression_enabled:
+            if has_active_tension and tension_state:
+                logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
+                event_value = 0  # neutral for malfunction
+            elif has_active_tension:
+                event_value = compression_state * 2 - 1  # 1 or -1
+            else:
+                event_value = compression_state  # 1 or 0 (neutral)
         else:
-            self.printer.send_event("mmu:sync_feedback", eventtime, state & int(compression_enabled)) # 1 or 0 (neutral)
+            event_value = 0  # neutral
+
+        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
 
 def load_config(config):
     return MmuSensors(config)
