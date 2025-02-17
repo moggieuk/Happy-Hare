@@ -999,6 +999,13 @@ class Mmu:
             except ValueError:
                 return s
 
+    # Helper to ensure int when strings may be passed from UI
+    def safe_int(self, i, default=0):
+        try:
+            return int(i)
+        except ValueError:
+            return default
+
     # Compare unicode strings with optional case insensitivity
     def _compare_unicode(self, a, b, case_insensitive=True):
         a = unicodedata.normalize('NFKC', a)
@@ -1044,7 +1051,7 @@ class Mmu:
 
         # Try RGB color
         color = color.lstrip('#').lower()
-        x = re.search(r"^([a-f\d]{6})$", color)
+        x = re.search(r"^([a-f\d]{6}([a-f\d]{2})?)$", color, re.IGNORECASE)
         if x is not None and x.group() == color:
             return color
 
@@ -3518,7 +3525,7 @@ class Mmu:
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
-        default_extruder_temp = self.gate_temperature[self.gate_selected] if self.gate_selected >= 0 else self.default_extruder_temp
+        default_extruder_temp = self.gate_temperature[self.gate_selected] if self.gate_selected > 0 else self.default_extruder_temp
         self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, default_extruder_temp, source))
 
         if source == "pause":
@@ -6752,6 +6759,8 @@ class Mmu:
         spoolman_support = gcmd.get('SPOOLMAN_SUPPORT', self.spoolman_support)
         if spoolman_support not in self.SPOOLMAN_OPTIONS:
             raise gcmd.error("spoolman_support is invalid. Options are: %s" % self.SPOOLMAN_OPTIONS)
+        if spoolman_support == self.SPOOLMAN_OFF:
+            self.gate_spool_id[:] = [-1] * self.num_gates
         self.spoolman_support = spoolman_support
 
         prev_t_macro_color = self.t_macro_color
@@ -7626,10 +7635,13 @@ class Mmu:
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
 
+        gate_map = None
         try:
             gate_map = ast.literal_eval(gmapstr)
         except Exception as e:
+            self.log_error("Warning: Recieved unparsable gate map update. See log for more details")
             self.log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
+            return
 
         if reset:
             self._reset_gate_map()
@@ -7647,33 +7659,40 @@ class Mmu:
                     if not (0 <= gate < self.num_gates):
                         self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                         continue
-                    spool_id = fil.get('spool_id', -1)
+                    spool_id = self.safe_int(fil.get('spool_id', -1))
                     self.gate_spool_id[gate] = spool_id
                     if spool_id >= 0:
                         self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
-                        self.gate_temperature[gate] = fil.get('temp', '') or int(self.default_extruder_temp)
+                        self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
+                        if self.gate_temperature[gate] <= 0:
+                            self.gate_temperature[gate] = self.default_extruder_temp
+                        self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
                     else:
                         # Clear attributes (should only get here in spoolman "pull" mode)
                         self.gate_filament_name[gate] = ''
                         self.gate_material[gate] = ''
                         self.gate_color[gate] = ''
-                        self.gate_temperature[gate] = int(self.default_extruder_temp)
-                        self.gate_speed_override[gate] = 100
+                        self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
             else:
                 # Update map
                 for gate, fil in gate_map.items():
                     if not (0 <= gate < self.num_gates):
                         self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                         continue
-                    if fil and self.gate_spool_id[gate] == fil.get('spool_id', None):
+                    if fil:
+                        if self.gate_spool_id[gate] != fil.get('spool_id', -1):
+                            self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
+                        self.gate_spool_id[gate] = self.safe_int(fil.get('spool_id', -1))
                         self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
-                        self.gate_temperature[gate] = fil.get('temp', '') or int(self.default_extruder_temp)
-                    else:
-                        self.log_debug("Assertion failure: Spool_id changed for gate %d in MMU_GATE_MAP. Attributes=%s" % (gate, fil))
+                        self.gate_status[gate] = self.safe_int(fil.get('status', self.gate_status[gate])) # For UI manual fixing of availabilty
+                        self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
+                        if self.gate_temperature[gate] <= 0:
+                            self.gate_temperature[gate] = self.default_extruder_temp
+                        self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
 
             self._update_gate_color_rgb()
             self._persist_gate_map() # This will also update LED status
@@ -7721,7 +7740,7 @@ class Mmu:
                         gate_ids.append((gate, spool_id))
                     color = self._validate_color(color)
                     if color is None:
-                        raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
+                        raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
                     self.gate_status[gate] = available
                     self.gate_filament_name[gate] = name
                     self.gate_material[gate] = material
