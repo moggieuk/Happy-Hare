@@ -240,7 +240,7 @@ class MmuSensors:
         real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
         return real_pin == ''
 
-        # Button event handlers for sync-feedback
+    # Button event handlers for sync-feedback
     # Feedback state should be between -1 (expanded) and 1 (compressed)
     def _sync_tension_callback(self, eventtime, tension_state, runout_helper):
         from .mmu import Mmu # For sensor names
@@ -250,12 +250,11 @@ class MmuSensors:
         compression_state = compression_sensor.runout_helper.filament_present if has_active_compression else False
 
         if tension_enabled:
-            if has_active_compression:
-                if compression_state:
-                    logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
-                    event_value = 0  # neutral for malfunction
-                else:
-                    event_value = -(tension_state * 2 - 1) # -1 or 1
+            if has_active_compression and compression_state:
+                logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
+                event_value = 0  # neutral for malfunction
+            elif has_active_compression:
+                event_value = -(tension_state * 2 - 1) # -1 or 1
             else:
                 event_value = -tension_state # -1 or 0 (neutral)
         else:
