@@ -2834,20 +2834,12 @@ class Mmu:
             pos = extruder.find_past_position(estimated_print_time)
             past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIMERANGE))
             if abs(pos - past_pos) >= self.SYNC_POSITION_MIN_DELTA:
-                # change in direction
                 prev_direction = self.sync_feedback_last_direction
                 self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
                 if self.sync_feedback_last_direction != prev_direction:
                     d = self.sync_feedback_last_direction
                     self.log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
                     self._update_sync_multiplier()
-                # change in state
-                prev_state = self.sync_feedback_last_state
-                self.sync_feedback_last_state = self._get_current_sync_state()
-                if self.sync_feedback_last_state != prev_state:
-                    self.log_trace("New sync state: %s" % self._get_sync_feedback_string())
-                    self._update_sync_multiplier()
-
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
     def _update_sync_multiplier(self):
@@ -4206,7 +4198,7 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_LOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking 
+                # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None) - start_pos
 
                 if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
@@ -4240,7 +4232,7 @@ class Mmu:
                             self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details"% (length, length - delta))
                     else:
                         self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
-    
+
                     if delta >= self.bowden_allowable_load_delta:
                         self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
 
@@ -4277,7 +4269,7 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_UNLOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking 
+                # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None)
 
                 # Optional pre-unload safety step
@@ -4736,7 +4728,7 @@ class Mmu:
 
             # Activate loaded spool in Spoolman
             self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
-            
+
             # POST_LOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
@@ -4890,7 +4882,7 @@ class Mmu:
 
             # Deactivate spool in Spoolman as it is now unloaded.
             self._spoolman_activate_spool(0)
-            
+
             # POST_UNLOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_unload'):
