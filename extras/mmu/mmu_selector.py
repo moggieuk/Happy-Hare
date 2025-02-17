@@ -1392,6 +1392,7 @@ class RotarySelector(BaseSelector, object):
             pass # Home not found
         mcu_position = self.selector_stepper.get_mcu_position()
         traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
+        return traveled, homed
 
 
 
