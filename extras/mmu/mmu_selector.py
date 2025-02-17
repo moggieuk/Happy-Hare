@@ -1178,6 +1178,7 @@ class RotarySelector(BaseSelector, object):
         status.update({
             'grip': "Gripped" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
         })
+        return status
 
     def get_mmu_status_config(self):
         msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
@@ -1391,6 +1392,7 @@ class RotarySelector(BaseSelector, object):
             pass # Home not found
         mcu_position = self.selector_stepper.get_mcu_position()
         traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
+        return traveled, homed
 
 
 
