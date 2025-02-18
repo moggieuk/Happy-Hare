@@ -626,6 +626,12 @@ read_previous_config() {
     if [ "${_param_homing_extruder}" != "" ]; then
         _hw_homing_extruder=${_param_homing_extruder}
     fi
+
+    # v3.1.0
+    if [ "${_variable_pin_loc_compressed}" != "" ]; then
+        pin_loc_y=$(echo ${_variable_pin_loc_xy} | cut -d ',' -f2)
+        _variable_pin_loc_compressed_xy="${_variable_pin_loc_compressed}, ${pin_loc_y}"
+    fi
 }
 
 # Helper for upgrade logic
