@@ -2248,7 +2248,9 @@ if [ "$UNINSTALL" -eq 0 ]; then
     _param_happy_hare_version=${VERSION}
 
     # Copy config files updating from in memory parmameters or h/w settings
+    set +e
     copy_config_files
+    set -e
 
     # Special upgrades of mmu_hardware.cfg
     upgrade_mmu_hardware

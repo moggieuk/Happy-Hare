@@ -179,9 +179,9 @@ class Mmu:
     VARS_MMU_ENCODER_RESOLUTION       = "mmu_encoder_resolution"
     VARS_MMU_GEAR_ROTATION_DISTANCES  = "mmu_gear_rotation_distances"
 
-    VARS_MMU_CALIB_BOWDEN_LENGTH      = "mmu_calibration_bowden_length" # Deprecated (for upgrade only)
-    VARS_MMU_GEAR_ROTATION_DISTANCE   = "mmu_gear_rotation_distance"    # Deprecated (for upgrade only)
-    VARS_MMU_CALIB_PREFIX             = "mmu_calibration_"              # Deprecated (for upgrade only)
+    VARS_MMU_CALIB_BOWDEN_LENGTH      = "mmu_calibration_bowden_length" # DEPRECATED (for upgrade only)
+    VARS_MMU_GEAR_ROTATION_DISTANCE   = "mmu_gear_rotation_distance"    # DEPRECATED (for upgrade only)
+    VARS_MMU_CALIB_PREFIX             = "mmu_calibration_"              # DEPRECATED (for upgrade only)
 
     # Mainsail/Fluid visualization of extruder colors and other attributes
     T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled
@@ -979,12 +979,13 @@ class Mmu:
         self._clear_slicer_tool_map()
         self.pending_spool_id = None # For automatic assignment of spool_id if set perhaps by rfid reader
         self.saved_toolhead_max_accel = None
+        self.num_toolchanges = 0
 
         # Sub components
         self.selector.reinit()
 
     def _clear_slicer_tool_map(self):
-        self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': []}
+        self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': [], 'total_toolchanges': None}
         self.slicer_color_rgb = [(0.,0.,0.)] * self.num_gates
         self._update_t_macros() # Clear 'color' on Tx macros if displaying slicer colors
 
@@ -998,6 +999,13 @@ class Mmu:
             except ValueError:
                 return s
 
+    # Helper to ensure int when strings may be passed from UI
+    def safe_int(self, i, default=0):
+        try:
+            return int(i)
+        except ValueError:
+            return default
+
     # Compare unicode strings with optional case insensitivity
     def _compare_unicode(self, a, b, case_insensitive=True):
         a = unicodedata.normalize('NFKC', a)
@@ -1008,7 +1016,7 @@ class Mmu:
         return a == b
 
     # This retuns the hex color format without leading '#' E.g. ff00e0
-    # PAUL TODO support alpha channel for color (Mainsail plugin supports)
+    # TODO support alpha channel for color (Mainsail plugin supports)
     def _color_to_rgb_hex(self, color):
         if color in self.w3c_colors:
             color = self.w3c_colors.get(color)
@@ -1043,7 +1051,7 @@ class Mmu:
 
         # Try RGB color
         color = color.lstrip('#').lower()
-        x = re.search(r"^([a-f\d]{6})$", color)
+        x = re.search(r"^([a-f\d]{6}([a-f\d]{2})?)$", color, re.IGNORECASE)
         if x is not None and x.group() == color:
             return color
 
@@ -1174,7 +1182,7 @@ class Mmu:
         # Auto upgrade old names
         key_map = {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause"}
         swap_stats = {key_map.get(key, key): swap_stats[key] for key in swap_stats}
-        swap_stats.pop('servo_retries', None) # Deprecated
+        swap_stats.pop('servo_retries', None) # DEPRECATED
 
         self.statistics.update(swap_stats)
         for gate in range(self.num_gates):
@@ -1334,19 +1342,21 @@ class Mmu:
             'enabled': self.is_enabled,
              # TODO Should rest of this section be in a conditional if self.is_enabled: block for performance?
             'num_gates': self.num_gates,
-            'is_paused': self.is_mmu_paused(),
-            'is_locked': self.is_mmu_paused(), # Alias for is_paused (deprecated)
             'is_homed': self.selector.is_homed,
-            'is_in_print': self.is_in_print(),
+            'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused)
+            'is_paused': self.is_mmu_paused(), # DEPRECATED (use print_state)
+            'is_in_print': self.is_in_print(), # DEPRECATED (use print_state)
+            'print_state': self.print_state,
             'unit': self.unit_selected,
             'tool': self.tool_selected,
             'gate': self._next_gate if self._next_gate is not None else self.gate_selected,
             'active_filament': self.active_filament,
+            'num_toolchanges': self.num_toolchanges,
             'last_tool': self._last_tool,
             'next_tool': self._next_tool,
             'toolchange_purge_volume': self.toolchange_purge_volume,
             'last_toolchange': self._last_toolchange,
-            'runout': self.is_handling_runout, # Deprecated (use operation)
+            'runout': self.is_handling_runout, # DEPRECATED (use operation)
             'operation': self.saved_toolhead_operation,
             'filament': "Loaded" if self.filament_pos == self.FILAMENT_POS_LOADED else
                         "Unloaded" if self.filament_pos == self.FILAMENT_POS_UNLOADED else
@@ -1373,10 +1383,9 @@ class Mmu:
             'sync_drive': self.mmu_toolhead.is_synced(),
             'sync_feedback_state': self._get_sync_feedback_string(),
             'sync_feedback_enabled': bool(self.sync_feedback_enable),
-            'print_state': self.print_state,
             'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
             'clog_detection_enabled': self.enable_clog_detection,
-            'endless_spool': self.enable_endless_spool, # DEPRECATED use endless_spool_enabled
+            'endless_spool': self.enable_endless_spool,   # DEPRECATED use endless_spool_enabled
             'endless_spool_enabled': self.enable_endless_spool,
             'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
@@ -1591,12 +1600,12 @@ class Mmu:
                 column_extra_header_widths[i] = sum(column_widths[start:end]) + (end - start - 1)
 
             # Build the table header
-            msg += UI_BOX_TL    + UI_BOX_T.join([UI_BOX_H * width for width in column_extra_header_widths]) + UI_BOX_TR + "\n"
-            msg += UI_BOX_V     + UI_BOX_V.join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPARATOR)
+            msg += UI_BOX_TL + UI_BOX_T.join([UI_BOX_H * width for width in column_extra_header_widths]) + UI_BOX_TR + "\n"
+            msg += UI_BOX_V  + UI_BOX_V.join([table_extra_headers[i].center(column_extra_header_widths[i], UI_SEPARATOR)
                 for i in range(len(column_extra_header_widths))]) + UI_BOX_V + "\n"
-            msg += UI_BOX_V     + UI_BOX_V.join([table_headers[i].center(column_widths[i], UI_SEPARATOR)
+            msg += UI_BOX_V  + UI_BOX_V.join([table_headers[i].center(column_widths[i], UI_SEPARATOR)
                 for i in range(len(column_widths))]) + UI_BOX_V + "\n"
-            msg += UI_BOX_L     + UI_BOX_M.join([UI_BOX_H * (width) for width in column_widths]) + UI_BOX_R + "\n"
+            msg += UI_BOX_L  + UI_BOX_M.join([UI_BOX_H * (width) for width in column_widths]) + UI_BOX_R + "\n"
 
             # Build the table body
             for row in table:
@@ -1611,6 +1620,10 @@ class Mmu:
             msg += "\n%s spent paused over %d pauses (All time)" % (self._seconds_to_short_string(lifetime.get('pause', 0)), lifetime.get('total_pauses', 0))
         if self.is_in_print():
             msg += "\n%s spent paused over %d pauses (This job)" % (self._seconds_to_short_string(job.get('pause', 0)), job.get('total_pauses', 0))
+            if self.slicer_tool_map['total_toolchanges'] is not None:
+                msg += "\n%d / %d toolchanges" % (self.num_toolchanges, self.slicer_tool_map['total_toolchanges'])
+            else:
+                msg += "\n%d toolchanges" % self.num_toolchanges
         msg += "\nNumber of swaps since last incident: %d (Record: %d)" % (lifetime.get('swaps_since_pause', 0), lifetime.get('swaps_since_pause_record', 0))
 
         return msg
@@ -2100,7 +2113,7 @@ class Mmu:
         if self.check_if_not_homed(): return
         if self.check_if_always_synced(): return
         grip = gcmd.get_int('GRIP', 1, minval=0, maxval=1)
-        servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # Deprecated (use GRIP=0 instead)
+        servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # DEPRECATED (use GRIP=0 instead)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         self.sync_gear_to_extruder(sync, grip=(grip and servo), current=True)
 
@@ -2974,6 +2987,7 @@ class Mmu:
         if self.print_state not in ["started", "printing"]:
             self.log_trace("_on_print_start(->started)")
             self._clear_saved_toolhead_position()
+            self.num_toolchanges = 0
             self.paused_extruder_temp = None
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
@@ -2998,6 +3012,9 @@ class Mmu:
             self.log_info(msg)
             self._set_print_state("printing")
 
+            # Establish syncing state and grip (servo) position
+            self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
+
     # Hack: Force state transistion to printing for any early moves if MMU_PRINT_START not yet run
     def _fix_started_state(self):
         if self.is_printer_printing() and not self.is_in_print():
@@ -3019,6 +3036,7 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
             self._set_print_state(state) # Must be before the unsyncing below for grip (servo) to operate
             self.sync_gear_to_extruder(False, grip=True)
+
         if state == "standby" and not self.is_in_standby():
             self._set_print_state(state)
         self._clear_macro_state(reset=True)
@@ -3238,7 +3256,6 @@ class Mmu:
     def _disable_runout(self):
         enabled = self.runout_enabled
         if enabled:
-            logging.info("PAUL: Disabled runout detection")
             self.log_trace("Disabled runout detection")
             if self.has_encoder() and self.encoder_sensor.is_enabled():
                 self.encoder_sensor.disable()
@@ -3248,7 +3265,6 @@ class Mmu:
 
     def _enable_runout(self):
         self.runout_enabled = True
-        logging.info("PAUL: Enabled runout detection")
         self.log_trace("Enabled runout detection")
         if self.has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
@@ -3509,7 +3525,7 @@ class Mmu:
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
-        default_extruder_temp = self.gate_temperature[self.gate_selected] if self.gate_selected >= 0 else self.default_extruder_temp
+        default_extruder_temp = self.gate_temperature[self.gate_selected] if self.gate_selected > 0 else self.default_extruder_temp
         self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, default_extruder_temp, source))
 
         if source == "pause":
@@ -3622,6 +3638,11 @@ class Mmu:
     # Wrapper so we can minimize actual disk writes and batch updates
     def save_variable(self, variable, value, write=False):
         self.save_variables.allVariables[variable] = value
+        if write:
+            self.write_variables()
+
+    def delete_variable(self, variable, write=False):
+        _ = self.save_variables.allVariables.pop(variable, None)
         if write:
             self.write_variables()
 
@@ -4129,7 +4150,7 @@ class Mmu:
 
     # Shared with manual bowden calibration routine
     def _reverse_home_to_encoder(self, homing_max):
-        max_steps = math.ceil(homing_max / self.encoder_move_step_size)
+        max_steps = int(math.ceil(homing_max / self.encoder_move_step_size))
         delta = 0.
         actual = 0.
         for i in range(max_steps):
@@ -4715,6 +4736,9 @@ class Mmu:
             if full and not extruder_only and not self.gcode_load_sequence:
                 self._autotune(self.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
 
+            # Activate loaded spool in Spoolman
+            self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
+            
             # POST_LOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
@@ -4866,6 +4890,9 @@ class Mmu:
             if full and not extruder_only and not self.gcode_unload_sequence:
                 self._autotune(self.DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
 
+            # Deactivate spool in Spoolman as it is now unloaded.
+            self._spoolman_activate_spool(0)
+            
             # POST_UNLOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_unload'):
@@ -5640,7 +5667,6 @@ class Mmu:
                 raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
 
         self.load_sequence()
-        self._spoolman_activate_spool(self.gate_spool_id[gate]) # Activate in Spoolman
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
     # Primary method to unload current tool but retain selection
@@ -5653,7 +5679,6 @@ class Mmu:
         self._set_last_tool(self.tool_selected)
         self._record_tool_override() # Remember M220 and M221 overrides
         self.unload_sequence(form_tip=form_tip, runout=runout)
-        self._spoolman_activate_spool(0) # Deactivate in SpoolMan
 
     def _auto_home(self, tool=0):
         if not self.selector.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
@@ -6189,6 +6214,7 @@ class Mmu:
                             self._next_tool = self.TOOL_GATE_UNKNOWN
 
                     # Updates swap statistics
+                    self.num_toolchanges += 1
                     self._dump_statistics(job=not quiet, gate=not quiet)
                     self._persist_swap_statistics()
                     self._persist_gate_statistics()
@@ -6733,6 +6759,8 @@ class Mmu:
         spoolman_support = gcmd.get('SPOOLMAN_SUPPORT', self.spoolman_support)
         if spoolman_support not in self.SPOOLMAN_OPTIONS:
             raise gcmd.error("spoolman_support is invalid. Options are: %s" % self.SPOOLMAN_OPTIONS)
+        if spoolman_support == self.SPOOLMAN_OFF:
+            self.gate_spool_id[:] = [-1] * self.num_gates
         self.spoolman_support = spoolman_support
 
         prev_t_macro_color = self.t_macro_color
@@ -7607,10 +7635,13 @@ class Mmu:
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
 
+        gate_map = None
         try:
             gate_map = ast.literal_eval(gmapstr)
         except Exception as e:
+            self.log_error("Warning: Recieved unparsable gate map update. See log for more details")
             self.log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
+            return
 
         if reset:
             self._reset_gate_map()
@@ -7628,33 +7659,40 @@ class Mmu:
                     if not (0 <= gate < self.num_gates):
                         self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                         continue
-                    spool_id = fil.get('spool_id', -1)
+                    spool_id = self.safe_int(fil.get('spool_id', -1))
                     self.gate_spool_id[gate] = spool_id
                     if spool_id >= 0:
                         self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
-                        self.gate_temperature[gate] = fil.get('temp', '') or int(self.default_extruder_temp)
+                        self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
+                        if self.gate_temperature[gate] <= 0:
+                            self.gate_temperature[gate] = self.default_extruder_temp
+                        self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
                     else:
                         # Clear attributes (should only get here in spoolman "pull" mode)
                         self.gate_filament_name[gate] = ''
                         self.gate_material[gate] = ''
                         self.gate_color[gate] = ''
-                        self.gate_temperature[gate] = int(self.default_extruder_temp)
-                        self.gate_speed_override[gate] = 100
+                        self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
             else:
                 # Update map
                 for gate, fil in gate_map.items():
                     if not (0 <= gate < self.num_gates):
                         self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                         continue
-                    if fil and self.gate_spool_id[gate] == fil.get('spool_id', None):
+                    if fil:
+                        if self.gate_spool_id[gate] != fil.get('spool_id', -1):
+                            self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
+                        self.gate_spool_id[gate] = self.safe_int(fil.get('spool_id', -1))
                         self.gate_filament_name[gate] = fil.get('name', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
-                        self.gate_temperature[gate] = fil.get('temp', '') or int(self.default_extruder_temp)
-                    else:
-                        self.log_debug("Assertion failure: Spool_id changed for gate %d in MMU_GATE_MAP. Attributes=%s" % (gate, fil))
+                        self.gate_status[gate] = self.safe_int(fil.get('status', self.gate_status[gate])) # For UI manual fixing of availabilty
+                        self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
+                        if self.gate_temperature[gate] <= 0:
+                            self.gate_temperature[gate] = self.default_extruder_temp
+                        self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
 
             self._update_gate_color_rgb()
             self._persist_gate_map() # This will also update LED status
@@ -7702,7 +7740,7 @@ class Mmu:
                         gate_ids.append((gate, spool_id))
                     color = self._validate_color(color)
                     if color is None:
-                        raise gcmd.error("Color specification must be in form 'rrggbb' hexadecimal value (no '#') or valid color name or empty string")
+                        raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
                     self.gate_status[gate] = available
                     self.gate_filament_name[gate] = name
                     self.gate_material[gate] = material
@@ -7803,6 +7841,7 @@ class Mmu:
         sparse_purge_map = bool(gcmd.get_int('SPARSE_PURGE_MAP', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         initial_tool = gcmd.get_int('INITIAL_TOOL', None, minval=0, maxval=self.num_gates - 1)
+        total_toolchanges = gcmd.get_int('TOTAL_TOOLCHANGES', None, minval=0)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.num_gates - 1)
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
@@ -7817,6 +7856,8 @@ class Mmu:
         if reset:
             self._clear_slicer_tool_map()
             quiet = True
+        else:
+            self.slicer_tool_map = dict(self.slicer_tool_map) # Ensure that webhook sees get_status() change
 
         if tool >= 0:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
@@ -7832,6 +7873,10 @@ class Mmu:
             self.slicer_tool_map['initial_tool'] = initial_tool
             quiet = True
 
+        if total_toolchanges is not None:
+            self.slicer_tool_map['total_toolchanges'] = total_toolchanges
+            quiet = True
+
         if purge_volumes != "":
             try:
                 volumes = list(map(float, purge_volumes.split(',')))
@@ -7841,10 +7886,10 @@ class Mmu:
                     calc = lambda x,y: volumes[0] * 2 # Build a single value matrix
                 elif n == num_slicer_tools:
                     calc = lambda x,y: volumes[y] + volumes[x] # Will build symmetrical purge matrix "from" followed by "to"
-                elif n == num_slicer_tools * 2:
-                    calc = lambda x,y: volumes[y] + volumes[num_slicer_tools + x] # Build matrix with sum of "from" list then "to" list
                 elif n == num_slicer_tools ** 2:
                     calc = lambda x,y: volumes[y + x * num_slicer_tools] # Full NxN matrix supplied in rows of "from" for each "to"
+                elif n == num_slicer_tools * 2:
+                    calc = lambda x,y: volumes[y] + volumes[num_slicer_tools + x] # Build matrix with sum of "from" list then "to" list
                 else:
                     raise gcmd.error("Incorrect number of values for PURGE_VOLUMES. Expected 1, %d, %d, or %d, got %d" % (num_tools, num_tools * 2, num_tools ** 2, n))
                 # Build purge volume map (x=to_tool, y=from_tool)

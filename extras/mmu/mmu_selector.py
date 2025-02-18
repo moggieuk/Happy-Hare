@@ -852,9 +852,13 @@ class LinearSelectorServo:
     def cmd_MMU_SERVO(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
+        reset = gcmd.get_int('RESET', 0)
         save = gcmd.get_int('SAVE', 0)
         pos = gcmd.get('POS', "").lower()
-        if pos == "off":
+        if reset:
+            self.mmu.delete_variable(self.VARS_MMU_SERVO_ANGLES, write=True)
+            self.mmu.log_info("Calibrated servo angles have be reset to configured defaults")
+        elif pos == "off":
             self.servo_off() # For 'servo_always_active' case
         elif pos == "up":
             if save:
@@ -1696,6 +1700,7 @@ class ServoSelector(BaseSelector, object):
 
     def _set_servo_angle(self, angle):
         if angle >= 0 and angle != self.servo_angle:
+            self.mmu.movequeues_wait();
             self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
             self.servo_angle = angle
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
