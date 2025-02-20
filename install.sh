@@ -1453,6 +1453,7 @@ questionaire() {
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=300
+            _param_gate_preload_homing_max=200
             _param_gate_parking_distance=100
             _param_gate_final_eject_distance=100
             _param_has_filament_buffer=0
