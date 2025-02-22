@@ -28,6 +28,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
+    from .file_manager import FileManager
     from .spoolman import SpoolManager, DB_NAMESPACE, ACTIVE_SPOOL_KEY
     from ..common import WebRequest
     from ..common import RequestType
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
     from .klippy_apis import KlippyAPI as APIComp
     from .history import History
     from tornado.websocket import WebSocketClientConnection
+
 
 MMU_NAME_FIELD   = 'printer_name'
 MMU_GATE_FIELD   = 'mmu_gate_map'
@@ -61,7 +63,6 @@ class MmuServer:
         # Full cache of spool_ids and location + key attributes (printer, gate, attr_dict))
         # Example: {2: ('BigRed', 0, {"material": "pla", "color": "ff56e0"}), 3: ('BigRed', 3, {"material": "abs"}), ...
         self.spool_location = {}
-
         self.nb_gates = None             # Set during initialization to the size of the MMU or 1 if standalone
         self.cache_lock = asyncio.Lock() # Lock to serialize a async calls for Happy Hare
 
@@ -77,11 +78,31 @@ class MmuServer:
             self.server.register_remote_method("spoolman_get_spool_info", self.display_spool_info)
             self.server.register_remote_method("spoolman_display_spool_location", self.display_spool_location)
 
-        # Replace file_manager/metadata with this file
-        self.setup_placeholder_processor(config)
-
         # Options
         self.update_location = self.config.getboolean("update_spoolman_location", True)
+        self.proc_config: Dict[str, Any] = {
+            "name": "mmu_server",
+            "command": " ".join([
+                sys.executable,
+                os.path.abspath(__file__),
+                "-f",
+                "{gcode_file_path}",
+                "-m" if config.getboolean("enable_file_preprocessor", True) else "",
+                "-n" if config.getboolean("enable_toolchange_next_pos", True) else "",
+            ]),
+            "timeout": 300,
+            "version": config.getfloat('happy_hare_version', 2.2),
+            "ident": {
+                "regex": MMU_REGEX,
+                "location": "header"
+            },
+            "enabled": self.config.getboolean("enable_file_preprocessor", True),
+            "insert_nextpos": self.config.getboolean("enable_toolchange_next_pos", True)
+        }
+
+        file_manger: FileManager = self.server.lookup_component("file_manager")
+        mdst = file_manger.get_metadata_storage()
+        mdst.register_gcode_processor("mmu_server", self.proc_config)
 
     async def _get_spoolman_version(self) -> tuple[int, int, int] | None:
         response = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/info')
@@ -729,23 +750,12 @@ class MmuServer:
                 msg = f"No gates assigned for printer: {printer_name}"
             await self._log_n_send(msg)
 
-
-
-    # Switch out the metadata processor with this module which handles placeholders
-    def setup_placeholder_processor(self, config):
-        args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
-        args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
-        from .file_manager import file_manager
-        file_manager.METADATA_SCRIPT = os.path.abspath(__file__) + args
-
 def load_component(config):
     return MmuServer(config)
 
-
-
 ##################################################################################
 #
-# Beyond this point this module acts like an extended file_manager/metadata module
+# Beyond this point this module needs more cowbell
 #
 AUTHORZIED_SLICERS = ['PrusaSlicer', 'SuperSlicer', 'OrcaSlicer', 'BambuStudio']
 
@@ -1008,13 +1018,14 @@ def add_placeholder(line, tools_used, total_toolchanges, colors, temps, material
             line = line.replace(METADATA_FILAMENT_NAMES, ",".join(map(str, filament_names)))
     return line
 
+
 def main(path, filename, insert_placeholders=False, insert_nextpos=False):
     file_path = os.path.join(path, filename)
     if not os.path.isfile(file_path):
-        metadata.logger.info(f"File Not Found: {file_path}")
+        logging.info(f"File Not Found: {file_path}")
         sys.exit(-1)
     try:
-        metadata.logger.info(f"mmu_server: Pre-processing file: {file_path}")
+        logging.info(f"mmu_server: Pre-processing file: {file_path}")
         fname = os.path.basename(file_path)
         if fname.endswith(".gcode") and not gcode_processed_already(file_path):
             with tempfile.TemporaryDirectory() as tmp_dir_name:
@@ -1023,7 +1034,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                 if insert_placeholders:
                     start = time.time()
                     has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path)
-                    metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
+                    logging.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
                 else:
                     tools_used = total_toolchanges = colors = temps = materials = purge_volumes = filament_names = slicer = None
                     has_placeholder = False
@@ -1036,7 +1047,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                     if insert_nextpos:
                         msg.append("Inserting next position to tool changes")
                     process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
-                    metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
+                    logging.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
                     if os.path.islink(file_path):
@@ -1044,29 +1055,18 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                     if not filecmp.cmp(tmp_file, file_path):
                         shutil.move(tmp_file, file_path)
                     else:
-                        metadata.logger.info(f"Files are the same, skipping replacement of: {file_path} by {tmp_file}")
+                        logging.info(f"Files are the same, skipping replacement of: {file_path} by {tmp_file}")
                 else:
-                    metadata.logger.info(f"No MMU metadata placeholders found in file: {file_path}")
+                    logging.info(f"No MMU metadata placeholders found in file: {file_path}")
 
     except Exception:
-        metadata.logger.info(traceback.format_exc())
+        logging.info(traceback.format_exc())
         sys.exit(-1)
 
-# When run separately this module wraps metadata to extend pre-processing functionality
+# When run separately this module runs as a gcode_processor registered with moonraker.
 if __name__ == "__main__":
-    # Make it look like we are running in the file_manager directory
-    directory = os.path.dirname(os.path.abspath(__file__))
-    target_dir = directory + "/file_manager"
-    os.chdir(target_dir)
-    sys.path.insert(0, target_dir)
-
-    import metadata
-    metadata.logger.info("mmu_server: Running MMU enhanced version of metadata")
-
-    # We need to re-parse arguments anyway, so this way, whilst relaxing need to copy code, isn't useful
-    #runpy.run_module('metadata', run_name="__main__", alter_sys=True)
-
-    # Parse start arguments (copied from metadata.py)
+    logging.info("running MMU gcode processing")
+    # Parse start arguments
     parser = argparse.ArgumentParser(description="GCode Metadata Extraction Utility")
     parser.add_argument("-f", "--filename", metavar='<filename>', help="name gcode file to parse")
     parser.add_argument("-p", "--path", default=os.path.abspath(os.path.dirname(__file__)), metavar='<path>', help="optional absolute path for file")
@@ -1074,13 +1074,12 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--check-objects", dest='check_objects', action='store_true', help="process gcode file for exclude object functionality")
     parser.add_argument("-m", "--placeholders", dest='placeholders', action='store_true', help="process happy hare mmu placeholders")
     parser.add_argument("-n", "--nextpos", dest='nextpos', action='store_true', help="add next position to tool change")
+
     args = parser.parse_args()
+    logging.info(args)
+
     check_objects = args.check_objects
     enabled_msg = "enabled" if check_objects else "disabled"
-    metadata.logger.info(f"Object Processing is {enabled_msg}")
+    logging.info(f"Object Processing is {enabled_msg}")
 
-    # Original metadata parser
-    metadata.main(args.path, args.filename, args.ufp, check_objects)
-
-    # Second parsing for mmu placeholders and next pos insertion
     main(args.path, args.filename, args.placeholders, args.nextpos)
