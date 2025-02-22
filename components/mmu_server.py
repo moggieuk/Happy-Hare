@@ -1079,7 +1079,7 @@ if __name__ == "__main__":
     config: Dict[str, Any] = {}
     if args.config is None:
         if args.filename is None:
-            logger.info(
+            metadata.logger.info(
                 "The '--filename' (-f) option must be specified when "
                 " --config is not set"
             )
@@ -1094,10 +1094,10 @@ if __name__ == "__main__":
             with open(args.config, "r") as f:
                 config = (json.load(f))
         except Exception:
-            logger.info(traceback.format_exc())
+            metadata.logger.info(traceback.format_exc())
             sys.exit(-1)
         if config.get("filename") is None:
-            logger.info("The 'filename' field must be present in the configuration")
+            metadata.logger.info("The 'filename' field must be present in the configuration")
             sys.exit(-1)
     if config.get("gcode_dir") is None:
         config["gcode_dir"] = os.path.abspath(os.path.dirname(__file__))
