@@ -1025,7 +1025,7 @@ class Mmu:
         elif color == '':
             color = "#000000"
         rgb_hex = color.lstrip('#').lower()
-        return rgb_hex
+        return rgb_hex[0:6]
 
     # This retuns a convenient RGB fraction tuple for controlling LEDs E.g. (0.32, 0.56, 1.00)
     # or integer version (82, 143, 255)
