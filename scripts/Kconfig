@@ -71,7 +71,7 @@ menu "Advanced settings"
   endmenu
 
   menu "Parameters"
-    visible if MMU_TYPE_CUSTOM
+    # visible if MMU_TYPE_CUSTOM
     rsource "Kconfig.params"
   endmenu
 

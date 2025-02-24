@@ -8,6 +8,9 @@ choice CHOICE_SERIAL_DEVICE
 endchoice
 
 if BOARD_TYPE_EASY_BRD
+  config PARAM_BOARD_TYPE
+    default "EASY-BRD"
+
   config PIN_GEAR_UART
     default "PA8" 
   config PIN_GEAR_STEP

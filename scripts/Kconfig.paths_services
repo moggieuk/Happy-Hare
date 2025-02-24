@@ -21,7 +21,7 @@
       depends on !OCTOPRINT
       default "/usr/data/moonraker" if $(to_bool, [ -e "/usr/data/moonraker" ])
       default "~/moonraker"
-    config HAPPY_HARE_HOME
+    config PARAM_HAPPY_HARE_HOME
       string "Happy Hare directory"
       default "$(SRC)"
     config PARAM_GCODES_PATH

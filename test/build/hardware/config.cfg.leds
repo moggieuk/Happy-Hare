@@ -1,0 +1,11 @@
+[neopixel mmu_leds]
+pin: mmu:MMU_NEOPIXEL
+chain_count: {param_num_leds}
+color_order: GRBW
+
+[mmu_leds]
+led_strip: neopixel:mmu_leds
+exit_range: 1-{param_num_gates}
+entry_range: {param_num_leds_minus1}-{param_num_gates_plus1}
+status_index: {param_num_leds}
+frame_rate: 24

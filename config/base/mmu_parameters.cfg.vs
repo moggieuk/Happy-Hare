@@ -20,7 +20,7 @@
 #   Full details in https://github.com/moggieuk/Happy-Hare/tree/main/doc/configuration.md
 #
 [mmu]
-happy_hare_version: {happy_hare_version}			# Don't mess, used for upgrade detection
+happy_hare_version: {param_happy_hare_version}			# Don't mess, used for upgrade detection
 
 # MMU Hardware Limits --------------------------------------------------------------------------------------------------
 # ██╗     ██╗███╗   ███╗██╗████████╗███████╗

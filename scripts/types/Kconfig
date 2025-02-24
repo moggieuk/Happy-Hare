@@ -4,7 +4,7 @@ config PARAM_MMU_VENDOR
   string
   default "Other"
 
-config MMU_BASE_VERSION
+config PARAM_MMU_VERSION
   string
   default "0.1" 
 

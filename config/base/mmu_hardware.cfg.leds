@@ -11,7 +11,7 @@
 # (comment out this section if you don't have leds)
 [neopixel mmu_leds]
 pin: mmu:MMU_NEOPIXEL
-chain_count: {num_leds}			# Number gates x1 or x2 + 1 (if you want status)
+chain_count: {param_num_leds}			# Number gates x1 or x2 + 1 (if you want status)
 color_order: GRBW		# Set based on your particular neopixel specification
 
 # MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
@@ -40,8 +40,8 @@ color_order: GRBW		# Set based on your particular neopixel specification
 # (this section is harmless and ignored if the 'led_strip' obove doesn't exist - LED support will simply be disabled)
 [mmu_leds]
 led_strip: neopixel:mmu_leds
-exit_range: 1-{num_gates}
-entry_range: {num_leds_minus1}-{num_gates_plus1}
-status_index: {num_leds}
+exit_range: 1-{param_num_gates}
+entry_range: {param_num_leds_minus1}-{param_num_gates_plus1}
+status_index: {param_num_leds}
 frame_rate: 24
 

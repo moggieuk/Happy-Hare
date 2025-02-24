@@ -17,12 +17,12 @@
 # unless the 5v power supply has been improved and it is not necessary with standard ERCF builds
 # Make sure your hardware is suitable for the job!
 #
-servo_up_angle: {servo_up_angle}			# ERCF: MG90S: 30  ; SAVOX SH0255MG: 140 ; Tradrack: 145
-servo_down_angle: {servo_down_angle}			# ERCF: MG90S: 140 ; SAVOX SH0255MG: 30  ; Tradrack: 1
-servo_move_angle: {servo_move_angle}			# Optional angle used when selector is moved (defaults to up position)
-servo_duration: {servo_duration}			# Duration of PWM burst sent to servo (default non-active mode, automatically turns off)
+servo_up_angle: {param_servo_up_angle}			# ERCF: MG90S: 30  ; SAVOX SH0255MG: 140 ; Tradrack: 145
+servo_down_angle: {param_servo_down_angle}			# ERCF: MG90S: 140 ; SAVOX SH0255MG: 30  ; Tradrack: 1
+servo_move_angle: {param_servo_move_angle}			# Optional angle used when selector is moved (defaults to up position)
+servo_duration: {param_servo_duration}			# Duration of PWM burst sent to servo (default non-active mode, automatically turns off)
 servo_dwell: 0.5			# Minimum time given to servo to complete movement prior to next move
-servo_always_active: {servo_always_active} 			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
+servo_always_active: {param_servo_always_active} 			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
 servo_active_down: 0			# CAUTION: 1=Force servo to stay active when down only, 0=Release after movement
-servo_buzz_gear_on_down: {servo_buzz_gear_on_down}		# Whether to "buzz" the gear stepper on down to aid engagement
+servo_buzz_gear_on_down: {param_servo_buzz_gear_on_down}		# Whether to "buzz" the gear stepper on down to aid engagement
 

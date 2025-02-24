@@ -2,5 +2,6 @@ my_*.cfg
 out/
 out_*/
 *.config
+*.config.*
 *.config.old
-test/build/**/test_out.cfg
+__pycache__/

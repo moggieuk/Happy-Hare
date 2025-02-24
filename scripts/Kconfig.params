@@ -6,10 +6,10 @@ choice CHOICE_SELECTOR_TYPE
     bool "Virtual selector"
 endchoice
 
-config PARAM_SELECTOR_TYPE
-  string
-  default "LinearSelector" if SELECTOR_TYPE_LINEAR
-  default "VirtualSelector" if SELECTOR_TYPE_VIRTUAL
+# config PARAM_SELECTOR_TYPE
+#   string
+#   default "LinearSelector" if SELECTOR_TYPE_LINEAR
+#   default "VirtualSelector" if SELECTOR_TYPE_VIRTUAL
 
 config VARIABLE_BOWDEN_LENGTHS
   bool "Variable bowden lengths?" 

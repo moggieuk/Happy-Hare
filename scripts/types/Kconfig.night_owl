@@ -9,7 +9,7 @@ endchoice
 if MMU_TYPE_NIGHT_OWL_1
   config PARAM_MMU_VENDOR
     default "NightOwl"
-  config MMU_BASE_VERSION
+  config PARAM_MMU_VERSION
     default "1.0"
 
   config PARAM_GEAR_GEAR_RATIO
@@ -23,8 +23,12 @@ if MMU_TYPE_NIGHT_OWL_1
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     default "100"
 
-  config PARAM_SELECTOR_TYPE
-    default "VirtualSelector"
+  # config PARAM_SELECTOR_TYPE
+  #   default "VirtualSelector"
+
+  choice CHOICE_SELECTOR_TYPE
+    default SELECTOR_TYPE_VIRTUAL
+  endchoice
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE

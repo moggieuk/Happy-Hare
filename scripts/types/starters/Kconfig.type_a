@@ -12,7 +12,7 @@ endchoice
 if MMU_CUSTOM_TYPE_A
   config PARAM_MMU_VENDOR
     default "Other"
-  config MMU_BASE_VERSION
+  config PARAM_MMU_VERSION
     default "1.0"
 
   config PARAM_GEAR_GEAR_RATIO
@@ -27,8 +27,11 @@ if MMU_CUSTOM_TYPE_A
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.1"
 
-  config PARAM_SELECTOR_TYPE
-    default "LinearSelector"
+  # config PARAM_SELECTOR_TYPE
+  #   default "LinearSelector"
+  choice CHOICE_SELECTOR_TYPE
+    default SELECTOR_TYPE_LINEAR
+  endchoice
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_ENCODER if MMU_HAS_ENCODER

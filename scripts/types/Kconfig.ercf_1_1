@@ -4,6 +4,7 @@ choice CHOICE_MMU_TYPE
     select MMU_HAS_ENCODER
     select VARIABLE_ROTATION_DISTANCES
     select REQUIRE_BOWDEN_MOVE
+    # select SELECTOR_TYPE_LINEAR
 
   if MMU_TYPE_ERCF_1_1 
     config EXT_SPRINGY
@@ -18,8 +19,16 @@ endchoice
 if MMU_TYPE_ERCF_1_1
   config PARAM_MMU_VENDOR
     default "ERCF"
-  config MMU_BASE_VERSION
+  config PARAM_MMU_VERSION
+    default "1.1sbt" if EXT_SPRINGY && EXT_BINKY && EXT_TRIPLE_DECK
+    default "1.1sb" if EXT_SPRINGY && EXT_BINKY
+    default "1.1st" if EXT_SPRINGY && EXT_TRIPLE_DECK
+    default "1.1bt" if EXT_BINKY && EXT_TRIPLE_DECK
+    default "1.1s" if EXT_SPRINGY
+    default "1.1b" if EXT_BINKY
+    default "1.1t" if EXT_TRIPLE_DECK
     default "1.1"
+
    
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 3
@@ -41,8 +50,15 @@ if MMU_TYPE_ERCF_1_1
   config PARAM_GATE_PARKING_DISTANCE
     default "23"
 
-  config PARAM_SELECTOR_TYPE
-    default "LinearSelector"
+  # config PARAM_SELECTOR_TYPE
+  #   default "LinearSelector"
+
+  # config SELECTOR_TYPE_LINEAR
+  #   bool
+  #   default y 
+  choice CHOICE_SELECTOR_TYPE
+    default SELECTOR_TYPE_LINEAR
+  endchoice
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_ENCODER

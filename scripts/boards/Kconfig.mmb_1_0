@@ -8,6 +8,9 @@ choice CHOICE_SERIAL_DEVICE
 endchoice
 
 if BOARD_TYPE_MMB_1_0
+  config PARAM_BOARD_TYPE
+    default "MMB10"
+
   config PIN_GEAR_UART 
     default "PA10" 
   config PIN_GEAR_STEP

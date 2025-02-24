@@ -8,6 +8,9 @@ choice CHOICE_SERIAL_DEVICE
 endchoice
 
 if BOARD_TYPE_EASY_BRD_RP2040
+  config PARAM_BOARD_TYPE
+    default "EASY-BRD-RP2040"
+
   config PIN_GEAR_UART
     default "gpio6" 
   config PIN_GEAR_STEP

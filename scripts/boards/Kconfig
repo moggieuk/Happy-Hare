@@ -8,3 +8,7 @@ choice CHOICE_BOARD_TYPE
   config BOARD_TYPE_OTHER
     bool "Not listed / Other"
 endchoice
+
+config PARAM_BOARD_TYPE
+  string
+
