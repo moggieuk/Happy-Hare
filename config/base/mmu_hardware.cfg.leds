@@ -8,40 +8,53 @@
 # ╚══════╝╚══════╝╚═════╝ ╚══════╝
 # Define the led connection, type and length
 #
-# (comment out this section if you don't have leds)
+# (comment out this section if you don't have leds or have them defined elsewhere)
 [neopixel mmu_leds]
 pin: mmu:MMU_NEOPIXEL
-chain_count: {param_num_leds}			# Number gates x1 or x2 + 1 (if you want status)
-color_order: GRBW		# Set based on your particular neopixel specification
+chain_count: {param_num_leds}			# Need number gates x1 or x2 + status leds
+color_order: {param_color_order}		# Set based on your particular neopixel specification (can be comma separated list)
 
 # MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
 # Define neopixel LEDs for your MMU. The chain_count must be large enough for your desired ranges:
 #   exit   .. this set of LEDs, one for every gate, usually would be mounted at the exit point of the gate
 #   entry  .. this set of LEDs, one for every gate, could be mounted at the entry point of filament into the MMU/buffer
-#   status .. this single LED represents the status of the currently selected filament
+#   status .. these LED. represents the status of the MMU (and selected filament). More than one status LED is possible
+#   logo   .. these LEDs don't change during operation and are designed for driving a logo. More than one logo LED is possible
 #
-# Note that all sets are optional. You can opt simple to have just the 'exit' set for example. The advantage to having
+# Note that all sets are optional. You can opt to just have the 'exit' set for example. The advantage to having
 # both entry and exit LEDs is, for example, so that 'entry' can display gate status while 'exit' displays the color
 # 
 # The animation effects requires the installation of Julian Schill's awesome LED effect module otherwise the LEDs
 # will be static:
 #   https://github.com/julianschill/klipper-led_effect
+#
 # LED's are indexed in the chain from 1..N. Thus to set up LED's on 'exit' and a single 'status' LED on a 4 gate MMU:
-#   exit_range:   1-4
-#   status_index: 5
-# In this example no 'entry' set is configured.
 #
-# Note the range order is important and depends on your wiring. Thus 1-4 and 4-1 both represent the same LED range
-# but mapped to increasing or decreasing gates respectively
+#    exit_leds:   neopixel:mmu_leds (1,2,3,4)
+#    status_leds: neopixel:mmu_leds (5)
 #
-# Note that Happy Hare provides a convenience wrapper [mmu_led_effect] that not only creates an effect on each of the
-# [mmu_leds] specified segments but also each individual LED for atomic control. See mmu_leds.cfg for examples
+# In this example no 'entry' set is configured. Note that constructs like "mmu_leds (1-3,4)" are also valid
 #
-# (this section is harmless and ignored if the 'led_strip' obove doesn't exist - LED support will simply be disabled)
+# The range is completely flexible and can be comprised of different led strips, individual LEDs, or combinations of
+# both on different pins. In addition, the ordering is flexible based on your wiring, thus (1-4) and (4-1) both represent
+# the same LED range but mapped to increasing or decreasing gates respectively. E.g if you have two Box Turtle MMUs, one
+# with a chain of LEDs wired in reverse order and another with individual LEDs, to define 8 exit LEDs:
+#
+#   exit_leds: neopixel:bt_1 (4-1)
+#              neopixel:bt_2a
+#              neopixel:bt_2b
+#              neopixel:bt_2c
+#              neopixel:bt_2d
+#
+# Note the use of separate lines for each part of the definition,
+#
+# ADVANCED: Happy Hare provides a convenience wrapper [mmu_led_effect] that not only creates an effect on each of the
+# [mmu_leds] specified segments as a whole but also each individual LED for atomic control. See mmu_leds.cfg for examples
+#
+# (comment out this whole section if you don't have/want leds; uncomment/edit LEDs fitted on your MMU)
 [mmu_leds]
-led_strip: neopixel:mmu_leds
-exit_range: 1-{param_num_gates}
-entry_range: {param_num_leds_minus1}-{param_num_gates_plus1}
-status_index: {param_num_leds}
+exit_leds:   {param_exit_leds}
+entry_leds:  {param_entry_leds}
+status_leds: {param_status_leds}
+logo_leds:   {param_logo_leds}
 frame_rate: 24
-
