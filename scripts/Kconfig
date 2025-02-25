@@ -1,4 +1,4 @@
-happy_hare_version = 3.00
+happy_hare_version = 3.10
 formatted_version = $(shell, echo "$(happy_hare_version)" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 
 mainmenu "Happy Hare $(formatted_version) Configuration"

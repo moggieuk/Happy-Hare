@@ -293,6 +293,13 @@ def build_mmu_macro_vars_cfg(builder, cfg: ConfigInput):
     builder.expand_section("gcode_macro T%", num_gates)
 
 
+def build_addon_eject_buttons_cfg(builder, cfg: ConfigInput):
+    if (num_gates := cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is None:
+        logging.error("num_gates is not defined")
+        exit(1)
+    builder.expand_section("gcode_button mmu_eject_button_%", num_gates)
+
+
 def build(cfg_file, dest_file, kconfig_file, input_files):
     if m := re.search(r"config/(.*?)$", cfg_file):
         basename = m.group(1)
@@ -330,6 +337,8 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         build_mmu_parameters_cfg(builder, cfg_input)
     elif basename == "base/mmu_macro_vars.cfg":
         build_mmu_macro_vars_cfg(builder, cfg_input)
+    elif basename == "addons/mmu_eject_buttons_hw.cfg":
+        build_addon_eject_buttons_cfg(builder, cfg_input)
 
     cfg_input.update_builder(builder)
 
@@ -418,6 +427,7 @@ def install_includes(dest_file, kconfig):
     check_include(builder, "INSTALL_EREC_CUTTER", "mmu/addons/mmu_erec_cutter.cfg")
     check_include(builder, "INSTALL_BLOBIFIER", "mmu/addons/blobifier.cfg")
     check_include(builder, "INSTALL_DC_ESPOOLER", "mmu/addons/dc_espooler.cfg")
+    check_include(builder, "INSTALL_EJECT_BUTTONS", "mmu/addons/mmu_eject_buttons.cfg")
 
     if not builder.has_section("include mmu/base/*.cfg"):
         logging.debug("Adding include [include mmu/base/*.cfg]")

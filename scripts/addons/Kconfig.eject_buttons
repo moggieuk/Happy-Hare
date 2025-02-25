@@ -1,0 +1,8 @@
+config ADDON_EJECT_BUTTONS
+  bool "Enable Eject Buttons support?"
+
+if ADDON_EJECT_BUTTONS
+  config INSTALL_EJECT_BUTTONS
+    bool "Install Eject Buttons include in printer.cfg?"
+	  default y
+endif 

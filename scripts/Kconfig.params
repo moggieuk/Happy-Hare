@@ -63,3 +63,10 @@ config PARAM_GATE_FINAL_EJECT_DISTANCE
 config PARAM_GEAR_HOMING_SPEED
   string "Gear homing speed (mm/s)"
   default "50"
+
+config HAS_BYPASS
+  bool "Has bypass?"
+
+config PARAM_HAS_BYPASS
+  int
+  default 1 if HAS_BYPASS
