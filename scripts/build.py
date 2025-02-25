@@ -63,7 +63,7 @@ class HHConfig(ConfigBuilder):
             new_option_name = old_option_name
         if self.has_option(old_section_name, old_option_name):
             self.set(new_section_name, new_option_name, self.get(old_section_name, old_option_name))
-            self.origins[(new_section_name, new_option_name)] = self.origins.pop((old_section_name, old_option_name))
+            self.origins.pop((old_section_name, old_option_name))
             self.remove_option(old_section_name, old_option_name)
 
     def rename_option(self, section_name, option_name, new_option_name):
@@ -74,7 +74,7 @@ class HHConfig(ConfigBuilder):
             self.add_section(new_section_name)
             for option, value in self.items(section_name):
                 self.set(new_section_name, option, value)
-                self.origins[(new_section_name, option)] = self.origins.pop((section_name, option))
+                self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
 
@@ -210,7 +210,7 @@ def build_mmu_cfg(builder, cfg: ConfigInput):
 
     if cfg.is_enabled("INSTALL_DC_ESPOOLER"):
         builder.use_config("dc_espooler")
-        builder.expand_section("MMU_DC_MOT_%_EN", "$", num_gates)
+        builder.expand_value_line("board_pins mmu", "aliases", r"MMU_DC_MOT_%_\w+", num_gates)
     else:
         builder.remove_placeholder("cfg_dc_espooler")
 
@@ -293,6 +293,14 @@ def build_mmu_macro_vars_cfg(builder, cfg: ConfigInput):
     builder.expand_section("gcode_macro T%", num_gates)
 
 
+def build_addon_dc_espooler_cfg(builder, cfg: ConfigInput):
+    if (num_gates := cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is None:
+        logging.error("num_gates is not defined")
+        exit(1)
+    builder.expand_section("output_pin _mmu_dc_espooler_rwd_%", num_gates)
+    builder.expand_section("output_pin _mmu_dc_espooler_en_%", num_gates)
+
+
 def build_addon_eject_buttons_cfg(builder, cfg: ConfigInput):
     if (num_gates := cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is None:
         logging.error("num_gates is not defined")
@@ -337,6 +345,8 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         build_mmu_parameters_cfg(builder, cfg_input)
     elif basename == "base/mmu_macro_vars.cfg":
         build_mmu_macro_vars_cfg(builder, cfg_input)
+    elif basename == "addons/dc_espooler_hw.cfg":
+        build_addon_dc_espooler_cfg(builder, cfg_input)
     elif basename == "addons/mmu_eject_buttons_hw.cfg":
         build_addon_eject_buttons_cfg(builder, cfg_input)
 
@@ -346,7 +356,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     for section, option in cfg_input.unused_options_for(basename):
         if first:
             first = False
-            logging.warning(f"The following parameters in {basename} have been deprecated:")
+            logging.warning(f"The following parameters in {basename} have been dropped:")
         logging.warning(f"[{section}] {option} = {cfg_input.get(section, option)}")
 
     for ph in builder.placeholders():

@@ -57,6 +57,12 @@ class TestBuild(unittest.TestCase):
         """test upgrade from 3.00 to 3.10"""
         self.base_test("3_10", from_version="3.00", to_version="3.10")
 
+    def test_upgrade_3_20(self):
+        """test upgrade from 3.10 to 3.20"""
+        self.base_test(
+            "3_20", callback=scripts.build.build_addon_dc_espooler_cfg, from_version="3.10", to_version="3.20"
+        )
+
     def test_hardware(self):
         """test whether mmu_hardware.cfg is correctly built"""
         self.base_test("hardware", build_mmu_hardware_cfg)

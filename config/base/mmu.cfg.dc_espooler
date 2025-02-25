@@ -1,4 +1,4 @@
 
-    MMU_DC_MOT_%_EN={pin_dc_espooler_en_%},
-    MMU_DC_MOT_%_RWD={pin_dc_espooler_rwd_%},
-    MMU_DC_MOT_%_FWD={pin_dc_espooler_fwd_%},
+    MMU_DC_MOT_%_EN={pin_dc_espooler_%_en},
+    MMU_DC_MOT_%_A={pin_dc_espooler_%_a},
+    MMU_DC_MOT_%_B={pin_dc_espooler_%_b},

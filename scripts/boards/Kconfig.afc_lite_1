@@ -70,32 +70,32 @@ if BOARD_TYPE_AFC_LITE_1
   config PIN_GEAR_SENSOR_3
     default "PE11" 
 
-  config PIN_DC_ESPOOLER_EN_0
+  config PIN_DC_ESPOOLER_0_EN
     default "PA2" 
-  config PIN_DC_ESPOOLER_RWD_0
+  config PIN_DC_ESPOOLER_0_A
     default "PA0" 
-  config PIN_DC_ESPOOLER_FWD_0
+  config PIN_DC_ESPOOLER_0_B
     default "PA1" 
 
-  config PIN_DC_ESPOOLER_EN_1
+  config PIN_DC_ESPOOLER_1_EN
     default "PA5" 
-  config PIN_DC_ESPOOLER_RWD_1
+  config PIN_DC_ESPOOLER_1_A
     default "PA6" 
-  config PIN_DC_ESPOOLER_FWD_1
+  config PIN_DC_ESPOOLER_1_B
     default "PA7" 
 
-  config PIN_DC_ESPOOLER_EN_2
+  config PIN_DC_ESPOOLER_2_EN
     default "PB13" 
-  config PIN_DC_ESPOOLER_RWD_2
+  config PIN_DC_ESPOOLER_2_A
     default "PB14" 
-  config PIN_DC_ESPOOLER_FWD_2
+  config PIN_DC_ESPOOLER_2_B
     default "PB15" 
 
-  config PIN_DC_ESPOOLER_EN_3
+  config PIN_DC_ESPOOLER_3_EN
     default "PD11" 
-  config PIN_DC_ESPOOLER_RWD_3
+  config PIN_DC_ESPOOLER_3_A
     default "PD12" 
-  config PIN_DC_ESPOOLER_FWD_3
+  config PIN_DC_ESPOOLER_3_B
     default "PD13" 
 
   config PIN_NEOPIXEL

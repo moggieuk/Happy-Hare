@@ -128,3 +128,23 @@ class Upgrades:
 
     def upgrade_3_00_to_3_10(self, cfg_input):
         cfg_input.hhcfg.move_option("mmu", "homing_extruder", "mmu_machine")
+
+    def upgrade_3_10_to_3_20(self, cfg_input):
+        cfg = cfg_input.hhcfg
+
+        # change the dc espooler pins so they are easier to expand with the new script.
+        # e.g [output_pin _mmu_dc_espooler_rwd_0] pin = mmu:MMU_DC_MOT_1_A -> mmu:MMU_DC_MOT_0_A
+        for i in range(0, 12):
+            if cfg.has_section(f"output_pin _mmu_dc_espooler_rwd_{i}"):
+                if cfg.get(f"output_pin _mmu_dc_espooler_rwd_{i}", "pin") == f"mmu:MMU_DC_MOT_{(i + 1)}_A":
+                    cfg.remove_option(f"output_pin _mmu_dc_espooler_rwd_{i}", "pin")  # Pin name has been changed, reset
+
+            if cfg.has_section(f"output_pin _mmu_dc_espooler_en_{i}"):
+                if cfg.get(f"output_pin _mmu_dc_espooler_en_{i}", "pin") == f"mmu:MMU_DC_MOT_{(i + 1)}_EN":
+                    cfg.remove_option(f"output_pin _mmu_dc_espooler_en_{i}", "pin")  # Pin name has been changed, reset
+
+            if aliases := cfg.get("board_pins mmu", "aliases"):
+                aliases = aliases.replace(f"MMU_DC_MOT_{(i + 1)}_A", f"MMU_DC_MOT_{i}_A")
+                aliases = aliases.replace(f"MMU_DC_MOT_{(i + 1)}_B", f"MMU_DC_MOT_{i}_B")
+                aliases = aliases.replace(f"MMU_DC_MOT_{(i + 1)}_EN", f"MMU_DC_MOT_{i}_EN")
+                cfg.set("board_pins mmu", "aliases", aliases)

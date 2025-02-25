@@ -536,7 +536,7 @@ class ConfigBuilder:
 
         if not self.has_section(section_name):
             raise KeyError(f"Section '{section_name}' not found")
-        self._expand(self.document, test, count, start_idx, whitespace="\n\n" if newline else "\n")
+        self._expand(self.document, test, count, start_idx, whitespace="\n" if newline else "")
 
     def expand_option(self, section_name, option_name, count, start_idx=0):
         logging.debug(f"Expanding option [{section_name}] {option_name}")

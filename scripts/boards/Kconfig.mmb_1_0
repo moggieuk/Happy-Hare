@@ -73,13 +73,13 @@ if BOARD_TYPE_MMB_1_0
     config PIN_GEAR_SENSOR_3
       default "PC12"
     
-    config PIN_DC_ESPOOLER_RWD_0
+    config PIN_DC_ESPOOLER_0_A
       default "PA0"
-    config PIN_DC_ESPOOLER_RWD_1
+    config PIN_DC_ESPOOLER_1_A
       default "PA1"
-    config PIN_DC_ESPOOLER_RWD_2
+    config PIN_DC_ESPOOLER_2_A
       default "PB10"
-    config PIN_DC_ESPOOLER_RWD_3
+    config PIN_DC_ESPOOLER_3_A
       default "PB2"
   endif
 

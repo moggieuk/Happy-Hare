@@ -20,41 +20,47 @@ if ADDON_DC_ESPOOLER
     depends on INSTALL_DC_ESPOOLER
     default y
 
+  config USE_ENABLE_PINS
+    bool "Does your setup use enable pins for the motor drivers?"
   
   menu "eSpooler pins"
     if PARAM_NUM_GATES > 0
-      config PIN_DC_ESPOOLER_EN_0
+      config PIN_DC_ESPOOLER_0_EN
         string "eSpooler enable 0 pin"
-      config PIN_DC_ESPOOLER_RWD_0
+        depends on USE_ENABLE_PINS
+      config PIN_DC_ESPOOLER_0_A
         string "eSpooler rewind 0 pin"
-      config PIN_DC_ESPOOLER_FWD_0
+      config PIN_DC_ESPOOLER_0_B
         string "eSpooler forward 0 pin"
     endif
   
     if PARAM_NUM_GATES > 1
-      config PIN_DC_ESPOOLER_EN_1
+      config PIN_DC_ESPOOLER_1_EN
         string "eSpooler enable 1 pin"
-      config PIN_DC_ESPOOLER_RWD_1
+        depends on USE_ENABLE_PINS
+      config PIN_DC_ESPOOLER_1_A
         string "eSpooler rewind 1 pin"
-      config PIN_DC_ESPOOLER_FWD_1
+      config PIN_DC_ESPOOLER_1_B
         string "eSpooler forward 1 pin"
     endif
   
     if PARAM_NUM_GATES > 2
-      config PIN_DC_ESPOOLER_EN_2
+      config PIN_DC_ESPOOLER_2_EN
         string "eSpooler enable 2 pin"
-      config PIN_DC_ESPOOLER_RWD_2
+        depends on USE_ENABLE_PINS
+      config PIN_DC_ESPOOLER_2_A
         string "eSpooler rewind 2 pin"
-      config PIN_DC_ESPOOLER_FWD_2
+      config PIN_DC_ESPOOLER_2_B
         string "eSpooler forward 2 pin"
     endif
   
     if PARAM_NUM_GATES > 3
-      config PIN_DC_ESPOOLER_EN_3
+      config PIN_DC_ESPOOLER_3_EN
         string "eSpooler enable 3 pin"
-      config PIN_DC_ESPOOLER_RWD_3
+        depends on USE_ENABLE_PINS
+      config PIN_DC_ESPOOLER_3_A
         string "eSpooler rewind 3 pin"
-      config PIN_DC_ESPOOLER_FWD_3
+      config PIN_DC_ESPOOLER_3_B
         string "eSpooler forward 3 pin"
     endif
   endmenu
