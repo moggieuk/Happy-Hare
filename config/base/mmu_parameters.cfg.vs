@@ -6,7 +6,8 @@
 #
 # EDIT THIS FILE BASED ON YOUR SETUP
 #
-# Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 # Goal: Main configuration parameters for the klipper module
@@ -16,7 +17,7 @@
 # (")_(") Happy Hare Ready
 #
 # Notes:
-#   Macro configuration is specifed separately in 'mmu_macro_vars.cfg'.
+#   Macro configuration is specified separately in 'mmu_macro_vars.cfg'.
 #   Full details in https://github.com/moggieuk/Happy-Hare/tree/main/doc/configuration.md
 #
 [mmu]
@@ -30,10 +31,10 @@ happy_hare_version: {param_happy_hare_version}			# Don't mess, used for upgrade 
 # ███████╗██║██║ ╚═╝ ██║██║   ██║   ███████║
 # ╚══════╝╚═╝╚═╝     ╚═╝╚═╝   ╚═╝   ╚══════╝
 #
-# Define the physical limits of your MMU. These setings will be respected regardless of individual speed settings.
+# Define the physical limits of your MMU. These settings will be respected regardless of individual speed settings.
 #
 gear_max_velocity: 300			# Never to be exceeded gear velocity regardless of specific parameters
-gear_max_accel: 1500			# Never to be exceeded gear accelaration regardless of specific parameters
+gear_max_accel: 1500			# Never to be exceeded gear acceleration regardless of specific parameters
 
 
 # Logging --------------------------------------------------------------------------------------------------------------
@@ -65,20 +66,21 @@ log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = sum
 # ███████║██║     ███████╗███████╗██████╔╝███████║
 # ╚══════╝╚═╝     ╚══════╝╚══════╝╚═════╝ ╚══════╝
 #
-# Long moves are faster than the small ones and used for the bulk of the bowden movement. Note that you can set two fast
-# load speeds depending on whether MMU thinks it is pulling from the buffer or from the spool. It is often helpful to
-# use a lower speed when pulling from the spool because more force is required to overcome friction and this prevents
-# loosing steps. 100mm/s should be "quiet" with the NEMA14 motor but you can go lower for really low noise
+# Long moves are faster than the small ones and used for the bulk of the bowden movement. You can set two fast load speeds
+# depending on whether pulling from the spool or filament buffer (if fitted and not the first time load). This can be helpful
+# in allowing faster loading from buffer and slower when pulling from the spool because of the additional friction (prevents
+# loosing steps). Unloading speed can be tuning if you have a rewinder system that imposes additional limits.
+# NOTE: Encoder cannot keep up much above 450mm/s so make sure 'bowden_apply_correction' is off at very high speeds!
 #
-# NOTE: Encoder cannot keep up much above 350mm/s so make sure 'bowden_apply_correction' is off at very high speeds!
+gear_from_spool_speed: 80               # mm/s Speed when loading from the spool (for the first time if has_filament_buffer: 1)
+gear_from_spool_accel: 100              # Acceleration when loading from spool
+gear_from_buffer_speed: 150             # mm/s Speed when loading filament from buffer. Conservative is 100mm/s, Max around 400mm/s
+gear_from_buffer_accel: 400             # Normal acceleration when loading filament
+gear_unload_speed: 80                   # mm/s Use (lower) speed when unloading filament (defaults to "from spool" speed)
+gear_unload_accel: 100                  # Acceleration when unloading filament (defaults to "from spool" accel)
 #
-gear_from_buffer_speed: 100		# mm/s Normal speed when loading filament. Conservative is 100mm/s, Max around 300mm/s
-gear_from_buffer_accel: 200		# Normal accelaration when loading filament
-gear_from_spool_speed: 100		# mm/s Use (lower) speed when loading for the first time (i.e. pulling from spool)
-gear_from_spool_accel: 200		# Accelaration when loading from spool
-#
-gear_short_move_speed: 100		# mm/s Speed when making short moves (like incremental retracts with encoder)
-gear_short_move_accel: 200		# Usually the same as gear_from_buffer_accel (for short movements)
+gear_short_move_speed: 80		# mm/s Speed when making short moves (like incremental retracts with encoder)
+gear_short_move_accel: 600		# Usually the same as gear_from_buffer_accel (for short movements)
 gear_short_move_threshold: 70		# Move distance that controls application of 'short_move' speed/accel
 gear_homing_speed: 50			# mm/s Speed of gear stepper only homing moves (e.g. homing to gate or extruder)
 
@@ -93,7 +95,7 @@ extruder_homing_speed: 18		# mm/s speed of extruder only homing moves (e.g. to t
 # When Happy Hare calls out to a macro for user customization and for parking moves these settings are applied and the previous
 # values automatically restored afterwards. This allows for deterministic movement speed regardless of the starting state.
 #
-macro_toolhead_max_accel: 0		# Default printer toolhead accelaration applied when macros are run. 0 = use printer max
+macro_toolhead_max_accel: 0		# Default printer toolhead acceleration applied when macros are run. 0 = use printer max
 macro_toolhead_min_cruise_ratio: 0.5	# Default printer cruise ratio applied when macros are run
 
 
@@ -105,26 +107,28 @@ macro_toolhead_min_cruise_ratio: 0.5	# Default printer cruise ratio applied when
 # ╚██████╔╝██║  ██║   ██║   ███████╗    ███████╗╚██████╔╝██║  ██║██████╔╝
 #  ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝    ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ 
 #
-# These setttings control the loading and unloading filament at the gate. The primary options are you use a endstop switch
-# at the gate (ala TradRack) or an encoder (ERCF default).  You can even have both a gate sensor for loading/parking and
-# still use the encoder for other move verification (see advanced 'gate_endstop_to_encoder' option).
-# Note: the `encoder` method, due to the nature of its operation will overshoot a little. This is not a problem in practice
-# because the overshoot will simply be compensated for in the subsequent fast bowden move.
+# These settings control the loading and unloading filament at the gate which is the parking position inside the MMU.
+# Typically this would be switch sensor but you can also use an encoder. Even with encoder the endstop can be a switch
+# and the encoder used for move verifcation (see advanced 'gate_endstop_to_encoder' option). Note that the `encoder`
+# method, due to the nature of its operation will overshoot a little. This is not a problem in practice because the
+# overshoot will simply be compensated for in the subsequent move. A +ve parking distance moves towards the MMU, -ve
+# moves back through the endstop towards the toolhead. If the MMU has multiple bowden tubes then it is possible to home
+# at the extruder sensor and avoid long bowden moves!
 #
-# Possible gate_homing_endtop names:
+# Possible gate_homing_endstop names:
 #   encoder       - Detect filament position using movement of the encoder
 #   mmu_gate      - Use gate endstop
 #   mmu_gear      - Use individual per-gate endstop (type-B MMU's)
 #   extruder      - Use extruder entry sensor (Only for some type-B designs, see [mmu_machine] require_bowden_move setting)
 #
 gate_homing_endstop: encoder		# Name of gate endstop, "encoder" forces use of encoder for parking
-gate_homing_max: 70			# Maximum move distance to home to the gate (actual move distance for encoder parking)
-gate_preload_homing_max: 70             # Maximum homing distance to the mmu_gear endstop (if MMU is fitted with one)
+gate_homing_max: 70			# Maximum move distance to home to the gate (or actual move distance for encoder parking)
+gate_preload_homing_max: 70		# Maximum homing distance to the mmu_gear endstop (if MMU is fitted with one)
 gate_unload_buffer: 50			# Amount to reduce the fast unload so that filament doesn't overshoot when parking
-gate_parking_distance: 23 		# Parking postion in the gate (distance back from gate endstop/encoder point)
+gate_parking_distance: 23 		# Parking position in the gate (distance back from homing point, -ve value means move forward)
 gate_endstop_to_encoder: 10		# Distance between gate endstop and encoder (IF both fitted. +ve if encoder after endstop)
 gate_autoload: 1			# If pre-gate sensor fitted this controls the automatic loading of the gate
-gate_final_eject_distance: 0		# Distance to eject filament on EJECT rather than UNLOAD
+gate_final_eject_distance: 0		# Distance to eject filament on MMU_EJECT (Ignored by MMU_UNLOAD)
 
 
 # Bowden tube loading/unloading ----------------------------------------------------------------------------------------
@@ -148,7 +152,7 @@ bowden_pre_unload_test: 1		# 1 to check for bowden movement before full pull (sl
 
 # ADVANCED: If pre-unload test is enabled, this controls the detection of successful bowden pre-unload test and represents
 # the fraction of allowable mismatch between actual movement and that seen by encoder. Setting to 50% tolerance usually
-# works well. Increasing will make test more tolerent. Value of 100% essentially disables error detection
+# works well. Increasing will make test more tolerant. Value of 100% essentially disables error detection
 bowden_pre_unload_error_tolerance: 50
 
 
@@ -163,33 +167,36 @@ bowden_pre_unload_error_tolerance: 50
 # Happy Hare needs a reference "homing point" close to the extruder from which to accurately complete the loading of
 # the toolhead. This homing operation takes place after the fast bowden load and it is anticipated that that load
 # operation will leave the filament just shy of the homing point. If using a toolhead sensor this initial extruder
-# homing is unecessary (but can be forced) because the homing will occur inside the extruder for the optimum in accuracy.
+# homing is unnecessary (but can be forced) because the homing will occur inside the extruder for the optimum in accuracy.
+# You still should set this homing method because it is also used for the determination and calibration of bowden length.
 #
-# In addition to an entry sensor "mmu_extruder" it is possbile for Happy Hare to "feel" for the extruder gear entry
-# by colliding with it. Because this method is not completely deterministic you might find have to find the sweetspot
-# for your setup by adjusting the TMC current reduction. Also, touch (stallguard) sensing is possible to configure but
-# unfortunately doesn't work well with some external mcu's. Note that reduced current during collision detection can
-# also prevent unecessary filament griding
+# In addition to an entry sensor "extruder" it is possible for Happy Hare to "feel" for the extruder gear entry
+# by colliding with it. This can be done with encoder based collision detection, the compression of the sync-feedback
+# (aka buffer) sensor or using "touch" (stallguard) on the gear stepper. Note that encoder collision detection is not
+# completely deterministic and you will have to find the sweetspot for your setup by adjusting the TMC current reduction.
+# Note that reduced current during collision detection can also prevent unecessary filament griding.
 #
-# Possible homing_endtop names:
-#   collision      - Detect the collision with the extruder gear by monitoring encoder movement (Requires encoder)
-#                    Fast bowden load will move to the extruder gears
-#   mmu_gear_touch - Use touch detection when the gear stepper hits the extruder (Requires stallguard)
-#                    Fast bowden load will move to extruder_homing_buffer distance before extruder gear
-#   extruder       - If you have a "filament entry" endstop configured (Requires 'extruder' endstop)
-#                    Fast bowden load will move to extruder_homing_buffer distance before sensor
-#   none           - Don't attempt to home. Only possibiliy if lacking all sensor options
-#                    Fast bowden load will move to the extruder gears. Fine if using toolhead sensor
-# Note: The homing_endstop will be ignored if a toolhead sensor is available unless `extruder_force_homing: 1`
+# Possible extruder_homing_endtop names:
+#   collision            - Detect the collision with the extruder gear by monitoring encoder movement (Requires encoder)
+#                          Fast bowden load will move to the extruder gears
+#   mmu_gear_touch       - Use touch detection when the gear stepper hits the extruder (Requires stallguard)
+#                          Fast bowden load will move to extruder_homing_buffer distance before extruder gear, then home
+#   extruder             - If you have a "filament entry" endstop configured (Requires 'extruder' endstop)
+#                          Fast bowden load will move to extruder_homing_buffer distance before sensor, then home
+#   filament_compression - If you have a "sync-feedback" sensor with compression switch configured
+#                          Fast bowden load will move to extruder_homing_buffer distance before extruder gear, then home
+#   none                 - Don't attempt to home. Only possibiliy if lacking all sensor options
+#                          Fast bowden load will move to the extruder gears. Option is fine if using toolhead sensor
+# Note: The homing_endstop will be ignored ("none") if a toolhead sensor is available unless "extruder_force_homing: 1"
 #
 extruder_homing_max: 80			# Maximum distance to advance in order to attempt to home the extruder
 extruder_homing_endstop: collision	# Filament homing method/endstop name (fallback if toolhead sensor not available)
-extruder_homing_buffer: 30		# Amount to reduce the fast bowden load so filament doesn't overshoot the extruder homing point
+extruder_homing_buffer: 25		# Amount to reduce the fast bowden load so filament doesn't overshoot the extruder homing point
 extruder_collision_homing_current: 30	# % gear_stepper current (10%-100%) to use when homing to extruder homing (100 to disable)
 
-# In the absence of a toolhead sensor Happy Hare will automatically default to extruder entrance detection regardless
-# of this setting, however if you have a toolhead sensor you can still force the additional (unecessary) step of
-# initially homing to extruder entrance then home to the toolhead sensor
+# If you have a toolhead sensor it will always be used as a homing point making the homing outside of the extruder
+# potentially unnecessary. However you can still force this initial homing step by setting this option in which case
+# the filament will home to the extruder and then home to the toolhead sensor in two steps
 #
 extruder_force_homing: 0
 
@@ -208,7 +215,7 @@ extruder_force_homing: 0
 # macros in mmu_sequence.cfg - but be careful!
 #
 # An MMU must have a known point at the end of the bowden from which it can precisely load the extruder. Generally this
-# will either be the extruder extrance (which is controlled with settings above) or by homing to toolhead sensor. If
+# will either be the extruder entrance (which is controlled with settings above) or by homing to toolhead sensor. If
 # you have toolhead sensor it is past the extruder gear and the driver needs to know the max distance (from end of
 # bowden move) to attempt homing
 #
@@ -220,14 +227,14 @@ toolhead_homing_max: 40			# Maximum distance to advance in order to attempt to h
 # your nozzle) to control excessive oozing on load. See doc for table of proposed values for common configurations.
 #
 # NOTE: If you have a toolhead sensor you can automate the calculation of these parameters! Read about the
-# `MMU_CALIBRATE_TOOLHEAD` command (https://github.com/moggieuk/Happy-Hare/wiki/Blobing-and-Stringing)
+# `MMU_CALIBRATE_TOOLHEAD` command (https://github.com/moggieuk/Happy-Hare/wiki/Blobbing-and-Stringing#---calibrating-toolhead)
 #
 toolhead_extruder_to_nozzle: 72		# Distance from extruder gears (entrance) to nozzle
 toolhead_sensor_to_nozzle: 62		# Distance from toolhead sensor to nozzle (ignored if not fitted)
 toolhead_entry_to_extruder: 8		# Distance from extruder "entry" sensor to extruder gears (ignored if not fitted)
 
 # This setting represents how much residual filament is left behind in the nozzle when filament is removed, it is thus
-# used to reduce the extruder loading length and prevent excessive blobing but also in the calculation of purge volume.
+# used to reduce the extruder loading length and prevent excessive blobbing but also in the calculation of purge volume.
 # Note that this value can also be measured with the `MMU_CALIBRATE_TOOLHEAD` procedure
 #
 toolhead_residual_filament: 0		# Reduction in extruder loading length because of residual filament left behind
@@ -244,7 +251,7 @@ toolhead_ooze_reduction: 0		# Reduction in extruder loading length to prevent oo
 # Distance added to the extruder unload movement to ensure filament is free of extruder. This adds some degree of tolerance
 # to slightly incorrect configuration or extruder slippage. However don't use as an excuse for incorrect toolhead settings
 #
-toolhead_unload_safety_margin: 10	# Extra movement saftey margin (default: 10mm)
+toolhead_unload_safety_margin: 10	# Extra movement safety margin (default: 10mm)
 
 # If not synchronizing gear and extruder and you experience a "false" clog detection immediately after the tool change
 # it might be because of a long bowden and/or large internal diameter that causes slack in the filament. This optional
@@ -270,7 +277,7 @@ toolhead_move_error_tolerance: 60
 #    ██║   ██║██║         ██║     ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║██║ ╚████║╚██████╔╝
 #    ╚═╝   ╚═╝╚═╝         ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ 
 #
-# Tip forming responsibity can be split between slicer (in-print) and standalone macro (not in-print) or forced to always
+# Tip forming responsibility can be split between slicer (in-print) and standalone macro (not in-print) or forced to always
 # be done by Happy Hare's standalone macro. Since you always need the option to form tips without the slicer so it is
 # generally easier to completely turn off the slicer, force "standalone" tip forming and tune only in Happy Hare.
 #
@@ -393,7 +400,7 @@ t_macro_color: slicer			# 'slicer' = default | 'allgates' = mmu | 'gatemap' = mm
 # Options: pre_unload, unload, post_unload, pre_load, load, post_load, total
 console_stat_columns: unload, load, post_load, total
 
-# Comma seperated list of rows. The order determines the order in which they're shown.
+# Comma separated list of rows. The order determines the order in which they're shown.
 # Options: total, total_average, job, job_average, last
 console_stat_rows: total, total_average, job, job_average, last
 
@@ -417,9 +424,9 @@ console_always_output_full: 1	# 1 = Show full table, 0 = Only show totals out of
 #
 # Important you verify these work for you setup/workflow. Temperature and timeouts
 #
-timeout_pause: 72000		# Idle time out (printer shutsdown) in seconds used when in MMU pause state
+timeout_pause: 72000		# Idle time out (printer shuts down) in seconds used when in MMU pause state
 disable_heater: 600		# Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
-default_extruder_temp: 200	# Default temperature for performing swaps and forming tips when not in print (overriden by gate map)
+default_extruder_temp: 200	# Default temperature for performing swaps and forming tips when not in print (overridden by gate map)
 extruder_temp_variance: 2	# When waiting for extruder temperature this is the +/- permissible variance in degrees (>= 1)
 #
 # These are auto calibration/tuning settings. Once the gear rotation_distance and encoder are calibrated, enabling these options
@@ -433,7 +440,7 @@ autotune_rotation_distance: 0   # Automated gate calibration/tuning (requires en
 #
 # Other workflow options
 #
-startup_home_if_unloaded: 0	# 1 = force homing of MMU on startup if unloaded, 0 = do nothing
+startup_home_if_unloaded: 0	# 1 = force mmu homing on startup if unloaded, 0 = do nothing
 startup_reset_ttg_map: 0	# 1 = reset TTG map on startup, 0 = do nothing
 show_error_dialog: 0		# 1 = show pop-up dialog in addition to console message, 0 = show error in console
 strict_filament_recovery: 0	# If enabled with MMU with toolhead sensor, this will cause filament position recovery to
@@ -442,19 +449,19 @@ filament_recovery_on_pause: 1	# 1 = Run a quick check to determine current filam
 retry_tool_change_on_error: 0	# Whether to automatically retry a failed tool change. If enabled Happy Hare will perform
 				# the equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary
 				# to recover. Note that enabling this can mask problems with your MMU
-bypass_autoload: 1		# If entruder sensor fitted this controls the automatic loading of extruder for bypass operation
+bypass_autoload: 1		# If extruder sensor fitted this controls the automatic loading of extruder for bypass operation
+has_filament_buffer: 1          # Whether the MMU has a filament buffer. Set to 0 if using Filamentalist or DC eSpooler, etc
 #
 # Advanced options. Don't mess unless you fully understand. Read documentation.
 #
 encoder_move_validation: 1	# ADVANCED: 1 = Normally Encoder validates move distances are within given tolerance
 				#           0 = Validation is disabled (eliminates slight pause between moves but less safe)
 print_start_detection: 1	# ADVANCED: Enabled for Happy Hare to automatically detect start and end of print and call
-				# ADVANCED: MMU_START_PRINT and MMU_END_PRINT automatically. Harmles to leave enabled but can disable
+				# ADVANCED: MMU_START_PRINT and MMU_END_PRINT automatically. Harmless to leave enabled but can disable
                                 #           if you think it is causing problems and known START/END is covered in your macros
 extruder: extruder		# ADVANCED: Name of the toolhead extruder that MMU is using
 gcode_load_sequence: 0		# VERY ADVANCED: Gcode loading sequence 1=enabled, 0=internal logic (default)
 gcode_unload_sequence: 0	# VERY ADVANCED: Gcode unloading sequence, 1=enabled, 0=internal logic (default)
-homing_extruder: 1		# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
 
 
 # ADVANCED: Klipper tuning -------------------------------------------------------------------------------------------
@@ -466,7 +473,7 @@ homing_extruder: 1		# CAUTION: Normally this should be 1. 0 will disable the hom
 # ╚═╝  ╚═╝╚══════╝╚═╝╚═╝     ╚═╝     ╚══════╝╚═╝  ╚═╝
 #
 # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing
-# operations especially so with CANbus connected mcus. Happy Hare uses many homing moves for reliable extruder loading
+# operations especially so with CANbus connected MCUs. Happy Hare uses many homing moves for reliable extruder loading
 # and unloading and enabling this option affords klipper more tolerance and avoids this dreaded error
 #
 update_trsync: 0		# 1 = Increase TRSYNC_TIMEOUT, 0 = Leave the klipper default
@@ -476,7 +483,7 @@ update_trsync: 0		# 1 = Increase TRSYNC_TIMEOUT, 0 = Leave the klipper default
 # working well in practice
 canbus_comms_retries: 3		# Number of retries. Recommend the default of 3.
 #
-# Older neopixels have very finiky timing and can generate lots of "Unable to obtain 'neopixel_result' response"
+# Older neopixels have very finicky timing and can generate lots of "Unable to obtain 'neopixel_result' response"
 # errors in klippy.log. An often cited workaround is to increase BIT_MAX_TIME in neopixel.py. This option does that
 # automatically for you to save dirtying klipper
 update_bit_max_time: 1		# 1 = Increase BIT_MAX_TIME, 0 = Leave the klipper default
@@ -517,7 +524,13 @@ espooler_stop_macro: ''					# Called to stop eSpooler if fitted (params: GATE, D
 # ██║  ██║███████╗███████║███████╗   ██║       ██████╔╝███████╗██║     ███████║
 # ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝   ╚═╝       ╚═════╝ ╚══════╝╚═╝     ╚══════╝
 #
-# Examples...
+# These are the values that the various "RESET" commands will reset too rather than the built-in defaults. The lenght
+# of the lists must match the number of gates on your MMU
+#
+# e.g. MMU_GATE_MAP RESET=1              - will use all the 'gate_XXX' values
+#      MMU_TTG_MAP RESET=1               - will use the 'tool_to_gate_map'
+#      MMU_ENDLESS_SPOOL_GROUPS RESET=1  - will use the 'endless_spool_groups'
+#
 # Gate:                #0      #1      #2      #3      #4      #5      #6      #7      #8
 #gate_status:          1,      0,      1,      2,      2,     -1,     -1,      0,      1
 #gate_filament_name:   one,    two,    three,  four,   five,   six,    seven,  eight,  nine

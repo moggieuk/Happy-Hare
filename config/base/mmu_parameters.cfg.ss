@@ -1,6 +1,9 @@
 ########################################################################################################################
 # Happy Hare MMU Software
 #
+# Template file for MMU's with Servo Selector (Type-A designs like PicoMMU and MMX)
+# This file omits selector and selector-servo parts of the configuration and a few other options that don't make sense
+#
 # EDIT THIS FILE BASED ON YOUR SETUP
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
@@ -18,7 +21,7 @@
 #   Full details in https://github.com/moggieuk/Happy-Hare/tree/main/doc/configuration.md
 #
 [mmu]
-happy_hare_version: {param_happy_hare_version}			# Don't mess, used for upgrade detection
+happy_hare_version: {happy_hare_version}			# Don't mess, used for upgrade detection
 
 # MMU Hardware Limits --------------------------------------------------------------------------------------------------
 # ██╗     ██╗███╗   ███╗██╗████████╗███████╗
@@ -32,10 +35,25 @@ happy_hare_version: {param_happy_hare_version}			# Don't mess, used for upgrade 
 #
 gear_max_velocity: 300			# Never to be exceeded gear velocity regardless of specific parameters
 gear_max_accel: 1500			# Never to be exceeded gear acceleration regardless of specific parameters
-selector_max_velocity: 250		# Never to be exceeded selector velocity regardless of specific parameters
-selector_max_accel: 1200		# Never to be exceeded selector acceleration regardless of specific parameters
 
-{cfg_selector_servo}
+
+# Selector servo configuration  ----------------------------------------------------------------------------------------
+# ███████╗███████╗██████╗ ██╗   ██╗ ██████╗ 
+# ██╔════╝██╔════╝██╔══██╗██║   ██║██╔═══██╗
+# ███████╗█████╗  ██████╔╝██║   ██║██║   ██║
+# ╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██║   ██║
+# ███████║███████╗██║  ██║ ╚████╔╝ ╚██████╔╝
+# ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ 
+#
+# Note that selector servo positions are stored in `mmu_vars.cfg` after calibration
+#
+# Note that leaving the servo active when down can stress the electronics and is not recommended unless you have a goo
+# 5v power supply. Make sure your hardware is suitable for the job!
+#
+servo_duration: 0.5			# Duration of PWM burst sent to servo (default non-active mode, automatically turns off)
+servo_dwell: 0.8			# Minimum time given to servo to complete movement prior to next move
+servo_always_active: 0 			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
+
 
 # Logging --------------------------------------------------------------------------------------------------------------
 # ██╗      ██████╗  ██████╗  ██████╗ ██╗███╗   ██╗ ██████╗ 
@@ -72,19 +90,25 @@ log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = sum
 # loosing steps). Unloading speed can be tuning if you have a rewinder system that imposes additional limits.
 # NOTE: Encoder cannot keep up much above 450mm/s so make sure 'bowden_apply_correction' is off at very high speeds!
 #
-gear_from_spool_speed: 80		# mm/s Speed when loading from the spool (for the first time if has_filament_buffer: 1)
-gear_from_spool_accel: 100		# Acceleration when loading from spool
-gear_from_buffer_speed: 150		# mm/s Speed when loading filament from buffer. Conservative is 100mm/s, Max around 400mm/s
-gear_from_buffer_accel: 400		# Normal acceleration when loading filament
-gear_unload_speed: 80			# mm/s Use (lower) speed when unloading filament (defaults to "from spool" speed)
-gear_unload_accel: 100			# Acceleration when unloading filament (defaults to "from spool" accel)
+gear_from_spool_speed: 80               # mm/s Speed when loading from the spool (for the first time if has_filament_buffer: 1)
+gear_from_spool_accel: 100              # Acceleration when loading from spool
+gear_from_buffer_speed: 150             # mm/s Speed when loading filament from buffer. Conservative is 100mm/s, Max around 400mm/s
+gear_from_buffer_accel: 400             # Normal acceleration when loading filament
+gear_unload_speed: 80                   # mm/s Use (lower) speed when unloading filament (defaults to "from spool" speed)
+gear_unload_accel: 100                  # Acceleration when unloading filament (defaults to "from spool" accel)
 #
 gear_short_move_speed: 80		# mm/s Speed when making short moves (like incremental retracts with encoder)
 gear_short_move_accel: 600		# Usually the same as gear_from_buffer_accel (for short movements)
 gear_short_move_threshold: 70		# Move distance that controls application of 'short_move' speed/accel
-gear_homing_speed: {param_gear_homing_speed}			# mm/s Speed of gear stepper only homing moves (e.g. homing to gate or extruder)
+gear_homing_speed: 50			# mm/s Speed of gear stepper only homing moves (e.g. homing to gate or extruder)
 
-{cfg_selector_speeds}
+# Speeds of extruder movement. The 'sync' speeds will be used when gear and extruder steppers are moving in sync
+#
+extruder_load_speed: 16			# mm/s speed of load move inside extruder from homing position to meltzone
+extruder_unload_speed: 16		# mm/s speed of unload moves inside of extruder (very initial move from meltzone is 50% of this)
+extruder_sync_load_speed: 18		# mm/s speed of synchronized extruder load moves
+extruder_sync_unload_speed: 18		# mm/s speed of synchronized extruder unload moves
+extruder_homing_speed: 18		# mm/s speed of extruder only homing moves (e.g. to toolhead sensor)
 
 # When Happy Hare calls out to a macro for user customization and for parking moves these settings are applied and the previous
 # values automatically restored afterwards. This allows for deterministic movement speed regardless of the starting state.
@@ -115,15 +139,14 @@ macro_toolhead_min_cruise_ratio: 0.5	# Default printer cruise ratio applied when
 #   mmu_gear      - Use individual per-gate endstop (type-B MMU's)
 #   extruder      - Use extruder entry sensor (Only for some type-B designs, see [mmu_machine] require_bowden_move setting)
 #
-gate_homing_endstop: {param_gate_homing_endstop}		# Name of gate endstop, "encoder" forces use of encoder for parking
-gate_homing_max: {param_gate_homing_max}			# Maximum move distance to home to the gate (actual move distance for encoder parking)
+gate_homing_endstop: encoder		# Name of gate endstop, "encoder" forces use of encoder for parking
+gate_homing_max: 70			# Maximum move distance to home to the gate (or actual move distance for encoder parking)
 gate_preload_homing_max: 70		# Maximum homing distance to the mmu_gear endstop (if MMU is fitted with one)
 gate_unload_buffer: 50			# Amount to reduce the fast unload so that filament doesn't overshoot when parking
-gate_load_retries: 2			# Number of times MMU will attempt to grab the filament on initial load (type-A designs)
 gate_parking_distance: 23 		# Parking position in the gate (distance back from homing point, -ve value means move forward)
 gate_endstop_to_encoder: 10		# Distance between gate endstop and encoder (IF both fitted. +ve if encoder after endstop)
 gate_autoload: 1			# If pre-gate sensor fitted this controls the automatic loading of the gate
-gate_final_eject_distance: {param_gate_final_eject_distance}		# Distance to eject filament on EJECT rather than UNLOAD
+gate_final_eject_distance: 0		# Distance to eject filament on MMU_EJECT (Ignored by MMU_UNLOAD)
 
 
 # Bowden tube loading/unloading ----------------------------------------------------------------------------------------
@@ -185,7 +208,7 @@ bowden_pre_unload_error_tolerance: 50
 # Note: The homing_endstop will be ignored ("none") if a toolhead sensor is available unless "extruder_force_homing: 1"
 #
 extruder_homing_max: 80			# Maximum distance to advance in order to attempt to home the extruder
-extruder_homing_endstop: {param_extruder_homing_endstop}	# Filament homing method/endstop name (fallback if toolhead sensor not available)
+extruder_homing_endstop: collision	# Filament homing method/endstop name (fallback if toolhead sensor not available)
 extruder_homing_buffer: 25		# Amount to reduce the fast bowden load so filament doesn't overshoot the extruder homing point
 extruder_collision_homing_current: 30	# % gear_stepper current (10%-100%) to use when homing to extruder homing (100 to disable)
 
@@ -305,9 +328,7 @@ slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder 
 # If equipped with TMC drivers the current of the gear and extruder motors can be controlled to optimize performance.
 # This can be useful to control gear stepper temperature when printing with synchronized motor
 #
-sync_to_extruder: 0			# Gear motor is synchronized to extruder during print
 sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
-sync_form_tip: 0			# Synchronize during standalone tip formation (initial part of unload)
 
 # Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
 # extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
@@ -335,8 +356,8 @@ sync_multiplier_low: 0.95		# Minimum factor to apply
 #   defaulting to current gate. A custom gate will disable pre-gate runout detection for EndlessSpool because filament
 #   end must completely pass through the gate for selector to move
 #
-enable_clog_detection: {param_enable_clog_detection}		# 0 = disable, 1 = static length clog detection, 2 = automatic length clog detection
-enable_endless_spool: {param_enable_endless_spool}			# 0 = disable, 1 = enable endless spool
+enable_clog_detection: 2		# 0 = disable, 1 = static length clog detection, 2 = automatic length clog detection
+enable_endless_spool: 1			# 0 = disable, 1 = enable endless spool
 endless_spool_on_load: 0		# 0 = don't apply endless spool on load, 1 = run endless spool if gate is empty
 endless_spool_eject_gate: -1		# Which gate to eject the filament remains. -1 = current gate
 #endless_spool_groups:			# Default EndlessSpool groups (see later in file)
@@ -355,7 +376,7 @@ endless_spool_eject_gate: -1		# Which gate to eject the filament remains. -1 = c
 #        push        |     yes    |           yes             |        yes       |        no         |
 #        pull        |     yes    |           yes             |        yes       |        yes        |
 #
-spoolman_support: {param_spoolman_support}			# off = disabled, readonly = enabled, push = local gate map, pull = remote gate map
+spoolman_support: off			# off = disabled, readonly = enabled, push = local gate map, pull = remote gate map
 pending_spool_id_timeout: 20            # Seconds after which this pending spool_id (set with rfid) is voided
 #
 # Mainsail/Fluid UI can visualize the color of filaments next to the extruder/tool chooser. The color is dynamic and
@@ -440,7 +461,6 @@ autotune_rotation_distance: 0   # Automated gate calibration/tuning (requires en
 startup_home_if_unloaded: 0	# 1 = force mmu homing on startup if unloaded, 0 = do nothing
 startup_reset_ttg_map: 0	# 1 = reset TTG map on startup, 0 = do nothing
 show_error_dialog: 0		# 1 = show pop-up dialog in addition to console message, 0 = show error in console
-preload_attempts: 5		# How many "grabbing" attempts are made to pick up the filament with preload feature
 strict_filament_recovery: 0	# If enabled with MMU with toolhead sensor, this will cause filament position recovery to
 				# perform extra moves to look for filament trapped in the space after extruder but before sensor
 filament_recovery_on_pause: 1	# 1 = Run a quick check to determine current filament position on pause/error, 0 = disable
@@ -510,8 +530,8 @@ pre_load_macro: _MMU_PRE_LOAD				# Called before starting the load
 post_load_macro: _MMU_POST_LOAD				# Called after the load is complete
 unload_sequence_macro: _MMU_UNLOAD_SEQUENCE		# VERY ADVANCED: Optionally called based on 'gcode_unload_sequence'
 load_sequence_macro: _MMU_LOAD_SEQUENCE			# VERY ADVANCED: Optionally called based on 'gcode_load_sequence'
-espooler_start_macro: '{param_dc_espooler_start_macro}'				# Called to start eSpooler if fitted (params: GATE, STEP_SPEED, MAX_DISTANCE, HOMING)
-espooler_stop_macro: '{param_dc_espooler_stop_macro}'					# Called to stop eSpooler if fitted (params: GATE, DISTANCE)
+espooler_start_macro: ''				# Called to start eSpooler if fitted (params: GATE, STEP_SPEED, MAX_DISTANCE, HOMING)
+espooler_stop_macro: ''					# Called to stop eSpooler if fitted (params: GATE, DISTANCE)
 
 
 # ADVANCED: See documentation for use of these -----------------------------------------------------------------------
@@ -541,6 +561,3 @@ espooler_stop_macro: '{param_dc_espooler_stop_macro}'					# Called to stop eSpoo
 #
 # Tool:                T0      T1      T2      T3      T4      T5      T6      T7      T8
 #tool_to_gate_map:     0,      1,      2,      3,      4,      5,      6,      7,      8
-
-
-{cfg_custom_mmu}
