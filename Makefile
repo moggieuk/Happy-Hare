@@ -234,7 +234,7 @@ uninstall:
 ##### Misc targets #####
 
 update: 
-	$(Q)$(SRC)/installer/update.sh
+	$(Q)$(SRC)/installer/self_update.sh
 
 clean:
 	$(Q)rm -rf $(OUT)
