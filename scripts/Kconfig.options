@@ -13,6 +13,25 @@ config PARAM_ENABLE_SELECTOR_TOUCH
   default 1 if ENABLE_SELECTOR_TOUCH
   default 0
 
+config ENABLE_SYNC_TO_EXTRUDER
+  bool "Enable sync to extruder?"
+  help
+    This controls whether the extruder and gear steppers are synchronized during printing operations
+
+config PARAM_SYNC_TO_EXTRUDER
+  int
+  default 1 if ENABLE_SYNC_TO_EXTRUDER
+  default 0
+
+config ENABLE_SYNC_FEEDBACK
+  bool "Enable sync feedback?"
+  depends on ENABLE_SYNC_TO_EXTRUDER
+
+config PARAM_SYNC_FEEDBACK
+  int
+  default 1 if ENABLE_SYNC_FEEDBACK
+  default 0
+
 if BOARD_TYPE_EASY_BRD
   comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
     depends on ENABLE_SELECTOR_TOUCH
@@ -23,7 +42,7 @@ endif
 config ENABLE_CLOG_DETECT
   bool "Enable clog detection?"
   depends on MMU_HAS_ENCODER
-  imply ENABLE_CLOG
+
 config ENABLE_AUTO_CLOG_DETECT
   bool "Enable automatic clog detection length?"
   depends on ENABLE_CLOG_DETECT
