@@ -27,21 +27,13 @@ comment '( *,*)					'
 comment '(")_(") Happy Hare version $(formatted_version) 	'	
 comment '					'
 
-config INIT_SYSTEMD
-  bool
-  default $(to_bool, [ -d /etc/systemd/system ])
 
 rsource "types/Kconfig"
-
-config MMU_HAS_ENCODER
-  bool
-
 rsource "boards/Kconfig"
 rsource "Kconfig.serial"
 
 config PARAM_NUM_GATES
-  int "Number of gates"
-  default 12
+  prompt "Number of gates"
 
 rsource "servos/Kconfig"
 
@@ -54,6 +46,10 @@ menu "Addons"
 endmenu
 
 menu "Advanced settings"
+  config SHOW_ADVANCED_SETTINGS
+    bool "Show advanced settings?"
+    default n
+
   menu "Paths & Services"
     rsource "Kconfig.paths_services"
   endmenu
@@ -71,17 +67,6 @@ menu "Advanced settings"
   endmenu
 
   menu "Parameters"
-    # visible if MMU_TYPE_CUSTOM
     rsource "Kconfig.params"
   endmenu
-
-  config REPETIER
-    bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS
-
-  config REPETIER_NAME
-    string "Repetier name"
-    depends on REPETIER
-
-  config OCTOPRINT
-    bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
 endmenu

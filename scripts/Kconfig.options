@@ -8,6 +8,13 @@ config ENABLE_SELECTOR_TOUCH
     Not recommended if you are new to MMU/Happy-Hare.
     The MCU must have DIAG output for steppers. Possible to configure later.
 
+if BOARD_TYPE_EASY_BRD
+  comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
+    depends on ENABLE_SELECTOR_TOUCH
+  comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
+    depends on !ENABLE_SELECTOR_TOUCH
+endif
+
 config PARAM_ENABLE_SELECTOR_TOUCH
   int
   default 1 if ENABLE_SELECTOR_TOUCH
@@ -32,12 +39,6 @@ config PARAM_SYNC_FEEDBACK
   default 1 if ENABLE_SYNC_FEEDBACK
   default 0
 
-if BOARD_TYPE_EASY_BRD
-  comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
-    depends on ENABLE_SELECTOR_TOUCH
-  comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
-    depends on !ENABLE_SELECTOR_TOUCH
-endif
 
 config ENABLE_CLOG_DETECT
   bool "Enable clog detection?"
@@ -92,3 +93,13 @@ config INSTALL_12864_MENU
 config INSTALL_CLIENT_MACROS
   bool "Install default pause/resume macros supplied with Happy Hare? (recommended)"
   default y
+
+config REPETIER
+  bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS
+
+config REPETIER_NAME
+  string "Repetier name"
+  depends on REPETIER
+
+config OCTOPRINT
+  bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
