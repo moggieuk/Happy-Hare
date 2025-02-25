@@ -19,7 +19,7 @@ endchoice
 if MMU_CUSTOM_TYPE_B
   config PARAM_MMU_VENDOR
     default "Other"
-  config PARAM_MMU_VERSION
+  config MMU_BASE_VERSION
     default "1.0"
 
   config PARAM_GEAR_GEAR_RATIO
@@ -29,8 +29,6 @@ if MMU_CUSTOM_TYPE_B
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
 
-  # config PARAM_SELECTOR_TYPE
-  #   default "VirtualSelector"
   choice CHOICE_SELECTOR_TYPE
     default SELECTOR_TYPE_VIRTUAL
   endchoice

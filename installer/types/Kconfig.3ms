@@ -24,8 +24,6 @@ if MMU_TYPE_3MS_1
   config PARAM_GATE_PARKING_DISTANCE
     default "250"
 
-  # config PARAM_SELECTOR_TYPE
-  #   default "VirtualSelector"
   choice CHOICE_SELECTOR_TYPE
     default SELECTOR_TYPE_VIRTUAL
   endchoice

@@ -21,7 +21,7 @@ LEVEL_NOTICE = 25
 
 class Kconfig(kconfiglib.Kconfig):
     def __init__(self, confg_file):
-        super().__init__("scripts/Kconfig")
+        super().__init__("installer/Kconfig")
         self.load_config(confg_file)
 
     def is_selected(self, choice, value):

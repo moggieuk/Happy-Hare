@@ -1,14 +1,13 @@
 choice CHOICE_MMU_TYPE
-  config MMU_TYPE_BOX_TURTLE_1
-    bool "Box Turtle v1.0"
+  config MMU_TYPE_ANGRY_BEAVER_1
+    bool "Angry Beaver v1.0"
     select VARIABLE_ROTATION_DISTANCES
-    select REQUIRE_BOWDEN_MOVE
     select FILAMENT_ALWAYS_GRIPPED
 endchoice
 
-if MMU_TYPE_BOX_TURTLE_1
+if MMU_TYPE_ANGRY_BEAVER_1
   config PARAM_MMU_VENDOR
-    default "BoxTurtle"
+    default "AngryBeaver"
   config PARAM_MMU_VERSION
     default "1.0"
 
@@ -18,15 +17,13 @@ if MMU_TYPE_BOX_TURTLE_1
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+  config PARAM_GEAR_HOMING_SPEED
+    default "80"
   config PARAM_GATE_HOMING_MAX
-    default "300"
+    default "500"
   config PARAM_GATE_PARKING_DISTANCE
-    default "100"
-  config PARAM_GATE_FINAL_EJECT_DISTANCE
-    default "100"
+    default "50"
 
-  # config PARAM_SELECTOR_TYPE
-  #   default "VirtualSelector"
   choice CHOICE_SELECTOR_TYPE
     default SELECTOR_TYPE_VIRTUAL
   endchoice
@@ -36,6 +33,6 @@ if MMU_TYPE_BOX_TURTLE_1
   endchoice
   
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default EXTRUDER_HOMING_ENDSTOP_NONE
+    default EXTRUDER_HOMING_ENDSTOP_EXTRUDER
   endchoice
 endif 

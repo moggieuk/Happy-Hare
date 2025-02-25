@@ -42,8 +42,6 @@ if MMU_TYPE_TRADRACK_1
   config PARAM_GATE_ENDSTOP_TO_ENCODER
     default "31" if EXT_BINKY
 
-  # config PARAM_SELECTOR_TYPE
-  #   default "LinearSelector"
   choice CHOICE_SELECTOR_TYPE
     default SELECTOR_TYPE_LINEAR
   endchoice

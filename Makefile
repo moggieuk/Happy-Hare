@@ -2,7 +2,7 @@ SHELL=/usr/bin/env bash
 PY:=/usr/bin/env python
 
 
-# Print Colors (exported for use in py scripts)
+# Print Colors (exported for use in py installer)
 export C_OFF:=$(shell tput -Txterm sgr0)
 export C_DEBUG:=$(shell tput -Txterm setaf 5)
 export C_INFO:=$(shell tput -Txterm setaf 6)
@@ -40,7 +40,7 @@ export IN=$(OUT)/in
 MAKEFLAGS += --jobs 16 # Parallel build
 # kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target or if .config is outdated
 ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
-  ifeq ($(shell [ "$(KCONFIG_CONFIG)" -ot "$(SRC)/scripts/Kconfig" ] || echo y),y)
+  ifeq ($(shell [ "$(KCONFIG_CONFIG)" -ot "$(SRC)/installer/Kconfig" ] || echo y),y)
     MAKEFLAGS += --output-sync
   endif
 endif
@@ -64,7 +64,7 @@ PRINTER_CONFIG_FILE:=$(patsubst "%",%,$(CONFIG_PRINTER_CONFIG_FILE))
 MOONRAKER_CONFIG_FILE:=$(patsubst "%",%,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
 export PYTHONPATH:=$(KLIPPER_HOME)/lib/kconfiglib:$(PYTHONPATH)
-BUILD_MODULE:=$(PY) -m scripts.build $(V)
+BUILD_MODULE:=$(PY) -m installer.build $(V)
 
 hh_klipper_extras_files = $(patsubst extras/%,%,$(wildcard extras/*.py extras/*/*.py))
 hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon install
@@ -234,7 +234,7 @@ uninstall:
 ##### Misc targets #####
 
 update: 
-	$(Q)$(SRC)/scripts/update.sh
+	$(Q)$(SRC)/installer/update.sh
 
 clean:
 	$(Q)rm -rf $(OUT)
@@ -257,15 +257,15 @@ test:
 check_version:
 	$(Q)$(BUILD_MODULE) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)  
 
-$(KCONFIG_CONFIG): $(SRC)/scripts/Kconfig
+$(KCONFIG_CONFIG): $(SRC)/installer/Kconfig
 # if KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig
 # touch in case .config does not get updated by olddefconfig.py
 ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig)
 	$(Q)$(MAKE) -s MAKEFLAGS= menuconfig
-	$(Q)python $(KLIPPER_HOME)/lib/kconfiglib/olddefconfig.py $(SRC)/scripts/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
+	$(Q)python $(KLIPPER_HOME)/lib/kconfiglib/olddefconfig.py $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)
 endif
 
-menuconfig: $(SRC)/scripts/Kconfig
-	$(Q)MENUCONFIG_STYLE="aquatic" python $(KLIPPER_HOME)/lib/kconfiglib/menuconfig.py $(SRC)/scripts/Kconfig
+menuconfig: $(SRC)/installer/Kconfig
+	$(Q)MENUCONFIG_STYLE="aquatic" python $(KLIPPER_HOME)/lib/kconfiglib/menuconfig.py $(SRC)/installer/Kconfig
 

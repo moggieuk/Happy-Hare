@@ -3,9 +3,17 @@ import os.path
 import shutil
 import unittest
 
-import scripts.build
-from scripts.build import Upgrades, ConfigBuilder, ConfigInput, HHConfig, Kconfig, build_mmu_hardware_cfg, build_mmu_cfg
-import scripts.parser as parser
+import installer.build
+from installer.build import (
+    Upgrades,
+    ConfigBuilder,
+    ConfigInput,
+    HHConfig,
+    Kconfig,
+    build_mmu_hardware_cfg,
+    build_mmu_cfg,
+)
+import installer.parser as parser
 
 
 class TestBuild(unittest.TestCase):
@@ -60,7 +68,7 @@ class TestBuild(unittest.TestCase):
     def test_upgrade_3_20(self):
         """test upgrade from 3.10 to 3.20"""
         self.base_test(
-            "3_20", callback=scripts.build.build_addon_dc_espooler_cfg, from_version="3.10", to_version="3.20"
+            "3_20", callback=installer.build.build_addon_dc_espooler_cfg, from_version="3.10", to_version="3.20"
         )
 
     def test_hardware(self):
@@ -73,7 +81,7 @@ class TestBuild(unittest.TestCase):
 
     def base_test_moonraker(self, path):
         shutil.copy(f"{self.base_path}/{path}/in.cfg", f"{self.base_path}/{path}/out.cfg")
-        scripts.build.install_moonraker(
+        installer.build.install_moonraker(
             "moonraker_update.txt", f"{self.base_path}/{path}/out.cfg", f"{self.base_path}/{path}/.config"
         )
 
