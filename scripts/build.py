@@ -58,11 +58,16 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((sec, option))
         return super().remove_section(section_name)
 
+    def move_option(self, old_section_name, old_option_name, new_section_name, new_option_name=None):
+        if new_option_name is None:
+            new_option_name = old_option_name
+        if self.has_option(old_section_name, old_option_name):
+            self.set(new_section_name, new_option_name, self.get(old_section_name, old_option_name))
+            self.origins[(new_section_name, new_option_name)] = self.origins.pop((old_section_name, old_option_name))
+            self.remove_option(old_section_name, old_option_name)
+
     def rename_option(self, section_name, option_name, new_option_name):
-        if self.has_option(section_name, option_name):
-            self.set(section_name, new_option_name, self.get(section_name, option_name))
-            self.origins[(section_name, new_option_name)] = self.origins.pop((section_name, option_name))
-            self.remove_option(section_name, option_name)
+        self.move_option(section_name, option_name, section_name, new_option_name)
 
     def rename_section(self, section_name, new_section_name):
         if self.has_section(section_name):
@@ -70,7 +75,6 @@ class HHConfig(ConfigBuilder):
             for option, value in self.items(section_name):
                 self.set(new_section_name, option, value)
                 self.origins[(new_section_name, option)] = self.origins.pop((section_name, option))
-
             self.remove_section(section_name)
 
 

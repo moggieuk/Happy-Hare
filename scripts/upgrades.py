@@ -4,6 +4,7 @@ import logging
 
 class Upgrades:
     def upgrade(self, cfg_input, from_version, to_version):
+        """Will recursively upgrade cfg_input from from_version to to_version"""
         if from_version == to_version:
             return
 
@@ -17,14 +18,7 @@ class Upgrades:
             return
 
         try:
-            highest_to_version = max(
-                [
-                    upgrade[1]
-                    for upgrade in all_upgrades
-                    if upgrade[0] == float(from_version) and upgrade[1] <= float(to_version)
-                ]
-            )
-            highest_to_version = f"{highest_to_version:.2f}"
+            upgrade_path = next(upgrade for upgrade in all_upgrades if upgrade[1] > float(from_version))
         except ValueError:
             lowest_from_version = min([upgrade[0] for upgrade in all_upgrades if upgrade[0] > float(from_version)])
             lowest_from_version = f"{lowest_from_version:.2f}"
@@ -33,10 +27,11 @@ class Upgrades:
             )
             exit(1)
 
-        logging.debug(f"Upgrading from {from_version} to {highest_to_version}")
-        getattr(self, f"upgrade_{from_version.replace('.', '_')}_to_{highest_to_version.replace('.', '_')}")(cfg_input)
-        cfg_input.hhcfg.set("mmu", "happy_hare_version", highest_to_version)
-        self.upgrade(cfg_input, highest_to_version, to_version)
+        upgrade_path = [f"{v:.2f}" for v in upgrade_path]
+        logging.debug(f"Upgrading from {from_version} to {upgrade_path[1]}")
+        getattr(self, f"upgrade_{upgrade_path[0].replace('.', '_')}_to_{upgrade_path[1].replace('.', '_')}")(cfg_input)
+        cfg_input.hhcfg.set("mmu", "happy_hare_version", upgrade_path[1])
+        self.upgrade(cfg_input, upgrade_path[1], to_version)
 
     def upgrade_2_70_to_2_71(self, cfg_input):
         cfg = cfg_input.hhcfg
@@ -119,12 +114,9 @@ class Upgrades:
 
         if not cfg.has_section("mmu_machine"):
             cfg.add_section("mmu_machine")
-        cfg.set("mmu_machine", "num_gates", cfg.get("mmu", "mmu_num_gates"))
-        cfg.remove_option("mmu", "mmu_num_gates")
-        cfg.set("mmu_machine", "mmu_vendor", cfg.get("mmu", "mmu_vendor"))
-        cfg.remove_option("mmu", "mmu_vendor")
-        cfg.set("mmu_machine", "mmu_version", cfg.get("mmu", "mmu_version"))
-        cfg.remove_option("mmu", "mmu_version")
+        cfg.move_option("mmu", "mmu_num_gates", "mmu_machine", "num_gates")
+        cfg.move_option("mmu", "mmu_vendor", "mmu_machine")
+        cfg.move_option("mmu", "mmu_version", "mmu_machine")
 
         cfg.rename_option("mmu", "auto_calibrate_gates", "autotune_rotation_distance")
         cfg.rename_option("mmu", "auto_calibrate_bowden", "autotune_bowden_length")
@@ -133,3 +125,6 @@ class Upgrades:
         cfg.rename_option(
             "gcode_macro _MMU_CLIENT_VARS", "variable_eject_tool_on_cancel", "variable_unload_tool_on_cancel"
         )
+
+    def upgrade_3_00_to_3_10(self, cfg_input):
+        cfg_input.hhcfg.move_option("mmu", "homing_extruder", "mmu_machine")

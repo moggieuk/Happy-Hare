@@ -53,6 +53,10 @@ class TestBuild(unittest.TestCase):
         """test upgrade from 2.73 to 3.00"""
         self.base_test("3_00", from_version="2.73", to_version="3.00")
 
+    def test_upgrade_3_10(self):
+        """test upgrade from 3.00 to 3.10"""
+        self.base_test("3_10", from_version="3.00", to_version="3.10")
+
     def test_hardware(self):
         """test whether mmu_hardware.cfg is correctly built"""
         self.base_test("hardware", build_mmu_hardware_cfg)
@@ -112,17 +116,6 @@ class TestBuild(unittest.TestCase):
                 ],
             },
         )
-        # self.assertEqual(
-        #     p.parse_comment(parser.Tokenizer("# comment {placeholder} rest of comment")),
-        #     {
-        #         "type": "comment",
-        #         "body": [
-        #             {"type": "comment_entry", "value": "# comment "},
-        #             {"type": "placeholder", "value": "placeholder"},
-        #             {"type": "comment_entry", "value": " rest of comment"},
-        #         ],
-        #     },
-        # )
 
     def test_parser_config_files(self):
         """test whether the parser output is the same as the input"""

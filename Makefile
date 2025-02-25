@@ -250,8 +250,9 @@ diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(MOONRAKER_CONFIG_FILE)))
 
+UT?=*
 test: 
-	$(Q)$(SRC)/test/runner.sh $(UT)
+	$(Q)$(PY) -m unittest $(V) -k $(UT)
 
 check_version:
 	$(Q)$(BUILD_MODULE) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)  
