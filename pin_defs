@@ -201,60 +201,60 @@ PIN[ERB,gear_sensor_11_pin]="";                            PIN[ERBv2,gear_sensor
 # Pins for BTT MMB board (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
 # Note BTT MMB v1.1 Board switched M1_enable and STP4
 #
-PIN[MMB10,gear_uart_pin]="PA10";                           PIN[MMB11,gear_uart_pin]="PA10";       # M1
-PIN[MMB10,gear_step_pin]="PB15";                           PIN[MMB11,gear_step_pin]="PB15";
-PIN[MMB10,gear_dir_pin]="PB14";                            PIN[MMB11,gear_dir_pin]="PB14";
-PIN[MMB10,gear_enable_pin]="PA8";                          PIN[MMB11,gear_enable_pin]="PB8";
-PIN[MMB10,gear_diag_pin]="PA3";                            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1
-PIN[MMB10,gear_1_uart_pin]="";                             PIN[MMB11,gear_1_uart_pin]="";
-PIN[MMB10,gear_1_step_pin]="";                             PIN[MMB11,gear_1_step_pin]="";
-PIN[MMB10,gear_1_dir_pin]="";                              PIN[MMB11,gear_1_dir_pin]="";
-PIN[MMB10,gear_1_enable_pin]="";                           PIN[MMB11,gear_1_enable_pin]="";
-PIN[MMB10,gear_1_diag_pin]="";                             PIN[MMB11,gear_1_diag_pin]="";
-PIN[MMB10,gear_2_uart_pin]="";                             PIN[MMB11,gear_2_uart_pin]="";
-PIN[MMB10,gear_2_step_pin]="";                             PIN[MMB11,gear_2_step_pin]="";
-PIN[MMB10,gear_2_dir_pin]="";                              PIN[MMB11,gear_2_dir_pin]="";
-PIN[MMB10,gear_2_enable_pin]="";                           PIN[MMB11,gear_2_enable_pin]="";
-PIN[MMB10,gear_2_diag_pin]="";                             PIN[MMB11,gear_2_diag_pin]="";
-PIN[MMB10,gear_3_uart_pin]="";                             PIN[MMB11,gear_3_uart_pin]="";
-PIN[MMB10,gear_3_step_pin]="";                             PIN[MMB11,gear_3_step_pin]="";
-PIN[MMB10,gear_3_dir_pin]="";                              PIN[MMB11,gear_3_dir_pin]="";
-PIN[MMB10,gear_3_enable_pin]="";                           PIN[MMB11,gear_3_enable_pin]="";
-PIN[MMB10,gear_3_diag_pin]="";                             PIN[MMB11,gear_3_diag_pin]="";
-PIN[MMB10,selector_uart_pin]="PC7";                        PIN[MMB11,selector_uart_pin]="PC7";    # M2
-PIN[MMB10,selector_step_pin]="PD2";                        PIN[MMB11,selector_step_pin]="PD2";
-PIN[MMB10,selector_dir_pin]="PB13";                        PIN[MMB11,selector_dir_pin]="PB13";
-PIN[MMB10,selector_enable_pin]="PD1";                      PIN[MMB11,selector_enable_pin]="PD1";
-PIN[MMB10,selector_diag_pin]="PA4";                        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2
-PIN[MMB10,selector_endstop_pin]="PB2";                     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11
-PIN[MMB10,selector_servo_pin]="PA0";                       PIN[MMB11,selector_servo_pin]="PA0";
-PIN[MMB10,encoder_pin]="PA1";                              PIN[MMB11,encoder_pin]="PA1";
-PIN[MMB10,neopixel_pin]="PA2";                             PIN[MMB11,neopixel_pin]="PA2";
-PIN[MMB10,gate_sensor_pin]="PA3";                          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)
-PIN[MMB10,pre_gate_0_pin]="PB9";                           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3
-PIN[MMB10,pre_gate_1_pin]="PB8";                           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4
-PIN[MMB10,pre_gate_2_pin]="PC15";                          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5
-PIN[MMB10,pre_gate_3_pin]="PC13";                          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6
-PIN[MMB10,pre_gate_4_pin]="PC14";                          PIN[MMB11,pre_gate_4_pin]="PC14";      # STP7
-PIN[MMB10,pre_gate_5_pin]="PB12";                          PIN[MMB11,pre_gate_5_pin]="PB12";      # STP8
-PIN[MMB10,pre_gate_6_pin]="PB11";                          PIN[MMB11,pre_gate_6_pin]="PB11";      # STP9
-PIN[MMB10,pre_gate_7_pin]="PB10";                          PIN[MMB11,pre_gate_7_pin]="PB10";      # STP10
-PIN[MMB10,pre_gate_8_pin]="";                              PIN[MMB11,pre_gate_8_pin]="";
-PIN[MMB10,pre_gate_9_pin]="";                              PIN[MMB11,pre_gate_9_pin]="";
-PIN[MMB10,pre_gate_10_pin]="";                             PIN[MMB11,pre_gate_10_pin]="";
-PIN[MMB10,pre_gate_11_pin]="";                             PIN[MMB11,pre_gate_11_pin]="";
-PIN[MMB10,gear_sensor_0_pin]="";                           PIN[MMB11,gear_sensor_0_pin]="";
-PIN[MMB10,gear_sensor_1_pin]="";                           PIN[MMB11,gear_sensor_1_pin]="";
-PIN[MMB10,gear_sensor_2_pin]="";                           PIN[MMB11,gear_sensor_2_pin]="";
-PIN[MMB10,gear_sensor_3_pin]="";                           PIN[MMB11,gear_sensor_3_pin]="";
-PIN[MMB10,gear_sensor_4_pin]="";                           PIN[MMB11,gear_sensor_4_pin]="";
-PIN[MMB10,gear_sensor_5_pin]="";                           PIN[MMB11,gear_sensor_5_pin]="";
-PIN[MMB10,gear_sensor_6_pin]="";                           PIN[MMB11,gear_sensor_6_pin]="";
-PIN[MMB10,gear_sensor_7_pin]="";                           PIN[MMB11,gear_sensor_7_pin]="";
-PIN[MMB10,gear_sensor_8_pin]="";                           PIN[MMB11,gear_sensor_8_pin]="";
-PIN[MMB10,gear_sensor_9_pin]="";                           PIN[MMB11,gear_sensor_9_pin]="";
-PIN[MMB10,gear_sensor_10_pin]="";                          PIN[MMB11,gear_sensor_10_pin]="";
-PIN[MMB10,gear_sensor_11_pin]="";                          PIN[MMB11,gear_sensor_11_pin]="";
+PIN[MMB10,gear_uart_pin]="PA10";                           PIN[MMB11,gear_uart_pin]="PA10";       # M1                  PIN[mmb20,gear_uart_pin]="PB5";         # M1 CS Pin
+PIN[MMB10,gear_step_pin]="PB15";                           PIN[MMB11,gear_step_pin]="PB15";                             PIN[mmb20,gear_step_pin]="PD4";         # M1 STEP Pin    
+PIN[MMB10,gear_dir_pin]="PB14";                            PIN[MMB11,gear_dir_pin]="PB14";                              PIN[mmb20,gear_dir_pin]="PD3";          # M1 DIR Pin
+PIN[MMB10,gear_enable_pin]="PA8";                          PIN[MMB11,gear_enable_pin]="PB8";                            PIN[mmb20,gear_enable_pin]="PD5";       # M1 EN Pin
+PIN[MMB10,gear_diag_pin]="PA3";                            PIN[MMB11,gear_diag_pin]="PA3";        # Aka STP1            PIN[mmb20,gear_diag_pin]="PD8";         # M1 DIAG Pin
+PIN[MMB10,gear_1_uart_pin]="";                             PIN[MMB11,gear_1_uart_pin]="";                               PIN[mmb20,gear_1_uart_pin]="";
+PIN[MMB10,gear_1_step_pin]="";                             PIN[MMB11,gear_1_step_pin]="";                               PIN[mmb20,gear_1_step_pin]="";
+PIN[MMB10,gear_1_dir_pin]="";                              PIN[MMB11,gear_1_dir_pin]="";                                PIN[mmb20,gear_1_dir_pin]="";
+PIN[MMB10,gear_1_enable_pin]="";                           PIN[MMB11,gear_1_enable_pin]="";                             PIN[mmb20,gear_1_enable_pin]="";
+PIN[MMB10,gear_1_diag_pin]="";                             PIN[MMB11,gear_1_diag_pin]="";                               PIN[mmb20,gear_1_diag_pin]="";
+PIN[MMB10,gear_2_uart_pin]="";                             PIN[MMB11,gear_2_uart_pin]="";                               PIN[mmb20,gear_2_uart_pin]="";
+PIN[MMB10,gear_2_step_pin]="";                             PIN[MMB11,gear_2_step_pin]="";                               PIN[mmb20,gear_2_step_pin]="";
+PIN[MMB10,gear_2_dir_pin]="";                              PIN[MMB11,gear_2_dir_pin]="";                                PIN[mmb20,gear_2_dir_pin]="";
+PIN[MMB10,gear_2_enable_pin]="";                           PIN[MMB11,gear_2_enable_pin]="";                             PIN[mmb20,gear_2_enable_pin]="";
+PIN[MMB10,gear_2_diag_pin]="";                             PIN[MMB11,gear_2_diag_pin]="";                               PIN[mmb20,gear_2_diag_pin]="";
+PIN[MMB10,gear_3_uart_pin]="";                             PIN[MMB11,gear_3_uart_pin]="";                               PIN[mmb20,gear_3_uart_pin]="";
+PIN[MMB10,gear_3_step_pin]="";                             PIN[MMB11,gear_3_step_pin]="";                               PIN[mmb20,gear_3_step_pin]="";
+PIN[MMB10,gear_3_dir_pin]="";                              PIN[MMB11,gear_3_dir_pin]="";                                PIN[mmb20,gear_3_dir_pin]="";
+PIN[MMB10,gear_3_enable_pin]="";                           PIN[MMB11,gear_3_enable_pin]="";                             PIN[mmb20,gear_3_enable_pin]="";
+PIN[MMB10,gear_3_diag_pin]="";                             PIN[MMB11,gear_3_diag_pin]="";                               PIN[mmb20,gear_3_diag_pin]="";
+PIN[MMB10,selector_uart_pin]="PC7";                        PIN[MMB11,selector_uart_pin]="PC7";    # M2                  PIN[mmb20,selector_uart_pin]="PB4";     # M2 CS Pin
+PIN[MMB10,selector_step_pin]="PD2";                        PIN[MMB11,selector_step_pin]="PD2";                          PIN[mmb20,selector_step_pin]="PC9";     # M2 STEP Pin
+PIN[MMB10,selector_dir_pin]="PB13";                        PIN[MMB11,selector_dir_pin]="PB13";                          PIN[mmb20,selector_dir_pin]="PC8";      # M2 DIR Pin
+PIN[MMB10,selector_enable_pin]="PD1";                      PIN[MMB11,selector_enable_pin]="PD1";                        PIN[mmb20,selector_enable_pin]="PD2";   # M2 EN Pin
+PIN[MMB10,selector_diag_pin]="PA4";                        PIN[MMB11,selector_diag_pin]="PA4";    # Aka STP2            PIN[mmb20,selector_diag_pin]="PB8";     # M2 DIAG Pin
+PIN[MMB10,selector_endstop_pin]="PB2";                     PIN[MMB11,selector_endstop_pin]="PB2"; # STP11               PIN[mmb20,selector_endstop_pin]="PA15"; # STOP1
+PIN[MMB10,selector_servo_pin]="PA0";                       PIN[MMB11,selector_servo_pin]="PA0";                         PIN[mmb20,selector_servo_pin]="PA1";    # MOT1
+PIN[MMB10,encoder_pin]="PA1";                              PIN[MMB11,encoder_pin]="PA1";                                PIN[mmb20,encoder_pin]="PC2";           # SENSOR
+PIN[MMB10,neopixel_pin]="PA2";                             PIN[MMB11,neopixel_pin]="PA2";                               PIN[mmb20,neopixel_pin]="PC3";          # RGB
+PIN[MMB10,gate_sensor_pin]="PA3";                          PIN[MMB11,gate_sensor_pin]="PA3";      # STP1 (if not DIAG)  PIN[mmb20,gate_sensor_pin]="";          # STOP3 (if not DIAG)
+PIN[MMB10,pre_gate_0_pin]="PB9";                           PIN[MMB11,pre_gate_0_pin]="PB9";       # STP3                PIN[mmb20,pre_gate_0_pin]="PC6";        # STOP5
+PIN[MMB10,pre_gate_1_pin]="PB8";                           PIN[MMB11,pre_gate_1_pin]="PA8";       # STP4                PIN[mmb20,pre_gate_1_pin]="PA8";        # STOP6
+PIN[MMB10,pre_gate_2_pin]="PC15";                          PIN[MMB11,pre_gate_2_pin]="PC15";      # STP5                PIN[mmb20,pre_gate_2_pin]="PB11";       # STOP7
+PIN[MMB10,pre_gate_3_pin]="PC13";                          PIN[MMB11,pre_gate_3_pin]="PC13";      # STP6                PIN[mmb20,pre_gate_3_pin]="PB2";        # STOP8
+PIN[MMB10,pre_gate_4_pin]="PC14";                          PIN[MMB11,pre_gate_4_pin]="PC14";      # STP7                PIN[mmb20,pre_gate_4_pin]="PB0";        # STOP9
+PIN[MMB10,pre_gate_5_pin]="PB12";                          PIN[MMB11,pre_gate_5_pin]="PB12";      # STP8                PIN[mmb20,pre_gate_5_pin]="PC4";        # STOP10
+PIN[MMB10,pre_gate_6_pin]="PB11";                          PIN[MMB11,pre_gate_6_pin]="PB11";      # STP9                PIN[mmb20,pre_gate_6_pin]="PC5";        # STOP11
+PIN[MMB10,pre_gate_7_pin]="PB10";                          PIN[MMB11,pre_gate_7_pin]="PB10";      # STP10               PIN[mmb20,pre_gate_7_pin]="PB1";        # STOP12
+PIN[MMB10,pre_gate_8_pin]="";                              PIN[MMB11,pre_gate_8_pin]="";                                PIN[mmb20,pre_gate_8_pin]="";           # STOP13
+PIN[MMB10,pre_gate_9_pin]="";                              PIN[MMB11,pre_gate_9_pin]="";                                PIN[mmb20,pre_gate_9_pin]="";           # STOP14
+PIN[MMB10,pre_gate_10_pin]="";                             PIN[MMB11,pre_gate_10_pin]="";                               PIN[mmb20,pre_gate_10_pin]="";          # STOP15    
+PIN[MMB10,pre_gate_11_pin]="";                             PIN[MMB11,pre_gate_11_pin]="";                               PIN[mmb20,pre_gate_11_pin]="";          # STOP16    
+PIN[MMB10,gear_sensor_0_pin]="";                           PIN[MMB11,gear_sensor_0_pin]="";                             PIN[mmb20,gear_sensor_0_pin]="";                            
+PIN[MMB10,gear_sensor_1_pin]="";                           PIN[MMB11,gear_sensor_1_pin]="";                             PIN[mmb20,gear_sensor_1_pin]="";                                
+PIN[MMB10,gear_sensor_2_pin]="";                           PIN[MMB11,gear_sensor_2_pin]="";                             PIN[mmb20,gear_sensor_2_pin]="";                                
+PIN[MMB10,gear_sensor_3_pin]="";                           PIN[MMB11,gear_sensor_3_pin]="";                             PIN[mmb20,gear_sensor_3_pin]="";
+PIN[MMB10,gear_sensor_4_pin]="";                           PIN[MMB11,gear_sensor_4_pin]="";                             PIN[mmb20,gear_sensor_4_pin]="";
+PIN[MMB10,gear_sensor_5_pin]="";                           PIN[MMB11,gear_sensor_5_pin]="";                             PIN[mmb20,gear_sensor_5_pin]="";
+PIN[MMB10,gear_sensor_6_pin]="";                           PIN[MMB11,gear_sensor_6_pin]="";                             PIN[mmb20,gear_sensor_6_pin]="";
+PIN[MMB10,gear_sensor_7_pin]="";                           PIN[MMB11,gear_sensor_7_pin]="";                             PIN[mmb20,gear_sensor_7_pin]="";
+PIN[MMB10,gear_sensor_8_pin]="";                           PIN[MMB11,gear_sensor_8_pin]="";                             PIN[mmb20,gear_sensor_8_pin]="";
+PIN[MMB10,gear_sensor_9_pin]="";                           PIN[MMB11,gear_sensor_9_pin]="";                             PIN[mmb20,gear_sensor_9_pin]="";
+PIN[MMB10,gear_sensor_10_pin]="";                          PIN[MMB11,gear_sensor_10_pin]="";                            PIN[mmb20,gear_sensor_10_pin]="";
+PIN[MMB10,gear_sensor_11_pin]="";                          PIN[MMB11,gear_sensor_11_pin]="";                            PIN[mmb20,gear_sensor_11_pin]="";
 #
 # Common Type-B MMU pin utilization
 #
