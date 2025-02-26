@@ -261,7 +261,7 @@ class MmuSensors:
             else:
                 event_value = -tension_state # -1 or 0 (neutral)
         else:
-            event_value = 0  # neutral
+            event_value = 0 # Neutral
 
         self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
 
@@ -282,9 +282,9 @@ class MmuSensors:
                 elif not compression_state and tension_state:
                     event_value = -1
             else:
-                event_value = compression_state  # 1 or 0 (neutral)
+                event_value = compression_state # 1 or 0 (neutral)
         else:
-            event_value = 0  # neutral
+            event_value = 0 # Neutral
 
         self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
 
