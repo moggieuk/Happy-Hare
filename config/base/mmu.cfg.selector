@@ -5,4 +5,3 @@
     MMU_SEL_ENABLE={pin_selector_enable},
     MMU_SEL_DIAG={pin_selector_diag},
     MMU_SEL_ENDSTOP={pin_selector_endstop},
-    MMU_SEL_SERVO={pin_selector_servo},

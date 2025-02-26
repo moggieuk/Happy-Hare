@@ -25,7 +25,12 @@ if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
     default 1 
   config PARAM_SERVO_DURATION
     string "Servo duration"
-    default "0.4"
+    default "0.4" if SELECTOR_TYPE_LINEAR
+    default "0.5" if SELECTOR_TYPE_SERVO
+  config PARAM_SERVO_DWELL
+    string "Servo dwell"
+    default "0.5" if SELECTOR_TYPE_LINEAR
+    default "0.8" if SELECTOR_TYPE_SERVO
   config SERVO_ALWAYS_ACTIVE
     bool "Servo always active?"
   config PARAM_SERVO_ALWAYS_ACTIVE

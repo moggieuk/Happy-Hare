@@ -1,29 +1,26 @@
 
 config MMU_HAS_ENCODER
   bool
-  
+
+config MMU_HAS_SERVO
+  bool
+
+config MMU_HAS_SELECTOR
+  bool
+
+config MMU_HAS_GEARS
+  bool
+
 config PARAM_NUM_GATES
   int "Number of gates"
   default 12
 
-choice CHOICE_SELECTOR_TYPE
-  prompt "Selector type"
-  config SELECTOR_TYPE_LINEAR
-    bool "Linear selector"
-  config SELECTOR_TYPE_VIRTUAL
-    bool "Virtual selector"
-  config SELECTOR_TYPE_ROTARY
-    bool "Rotary selector"
-  config SELECTOR_TYPE_SERVO
-    bool "Servo selector"
-endchoice
-
 config PARAM_SELECTOR_TYPE
   string
-  default "LinearSelector" if SELECTOR_TYPE_LINEAR
-  default "VirtualSelector" if SELECTOR_TYPE_VIRTUAL
-  default "RotarySelector" if SELECTOR_TYPE_ROTARY
-  default "ServoSelector" if SELECTOR_TYPE_SERVO
+  default "VirtualSelector" if !MMU_HAS_SELECTOR && !MMU_HAS_SERVO
+  default "ServoSelector" if !MMU_HAS_SELECTOR && MMU_HAS_SERVO
+  default "RotarySelector" if MMU_HAS_SELECTOR && !MMU_HAS_SERVO
+  default "LinearSelector"
 
 config VARIABLE_BOWDEN_LENGTHS
   bool "Variable bowden lengths?" 

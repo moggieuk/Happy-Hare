@@ -315,20 +315,6 @@ class ConfigBuilder(object):
     def write(self):
         return self.parser.serialize(self.document)
 
-    # def build(self, cfg_input):
-    #     for section in self.sections():
-    #         for option in self.options(section):
-    #             if not cfg_input.hhcfg.has_option(section, option):
-    #                 continue
-    #             self.set(section, option, cfg_input.hhcfg.get(section, option))
-    #     doc = self.parser.serialize(self.document)
-    #     params = cfg_input.parameters()
-    #     doc = params.format(doc)
-    #
-    #     doc = re.sub(r"^[ \t]*\{cfg_[^\}]+\}[ \t]*$\n?", "", doc, flags=re.MULTILINE)
-    #     doc = re.sub(r"\{pin_[^\}]+\}", "", doc)
-    # return doc
-
     def _for_section(self, section_name, callback, ctx=None):
         def for_section(node, ctx):
             if node["type"] == "section" and (not section_name or node["name"] == section_name):

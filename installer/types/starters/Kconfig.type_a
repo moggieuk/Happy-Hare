@@ -2,6 +2,7 @@ choice CHOICE_MMU_CUSTOM_TYPE
   config MMU_CUSTOM_TYPE_A
     bool "Type A (Selector)"
     imply REQUIRE_BOWDEN_MOVE
+    imply MMU_HAS_SELECTOR
   
   if MMU_CUSTOM_TYPE_A 
     config MMU_HAS_ENCODER
@@ -26,10 +27,6 @@ if MMU_CUSTOM_TYPE_A
     default "0.5"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.1"
-
-  choice CHOICE_SELECTOR_TYPE
-    default SELECTOR_TYPE_LINEAR
-  endchoice
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_ENCODER if MMU_HAS_ENCODER

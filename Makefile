@@ -39,7 +39,7 @@ export SRC ?= $(CURDIR)
 ifeq ($(basename $(notdir $(KCONFIG_CONFIG))),)
   export OUT ?= $(CURDIR)/out
 else
-  export OUT ?= $(CURDIR)/out_$(patsubst .config.,,$(notdir $(KCONFIG_CONFIG)))
+  export OUT ?= $(CURDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
 endif
 
 export IN=$(OUT)/in

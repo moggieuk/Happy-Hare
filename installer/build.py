@@ -25,6 +25,8 @@ class KConfig(kconfiglib.Kconfig):
         self.load_config(confg_file)
 
     def is_selected(self, choice, value):
+        if isinstance(value, list):
+            return any(self.is_selected(choice, v) for v in value)
         return self.named_choices[choice].selection.name == value
 
     def is_enabled(self, sym):
@@ -193,12 +195,19 @@ def build_mmu_cfg(builder, cfg):
     builder.expand_value_line("board_pins mmu", "aliases", "MMU_PRE_GATE_%", num_gates)
     builder.expand_value_line("board_pins mmu", "aliases", "MMU_POST_GEAR_%", num_gates)
 
-    if cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_LINEAR"):
+    # if cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_LINEAR"):
+    if cfg.is_enabled("MMU_HAS_SELECTOR"):
         builder.use_config("selector")
-        builder.remove_placeholder("cfg_gears")
-    elif cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_VIRTUAL"):
-        builder.use_config("gears")
+    else:
         builder.remove_placeholder("cfg_selector")
+
+    if cfg.is_enabled("MMU_HAS_SERVO"):
+        builder.use_config("selector_servo")
+    else:
+        builder.remove_placeholder("cfg_selector_servo")
+
+    if cfg.is_enabled("MMU_HAS_GEARS"):
+        builder.use_config("gears")
         builder.expand_value_line(
             "board_pins mmu",
             "aliases",
@@ -206,6 +215,8 @@ def build_mmu_cfg(builder, cfg):
             num_gates - 1,
             start_idx=1,
         )
+    else:
+        builder.remove_placeholder("cfg_gears")
 
     if cfg.is_enabled("MMU_HAS_ENCODER"):
         builder.use_config("encoder")
@@ -229,13 +240,17 @@ def build_mmu_hardware_cfg(builder, cfg):
 
     builder.expand_option("mmu_sensors", "switch_pin_%", num_gates)
 
-    if cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_LINEAR"):
+    if cfg.is_enabled("MMU_HAS_SELECTOR"):
         builder.use_config("selector_stepper")
-        builder.use_config("selector_servo")
-        builder.remove_placeholder("cfg_gear_steppers")
-    elif cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_VIRTUAL"):
+    else:
         builder.remove_placeholder("cfg_selector_stepper")
+
+    if cfg.is_enabled("MMU_HAS_SERVO"):
+        builder.use_config("selector_servo")
+    else:
         builder.remove_placeholder("cfg_selector_servo")
+
+    if cfg.is_enabled("MMU_HAS_GEARS"):
         builder.use_config("gear_steppers")
         builder.expand_section(
             "tmc2209 stepper_mmu_gear_%",
@@ -249,6 +264,13 @@ def build_mmu_hardware_cfg(builder, cfg):
             start_idx=1,
             newline=True,
         )
+    else:
+        builder.remove_placeholder("cfg_gear_steppers")
+
+    if cfg.is_enabled("MMU_HAS_ENCODER"):
+        builder.use_config("encoder")
+    else:
+        builder.remove_placeholder("cfg_encoder")
 
     if cfg.is_selected("CHOICE_BOARD_TYPE", "BOARD_TYPE_EASY_BRD"):
         # Share uart_pin to avoid duplicate alias problem
@@ -261,11 +283,6 @@ def build_mmu_hardware_cfg(builder, cfg):
     else:
         builder.remove_placeholder("cfg_leds")
 
-    if cfg.is_enabled("MMU_HAS_ENCODER"):
-        builder.use_config("encoder")
-    else:
-        builder.remove_placeholder("cfg_encoder")
-
     if cfg.is_enabled("ENABLE_SELECTOR_TOUCH"):
         builder.remove_option("tmc2209 stepper_mmu_gear", "uart_address")
     else:
@@ -276,15 +293,30 @@ def build_mmu_hardware_cfg(builder, cfg):
 
 
 def build_mmu_parameters_cfg(builder, cfg):
-    if cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_LINEAR"):
+    if cfg.is_enabled("MMU_HAS_SELECTOR"):
         builder.use_config("selector_speeds")
         builder.use_config("selector_servo")
+        if cfg.is_enabled("MMU_HAS_SERVO"):
+            builder.use_config("selector_servo_linear")
+        else:
+            builder.remove_placeholder("cfg_selector_servo_linear")
+    else:
+        builder.remove_placeholder("cfg_selector_speeds")
+        builder.remove_placeholder("cfg_selector_servo")
+        builder.remove_option("mmu", "selector_max_velocity")
+        builder.remove_option("mmu", "selector_max_accel")
+
+    if cfg.is_enabled("MMU_TYPE_CUSTOM"):
         builder.use_config("custom_mmu")
-    elif cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_VIRTUAL"):
-        builder.delete_line("sync_to_extruder:")
-        builder.delete_line("sync_form_tip:")
-        builder.delete_line("preload_attempts:")
-        builder.delete_line("gate_load_retries:")
+    else:
+        builder.remove_placeholder("cfg_custom_mmu")
+
+    if not cfg.is_enabled("MMU_HAS_SELECTOR") and not cfg.is_enabled("MMU_HAS_SERVO"):
+        builder.remove_option("mmu", "sync_to_extruder:")
+        builder.remove_option("mmu", "sync_form_tip:")
+        builder.remove_option("mmu", "preload_attempts:")
+        builder.remove_option("mmu", "gate_load_retries:")
+
     for param in supplemental_params.split() + hidden_params.split():
         if cfg.hhcfg.has_option("mmu", param):
             builder.buf += param + ": " + cfg.hhcfg.get("mmu", param) + "\n"
@@ -324,7 +356,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         logging.error("Invalid config file: " + cfg_file)
         exit(1)
 
-    if not basename.startswith("addons/") and basename not in [
+    if (not basename.startswith("addons/") or basename.endswith("_hw.cfg")) and basename not in [
         "base/mmu.cfg",
         "base/mmu_hardware.cfg",
         "base/mmu_parameters.cfg",

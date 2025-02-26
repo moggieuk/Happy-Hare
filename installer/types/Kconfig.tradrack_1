@@ -2,6 +2,8 @@ choice CHOICE_MMU_TYPE
   config MMU_TYPE_TRADRACK_1
     bool "Tradrack v1.0"
     select REQUIRE_BOWDEN_MOVE
+    select MMU_HAS_SERVO
+    select MMU_HAS_SELECTOR
     imply SERVO_ALWAYS_ACTIVE
     
   config EXT_BINKY
@@ -41,10 +43,6 @@ if MMU_TYPE_TRADRACK_1
     default "17.5"
   config PARAM_GATE_ENDSTOP_TO_ENCODER
     default "31" if EXT_BINKY
-
-  choice CHOICE_SELECTOR_TYPE
-    default SELECTOR_TYPE_LINEAR
-  endchoice
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_ENCODER if EXT_BINKY

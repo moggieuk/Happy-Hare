@@ -1,6 +1,7 @@
 choice CHOICE_MMU_TYPE
   config MMU_TYPE_3MS_1
     bool "3MS v1.0"
+    select MMU_HAS_GEARS
     select VARIABLE_ROTATION_DISTANCES
     select FILAMENT_ALWAYS_GRIPPED
 endchoice
@@ -23,10 +24,6 @@ if MMU_TYPE_3MS_1
     default "500"
   config PARAM_GATE_PARKING_DISTANCE
     default "250"
-
-  choice CHOICE_SELECTOR_TYPE
-    default SELECTOR_TYPE_VIRTUAL
-  endchoice
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_EXTRUDER

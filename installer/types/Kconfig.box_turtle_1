@@ -1,6 +1,7 @@
 choice CHOICE_MMU_TYPE
   config MMU_TYPE_BOX_TURTLE_1
     bool "Box Turtle v1.0"
+    select MMU_HAS_GEARS
     select VARIABLE_ROTATION_DISTANCES
     select REQUIRE_BOWDEN_MOVE
     select FILAMENT_ALWAYS_GRIPPED
@@ -24,10 +25,6 @@ if MMU_TYPE_BOX_TURTLE_1
     default "100"
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     default "100"
-
-  choice CHOICE_SELECTOR_TYPE
-    default SELECTOR_TYPE_VIRTUAL
-  endchoice
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE

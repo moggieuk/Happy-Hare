@@ -2,6 +2,8 @@ choice CHOICE_MMU_TYPE
   config MMU_TYPE_ERCF_1_1
     bool "ERCF v1.1"
     select MMU_HAS_ENCODER
+    select MMU_HAS_SERVO
+    select MMU_HAS_SELECTOR
     select VARIABLE_ROTATION_DISTANCES
     select REQUIRE_BOWDEN_MOVE
 
@@ -47,10 +49,6 @@ if MMU_TYPE_ERCF_1_1
     default "0.7059"
   config PARAM_GATE_PARKING_DISTANCE
     default "23"
-
-  choice CHOICE_SELECTOR_TYPE
-    default SELECTOR_TYPE_LINEAR
-  endchoice
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_ENCODER
