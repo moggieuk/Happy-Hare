@@ -1,4 +1,4 @@
-if PARAM_SELECTOR_TYPE = "LinearSelector"
+if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
   rsource	"Kconfig.*"
 
   choice CHOICE_SERVO_TYPE 

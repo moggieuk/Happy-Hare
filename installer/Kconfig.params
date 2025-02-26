@@ -24,7 +24,6 @@ config PARAM_SELECTOR_TYPE
   default "VirtualSelector" if SELECTOR_TYPE_VIRTUAL
   default "RotarySelector" if SELECTOR_TYPE_ROTARY
   default "ServoSelector" if SELECTOR_TYPE_SERVO
-  depends on MMU_TYPE_CUSTOM
 
 config VARIABLE_BOWDEN_LENGTHS
   bool "Variable bowden lengths?" 

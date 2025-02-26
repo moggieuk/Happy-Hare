@@ -5,7 +5,7 @@ config PARAM_GEAR_RUN_CURRENT
 config PARAM_GEAR_HOLD_CURRENT
   string "Gear hold current"
 
-if PARAM_SELECTOR_TYPE = "LinearSelector"
+if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
   config PARAM_SERVO_MAX_ANGLE
     int "Servo maximum angle"
     range 0 360
