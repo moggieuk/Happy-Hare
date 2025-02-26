@@ -26,9 +26,7 @@ self_update() {
     fi
 
     if ! current_branch=$(${git_cmd}); then
-        printf "%sError updating from github\n" \
-            "You might have an old version of gitn\n" \
-            "Skipping automatic update...%s\n" "${C_ERROR}" "${C_OFF}"
+        printf "%sError updating from github\nYou might have an old version of gitn\nSkipping automatic update...%s\n" "${C_ERROR}" "${C_OFF}"
         return
     fi
 
@@ -37,8 +35,7 @@ self_update() {
         return
     fi
 
-    printf "%sRunning on '${current_branch}' branch\n" \
-        "Checking for updates...%s\n" "${C_NOTICE}" "${C_OFF}"
+    printf "%sRunning on '${current_branch}' branch\nChecking for updates...%s\n" "${C_NOTICE}" "${C_OFF}"
     # Both check for updates but also help me not loose changes accidently
     git fetch --quiet
 
