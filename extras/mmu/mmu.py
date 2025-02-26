@@ -519,6 +519,8 @@ class Mmu:
         self.tool_extrusion_multipliers.extend([1.] * self.num_gates)
         self.tool_speed_multipliers.extend([1.] * self.num_gates)
 
+        # Soak Testing
+        self._is_running_test = False
         # Register GCODE commands ---------------------------------------------------------------------------
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
@@ -2800,6 +2802,10 @@ class Mmu:
             self.sync_feedback_last_state = float(state)
             if self.sync_feedback_enable and self.sync_feedback_operational:
                 self._update_sync_multiplier()
+        else :
+            self.log_error("Invalid sync feedback state: %s" % state)
+        if self._is_running_test:
+            self.printer.send_event("mmu:sync_feedback_finished", state)
 
     def _handle_mmu_synced(self):
         if not self.is_enabled: return
@@ -2827,7 +2833,7 @@ class Mmu:
             # Disable sync feedback
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
             self.sync_feedback_operational = False
-            self.sync_feedback_last_direction = self.SYNC_STATE_NEUTRAL
+            self.sync_feedback_last_state = self.SYNC_STATE_NEUTRAL
             self.log_trace("Reset sync multiplier")
             self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
 
@@ -2848,7 +2854,7 @@ class Mmu:
 
     def _update_sync_multiplier(self):
         if not self.sync_feedback_enable or not self.sync_feedback_operational: return
-        if self.sync_feedback_last_direction == self.SYNC_STATE_NEUTRAL:
+        if self.sync_feedback_last_state == self.SYNC_STATE_NEUTRAL:
             multiplier = 1.
         else:
             go_slower = lambda s, d: abs(s - d) < abs(s + d)
@@ -2861,9 +2867,7 @@ class Mmu:
         self.log_trace("Updated sync multiplier: %.4f" % multiplier)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected) / multiplier)
 
-    # Ensure correct sync_feedback starting assumption by generating a fake event
-    def _update_sync_starting_state(self):
-        eventtime = self.reactor.monotonic()
+    def _get_current_sync_state(self):
         has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
         has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
 
@@ -2881,7 +2885,12 @@ class Mmu:
                 sss = self.SYNC_STATE_EXPANDED
             elif state_compressed:
                 sss = self.SYNC_STATE_COMPRESSED
+        return sss
 
+    # Ensure correct sync_feedback starting assumption by generating a fake event
+    def _update_sync_starting_state(self):
+        eventtime = self.reactor.monotonic()
+        sss = self._get_current_sync_state()
         self._handle_sync_feedback(eventtime, sss)
         self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string(detail=True))
 
@@ -4208,7 +4217,7 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_LOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking 
+                # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None) - start_pos
 
                 if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
@@ -4242,7 +4251,7 @@ class Mmu:
                             self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details"% (length, length - delta))
                     else:
                         self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
-    
+
                     if delta >= self.bowden_allowable_load_delta:
                         self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
 
@@ -4279,7 +4288,7 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_UNLOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking 
+                # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None)
 
                 # Optional pre-unload safety step
@@ -4738,7 +4747,7 @@ class Mmu:
 
             # Activate loaded spool in Spoolman
             self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
-            
+
             # POST_LOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
@@ -4892,7 +4901,7 @@ class Mmu:
 
             # Deactivate spool in Spoolman as it is now unloaded.
             self._spoolman_activate_spool(0)
-            
+
             # POST_UNLOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_unload'):
