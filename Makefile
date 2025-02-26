@@ -35,25 +35,16 @@ ifneq ($(Q),@)
 endif
 export SRC ?= $(CURDIR)
 
-
 # Use the name of the 'name.config' file as the out_name directory, or 'out' if just '.config' is used
 ifeq ($(basename $(notdir $(KCONFIG_CONFIG))),)
   export OUT ?= $(CURDIR)/out
 else
-  export OUT ?= $(CURDIR)/out_$(basename $(notdir $(KCONFIG_CONFIG)))
+  export OUT ?= $(CURDIR)/out_$(patsubst .config.,,$(notdir $(KCONFIG_CONFIG)))
 endif
 
 export IN=$(OUT)/in
 
-
 MAKEFLAGS += --jobs 16 # Parallel build
-# kconfiglib/menuconfig doesn't like --output-sync, so we don't add it if it's the target or if .config is outdated
-ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
-  ifeq ($(shell [ "$(KCONFIG_CONFIG)" -ot "$(SRC)/installer/Kconfig" ] || echo y),y)
-    MAKEFLAGS += --output-sync
-  endif
-endif
-
 
 # If CONFIG_KLIPPER_HOME is not yet set by .config, set it to the default value.
 # This is required to make menuconfig work the first time.
@@ -266,15 +257,15 @@ test:
 check_version:
 	$(Q)$(BUILD_MODULE) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)  
 
-$(KCONFIG_CONFIG): $(SRC)/installer/Kconfig
+$(KCONFIG_CONFIG): $(SRC)/installer/Kconfig $(SRC)/installer/Kconfig.* $(SRC)/installer/**/Kconfig $(SRC)/installer/**/Kconfig.*
 # if KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig
 # touch in case .config does not get updated by olddefconfig.py
-ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig)
-	$(Q)$(MAKE) -s MAKEFLAGS= menuconfig
-	$(Q)python $(KLIPPER_HOME)/lib/kconfiglib/olddefconfig.py $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
+ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig) # only if menuconfig is not the target, else it will run twice
+	$(Q)$(MAKE) MAKEFLAGS= menuconfig
+	$(Q)$(PY) $(KLIPPER_HOME)/lib/kconfiglib/olddefconfig.py $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)
 endif
 
 menuconfig: $(SRC)/installer/Kconfig
-	$(Q)MENUCONFIG_STYLE="aquatic" python $(KLIPPER_HOME)/lib/kconfiglib/menuconfig.py $(SRC)/installer/Kconfig
+	$(Q)MENUCONFIG_STYLE="aquatic" $(PY) $(KLIPPER_HOME)/lib/kconfiglib/menuconfig.py $(SRC)/installer/Kconfig
 
