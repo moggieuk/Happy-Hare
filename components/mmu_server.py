@@ -1104,8 +1104,8 @@ if __name__ == "__main__":
     enabled_msg = "enabled" if config["check_objects"] else "disabled"
     metadata.logger.info(f"Object Processing is {enabled_msg}")
 
+    # Parsing for mmu placeholders and next pos insertion. We do this first so we can add additonal metadata
+    main(config["gcode_dir"], config["filename"], args.placeholders, args.nextpos)
+
     # Original metadata parser
     metadata.main(config)
-
-    # Second parsing for mmu placeholders and next pos insertion
-    main(config["gcode_dir"], config["filename"], args.placeholders, args.nextpos)
