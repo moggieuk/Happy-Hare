@@ -3,7 +3,7 @@ PY:=python
 
 
 # Print Colors (exported i``for use in py installer)
-ifneq ($(shell which 2>/dev/null),)
+ifneq ($(shell which tput 2>/dev/null),)
   export C_OFF:=$(shell tput -Txterm-256color sgr0)
   export C_DEBUG:=$(shell tput -Txterm-256color setaf 5)
   export C_INFO:=$(shell tput -Txterm-256color setaf 6)
