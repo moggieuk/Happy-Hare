@@ -1,14 +1,23 @@
-SHELL=/usr/bin/env bash
-PY:=/usr/bin/env python
+SHELL=/usr/bin/env sh
+PY:=python
 
 
-# Print Colors (exported for use in py installer)
-export C_OFF:=$(shell tput -Txterm sgr0)
-export C_DEBUG:=$(shell tput -Txterm setaf 5)
-export C_INFO:=$(shell tput -Txterm setaf 6)
-export C_NOTICE:=$(shell tput -Txterm setaf 2)
-export C_WARNING:=$(shell tput -Txterm setaf 3)
-export C_ERROR:=$(shell tput -Txterm setaf 1)
+# Print Colors (exported i``for use in py installer)
+ifneq ($(shell which 2>/dev/null),)
+  export C_OFF:=$(shell tput -Txterm-256color sgr0)
+  export C_DEBUG:=$(shell tput -Txterm-256color setaf 5)
+  export C_INFO:=$(shell tput -Txterm-256color setaf 6)
+  export C_NOTICE:=$(shell tput -Txterm-256color setaf 2)
+  export C_WARNING:=$(shell tput -Txterm-256color setaf 3)
+  export C_ERROR:=$(shell tput -Txterm-256color setaf 1)
+else
+  export C_OFF:=
+  export C_DEBUG:=
+  export C_INFO:=
+  export C_NOTICE:=
+  export C_WARNING:=
+  export C_ERROR:=
+endif
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
 # Just checking for root isn't enough, as user on Creality K1 printers usually run as root (ugh)

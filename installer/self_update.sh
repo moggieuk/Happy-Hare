@@ -15,7 +15,7 @@ set -e # Exit immediately on error
 
 self_update() {
     if [ -n "${SKIP_UPDATE+x}" ]; then
-        printf "%sSkipping self update%s" "${C_NOTICE}" "${C_OFF}"
+        printf "%sSkipping self update%s\n" "${C_NOTICE}" "${C_OFF}"
         return
     fi
 
@@ -25,27 +25,26 @@ self_update() {
         git_cmd="timeout 3s ${git_cmd}"
     fi
 
-    current_branch
     if ! current_branch=$(${git_cmd}); then
-        printf "%sError updating from github" \
-            "You might have an old version of git" \
-            "Skipping automatic update...%s" "${C_ERROR}" "${C_OFF}"
+        printf "%sError updating from github\n" \
+            "You might have an old version of gitn\n" \
+            "Skipping automatic update...%s\n" "${C_ERROR}" "${C_OFF}"
         return
     fi
 
     if [ -z "${current_branch}" ]; then
-        printf "%sTimeout talking to github. Skipping upgrade check%s" "${C_ERROR}" "${C_OFF}"
+        printf "%sTimeout talking to github. Skipping upgrade check%s\n" "${C_ERROR}" "${C_OFF}"
         return
     fi
 
-    printf "%sRunning on '${current_branch}' branch" \
-        "Checking for updates...%s" "${C_NOTICE}" "${C_OFF}"
+    printf "%sRunning on '${current_branch}' branch\n" \
+        "Checking for updates...%s\n" "${C_NOTICE}" "${C_OFF}"
     # Both check for updates but also help me not loose changes accidently
     git fetch --quiet
 
     switch=0
     if ! git diff --quiet --exit-code "origin/${current_branch}"; then
-        printf "%sFound a new version of Happy Hare on github, updating...%s" "${C_NOTICE}" "${C_OFF}"
+        printf "%sFound a new version of Happy Hare on github, updating...%s\n" "${C_NOTICE}" "${C_OFF}"
         if [ -n "$(git status --porcelain)" ]; then
             git stash push -m 'local changes stashed before self update' --quiet
         fi
@@ -53,7 +52,7 @@ self_update() {
     fi
 
     if [ -n "${BRANCH}" ] && [ "${BRANCH}" != "${current_branch}" ]; then
-        printf "%sSwitching to '${current_branch}' branch%s" "${C_NOTICE}" "${C_OFF}"
+        printf "%sSwitching to '${current_branch}' branch%s\n" "${C_NOTICE}" "${C_OFF}"
         current_branch=${BRANCH}
         switch=1
     fi
@@ -62,10 +61,10 @@ self_update() {
         git checkout "${current_branch}" --quiet
         git pull --quiet --force
         git_version=$(git describe --tags)
-        printf "%sNow on git version: ${git_version}%s" "${C_NOTICE}" "${C_OFF}"
+        printf "%sNow on git version: ${git_version}%s\n" "${C_NOTICE}" "${C_OFF}"
     else
         git_version=$(git describe --tags)
-        printf "%sAlready on the latest version: ${git_version}%s" "${C_NOTICE}" "${C_OFF}"
+        printf "%sAlready on the latest version: ${git_version}%s\n" "${C_NOTICE}" "${C_OFF}"
     fi
 }
 
