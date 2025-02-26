@@ -21,15 +21,18 @@ class Upgrades:
             upgrade_path = next(upgrade for upgrade in all_upgrades if upgrade[1] > float(from_version))
         except ValueError:
             lowest_from_version = min([upgrade[0] for upgrade in all_upgrades if upgrade[0] > float(from_version)])
-            lowest_from_version = f"{lowest_from_version:.2f}"
+            lowest_from_version = "{:.2f}".format(lowest_from_version)
             logging.error(
-                f"Upgrade path from {from_version} to {to_version} is not supported, try upgrading to {lowest_from_version} first"
+                "Upgrade path from {} to {} is not supported, try upgrading to {} first".format(
+                    from_version, to_version, lowest_from_version
+                )
             )
             exit(1)
 
-        upgrade_path = [f"{v:.2f}" for v in upgrade_path]
-        logging.debug(f"Upgrading from {from_version} to {upgrade_path[1]}")
-        getattr(self, f"upgrade_{upgrade_path[0].replace('.', '_')}_to_{upgrade_path[1].replace('.', '_')}")(cfg_input)
+        upgrade_path = ["{:.2f}".format(v) for v in upgrade_path]
+        logging.debug("Upgrading from {} to {}".format(from_version, upgrade_path[1]))
+        upgrade_fn = "upgrade_{}_to_{}".format(upgrade_path[0].replace(".", "_"), upgrade_path[1].replace(".", "_"))
+        getattr(self, upgrade_fn)(cfg_input)
         cfg_input.hhcfg.set("mmu", "happy_hare_version", upgrade_path[1])
         self.upgrade(cfg_input, upgrade_path[1], to_version)
 
@@ -48,8 +51,8 @@ class Upgrades:
             z_hop_toolchange = cfg.get("mmu", "z_hop_height_toolchange", default=1)
             z_hop_error = cfg.get("mmu", "z_hop_height_error", default=5)
 
-            cfg.set(section, "variable_park_toolchange", f"{xy}, {z_hop_toolchange}, 0, 2")
-            cfg.set(section, "variable_park_pause", f"{xy}, {z_hop_error}, 0, 2")
+            cfg.set(section, "variable_park_toolchange", "{}, {}, 0, 2".format(xy, z_hop_toolchange))
+            cfg.set(section, "variable_park_pause", "{}, {}, 0, 2".format(xy, z_hop_error))
             cfg.remove_option(section, "variable_park_xy")
             cfg.remove_option("mmu", "z_hop_height_toolchange")
             cfg.remove_option("mmu", "z_hop_height_error")
@@ -135,16 +138,19 @@ class Upgrades:
         # change the dc espooler pins so they are easier to expand with the new script.
         # e.g [output_pin _mmu_dc_espooler_rwd_0] pin = mmu:MMU_DC_MOT_1_A -> mmu:MMU_DC_MOT_0_A
         for i in range(0, 12):
-            if cfg.has_section(f"output_pin _mmu_dc_espooler_rwd_{i}"):
-                if cfg.get(f"output_pin _mmu_dc_espooler_rwd_{i}", "pin") == f"mmu:MMU_DC_MOT_{(i + 1)}_A":
-                    cfg.remove_option(f"output_pin _mmu_dc_espooler_rwd_{i}", "pin")  # Pin name has been changed, reset
+            section = "output_pin _mmu_dc_espooler_rwd_" + str(i)
+            if cfg.has_section(section):
+                if cfg.get(section, "pin") == "mmu:MMU_DC_MOT_{}_A".format(i + 1):
+                    cfg.remove_option(section, "pin")  # Pin name has been changed, reset
 
-            if cfg.has_section(f"output_pin _mmu_dc_espooler_en_{i}"):
-                if cfg.get(f"output_pin _mmu_dc_espooler_en_{i}", "pin") == f"mmu:MMU_DC_MOT_{(i + 1)}_EN":
-                    cfg.remove_option(f"output_pin _mmu_dc_espooler_en_{i}", "pin")  # Pin name has been changed, reset
+            section = "output_pin _mmu_dc_espooler_en_" + str(i)
+            if cfg.has_section(section):
+                if cfg.get(section, "pin") == "mmu:MMU_DC_MOT_{}_EN".format(i + 1):
+                    cfg.remove_option(section, "pin")  # Pin name has been changed, reset
 
-            if aliases := cfg.get("board_pins mmu", "aliases"):
-                aliases = aliases.replace(f"MMU_DC_MOT_{(i + 1)}_A", f"MMU_DC_MOT_{i}_A")
-                aliases = aliases.replace(f"MMU_DC_MOT_{(i + 1)}_B", f"MMU_DC_MOT_{i}_B")
-                aliases = aliases.replace(f"MMU_DC_MOT_{(i + 1)}_EN", f"MMU_DC_MOT_{i}_EN")
+            aliases = cfg.get("board_pins mmu", "aliases")
+            if aliases:
+                aliases = aliases.replace("MMU_DC_MOT_{}_A".format(i + 1), "MMU_DC_MOT_{}_A".format(i))
+                aliases = aliases.replace("MMU_DC_MOT_{}_B".format(i + 1), "MMU_DC_MOT_{}_B".format(i))
+                aliases = aliases.replace("MMU_DC_MOT_{}_EN".format(i + 1), "MMU_DC_MOT_{}_EN".format(i))
                 cfg.set("board_pins mmu", "aliases", aliases)

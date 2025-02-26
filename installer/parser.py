@@ -3,7 +3,7 @@ import logging
 import re
 
 
-class Tokenizer:
+class Tokenizer(object):
     def __init__(self, buf):
         self.slice = buf[:]
         self.next_token = None
@@ -21,6 +21,9 @@ class Tokenizer:
     def __iter__(self):
         return self
 
+    def next(self):
+        return self.__next__()
+
     def __next__(self):
         if self.next_token is not None:
             next_token = self.next_token
@@ -31,11 +34,12 @@ class Tokenizer:
             raise StopIteration
 
         for token_type, regex in self.spec:
-            if match := regex.match(self.slice):
+            match = regex.match(self.slice)
+            if match:
                 self.slice = self.slice[match.end() :]
                 return {"type": token_type, "value": match.group(0)}
 
-        raise SyntaxError(f"Unexpected token '{self.slice[0]}'")
+        raise SyntaxError("Unexpected token '{}'", self.slice[0])
 
     def peek(self):
         if self.next_token is None:
@@ -46,13 +50,14 @@ class Tokenizer:
         return self.next_token
 
     def take(self, token_type):
-        if (token := next(self)) and token["type"] == token_type:
+        token = next(self)
+        if token and token["type"] == token_type:
             return token
         else:
-            raise SyntaxError(f"Expected {token_type}, got {token}")
+            raise SyntaxError("Expected {}, got {}".format(token_type, token["type"]))
 
 
-class Parser:
+class Parser(object):
     def __init__(self, default_assign_op=":", default_comment_ch="#"):
         self.default_assign_op = default_assign_op
         self.default_comment_ch = default_comment_ch
@@ -81,13 +86,13 @@ class Parser:
             if filter and not filter(node):
                 return (False, buffer)
             if node["type"] in ["comment_entry", "value_entry", "whitespace"]:
-                buffer.append(f"{node['value']}")
+                buffer.append(node["value"])
             elif node["type"] == "placeholder":
-                buffer.append(f"{{{node['value']}}}")
+                buffer.append("{" + node["value"] + "}")
             elif node["type"] == "section":
-                buffer.append(f"[{node['name']}]")
+                buffer.append("[" + node["name"] + "]")
             elif node["type"] == "option":
-                buffer.append(f"{node['name']}{node['trailing_space']}{node['assign_op']}")
+                buffer.append(node["name"] + node["trailing_space"] + node["assign_op"])
             return (True, buffer)
 
         buffer = []
@@ -99,7 +104,8 @@ class Parser:
 
     def parse_document(self, tokenizer):
         body = []
-        while peek := tokenizer.peek():
+        peek = tokenizer.peek()
+        while peek:
             if peek["type"] == "section":
                 body.append(self.parse_section(tokenizer))
             elif peek["type"] == "comment":
@@ -109,7 +115,8 @@ class Parser:
             elif peek["type"] == "placeholder":
                 body.append(self.parse_placeholder(tokenizer))
             else:
-                raise SyntaxError(f"Unexpected token '{peek}' at:\n {tokenizer.slice[:10]}")
+                raise SyntaxError("Unexpected token '{}' at:\n {}".format(peek, tokenizer.slice[:20]))
+            peek = tokenizer.peek()
 
         return self.document(body)
 
@@ -136,7 +143,8 @@ class Parser:
         token = tokenizer.take("section")
         body = []
 
-        while (peek := tokenizer.peek()) and peek["type"] != "section":
+        peek = tokenizer.peek()
+        while peek and peek["type"] != "section":
             if peek["type"] == "comment":
                 body.append(self.parse_comment(tokenizer))
             elif peek["type"] == "word":
@@ -146,7 +154,8 @@ class Parser:
             elif peek["type"] == "whitespace":
                 body.append(self.parse_whitespace(tokenizer))
             else:
-                raise SyntaxError(f"Unexpected token '{peek}' at:\n {tokenizer.slice[:10]}")
+                raise SyntaxError("Unexpected token '{}' at:\n {}".format(peek, tokenizer.slice[:20]))
+            peek = tokenizer.peek()
 
         return self.section(token["value"][1:-1], body)
 
@@ -186,7 +195,8 @@ class Parser:
         current_entry = ""
         current_line = []
 
-        while peek := tokenizer.peek():
+        peek = tokenizer.peek()
+        while peek:
             if peek["type"] == "whitespace":
                 if peek["value"].endswith("\n"):  # multi-line value ends with a newline without a tab/space after it
                     break
@@ -196,11 +206,13 @@ class Parser:
                     current_line.append(self.whitespace(token["value"]))
                 else:
                     current_entry += token["value"]
-                while (idx := current_entry.find("\n")) != -1:
+                idx = current_entry.find("\n")
+                while idx != -1:
                     current_line.append(self.value_entry(current_entry[: idx + 1]))
                     current_entry = current_entry[idx + 1 :]
                     body.append(self.value_line(current_line))
                     current_line = []
+                    idx = current_entry.find("\n")
 
             elif not as_is and peek["type"] == "comment":
                 if len(current_entry) > 0:
@@ -214,6 +226,8 @@ class Parser:
                 current_line.append(self.parse_placeholder(tokenizer))
             else:
                 current_entry += next(tokenizer)["value"]
+
+            peek = tokenizer.peek()
 
         if len(current_entry) > 0:
             current_line.append(self.value_entry(current_entry))
@@ -237,7 +251,8 @@ class Parser:
         current_comment = token["value"]
         body = []
 
-        while peek := tokenizer.peek():
+        peek = tokenizer.peek()
+        while peek:
             if peek["type"] == "whitespace":
                 if peek["value"].find("\n") != -1:
                     break
@@ -249,6 +264,8 @@ class Parser:
                 body.append(self.parse_placeholder(tokenizer))
             else:
                 current_comment += next(tokenizer)["value"]
+
+            peek = tokenizer.peek()
 
         if len(current_comment) > 0:
             body.append(self.comment_entry(current_comment))
@@ -280,7 +297,7 @@ def rename(node, ctx):
     node["name"] = ctx
 
 
-class ConfigBuilder:
+class ConfigBuilder(object):
     def __init__(self, filemame=None, parser=Parser()):
         self.filename = filemame
         self.parser = parser
@@ -324,10 +341,11 @@ class ConfigBuilder:
         return self._for_section(None, collect, [])
 
     def _get_section(self, section_name):
-        if section := self._for_section(section_name, identity):
+        section = self._for_section(section_name, identity)
+        if section:
             return section
         else:
-            raise KeyError(f"Section '{section_name}' not found")
+            raise KeyError("Section '{}' not found".format(section_name))
 
     def sections(self):
         return [x["name"] for x in self._sections()]
@@ -344,7 +362,7 @@ class ConfigBuilder:
 
         if comment:
             section_body = [
-                self.parser.simple_comment(f" {comment}"),
+                self.parser.simple_comment("# " + comment),
                 self.parser.whitespace("\n" if extra_newline else ""),
             ]
         else:
@@ -380,10 +398,11 @@ class ConfigBuilder:
         return self._for_option(section_name, None, collect, [])
 
     def _get_option(self, section_name, option_name):
-        if option := self._for_option(section_name, option_name, identity):
+        option = self._for_option(section_name, option_name, identity)
+        if option:
             return option
         else:
-            raise KeyError(f"Option '{option_name}' not found")
+            raise KeyError("Option '{}' not found".format(option_name))
 
     def options(self, section_name):
         return [x["name"] for x in self._options(section_name)]
@@ -419,23 +438,27 @@ class ConfigBuilder:
             return default
 
     def getint(self, section_name, option_name, default=None):
-        if value := self.get(section_name, option_name):
+        value = self.get(section_name, option_name)
+        if value:
             return int(value.strip())
         return default
 
     def getfloat(self, section_name, option_name, default=None):
-        if value := self.get(section_name, option_name):
+        value = self.get(section_name, option_name)
+        if value:
             return float(value.strip())
         return default
 
     def getboolean(self, section_name, option_name, default=None):
-        if value := self.get(section_name, option_name):
+        value = self.get(section_name, option_name)
+        if value:
             return value.strip().lower() in ["1", "true", "yes", "on"]
         return default
 
     def set(self, section_name, option_name, value):
         value = str(value).strip()
-        if (idx := value.find("\n")) != -1:
+        idx = value.find("\n")
+        if idx != -1:
             value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
         if self.has_option(section_name, option_name):
             option = self._get_option(section_name, option_name)
@@ -444,7 +467,7 @@ class ConfigBuilder:
             value = self.parser.parse_value(Tokenizer(value))
             option["value"] = value
         else:
-            value = self.parser.parse_value(Tokenizer(f" {value}"))
+            value = self.parser.parse_value(Tokenizer(" " + value))
             section = self._get_section(section_name)
             section["body"].append(
                 self.parser.option(
@@ -481,24 +504,24 @@ class ConfigBuilder:
 
     def replace_placeholder(self, placeholder, value):
         tmp = self.parser.serialize(self.document)
-        tmp = tmp.replace(f"{{{placeholder}}}", value)
+        tmp = tmp.replace("{" + placeholder + "}", value)
         self.document = self.parser.parse(tmp)
 
     def remove_placeholder(self, placeholder):
         tmp = self.parser.serialize(self.document)
         if placeholder.startswith("cfg_"):
-            tmp = re.sub(rf"^[ \t]*\{{{placeholder}}}[ \t]*$\n?", "", tmp, flags=re.MULTILINE)
+            tmp = re.sub(r"^[ \t]*\{{{}}}[ \t]*$\n?".format(placeholder), "", tmp, flags=re.MULTILINE)
         else:
-            tmp = tmp.replace(f"{{{placeholder}}}", "")
+            tmp = tmp.replace("{" + placeholder + "}", "")
         self.document = self.parser.parse(tmp)
 
     def use_config(self, config):
         if self.filename is None:
             raise ValueError("Cannot use config without an initial file")
 
-        logging.debug(f"Using config {self.filename}.{config}")
-        with open(f"{self.filename}.{config}", "r") as f:
-            self.replace_placeholder(f"cfg_{config}", f.read())
+        logging.debug("Using config {}.{}".format(self.filename, config))
+        with open(self.filename + "." + config, "r") as f:
+            self.replace_placeholder("cfg_" + config, f.read())
 
     def placeholders(self):
         def collect_placeholders(node, ctx):
@@ -529,17 +552,17 @@ class ConfigBuilder:
                 root_node["body"][i : i + 1] = expanded
 
     def expand_section(self, section_name, count, start_idx=0, newline=False):
-        logging.debug(f"Expanding section [{section_name}]")
+        logging.debug("Expanding section [{}]".format(section_name))
 
         def test(node):
             return node["type"] == "section" and node["name"] == section_name
 
         if not self.has_section(section_name):
-            raise KeyError(f"Section '{section_name}' not found")
+            raise KeyError("Section '{}' not found".format(section_name))
         self._expand(self.document, test, count, start_idx, whitespace="\n" if newline else "")
 
     def expand_option(self, section_name, option_name, count, start_idx=0):
-        logging.debug(f"Expanding option [{section_name}] {option_name}")
+        logging.debug("Expanding option [{}] {}".format(section_name, option_name))
         regexp = re.compile(option_name)
 
         def test(node):
@@ -549,7 +572,7 @@ class ConfigBuilder:
         self._expand(section, test, count, start_idx)
 
     def expand_value_line(self, section_name, option_name, value, count, start_idx=0):
-        logging.debug(f"Expanding line in [{section_name}] {option_name} matching '{value}'")
+        logging.debug("Expanding line in [{}] {} matching '{}'".format(section_name, option_name, value))
         regexp = re.compile(value)
 
         def test(node):

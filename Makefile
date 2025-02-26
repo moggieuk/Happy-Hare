@@ -252,7 +252,7 @@ diff: | build
 
 UT?=*
 test: 
-	$(Q)$(PY) -m unittest $(V) -k $(UT)
+	$(Q)$(PY) -m unittest discover $(V) -p '$(UT)'
 
 check_version:
 	$(Q)$(BUILD_MODULE) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)  

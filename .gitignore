@@ -5,3 +5,4 @@ out_*/
 *.config.*
 *.config.old
 __pycache__/
+*.pyc

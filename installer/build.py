@@ -19,9 +19,9 @@ unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 LEVEL_NOTICE = 25
 
 
-class Kconfig(kconfiglib.Kconfig):
+class KConfig(kconfiglib.Kconfig):
     def __init__(self, confg_file):
-        super().__init__("installer/Kconfig")
+        super(KConfig, self).__init__("installer/Kconfig")
         self.load_config(confg_file)
 
     def is_selected(self, choice, value):
@@ -36,7 +36,7 @@ class Kconfig(kconfiglib.Kconfig):
 
 class HHConfig(ConfigBuilder):
     def __init__(self, cfg_files):
-        super().__init__()
+        super(HHConfig, self).__init__()
         self.origins = {}
         prefix = os.path.commonprefix(cfg_files)
         for cfg_file in cfg_files:
@@ -50,13 +50,13 @@ class HHConfig(ConfigBuilder):
     def remove_option(self, section_name, option_name):
         if (section_name, option_name) in self.origins:
             self.origins.pop((section_name, option_name))
-        return super().remove_option(section_name, option_name)
+        return super(HHConfig, self).remove_option(section_name, option_name)
 
     def remove_section(self, section_name):
         for sec, option in self.origins.items():
             if sec == section_name:
                 self.origins.pop((sec, option))
-        return super().remove_section(section_name)
+        return super(HHConfig, self).remove_section(section_name)
 
     def move_option(self, old_section_name, old_option_name, new_section_name, new_option_name=None):
         if new_option_name is None:
@@ -87,13 +87,15 @@ class ConfigInput:
     def extra_params(self):
         """Return extra parameters based on the Kconfig, that are impossible to define in the config file"""
         params = {}
-        if (num_gates := self.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is not None:
+        num_gates = self.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
+        if num_gates is not None:
             params["param_num_leds"] = num_gates * 2 + 1
             params["param_num_leds_minus1"] = num_gates * 2
             params["param_num_gates_plus1"] = num_gates + 1
 
-        if (config_home := self.get_param("KLIPPER_CONFIG_HOME")) is not None:
-            params["param_mmu_vars_cfg"] = f"{config_home}/mmu/mmu_vars.cfg"
+        config_home = self.get_param("KLIPPER_CONFIG_HOME")
+        if config_home is not None:
+            params["param_mmu_vars_cfg"] = "{}/mmu/mmu_vars.cfg".format(config_home)
 
         return params
 
@@ -141,7 +143,8 @@ class ConfigInput:
     def getint(self, section, key, kcfg_param=None, default=None):
         """Get the value of the option from the existing config file or else get the value of kcfg_param from the Kconfig file
         If neither is defined, return the default value"""
-        if (value := self.get(section, key, kcfg_param, default)) is not None:
+        value = self.get(section, key, kcfg_param, default)
+        if value is not None:
             return int(value)
         return default
 
@@ -181,8 +184,9 @@ class ConfigInput:
             builder.replace_placeholder(param, str(value))
 
 
-def build_mmu_cfg(builder, cfg: ConfigInput):
-    if (num_gates := cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is None:
+def build_mmu_cfg(builder, cfg):
+    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
+    if num_gates is None:
         logging.error("num_gates is not defined")
         exit(1)
 
@@ -217,8 +221,9 @@ def build_mmu_cfg(builder, cfg: ConfigInput):
     return builder
 
 
-def build_mmu_hardware_cfg(builder, cfg: ConfigInput):
-    if (num_gates := cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is None:
+def build_mmu_hardware_cfg(builder, cfg):
+    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
+    if num_gates is None:
         logging.error("num_gates is not defined")
         exit(1)
 
@@ -270,7 +275,7 @@ def build_mmu_hardware_cfg(builder, cfg: ConfigInput):
         builder.comment_out_option("stepper_mmu_gear", "extra_endstop_names")
 
 
-def build_mmu_parameters_cfg(builder, cfg: ConfigInput):
+def build_mmu_parameters_cfg(builder, cfg):
     if cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_LINEAR"):
         builder.use_config("selector_speeds")
         builder.use_config("selector_servo")
@@ -282,37 +287,41 @@ def build_mmu_parameters_cfg(builder, cfg: ConfigInput):
         builder.delete_line("gate_load_retries:")
     for param in supplemental_params.split() + hidden_params.split():
         if cfg.hhcfg.has_option("mmu", param):
-            builder.buf += f"{param}: {cfg.hhcfg.get('mmu', param)}\n"
+            builder.buf += param + ": " + cfg.hhcfg.get("mmu", param) + "\n"
             cfg.hhcfg.remove_option("mmu", param)
 
 
-def build_mmu_macro_vars_cfg(builder, cfg: ConfigInput):
-    if (num_gates := cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is None:
+def build_mmu_macro_vars_cfg(builder, cfg):
+    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
+    if num_gates is None:
         logging.error("num_gates is not defined")
         exit(1)
     builder.expand_section("gcode_macro T%", num_gates)
 
 
-def build_addon_dc_espooler_cfg(builder, cfg: ConfigInput):
-    if (num_gates := cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is None:
+def build_addon_dc_espooler_cfg(builder, cfg):
+    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
+    if num_gates is None:
         logging.error("num_gates is not defined")
         exit(1)
     builder.expand_section("output_pin _mmu_dc_espooler_rwd_%", num_gates)
     builder.expand_section("output_pin _mmu_dc_espooler_en_%", num_gates)
 
 
-def build_addon_eject_buttons_cfg(builder, cfg: ConfigInput):
-    if (num_gates := cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")) is None:
+def build_addon_eject_buttons_cfg(builder, cfg):
+    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
+    if num_gates is None:
         logging.error("num_gates is not defined")
         exit(1)
     builder.expand_section("gcode_button mmu_eject_button_%", num_gates)
 
 
 def build(cfg_file, dest_file, kconfig_file, input_files):
-    if m := re.search(r"config/(.*?)$", cfg_file):
-        basename = m.group(1)
+    match = re.search(r"config/(.*?)$", cfg_file)
+    if match:
+        basename = match.group(1)
     else:
-        logging.error(f"Invalid config file: {cfg_file}")
+        logging.error("Invalid config file: " + cfg_file)
         exit(1)
 
     if not basename.startswith("addons/") and basename not in [
@@ -324,8 +333,8 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     ]:
         return
 
-    logging.info(f"Building {dest_file}")
-    cfg_input = ConfigInput(HHConfig(input_files), Kconfig(kconfig_file))
+    logging.info("Building " + dest_file)
+    cfg_input = ConfigInput(HHConfig(input_files), KConfig(kconfig_file))
     builder = ConfigBuilder(cfg_file)
 
     to_version = cfg_input.get_param("PARAM_HAPPY_HARE_VERSION")
@@ -356,11 +365,11 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     for section, option in cfg_input.unused_options_for(basename):
         if first:
             first = False
-            logging.warning(f"The following parameters in {basename} have been dropped:")
-        logging.warning(f"[{section}] {option} = {cfg_input.get(section, option)}")
+            logging.warning("The following parameters in {} have been dropped:".format(basename))
+        logging.warning("[{}] {}: {}".format(section, option, cfg_input.get(section, option)))
 
     for ph in builder.placeholders():
-        logging.warning(f"Placeholder {{{ph}}} not replaced")
+        logging.warning("Placeholder {{{}}} not replaced".format(ph))
 
     if os.path.islink(dest_file):
         os.remove(dest_file)
@@ -371,14 +380,14 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     logging.info("Adding moonraker components")
-    cfg_input = ConfigInput(HHConfig([moonraker_cfg]), Kconfig(kconfig))
+    cfg_input = ConfigInput(HHConfig([moonraker_cfg]), KConfig(kconfig))
     builder = ConfigBuilder(existing_cfg)
 
     if not builder.has_section("update_manager happy-hare"):
         logging.debug("Adding [update_manager happy-hare]")
         builder.add_section("update_manager happy-hare")
         for option, value in cfg_input.hhcfg.items("update_manager happy-hare"):
-            logging.debug(f"Adding [update_manager happy-hare] {option} = {value}")
+            logging.debug("Adding [update_manager happy-hare] {} = {}".format(option, value))
             builder.set("update_manager happy-hare", option, value)
 
     if not builder.has_section("mmu_server"):
@@ -418,18 +427,18 @@ def uninstall_moonraker(moonraker_cfg):
 
 def install_includes(dest_file, kconfig):
     logging.info("Configuring includes")
-    cfg_input = ConfigInput(None, Kconfig(kconfig))
+    cfg_input = ConfigInput(None, KConfig(kconfig))
     builder = ConfigBuilder(dest_file)
 
     def check_include(builder, param, include):
-        include = f"include {include}"
+        include = "include " + include
         if cfg_input.getbool_param(param, False):
             if not builder.has_section(include):
-                logging.debug(f"Adding include [{include}]")
+                logging.debug("Adding include [{}]".format(include))
                 builder.add_section(include, at_top=True, extra_newline=False)
         else:
             if builder.has_section(include):
-                logging.debug(f"Removing include [{include}]")
+                logging.debug("Removing include [{}]".format(include))
                 builder.remove_section(include)
 
     check_include(builder, "INSTALL_12864_MENU", "mmu/optional/mmu_menu.cfg")
@@ -468,9 +477,9 @@ def uninstall_includes(dest_file):
         "mmu/base/*.cfg",
         "mmu/addons/*.cfg",
     ]:
-        if builder.has_section(f"include {include}"):
-            logging.debug(f"Removing include [{include}]")
-            builder.remove_section(f"include {include}")
+        if builder.has_section("include " + include):
+            logging.debug("Removing include [{}]".format(include))
+            builder.remove_section("include " + include)
 
     with open(dest_file, "w") as f:
         f.write(builder.write())
@@ -480,32 +489,34 @@ def restart_service(name, service, kconfig):
     if not service:
         logging.warning("No {name} service specified - Please restart manually")
     else:
-        logging.info(f"Restarting {name}...")
+        logging.info("Restarting {}...".format(name))
 
-    cfg_input = ConfigInput(None, Kconfig(kconfig))
+    cfg_input = ConfigInput(None, KConfig(kconfig))
     if cfg_input.is_enabled("INIT_SYSTEMD"):
         if not service.endswith(".service"):
             service = service + ".service"
-        if subprocess.call(f"systemctl list-unit-files '{service}'", stdout=subprocess.DEVNULL, shell=True):
-            logging.warning(f"Service '{service}' not found! Restart manually or check your config")
+        if subprocess.call("systemctl list-unit-files '{}'".format(service), stdout=subprocess.DEVNULL, shell=True):
+            logging.warning("Service '{}' not found! Restart manually or check your config".format(service))
         else:
-            subprocess.call(f"sudo systemctl restart '{service}'", shell=True)
+            subprocess.call("sudo systemctl restart '{}'".format(service), shell=True)
     else:
-        if os.path.exists("/etc/init.d/{service}"):
-            subprocess.call(f"/etc/init.d/{service} restart")
+        if os.path.exists("/etc/init.d/" + service):
+            subprocess.call("/etc/init.d/{} restart".format(service), shell=True)
         else:
-            logging.warning(f"Service '/etc/init.d/{service}' not found! Restart manually or check your config")
+            logging.warning("Service '/etc/init.d/{}' not found! Restart manually or check your config".format(service))
 
 
 def check_version(kconfig_file, input_files):
-    cfg_input = ConfigInput(HHConfig(input_files), Kconfig(kconfig_file))
+    cfg_input = ConfigInput(HHConfig(input_files), KConfig(kconfig_file))
 
-    if (current_version := cfg_input.get("mmu", "happy_hare_version")) is None:
+    current_version = cfg_input.get("mmu", "happy_hare_version")
+    if current_version is None:
         logging.log(LEVEL_NOTICE, "Fresh install detected")
         return
 
-    logging.log(LEVEL_NOTICE, f"Current version: {current_version}")
-    if (target_version := cfg_input.get_param("PARAM_HAPPY_HARE_VERSION")) is None:
+    logging.log(LEVEL_NOTICE, "Current version: " + current_version)
+    target_version = cfg_input.get_param("PARAM_HAPPY_HARE_VERSION")
+    if target_version is None:
         logging.error("Target version is not defined")
         exit(1)
 
@@ -521,7 +532,7 @@ def check_version(kconfig_file, input_files):
         )
         return
 
-    logging.log(LEVEL_NOTICE, f"Trying to upgrade to {target_version}")
+    logging.log(LEVEL_NOTICE, "Trying to upgrade to " + target_version)
 
 
 def main():

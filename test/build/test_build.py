@@ -9,7 +9,7 @@ from installer.build import (
     ConfigBuilder,
     ConfigInput,
     HHConfig,
-    Kconfig,
+    KConfig,
     build_mmu_hardware_cfg,
     build_mmu_cfg,
 )
@@ -17,19 +17,20 @@ import installer.parser as parser
 
 
 class TestBuild(unittest.TestCase):
-    def __init__(self, methodName):
-        super().__init__(methodName)
+    def setUp(self):
         self.maxDiff = None
         self.base_path = os.path.dirname(os.path.realpath(__file__))
 
     def assertExpected(self, path, result):
-        with open(f"{self.base_path}/{path}/expected.cfg", "r") as e:
+        with open(self.base_path + "/" + path + "/expected.cfg", "r") as e:
             self.assertEqual(e.read(), result)
 
     def cfg_input_and_builder(self, path):
         return (
-            ConfigInput(HHConfig([f"{self.base_path}/{path}/in.cfg"]), Kconfig(f"{self.base_path}/{path}/.config")),
-            ConfigBuilder(f"{self.base_path}/{path}/config.cfg"),
+            ConfigInput(
+                HHConfig([self.base_path + "/" + path + "/in.cfg"]), KConfig(self.base_path + "/" + path + "/.config")
+            ),
+            ConfigBuilder(self.base_path + "/" + path + "/config.cfg"),
         )
 
     def base_test(self, path, callback=None, from_version=None, to_version=None):
@@ -80,14 +81,14 @@ class TestBuild(unittest.TestCase):
         self.base_test("mmu", build_mmu_cfg)
 
     def base_test_moonraker(self, path):
-        shutil.copy(f"{self.base_path}/{path}/in.cfg", f"{self.base_path}/{path}/out.cfg")
+        shutil.copy(self.base_path + "/" + path + "/in.cfg", self.base_path + "/" + path + "/out.cfg")
         installer.build.install_moonraker(
-            "moonraker_update.txt", f"{self.base_path}/{path}/out.cfg", f"{self.base_path}/{path}/.config"
+            "moonraker_update.txt", self.base_path + "/" + path + "/out.cfg", self.base_path + "/" + path + "/.config"
         )
 
-        with open(f"{self.base_path}/{path}/out.cfg", "r") as f:
+        with open(self.base_path + "/" + path + "/out.cfg", "r") as f:
             result = f.read()
-        os.remove(f"{self.base_path}/{path}/out.cfg")
+        os.remove(self.base_path + "/" + path + "/out.cfg")
         self.assertExpected(path, result)
 
     def test_moonraker(self):
