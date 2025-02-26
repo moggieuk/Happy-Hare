@@ -495,7 +495,7 @@ def restart_service(name, service, kconfig):
     if cfg_input.is_enabled("INIT_SYSTEMD"):
         if not service.endswith(".service"):
             service = service + ".service"
-        if subprocess.call("systemctl list-unit-files '{}'".format(service), stdout=subprocess.DEVNULL, shell=True):
+        if subprocess.call("systemctl list-unit-files '{}'".format(service), stdout=open(os.devnull, "w"), shell=True):
             logging.warning("Service '{}' not found! Restart manually or check your config".format(service))
         else:
             subprocess.call("sudo systemctl restart '{}'".format(service), shell=True)
