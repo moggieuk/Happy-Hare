@@ -252,7 +252,7 @@ def build_mmu_hardware_cfg(builder, cfg):
 
     if cfg.is_selected("CHOICE_BOARD_TYPE", "BOARD_TYPE_EASY_BRD"):
         # Share uart_pin to avoid duplicate alias problem
-        builder.set("tmc2209 stepper_mmu_gear", "uart_pin", " mmu:MMU_GEAR_UART")
+        builder.set("tmc2209 stepper_mmu_selector", "uart_pin", " mmu:MMU_GEAR_UART")
     else:
         builder.remove_option("tmc2209 stepper_mmu_gear", "uart_address")
 
