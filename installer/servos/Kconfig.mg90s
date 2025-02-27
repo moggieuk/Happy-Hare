@@ -15,13 +15,13 @@ if SERVO_TYPE_MG_90S
   config PARAM_SERVO_MAX_ANGLE
     default 180
   config PARAM_SERVO_UP_ANGLE
-    default 60 if MMU_TYPE_ERCF_2 && EXT_THUMPER_BLOCKS
+    default 60 if MMU_TYPE_ERCF_2_0 && EXT_THUMPER_BLOCKS
     default 30 
   config PARAM_SERVO_MOVE_ANGLE
-    default 30 if MMU_TYPE_ERCF_2 && EXT_THUMPER_BLOCKS
-    default 61 if MMU_TYPE_ERCF_2
+    default 30 if MMU_TYPE_ERCF_2_0 && EXT_THUMPER_BLOCKS
+    default 61 if MMU_TYPE_ERCF_2_0
     default PARAM_SERVO_UP_ANGLE 
   config PARAM_SERVO_DOWN_ANGLE
-    default 145 if MMU_TYPE_ERCF_2 && EXT_THUMPER_BLOCKS
+    default 145 if MMU_TYPE_ERCF_2_0 && EXT_THUMPER_BLOCKS
     default 140 
 endif

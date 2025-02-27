@@ -15,7 +15,7 @@ if SERVO_TYPE_GDW_DS041MG
   config PARAM_SERVO_UP_ANGLE
     default 30 
   config PARAM_SERVO_MOVE_ANGLE
-    default 50 if MMU_TYPE_ERCF_2
+    default 50 if MMU_TYPE_ERCF_2_0
     default PARAM_SERVO_UP_ANGLE 
   config PARAM_SERVO_DOWN_ANGLE
     default 100 
