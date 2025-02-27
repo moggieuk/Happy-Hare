@@ -1,5 +1,4 @@
-config ENABLE_LEDS
-  bool "Enable neopixel LEDs support?"
+
 
 config ENABLE_SELECTOR_TOUCH
   bool "Enable touch selector operation using TMC Stallguard?"

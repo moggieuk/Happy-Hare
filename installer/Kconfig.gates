@@ -1,0 +1,24 @@
+config PARAM_NUM_GATES
+  int "Number of gates"
+  default 12
+
+config PARAM_GATE_HOMING_MAX
+  string "Maximum homing distance to the gate (mm)"
+  default "70"
+
+config PARAM_GATE_PRELOAD_HOMING_MAX
+  string "Maximum homing distance to the mmu_gear endstop (mm)"
+  default "70"
+
+config PARAM_GATE_PARKING_DISTANCE
+  string "Gate parking distance (mm)"
+  default "23"
+
+config PARAM_GATE_ENDSTOP_TO_ENCODER
+  string "Gate endstop to encoder distance (mm)"
+  default "10"
+
+config PARAM_GATE_FINAL_EJECT_DISTANCE
+  string "Distance to eject filament on eject rather than unload (mm)"
+  default "0"
+

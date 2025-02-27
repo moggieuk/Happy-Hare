@@ -1,35 +1,44 @@
 choice CHOICE_MMU_TYPE
-  config MMU_TYPE_ANGRY_BEAVER_1
-    bool "Angry Beaver v1.0"
-    select MMU_HAS_GEARS
-    select VARIABLE_ROTATION_DISTANCES
+  config MMU_TYPE_PICO_MMU_1_0
+    bool "Pico MMU"
+    select MMU_HAS_SERVO
+    select VARIABLE_REQUIRE_BOWDEN_MOVE
     select FILAMENT_ALWAYS_GRIPPED
+	imply ENABLE_LEDS
 endchoice
 
-if MMU_TYPE_ANGRY_BEAVER_1
+if MMU_TYPE_PICO_MMU_1_0
   config PARAM_MMU_VENDOR
-    default "AngryBeaver"
+    default "PicoMMU"
   config PARAM_MMU_VERSION
-    default "1.0"
+    default "1.0"  
+  config PARAM_NUM_GATES
+    default 4
 
   config PARAM_GEAR_GEAR_RATIO
-    default "1:1"
+    default "1.28:1"
   config PARAM_GEAR_RUN_CURRENT
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
   config PARAM_GEAR_HOMING_SPEED
     default "80"
+
   config PARAM_GATE_HOMING_MAX
-    default "500"
+    default "100"
   config PARAM_GATE_PARKING_DISTANCE
-    default "50"
+    default "25"
+
+  config PARAM_CHAIN_COUNT
+	default 4   
+  config PARAM_EXIT_LEDS 
+	default "neopixel:mmu_leds (1-4)"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
   endchoice
   
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+    default EXTRUDER_HOMING_ENDSTOP_NONE
   endchoice
 endif 

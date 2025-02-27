@@ -1,20 +1,21 @@
 choice CHOICE_MMU_TYPE
-  config MMU_TYPE_BOX_TURTLE_1
+  config MMU_TYPE_BOX_TURTLE_1_0
     bool "Box Turtle v1.0"
-    select MMU_HAS_GEARS
     select VARIABLE_ROTATION_DISTANCES
     select REQUIRE_BOWDEN_MOVE
     select FILAMENT_ALWAYS_GRIPPED
 endchoice
 
-if MMU_TYPE_BOX_TURTLE_1
+if MMU_TYPE_BOX_TURTLE_1_0
   config PARAM_MMU_VENDOR
     default "BoxTurtle"
   config PARAM_MMU_VERSION
-    default "1.0"
+    default "1.0"  
+  config PARAM_NUM_GATES
+    default 4
 
   config PARAM_GEAR_GEAR_RATIO
-    default "1:1"
+    default "50:10"
   config PARAM_GEAR_RUN_CURRENT
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT

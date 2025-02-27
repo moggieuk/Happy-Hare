@@ -26,6 +26,8 @@ config PARAM_GATE_HOMING_ENDSTOP
   default "mmu_gate" if GATE_HOMING_ENDSTOP_GATE
   default "mmu_gear" if GATE_HOMING_ENDSTOP_GEAR
 
+
+
 choice CHOICE_EXTRUDER_HOMING_ENDSTOP
   prompt "Extruder homing endstop" 
   default EXTRUDER_HOMING_ENDSTOP_NONE

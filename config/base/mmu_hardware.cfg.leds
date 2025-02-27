@@ -11,7 +11,7 @@
 # (comment out this section if you don't have leds or have them defined elsewhere)
 [neopixel mmu_leds]
 pin: mmu:MMU_NEOPIXEL
-chain_count: {param_num_leds}			# Need number gates x1 or x2 + status leds
+chain_count: {param_chain_count}			# Need number gates x1 or x2 + status leds
 color_order: {param_color_order}		# Set based on your particular neopixel specification (can be comma separated list)
 
 # MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------

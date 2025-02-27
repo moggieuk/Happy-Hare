@@ -89,11 +89,6 @@ class ConfigInput:
     def extra_params(self):
         """Return extra parameters based on the Kconfig, that are impossible to define in the config file"""
         params = {}
-        num_gates = self.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
-        if num_gates is not None:
-            params["param_num_leds"] = num_gates * 2 + 1
-            params["param_num_leds_minus1"] = num_gates * 2
-            params["param_num_gates_plus1"] = num_gates + 1
 
         config_home = self.get_param("KLIPPER_CONFIG_HOME")
         if config_home is not None:
@@ -195,7 +190,6 @@ def build_mmu_cfg(builder, cfg):
     builder.expand_value_line("board_pins mmu", "aliases", "MMU_PRE_GATE_%", num_gates)
     builder.expand_value_line("board_pins mmu", "aliases", "MMU_POST_GEAR_%", num_gates)
 
-    # if cfg.is_selected("CHOICE_SELECTOR_TYPE", "SELECTOR_TYPE_LINEAR"):
     if cfg.is_enabled("MMU_HAS_SELECTOR"):
         builder.use_config("selector")
     else:
@@ -206,7 +200,7 @@ def build_mmu_cfg(builder, cfg):
     else:
         builder.remove_placeholder("cfg_selector_servo")
 
-    if cfg.is_enabled("MMU_HAS_GEARS"):
+    if not cfg.is_enabled("MMU_HAS_SELECTOR") and not cfg.is_enabled("MMU_HAS_SERVO"):
         builder.use_config("gears")
         builder.expand_value_line(
             "board_pins mmu",
@@ -250,7 +244,7 @@ def build_mmu_hardware_cfg(builder, cfg):
     else:
         builder.remove_placeholder("cfg_selector_servo")
 
-    if cfg.is_enabled("MMU_HAS_GEARS"):
+    if not cfg.is_enabled("MMU_HAS_SELECTOR") and not cfg.is_enabled("MMU_HAS_SERVO"):
         builder.use_config("gear_steppers")
         builder.expand_section(
             "tmc2209 stepper_mmu_gear_%",

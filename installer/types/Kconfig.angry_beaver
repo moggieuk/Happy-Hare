@@ -1,13 +1,13 @@
 choice CHOICE_MMU_TYPE
-  config MMU_TYPE_3MS_1_0
-    bool "3MS v1.0"
+  config MMU_TYPE_ANGRY_BEAVER_1_0
+    bool "Angry Beaver v1.0"
     select VARIABLE_ROTATION_DISTANCES
     select FILAMENT_ALWAYS_GRIPPED
 endchoice
 
-if MMU_TYPE_3MS_1_0
+if MMU_TYPE_ANGRY_BEAVER_1_0
   config PARAM_MMU_VENDOR
-    default "3MS"
+    default "AngryBeaver"
   config PARAM_MMU_VERSION
     default "1.0" 
   config PARAM_NUM_GATES
@@ -21,11 +21,11 @@ if MMU_TYPE_3MS_1_0
     default "0.1"
   config PARAM_GEAR_HOMING_SPEED
     default "80"
-
+    
   config PARAM_GATE_HOMING_MAX
     default "500"
   config PARAM_GATE_PARKING_DISTANCE
-    default "250"
+    default "50"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_EXTRUDER

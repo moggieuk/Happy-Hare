@@ -1,17 +1,17 @@
-choice CHOICE_MMU_TYPE
-  config MMU_TYPE_3MS_1_0
-    bool "3MS v1.0"
-    select VARIABLE_ROTATION_DISTANCES
-    select FILAMENT_ALWAYS_GRIPPED
+choice CHOICE_MMU_TYPE 
+  config MMU_TYPE_3D_CHAMELEON_1_0
+    bool "3D Chameleon"
+    select MMU_HAS_SELECTOR
+	select REQUIRE_BOWDEN_MOVE
 endchoice
 
-if MMU_TYPE_3MS_1_0
+if MMU_TYPE_3D_CHAMELEON_1_0
   config PARAM_MMU_VENDOR
-    default "3MS"
+    default "3DChameleon"
   config PARAM_MMU_VERSION
     default "1.0" 
   config PARAM_NUM_GATES
-    default 4
+    default 6
 
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
@@ -19,19 +19,23 @@ if MMU_TYPE_3MS_1_0
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+  config PARAM_SELECTOR_RUN_CURRENT
+    default "0.63"
+  config PARAM_SELECTOR_HOLD_CURRENT
+    default "0.2"
   config PARAM_GEAR_HOMING_SPEED
     default "80"
 
-  config PARAM_GATE_HOMING_MAX
-    default "500"
   config PARAM_GATE_PARKING_DISTANCE
     default "250"
+  config PARAM_GATE_HOMING_MAX
+	default "500"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
-    default GATE_HOMING_ENDSTOP_EXTRUDER
+    default GATE_HOMING_ENDSTOP_GATE
   endchoice
   
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+    default EXTRUDER_HOMING_ENDSTOP_NONE
   endchoice
 endif 

@@ -1,5 +1,5 @@
 choice CHOICE_MMU_TYPE
-  config MMU_TYPE_TRADRACK_1
+  config MMU_TYPE_TRADRACK_1_0
     bool "Tradrack v1.0"
     select REQUIRE_BOWDEN_MOVE
     select MMU_HAS_SERVO
@@ -9,15 +9,17 @@ choice CHOICE_MMU_TYPE
   config EXT_BINKY
     bool "Binky" 
     select MMU_HAS_ENCODER
-    depends on MMU_TYPE_TRADRACK_1
+    depends on MMU_TYPE_TRADRACK_1_0
 endchoice
 
-if MMU_TYPE_TRADRACK_1
+if MMU_TYPE_TRADRACK_1_0
   config PARAM_MMU_VENDOR
     default "Tradrack"
   config PARAM_MMU_VERSION
     default "1.0e" if EXT_BINKY
     default "1.0"
+  config PARAM_NUM_GATES
+    default 4
 
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0
@@ -37,7 +39,8 @@ if MMU_TYPE_TRADRACK_1
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0
   config PARAM_ENCODER_RESOLUTION
-    default "1.0"
+    default "1.0" if EXT_BINKY
+
   config PARAM_GATE_PARKING_DISTANCE
     default "48" if EXT_BINKY 
     default "17.5"

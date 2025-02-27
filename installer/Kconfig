@@ -49,11 +49,7 @@ menu "Advanced settings"
   config SHOW_ADVANCED_SETTINGS
     bool "Show advanced settings?"
     default n
-
-  menu "Paths & Services"
-    rsource "Kconfig.paths_services"
-  endmenu
-
+  
   menu "Pins"
     rsource "Kconfig.pins"
   endmenu
@@ -66,7 +62,19 @@ menu "Advanced settings"
     rsource "Kconfig.endstops"
   endmenu
 
+  menu "Gates"
+    rsource "Kconfig.gates"
+  endmenu
+
+  menu "Leds"
+    rsource "Kconfig.leds"
+  endmenu
+
   menu "Parameters"
     rsource "Kconfig.params"
+  endmenu
+
+  menu "Paths & Services"
+    rsource "Kconfig.paths_services"
   endmenu
 endmenu

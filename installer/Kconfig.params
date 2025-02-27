@@ -8,12 +8,6 @@ config MMU_HAS_SERVO
 config MMU_HAS_SELECTOR
   bool
 
-config MMU_HAS_GEARS
-  bool
-
-config PARAM_NUM_GATES
-  int "Number of gates"
-  default 12
 
 config PARAM_SELECTOR_TYPE
   string
@@ -54,22 +48,6 @@ config PARAM_ENCODER_RESOLUTION
   string "Encoder resolution"
   depends on MMU_HAS_ENCODER
   default "1.0"
-
-config PARAM_GATE_PARKING_DISTANCE
-  string "Gate parking distance (mm)"
-  default "23"
-
-config PARAM_GATE_ENDSTOP_TO_ENCODER
-  string "Gate endstop to encoder distance (mm)"
-  default "10"
-
-config PARAM_GATE_HOMING_MAX
-  string "Maximum homing distance to the gate (mm)"
-  default "70"
-
-config PARAM_GATE_FINAL_EJECT_DISTANCE
-  string "Distance to eject filament on eject rather than unload (mm)"
-  default "0"
 
 config PARAM_GEAR_HOMING_SPEED
   string "Gear homing speed (mm/s)"
