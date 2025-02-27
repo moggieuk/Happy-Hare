@@ -114,7 +114,7 @@ backup_ext ::= .old-$(shell date '+%Y%m%d-%H%M%S')
 backup_name = $(addsuffix $(backup_ext),$(1))
 backup = \
 	if [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
-		echo -e "$(C_NOTICE)Making a backup of '$(1)' to '$(call backup_name,$(1))'$(C_OFF)"; \
+		echo "$(C_NOTICE)Making a backup of '$(1)' to '$(call backup_name,$(1))'$(C_OFF)"; \
 		$(SUDO)cp -a "$(1)" "$(call backup_name,$(1))"; \
 	fi
 
@@ -129,7 +129,6 @@ restart_klipper = 0
 .SECONDARY: $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
-
 
 ##### Build targets #####
 
@@ -154,7 +153,7 @@ $(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F)
 	$(Q)$(BUILD_MODULE) --install-includes "$@" "$(KCONFIG_CONFIG)"
 
 # We link all config files, those that need to be updated will be written over in the install script
-$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg | $(hh_configs_to_parse)
+$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(BUILD_MODULE) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
