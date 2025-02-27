@@ -554,9 +554,9 @@ class Mmu:
         self.gcode.register_command('MMU_PRELOAD', self.cmd_MMU_PRELOAD, desc = self.cmd_MMU_PRELOAD_help)
         self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help)
         self.gcode.register_command('MMU_CHANGE_TOOL', self.cmd_MMU_CHANGE_TOOL, desc = self.cmd_MMU_CHANGE_TOOL_help)
-        # TODO Currently cannot not registered directly as Tx commands because not visible by Mainsail/Fluuid
-        # for tool in range(self.num_gates):
-        #     self.gcode.register_command('T%d' % tool, self.cmd_MMU_CHANGE_TOOL, desc = "Change to tool T%d" % tool)
+        # TODO Currently cannot not registered directly as Tx commands because cannot attach color/spool_id required by Mailsail
+        #for tool in range(self.num_gates):
+        #    self.gcode.register_command('T%d' % tool, self.cmd_MMU_CHANGE_TOOL, desc = "Change to tool T%d" % tool)
         self.gcode.register_command('MMU_LOAD', self.cmd_MMU_LOAD, desc=self.cmd_MMU_LOAD_help)
         self.gcode.register_command('MMU_EJECT', self.cmd_MMU_EJECT, desc = self.cmd_MMU_EJECT_help)
         self.gcode.register_command('MMU_UNLOAD', self.cmd_MMU_UNLOAD, desc = self.cmd_MMU_UNLOAD_help)

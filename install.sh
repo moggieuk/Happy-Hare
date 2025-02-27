@@ -1716,6 +1716,7 @@ questionaire() {
     OPTIONS=()
     option MMB10                'BTT MMB v1.0 (with CANbus)'
     option MMB11                'BTT MMB v1.1 (with CANbus)'
+    option MMB20                'BTT MMB v2.0 (with CANbus)'
     option FYSETC_BURROWS_ERB_1 'Fysetc Burrows ERB v1'
     option FYSETC_BURROWS_ERB_2 'Fysetc Burrows ERB v2'
     option EASY_BRD_SAMD21      'Standard EASY-BRD (with SAMD21)'
@@ -1732,6 +1733,10 @@ questionaire() {
             ;;
         "$MMB11")
             _hw_brd_type="MMB11"
+            pattern="Klipper_stm32"
+            ;;
+        "$MMB20")
+            _hw_brd_type="MMB20"
             pattern="Klipper_stm32"
             ;;
         "$FYSETC_BURROWS_ERB_1")

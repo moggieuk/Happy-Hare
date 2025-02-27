@@ -326,6 +326,138 @@ PIN[B,MMB10,spooler_fwd_2_pin]="";                         PIN[B,MMB11,spooler_f
 PIN[B,MMB10,spooler_fwd_3_pin]="";                         PIN[B,MMB11,spooler_fwd_3_pin]="";
 # Spare: PB10 (STP10), PB2 (STP11)                         PB10 (STP10), PB2 (STP11)
 
+
+# Type A pins for BTT MMB board v2.0
+# (gear on motor1, selector on motor2, endstop on STP11, optional gate sensor on STP1 if no gear DIAG use)
+#
+PIN[MMB20,gear_uart_pin]="PB5";         # M1 CS Pin
+PIN[MMB20,gear_step_pin]="PD4";         # M1 STEP Pin
+PIN[MMB20,gear_dir_pin]="PD3";          # M1 DIR Pin
+PIN[MMB20,gear_enable_pin]="PD5";       # M1 EN Pin
+PIN[MMB20,gear_diag_pin]="PD8";         # M1 DIAG Pin
+PIN[MMB20,gear_1_uart_pin]="";
+PIN[MMB20,gear_1_step_pin]="";
+PIN[MMB20,gear_1_dir_pin]="";
+PIN[MMB20,gear_1_enable_pin]="";
+PIN[MMB20,gear_1_diag_pin]="";
+PIN[MMB20,gear_2_uart_pin]="";
+PIN[MMB20,gear_2_step_pin]="";
+PIN[MMB20,gear_2_dir_pin]="";
+PIN[MMB20,gear_2_enable_pin]="";
+PIN[MMB20,gear_2_diag_pin]="";
+PIN[MMB20,gear_3_uart_pin]="";
+PIN[MMB20,gear_3_step_pin]="";
+PIN[MMB20,gear_3_dir_pin]="";
+PIN[MMB20,gear_3_enable_pin]="";
+PIN[MMB20,gear_3_diag_pin]="";
+PIN[MMB20,selector_uart_pin]="PB4";     # M2 CS Pin
+PIN[MMB20,selector_step_pin]="PC9";     # M2 STEP Pin
+PIN[MMB20,selector_dir_pin]="PC8";      # M2 DIR Pin
+PIN[MMB20,selector_enable_pin]="PD2";   # M2 EN Pin
+PIN[MMB20,selector_diag_pin]="PB8";     # M2 DIAG Pin
+PIN[MMB20,selector_endstop_pin]="PA15"; # STOP1
+PIN[MMB20,selector_servo_pin]="PA1";    # MOT1
+PIN[MMB20,encoder_pin]="PC2";           # SENSOR
+PIN[MMB20,neopixel_pin]="PC3";          # RGB
+PIN[MMB20,gate_sensor_pin]="";          # STOP3 (if not DIAG)
+PIN[MMB20,pre_gate_0_pin]="PC6";        # STOP5
+PIN[MMB20,pre_gate_1_pin]="PA8";        # STOP6
+PIN[MMB20,pre_gate_2_pin]="PB11";       # STOP7
+PIN[MMB20,pre_gate_3_pin]="PB2";        # STOP8
+PIN[MMB20,pre_gate_4_pin]="PB0";        # STOP9
+PIN[MMB20,pre_gate_5_pin]="PC4";        # STOP10
+PIN[MMB20,pre_gate_6_pin]="PC5";        # STOP11
+PIN[MMB20,pre_gate_7_pin]="PB1";        # STOP12
+PIN[MMB20,pre_gate_8_pin]="";           # STOP13
+PIN[MMB20,pre_gate_9_pin]="";           # STOP14
+PIN[MMB20,pre_gate_10_pin]="";          # STOP15
+PIN[MMB20,pre_gate_11_pin]="";          # STOP16
+PIN[MMB20,gear_sensor_0_pin]="";
+PIN[MMB20,gear_sensor_1_pin]="";
+PIN[MMB20,gear_sensor_2_pin]="";
+PIN[MMB20,gear_sensor_3_pin]="";
+PIN[MMB20,gear_sensor_4_pin]="";
+PIN[MMB20,gear_sensor_5_pin]="";
+PIN[MMB20,gear_sensor_6_pin]="";
+PIN[MMB20,gear_sensor_7_pin]="";
+PIN[MMB20,gear_sensor_8_pin]="";
+PIN[MMB20,gear_sensor_9_pin]="";
+PIN[MMB20,gear_sensor_10_pin]="";
+PIN[MMB20,gear_sensor_11_pin]="";
+#
+# Common Type-B MMU pin utilization for BTT MMB v2.0
+#
+PIN[B,MMB20,gear_uart_pin]="PB5";
+PIN[B,MMB20,gear_step_pin]="PD4";
+PIN[B,MMB20,gear_dir_pin]="PD3";
+PIN[B,MMB20,gear_enable_pin]="PD5";
+PIN[B,MMB20,gear_diag_pin]="PB9";
+PIN[B,MMB20,gear_1_uart_pin]="PB4";
+PIN[B,MMB20,gear_1_step_pin]="PC9";
+PIN[B,MMB20,gear_1_dir_pin]="PC8";
+PIN[B,MMB20,gear_1_enable_pin]="PD2";
+PIN[B,MMB20,gear_1_diag_pin]="PB8";
+PIN[B,MMB20,gear_2_uart_pin]="PB3";
+PIN[B,MMB20,gear_2_step_pin]="PC15";
+PIN[B,MMB20,gear_2_dir_pin]="PC11";
+PIN[B,MMB20,gear_2_enable_pin]="PC10";
+PIN[B,MMB20,gear_2_diag_pin]="PB7";
+PIN[B,MMB20,gear_3_uart_pin]="PD6";
+PIN[B,MMB20,gear_3_step_pin]="PC13";
+PIN[B,MMB20,gear_3_dir_pin]="PC12";
+PIN[B,MMB20,gear_3_enable_pin]="PC14";
+PIN[B,MMB20,gear_3_diag_pin]="PB6";
+PIN[B,MMB20,selector_uart_pin]="";
+PIN[B,MMB20,selector_step_pin]="";
+PIN[B,MMB20,selector_dir_pin]="";
+PIN[B,MMB20,selector_enable_pin]="";
+PIN[B,MMB20,selector_diag_pin]="";
+PIN[B,MMB20,selector_endstop_pin]="";
+PIN[B,MMB20,selector_servo_pin]="";
+PIN[B,MMB20,encoder_pin]="PC2";
+PIN[B,MMB20,neopixel_pin]="PC3";
+PIN[B,MMB20,gate_sensor_pin]="PA15";
+PIN[B,MMB20,pre_gate_0_pin]="PC7";
+PIN[B,MMB20,pre_gate_1_pin]="PA9";
+PIN[B,MMB20,pre_gate_2_pin]="PB12";
+PIN[B,MMB20,pre_gate_3_pin]="PB10";
+PIN[B,MMB20,pre_gate_4_pin]="";
+PIN[B,MMB20,pre_gate_5_pin]="";
+PIN[B,MMB20,pre_gate_6_pin]="";
+PIN[B,MMB20,pre_gate_7_pin]="";
+PIN[B,MMB20,pre_gate_8_pin]="";
+PIN[B,MMB20,pre_gate_9_pin]="";
+PIN[B,MMB20,pre_gate_10_pin]="";
+PIN[B,MMB20,pre_gate_11_pin]="";
+PIN[B,MMB20,gear_sensor_0_pin]="PC6";
+PIN[B,MMB20,gear_sensor_1_pin]="PA8";
+PIN[B,MMB20,gear_sensor_2_pin]="PB11";
+PIN[B,MMB20,gear_sensor_3_pin]="PB2";
+PIN[B,MMB20,gear_sensor_4_pin]="";
+PIN[B,MMB20,gear_sensor_5_pin]="";
+PIN[B,MMB20,gear_sensor_6_pin]="";
+PIN[B,MMB20,gear_sensor_7_pin]="";
+PIN[B,MMB20,gear_sensor_8_pin]="";
+PIN[B,MMB20,gear_sensor_9_pin]="";
+PIN[B,MMB20,gear_sensor_10_pin]="";
+PIN[B,MMB20,gear_sensor_11_pin]="";
+PIN[B,MMB20,spooler_en_0_pin]="";
+PIN[B,MMB20,spooler_en_1_pin]="";
+PIN[B,MMB20,spooler_en_2_pin]="";
+PIN[B,MMB20,spooler_en_3_pin]="";
+PIN[B,MMB20,spooler_rwd_0_pin]="PB1";
+PIN[B,MMB20,spooler_rwd_1_pin]="PC5";
+PIN[B,MMB20,spooler_rwd_2_pin]="PB0";
+PIN[B,MMB20,spooler_rwd_3_pin]="PC4";
+PIN[B,MMB20,spooler_fwd_0_pin]="";
+PIN[B,MMB20,spooler_fwd_1_pin]="";
+PIN[B,MMB20,spooler_fwd_2_pin]="";
+PIN[B,MMB20,spooler_fwd_3_pin]="";
+
+
+# Pins for AFC Lite board
+# Type-B MMU pin utilization
+#
 PIN[B,AFC_LITE_1,gear_uart_pin]="PD5";
 PIN[B,AFC_LITE_1,gear_step_pin]="PD4";
 PIN[B,AFC_LITE_1,gear_dir_pin]="PD3";
