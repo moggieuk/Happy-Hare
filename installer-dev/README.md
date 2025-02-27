@@ -15,13 +15,13 @@ There are two targets:
 
 To run use:
 ```shell 
-docker compose run --build -rm <target> <command>
+docker compose run --build --rm <target> '<command>'
 ```
 
 for example, to run the installer with a debian base:
 
 ```shell
-docker compose run --build --rm debian make install 
+docker compose run --build --rm debian 'make install'
 ```
 
 

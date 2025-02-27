@@ -56,14 +56,16 @@ else
   export CONFIG_KLIPPER_HOME ?= ~/klipper
 endif
 
-
-KLIPPER_HOME:=$(patsubst "%",%,$(CONFIG_KLIPPER_HOME))
-KLIPPER_CONFIG_HOME:=$(patsubst "%",%,$(CONFIG_KLIPPER_CONFIG_HOME))
-MOONRAKER_HOME:=$(patsubst "%",%,$(CONFIG_MOONRAKER_HOME))
-PRINTER_CONFIG_FILE:=$(patsubst "%",%,$(CONFIG_PRINTER_CONFIG_FILE))
-MOONRAKER_CONFIG_FILE:=$(patsubst "%",%,$(CONFIG_MOONRAKER_CONFIG_FILE))
+# replace ~ with $(HOME) and remove quotes
+unwrap=$(subst ~,$(HOME),$(patsubst "%",%,$(1)))
+KLIPPER_HOME=$(call unwrap,$(CONFIG_KLIPPER_HOME))
+KLIPPER_CONFIG_HOME:=$(call unwrap,$(CONFIG_KLIPPER_CONFIG_HOME))
+MOONRAKER_HOME:=$(call unwrap,$(CONFIG_MOONRAKER_HOME))
+PRINTER_CONFIG_FILE:=$(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
+MOONRAKER_CONFIG_FILE:=$(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
 export PYTHONPATH:=$(KLIPPER_HOME)/lib/kconfiglib:$(PYTHONPATH)
+
 BUILD_MODULE:=$(PY) -m installer.build $(V)
 
 hh_klipper_extras_files = $(patsubst extras/%,%,$(wildcard extras/*.py extras/*/*.py))

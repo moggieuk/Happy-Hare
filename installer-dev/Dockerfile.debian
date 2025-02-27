@@ -3,10 +3,10 @@
 FROM python:3.11-bullseye AS build
 
 RUN apt update \
- && apt install -y make bash git sudo \
+ && apt install -y make git sudo \
  && apt clean
 
-RUN useradd -ms /bin/bash klippy && adduser klippy dialout
+RUN useradd -m klippy && adduser klippy dialout
 USER klippy
 
 WORKDIR /home/klippy

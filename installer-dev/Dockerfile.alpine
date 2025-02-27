@@ -5,7 +5,7 @@ FROM python:3.11-alpine AS build
 RUN adduser -D klippy
 
 RUN apk update \
- && apk add make bash git sudo \
+ && apk add make git sudo \
  && apk cache clean
 
 ARG REPO=https://github.com/Klipper3d/klipper
