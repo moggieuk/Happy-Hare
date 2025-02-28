@@ -1,8 +1,8 @@
 SHELL=/usr/bin/env sh
 PY:=python
+MAKEFLAGS += --jobs 16 # Parallel build
 
-
-# Print Colors (exported i``for use in py installer)
+# Print Colors (exported for use in py installer)
 ifneq ($(shell which tput 2>/dev/null),)
   export C_OFF:=$(shell tput -Txterm-256color sgr0)
   export C_DEBUG:=$(shell tput -Txterm-256color setaf 5)
@@ -28,23 +28,22 @@ endif
 export KCONFIG_CONFIG ?= .config
 include $(KCONFIG_CONFIG)
 
-# For quiet builds, override with make Q= for verbose output
-Q?=@
-ifneq ($(Q),@)
-	V?=-v
+Q ?= @ # For quiet builds, override with make Q= for verbose output
+UT ?= * # For unittests, e.g. make UT=test_build.py test
+ifneq ($(strip $(Q)),@)
+	V ?= -v # For verbose output of build.py
 endif
-export SRC ?= $(CURDIR)
 
+SRC ?= $(CURDIR)
 # Use the name of the 'name.config' file as the out_name directory, or 'out' if just '.config' is used
 ifeq ($(basename $(notdir $(KCONFIG_CONFIG))),)
-  export OUT ?= $(CURDIR)/out
+  OUT ?= $(CURDIR)/out
 else
-  export OUT ?= $(CURDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
+  OUT ?= $(CURDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
 endif
 
 export IN=$(OUT)/in
 
-MAKEFLAGS += --jobs 16 # Parallel build
 
 # If CONFIG_KLIPPER_HOME is not yet set by .config, set it to the default value.
 # This is required to make menuconfig work the first time.
@@ -57,12 +56,12 @@ else
 endif
 
 # replace ~ with $(HOME) and remove quotes
-unwrap=$(subst ~,$(HOME),$(patsubst "%",%,$(1)))
-KLIPPER_HOME=$(call unwrap,$(CONFIG_KLIPPER_HOME))
-KLIPPER_CONFIG_HOME:=$(call unwrap,$(CONFIG_KLIPPER_CONFIG_HOME))
-MOONRAKER_HOME:=$(call unwrap,$(CONFIG_MOONRAKER_HOME))
-PRINTER_CONFIG_FILE:=$(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
-MOONRAKER_CONFIG_FILE:=$(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
+unwrap = $(subst ~,$(HOME),$(patsubst "%",%,$(1)))
+KLIPPER_HOME = $(call unwrap,$(CONFIG_KLIPPER_HOME))
+KLIPPER_CONFIG_HOME := $(call unwrap,$(CONFIG_KLIPPER_CONFIG_HOME))
+MOONRAKER_HOME := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
+PRINTER_CONFIG_FILE := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
+MOONRAKER_CONFIG_FILE := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
 export PYTHONPATH:=$(KLIPPER_HOME)/lib/kconfiglib:$(PYTHONPATH)
 
@@ -76,12 +75,14 @@ hh_moonraker_components = $(patsubst components/%,%,$(wildcard components/*.py))
 # use sudo if the klipper home is at a system location
 SUDO:=$(shell [ -d $(KLIPPER_HOME) ] && [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && echo "sudo " || echo "")
 
-hh_configs_to_parse = $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
-	base/mmu.cfg \
-	base/mmu_parameters.cfg \
-	base/mmu_hardware.cfg \
-	base/mmu_macro_vars.cfg \
-	addons/*.cfg)))
+# Look for installed configs that would need be parsed by the build script
+cfg_addons = $(filter-out %_hw.cfg,$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*.cfg))
+cfg_base = $(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
+				base/mmu.cfg \
+				base/mmu_parameters.cfg \
+				base/mmu_hardware.cfg \
+				base/mmu_macro_vars.cfg))
+hh_configs_to_parse = $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(cfg_base) $(cfg_addons))
 
 # Files/targets that need to be build
 build_targets = \
@@ -241,8 +242,7 @@ clean:
 	$(Q)rm -rf $(OUT)
 
 diff=\
-	 git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " \
-	 	--minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \
+	 git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \
         grep -v "diff --git " | \
 		grep -Ev "index [[:xdigit:]]+\.\.[[:xdigit:]]+" || true;
 
@@ -251,14 +251,13 @@ diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(MOONRAKER_CONFIG_FILE)))
 
-UT?=*
 test: 
 	$(Q)$(PY) -m unittest discover $(V) -p '$(UT)'
 
 check_version:
 	$(Q)$(BUILD_MODULE) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)  
 
-$(KCONFIG_CONFIG): $(SRC)/installer/Kconfig $(SRC)/installer/Kconfig.* $(SRC)/installer/**/Kconfig $(SRC)/installer/**/Kconfig.*
+$(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
 # if KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig
 # touch in case .config does not get updated by olddefconfig.py
 ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig) # only if menuconfig is not the target, else it will run twice

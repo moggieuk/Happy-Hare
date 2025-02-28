@@ -236,6 +236,11 @@ def build_mmu_hardware_cfg(builder, cfg):
 
     if cfg.is_enabled("MMU_HAS_SELECTOR"):
         builder.use_config("selector_stepper")
+        if cfg.is_selected("CHOICE_BOARD_TYPE", "BOARD_TYPE_EASY_BRD"):
+            # Share uart_pin to avoid duplicate alias problem
+            builder.set("tmc2209 stepper_mmu_selector", "uart_pin", " mmu:MMU_GEAR_UART")
+        else:
+            builder.remove_option("tmc2209 stepper_mmu_gear", "uart_address")
     else:
         builder.remove_placeholder("cfg_selector_stepper")
 
@@ -265,12 +270,6 @@ def build_mmu_hardware_cfg(builder, cfg):
         builder.use_config("encoder")
     else:
         builder.remove_placeholder("cfg_encoder")
-
-    if cfg.is_selected("CHOICE_BOARD_TYPE", "BOARD_TYPE_EASY_BRD"):
-        # Share uart_pin to avoid duplicate alias problem
-        builder.set("tmc2209 stepper_mmu_selector", "uart_pin", " mmu:MMU_GEAR_UART")
-    else:
-        builder.remove_option("tmc2209 stepper_mmu_gear", "uart_address")
 
     if cfg.is_enabled("ENABLE_LEDS"):
         builder.use_config("leds")

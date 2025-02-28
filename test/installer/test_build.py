@@ -23,7 +23,7 @@ class TestBuild(unittest.TestCase):
 
     def assertExpected(self, path, result):
         with open(self.base_path + "/" + path + "/expected.cfg", "r") as e:
-            self.assertEqual(e.read(), result)
+            self.assertMultiLineEqual(e.read(), result)
 
     def cfg_input_and_builder(self, path):
         return (

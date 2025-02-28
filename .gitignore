@@ -3,6 +3,5 @@ out/
 out_*/
 *.config
 *.config.*
-*.config.old
 __pycache__/
 *.pyc
