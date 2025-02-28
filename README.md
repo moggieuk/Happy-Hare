@@ -92,7 +92,7 @@ Some users have inquired about making donations to support this project (and to 
 
 Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control!
 
-<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="600" alt="KlipperScreen-Happy Hare edition"></p>
+<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="60%" alt="KlipperScreen-Happy Hare edition"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/mainsail_promo.png" width="30%" alt="Mailsail/Fluidd support"></p>
 
 <br>
  
@@ -118,18 +118,17 @@ MMU's are complexd! Fortunately Happy Hare has elaborate documentation logically
 
 **Other Resources:**
 <div align="left">
+<a href="https://www.youtube.com/watch?v=S4SVm6W368A"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube0.png" width="30%"></a>
+Great (english) overview including Mainsail UI support
 <a href="https://www.youtube.com/watch?v=uaPLuWJBdQU"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube1.png" width="30%"></a>
-German instructional video created by Crydteam
+Instructional video (german) created by Crydteam
 <!--
     <img src="https://i9.ytimg.com/vi_webp/uaPLuWJBdQU/maxresdefault.webp?v=6522d1a6&sqp=CKycn6kG&rs=AOn4CLBCiHQsjGJ0c8ywvkxy9uWEk_yUXw" 
          alt="Everything Is AWESOME" 
          style="width:50%;">
 -->
-
-<p><br>
-
 <a href="https://www.youtube.com/watch?v=FCl5NfQnulg"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube2.png" width="30%"></a>
-English Happy Hare introduction by Silverback
+Happy Hare introduction (introduction) by Silverback
 </div>
 
 </td>
