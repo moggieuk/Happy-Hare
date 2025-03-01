@@ -15,18 +15,8 @@
 #
 from __future__ import annotations
 import json
-import logging
-import os
-import sys
-import re
-import time
-import asyncio
-import runpy
-import argparse
-import shutil
-import traceback
-import tempfile
-import filecmp
+import logging, os, sys, re, time, asyncio
+import runpy, argparse, shutil, traceback, tempfile, filecmp
 from typing import (
     TYPE_CHECKING,
     List,
@@ -49,13 +39,12 @@ if TYPE_CHECKING:
     from .history import History
     from tornado.websocket import WebSocketClientConnection
 
-MMU_NAME_FIELD = 'printer_name'
-MMU_GATE_FIELD = 'mmu_gate_map'
-MIN_SM_VER = (0, 18, 1)
+MMU_NAME_FIELD   = 'printer_name'
+MMU_GATE_FIELD   = 'mmu_gate_map'
+MIN_SM_VER       = (0, 18, 1)
 
-DB_NAMESPACE = "moonraker"
+DB_NAMESPACE     = "moonraker"
 ACTIVE_SPOOL_KEY = "spoolman.spool_id"
-
 
 class MmuServer:
     def __init__(self, config: ConfigHelper):
@@ -63,51 +52,36 @@ class MmuServer:
         self.server = config.get_server()
         self.printer_info = self.server.get_host_info()
         self.spoolman = None
-        # Avoid exception if spoolman not configured
-        if config.has_section("spoolman"):
-            self.spoolman: SpoolManager = self.server.load_component(
-                config, "spoolman", None)
-        self.spoolman: SpoolManager = self.server.lookup_component(
-            "spoolman", None)
+        if config.has_section("spoolman"): # Avoid exception if spoolman not configured
+            self.spoolman: SpoolManager = self.server.load_component(config, "spoolman", None)
+        self.spoolman: SpoolManager = self.server.lookup_component("spoolman", None)
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
-        self.http_client: HttpClient = self.server.lookup_component(
-            "http_client")
+        self.http_client: HttpClient = self.server.lookup_component("http_client")
 
         # Full cache of spool_ids and location + key attributes (printer, gate, attr_dict))
         # Example: {2: ('BigRed', 0, {"material": "pla", "color": "ff56e0"}), 3: ('BigRed', 3, {"material": "abs"}), ...
         self.spool_location = {}
 
-        # Set during initialization to the size of the MMU or 1 if standalone
-        self.nb_gates = None
-        self.cache_lock = asyncio.Lock()  # Lock to serialize a async calls for Happy Hare
+        self.nb_gates = None             # Set during initialization to the size of the MMU or 1 if standalone
+        self.cache_lock = asyncio.Lock() # Lock to serialize a async calls for Happy Hare
 
         # Spoolman filament info retrieval functionality and update reporting
         if self.spoolman:
-            self.server.register_remote_method(
-                "spoolman_refresh", self.refresh_cache)
-            self.server.register_remote_method(
-                "spoolman_get_filaments", self.get_filaments)  # "get" mode
-            self.server.register_remote_method(
-                "spoolman_push_gate_map", self.push_gate_map)  # "push" mode
-            self.server.register_remote_method(
-                "spoolman_pull_gate_map", self.pull_gate_map)  # "pull" mode
-            self.server.register_remote_method(
-                "spoolman_clear_spools_for_printer", self.clear_spools_for_printer)
-            self.server.register_remote_method(
-                "spoolman_set_spool_gate", self.set_spool_gate)
-            self.server.register_remote_method(
-                "spoolman_unset_spool_gate", self.unset_spool_gate)
-            self.server.register_remote_method(
-                "spoolman_get_spool_info", self.display_spool_info)
-            self.server.register_remote_method(
-                "spoolman_display_spool_location", self.display_spool_location)
+            self.server.register_remote_method("spoolman_refresh", self.refresh_cache)
+            self.server.register_remote_method("spoolman_get_filaments", self.get_filaments) # "get" mode
+            self.server.register_remote_method("spoolman_push_gate_map", self.push_gate_map) # "push" mode
+            self.server.register_remote_method("spoolman_pull_gate_map", self.pull_gate_map) # "pull" mode
+            self.server.register_remote_method("spoolman_clear_spools_for_printer", self.clear_spools_for_printer)
+            self.server.register_remote_method("spoolman_set_spool_gate", self.set_spool_gate)
+            self.server.register_remote_method("spoolman_unset_spool_gate", self.unset_spool_gate)
+            self.server.register_remote_method("spoolman_get_spool_info", self.display_spool_info)
+            self.server.register_remote_method("spoolman_display_spool_location", self.display_spool_location)
 
         # Replace file_manager/metadata with this file
         self.setup_placeholder_processor(config)
 
         # Options
-        self.update_location = self.config.getboolean(
-            "update_spoolman_location", True)
+        self.update_location = self.config.getboolean("update_spoolman_location", True)
 
     async def _get_spoolman_version(self) -> tuple[int, int, int] | None:
         response = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/info')
@@ -116,8 +90,7 @@ class MmuServer:
             return False
         elif response.has_error():
             err_msg = self.spoolman._get_response_error(response)
-            logging.error(
-                f"Attempt to get info from spoolman failed: {err_msg}")
+            logging.error(f"Attempt to get info from spoolman failed: {err_msg}")
             return False
         else:
             logging.info("info field in spoolman retrieved")
@@ -125,15 +98,13 @@ class MmuServer:
 
     async def component_init(self) -> None:
         if self.spoolman is None:
-            logging.warning(
-                "Spoolman not available. Happy Hare remote methods not available")
+            logging.warning("Spoolman not available. Happy Hare remote methods not available")
             return
 
         # Get current printer hostname
         self.printer_hostname = self.printer_info["hostname"]
         self.spoolman_has_extras = False
-        # Spoolman may start up after us so retry a few times
-        asyncio.create_task(self._init_spoolman(retry=3))
+        asyncio.create_task(self._init_spoolman(retry=3)) # Spoolman may start up after us so retry a few times
 
     async def _init_spoolman(self, retry=1) -> bool:
         '''
@@ -145,8 +116,7 @@ class MmuServer:
                 if self.spoolman_version:
                     logging.info("Contacted Spoolman")
                     break
-                logging.warning(
-                    f"Spoolman not available. {'Retrying in 2 seconds...' if retry > 1 else ''}")
+                logging.warning(f"Spoolman not available. {'Retrying in 2 seconds...' if retry > 1 else ''}")
                 await asyncio.sleep(2)
 
             extras = False
@@ -165,11 +135,9 @@ class MmuServer:
                 self.spoolman_has_extras = extras
 
             elif self.spoolman_version:
-                logging.error(
-                    f"Could not initialize Spoolman db for Happy Hare. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})")
+                logging.error(f"Could not initialize Spoolman db for Happy Hare. Spoolman db version too old (found {self.spoolman_version} < {MIN_SM_VER})")
             else:
-                logging.error(
-                    "Could not connect to Spoolman db. Perhaps it is not initialized yet? Will try again on next request")
+                logging.error("Could not connect to Spoolman db. Perhaps it is not initialized yet? Will try again on next request")
                 return False
         return True
 
@@ -195,12 +163,12 @@ class MmuServer:
         if not silent:
             if self._mmu_backend_enabled():
                 error_flag = "ERROR=1" if error else ""
-                msg = msg.replace("\n", "\\n")  # Get through klipper filtering
+                msg = msg.replace("\n", "\\n") # Get through klipper filtering
                 await self.klippy_apis.run_gcode(f"MMU_LOG MSG='{msg}' {error_flag}")
             else:
                 for msg in msg.split("\n"):
                     await self.klippy_apis.run_gcode(f"M118 {msg}")
-                if error:
+                if error :
                     await self.klippy_apis.pause_print()
 
     async def _init_mmu_backend(self):
@@ -213,8 +181,7 @@ class MmuServer:
         self.mmu_backend_present = 'mmu' in await self.klippy_apis.get_object_list()
         if self.mmu_backend_present:
             self.mmu_backend_config = await self.klippy_apis.query_objects({"mmu": None})
-            self.mmu_enabled = self.mmu_backend_config.get(
-                'mmu', {}).get('enabled', False)
+            self.mmu_enabled = self.mmu_backend_config.get('mmu', {}).get('enabled', False)
         else:
             self.mmu_enabled = False
         logging.info(f"MMU backend present: {self.mmu_backend_present}")
@@ -236,11 +203,9 @@ class MmuServer:
         if not hasattr(self, 'mmu_backend_present'):
             await self._init_mmu_backend()
             if self._mmu_backend_enabled():
-                self.nb_gates = self.mmu_backend_config.get(
-                    'mmu', {}).get('num_gates', 0)
+                self.nb_gates = self.mmu_backend_config.get('mmu', {}).get('num_gates', 0)
             else:
-                # for standalone usage (no mmu backend considering standard printer setup)
-                self.nb_gates = 1
+                self.nb_gates = 1 # for standalone usage (no mmu backend considering standard printer setup)
             logging.info(f"MMU num_gates: {self.nb_gates}")
         return True
 
@@ -250,8 +215,7 @@ class MmuServer:
         '''
         response = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/field/{entity_type}')
         if response.status_code == 404:
-            logging.info(
-                f"'{self.spoolman.spoolman_url}/v1/field/{entity_type}' not found")
+            logging.info(f"'{self.spoolman.spoolman_url}/v1/field/{entity_type}' not found")
             return False
         elif response.has_error():
             err_msg = self.spoolman._get_response_error(response)
@@ -265,22 +229,19 @@ class MmuServer:
         '''
         Helper to add a new field to the extra field of the Spoolman db
         '''
-        # default_value = json.dumps(default_value) if field_type == 'text' else default_value
+        #default_value = json.dumps(default_value) if field_type == 'text' else default_value
         response = await self.http_client.post(
             url=f'{self.spoolman.spoolman_url}/v1/field/{entity_type}/{field_key}',
-            body={"name": field_name, "field_type": field_type,
-                  "default_value": json.dumps(default_value)}
+            body={"name" : field_name, "field_type" : field_type, "default_value" : json.dumps(default_value)}
         )
         if response.status_code == 404:
-            logging.info(
-                f"'{self.spoolman.spoolman_url}/v1/field/spool/{field_key}' not found")
+            logging.info(f"'{self.spoolman.spoolman_url}/v1/field/spool/{field_key}' not found")
             return False
         elif response.has_error():
             err_msg = self.spoolman._get_response_error(response)
             logging.error(f"Attempt add field {field_name} failed: {err_msg}")
             return False
-        logging.info(
-            f"Field {field_name} added to Spoolman db for entity type {entity_type}")
+        logging.info(f"Field {field_name} added to Spoolman db for entity type {entity_type}")
         logging.info("  -fields: %s", response.json())
         return True
 
@@ -293,8 +254,7 @@ class MmuServer:
             url=f'{self.spoolman.spoolman_url}/v1/spool/{spool_id}',
             body=None)
         if response.status_code == 404:
-            logging.error(
-                f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+            logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
             return None
         elif response.has_error():
             err_msg = self.spoolman._get_response_error(response)
@@ -308,8 +268,7 @@ class MmuServer:
         filament = spool_info["filament"]
         name = filament.get('name', '')
         material = filament.get('material', '')
-        # First remove # character if present then strip alpha channel if it exists
-        color_hex = filament.get('color_hex', '').strip('#')[:6].lower()
+        color_hex = filament.get('color_hex', '').strip('#')[:6].lower() # First remove # character if present then strip alpha channel if it exists
         temp = filament.get('settings_extruder_temp', '')
         return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp}
 
@@ -327,12 +286,10 @@ class MmuServer:
             reponse = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/spool')
             for spool_info in reponse.json():
                 spool_id = spool_info['id']
-                printer_name = json.loads(spool_info['extra'].get(
-                    MMU_NAME_FIELD, "\"\"")).strip('"')
+                printer_name = json.loads(spool_info['extra'].get(MMU_NAME_FIELD, "\"\"")).strip('"')
                 mmu_gate = int(spool_info['extra'].get(MMU_GATE_FIELD, -1))
                 filament_attr = self._get_filament_attr(spool_info)
-                self.spool_location[spool_id] = (
-                    printer_name, mmu_gate, filament_attr)
+                self.spool_location[spool_id] = (printer_name, mmu_gate, filament_attr)
 
                 if printer_name and mmu_gate >= 0:
                     if printer_name not in assignments:
@@ -364,15 +321,13 @@ class MmuServer:
             await self._log_n_send(f"Warning - Inconsistencies found in Spoolman db:{errors}", silent=silent)
 
         if fix:
-            tasks = {sid: self._unset_spool_gate(
-                sid, silent=silent) for sid in sids_to_fix}
+            tasks = {sid: self._unset_spool_gate(sid, silent=silent) for sid in sids_to_fix}
             results = await asyncio.gather(*tasks.values())
 
             # Log results and update cache
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(
-                        sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
                     self.spool_location[sid] = ('', -1, filament_attr)
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
         return True
@@ -380,9 +335,9 @@ class MmuServer:
     # Function to find the first spool_id with a matching 'printer/gate', just 'gate' or just 'printer'
     def _find_first_spool_id(self, target_printer, target_gate):
         return next((spoolid
-                     for spoolid, (printer, gate, _) in self.spool_location.items()
-                     if (target_printer is None or printer == target_printer) and gate == target_gate
-                     ), -1)
+                for spoolid, (printer, gate, _) in self.spool_location.items()
+                if (target_printer is None or printer == target_printer) and gate == target_gate
+            ), -1)
 
     # Function to find all the spool_ids with a matching 'printer/gate', just 'gate' or just 'printer'
     def _find_all_spool_ids(self, target_printer, target_gate):
@@ -393,15 +348,12 @@ class MmuServer:
         ]
 
     async def _set_spool_gate(self, spool_id, printer, gate, silent=False) -> bool:
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
 
         # Use the PATCH method on the spoolman api
         if not silent:
-            logging.info(
-                f"Setting spool {spool_id} for printer {printer} @ gate {gate}")
-        data = {'extra': {MMU_NAME_FIELD: json.dumps(
-            f"{printer}"), MMU_GATE_FIELD: json.dumps(gate)}}
+            logging.info(f"Setting spool {spool_id} for printer {printer} @ gate {gate}")
+        data = {'extra': {MMU_NAME_FIELD: json.dumps(f"{printer}"), MMU_GATE_FIELD: json.dumps(gate)}}
         if self.update_location:
             data['location'] = f"{printer} @ MMU Gate:{gate}"
         response = await self.http_client.request(
@@ -410,8 +362,7 @@ class MmuServer:
             body=json.dumps(data)
         )
         if response.status_code == 404:
-            logging.error(
-                f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+            logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
             await self._log_n_send(f"SpoolId {spool_id} not found", error=True, silent=False)
             return False
         elif response.has_error():
@@ -422,14 +373,12 @@ class MmuServer:
         return True
 
     async def _unset_spool_gate(self, spool_id, silent=False) -> bool:
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
 
         # Use the PATCH method on the spoolman api
         if not silent:
             logging.info(f"Unsetting gate map on spool id {spool_id}")
-        data = {'extra': {MMU_NAME_FIELD: json.dumps(
-            ""), MMU_GATE_FIELD: json.dumps(-1)}}
+        data = {'extra': {MMU_NAME_FIELD: json.dumps(""), MMU_GATE_FIELD: json.dumps(-1)}}
         if self.update_location:
             data['location'] = ""
         response = await self.http_client.request(
@@ -438,8 +387,7 @@ class MmuServer:
             body=json.dumps(data)
         )
         if response.status_code == 404:
-            logging.error(
-                f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
+            logging.error(f"'{self.spoolman.spoolman_url}/v1/spool/{spool_id}' not found")
             await self._log_n_send(f"SpoolId {spool_id} not found", error=True, silent=False)
             return False
         elif response.has_error():
@@ -477,8 +425,7 @@ class MmuServer:
         '''
         Rebuilds the local cache of essential spool information
         '''
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
         async with self.cache_lock:
             await self._initialize_mmu()
             return await self._build_spool_location_cache(fix=fix, silent=silent)
@@ -497,8 +444,7 @@ class MmuServer:
         This attempts to reduce the number of necessary tasks and then run them in parallel
         Then updates Happy Hare with filament attributes
         '''
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
         async with self.cache_lock:
             await self._initialize_mmu()
 
@@ -509,8 +455,7 @@ class MmuServer:
             # Make sure we cleanup all the gate's old spool_id association
             updates = {}
             for gate, spool_id in gate_ids:
-                old_sids = self._find_all_spool_ids(
-                    self.printer_hostname, gate)
+                old_sids = self._find_all_spool_ids(self.printer_hostname, gate)
                 for old_sid in old_sids:
                     updates[old_sid] = -1
 
@@ -532,30 +477,25 @@ class MmuServer:
                     self._unset_spool_gate(sid, silent=silent),
                     None
                 ) if updates[sid] < 0 else (
-                    self._set_spool_gate(
-                        sid, self.printer_hostname, updates[sid], silent=silent),
+                    self._set_spool_gate(sid, self.printer_hostname, updates[sid], silent=silent),
                     updates[sid]
                 )
                 for sid in updates.keys()
             }
-            results = await asyncio.gather(*[task for task, _ in tasks.values()])
+            results = await asyncio.gather(*[task for task,_ in tasks.values()])
 
             # Log results and update cache
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(
-                        sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
                     gate = tasks[sid][1]
-                    if updates[sid] < 0:  # 'unset' case
+                    if updates[sid] < 0: # 'unset' case
                         self.spool_location[sid] = ('', -1, filament_attr)
-                        self.server.send_event("spoolman:unset_spool_gate", {
-                                               "spool_id": sid, "printer": old_printer, "gate": old_gate})
+                        self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                         await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
-                    else:  # 'set' case
-                        self.spool_location[sid] = (
-                            self.printer_hostname, gate, filament_attr)
-                        self.server.send_event("spoolman:set_spool_gate", {
-                                               "spool_id": sid, "printer": self.printer_hostname, "gate": gate})
+                    else: # 'set' case
+                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
+                        self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
                         await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
             # Send update of filament attributes back to Happy Hare
@@ -566,21 +506,18 @@ class MmuServer:
         Get all spools assigned to the current printer from Spoolman db and map them to gates
         Pass back to Happy Hare
         '''
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
         async with self.cache_lock:
             await self._initialize_mmu()
 
-            gate_ids = [(gate, self._find_first_spool_id(
-                self.printer_hostname, gate)) for gate in range(self.nb_gates)]
+            gate_ids = [(gate, self._find_first_spool_id(self.printer_hostname, gate)) for gate in range(self.nb_gates)]
             return await self._send_gate_map_update(gate_ids, replace=True, silent=silent)
 
     async def clear_spools_for_printer(self, printer=None, sync=False, silent=False) -> bool:
         '''
         Clears all gates for the printer
         '''
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
         async with self.cache_lock:
             await self._initialize_mmu()
 
@@ -590,28 +527,23 @@ class MmuServer:
 
             # Create minimal set of async tasks to update Spoolman db and run them in parallel
             old_sids = self._find_all_spool_ids(printer_name, None)
-            tasks = {sid: self._unset_spool_gate(
-                sid, silent=silent) for sid in old_sids}
+            tasks = {sid: self._unset_spool_gate(sid, silent=silent) for sid in old_sids}
             results = await asyncio.gather(*tasks.values())
 
             # Log results and update cache
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(
-                        sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
                     if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                         updated_gate_ids[old_gate] = -1
                     self.spool_location[sid] = ('', -1, filament_attr)
-                    self.server.send_event("spoolman:unset_spool_gate", {
-                                           "spool_id": sid, "printer": old_printer, "gate": old_gate})
+                    self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
 
-            self.server.send_event("spoolman:clear_spool_gates", {
-                                   "printer": printer_name})
+            self.server.send_event("spoolman:clear_spool_gates", {"printer": printer_name})
             if sync and updated_gate_ids:
-                gate_ids = [(gate, spool_id)
-                            for gate, spool_id in updated_gate_ids.items()]
+                gate_ids = [(gate, spool_id) for gate, spool_id in updated_gate_ids.items()]
                 return await self._send_gate_map_update(gate_ids, replace=True, silent=silent)
             return True
 
@@ -626,8 +558,7 @@ class MmuServer:
             @return: True if successful, False otherwise
         Removes the printer + gate allocation in Spoolman db for gate (if supplied)
         '''
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
         async with self.cache_lock:
             await self._initialize_mmu()
 
@@ -645,8 +576,7 @@ class MmuServer:
                 gate = 0
 
             if not silent:
-                logging.info(
-                    f"Attempting to set gate {gate} for printer {self.printer_hostname}")
+                logging.info(f"Attempting to set gate {gate} for printer {self.printer_hostname}")
 
             # Create minimal set of async tasks to update Spoolman db and run them in parallel
             old_sids = self._find_all_spool_ids(self.printer_hostname, gate)
@@ -654,24 +584,21 @@ class MmuServer:
                 sid: (self._unset_spool_gate(sid, silent=silent), None)
                 for sid in old_sids if sid != spool_id
             }
-            tasks[spool_id] = (self._set_spool_gate(
-                spool_id, self.printer_hostname, gate, silent=silent), gate)
-            results = await asyncio.gather(*[task for task, _ in tasks.values()])
+            tasks[spool_id] = (self._set_spool_gate(spool_id, self.printer_hostname, gate, silent=silent), gate)
+            results = await asyncio.gather(*[task for task,_ in tasks.values()])
 
             # Log results and update cache
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(
-                        sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
                     gate = tasks[sid][1]
                     if sid in old_sids and sid != spool_id:
                         # 'unset' case
                         if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                             updated_gate_ids[old_gate] = -1
                         self.spool_location[sid] = ('', -1, filament_attr)
-                        self.server.send_event("spoolman:unset_spool_gate", {
-                                               "spool_id": sid, "printer": old_printer, "gate": old_gate})
+                        self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                         await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else:
                         # 'set' case
@@ -679,16 +606,13 @@ class MmuServer:
                             if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                                 updated_gate_ids[old_gate] = -1
                             updated_gate_ids[gate] = sid
-                        self.spool_location[sid] = (
-                            self.printer_hostname, gate, filament_attr)
-                        self.server.send_event("spoolman:set_spool_gate", {
-                                               "spool_id": sid, "printer": self.printer_hostname, "gate": gate})
+                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
+                        self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
                         await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
             # Sync with Happy Hare if required
             if sync and updated_gate_ids:
-                gate_ids = [(gate, spool_id)
-                            for gate, spool_id in updated_gate_ids.items()]
+                gate_ids = [(gate, spool_id) for gate, spool_id in updated_gate_ids.items()]
                 return await self._send_gate_map_update(gate_ids, replace=True, silent=silent)
             return True
 
@@ -696,8 +620,7 @@ class MmuServer:
         '''
         Removes the printer + gate allocation in Spoolman db for gate or spool_id (if supplied)
         '''
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
         async with self.cache_lock:
             await self._initialize_mmu()
 
@@ -714,29 +637,24 @@ class MmuServer:
                     return False
 
             # Create minimal set of async tasks to update Spoolman db and run them in parallel
-            sids = self._find_all_spool_ids(
-                self.printer_hostname, gate) if gate is not None else [spool_id]
-            tasks = {sid: self._unset_spool_gate(
-                sid, silent=silent) for sid in sids}
+            sids = self._find_all_spool_ids(self.printer_hostname, gate) if gate is not None else [spool_id]
+            tasks = {sid: self._unset_spool_gate(sid, silent=silent) for sid in sids}
             results = await asyncio.gather(*tasks.values())
 
             # Log results and update cache
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(
-                        sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
                     if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                         updated_gate_ids[old_gate] = -1
                     self.spool_location[sid] = ('', -1, filament_attr)
-                    self.server.send_event("spoolman:unset_spool_gate", {
-                                           "spool_id": sid, "old_printer": self.printer_hostname, "old_gate": gate})
+                    self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "old_printer": self.printer_hostname, "old_gate": gate})
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
 
             # Sync with Happy Hare if required
             if sync and updated_gate_ids:
-                gate_ids = [(gate, spool_id)
-                            for gate, spool_id in updated_gate_ids.items()]
+                gate_ids = [(gate, spool_id) for gate, spool_id in updated_gate_ids.items()]
                 return await self._send_gate_map_update(gate_ids, replace=True, silent=silent)
             return True
 
@@ -774,8 +692,7 @@ class MmuServer:
             msg += f"  - Remaining: {f_remaining_weight}\n"
 
             # Check if spool_id is assigned
-            spool = next((gate for sid, (printer, gate, _) in self.spool_location.items(
-            ) if spool_id == sid and self.printer_hostname == printer), None)
+            spool = next((gate for sid, (printer, gate, _) in self.spool_location.items() if spool_id == sid and self.printer_hostname == printer), None)
             if spool is not None:
                 msg += f"  - Gate: {spool}"
             else:
@@ -788,24 +705,20 @@ class MmuServer:
         '''
         Builds a sorted table of gate to spool association for the specified printer and sends to klipper console
         '''
-        if not await self._check_init_spoolman():
-            return
+        if not await self._check_init_spoolman(): return
         async with self.cache_lock:
             await self._initialize_mmu()
             printer_name = printer or self.printer_hostname
-            filtered = sorted(((spool_id, gate) for spool_id, (printer, gate, _) in self.spool_location.items(
-            ) if printer == printer_name), key=lambda x: x[1])
+            filtered = sorted(((spool_id, gate) for spool_id, (printer, gate, _) in self.spool_location.items() if printer == printer_name), key=lambda x: x[1])
             if filtered:
                 msg = f"Spoolman gate assignment for printer: {printer_name}\n"
                 msg += "Gate | SpoolId\n"
                 msg += "-----+--------\n"
                 if self.nb_gates:
                     for mmu_gate in range(self.nb_gates):
-                        sids = [spool_id for (
-                            spool_id, gate) in filtered if gate == mmu_gate]
+                        sids = [spool_id for (spool_id, gate) in filtered if gate == mmu_gate]
                         sids_str = ",".join(map(str, sids))
-                        warning = " Error: Can only have a single spool assigned" if len(
-                            sids) > 1 else ""
+                        warning = " Error: Can only have a single spool assigned" if len(sids) > 1 else ""
                         msg += f"{mmu_gate:<5}| {sids_str}{warning}\n"
                 else:
                     # If not initialize_mmu() we will get here
@@ -816,27 +729,25 @@ class MmuServer:
                 msg = f"No gates assigned for printer: {printer_name}"
             await self._log_n_send(msg)
 
-    # Switch out the metadata processor with this module which handles placeholders
 
+
+    # Switch out the metadata processor with this module which handles placeholders
     def setup_placeholder_processor(self, config):
-        args = " -m" if config.getboolean(
-            "enable_file_preprocessor", True) else ""
-        args += " -n" if config.getboolean(
-            "enable_toolchange_next_pos", True) else ""
+        args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
+        args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
         from .file_manager import file_manager
         file_manager.METADATA_SCRIPT = os.path.abspath(__file__) + args
 
-
 def load_component(config):
     return MmuServer(config)
+
 
 
 ##################################################################################
 #
 # Beyond this point this module acts like an extended file_manager/metadata module
 #
-AUTHORZIED_SLICERS = ['PrusaSlicer',
-                      'SuperSlicer', 'OrcaSlicer', 'BambuStudio']
+AUTHORZIED_SLICERS = ['PrusaSlicer', 'SuperSlicer', 'OrcaSlicer', 'BambuStudio']
 
 HAPPY_HARE_FINGERPRINT = "; processed by HappyHare"
 MMU_REGEX = r"^" + HAPPY_HARE_FINGERPRINT
@@ -851,35 +762,30 @@ METADATA_END_PURGING = "WIPE_TOWER_END"
 
 # PS/SS uses "extruder_colour", Orca uses "filament_colour" but extruder_colour can exist with empty or single color
 COLORS_REGEX = {
-    # if extruder colour is not set, check filament colour
-    'PrusaSlicer': r"^;\s*(?:extruder|filament)_colour\s*=\s*(#.*;*.*)$",
-    'SuperSlicer': r"^;\s*extruder_colour\s*=\s*(#.*;*.*)$",
-    'OrcaSlicer': r"^;\s*filament_colour\s*=\s*(#.*;*.*)$",
-    'BambuStudio': r"^;\s*filament_colour\s*=\s*(#.*;*.*)$",
+    'PrusaSlicer' : r"^;\s*(?:extruder|filament)_colour\s*=\s*(#.*;*.*)$", #if extruder colour is not set, check filament colour
+    'SuperSlicer' : r"^;\s*extruder_colour\s*=\s*(#.*;*.*)$",
+    'OrcaSlicer'  : r"^;\s*filament_colour\s*=\s*(#.*;*.*)$",
+    'BambuStudio' : r"^;\s*filament_colour\s*=\s*(#.*;*.*)$",
 }
 METADATA_COLORS = "!colors!"
 
-# Orca Slicer/Bambu Studio has the 'nozzle_' prefix, others might not
-TEMPS_REGEX = r"^;\s*(nozzle_)?temperature\s*=\s*(.*)$"
+TEMPS_REGEX = r"^;\s*(nozzle_)?temperature\s*=\s*(.*)$" # Orca Slicer/Bambu Studio has the 'nozzle_' prefix, others might not
 METADATA_TEMPS = "!temperatures!"
 
 MATERIALS_REGEX = r"^;\s*filament_type\s*=\s*(.*)$"
 METADATA_MATERIALS = "!materials!"
 
-# flush.. in Orca/Bambu, wiping... in PS
-PURGE_VOLUMES_REGEX = r"^;\s*(flush_volumes_matrix|wiping_volumes_matrix)\s*=\s*(.*)$"
+PURGE_VOLUMES_REGEX = r"^;\s*(flush_volumes_matrix|wiping_volumes_matrix)\s*=\s*(.*)$" # flush.. in Orca/Bambu, wiping... in PS
 METADATA_PURGE_VOLUMES = "!purge_volumes!"
 
-# flush multiplier in Orca/Bambu. Used to multiply the values in the purge volumes to match the slicer UI settings
-FLUSH_MULTIPLIER_REGEX = r"^;\s*flush_multiplier\s*=\s*(.*)$"
+FLUSH_MULTIPLIER_REGEX = r"^;\s*flush_multiplier\s*=\s*(.*)$" #flush multiplier in Orca/Bambu. Used to multiply the values in the purge volumes to match the slicer UI settings
 
 FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
 # Detection for next pos processing
-T_PATTERN = r'^T(\d+)\s*(?:;.*)?$'
+T_PATTERN  = r'^T(\d+)\s*(?:;.*)?$'
 G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
-
 
 def gcode_processed_already(file_path):
     """Expects first line of gcode to be the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
@@ -889,7 +795,6 @@ def gcode_processed_already(file_path):
     with open(file_path, 'r') as in_file:
         line = in_file.readline()
         return mmu_regex.match(line)
-
 
 def parse_gcode_file(file_path):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
@@ -904,7 +809,7 @@ def parse_gcode_file(file_path):
     materials = []
     purge_volumes = []
     filament_names = []
-    flush_multiplier = 1.0  # Initialize flush_multiplier to 1.0
+    flush_multiplier = 1.0 # Initialize flush_multiplier to 1.0
 
     with open(file_path, 'r') as in_file:
         for line in in_file:
@@ -915,8 +820,7 @@ def parse_gcode_file(file_path):
                     slicer = match.group(1) or match.group(2)
     if slicer in AUTHORZIED_SLICERS:
         if isinstance(TOOL_DISCOVERY_REGEX, dict):
-            tools_regex = re.compile(
-                TOOL_DISCOVERY_REGEX[slicer], re.IGNORECASE)
+            tools_regex = re.compile(TOOL_DISCOVERY_REGEX[slicer], re.IGNORECASE)
         else:
             tools_regex = re.compile(TOOL_DISCOVERY_REGEX, re.IGNORECASE)
         if isinstance(COLORS_REGEX, dict):
@@ -928,29 +832,22 @@ def parse_gcode_file(file_path):
         else:
             temps_regex = re.compile(TEMPS_REGEX, re.IGNORECASE)
         if isinstance(MATERIALS_REGEX, dict):
-            materials_regex = re.compile(
-                MATERIALS_REGEX[slicer], re.IGNORECASE)
+            materials_regex = re.compile(MATERIALS_REGEX[slicer], re.IGNORECASE)
         else:
             materials_regex = re.compile(MATERIALS_REGEX, re.IGNORECASE)
         if isinstance(PURGE_VOLUMES_REGEX, dict):
-            purge_volumes_regex = re.compile(
-                PURGE_VOLUMES_REGEX[slicer], re.IGNORECASE)
+            purge_volumes_regex = re.compile(PURGE_VOLUMES_REGEX[slicer], re.IGNORECASE)
         else:
-            purge_volumes_regex = re.compile(
-                PURGE_VOLUMES_REGEX, re.IGNORECASE)
+            purge_volumes_regex = re.compile(PURGE_VOLUMES_REGEX, re.IGNORECASE)
         if isinstance(FILAMENT_NAMES_REGEX, dict):
-            filament_names_regex = re.compile(
-                FILAMENT_NAMES_REGEX[slicer], re.IGNORECASE)
+            filament_names_regex = re.compile(FILAMENT_NAMES_REGEX[slicer], re.IGNORECASE)
         else:
-            filament_names_regex = re.compile(
-                FILAMENT_NAMES_REGEX, re.IGNORECASE)
+            filament_names_regex = re.compile(FILAMENT_NAMES_REGEX, re.IGNORECASE)
 
         if isinstance(FLUSH_MULTIPLIER_REGEX, dict):
-            flush_multiplier_regex = re.compile(
-                FLUSH_MULTIPLIER_REGEX[slicer], re.IGNORECASE)
+            flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX[slicer], re.IGNORECASE)
         else:
-            flush_multiplier_regex = re.compile(
-                FLUSH_MULTIPLIER_REGEX, re.IGNORECASE)
+            flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX, re.IGNORECASE)
 
         with open(file_path, 'r') as in_file:
             for line in in_file:
@@ -974,13 +871,11 @@ def parse_gcode_file(file_path):
                 if not found_colors:
                     match = colors_regex.match(line)
                     if match:
-                        colors_csv = [color.strip().lstrip('#')
-                                      for color in match.group(1).split(';')]
+                        colors_csv = [color.strip().lstrip('#') for color in match.group(1).split(';')]
                         if not colors:
                             colors.extend(colors_csv)
                         else:
-                            colors = [n if o == '' else o for o,
-                                      n in zip(colors, colors_csv)]
+                            colors = [n if o == '' else o for o,n in zip(colors,colors_csv)]
                         found_colors = all(len(c) > 0 for c in colors)
 
                 # !temperatures! processing
@@ -1027,8 +922,7 @@ def parse_gcode_file(file_path):
                         for volume_str in purge_volumes_csv:
                             try:
                                 volume = float(volume_str)
-                                multiplied_volume = round(
-                                    volume * flush_multiplier, 1)
+                                multiplied_volume = round(volume * flush_multiplier,1)
                                 purge_volumes.append(str(multiplied_volume))
                             except ValueError:
                                 # If conversion fails, keep the original value
@@ -1042,14 +936,12 @@ def parse_gcode_file(file_path):
                 if not found_filament_names:
                     match = filament_names_regex.match(line)
                     if match:
-                        filament_names_csv = [e.strip() for e in re.split(
-                            ',|;', match.group(2).strip())]
+                        filament_names_csv = [e.strip() for e in re.split(',|;', match.group(2).strip())]
                         filament_names.extend(filament_names_csv)
                         found_filament_names = True
 
     return (has_tools_placeholder or has_total_toolchanges or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
             sorted(tools_used), total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer)
-
 
 def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
 
@@ -1057,13 +949,12 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
     g1_pattern = re.compile(G1_PATTERN)
 
     with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
-        buffer = []  # Buffer lines between a "T" line and the next matching "G1" line
-        tool = None  # Store the tool number from a "T" line
+        buffer = [] # Buffer lines between a "T" line and the next matching "G1" line
+        tool = None # Store the tool number from a "T" line
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
         for line in infile:
-            line = add_placeholder(line, tools_used, total_toolchanges,
-                                   colors, temps, materials, purge_volumes, filament_names)
+            line = add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
             if tool is not None:
                 # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
                 buffer.append(line)
@@ -1072,11 +963,9 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
                     # Now replace "T" line and write buffered lines, including the current "G1" line
                     if insert_nextpos:
                         x, y = g1_match.groups()
-                        outfile.write(
-                            f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
+                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
                     else:
-                        outfile.write(
-                            f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
+                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
                     for buffered_line in buffer:
                         outfile.write(buffered_line)
                     buffer.clear()
@@ -1097,43 +986,35 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
                 outfile.write(line)
 
         # Finally append "; referenced_tools =" as new metadata (why won't Prusa pick up my PR?)
-        outfile.write("; referenced_tools = %s\n" %
-                      ",".join(map(str, tools_used)))
-
+        outfile.write("; referenced_tools = %s\n" % ",".join(map(str, tools_used)))
 
 def add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
     # Ignore comment lines to preserve slicer metadata comments
     if not line.startswith(";"):
         if METADATA_TOOL_DISCOVERY in line:
             if tools_used:
-                line = line.replace(METADATA_TOOL_DISCOVERY,
-                                    ",".join(map(str, tools_used)))
+                line = line.replace(METADATA_TOOL_DISCOVERY, ",".join(map(str, tools_used)))
             else:
                 line = line.replace(METADATA_TOOL_DISCOVERY, "0")
         if METADATA_TOTAL_TOOLCHANGES in line:
-            line = line.replace(METADATA_TOTAL_TOOLCHANGES,
-                                str(total_toolchanges))
+            line = line.replace(METADATA_TOTAL_TOOLCHANGES, str(total_toolchanges))
         if METADATA_COLORS in line:
             line = line.replace(METADATA_COLORS, ",".join(map(str, colors)))
         if METADATA_TEMPS in line:
             line = line.replace(METADATA_TEMPS, ",".join(map(str, temps)))
         if METADATA_MATERIALS in line:
-            line = line.replace(METADATA_MATERIALS,
-                                ",".join(map(str, materials)))
+            line = line.replace(METADATA_MATERIALS, ",".join(map(str, materials)))
         if METADATA_PURGE_VOLUMES in line:
-            line = line.replace(METADATA_PURGE_VOLUMES,
-                                ",".join(map(str, purge_volumes)))
+            line = line.replace(METADATA_PURGE_VOLUMES, ",".join(map(str, purge_volumes)))
         if METADATA_FILAMENT_NAMES in line:
-            line = line.replace(METADATA_FILAMENT_NAMES,
-                                ",".join(map(str, filament_names)))
+            line = line.replace(METADATA_FILAMENT_NAMES, ",".join(map(str, filament_names)))
     else:
         if METADATA_BEGIN_PURGING in line:
             line = line + "_MMU_TEST SET_ACTION=12\n"
         elif METADATA_END_PURGING in line:
             line = line + "_MMU_TEST SET_ACTION=0\n"
-
+            
     return line
-
 
 def main(path, filename, insert_placeholders=False, insert_nextpos=False):
     file_path = os.path.join(path, filename)
@@ -1149,10 +1030,8 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
 
                 if insert_placeholders:
                     start = time.time()
-                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(
-                        file_path)
-                    metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (
-                        time.time() - start, slicer))
+                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path)
+                    metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
                 else:
                     tools_used = total_toolchanges = colors = temps = materials = purge_volumes = filament_names = slicer = None
                     has_placeholder = False
@@ -1164,10 +1043,8 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                         msg.append("Writing MMU placeholders")
                     if insert_nextpos:
                         msg.append("Inserting next position to tool changes")
-                    process_file(file_path, tmp_file, insert_nextpos, tools_used,
-                                 total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
-                    metadata.logger.info("mmu_server: %s took %.2fs" % (
-                        ",".join(msg), time.time() - start))
+                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
+                    metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
                     if os.path.islink(file_path):
@@ -1175,16 +1052,13 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                     if not filecmp.cmp(tmp_file, file_path):
                         shutil.move(tmp_file, file_path)
                     else:
-                        metadata.logger.info(
-                            f"Files are the same, skipping replacement of: {file_path} by {tmp_file}")
+                        metadata.logger.info(f"Files are the same, skipping replacement of: {file_path} by {tmp_file}")
                 else:
-                    metadata.logger.info(
-                        f"No MMU metadata placeholders found in file: {file_path}")
+                    metadata.logger.info(f"No MMU metadata placeholders found in file: {file_path}")
 
     except Exception:
         metadata.logger.info(traceback.format_exc())
         sys.exit(-1)
-
 
 # When run separately this module wraps metadata to extend pre-processing functionality
 if __name__ == "__main__":
@@ -1195,29 +1069,20 @@ if __name__ == "__main__":
     sys.path.insert(0, target_dir)
 
     import metadata
-    metadata.logger.info(
-        "mmu_server: Running MMU enhanced version of metadata")
+    metadata.logger.info("mmu_server: Running MMU enhanced version of metadata")
 
     # We need to re-parse arguments anyway, so this way, whilst relaxing need to copy code, isn't useful
-    # runpy.run_module('metadata', run_name="__main__", alter_sys=True)
+    #runpy.run_module('metadata', run_name="__main__", alter_sys=True)
 
     # Parse start arguments (copied from metadata.py)
-    parser = argparse.ArgumentParser(
-        description="GCode Metadata Extraction Utility")
-    parser.add_argument("-c", "--config", metavar='<config_file>', default=None,
-                        help="Optional json configuration file for metadata.py")
-    parser.add_argument("-f", "--filename", metavar='<filename>',
-                        help="name gcode file to parse")
-    parser.add_argument("-p", "--path", default=os.path.abspath(os.path.dirname(
-        __file__)), metavar='<path>', help="optional absolute path for file")
-    parser.add_argument("-u", "--ufp", metavar="<ufp file>",
-                        default=None, help="optional path of ufp file to extract")
-    parser.add_argument("-o", "--check-objects", dest='check_objects',
-                        action='store_true', help="process gcode file for exclude object functionality")
-    parser.add_argument("-m", "--placeholders", dest='placeholders',
-                        action='store_true', help="process happy hare mmu placeholders")
-    parser.add_argument("-n", "--nextpos", dest='nextpos',
-                        action='store_true', help="add next position to tool change")
+    parser = argparse.ArgumentParser(description="GCode Metadata Extraction Utility")
+    parser.add_argument("-c", "--config", metavar='<config_file>', default=None, help="Optional json configuration file for metadata.py")
+    parser.add_argument("-f", "--filename", metavar='<filename>', help="name gcode file to parse")
+    parser.add_argument("-p", "--path", default=os.path.abspath(os.path.dirname(__file__)), metavar='<path>', help="optional absolute path for file")
+    parser.add_argument("-u", "--ufp", metavar="<ufp file>", default=None, help="optional path of ufp file to extract")
+    parser.add_argument("-o", "--check-objects", dest='check_objects', action='store_true', help="process gcode file for exclude object functionality")
+    parser.add_argument("-m", "--placeholders", dest='placeholders', action='store_true', help="process happy hare mmu placeholders")
+    parser.add_argument("-n", "--nextpos", dest='nextpos', action='store_true', help="add next position to tool change")
     args = parser.parse_args()
     config: Dict[str, Any] = {}
     if args.config is None:
@@ -1240,8 +1105,7 @@ if __name__ == "__main__":
             metadata.logger.info(traceback.format_exc())
             sys.exit(-1)
         if config.get("filename") is None:
-            metadata.logger.info(
-                "The 'filename' field must be present in the configuration")
+            metadata.logger.info("The 'filename' field must be present in the configuration")
             sys.exit(-1)
     if config.get("gcode_dir") is None:
         config["gcode_dir"] = os.path.abspath(os.path.dirname(__file__))
@@ -1249,8 +1113,7 @@ if __name__ == "__main__":
     metadata.logger.info(f"Object Processing is {enabled_msg}")
 
     # Parsing for mmu placeholders and next pos insertion. We do this first so we can add additonal metadata
-    main(config["gcode_dir"], config["filename"],
-         args.placeholders, args.nextpos)
+    main(config["gcode_dir"], config["filename"], args.placeholders, args.nextpos)
 
     # Original metadata parser
     metadata.main(config)
