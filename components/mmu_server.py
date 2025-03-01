@@ -846,8 +846,8 @@ TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<too
 METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 METADATA_TOTAL_TOOLCHANGES = "!total_toolchanges!"
 
-METADATA_BEGIN_PURGING = "; WIPE_TOWER_START"
-METADATA_END_PURGING = "; WIPE_TOWER_END"
+METADATA_BEGIN_PURGING = "WIPE_TOWER_START"
+METADATA_END_PURGING = "WIPE_TOWER_END"
 
 # PS/SS uses "extruder_colour", Orca uses "filament_colour" but extruder_colour can exist with empty or single color
 COLORS_REGEX = {
@@ -1103,10 +1103,6 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
 
 def add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
     # Ignore comment lines to preserve slicer metadata comments
-    if line.strip() == METADATA_BEGIN_PURGING:
-        line = line + "\n_MMU_TEST SET_ACTION=12"
-    elif line.strip() == METADATA_END_PURGING:
-        line = line + "\n_MMU_TEST SET_ACTION=0"
     if not line.startswith(";"):
         if METADATA_TOOL_DISCOVERY in line:
             if tools_used:
@@ -1130,6 +1126,12 @@ def add_placeholder(line, tools_used, total_toolchanges, colors, temps, material
         if METADATA_FILAMENT_NAMES in line:
             line = line.replace(METADATA_FILAMENT_NAMES,
                                 ",".join(map(str, filament_names)))
+    else:
+        if METADATA_BEGIN_PURGING in line:
+            line = line + "_MMU_TEST SET_ACTION=12\n"
+        elif METADATA_END_PURGING in line:
+            line = line + "_MMU_TEST SET_ACTION=0\n"
+
     return line
 
 
