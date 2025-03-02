@@ -1,0 +1,14 @@
+rsource "Kconfig.*"
+
+choice CHOICE_BOARD_TYPE
+  prompt "Board type"
+  help 
+    Select the type of board you are using. This will configure the default pin layout for your setup.
+
+  config BOARD_TYPE_OTHER
+    bool "Not listed / Other"
+endchoice
+
+config PARAM_BOARD_TYPE
+  string
+

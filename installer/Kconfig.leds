@@ -1,0 +1,23 @@
+config ENABLE_LEDS
+  bool "Enable neopixel LEDs support?"
+
+config PARAM_CHAIN_COUNT
+  int "Number of leds"
+  default 0
+
+config PARAM_COLOR_ORDER
+  string
+
+config PARAM_EXIT_LEDS
+  string 
+
+config PARAM_ENTRY_LEDS
+  string
+
+config PARAM_STATUS_LEDS
+  string
+
+config PARAM_LOGO_LEDS
+  string
+
+

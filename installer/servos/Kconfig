@@ -1,0 +1,12 @@
+if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
+  rsource	"Kconfig.*"
+
+  choice CHOICE_SERVO_TYPE 
+    prompt "Selector servo type"
+    help
+      Select the type of servo you are using for the selector. 
+  
+    config SERVO_TYPE_OTHER
+      bool "Not listed / Other"
+  endchoice
+endif
