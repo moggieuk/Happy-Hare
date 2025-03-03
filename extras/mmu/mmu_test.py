@@ -316,7 +316,7 @@ class MmuTest:
 
         if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
             try:
-                self.mmu.internal_test = True
+                self.mmu._is_running_test = True
                 endstop = gcmd.get('ENDSTOP', 'extruder')
                 loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
                 self.mmu.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
@@ -380,7 +380,7 @@ class MmuTest:
                 self.mmu.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD")
                 self.mmu.log_info("Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" % (total, self.mmu._get_filament_position()))
             finally:
-                self.mmu.internal_test = False
+                self.mmu._is_running_test = False
 
         if gcmd.get_int('SEL_MOVE', 0, minval=0, maxval=1):
             move = gcmd.get_float('MOVE', 10.)
@@ -435,7 +435,7 @@ class MmuTest:
             debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
             mix = gcmd.get_int('MIX', 0, minval=0, maxval=1)
             try:
-                self.mmu.internal_test = True
+                self.mmu._is_running_test = True
                 for i in range(loop):
                     self.mmu.log_info("Loop: %d" % i)
                     if self.mmu.mmu_machine.multigear:
@@ -448,14 +448,14 @@ class MmuTest:
                     if random.randint(0, 1):
                         self.mmu.mmu_toolhead.get_last_move_time() # Try to provoke TTC
             finally:
-                self.mmu.internal_test = False
+                self.mmu._is_running_test = False
 
         if gcmd.get_int('TTC_TEST2', 0, minval=0, maxval=1):
             loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
             debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
             mix = gcmd.get_int('MIX', 0, minval=0, maxval=1)
             try:
-                self.mmu.internal_test = True
+                self.mmu._is_running_test = True
                 for i in range(loop):
                     stop_on_endstop = random.randint(-1, 1)
                     wait = random.randint(0, 1)
@@ -466,13 +466,13 @@ class MmuTest:
                         self.mmu.gcode.run_script_from_command("M83")
                         self.mmu.gcode.run_script_from_command("G1 E5 F300")
             finally:
-                self.mmu.internal_test = False
+                self.mmu._is_running_test = False
 
         if gcmd.get_int('TTC_TEST3', 0, minval=0, maxval=1):
             loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
             debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
             try:
-                self.mmu.internal_test = True
+                self.mmu._is_running_test = True
                 for i in range(loop):
                     self.mmu.log_info("Loop: %d" % i)
                     if self.mmu.mmu_machine.multigear:
@@ -485,7 +485,7 @@ class MmuTest:
                     if random.randint(0, 1):
                         self.mmu.mmu_toolhead.get_last_move_time() # Try to provoke TTC
             finally:
-                self.mmu.internal_test = False
+                self.mmu._is_running_test = False
 
         if gcmd.get_int('AUTO_CALIBRATE', 0, minval=0, maxval=1):
             gate = gcmd.get_int('GATE', 0, minval=-2, maxval=8)

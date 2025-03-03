@@ -90,9 +90,9 @@ Some users have inquired about making donations to support this project (and to 
 - Built in tip forming and filament cutter support (both toolhead and at MMU)
 - Lots more... Detail change log can be found in the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki/Change-Log)
 
-Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control!
+Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control and new Mainsail/Fluidd integration!
 
-<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="60%" alt="KlipperScreen-Happy Hare edition"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/mainsail_promo.png" width="30%" alt="Mailsail/Fluidd support"></p>
+<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="60%" alt="KlipperScreen-Happy Hare edition"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/mainsail_mmu_panel.png" width="35%" alt="Mailsail/Fluidd support"></p>
 
 <br>
  

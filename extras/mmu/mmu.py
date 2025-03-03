@@ -246,24 +246,24 @@ class Mmu:
         self.reactor = self.printer.get_reactor()
         self.calibration_status = 0b0
         self.encoder_force_validation = False
-        self.sync_feedback_last_state = 0. # 0 = Neutral
+        self.sync_feedback_last_state = 0.    # 0 = Neutral
         self.sync_feedback_last_direction = 0 # 0 = Extruder not moving
         self.sync_feedback_operational = False
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
         self._last_tool = self._next_tool = self.TOOL_GATE_UNKNOWN
         self._next_gate = None
-        self.internal_test = False # True while running QA tests
-        self.toolchange_retract = 0. # Set from mmu_macro_vars
+        self.toolchange_retract = 0.          # Set from mmu_macro_vars
         self._can_write_variables = True
         self.toolchange_purge_volume = 0.
-        self.mmu_logger = None # Setup on connect
-        self._standalone_sync = False # Used to indicate synced extruder intention whilst out of print
+        self.mmu_logger = None                # Setup on connect
+        self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
         self.has_leds = self.has_led_animation = False
         self.bowden_start_pos = None
         self.espooler_active = False
-        self.has_blobifier = False # Post load blobbling macro (like BLOBIFIER)
-        self.has_mmu_cutter = False # Post unload cutting macro (like EREC)
+        self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
+        self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
+        self._is_running_test = False         # True while running QA or soak tests
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -520,8 +520,6 @@ class Mmu:
         self.tool_extrusion_multipliers.extend([1.] * self.num_gates)
         self.tool_speed_multipliers.extend([1.] * self.num_gates)
 
-        # Soak Testing
-        self._is_running_test = False
         # Register GCODE commands ---------------------------------------------------------------------------
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
@@ -2804,7 +2802,7 @@ class Mmu:
             self.sync_feedback_last_state = float(state)
             if self.sync_feedback_enable and self.sync_feedback_operational:
                 self._update_sync_multiplier()
-        else :
+        else:
             self.log_error("Invalid sync feedback state: %s" % state)
         if self._is_running_test:
             self.printer.send_event("mmu:sync_feedback_finished", state)
