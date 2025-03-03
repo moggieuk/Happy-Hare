@@ -757,7 +757,7 @@ TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<too
 METADATA_TOOL_DISCOVERY = "!referenced_tools!"
 METADATA_TOTAL_TOOLCHANGES = "!total_toolchanges!"
 
-METADATA_BEGIN_PURGING = "WIPE_TOWER_START"
+METADATA_BEGIN_PURGING = "CP TOOLCHANGE WIPE"
 METADATA_END_PURGING = "WIPE_TOWER_END"
 
 # PS/SS uses "extruder_colour", Orca uses "filament_colour" but extruder_colour can exist with empty or single color
