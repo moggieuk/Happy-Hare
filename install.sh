@@ -821,6 +821,11 @@ copy_config_files() {
                 cat ${dest} | sed -e "\
                     s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            elif [ "${_hw_brd_type}" == "SKR_PICO_1" ]; then
+                # Share uart_pin to avoid duplicate alias problem
+                cat ${dest} | sed -e "\
+                    s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
+                        " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             else
                 # Remove uart_address lines
                 cat ${dest} | sed -e "\
@@ -879,6 +884,13 @@ copy_config_files() {
                         echo >> ${dest}.tmp
                     done
                     awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
+
+                    if [ "${_hw_brd_type}" == "SKR_PICO_1" ]; then
+                        # Remove duplicate uart_pin's and add proper uart_addresses
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_1/uart_address: 2/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_2/uart_address: 1/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_3/uart_address: 3/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    fi
 
                 else
                     if [ "$HAS_SERVO" == "no" ]; then
@@ -1724,6 +1736,7 @@ questionaire() {
     option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
     option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
     option AFC_LITE_1           'AFC Lite v1.0'
+    option SKR_PICO_1           'BTT SKR Pico v1.0'
     option OTHER                'Not in list / Unknown'
     prompt_option opt 'MCU Type' "${OPTIONS[@]}"
     case $opt in
@@ -1766,6 +1779,10 @@ questionaire() {
         "$AFC_LITE_1")
             _hw_brd_type="AFC_LITE_1"
             pattern="Klipper_stm32"
+            ;;
+        "$SKR_PICO_1")
+            _hw_brd_type="SKR_PICO_1"
+            pattern="Klipper_rp2040"
             ;;
         *)
             _hw_brd_type="unknown"
