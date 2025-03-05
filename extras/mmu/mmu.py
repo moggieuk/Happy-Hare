@@ -4397,7 +4397,7 @@ class Mmu:
                     homed = True
                     measured -= step # Subtract the last step to improve accuracy
                     break
-            self.log_debug("Extruder entrance%s found after %.1fmm move (%d steps), encoder measured %.1fmm (delta %.1fmm)"
+                self.log_debug("Extruder entrance%s found after %.1fmm move (%d steps), encoder measured %.1fmm (delta %.1fmm)"
                     % (" not" if not homed else "", step*(i+1), i+1, measured, delta))
 
         if delta > 5.0:
