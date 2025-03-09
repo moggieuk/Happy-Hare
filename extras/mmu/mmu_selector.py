@@ -446,7 +446,7 @@ class LinearSelector(BaseSelector, object):
                     self.mmu.log_always("Selector calibration complete")
                     self.mmu.select_tool(0)
                 else:
-                    self.mmu.motors_off(motor="selector")
+                    self.mmu.motors_onoff(on=False, motor="selector")
 
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
@@ -1249,7 +1249,7 @@ class RotarySelector(BaseSelector, object):
                 self.mmu.log_always("Selector calibration complete")
                 self.mmu.select_tool(0)
             else:
-                self.mmu.motors_off(motor="selector")
+                self.mmu.motors_onoff(on=False, motor="selector")
 
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
