@@ -367,10 +367,11 @@ pending_spool_id_timeout: 20            # Seconds after which this pending spool
 #    slicer   - Color from slicer tool map (what the slicer expects)
 #    allgates - Color from all the tools in the gate map after running through the TTG map
 #    gatemap  - As per gatemap but hide empty tools
+#    off      - Turns off support
 #
 # Note: Happy Hare will also add the 'spool_id' variable to the Tx macro if spoolman is enabled
 #
-t_macro_color: slicer			# 'slicer' = default | 'allgates' = mmu | 'gatemap' = mmu without empty gates
+t_macro_color: slicer			# 'slicer' = default | 'allgates' = mmu | 'gatemap' = mmu without empty gates | 'off'
 
 
 # Print Statistics ---------------------------------------------------------------------------------------------------

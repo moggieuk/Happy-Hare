@@ -186,8 +186,9 @@ class Mmu:
     # Mainsail/Fluid visualization of extruder colors and other attributes
     T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled
     T_MACRO_COLOR_GATEMAP  = 'gatemap'  # As per gatemap but hide empty tools. Will add spool_id if spoolman is enabled
-    T_MACRO_COLOR_SLICER   = 'slicer'   # Color from slicer tool map
-    T_MACRO_COLOR_OPTIONS  = [T_MACRO_COLOR_GATEMAP, T_MACRO_COLOR_SLICER, T_MACRO_COLOR_ALLGATES]
+    T_MACRO_COLOR_SLICER   = 'slicer'   # Color from slicer tool map. Will add spool_id if spoolman is enabled
+    T_MACRO_COLOR_OFF      = 'off'      # Turn off color and spool_id association
+    T_MACRO_COLOR_OPTIONS  = [T_MACRO_COLOR_GATEMAP, T_MACRO_COLOR_SLICER, T_MACRO_COLOR_ALLGATES, T_MACRO_COLOR_OFF]
 
     # Spoolman integration - modes of operation
     SPOOLMAN_OFF           = 'off'      # Spoolman disabled
@@ -245,24 +246,24 @@ class Mmu:
         self.reactor = self.printer.get_reactor()
         self.calibration_status = 0b0
         self.encoder_force_validation = False
-        self.sync_feedback_last_state = 0. # 0 = Neutral
+        self.sync_feedback_last_state = 0.    # 0 = Neutral
         self.sync_feedback_last_direction = 0 # 0 = Extruder not moving
         self.sync_feedback_operational = False
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
         self._last_tool = self._next_tool = self.TOOL_GATE_UNKNOWN
         self._next_gate = None
-        self.internal_test = False # True while running QA tests
-        self.toolchange_retract = 0. # Set from mmu_macro_vars
+        self.toolchange_retract = 0.          # Set from mmu_macro_vars
         self._can_write_variables = True
         self.toolchange_purge_volume = 0.
-        self.mmu_logger = None # Setup on connect
-        self._standalone_sync = False # Used to indicate synced extruder intention whilst out of print
+        self.mmu_logger = None                # Setup on connect
+        self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
         self.has_leds = self.has_led_animation = False
         self.bowden_start_pos = None
         self.espooler_active = False
-        self.has_blobifier = False # Post load blobbling macro (like BLOBIFIER)
-        self.has_mmu_cutter = False # Post unload cutting macro (like EREC)
+        self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
+        self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
+        self._is_running_test = False         # True while running QA or soak tests
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -551,9 +552,9 @@ class Mmu:
         self.gcode.register_command('MMU_PRELOAD', self.cmd_MMU_PRELOAD, desc = self.cmd_MMU_PRELOAD_help)
         self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help)
         self.gcode.register_command('MMU_CHANGE_TOOL', self.cmd_MMU_CHANGE_TOOL, desc = self.cmd_MMU_CHANGE_TOOL_help)
-        # TODO Currently cannot not registered directly as Tx commands because not visible by Mainsail/Fluuid
-        # for tool in range(self.num_gates):
-        #     self.gcode.register_command('T%d' % tool, self.cmd_MMU_CHANGE_TOOL, desc = "Change to tool T%d" % tool)
+        # TODO Currently cannot not registered directly as Tx commands because cannot attach color/spool_id required by Mailsail
+        #for tool in range(self.num_gates):
+        #    self.gcode.register_command('T%d' % tool, self.cmd_MMU_CHANGE_TOOL, desc = "Change to tool T%d" % tool)
         self.gcode.register_command('MMU_LOAD', self.cmd_MMU_LOAD, desc=self.cmd_MMU_LOAD_help)
         self.gcode.register_command('MMU_EJECT', self.cmd_MMU_EJECT, desc = self.cmd_MMU_EJECT_help)
         self.gcode.register_command('MMU_UNLOAD', self.cmd_MMU_UNLOAD, desc = self.cmd_MMU_UNLOAD_help)
@@ -1023,7 +1024,7 @@ class Mmu:
         elif color == '':
             color = "#000000"
         rgb_hex = color.lstrip('#').lower()
-        return rgb_hex
+        return rgb_hex[0:6]
 
     # This retuns a convenient RGB fraction tuple for controlling LEDs E.g. (0.32, 0.56, 1.00)
     # or integer version (82, 143, 255)
@@ -1082,6 +1083,7 @@ class Mmu:
         self.gate_color_rgb = [self._color_to_rgb_tuple(i) for i in self.gate_color]
 
     # Helper to keep parallel RGB color map updated when slicer color or TTG changes
+    # Will also update the t_macro colors
     def _update_slicer_color_rgb(self):
         self.slicer_color_rgb = [(0.,0.,0.)] * self.num_gates
         for tool_key, tool_value in self.slicer_tool_map['tools'].items():
@@ -2800,6 +2802,10 @@ class Mmu:
             self.sync_feedback_last_state = float(state)
             if self.sync_feedback_enable and self.sync_feedback_operational:
                 self._update_sync_multiplier()
+        else:
+            self.log_error("Invalid sync feedback state: %s" % state)
+        if self._is_running_test:
+            self.printer.send_event("mmu:sync_feedback_finished", state)
 
     def _handle_mmu_synced(self):
         if not self.is_enabled: return
@@ -2827,7 +2833,7 @@ class Mmu:
             # Disable sync feedback
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
             self.sync_feedback_operational = False
-            self.sync_feedback_last_direction = self.SYNC_STATE_NEUTRAL
+            self.sync_feedback_last_state = self.SYNC_STATE_NEUTRAL
             self.log_trace("Reset sync multiplier")
             self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
 
@@ -2848,7 +2854,7 @@ class Mmu:
 
     def _update_sync_multiplier(self):
         if not self.sync_feedback_enable or not self.sync_feedback_operational: return
-        if self.sync_feedback_last_direction == self.SYNC_STATE_NEUTRAL:
+        if self.sync_feedback_last_state == self.SYNC_STATE_NEUTRAL:
             multiplier = 1.
         else:
             go_slower = lambda s, d: abs(s - d) < abs(s + d)
@@ -2861,9 +2867,7 @@ class Mmu:
         self.log_trace("Updated sync multiplier: %.4f" % multiplier)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected) / multiplier)
 
-    # Ensure correct sync_feedback starting assumption by generating a fake event
-    def _update_sync_starting_state(self):
-        eventtime = self.reactor.monotonic()
+    def _get_current_sync_state(self):
         has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
         has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
 
@@ -2881,7 +2885,12 @@ class Mmu:
                 sss = self.SYNC_STATE_EXPANDED
             elif state_compressed:
                 sss = self.SYNC_STATE_COMPRESSED
+        return sss
 
+    # Ensure correct sync_feedback starting assumption by generating a fake event
+    def _update_sync_starting_state(self):
+        eventtime = self.reactor.monotonic()
+        sss = self._get_current_sync_state()
         self._handle_sync_feedback(eventtime, sss)
         self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string(detail=True))
 
@@ -4208,7 +4217,7 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_LOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking 
+                # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None) - start_pos
 
                 if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
@@ -4242,7 +4251,7 @@ class Mmu:
                             self.log_info("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details"% (length, length - delta))
                     else:
                         self.log_info("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
-    
+
                     if delta >= self.bowden_allowable_load_delta:
                         self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
 
@@ -4279,7 +4288,7 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_UNLOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking 
+                # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None)
 
                 # Optional pre-unload safety step
@@ -4738,7 +4747,7 @@ class Mmu:
 
             # Activate loaded spool in Spoolman
             self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
-            
+
             # POST_LOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
@@ -4892,7 +4901,7 @@ class Mmu:
 
             # Deactivate spool in Spoolman as it is now unloaded.
             self._spoolman_activate_spool(0)
-            
+
             # POST_UNLOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_unload'):
@@ -7366,8 +7375,13 @@ class Mmu:
 
             if t_macro:
                 t_vars = dict(t_macro.variables) # So Mainsail sees the update
+
                 spool_id = self.gate_spool_id[gate]
-                if spool_id >= 0 and not self.spoolman_support == self.SPOOLMAN_OFF and self.gate_status[gate] != self.GATE_EMPTY and self.t_macro_color == self.T_MACRO_COLOR_GATEMAP:
+                if (self.t_macro_color != self.T_MACRO_COLOR_OFF and
+                    spool_id >= 0 and
+                    self.spoolman_support != self.SPOOLMAN_OFF and
+                    self.gate_status[gate] != self.GATE_EMPTY):
+
                     t_vars['spool_id'] = self.gate_spool_id[gate]
                 else:
                     t_vars.pop('spool_id', None)
@@ -7379,14 +7393,17 @@ class Mmu:
                         t_vars['color'] = rgb_hex
                     else:
                         t_vars.pop('color', None)
+
                 elif self.t_macro_color in [self.T_MACRO_COLOR_GATEMAP, self.T_MACRO_COLOR_ALLGATES]:
                     rgb_hex = self._color_to_rgb_hex(self.gate_color[gate])
                     if self.gate_status[gate] != self.GATE_EMPTY or self.t_macro_color == self.T_MACRO_COLOR_ALLGATES:
                         t_vars['color'] = rgb_hex
                     else:
                         t_vars.pop('color', None)
-                else:
+
+                else: # 'off' case
                     t_vars.pop('color', None)
+
                 t_macro.variables = t_vars
 
 ### GCODE COMMANDS FOR RUNOUT, TTG MAP, GATE MAP and GATE LOGIC ##################
@@ -7725,9 +7742,9 @@ class Mmu:
 
                 if self.spoolman_support != self.SPOOLMAN_PULL:
                     # Local gate map, can update attributes
-                    name = name or self.gate_filament_name[gate]
-                    material = (material or self.gate_material[gate]).upper()
-                    color = (color or self.gate_color[gate]).lower()
+                    name = name if name is not None else self.gate_filament_name[gate]
+                    material = (material if material is not None else self.gate_material[gate]).upper()
+                    color = (color if color is not None else self.gate_color[gate]).lower()
                     temperature = temperature or self.gate_temperature
                     spool_id = spool_id or self.gate_spool_id[gate]
 

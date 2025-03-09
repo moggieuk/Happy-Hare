@@ -1459,6 +1459,7 @@ questionaire() {
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=300
+            _param_gate_preload_homing_max=200
             _param_gate_parking_distance=100
             _param_gate_final_eject_distance=100
             _param_has_filament_buffer=0
@@ -1721,6 +1722,7 @@ questionaire() {
     OPTIONS=()
     option MMB10                'BTT MMB v1.0 (with CANbus)'
     option MMB11                'BTT MMB v1.1 (with CANbus)'
+    option MMB20                'BTT MMB v2.0 (with CANbus)'
     option FYSETC_BURROWS_ERB_1 'Fysetc Burrows ERB v1'
     option FYSETC_BURROWS_ERB_2 'Fysetc Burrows ERB v2'
     option EASY_BRD_SAMD21      'Standard EASY-BRD (with SAMD21)'
@@ -1737,6 +1739,10 @@ questionaire() {
             ;;
         "$MMB11")
             _hw_brd_type="MMB11"
+            pattern="Klipper_stm32"
+            ;;
+        "$MMB20")
+            _hw_brd_type="MMB20"
             pattern="Klipper_stm32"
             ;;
         "$FYSETC_BURROWS_ERB_1")
