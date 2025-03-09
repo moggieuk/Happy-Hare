@@ -159,7 +159,7 @@ class MmuMachine:
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
             require_bowden_move = 1
-            filament_always_gripped = 1
+            filament_always_gripped = 0
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_QUATTRO_BOX:
