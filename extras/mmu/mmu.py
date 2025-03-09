@@ -7685,48 +7685,51 @@ class Mmu:
             self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.monotonic() + self.pending_spool_id_timeout)
 
         if gate_map:
-            self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
-            self._renew_gate_map()
-            if replace:
-                # Replace map
-                for gate, fil in gate_map.items():
-                    if not (0 <= gate < self.num_gates):
-                        self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
-                        continue
-                    spool_id = self.safe_int(fil.get('spool_id', -1))
-                    self.gate_spool_id[gate] = spool_id
-                    if spool_id >= 0:
-                        self.gate_filament_name[gate] = fil.get('name', '')
-                        self.gate_material[gate] = fil.get('material', '')
-                        self.gate_color[gate] = fil.get('color', '')
-                        self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
-                        if self.gate_temperature[gate] <= 0:
-                            self.gate_temperature[gate] = self.default_extruder_temp
-                        self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
-                    else:
-                        # Clear attributes (should only get here in spoolman "pull" mode)
-                        self.gate_filament_name[gate] = ''
-                        self.gate_material[gate] = ''
-                        self.gate_color[gate] = ''
-                        self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
-            else:
-                # Update map
-                for gate, fil in gate_map.items():
-                    if not (0 <= gate < self.num_gates):
-                        self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
-                        continue
-                    if fil:
-                        if self.gate_spool_id[gate] != fil.get('spool_id', -1):
-                            self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
-                        self.gate_spool_id[gate] = self.safe_int(fil.get('spool_id', -1))
-                        self.gate_filament_name[gate] = fil.get('name', '')
-                        self.gate_material[gate] = fil.get('material', '')
-                        self.gate_color[gate] = fil.get('color', '')
-                        self.gate_status[gate] = self.safe_int(fil.get('status', self.gate_status[gate])) # For UI manual fixing of availabilty
-                        self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
-                        if self.gate_temperature[gate] <= 0:
-                            self.gate_temperature[gate] = self.default_extruder_temp
-                        self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
+            try:
+                self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
+                self._renew_gate_map()
+                if replace:
+                    # Replace map
+                    for gate, fil in gate_map.items():
+                        if not (0 <= gate < self.num_gates):
+                            self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
+                            continue
+                        spool_id = self.safe_int(fil.get('spool_id', -1))
+                        self.gate_spool_id[gate] = spool_id
+                        if spool_id >= 0:
+                            self.gate_filament_name[gate] = fil.get('name', '')
+                            self.gate_material[gate] = fil.get('material', '')
+                            self.gate_color[gate] = fil.get('color', '')
+                            self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
+                            if self.gate_temperature[gate] <= 0:
+                                self.gate_temperature[gate] = self.default_extruder_temp
+                            self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
+                        else:
+                            # Clear attributes (should only get here in spoolman "pull" mode)
+                            self.gate_filament_name[gate] = ''
+                            self.gate_material[gate] = ''
+                            self.gate_color[gate] = ''
+                            self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
+                else:
+                    # Update map
+                    for gate, fil in gate_map.items():
+                        if not (0 <= gate < self.num_gates):
+                            self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
+                            continue
+                        if fil:
+                            if self.gate_spool_id[gate] != fil.get('spool_id', -1):
+                                self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
+                            self.gate_spool_id[gate] = self.safe_int(fil.get('spool_id', -1))
+                            self.gate_filament_name[gate] = fil.get('name', '')
+                            self.gate_material[gate] = fil.get('material', '')
+                            self.gate_color[gate] = fil.get('color', '')
+                            self.gate_status[gate] = self.safe_int(fil.get('status', self.gate_status[gate])) # For UI manual fixing of availabilty
+                            self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
+                            if self.gate_temperature[gate] <= 0:
+                                self.gate_temperature[gate] = self.default_extruder_temp
+                            self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
+            except Exception as e:
+                raise gcmd.error("Invalid MAP parameter: %s" % gate_map)
 
             self._update_gate_color_rgb()
             self._persist_gate_map() # This will also update LED status
