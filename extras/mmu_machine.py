@@ -237,6 +237,7 @@ class MmuMachine:
         for i, unit in enumerate(self.units):
             unit_info = {}
             unit_info['name'] = UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor)
+            unit_info['vendor'] = self.mmu_vendor
             unit_info['version'] = self.mmu_version_string
             unit_info['num_gates'] = unit
             unit_info['first_gate'] = gate_count
