@@ -886,9 +886,9 @@ copy_config_files() {
                     awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
                     if [ "${_hw_brd_type}" == "SKR_PICO_1" ]; then
                         # Remove duplicate uart_pin's and add proper uart_addresses
-                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_1/uart_address: 2/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_2/uart_address: 1/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_3/uart_address: 3/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_1/uart_pin: mmu:MMU_GEAR_UART\nuart_address: 2/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_2/uart_pin: mmu:MMU_GEAR_UART\nuart_address: 1/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_3/uart_pin: mmu:MMU_GEAR_UART\nuart_address: 3/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
                     fi
                 else
                     if [ "$HAS_SERVO" == "no" ]; then
