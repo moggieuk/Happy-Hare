@@ -551,8 +551,8 @@ class Mmu:
         self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
         self.gcode.register_command('MMU_SELECT', self.cmd_MMU_SELECT, desc = self.cmd_MMU_SELECT_help)
+        self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help) # Alias for MMU_SELECT BYPASS=1
         self.gcode.register_command('MMU_PRELOAD', self.cmd_MMU_PRELOAD, desc = self.cmd_MMU_PRELOAD_help)
-        self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help)
         self.gcode.register_command('MMU_CHANGE_TOOL', self.cmd_MMU_CHANGE_TOOL, desc = self.cmd_MMU_CHANGE_TOOL_help)
         # TODO Currently cannot not registered directly as Tx commands because cannot attach color/spool_id required by Mailsail
         #for tool in range(self.num_gates):
@@ -603,6 +603,7 @@ class Mmu:
         self.gcode.register_command('_MMU_STEP_HOMING_MOVE', self.cmd_MMU_STEP_HOMING_MOVE, desc = self.cmd_MMU_STEP_HOMING_MOVE_help)
         self.gcode.register_command('_MMU_STEP_MOVE', self.cmd_MMU_STEP_MOVE, desc = self.cmd_MMU_STEP_MOVE_help)
         self.gcode.register_command('_MMU_STEP_SET_FILAMENT', self.cmd_MMU_STEP_SET_FILAMENT, desc = self.cmd_MMU_STEP_SET_FILAMENT_help)
+        self.gcode.register_command('_MMU_STEP_SET_ACTION', self.cmd_MMU_STEP_SET_ACTION, desc = self.cmd_MMU_STEP_SET_ACTION_help)
         self.gcode.register_command('_MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
 
         # Internal handlers for Runout & Insertion for all sensor options
@@ -976,6 +977,7 @@ class Mmu:
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.DIRECTION_UNKNOWN
         self.action = self.ACTION_IDLE
+        self._old_action = None
         self._clear_saved_toolhead_position()
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "ready"
@@ -3990,6 +3992,20 @@ class Mmu:
         state = gcmd.get_int('STATE', minval=self.FILAMENT_POS_UNKNOWN, maxval=self.FILAMENT_POS_LOADED)
         silent = gcmd.get_int('SILENT', 0)
         self._set_filament_pos_state(state, silent)
+
+    cmd_MMU_STEP_SET_ACTION_help = "User composable loading step: Set action state"
+    def cmd_MMU_STEP_SET_ACTION(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if gcmd.get_int('RESTORE', 0):
+            if self._old_action is not None:
+                self._set_action(self._old_action)
+            self._old_action = None
+        else:
+            state = gcmd.get_int('STATE', minval=self.ACTION_IDLE, maxval=self.ACTION_PURGING)
+            if self._old_action is None:
+                self._old_action = self._set_action(state)
+            else:
+                self._set_action(state)
 
 
 ##############################################
