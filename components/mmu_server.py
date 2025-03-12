@@ -1011,9 +1011,9 @@ def add_placeholder(line, tools_used, total_toolchanges, colors, temps, material
             line = line.replace(METADATA_FILAMENT_NAMES, ",".join(map(str, filament_names)))
     else:
         if METADATA_BEGIN_PURGING in line:
-            line = line + "_MMU_TEST SET_ACTION=12\n"
+            line = line + "_MMU_STEP_SET_ACTION STATE=12\n"
         elif METADATA_END_PURGING in line:
-            line = line + "_MMU_TEST SET_ACTION=0\n"
+            line = line + "_MMU_STEP_SET_ACTION RESTORE=1\n"
     return line
 
 def main(path, filename, insert_placeholders=False, insert_nextpos=False):
