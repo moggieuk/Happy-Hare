@@ -50,7 +50,7 @@ VENDOR_BOX_TURTLE     = "BoxTurtle"
 VENDOR_NIGHT_OWL      = "NightOwl"
 VENDOR_3MS            = "3MS"
 VENDOR_3D_CHAMELEON   = "3DChameleon"
-VENDOR_PICO_MMU       = "PicoMMU" # Not yet ready
+VENDOR_PICO_MMU       = "PicoMMU"
 VENDOR_QUATTRO_BOX    = "QuattroBox"
 VENDOR_OTHER          = "Other"
 

@@ -1600,8 +1600,7 @@ class ServoSelector(BaseSelector, object):
         return 0. # Encoder movement
 
     def filament_hold(self):
-        # TODO: same as release?
-        self.filament_release()
+        pass
 
     def get_filament_grip_state(self):
         return self.servo_state
