@@ -89,9 +89,9 @@ class Mmu:
     ACTION_CHECKING = 7
     ACTION_HOMING = 8
     ACTION_SELECTING = 9
-    ACTION_CUTTING_TIP = 10      # New _MMU_CUT_TIP macro
-    ACTION_CUTTING_FILAMENT = 11 # New when using EREC cutting macro
-    ACTION_PURGING = 12          # New when running blobifier
+    ACTION_CUTTING_TIP = 10         # Cutting at toolhead e.g.  _MMU_CUT_TIP macro
+    ACTION_CUTTING_FILAMENT = 11    # Cutting at MMU e.g. EREC cutting macro
+    ACTION_PURGING = 12             # Non slicer purging e.g. when running blobifier
 
     MACRO_EVENT_RESTART          = "restart"          # Params: None
     MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE=-1 for all
@@ -263,6 +263,7 @@ class Mmu:
         self.espooler_active = False
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
+        self.has_toolhead_cutter = False      # Form tip cutting macro (like _MMU_CUT_TIP)
         self._is_running_test = False         # True while running QA or soak tests
 
         # Event handlers
@@ -539,6 +540,7 @@ class Mmu:
 
         # Motor control
         self.gcode.register_command('MMU_MOTORS_OFF', self.cmd_MMU_MOTORS_OFF, desc = self.cmd_MMU_MOTORS_OFF_help)
+        self.gcode.register_command('MMU_MOTORS_ON', self.cmd_MMU_MOTORS_ON, desc = self.cmd_MMU_MOTORS_ON_help)
         self.gcode.register_command('MMU_SYNC_GEAR_MOTOR', self.cmd_MMU_SYNC_GEAR_MOTOR, desc=self.cmd_MMU_SYNC_GEAR_MOTOR_help)
 
         # Core MMU functionality
@@ -549,8 +551,8 @@ class Mmu:
         self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
         self.gcode.register_command('MMU_SELECT', self.cmd_MMU_SELECT, desc = self.cmd_MMU_SELECT_help)
+        self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help) # Alias for MMU_SELECT BYPASS=1
         self.gcode.register_command('MMU_PRELOAD', self.cmd_MMU_PRELOAD, desc = self.cmd_MMU_PRELOAD_help)
-        self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help)
         self.gcode.register_command('MMU_CHANGE_TOOL', self.cmd_MMU_CHANGE_TOOL, desc = self.cmd_MMU_CHANGE_TOOL_help)
         # TODO Currently cannot not registered directly as Tx commands because cannot attach color/spool_id required by Mailsail
         #for tool in range(self.num_gates):
@@ -601,6 +603,7 @@ class Mmu:
         self.gcode.register_command('_MMU_STEP_HOMING_MOVE', self.cmd_MMU_STEP_HOMING_MOVE, desc = self.cmd_MMU_STEP_HOMING_MOVE_help)
         self.gcode.register_command('_MMU_STEP_MOVE', self.cmd_MMU_STEP_MOVE, desc = self.cmd_MMU_STEP_MOVE_help)
         self.gcode.register_command('_MMU_STEP_SET_FILAMENT', self.cmd_MMU_STEP_SET_FILAMENT, desc = self.cmd_MMU_STEP_SET_FILAMENT_help)
+        self.gcode.register_command('_MMU_STEP_SET_ACTION', self.cmd_MMU_STEP_SET_ACTION, desc = self.cmd_MMU_STEP_SET_ACTION_help)
         self.gcode.register_command('_MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
 
         # Internal handlers for Runout & Insertion for all sensor options
@@ -846,12 +849,13 @@ class Mmu:
         # The threshold (mm) that determines real encoder movement (set to 1.5 pulses of encoder. i.e. to allow one rougue pulse)
         self.encoder_min = 1.5 * self.encoder_resolution
 
-        # Establish existence of Blobifier and MMU tip cutter
+        # Establish existence of Blobifier and filament cutter options
         # TODO: A little bit hacky until a more universal approach is implemented
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:
-            self.has_blobifier = sequence_vars_macro.variables.get('user_post_load_extension', '') == "BLOBIFIER"
-            self.has_mmu_cutter = sequence_vars_macro.variables.get('user_post_unload_extension', '') == "EREC_CUTTER_ACTION"
+            self.has_blobifier = 'blob' in sequence_vars_macro.variables.get('user_post_load_extension', '').lower() # E.g. "BLOBIFIER"
+            self.has_mmu_cutter = 'cut' in sequence_vars_macro.variables.get('user_post_unload_extension', '').lower() # E.g "EREC_CUTTER_ACTION"
+        self.has_toolhead_cutter = 'cut' in self.form_tip_macro.lower() # E.g. "_MMU_CUT_TIP"
 
         # Sub components
         self.selector.handle_connect()
@@ -973,6 +977,7 @@ class Mmu:
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
         self.filament_direction = self.DIRECTION_UNKNOWN
         self.action = self.ACTION_IDLE
+        self._old_action = None
         self._clear_saved_toolhead_position()
         self._reset_job_statistics()
         self.print_state = self.resume_to_state = "ready"
@@ -2059,19 +2064,26 @@ class Mmu:
         else:
             self.selector.filament_release()
 
-    def motors_off(self, motor="all"):
-        if motor in ["all", "gear", "gears"]:
-            self.mmu_toolhead.unsync()
-            stepper_enable = self.printer.lookup_object('stepper_enable')
-            steppers = self.gear_rail.steppers if motor == "gears" else [self.gear_rail.steppers[0]] if self.gear_rail.steppers else []
-            for stepper in steppers:
-                se = stepper_enable.lookup_enable(stepper.get_name())
-                se.motor_disable(self.mmu_toolhead.get_last_move_time())
-        if motor in ["all", "selector"]:
-            self.selector.restore_gate(self.TOOL_GATE_UNKNOWN)
-            self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
-            self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
-            self.selector.disable_motors()
+    def motors_onoff(self, on=False, motor="all"):
+        stepper_enable = self.printer.lookup_object('stepper_enable')
+        steppers = self.gear_rail.steppers if motor == "gears" else [self.gear_rail.steppers[0]] if self.gear_rail.steppers else []
+        if on:
+            if motor in ["all", "gear", "gears"]:
+                for stepper in steppers:
+                    se = stepper_enable.lookup_enable(stepper.get_name())
+                    se.motor_enable(self.mmu_toolhead.get_last_move_time())
+            if motor in ["all", "selector"]:
+                self.selector.enable_motors()
+                self.selector.restore_gate(self.gate_selected)
+        else:
+            if motor in ["all", "gear", "gears"]:
+                self.mmu_toolhead.unsync()
+                for stepper in steppers:
+                    se = stepper_enable.lookup_enable(stepper.get_name())
+                    se.motor_disable(self.mmu_toolhead.get_last_move_time())
+            if motor in ["all", "selector"]:
+                self.selector.restore_gate(self.TOOL_GATE_UNKNOWN)
+                self.selector.disable_motors()
 
 
 ### SERVO AND MOTOR GCODE FUNCTIONS ##############################################
@@ -2081,7 +2093,13 @@ class Mmu:
     def cmd_MMU_MOTORS_OFF(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
-        self.motors_off()
+        self.motors_onoff(on=False)
+
+    cmd_MMU_MOTORS_ON_help = "Turn on all MMU motors and servos"
+    def cmd_MMU_MOTORS_ON(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled(): return
+        self.motors_onoff(on=True)
 
     cmd_MMU_TEST_BUZZ_MOTOR_help = "Simple buzz the selected motor (default gear) for setup testing"
     def cmd_MMU_TEST_BUZZ_MOTOR(self, gcmd):
@@ -3638,7 +3656,7 @@ class Mmu:
         self._disable_runout()
         self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
-        self.motors_off(motor="gears") # Will also unsync gear
+        self.motors_onoff(on=False) # Will also unsync gear
         self.is_enabled = False
         self.printer.send_event("mmu:disabled")
         self._set_print_state("standby")
@@ -3974,6 +3992,20 @@ class Mmu:
         state = gcmd.get_int('STATE', minval=self.FILAMENT_POS_UNKNOWN, maxval=self.FILAMENT_POS_LOADED)
         silent = gcmd.get_int('SILENT', 0)
         self._set_filament_pos_state(state, silent)
+
+    cmd_MMU_STEP_SET_ACTION_help = "User composable loading step: Set action state"
+    def cmd_MMU_STEP_SET_ACTION(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if gcmd.get_int('RESTORE', 0):
+            if self._old_action is not None:
+                self._set_action(self._old_action)
+            self._old_action = None
+        else:
+            state = gcmd.get_int('STATE', minval=self.ACTION_IDLE, maxval=self.ACTION_PURGING)
+            if self._old_action is None:
+                self._old_action = self._set_action(state)
+            else:
+                self._set_action(state)
 
 
 ##############################################
@@ -4388,6 +4420,7 @@ class Mmu:
         with self._wrap_gear_current(self.extruder_collision_homing_current, "for collision detection"):
             homed = False
             measured = delta = 0.
+            i = 0
             for i in range(int(max_length / step)):
                 msg = "Homing step #%d" % (i+1)
                 _,_,smeasured,sdelta = self.trace_filament_move(msg, step, speed=self.gear_homing_speed)
@@ -4950,7 +4983,7 @@ class Mmu:
         if gcode_macro is None:
             raise MmuError("Filament tip forming macro '%s' not found" % self.form_tip_macro)
 
-        with self.wrap_action(self.ACTION_CUTTING_TIP if self.form_tip_macro == '_MMU_CUT_TIP' else self.ACTION_FORMING_TIP):
+        with self.wrap_action(self.ACTION_CUTTING_TIP if self.has_toolhead_cutter else self.ACTION_FORMING_TIP):
             synced = self.sync_form_tip and not extruder_only
             self.sync_gear_to_extruder(synced, grip=True, current=False)
             self._ensure_safe_extruder_temperature(wait=True)
@@ -6577,7 +6610,7 @@ class Mmu:
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         self.selector.filament_drive()
-        self.motors_off(motor="gear")
+        self.motors_onoff(on=False, motor="gear")
 
     cmd_MMU_TEST_TRACKING_help = "Test the tracking of gear feed and encoder sensing"
     def cmd_MMU_TEST_TRACKING(self, gcmd):
@@ -7668,48 +7701,51 @@ class Mmu:
             self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.monotonic() + self.pending_spool_id_timeout)
 
         if gate_map:
-            self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
-            self._renew_gate_map()
-            if replace:
-                # Replace map
-                for gate, fil in gate_map.items():
-                    if not (0 <= gate < self.num_gates):
-                        self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
-                        continue
-                    spool_id = self.safe_int(fil.get('spool_id', -1))
-                    self.gate_spool_id[gate] = spool_id
-                    if spool_id >= 0:
-                        self.gate_filament_name[gate] = fil.get('name', '')
-                        self.gate_material[gate] = fil.get('material', '')
-                        self.gate_color[gate] = fil.get('color', '')
-                        self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
-                        if self.gate_temperature[gate] <= 0:
-                            self.gate_temperature[gate] = self.default_extruder_temp
-                        self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
-                    else:
-                        # Clear attributes (should only get here in spoolman "pull" mode)
-                        self.gate_filament_name[gate] = ''
-                        self.gate_material[gate] = ''
-                        self.gate_color[gate] = ''
-                        self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
-            else:
-                # Update map
-                for gate, fil in gate_map.items():
-                    if not (0 <= gate < self.num_gates):
-                        self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
-                        continue
-                    if fil:
-                        if self.gate_spool_id[gate] != fil.get('spool_id', -1):
-                            self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
-                        self.gate_spool_id[gate] = self.safe_int(fil.get('spool_id', -1))
-                        self.gate_filament_name[gate] = fil.get('name', '')
-                        self.gate_material[gate] = fil.get('material', '')
-                        self.gate_color[gate] = fil.get('color', '')
-                        self.gate_status[gate] = self.safe_int(fil.get('status', self.gate_status[gate])) # For UI manual fixing of availabilty
-                        self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
-                        if self.gate_temperature[gate] <= 0:
-                            self.gate_temperature[gate] = self.default_extruder_temp
-                        self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
+            try:
+                self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
+                self._renew_gate_map()
+                if replace:
+                    # Replace map
+                    for gate, fil in gate_map.items():
+                        if not (0 <= gate < self.num_gates):
+                            self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
+                            continue
+                        spool_id = self.safe_int(fil.get('spool_id', -1))
+                        self.gate_spool_id[gate] = spool_id
+                        if spool_id >= 0:
+                            self.gate_filament_name[gate] = fil.get('name', '')
+                            self.gate_material[gate] = fil.get('material', '')
+                            self.gate_color[gate] = fil.get('color', '')
+                            self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
+                            if self.gate_temperature[gate] <= 0:
+                                self.gate_temperature[gate] = self.default_extruder_temp
+                            self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
+                        else:
+                            # Clear attributes (should only get here in spoolman "pull" mode)
+                            self.gate_filament_name[gate] = ''
+                            self.gate_material[gate] = ''
+                            self.gate_color[gate] = ''
+                            self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
+                else:
+                    # Update map
+                    for gate, fil in gate_map.items():
+                        if not (0 <= gate < self.num_gates):
+                            self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
+                            continue
+                        if fil:
+                            if self.gate_spool_id[gate] != fil.get('spool_id', -1):
+                                self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
+                            self.gate_spool_id[gate] = self.safe_int(fil.get('spool_id', -1))
+                            self.gate_filament_name[gate] = fil.get('name', '')
+                            self.gate_material[gate] = fil.get('material', '')
+                            self.gate_color[gate] = fil.get('color', '')
+                            self.gate_status[gate] = self.safe_int(fil.get('status', self.gate_status[gate])) # For UI manual fixing of availabilty
+                            self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
+                            if self.gate_temperature[gate] <= 0:
+                                self.gate_temperature[gate] = self.default_extruder_temp
+                            self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
+            except Exception as e:
+                raise gcmd.error("Invalid MAP parameter: %s" % gate_map)
 
             self._update_gate_color_rgb()
             self._persist_gate_map() # This will also update LED status

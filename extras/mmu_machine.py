@@ -50,7 +50,7 @@ VENDOR_BOX_TURTLE     = "BoxTurtle"
 VENDOR_NIGHT_OWL      = "NightOwl"
 VENDOR_3MS            = "3MS"
 VENDOR_3D_CHAMELEON   = "3DChameleon"
-VENDOR_PICO_MMU       = "PicoMMU" # Not yet ready
+VENDOR_PICO_MMU       = "PicoMMU"
 VENDOR_QUATTRO_BOX    = "QuattroBox"
 VENDOR_OTHER          = "Other"
 
@@ -159,7 +159,7 @@ class MmuMachine:
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
             require_bowden_move = 1
-            filament_always_gripped = 1
+            filament_always_gripped = 0
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_QUATTRO_BOX:
@@ -237,6 +237,7 @@ class MmuMachine:
         for i, unit in enumerate(self.units):
             unit_info = {}
             unit_info['name'] = UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor)
+            unit_info['vendor'] = self.mmu_vendor
             unit_info['version'] = self.mmu_version_string
             unit_info['num_gates'] = unit
             unit_info['first_gate'] = gate_count
