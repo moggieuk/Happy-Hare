@@ -1502,6 +1502,7 @@ class ServoSelector(BaseSelector, object):
         super(ServoSelector, self).__init__(mmu)
         self.is_homed = True
         self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
+        self.selector_bypass_angle = 0
 
         # Get hardware
         servo_name = mmu.config.get('selector_servo_name', "selector_servo")
