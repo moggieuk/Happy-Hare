@@ -1502,6 +1502,7 @@ class ServoSelector(BaseSelector, object):
         super(ServoSelector, self).__init__(mmu)
         self.is_homed = True
         self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
+        self.bypass_offset = -1
 
         # Get hardware
         servo_name = mmu.config.get('selector_servo_name', "selector_servo")
@@ -1553,8 +1554,8 @@ class ServoSelector(BaseSelector, object):
             self.selector_angles = [-1] * self.mmu.num_gates
         self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_ANGLES] = self.selector_angles
 
-        self.selector_bypass_angle = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, 0)
-        if self.selector_bypass_angle > 0:
+        self.selector_bypass_angle = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, -1)
+        if self.selector_bypass_angle >= 0:
             self.mmu.log_debug("Loaded saved bypass angle: %s" % self.selector_bypass_angle)
         else:
             self.selector_bypass_angle = -1 # Ensure -1 value for uncalibrated / non-existent
