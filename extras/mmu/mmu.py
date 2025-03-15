@@ -265,6 +265,7 @@ class Mmu:
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False      # Form tip cutting macro (like _MMU_CUT_TIP)
         self._is_running_test = False         # True while running QA or soak tests
+        self.slicer_tool_map = None
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -991,9 +992,14 @@ class Mmu:
         self.selector.reinit()
 
     def _clear_slicer_tool_map(self):
+        skip = self.slicer_tool_map.get('skip_automap', False) if self.slicer_tool_map else False
         self.slicer_tool_map = {'tools': {}, 'referenced_tools': [], 'initial_tool': None, 'purge_volumes': [], 'total_toolchanges': None}
+        self._restore_automap_option(skip)
         self.slicer_color_rgb = [(0.,0.,0.)] * self.num_gates
         self._update_t_macros() # Clear 'color' on Tx macros if displaying slicer colors
+
+    def _restore_automap_option(self, skip=False):
+        self.slicer_tool_map['skip_automap'] = skip
 
     # Helper to infer type for setting gcode macro variables
     def _fix_type(self, s):
@@ -3057,6 +3063,7 @@ class Mmu:
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
+            self._restore_automap_option()
             self._disable_runout() # Disable runout/clog detection after print
 
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
@@ -7904,6 +7911,7 @@ class Mmu:
         purge_volumes = gcmd.get('PURGE_VOLUMES', "")
         num_slicer_tools = gcmd.get_int('NUM_SLICER_TOOLS', self.num_gates, minval=1, maxval=self.num_gates) # Allow slicer to have less tools than MMU gates
         automap_strategy = gcmd.get('AUTOMAP', None)
+        skip_automap = bool(gcmd.get_int('SKIP_AUTOMAP', None, minval=0, maxval=1))
 
         quiet = False
         if reset:
@@ -7912,11 +7920,15 @@ class Mmu:
         else:
             self.slicer_tool_map = dict(self.slicer_tool_map) # Ensure that webhook sees get_status() change
 
+        if skip_automap is not None:
+            # This is a "one-print" option that supresses automatic automap
+            self._restore_automap_option(skip_automap)
+
         if tool >= 0:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
             if used:
                 self.slicer_tool_map['referenced_tools'] = sorted(set(self.slicer_tool_map['referenced_tools'] + [tool]))
-                if automap_strategy and automap_strategy != self.AUTOMAP_NONE:
+                if not self.slicer_tool_map['skip_automap'] and automap_strategy and automap_strategy != self.AUTOMAP_NONE:
                     self._automap_gate(tool, automap_strategy)
             if color:
                 self._update_slicer_color_rgb()
