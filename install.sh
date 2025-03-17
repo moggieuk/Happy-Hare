@@ -615,16 +615,28 @@ read_previous_config() {
     if [ "${_param_endless_spool_final_eject}" != "" ]; then
         _param_gate_final_eject_distance=${_param_endless_spool_final_eject}
     fi
-    if [ "${_variable_eject_tool}" != "" ]; then
-        _variable_unload_tool=${_variable_eject_tool}
+    if [ "${variable_eject_tool}" != "" ]; then
+        variable_unload_tool=${variable_eject_tool}
     fi
-    if [ "${_variable_eject_tool_on_cancel}" != "" ]; then
-        _variable_unload_tool_on_cancel=${_variable_eject_tool_on_cancel}
+    if [ "${variable_eject_tool_on_cancel}" != "" ]; then
+        variable_unload_tool_on_cancel=${variable_eject_tool_on_cancel}
     fi
 
     # v3.0.2
     if [ "${_param_homing_extruder}" != "" ]; then
         _hw_homing_extruder=${_param_homing_extruder}
+    fi
+
+    # v3.1.0
+    if [ "${variable_pin_loc_compressed}" != "" ]; then
+        echo -e "${INFO}Upgrading variable_pin_loc_compressed to new variable_pin_loc_compressed_xy"
+        pin_loc_x=$(echo ${variable_pin_loc_xy} | cut -d ',' -f1)
+        pin_loc_y=$(echo ${variable_pin_loc_xy} | cut -d ',' -f2)
+        if [ "${variable_cutting_axis}" == "x" ]; then
+            variable_pin_loc_compressed_xy="${variable_pin_loc_compressed}, ${pin_loc_y}"
+        else
+            variable_pin_loc_compressed_xy="${pin_loc_x}, ${variable_pin_loc_compressed}"
+        fi
     fi
 }
 

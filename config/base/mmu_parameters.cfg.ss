@@ -328,16 +328,18 @@ slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder 
 # If equipped with TMC drivers the current of the gear and extruder motors can be controlled to optimize performance.
 # This can be useful to control gear stepper temperature when printing with synchronized motor
 #
-sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
+sync_to_extruder: 0                     # Gear motor is synchronized to extruder during print
+sync_gear_current: 70                   # % of gear_stepper current (10%-100%) to use when syncing with extruder during print
+sync_form_tip: 0                        # Synchronize during standalone tip formation (initial part of unload)
 
 # Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
 # extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
 # binary supplied by one or two switches: -1 (expanded) and 1 (compressed) of proportional value between -1.0 and 1.0
 # Requires [mmu_sensors] setting
 #
-sync_feedback_enable: 0			# 0 = Turn off (even with fitted sensor), 1 = Turn on
-sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
-sync_multiplier_low: 0.95		# Minimum factor to apply
+sync_feedback_enable: 0                 # 0 = Turn off (even with fitted sensor), 1 = Turn on
+sync_multiplier_high: 1.05              # Maximum factor to apply to gear stepper 'rotation_distance'
+sync_multiplier_low: 0.95               # Minimum factor to apply
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------
