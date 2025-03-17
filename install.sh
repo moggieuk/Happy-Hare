@@ -629,10 +629,10 @@ read_previous_config() {
 
     # v3.1.0
     if [ "${variable_pin_loc_compressed}" != "" ]; then
-        echo -e "${INFO}Upgrading variable_pin_loc_compressed to new variable_pin_loc_compressed_xy"
+        echo -e "${INFO}Upgrading variable_pin_loc_compressed --> variable_pin_loc_compressed_xy"
         pin_loc_x=$(echo ${variable_pin_loc_xy} | cut -d ',' -f1)
         pin_loc_y=$(echo ${variable_pin_loc_xy} | cut -d ',' -f2)
-        if [ "${variable_cutting_axis}" == "x" ]; then
+        if expr "${variable_cutting_axis}" : '.*x.*' >/dev/null; then
             variable_pin_loc_compressed_xy="${variable_pin_loc_compressed}, ${pin_loc_y}"
         else
             variable_pin_loc_compressed_xy="${pin_loc_x}, ${variable_pin_loc_compressed}"
