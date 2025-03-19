@@ -1385,6 +1385,7 @@ class Mmu:
             'filament_position': self.mmu_toolhead.get_position()[1],
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
+            'pending_spool_id': self.pending_spool_id if self.pending_spool_id is not None else -1,
             'ttg_map': self.ttg_map,
             'endless_spool_groups': self.endless_spool_groups,
             'gate_status': self.gate_status,
@@ -2814,7 +2815,7 @@ class Mmu:
             self.log_info("Spool ID: %s automatically applied to gate %d" % (self.pending_spool_id, gate))
             self.gate_spool_id[gate] = self.pending_spool_id
             self._pending_spool_id_handler(0) # Prevent resue
-            self._spoolman_update_filaments(gate) # Request update of material & color from Spoolman
+            self._spoolman_update_filaments([gate]) # Request update of material & color from Spoolman
 
     def _handle_idle_timeout_printing(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "printing")
@@ -5962,15 +5963,10 @@ class Mmu:
 
     # Request to send filament data from spoolman db (via moonraker)
     # gate=None means all gates with spool_id, else specific gate
-    def _spoolman_update_filaments(self, gate=None, quiet=True):
+    def _spoolman_update_filaments(self, gate_ids=None, quiet=True):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
-        gate_ids = []
-        if gate is None: # All gates
-            for i in range(self.num_gates):
-                if self.gate_spool_id[i] >= 0:
-                    gate_ids.append((i, self.gate_spool_id[i]))
-        elif self.gate_spool_id[gate] >= 0:
-            gate_ids.append((gate, self.gate_spool_id[gate]))
+        if gate_ids is None: # All gates
+            gate_ids = [(i, self.gate_spool_id[i]) for i in range(self.num_gates) if self.gate_spool_id[i] >= 0]
         if len(gate_ids) > 0:
             self.log_debug("Requesting the following gate/spool_id pairs from Spoolman: %s" % gate_ids)
             try:
@@ -7339,11 +7335,14 @@ class Mmu:
         self._update_t_macros()
 
         # Also persist to spoolman db if pushing updates for visability
-        if spoolman_sync and self.spoolman_support == self.SPOOLMAN_PUSH:
-            if gate_ids is None:
-                gate_ids = list(enumerate(self.gate_spool_id))
-            if gate_ids:
-                self._spoolman_push_gate_map(gate_ids)
+        if spoolman_sync:
+            if self.spoolman_support == self.SPOOLMAN_PUSH:
+                if gate_ids is None:
+                    gate_ids = list(enumerate(self.gate_spool_id))
+                if gate_ids:
+                    self._spoolman_push_gate_map(gate_ids)
+            elif self.spoolman_support == self.SPOOLMAN_READONLY:
+                self._spoolman_update_filaments(gate_ids)
 
         if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
             self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
@@ -7730,7 +7729,7 @@ class Mmu:
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
-        gmapstr = gcmd.get('MAP', "{}")                                # Hidden option for bulk filament update from moonraker component
+        gmapstr = gcmd.get('MAP', "{}")                                # Hidden option for bulk filament update (from moonraker/ui components)
         replace = bool(gcmd.get_int('REPLACE', 0, minval=0, maxval=1)) # Hidden option for bulk filament
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
@@ -7753,7 +7752,6 @@ class Mmu:
         if gate_map:
             try:
                 self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
-                self._renew_gate_map()
                 if replace:
                     # Replace map
                     for gate, fil in gate_map.items():
@@ -7797,6 +7795,7 @@ class Mmu:
             except Exception as e:
                 raise gcmd.error("Invalid MAP parameter: %s" % gate_map)
 
+            self._renew_gate_map() # Important for moonraker to see changes
             self._update_gate_color_rgb()
             self._persist_gate_map() # This will also update LED status
 
@@ -7816,7 +7815,6 @@ class Mmu:
                 gatelist.append(gate)
 
             gate_ids = []
-            self._renew_gate_map()
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
                 name = gcmd.get('NAME', None)
@@ -7853,13 +7851,14 @@ class Mmu:
                     self.gate_speed_override[gate] = speed_override
 
                 else:
-                    # Remote (spoolman) gate map, don't update attributes that are available from spoolman
+                    # Remote (spoolman) gate map, don't update local attributes that are set by spoolman
                     self.gate_status[gate] = available
                     self.gate_speed_override[gate] = speed_override
                     if any(x is not None for x in [material, color, spool_id, name]):
                         self.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % self.SPOOLMAN_PULL)
                         return
 
+            self._renew_gate_map() # Important for moonraker to see changes
             self._update_gate_color_rgb()
             self._persist_gate_map(spoolman_sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
 
