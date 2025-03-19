@@ -296,6 +296,9 @@ form_tip_macro: _MMU_FORM_TIP            # Name of macro to call to perform the 
 extruder_form_tip_current: 100		 # % of extruder current (100%-150%) to use when forming tip (100 to disable)
 slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder after slicer completes tip forming
 
+force_purge_standalone: 1		# 0 = Slicer in print else standalone, 1 = Always standalone purging (TURN SLCIER WIPETOWER OFF!)
+purge_macro: ''                         # Name of macro to call to perform the standalone purging operation
+
 
 # Synchronized gear/extruder movement ----------------------------------------------------------------------------------
 # ███╗   ███╗ ██████╗ ████████╗ ██████╗ ██████╗     ███████╗██╗   ██╗███╗   ██╗ ██████╗
@@ -398,7 +401,7 @@ t_macro_color: slicer			# 'slicer' = default | 'allgates' = mmu | 'gatemap' = mm
 #             Note: Only formats correctly on Python3
 #
 # Comma separated list of desired columns
-# Options: pre_unload, unload, post_unload, pre_load, load, post_load, total
+# Options: pre_unload, form_tip, unload, post_unload, pre_load, load, purge, post_load, total
 console_stat_columns: unload, load, post_load, total
 
 # Comma separated list of rows. The order determines the order in which they're shown.

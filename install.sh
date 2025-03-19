@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.1 # Important: Keep synced with mmy.py
+VERSION=3.2 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -1309,6 +1309,7 @@ questionaire() {
     OPTIONS=()
     option ERCF11         'ERCF v1.1 (inc TripleDecky, Springy, Binky mods)'
     option ERCF20         'ERCF v2.0'
+    option ERCF25         'ERCF v2.5'
     option TRADRACK       'Tradrack v1.0'
     option ANGRY_BEAVER   'Angry Beaver v1.0'
     option BOX_TURTLE     'Box Turtle v1.0'
@@ -1390,6 +1391,32 @@ questionaire() {
             _param_extruder_homing_endstop="collision"
             _param_gate_homing_endstop="encoder"
             _param_gate_parking_distance=13 # ThumperBlocks is 11
+            _param_servo_buzz_gear_on_down=3
+            _param_servo_duration=0.4
+            _param_servo_always_active=0
+            _param_servo_buzz_gear_on_down=1
+            ;;
+
+        "$ERCF25")
+            HAS_ENCODER=yes
+            HAS_SELECTOR=yes
+            HAS_SERVO=yes
+            _hw_mmu_vendor="ERCF"
+            _hw_mmu_version="2.5"
+            _hw_selector_type=LinearSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="1:1"
+            _hw_gear_run_current=1.0
+            _hw_gear_hold_current=0.2
+            _hw_sel_run_current=0.4
+            _hw_sel_hold_current=0.2
+            _hw_encoder_resolution=1.0
+            _param_extruder_homing_endstop="collision"
+            _param_gate_homing_endstop="encoder"
+            _param_gate_parking_distance=10
             _param_servo_buzz_gear_on_down=3
             _param_servo_duration=0.4
             _param_servo_always_active=0

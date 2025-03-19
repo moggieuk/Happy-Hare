@@ -268,7 +268,7 @@ class MmuServer:
         filament = spool_info["filament"]
         name = filament.get('name', '')
         material = filament.get('material', '')
-        color_hex = filament.get('color_hex', '').strip('#')[:6].lower() # First remove # character if present then strip alpha channel if it exists
+        color_hex = filament.get('color_hex', '').strip('#')[:8].lower() # Remove problematic First # character if present
         temp = filament.get('settings_extruder_temp', '')
         return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp}
 

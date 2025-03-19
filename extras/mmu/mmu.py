@@ -35,7 +35,7 @@ from .mmu_sensor_manager import MmuSensorManager
 
 # Main klipper module
 class Mmu:
-    VERSION = 3.10 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 3.20 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
@@ -77,7 +77,11 @@ class Mmu:
 
     FORM_TIP_NONE = 0               # Skip tip forming
     FORM_TIP_SLICER = 1             # Slicer forms tips
-    FORM_TIP_STANDALONE = 2         # Happy Hare forms tips (default)
+    FORM_TIP_STANDALONE = 2         # Happy Hare forms tips
+
+    PURGE_NONE = 0                  # Skip purging after load
+    PURGE_SLICER = 1                # Slicer purges on wipetower
+    PURGE_STANDALONE = 2            # Happy Hare purges
 
     ACTION_IDLE = 0
     ACTION_LOADING = 1
@@ -301,6 +305,7 @@ class Mmu:
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
         self.force_form_tip_standalone = config.getint('force_form_tip_standalone', 0, minval=0, maxval=1)
+        self.force_purge_standalone = config.getint('force_purge_standalone', 0, minval=0, maxval=1)
         self.autotune_rotation_distance = config.getint('autotune_rotation_distance', 0, minval=0, maxval=1) # autotune_rotation_distance
         self.autotune_bowden_length = config.getint('autotune_bowden_length', 0, minval=0, maxval=1) # autotune_bowden_length
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
@@ -317,6 +322,7 @@ class Mmu:
         self.print_state_changed_macro = config.get('print_state_changed_macro', '_MMU_PRINT_STATE_CHANGED')
         self.mmu_event_macro = config.get('mmu_event_macro', '_MMU_EVENT')
         self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP')
+        self.purge_macro = config.get('purge_macro', '')
         self.pre_unload_macro = config.get('pre_unload_macro', '_MMU_PRE_UNLOAD')
         self.post_form_tip_macro = config.get('post_form_tip_macro', '_MMU_POST_FORM_TIP')
         self.post_unload_macro = config.get('post_unload_macro', '_MMU_POST_UNLOAD')
@@ -375,7 +381,7 @@ class Mmu:
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
         self.toolhead_sensor_to_nozzle = config.getfloat('toolhead_sensor_to_nozzle', 0., minval=1.) # For toolhead sensor
         self.toolhead_entry_to_extruder = config.getfloat('toolhead_entry_to_extruder', 0., minval=0.) # For extruder (entry) sensor
-        self.toolhead_residual_filament = config.getfloat('toolhead_residual_filament', 0., minval=0., maxval=60.) # +ve value = reduction of load length
+        self.toolhead_residual_filament = config.getfloat('toolhead_residual_filament', 0., minval=0., maxval=50.) # +ve value = reduction of load length
         self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-5., maxval=20.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
@@ -1027,20 +1033,20 @@ class Mmu:
             b = b.lower()
         return a == b
 
-    # This retuns the hex color format without leading '#' E.g. ff00e0
-    # TODO support alpha channel for color (Mainsail plugin supports)
+    # This retuns the hex color format without leading '#' E.g. ff00e080
+    # Support alpha channel (Nice for Mainsail/Fluidd UI)
     def _color_to_rgb_hex(self, color):
         if color in self.w3c_colors:
             color = self.w3c_colors.get(color)
         elif color == '':
-            color = "#000000"
+            color = "000000"
         rgb_hex = color.lstrip('#').lower()
-        return rgb_hex[0:6]
+        return rgb_hex[0:8]
 
     # This retuns a convenient RGB fraction tuple for controlling LEDs E.g. (0.32, 0.56, 1.00)
-    # or integer version (82, 143, 255)
+    # or integer version (82, 143, 255). Alpha channel is cut
     def _color_to_rgb_tuple(self, color, fraction=True):
-        rgb_hex = self._color_to_rgb_hex(color)
+        rgb_hex = self._color_to_rgb_hex(color)[:6]
         length = len(rgb_hex)
         if fraction:
             if length % 3 == 0:
@@ -1259,11 +1265,13 @@ class Mmu:
             self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
-    def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
+    def wrap_gcode_command(self, command, exception=False, variables=None, wait=False, ignore_empty=True):
         try:
             macro = command.split()[0]
+            gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro, None)
+            if gcode_macro is None and ignore_empty:
+                return
             if variables is not None:
-                gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro)
                 gcode_macro.variables.update(variables)
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
@@ -1511,7 +1519,7 @@ class Mmu:
         result += "%d seconds" % int((math.floor(seconds) % 60))
         return result
 
-    def _swap_statistics_to_string(self, total=True):
+    def _swap_statistics_to_string(self, total=True, detail=False):
         #
         # +-----------+---------------------+----------------------+----------+
         # |  114(46)  |      unloading      |       loading        | complete |
@@ -1531,8 +1539,8 @@ class Mmu:
         last = self.last_statistics
         total = self.console_always_output_full or total or not self.is_in_print()
 
-        table_column_order = ['pre_unload', 'unload', 'post_unload', 'pre_load', 'load', 'post_load', 'total']
-        table_include_columns = self._list_intersection(table_column_order, self.console_stat_columns) # To maintain the correct order and filter incorrect ones
+        table_column_order = ['pre_unload', 'form_tip', 'unload', 'post_unload', 'pre_load', 'load', 'purge', 'post_load', 'total']
+        table_include_columns = self._list_intersection(table_column_order, self.console_stat_columns if not detail else table_column_order) # To maintain the correct order and filter incorrect ones
 
         table_row_options = ['total', 'total_average', 'job', 'job_average', 'last']
         table_include_rows = self._list_intersection(self.console_stat_rows, table_row_options) # Keep the user provided order
@@ -1557,17 +1565,19 @@ class Mmu:
             # Map the saved timing values to proper column titles
             table_headers_map = {
                 'pre_unload': 'pre',
+                'form_tip': 'tip',
                 'unload': '-',
                 'post_unload': 'post',
                 'pre_load': 'pre',
                 'load': '-',
+                'purge': 'purge',
                 'post_load': 'post',
                 'total': 'swap'
             }
             # Group the top headers map. Omit the first column, because that'll be filled with the nr. of swaps
             table_extra_headers_map = {
-                'unloading': ['pre_unload', 'unload', 'post_unload'],
-                'loading': ['pre_load', 'load', 'post_load'],
+                'unloading': ['pre_unload', 'form_tip', 'unload', 'post_unload'],
+                'loading': ['pre_load', 'load', 'purge', 'post_load'],
                 'complete': ['total']
             }
             # Extract the table headers that will be used
@@ -1652,7 +1662,7 @@ class Mmu:
         msg = ""
         if self.log_statistics or force_log:
             if job or total:
-                msg += self._swap_statistics_to_string(total=total)
+                msg += self._swap_statistics_to_string(total=total, detail=detail)
             if self._can_use_encoder() and gate:
                 m,d = self._gate_statistics_to_string()
                 msg += "\n\n" if msg != "" else ""
@@ -1942,6 +1952,7 @@ class Mmu:
                 msg += "\n- Extruder (synced) loads by homing a maximum of %s to TOOLHEAD sensor before moving the last %s to the nozzle" % (self._f_calc("toolhead_homing_max"), self._f_calc("toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining"))
             else:
                 msg += "\n- Extruder (synced) loads by moving %s to the nozzle" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining")
+            msg += "\n- Purging is %s managed by %s" % (("sometimes", "SLICER") if not self.force_purge_standalone or self.purge_macro == '' else ("always", ("'%s' macro" % self.purge_macro)))
             if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
                 msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
 
@@ -1981,7 +1992,7 @@ class Mmu:
                     m.append("Print (at %d%% current %s sync feedback)" % (self.sync_gear_current, "with" if self.sync_feedback_enable else "without"))
                 if self.sync_form_tip:
                     m.append("Tip forming")
-                msg += ",".join(m)
+                msg += ", ".join(m)
 
             if hasattr(self.selector, 'use_touch_move'):
                 msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector.use_touch_move() else ("DISABLED", "is not"))
@@ -3411,7 +3422,7 @@ class Mmu:
 
     def _set_filament_remaining(self, length, color=''):
         self.filament_remaining = length
-        self.save_variable(self.VARS_MMU_FILAMENT_REMAINING, round(length, 1))
+        self.save_variable(self.VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1)))
         self.save_variable(self.VARS_MMU_FILAMENT_REMAINING_COLOR, color, write=True)
 
     def _set_last_tool(self, tool):
@@ -3905,7 +3916,7 @@ class Mmu:
                     # Mimick in print if requested
                     self.sync_gear_to_extruder(self.sync_form_tip and self.is_in_print(force_in_print), grip=True, current=self.is_in_print(force_in_print))
 
-                    _,_,_ = self._do_form_tip(test=True)
+                    _,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
@@ -4494,7 +4505,7 @@ class Mmu:
                 self.log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
                 if measured < self.encoder_min:
                     raise MmuError("Move to nozzle failed (encoder didn't sense any movement). Extruder may not have picked up filament or filament did not find homing sensor")
-                elif delta > length * (self.toolhead_move_error_tolerance/100.):
+                elif delta > length * (self.toolhead_move_error_tolerance / 100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                     raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not find homing sensor")
 
@@ -4704,7 +4715,7 @@ class Mmu:
 # LOAD / UNLOAD SEQUENCES AND FILAMENT TESTS #
 ##############################################
 
-    def load_sequence(self, bowden_move=None, skip_extruder=False, extruder_only=False):
+    def load_sequence(self, bowden_move=None, skip_extruder=False, purge=None, extruder_only=False):
         self.movequeues_wait()
 
         bowden_length = self._get_bowden_length(self.gate_selected)
@@ -4781,12 +4792,20 @@ class Mmu:
                 msg += " {1}(encoder measured %.1fmm){0}" % self.get_encoder_distance(dwell=None)
             self.log_info(msg, color=True)
 
-            # Finally autotune calibrated bowden length
+            # Autotune calibrated bowden length
             if full and not extruder_only and not self.gcode_load_sequence:
                 self._autotune(self.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
 
             # Activate loaded spool in Spoolman
             self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
+
+            # Deal with purging
+            if purge == self.PURGE_SLICER and not skip_extruder:
+                self.log_debug("Purging expected to be performed by slicer")
+            elif purge == self.PURGE_STANDALONE and not skip_extruder and not self.is_handling_runout:
+                with self._wrap_track_time('purge'):
+                    with self.wrap_action(self.ACTION_PURGING):
+                        self.purge_standalone()
 
             # POST_LOAD user defined macro
             if macros_and_track:
@@ -4794,7 +4813,7 @@ class Mmu:
                     # Restore the expected sync state now before running this macro
                     sync = (self.is_printing() and self.sync_to_extruder) or self._standalone_sync
                     self.sync_gear_to_extruder(sync, grip=True, current=True)
-                    if self.has_blobifier:
+                    if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
                         with self.wrap_action(self.ACTION_PURGING):
                             self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
                     else:
@@ -4816,7 +4835,7 @@ class Mmu:
             if not self.is_printing():
                 self.selector.filament_release()
 
-    def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False, runout=False):
+    def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False):
         self.movequeues_wait()
 
         bowden_length = self._get_bowden_length(self.gate_selected)
@@ -4826,6 +4845,7 @@ class Mmu:
             self.log_info("Warning: Restricting bowden unload length to calibrated value of %.1fmm" % bowden_length)
         full = bowden_move == bowden_length
         macros_and_track = not extruder_only and full
+        runout = self.is_handling_runout
 
         self._set_filament_direction(self.DIRECTION_UNLOAD)
         self._initialize_filament_position(dwell=None)
@@ -4854,8 +4874,8 @@ class Mmu:
                 self._display_visual_state()
 
             park_pos = 0.
-            form_tip = form_tip if form_tip is not None else self.FORM_TIP_STANDALONE
-            if form_tip == self.FORM_TIP_SLICER:
+            do_form_tip = form_tip if form_tip is not None else self.FORM_TIP_STANDALONE # Default to standalone
+            if do_form_tip == self.FORM_TIP_SLICER:
                 # Slicer was responsible for the tip, but the user must set the slicer_tip_park_pos
                 park_pos = self.slicer_tip_park_pos
                 self._set_filament_position(-park_pos)
@@ -4864,19 +4884,20 @@ class Mmu:
                 else:
                     self.log_debug("Tip forming performed by slicer, park_pos set to %.1fmm" % park_pos)
 
-            elif form_tip == self.FORM_TIP_STANDALONE and (self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER or runout):
-                # Extruder only in runout case to give filament best chance to reach gear
-                detected = self.form_tip_standalone(extruder_only=(extruder_only or runout))
-                park_pos = self._get_filament_position()
+            elif do_form_tip == self.FORM_TIP_STANDALONE and (self.filament_pos >= self.FILAMENT_POS_IN_EXTRUDER or runout):
+                with self._wrap_track_time('form_tip'):
+                    # Extruder only in runout case to give filament best chance to reach gear
+                    detected = self.form_tip_standalone(extruder_only=(extruder_only or runout))
+                    park_pos = self._get_filament_position()
 
-                # If handling runout warn if we don't see any filament near the gate
-                if runout and (
-                    self.sensor_manager.check_any_sensors_before(self.FILAMENT_POS_HOMED_GATE, self.gate_selected) is False or
-                    (self.has_encoder() and self.get_encoder_distance() == 0)
-                ):
-                    self.log_info("Warning: Filament not seen near gate after tip forming move. Unload may not be possible")
+                    # If handling runout warn if we don't see any filament near the gate
+                    if runout and (
+                        self.sensor_manager.check_any_sensors_before(self.FILAMENT_POS_HOMED_GATE, self.gate_selected) is False or
+                        (self.has_encoder() and self.get_encoder_distance() == 0)
+                    ):
+                        self.log_info("Warning: Filament not seen near gate after tip forming move. Unload may not be possible")
 
-                self.wrap_gcode_command(self.post_form_tip_macro, exception=True, wait=True)
+                    self.wrap_gcode_command(self.post_form_tip_macro, exception=True, wait=True)
 
             # Note: Conditionals deliberately coded this way to match macro alternative
             homing_movement = None # Track how much homing is done for calibrated bowden length optimization
@@ -4890,7 +4911,7 @@ class Mmu:
 
             elif extruder_only:
                 if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
-                    self._unload_extruder(extruder_only=True, validate=form_tip == self.FORM_TIP_STANDALONE)
+                    self._unload_extruder(extruder_only=True, validate=do_form_tip == self.FORM_TIP_STANDALONE)
                 else:
                     self.log_debug("Assertion failure: Unexpected state %d in unload_sequence(extruder_only=True)" % start_filament_pos)
                     raise MmuError("Cannot unload extruder because filament not detected in extruder!")
@@ -4902,7 +4923,7 @@ class Mmu:
             else:
                 if start_filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY:
                     # Exit extruder, fast unload of bowden, then slow unload encoder
-                    self._unload_extruder(validate=form_tip == self.FORM_TIP_STANDALONE)
+                    self._unload_extruder(validate=do_form_tip == self.FORM_TIP_STANDALONE)
 
                 if start_filament_pos >= self.FILAMENT_POS_END_BOWDEN or (start_filament_pos >= self.FILAMENT_POS_HOMED_GATE and not full):
                     # Fast unload of bowden, then unload encoder
@@ -5051,9 +5072,9 @@ class Mmu:
                 self.log_error("Reported 'output_park_pos: %s' could not be parsed: %s" % (park_pos, str(e)))
                 park_pos = -1
 
+            reported = False
             if park_pos < 0:
-                # Use stepper movement
-                reported = False
+                # Use stepper movement (tip forming)
                 filament_remaining = 0.
                 park_pos = stepper_movement + self.toolhead_residual_filament + self.toolchange_retract
                 msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1fmm (encoder measured %.1fmm)" % (stepper_movement, park_pos, measured)
@@ -5062,21 +5083,43 @@ class Mmu:
                 else:
                     self.log_trace(msg)
             else:
-                # Means the macro reported it (usually for filament cutting)
+                # Means the macro reported it (filament cutting)
+                if park_pos == 0:
+                    self.log_error("Warning: output_park_pos was reported as 0mm and may not be set correctly\nWill attempt to continue...")
                 reported = True
                 filament_remaining = park_pos - stepper_movement - self.toolhead_residual_filament - self.toolchange_retract
-                msg = "After tip forming, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
+                msg = "After tip cutting, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
                 if test:
                     self.log_always(msg)
                 else:
                     self.log_trace(msg)
 
-            if not test and park_pos > self.toolhead_extruder_to_nozzle:
-                self.log_error("Warning: park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
-                park_pos = self.toolhead_extruder_to_nozzle
-                filament_remaining = 0.
+            if not test:
+                # Important sanity checks to spot misconfiguration
+                if park_pos > self.toolhead_extruder_to_nozzle:
+                    self.log_error("Warning: park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
+                    park_pos = self.toolhead_extruder_to_nozzle
+                    filament_remaining = 0.
+
+                if filament_remaining < 0:
+                    self.log_error("Warning: Calculated filament remaining after cut is negative (%.1fmm)! Suspect misconfiguration of output_park_pos (%.1fmm).\nWill attempt to continue assuming no cut filament remaining..." % (filament_remaining, park_pos))
+                    park_pos = 0.
+                    filament_remaining = 0.
 
         return park_pos, filament_remaining, reported
+
+# PAUL new
+    def purge_standalone(self):
+        gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.purge_macro, None)
+        if gcode_macro:
+            self.log_info("Purging...")
+            # We expect the macro to decide on the purge volume, but expect to be based on this. If not in a
+            # toolchange toolchange_purge_volume will be 0 and macro may need to perform worse case purge
+            msg = "Calculated purge (both of these):\n"
+            msg += "extruder_filament_remaining: %.1fmm\n" % (self.filament_remaining + self.toolhead_residual_filament)
+            msg += "toolchange_purge_volume: %.1fmm%s" % (self.toolchange_purge_volume, UI_CUBE)
+            self.log_debug(msg)
+            self.wrap_gcode_command(self.purge_macro, exception=True, wait=True)
 
 
 #################################
@@ -5698,8 +5741,8 @@ class Mmu:
             self._restore_tool_override(tool)
 
     # Primary method to select and loads tool. Assumes we are unloaded.
-    def _select_and_load_tool(self, tool):
-        self.log_debug('Loading tool T%d...' % tool)
+    def _select_and_load_tool(self, tool, purge=None): # PAUL need purge=None
+        self.log_debug('Loading tool T%d...' % tool) # PAUL reports -1 !
         self.select_tool(tool, move_servo=False)
         gate = self.ttg_map[tool]
         if self.gate_status[gate] == self.GATE_EMPTY:
@@ -5715,11 +5758,11 @@ class Mmu:
             else:
                 raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
 
-        self.load_sequence()
+        self.load_sequence(purge=purge) # PAUL pass purge
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
     # Primary method to unload current tool but retain selection
-    def _unload_tool(self, form_tip=None, runout=False):
+    def _unload_tool(self, form_tip=None):
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_info("Tool already unloaded")
             return
@@ -5727,7 +5770,7 @@ class Mmu:
         self.log_debug("Unloading tool %s" % self._selected_tool_string())
         self._set_last_tool(self.tool_selected)
         self._record_tool_override() # Remember M220 and M221 overrides
-        self.unload_sequence(form_tip=form_tip, runout=runout)
+        self.unload_sequence(form_tip=form_tip)
 
     def _auto_home(self, tool=0):
         if not self.selector.is_homed or self.tool_selected == self.TOOL_GATE_UNKNOWN:
@@ -6157,10 +6200,11 @@ class Mmu:
         if self.check_if_bypass(): return
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
         self._fix_started_state()
+# PAUL this should have skip_tip and skip_purge options..
 
         self.last_statistics = {}
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
-        standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
+        standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1)) # PAUL standalone toolchange setting implies form tip and purge
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
 
         # Handle "next_pos" option for toolhead position restoration
@@ -6197,12 +6241,19 @@ class Mmu:
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during tool change
                     with self._wrap_suspendwrite_variables(): # Reduce I/O activity to a minimum
                         self._auto_home(tool=tool)
-
                         if self.has_encoder():
                             self.encoder_sensor.update_clog_detection_length()
 
-                        form_tip = self.FORM_TIP_SLICER if (self.is_printing() and not (standalone or self.force_form_tip_standalone)) else self.FORM_TIP_STANDALONE
-                        self.log_debug("Tool change initiated %s" % ("with slicer tip forming" if form_tip == self.FORM_TIP_SLICER else "with standalone MMU tip forming" if form_tip == self.FORM_TIP_STANDALONE else "without tip forming"))
+                        form_tip = self.FORM_TIP_SLICER if self.is_printing() and not (standalone or self.force_form_tip_standalone) else self.FORM_TIP_STANDALONE
+                        purge = self.PURGE_SLICER if self.is_printing() and not (standalone or self.force_purge_standalone) else self.PURGE_STANDALONE
+                        tip_msg = ("with slicer tip forming" if form_tip == self.FORM_TIP_SLICER else
+                                   "with standalone MMU tip forming" if form_tip == self.FORM_TIP_STANDALONE else
+                                   "without tip forming")
+                        purge_msg = ("slicer purging" if purge == self.PURGE_SLICER else
+                                     "standalone MMU purging" if purge == self.PURGE_STANDALONE else
+                                     "without purging")
+                        self.log_debug("Tool change initiated %s and %s" % (tip_msg, purge_msg))
+
                         current_tool_string = self._selected_tool_string()
 
                         # Check if we are already loaded
@@ -6247,7 +6298,7 @@ class Mmu:
                                     if self.filament_pos != self.FILAMENT_POS_UNLOADED:
                                         self._unload_tool(form_tip=form_tip)
                                     self._set_next_position(next_pos)
-                                    self._select_and_load_tool(tool)
+                                    self._select_and_load_tool(tool, purge=purge) # PAUL need to pass purge=purge
                                     break
                                 except MmuError as ee:
                                     if i == attempts - 1:
@@ -6286,7 +6337,10 @@ class Mmu:
         self.last_statistics = {}
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
+        skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
+        purge = self.PURGE_STANDALONE if not skip_purge else self.PURGE_NONE
+
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament load
@@ -6298,11 +6352,14 @@ class Mmu:
 
                     if not extruder_only:
                         self._save_toolhead_position_and_park('load')
-                        self._select_and_load_tool(self.tool_selected)
+                        self._select_and_load_tool(self.tool_selected, purge=purge) # PAUL what if unknown tool? FIX+ME
                         self._persist_gate_statistics()
                         self._continue_after('load', restore=restore)
                     else:
-                        self.load_sequence(bowden_move=0., extruder_only=True)
+                        self.load_sequence(bowden_move=0., extruder_only=True, purge=purge) # PAUL pass purge
+
+                    self._persist_swap_statistics() # PAUL
+
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when loading tool: %s" % (str(ee), self._last_toolchange))
             if self.tool_selected == self.TOOL_GATE_BYPASS:
@@ -6323,6 +6380,9 @@ class Mmu:
             with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament unload
                     self._mmu_unload_eject(gcmd)
+
+                    self._persist_swap_statistics() # PAUL
+
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
 
@@ -6370,6 +6430,9 @@ class Mmu:
                     else:
                         self._initialize_encoder() # Encoder 0000
                         self._auto_filament_grip()
+
+                    self._persist_swap_statistics() # PAUL
+
         except MmuError as ee:
             self.handle_mmu_error("Filament eject for gate %d failed: %s" % (gate, str(ee)))
 
@@ -6605,7 +6668,7 @@ class Mmu:
                                 self.load_sequence(bowden_move=100., skip_extruder=True)
                                 self.unload_sequence(bowden_move=100.)
                             else:
-                                self._select_and_load_tool(tool)
+                                self._select_and_load_tool(tool, purge=self.PURGE_NONE) # PAUL no purge
                                 self._unload_tool()
                 self.select_tool(0)
         except MmuError as ee:
@@ -6830,6 +6893,7 @@ class Mmu:
 
         self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.slicer_tip_park_pos, minval=0.)
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
+        self.force_purge_standalone = gcmd.get_int('FORCE_PURGE_STANDALONE', self.force_purge_standalone, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
         self.filament_recovery_on_pause = gcmd.get_int('FILAMENT_RECOVERY_ON_PAUSE', self.filament_recovery_on_pause, minval=0, maxval=1)
         self.preload_attempts = gcmd.get_int('PRELOAD_ATTEMPTS', self.preload_attempts, minval=1, maxval=20)
@@ -6843,6 +6907,7 @@ class Mmu:
         if form_tip_macro != self.form_tip_macro:
             self.form_tip_vars = None # If macro is changed invalidate defaults
         self.form_tip_macro = form_tip_macro
+        purge_macro = gcmd.get('PURGE_MACRO', self.purge_macro)
 
         # Available only with encoder
         if self.has_encoder():
@@ -6926,8 +6991,13 @@ class Mmu:
 
             msg += "\n\nTIP FORMING:"
             msg += "\nform_tip_macro = %s" % self.form_tip_macro
-            msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
             msg += "\nforce_form_tip_standalone = %d" % self.force_form_tip_standalone
+            if not self.force_form_tip_standalone:
+                msg += "\nslicer_tip_park_pos = %.1f" % self.slicer_tip_park_pos
+
+            msg += "\n\nPURGING:"
+            msg += "\npurge_macro = %s" % self.purge_macro
+            msg += "\nforce_purge_standalone = %d" % self.force_purge_standalone
 
             msg += "\n\nLOGGING:"
             msg += "\nlog_level = %d" % self.log_level
@@ -7017,11 +7087,11 @@ class Mmu:
                 if self.endless_spool_eject_gate > 0:
                     self.log_info("Ejecting filament remains to designated waste gate %d" % self.endless_spool_eject_gate)
                     self.select_gate(self.endless_spool_eject_gate)
-                self._unload_tool(runout=True)
+                self._unload_tool()
                 self._eject_from_gate() # Push completely out of gate
                 self.select_gate(next_gate) # Necessary if unloaded to waste gate
                 self._remap_tool(self.tool_selected, next_gate)
-                self._select_and_load_tool(self.tool_selected)
+                self._select_and_load_tool(self.tool_selected, purge=self.PURGE_NONE)
             else:
                 raise MmuError("Runout detected on %s\nEndlessSpool mode is off - manual intervention is required" % sensor)
 
@@ -7564,7 +7634,7 @@ class Mmu:
                         self.log_debug("Autoloading extruder")
                         with self._wrap_suspend_runout():
                             self._note_toolchange("> Bypass")
-                            self.load_sequence(bowden_move=0., extruder_only=True)
+                            self.load_sequence(bowden_move=0., extruder_only=True, purge=self.PURGE_NONE) # TODO PURGE_STANDALONE?
                         return
                     self.log_debug("Ignoring extruder insertion because %s" % msg)
 
@@ -7599,33 +7669,6 @@ class Mmu:
 
                 else:
                     self.log_debug("Assertion failure: Unexpected/unhandled sensor remove event. Ignored")
-        except MmuError as ee:
-            self.handle_mmu_error(str(ee))
-
-    # Callback to handle filament sensor at extruder entrance
-    # This is not protected by klipper "is not printing" check
-    cmd_MMU_EXTRUDER_INSERT_help = "Internal extruder filament insertion handler"
-    def cmd_MMU_EXTRUDER_INSERT(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        if not self.is_enabled: return
-        self._fix_started_state()
-        try:
-            with self.wrap_sync_gear_to_extruder():
-                if self.gate_selected != self.TOOL_GATE_BYPASS:
-                    msg = "bypass not selected"
-                elif self.is_printing():
-                    msg = "actively printing"
-                elif self.filament_pos != self.FILAMENT_POS_UNLOADED :
-                    msg = "extruder cannot be verified as unloaded"
-                elif not self.bypass_autoload:
-                    msg = "bypass autoload is disabled"
-                else:
-                    self.log_debug("Autoloading extruder")
-                    with self._wrap_suspend_runout():
-                        self._note_toolchange("> Bypass")
-                        self.load_sequence(bowden_move=0., extruder_only=True)
-                    return
-                self.log_debug("Ignoring extruder insertion because %s" % msg)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
@@ -8153,7 +8196,7 @@ class Mmu:
                                     elif tool_selected != self.TOOL_GATE_UNKNOWN:
                                         if filament_pos == self.FILAMENT_POS_LOADED:
                                             self.log_info("Restoring tool loaded prior to checking gates")
-                                            self._select_and_load_tool(tool_selected)
+                                            self._select_and_load_tool(tool_selected, purge=self.PURGE_NONE) # PAUL no purge in this case
                                         else:
                                             self.select_tool(tool_selected)
                                 except MmuError as ee:
