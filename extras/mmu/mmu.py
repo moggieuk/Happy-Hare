@@ -984,7 +984,7 @@ class Mmu:
         self.print_state = self.resume_to_state = "ready"
         self.form_tip_vars = None # Current defaults of gcode variables for tip forming macro
         self._clear_slicer_tool_map()
-        self.pending_spool_id = None # For automatic assignment of spool_id if set perhaps by rfid reader
+        self.pending_spool_id = -1 # For automatic assignment of spool_id if set perhaps by rfid reader
         self.saved_toolhead_max_accel = None
         self.num_toolchanges = 0
 
@@ -1377,7 +1377,7 @@ class Mmu:
             'filament_position': self.mmu_toolhead.get_position()[1],
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
-            'pending_spool_id': self.pending_spool_id if self.pending_spool_id is not None else -1,
+            'pending_spool_id': self.pending_spool_id,
             'ttg_map': self.ttg_map,
             'endless_spool_groups': self.endless_spool_groups,
             'gate_status': self.gate_status,
@@ -2796,15 +2796,35 @@ class Mmu:
         self.pending_spool_id_timer = self.reactor.register_timer(self._pending_spool_id_handler, self.reactor.NEVER)
 
     def _pending_spool_id_handler(self, eventtime):
-        self.pending_spool_id = None
+        self.pending_spool_id = -1
         return self.reactor.NEVER
 
     def _check_pending_spool_id(self, gate):
-        if self.pending_spool_id is not None:
+        if self.pending_spool_id > 0 and self.spoolman_support != self.SPOOLMAN_PULL:
             self.log_info("Spool ID: %s automatically applied to gate %d" % (self.pending_spool_id, gate))
+
+            # Find  other gates with same spool_id and clear it
+            gate_ids = []
+            sid = self.pending_spool_id
+            if self.pending_spool_id != self.gate_spool_id[gate]:
+                if self.pending_spool_id in self.gate_spool_id:
+                    old_gate = self.gate_spool_id.index(self.pending_spool_id)
+                    if old_gate != gate:
+                        self.gate_spool_id[old_gate] = -1
+                        gate_ids.append((old_gate, -1))
+                gate_ids.append((gate, self.pending_spool_id))
+
             self.gate_spool_id[gate] = self.pending_spool_id
-            self._pending_spool_id_handler(0) # Prevent resue
-            self._spoolman_update_filaments([gate]) # Request update of material & color from Spoolman
+
+            # Request sync and update of material & color from Spoolman
+            if self.spoolman_support == self.SPOOLMAN_PUSH:
+                self._spoolman_push_gate_map(gate_ids)
+            elif self.spoolman_support == self.SPOOLMAN_READONLY:
+                self._spoolman_update_filaments(gate_ids)
+
+        # Disable timer to prevent reuse
+        self.pending_spool_id = -1
+        self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.NEVER)
 
     def _handle_idle_timeout_printing(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "printing")
@@ -7242,7 +7262,7 @@ class Mmu:
     def _persist_gate_status(self):
         self.save_variable(self.VARS_MMU_GATE_STATUS, self.gate_status, write=True)
 
-    # Ensure that webhooks sees get_status() change after gate map update. It is important to call this priot to
+    # Ensure that webhooks sees get_status() change after gate map update. It is important to call this prior to
     # updating gate_map so change is always seen. This approach removes need to copy lists on every call to get_status()
     def _renew_gate_map(self):
         self.gate_status = list(self.gate_status)
@@ -7701,10 +7721,21 @@ class Mmu:
 
         if reset:
             self._reset_gate_map()
+        else:
+            self._renew_gate_map() # # Ensure that webhooks sees changes
 
         if next_spool_id:
-            self.pending_spool_id = next_spool_id
-            self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.monotonic() + self.pending_spool_id_timeout)
+            if self.spoolman_support != self.SPOOLMAN_PULL:
+                if next_spool_id > 0:
+                    self.pending_spool_id = next_spool_id
+                    self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.monotonic() + self.pending_spool_id_timeout)
+                else:
+                    # Disable timer to prevent reuse
+                    self.pending_spool_id = -1
+                    self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.NEVER)
+            else:
+                self.log_error("Cannot use use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
+                return
 
         if gate_map:
             try:
@@ -7752,7 +7783,6 @@ class Mmu:
             except Exception as e:
                 raise gcmd.error("Invalid MAP parameter: %s" % gate_map)
 
-            self._renew_gate_map() # Important for moonraker to see changes
             self._update_gate_color_rgb()
             self._persist_gate_map() # This will also update LED status
 
@@ -7788,7 +7818,7 @@ class Mmu:
                     color = (color if color is not None else self.gate_color[gate]).lower()
                     temperature = temperature or self.gate_temperature
                     spool_id = spool_id or self.gate_spool_id[gate]
-
+                    # Clear other gates with same spool_id
                     if spool_id != self.gate_spool_id[gate]:
                         if spool_id in self.gate_spool_id:
                             old_gate = self.gate_spool_id.index(spool_id)
@@ -7815,7 +7845,6 @@ class Mmu:
                         self.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % self.SPOOLMAN_PULL)
                         return
 
-            self._renew_gate_map() # Important for moonraker to see changes
             self._update_gate_color_rgb()
             self._persist_gate_map(spoolman_sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
 
