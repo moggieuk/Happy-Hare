@@ -1377,6 +1377,7 @@ class Mmu:
             'filament_position': self.mmu_toolhead.get_position()[1],
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
+            'pending_spool_id': self.pending_spool_id if self.pending_spool_id is not None else -1,
             'ttg_map': self.ttg_map,
             'endless_spool_groups': self.endless_spool_groups,
             'gate_status': self.gate_status,
@@ -7687,7 +7688,7 @@ class Mmu:
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
-        gmapstr = gcmd.get('MAP', "{}")                                # Hidden option for bulk filament update from moonraker component
+        gmapstr = gcmd.get('MAP', "{}")                                # Hidden option for bulk filament update (from moonraker/ui components)
         replace = bool(gcmd.get_int('REPLACE', 0, minval=0, maxval=1)) # Hidden option for bulk filament
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
@@ -7710,7 +7711,6 @@ class Mmu:
         if gate_map:
             try:
                 self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
-                self._renew_gate_map()
                 if replace:
                     # Replace map
                     for gate, fil in gate_map.items():
@@ -7751,6 +7751,7 @@ class Mmu:
                             if self.gate_temperature[gate] <= 0:
                                 self.gate_temperature[gate] = self.default_extruder_temp
                             self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
+                self._renew_gate_map() # Important for moonraker to see
             except Exception as e:
                 raise gcmd.error("Invalid MAP parameter: %s" % gate_map)
 
