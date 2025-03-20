@@ -310,8 +310,23 @@ form_tip_macro: _MMU_FORM_TIP            # Name of macro to call to perform the 
 extruder_form_tip_current: 100		 # % of extruder current (100%-150%) to use when forming tip (100 to disable)
 slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder after slicer completes tip forming
 
-force_purge_standalone: 1		# 0 = Slicer in print else standalone, 1 = Always standalone purging (TURN SLCIER WIPETOWER OFF!)
-purge_macro: ''                         # Name of macro to call to perform the standalone purging operation
+
+# Purging -------------------------------------------------------------------------------------------------------------
+# ██████╗ ██╗   ██╗██████╗  ██████╗ ██╗███╗   ██╗ ██████╗ 
+# ██╔══██╗██║   ██║██╔══██╗██╔════╝ ██║████╗  ██║██╔════╝ 
+# ██████╔╝██║   ██║██████╔╝██║  ███╗██║██╔██╗ ██║██║  ███╗
+# ██╔═══╝ ██║   ██║██╔══██╗██║   ██║██║██║╚██╗██║██║   ██║
+# ██║     ╚██████╔╝██║  ██║╚██████╔╝██║██║ ╚████║╚██████╔╝
+# ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+#
+# After a toolchange it is necessary to purge the old filament. Similar to tip forming this can be done by the slicer and/or
+# by Happy Hare using an extension like Blobifer. If a purge_macro is defined it will be called when not printing or whenever
+# the slicer isn't going to purge (like initial tool load). You can force it to always be called in a print by setting
+# force_purge_standalone, but remember to turn off the slicer wipetower
+#
+force_purge_standalone: 0               # 0 = Slicer wipetower in print else standalone, 1 = Always standalone purging (TURN WIPETOWER OFF!)
+purge_macro: ''                         # Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER
+extruder_purge_current: 100             # % of extruder current (100%-150%) to use when purging (100 to disable)
 
 
 # Synchronized gear/extruder movement ----------------------------------------------------------------------------------
