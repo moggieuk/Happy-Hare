@@ -4174,6 +4174,7 @@ class Mmu:
             msg += " (encoder didn't report enough movement)"
         else:
             msg += " (gate endstop didn't trigger)"
+        msg += "\nGate marked as empty. Use 'MMU_GATE_MAP GATE=%d AVAILABLE=1' to reset" % self.gate_selected
         raise MmuError(msg)
 
     # Unload filament through gate to final MMU park position.
@@ -4382,7 +4383,7 @@ class Mmu:
                         _,_,_,delta = self.trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size)
                         if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100.):
                             self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
-                            raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded")
+                            raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded\nOptionally use MMU_RECOVER to recover filament position")
                         length -= self.encoder_move_step_size
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
@@ -5773,7 +5774,7 @@ class Mmu:
 
     # Primary method to select and loads tool. Assumes we are unloaded.
     def _select_and_load_tool(self, tool, purge=None):
-        self.log_debug('Loading tool T%d...' % self._selected_tool_string(tool))
+        self.log_debug('Loading tool %s...' % self._selected_tool_string(tool))
         self.select_tool(tool, move_servo=False)
         gate = self.ttg_map[tool]
         if self.gate_status[gate] == self.GATE_EMPTY:

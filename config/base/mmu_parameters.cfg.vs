@@ -284,17 +284,20 @@ toolhead_move_error_tolerance: 60
 # When Happy Hare is asked to form a tip it will run the referenced macro. Two are reference examples are provided but
 # you can implement your own:
 #   _MMU_FORM_TIP .. default tip forming similar to popular slicers like Superslicer and Prusaslicer
-#   _MMU_CUT_TIP  .. for Filametrix (ERCFv2) or similar style toolhead filament cutting system
+#   _MMU_CUT_TIP  .. for Filametrix (originally ERCFv2) or similar style toolhead filament cutting system
+#
+# NOTE: For MMU located cutting like the optional EREC cutter you should set still this to _MMU_FORM_TIP to build a decent
+# tip prior to extraction and cutting after the unload.
 #
 # Often it is useful to increase the extruder current for the rapid movement to ensure high torque and no skipped steps
 #
 # If opting for slicer tip forming you MUST configure where the slicer leaves the filament in the extruder since
 # there is no way to determine this. This can be ignored if all tip forming is performed by Happy Hare
 #
-force_form_tip_standalone: 1		 # 0 = Slicer in print else standalone, 1 = Always standalone tip forming (TURN SLICER OFF!)
-form_tip_macro: _MMU_FORM_TIP            # Name of macro to call to perform the tip forming (or cutting) operation
-extruder_form_tip_current: 100		 # % of extruder current (100%-150%) to use when forming tip (100 to disable)
-slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder after slicer completes tip forming
+force_form_tip_standalone: 1            # 0 = Slicer in print else standalone, 1 = Always standalone tip forming (TURN SLICER OFF!)
+form_tip_macro: _MMU_FORM_TIP           # Name of macro to call to perform the tip forming (or cutting) operation
+extruder_form_tip_current: 100          # % of extruder current (100%-150%) to use when forming tip (100 to disable)
+slicer_tip_park_pos: 0                  # This specifies the position of filament in extruder after slicer completes tip forming
 
 
 # Purging -------------------------------------------------------------------------------------------------------------
@@ -309,6 +312,13 @@ slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder 
 # by Happy Hare using an extension like Blobifer. If a purge_macro is defined it will be called when not printing or whenever
 # the slicer isn't going to purge (like initial tool load). You can force it to always be called in a print by setting
 # force_purge_standalone, but remember to turn off the slicer wipetower
+#
+# The default is for no (empty) macro so purging will not be done out of a print and thus wipetower. Two options are shipped with
+# Happy Hare but you can also build your own custom one:
+#   _MMU_PURGE .. default purging that just dumps the desired amount of filament (setup correct parking before enabling this!)
+#   BLOBIFER   .. for excellent Blobifer addon (https://github.com/Dendrowen/Blobifier)
+#
+# Often it is useful to increase the extruder current for the often rapid puring movement to ensure high torque and no skipped steps
 #
 force_purge_standalone: 0               # 0 = Slicer wipetower in print else standalone, 1 = Always standalone purging (TURN WIPETOWER OFF!)
 purge_macro: ''                         # Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER
