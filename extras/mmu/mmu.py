@@ -1368,7 +1368,6 @@ class Mmu:
     def get_status(self, eventtime):
         status = {
             'enabled': self.is_enabled,
-             # TODO Should rest of this section be in a conditional if self.is_enabled: block for performance?
             'num_gates': self.num_gates,
             'is_homed': self.selector.is_homed,
             'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused)
@@ -1420,7 +1419,6 @@ class Mmu:
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
             'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
             'spoolman_support': self.spoolman_support,
-            'enable_spoolman': int(not self.spoolman_support == self.SPOOLMAN_OFF), # Legacy
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
             'espooler_active': 'rewind' if self.espooler_active else '' # 'assist' not supported yet
         }
