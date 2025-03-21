@@ -91,8 +91,16 @@ class MmuRunoutHelper:
                 logging.exception("MMU: Error running mmu sensor handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
-    def note_filament_present(self, eventtime, is_filament_present):
-        #eventtime = self.reactor.monotonic()
+    # Latest klipper v0.12.0-462 added the passing of eventtime
+    #     old: note_filament_present(self, is_filament_present):
+    #     new: note_filament_present(self, eventtime, is_filament_present):
+    def note_filament_present(self, *args):
+        if len(args) == 1:
+            eventtime = self.reactor.monotonic()
+            is_filament_present = args[0]
+        else:
+            eventtime = args[0]
+            is_filament_present = args[1]
 
         # Button handlers are used for sync feedback state switches
         if self.button_handler and not self.button_handler_suspended:
@@ -107,11 +115,12 @@ class MmuRunoutHelper:
 
     def _process_state_change(self, eventtime, is_filament_present):
         # Determine "printing" status
+        now = self.reactor.monotonic()
         print_stats = self.printer.lookup_object("print_stats", None)
         if print_stats is not None:
-            is_printing = print_stats.get_status(eventtime)["state"] == "printing"
+            is_printing = print_stats.get_status(now)["state"] == "printing"
         else:
-            is_printing = self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing"
+            is_printing = self.printer.lookup_object("idle_timeout").get_status(now)["state"] == "Printing"
 
         if is_filament_present and self.insert_gcode: # Insert detected
             if not is_printing or (is_printing and self.insert_remove_in_print):
