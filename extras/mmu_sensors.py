@@ -91,8 +91,8 @@ class MmuRunoutHelper:
                 logging.exception("MMU: Error running mmu sensor handler: `%s`" % command)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
-    def note_filament_present(self, is_filament_present):
-        eventtime = self.reactor.monotonic()
+    def note_filament_present(self, eventtime, is_filament_present):
+        #eventtime = self.reactor.monotonic()
 
         # Button handlers are used for sync feedback state switches
         if self.button_handler and not self.button_handler_suspended:
