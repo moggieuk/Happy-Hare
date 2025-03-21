@@ -151,21 +151,20 @@ class MmuTest:
                     tension_sensor_filament_present = None
                     toggle_compression = "no change"
                     toggle_tension = "no change"
-                    eventtime = self.reactor.monotonic()
                     if random.choice([True, False]):
                         if compression_sensor is not None:
                             compression_sensor_filament_present = random.choice([True, False])
                             sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
                             if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
                                 toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
-                                compression_sensor.runout_helper.note_filament_present(eventtime, compression_sensor_filament_present)
+                                compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
                                 tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
                         if tension_sensor is not None:
                             tension_sensor_filament_present = random.choice([True, False])
                             sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
                             if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
                                 toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
-                                tension_sensor.runout_helper.note_filament_present(eventtime, tension_sensor_filament_present)
+                                tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
                                 tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
                         if len(tests) >= nb_iterations:
                             break
@@ -175,14 +174,14 @@ class MmuTest:
                             sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
                             if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
                                 toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
-                                tension_sensor.runout_helper.note_filament_present(eventtime, tension_sensor_filament_present)
+                                tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
                                 tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
                         if compression_sensor is not None:
                             compression_sensor_filament_present = random.choice([True, False])
                             sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
                             if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
                                 toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
-                                compression_sensor.runout_helper.note_filament_present(eventtime, compression_sensor_filament_present)
+                                compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
                                 tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
 
                 self.mmu.printer.send_event("mmu:test_gen_finished")
@@ -212,12 +211,11 @@ class MmuTest:
                 else:
                     self.mmu.log_error("Invalid sync state: %s" % sync_state)
                 # Generate a tension or compression event
-                eventtime = self.reactor.monotonic()
                 self.mmu.log_trace(">>>>>> sync test Testing confugaration %s" % (sync_state.upper()))
                 if compression_sensor is not None:
-                    compression_sensor.runout_helper.note_filament_present(eventtime, compression_sensor_filament_present)
+                    compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
                 if tension_sensor is not None:
-                    tension_sensor.runout_helper.note_filament_present(eventtime, tension_sensor_filament_present)
+                    tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
             # Remove event handlers
             self.mmu.printer.event_handlers.pop("mmu:sync_feedback_finished", None)
             self.mmu.printer.event_handlers.pop("mmu:test_gen_finished", None)
