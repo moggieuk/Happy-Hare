@@ -2077,13 +2077,13 @@ class Mmu:
             msg += "\n- Flowrate: %d %%" % status['flow_rate']
         return msg
 
-    # Instruct the selector to enguage the desired method of filament gripping based on MMU state
+    # Instruct the selector to enguage the desired method of filament gripping based on MMU state and selector type
     def _auto_filament_grip(self):
         if self.is_printing() and self.mmu_toolhead.is_gear_synced_to_extruder():
             self.selector.filament_drive()
         elif not self.selector.is_homed or self.tool_selected < 0 or self.gate_selected < 0:
             self.selector.filament_hold()
-        else:
+        elif not isinstance(self.selector, (RotarySelector, ServoSelector)): # TODO make a flag on selector rather than list?
             self.selector.filament_release()
 
     def motors_onoff(self, on=False, motor="all"):
