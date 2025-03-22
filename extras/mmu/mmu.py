@@ -6167,9 +6167,7 @@ class Mmu:
                 self.select_gate(gate)
                 self._ensure_ttg_match()
         finally:
-            self.log_info("PAUL: just before _auto_filament_grip() in _select()")
             if not isinstance(self.selector, (ServoSelector)):
-                self.log_info("PAUL: calling auto_grip()")
                 self._auto_filament_grip()
 
     cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap (called from Tx command)"
