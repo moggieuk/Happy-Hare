@@ -1184,7 +1184,9 @@ class Mmu:
             errors.append("Invalid tool or gate specified with %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
             tool_selected = gate_selected = self.TOOL_GATE_UNKNOWN
 
-        self.selector.restore_gate(gate_selected)
+        # Don't move the servo for ServoSelector on startup
+        if not isinstance(self.selector, (ServoSelector)):
+            self.selector.restore_gate(gate_selected)
         self._set_gate_selected(gate_selected)
         self._set_tool_selected(tool_selected)
         self._ensure_ttg_match() # Ensure tool/gate consistency
@@ -2083,7 +2085,7 @@ class Mmu:
             self.selector.filament_drive()
         elif not self.selector.is_homed or self.tool_selected < 0 or self.gate_selected < 0:
             self.selector.filament_hold()
-        elif not isinstance(self.selector, (RotarySelector, ServoSelector)): # TODO make a flag on selector rather than list?
+        else:
             self.selector.filament_release()
 
     def motors_onoff(self, on=False, motor="all"):
@@ -5574,7 +5576,8 @@ class Mmu:
             yield self
         finally:
             if self.gate_selected >= 0:
-                self.sync_gear_to_extruder(prev_sync, grip=prev_grip != self.selector.get_filament_grip_state(), current=prev_current)
+                restore_grip = prev_grip != self.selector.get_filament_grip_state() if not isinstance(self.selector, (ServoSelector)) else False
+                self.sync_gear_to_extruder(prev_sync, grip=restore_grip, current=prev_current)
             else:
                 self.sync_gear_to_extruder(False, grip=True, current=False)
 
@@ -5836,7 +5839,7 @@ class Mmu:
 
     def select_gate(self, gate):
         # RotarySelector and ServoSelector moves off gate to release so we must go through the process
-        if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector, ServoSelector)): # TODO make a flag on selector rather than list?
+        if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector, ServoSelector)):
             return
         try:
             self._next_gate = gate # Valid only during the gate selection process
@@ -6216,7 +6219,10 @@ class Mmu:
                 self.select_gate(gate)
                 self._ensure_ttg_match()
         finally:
-            self._auto_filament_grip()
+            self.log_info("PAUL: just before _auto_filament_grip() in _select()")
+            if not isinstance(self.selector, (ServoSelector)):
+                self.log_info("PAUL: calling auto_grip()")
+                self._auto_filament_grip()
 
     cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap (called from Tx command)"
     def cmd_MMU_CHANGE_TOOL(self, gcmd):
