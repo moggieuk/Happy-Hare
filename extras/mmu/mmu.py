@@ -147,6 +147,18 @@ class Mmu:
     LOG_STEPPER   = 4
     LOG_LEVELS = ['ESSENTAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
 
+    # States of espooler motor
+    ESPOOLER_OFF    = 'off'
+    ESPOOLER_REWIND = 'rewind'
+    ESPOOLER_ASSIST = 'assist'
+    ESPOOLER_ON     = 'on'     # Special in-print assist state
+
+    # Possible operating modes for espooler. Each individual type of movement to be enabled/disabled
+    ESPOOLER_OPERATION_UNLOAD = 'unload' # Respool when unloading
+    ESPOOLER_OPERATION_LOAD   = 'load'   # Assist when loading
+    ESPOOLER_OPERATION_PRINT  = 'print'  # Mild assist while printing
+    ESPOOLER_OPERATIONS = [ESPOOLER_OPERATION_UNLOAD, ESPOOLER_OPERATION_LOAD, ESPOOLER_OPERATION_PRINT]
+
     # Name used to save gcode state
     TOOLHEAD_POSITION_STATE = 'MMU_state'
 
@@ -264,7 +276,6 @@ class Mmu:
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
         self.has_leds = self.has_led_animation = False
         self.bowden_start_pos = None
-        self.espooler_active = False
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False      # Form tip cutting macro (like _MMU_CUT_TIP)
@@ -330,14 +341,13 @@ class Mmu:
         self.post_load_macro = config.get('post_load_macro', '_MMU_POST_LOAD_MACRO')
         self.unload_sequence_macro = config.get('unload_sequence_macro', '_MMU_UNLOAD_SEQUENCE')
         self.load_sequence_macro = config.get('load_sequence_macro', '_MMU_LOAD_SEQUENCE')
-        self.espooler_start_macro = config.get('espooler_start_macro', '')
-        self.espooler_stop_macro = config.get('espooler_stop_macro', '')
         self.error_dialog_macro = config.get('error_dialog_macro', '_MMU_ERROR_DIALOG') # Not exposed
         self.clear_position_macro = config.get('clear_position_macro', '_MMU_CLEAR_POSITION') # Not exposed
         self.save_position_macro = config.get('save_position_macro', '_MMU_SAVE_POSITION') # Not exposed
         self.restore_position_macro = config.get('restore_position_macro', '_MMU_RESTORE_POSITION') # Not exposed
         self.park_macro = config.get('park_macro', '_MMU_PARK') # Not exposed
         self.error_macro = config.get('error_macro', '_MMU_ERROR') # Not exposed
+        self.toolhead_homing_macro = config.get('toolhead_homing_macro', '_MMU_AUTO_HOME') # Not exposed
 
         # User default (reset state) gate map and TTG map
         self.default_ttg_map = list(config.getintlist('tool_to_gate_map', []))
@@ -430,9 +440,16 @@ class Mmu:
         if self.macro_toolhead_max_accel == 0:
             self.macro_toolhead_max_accel = config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
 
+        # eSpooler
+        self.espooler_min_distance = config.getfloat('espooler_min_distance', 50., above=0)
+        self.espooler_max_stepper_speed = config.getfloat('espooler_max_stepper_speed', 300., above=0)
+        self.espooler_min_stepper_speed = config.getfloat('espooler_min_stepper_speed', 0., minval=0., below=self.espooler_max_stepper_speed)
+        self.espooler_speed_exponent = config.getfloat('espooler_speed_exponent', 0.5, above=0)
+        self.espooler_printing_power = config.getfloat('espooler_printing_power', 0.1, minval=0., below=1.)
+        self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
+
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
-        self.espooler_min_distance = config.getfloat('espooler_min_distance', 50., above=0) # Not exposed
         self.preload_attempts = config.getint('preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
@@ -556,6 +573,7 @@ class Mmu:
         self.gcode.register_command('MMU_LOG', self.cmd_MMU_LOG, desc = self.cmd_MMU_LOG_help)
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
+        self.gcode.register_command('MMU_ESPOOLER', self.cmd_MMU_ESPOOLER, desc = self.cmd_MMU_ESPOOLER_help)
         self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
         self.gcode.register_command('MMU_SELECT', self.cmd_MMU_SELECT, desc = self.cmd_MMU_SELECT_help)
@@ -674,6 +692,8 @@ class Mmu:
         self.encoder_sensor = self.printer.lookup_object('mmu_encoder %s' % self.encoder_name, None)
         if not self.encoder_sensor:
             logging.warning("MMU: No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
+
+        self.espooler = None # PAUL TODO 
 
     def _setup_logging(self):
         # Setup background file based logging before logging any messages
@@ -1034,6 +1054,18 @@ class Mmu:
             b = b.lower()
         return a == b
 
+    # Format color string for display
+    def _format_color(self, color):
+        x = re.search(r"^([a-f\d]{6})(ff)?$", color, re.IGNORECASE)
+        if x is not None:
+            return '#' + x.group(1).upper()
+
+        x = re.search(r"^([a-f\d]{6}([a-f\d]{2})?)$", color, re.IGNORECASE)
+        if x is not None:
+            return '#' + x.group().upper()
+
+        return color
+
     # This retuns the hex color format without leading '#' E.g. ff00e080
     # Support alpha channel (Nice for Mainsail/Fluidd UI)
     def _color_to_rgb_hex(self, color):
@@ -1184,7 +1216,7 @@ class Mmu:
             errors.append("Invalid tool or gate specified with %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
             tool_selected = gate_selected = self.TOOL_GATE_UNKNOWN
 
-        # Don't move the servo for ServoSelector on startup
+        # Don't move the servo for ServoSelector on startup because it will immediately be moved again to release filament
         if not isinstance(self.selector, (ServoSelector)):
             self.selector.restore_gate(gate_selected)
         self._set_gate_selected(gate_selected)
@@ -1422,7 +1454,7 @@ class Mmu:
             'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
             'spoolman_support': self.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
-            'espooler_active': 'rewind' if self.espooler_active else '' # 'assist' not supported yet
+            'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.espooler else ''
         }
         status.update(self.selector.get_status())
         status['sensors'] = self.sensor_manager.get_status()
@@ -2818,30 +2850,30 @@ class Mmu:
 
     def _check_pending_spool_id(self, gate):
         if self.pending_spool_id > 0 and self.spoolman_support != self.SPOOLMAN_PULL:
-            self.log_info("Spool ID: %s automatically applied to gate %d" % (self.pending_spool_id, gate))
+            self.log_info("Spool ID: %s automatically assigned to gate %d" % (self.pending_spool_id, gate))
+            mod_gate_ids = self.assign_spool_id(gate, self.pending_spool_id)
 
-            # Find  other gates with same spool_id and clear it
-            gate_ids = []
-            sid = self.pending_spool_id
-            if self.pending_spool_id != self.gate_spool_id[gate]:
-                if self.pending_spool_id in self.gate_spool_id:
-                    old_gate = self.gate_spool_id.index(self.pending_spool_id)
-                    if old_gate != gate:
-                        self.gate_spool_id[old_gate] = -1
-                        gate_ids.append((old_gate, -1))
-                gate_ids.append((gate, self.pending_spool_id))
-
-            self.gate_spool_id[gate] = self.pending_spool_id
-
-            # Request sync and update of material & color from Spoolman
+            # Request sync and update of filament attributes from Spoolman
             if self.spoolman_support == self.SPOOLMAN_PUSH:
-                self._spoolman_push_gate_map(gate_ids)
+                self._spoolman_push_gate_map(mod_gate_ids)
             elif self.spoolman_support == self.SPOOLMAN_READONLY:
-                self._spoolman_update_filaments(gate_ids)
+                self._spoolman_update_filaments(mod_gate_ids)
 
         # Disable timer to prevent reuse
         self.pending_spool_id = -1
         self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.NEVER)
+
+    # Assign spool id to gate and clear from other gates returning list of changes
+    def assign_spool_id(self, gate, spool_id):
+        self.log_info("PAUL: assign_spool_id: gate=%d, spool_id=%s" % (gate, spool_id))
+        self.gate_spool_id[gate] = spool_id
+        mod_gate_ids = [(gate, spool_id)]
+        for i, sid in enumerate(self.gate_spool_id):
+            if sid == spool_id and i != gate:
+                self.gate_spool_id[i] = -1
+                mod_gate_ids.append((i, -1))
+        self.log_info("PAUL: returning modified gate/id: %s" % mod_gate_ids)
+        return mod_gate_ids
 
     def _handle_idle_timeout_printing(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "printing")
@@ -2987,6 +3019,12 @@ class Mmu:
         if self.is_in_standby():
             self._set_print_state("idle")
 
+    def _check_not_printing(self):
+        if self.is_printing():
+            self.log_error("Operation not possible because currently printing")
+            return True
+        return False
+
     # Track print events simply to ease internal print state transitions. Specificly we want to detect
     # the start and end of a print and falling back into 'standby' state on idle
     #
@@ -3086,6 +3124,9 @@ class Mmu:
             # Establish syncing state and grip (servo) position
             self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
 
+            # Start respooler if configured
+            self._respooler_on()
+
     # Hack: Force state transistion to printing for any early moves if MMU_PRINT_START not yet run
     def _fix_started_state(self):
         if self.is_printer_printing() and not self.is_in_print():
@@ -3097,6 +3138,7 @@ class Mmu:
         if not self.is_in_endstate():
             self.log_trace("_on_print_end(%s)" % state)
             self.movequeues_wait()
+            self._espooler_off()
             self._clear_saved_toolhead_position()
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
@@ -3119,6 +3161,7 @@ class Mmu:
         run_pause_macro = run_error_macro = recover_pos = send_event = False
         if self.is_in_print(force_in_print):
             if not self.is_mmu_paused():
+                self._respooler_off()
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._track_pause_start()
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
@@ -3219,6 +3262,9 @@ class Mmu:
             # Restablish syncing state and grip (servo) position
             self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
 
+        # Restart respooler if configured
+        self._respooler_on()
+
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
 
@@ -3229,6 +3275,10 @@ class Mmu:
             self.wrap_gcode_command("%s%s" % (self.clear_position_macro, " RESET=1" if reset else ""))
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
+        if 'xyz' not in self.toolhead.get_status(self.reactor.monotonic())['homed_axes']:
+            self.gcode.run_script_from_command(self.toolhead_homing_macro)
+            self.movequeues_wait()
+
         eventtime = self.reactor.monotonic()
         homed = self.toolhead.get_status(eventtime)['homed_axes']
         if 'xyz' in homed:
@@ -3362,6 +3412,15 @@ class Mmu:
         finally:
             self.log_visual = log_visual
 
+    def has_espooler(self):
+        return self.espooler is not None
+
+    def _check_has_espooler(self):
+        if not self.has_espooler():
+            self.log_error("No espooler fitted to this MMU unit")
+            return True
+        return False
+
     def has_encoder(self):
         return self.encoder_sensor is not None and not self.test_disable_encoder
 
@@ -3370,7 +3429,7 @@ class Mmu:
 
     def _check_has_encoder(self):
         if not self.has_encoder():
-            self.log_error("No encoder fitted to MMU")
+            self.log_error("No encoder fitted to this MMU unit")
             return True
         return False
 
@@ -3808,6 +3867,27 @@ class Mmu:
             self.set_encoder_distance(value)
             return
         self.log_info(self._get_encoder_summary(detail=True))
+
+    cmd_MMU_ESPOOLER_help = "Direct control of espooler or display of current status"
+    def cmd_MMU_ESPOOLER(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self._check_has_espooler(): return
+        if self._check_not_printing(): return
+        gate = gcmd.get_int('GATE', minval=0)
+        operation = gcmd.getchoice('OPERATION', {o: o for o in self.ESPOOLER_OPERATIONS}, None)
+        power = gcmd.get_int('POWER', 50, minval=0, maxval=100) if operation != self.ESPOOLER_OFF else 0
+        if operation == None:
+            operation, value = self.espooler.get_operation(self.gate_selected)
+            if operation:
+                log.info("Espooler performing %s for gate %d at %d%% power" % (operation, gate, value * 100))
+            else:
+                log.info("Espooler is not operating")
+
+        if operation != self.ESPOOLER_OFF:
+            log.info("Running espooler %s for gate %d at %d%% power" % (operation, gate, power))
+        else:
+            log.info("Stopper espooler for gate %d" % gate)
+        self.printer.send_event("mmu:espooler", gate, effort / 100, operation)
 
     cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
     def cmd_MMU_LED(self, gcmd):
@@ -5247,7 +5327,7 @@ class Mmu:
             speed *= adjust
             accel *= adjust
 
-        with self._wrap_espooler(motor, dist, speed, homing_move):
+        with self._wrap_espooler(motor, dist, speed, accel, homing_move):
             wait = wait or self._wait_for_espooler # Allow eSpooler wrapper to force wait
 
             # Gear rail is driving the filament
@@ -5380,22 +5460,45 @@ class Mmu:
 
     # Used to wrap certain unload moves and activate eSpooler. Ensures eSpooler is always stopped
     @contextlib.contextmanager
-    def _wrap_espooler(self, motor, dist, speed, homing_move):
-        if motor in ['gear', 'synced', 'both'] and dist < -self.espooler_min_distance and self.espooler_start_macro and self.espooler_start_macro != "''":
-            self.espooler_active = True
-            self.wrap_gcode_command("%s GATE=%d MAX_DISTANCE=%d STEP_SPEED=%d HOMING_MOVE=%d" % (self.espooler_start_macro, self.gate_selected, abs(dist), speed, abs(homing_move)))
+    def _wrap_espooler(self, motor, dist, speed, accel, homing_move):
+        self._wait_for_espooler = False
+        espooler_state = self.ESPOOLER_OFF
+        pwm_value = 0
+
+        if abs(dist) > self.espooler_min_distance and speed > self.espooler_min_stepper_speed:
+            if dist > 0 and self.ESPOOLER_OPERATION_LOAD in self.espooler_operations:
+                espooler_state = self.ESPOOLER_ASSIST
+            elif dist < 0 and self.ESPOOLER_OPERATION_UNLOAD in self.espooler_operations:
+                espooler_state = self.ESPOOLER_REWIND
+
+            if espooler_state == self.ESPOOLER_OFF:
+                pwm_value = 0
+            elif speed >= self.espooler_max_stepper_speed:
+                pwm_value = 1
+            else:
+                pwm_value = (speed / self.espooler_max_stepper_speed) ** self.espooler_speed_exponent
+
+        if espooler_state != self.ESPOOLER_OFF:
             self._wait_for_espooler = not homing_move
-            initial_pos = self.mmu_toolhead.get_position()[1]
-        else:
-            self._wait_for_espooler = False
-            self.espooler_active = False
+        self.printer.send_event("mmu:espooler", self.gate_selected, pwm_value, espooler_state)
+        #initial_pos = self.mmu_toolhead.get_position()[1]
+
         try:
             yield self
+
         finally:
-            self._wait_for_espooler = False
-            if self.espooler_active and self.espooler_stop_macro and self.espooler_stop_macro != "''":
-                moved = abs(self.mmu_toolhead.get_position()[1] - initial_pos)
-                self.wrap_gcode_command("%s GATE=%d DISTANCE=%d" % (self.espooler_stop_macro, self.gate_selected, moved))
+            self._wait_for_espooler = False # PAUL: Rather then wait can we just register callback on mmu_toolhead? (in espooler)
+            if espooler_state != self.ESPOOLER_OFF:
+                #moved = abs(self.mmu_toolhead.get_position()[1] - initial_pos)
+                self._espooler_off()
+
+    # In print espooler assist mode
+    def _espooler_on(self):
+        if self.ESPOOLER_OPERATION_PRINT in self.espooler_operations and self.espooler_printing_power > 0.:
+            self.printer.send_event("mmu:espooler", self.gate_selected, self.espooler_printing_power, self.ESPOOLER_ON)
+
+    def _espooler_off(self):
+        self.printer.send_event("mmu:espooler", self.gate_selected, 0, self.ESPOOLER_OFF)
 
 
 ##############################################
@@ -5579,6 +5682,7 @@ class Mmu:
                 restore_grip = prev_grip != self.selector.get_filament_grip_state() if not isinstance(self.selector, (ServoSelector)) else False
                 self.sync_gear_to_extruder(prev_sync, grip=restore_grip, current=prev_current)
             else:
+# PAUL maybe if ServoSelector and not in print set grip=False
                 self.sync_gear_to_extruder(False, grip=True, current=False)
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
@@ -6219,7 +6323,7 @@ class Mmu:
                 self.select_gate(gate)
                 self._ensure_ttg_match()
         finally:
-            if not isinstance(self.selector, (ServoSelector)):
+            if not isinstance(self.selector, (ServoSelector)): # PAUL don't like this for ServoSelector..
                 self._auto_filament_grip()
 
     cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap (called from Tx command)"
@@ -6950,7 +7054,16 @@ class Mmu:
         if form_tip_macro != self.form_tip_macro:
             self.form_tip_vars = None # If macro is changed invalidate defaults
         self.form_tip_macro = form_tip_macro
-        purge_macro = gcmd.get('PURGE_MACRO', self.purge_macro)
+        self.purge_macro = gcmd.get('PURGE_MACRO', self.purge_macro)
+
+        # Available only with espooler
+        if self.has_espooler():
+            self.espooler_min_distance = config.getfloat('ESPOOLER_MIN_DISTANCE', self.espooler_min_distance, above=0)
+            self.espooler_max_stepper_speed = gcmd.getfloat('ESPOOLER_MAX_STEPPER_SPEED', self.espooler_max_stepper_speed, above=0)
+            self.espooler_min_stepper_speed = gcmd.getfloat('ESPOOLER_MIN_STEPPER_SPEED', self.espooler_min_stepper_speed, minval=0., below=self.espooler_max_stepper_speed)
+            self.espooler_speed_exponent = gcmd.getfloat('ESPOOLER_SPEED_EXPONENT', self.espooler_speed_exponent, above=0)
+            self.espooler_printing_power = gcmd.getfloat('ESPOOLER_PRINTING_POWER', self.espooler_printing_power, minval=0., below=1.)
+            self.espooler_operations = list(gcmd.getlist('ESPOOLER_OPERATIONS', self.espooler_operations, self.ESPOOLER_OPERATIONS))
 
         # Available only with encoder
         if self.has_encoder():
@@ -7042,6 +7155,15 @@ class Mmu:
             msg += "\n\nPURGING:"
             msg += "\npurge_macro = %s" % self.purge_macro
             msg += "\nforce_purge_standalone = %d" % self.force_purge_standalone
+
+            if self.has_espooler():
+                msg += "\n\nESPOOLER:"
+                msg += "\nespooler_min_distance = %s" % self.espooler_min_distance
+                msg += "\nespooler_max_stepper_speed = %s" % self.espooler_max_stepper_speed
+                msg += "\nespooler_min_stepper_speed = %s" % self.espooler_min_stepper_speed
+                msg += "\nespooler_speed_exponent = %s" % self.espooler_speed_exponent
+                msg += "\nespooler_printing_power = %s" % self.espooler_printing_power
+                msg += "\nespooler_operations = %s"  % self.espooler_operations
 
             msg += "\n\nLOGGING:"
             msg += "\nlog_level = %d" % self.log_level
@@ -7275,33 +7397,36 @@ class Mmu:
 
         for g in range(self.num_gates):
             available = available_status[self.gate_status[g]]
-            name = self.gate_filament_name[g] or "n/a"
-            material = self.gate_material[g] or "n/a"
-            color = self.gate_color[g] or "n/a"
+            name = self.gate_filament_name[g] or "Unknown"
+            material = self.gate_material[g] or "Unknown"
+            color = self._format_color(self.gate_color[g] or "n/a")
             temperature = self.gate_temperature[g] or "n/a"
 
-            gate_detail = ""
+            gate_fstr = ""
             if detail:
                 filament_char = self._get_filament_char(g, show_source=False)
-                tools_supported = ", ".join("T{}".format(t) for t in range(self.num_gates) if self.ttg_map[t] == g)
-                tools_str = " supporting {}; ".format(tools_supported) if tools_supported else " "
-                selected = "[SELECTED]" if g == self.gate_selected else ""
-                gate_detail = "\nGate {}({}){}{}".format(g, filament_char, selected, tools_str)
+                tools = ",".join("T{}".format(t) for t in range(self.num_gates) if self.ttg_map[t] == g)
+                tools_fstr = (" [{}]".format(tools) if tools else "")
+                gate_fstr = "{}".format(g).ljust(2, UI_SPACE)
+                gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr).ljust(15, UI_SPACE)
             else:
-                gate_detail = "\nGate {}: ".format(g)
+                gate_fstr = "{}:".format(g).ljust(3, UI_SPACE)
 
-            msg += "{}Status: {}".format(gate_detail, available)
-            speed_option = ", Load Speed: {}%".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
-            spool_option = str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a"
+            available_fstr = "{};".format(available).ljust(9, UI_SPACE)
+            fil_fstr = "{} | {}{}C | {} | {}".format(material, temperature, UI_DEGREE, color, name)
+
+            spool_option = (str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a")
             if self.spoolman_support == self.SPOOLMAN_OFF:
-                msg += ", Material: {}, Color: {}, Name: {}, Temp: {}{}".format(material, color, name, temperature, speed_option)
-            elif self.gate_spool_id[g] <= 0 and self.spoolman_support == self.SPOOLMAN_PUSH:
-                msg += ", SpoolId: {}, Material: {}, Color: {}, Name: {}, Temp: {}{}".format(spool_option, material, color, name, temperature, speed_option)
+                spool_fstr = ""
+            elif self.gate_spool_id[g] <= 0:
+                spool_fstr = "Id: {};".format(spool_option).ljust(12, UI_SPACE)
             else:
-                if self.gate_spool_id[g] > 0:
-                    msg += ", SpoolId: {} --> Material: {}, Color: {}, Name: {}, Temp: {}{}".format(spool_option, material, color, name, temperature, speed_option)
-                else:
-                    msg += ", SpoolId: n/a{}".format(speed_option)
+                spool_fstr = "Id: {}".format(spool_option).ljust(8, UI_SPACE) + "--> "
+
+            speed_fstr = " [Speed:{}%]".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
+            extra_fstr = " [Selected]" if detail and g == self.gate_selected else ""
+
+            msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, speed_fstr, extra_fstr)
         return msg
 
     # Remap a tool/gate relationship and gate filament availability
@@ -7778,7 +7903,8 @@ class Mmu:
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}")                                # Hidden option for bulk filament update (from moonraker/ui components)
-        replace = bool(gcmd.get_int('REPLACE', 0, minval=0, maxval=1)) # Hidden option for bulk filament
+        replace = bool(gcmd.get_int('REPLACE', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
+        from_spoolman = bool(gcmd.get_int('FROM_SPOOLMAN', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
 
@@ -7810,9 +7936,9 @@ class Mmu:
 
         if gate_map:
             try:
-                self.log_debug("Received gate map update (replace: %s) from Spoolman" % replace)
+                self.log_debug("Received gate map update (replace: %s)" % replace)
                 if replace:
-                    # Replace map
+                    # Replace map (should only be in spoolman "pull" mode)
                     for gate, fil in gate_map.items():
                         if not (0 <= gate < self.num_gates):
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
@@ -7833,16 +7959,17 @@ class Mmu:
                             self.gate_material[gate] = ''
                             self.gate_color[gate] = ''
                             self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
+
+                    self._update_gate_color_rgb()
+                    self._persist_gate_map() # This will also update LED status
                 else:
-                    # Update map
+                    # Update map (ui or spoolman "readonly" or "push" modes)
+                    gate_ids_dict = {}
                     for gate, fil in gate_map.items():
                         if not (0 <= gate < self.num_gates):
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                             continue
                         if fil:
-                            if self.gate_spool_id[gate] != fil.get('spool_id', -1):
-                                self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
-                            self.gate_spool_id[gate] = self.safe_int(fil.get('spool_id', -1))
                             self.gate_filament_name[gate] = fil.get('name', '')
                             self.gate_material[gate] = fil.get('material', '')
                             self.gate_color[gate] = fil.get('color', '')
@@ -7851,11 +7978,23 @@ class Mmu:
                             if self.gate_temperature[gate] <= 0:
                                 self.gate_temperature[gate] = self.default_extruder_temp
                             self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
-            except Exception as e:
-                raise gcmd.error("Invalid MAP parameter: %s" % gate_map)
 
-            self._update_gate_color_rgb()
-            self._persist_gate_map() # This will also update LED status
+                            spool_id = fil.get('spool_id', -1)
+                            if spool_id != self.gate_spool_id[gate]:
+                                self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
+                                mod_gate_ids = self.assign_spool_id(gate, spool_id)
+                                for (gate, sid) in mod_gate_ids:
+                                    gate_ids_dict[gate] = sid
+
+                    gate_ids = list(gate_ids_dict.items())
+                    self.log_info("PAUL: gate_map map_update: gate_ids=%s" % gate_ids)
+                    self._update_gate_color_rgb()
+                    # PAUL self._persist_gate_map(spoolman_sync=bool(gate_ids) and not from_spoolman, gate_ids=gate_ids) # This will also update LED status
+                    self._persist_gate_map(spoolman_sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
+            except Exception as e:
+                self.log_debug("Invalid MAP parameter: %s\nException: %s" % (gate_map, str(e)))
+                raise gcmd.error("Invalid MAP parameter. See mmu.log for details")
+
 
         elif gates != "!" or gate >= 0:
             gatelist = []
@@ -7872,7 +8011,7 @@ class Mmu:
                 # Specifying one gate (filament)
                 gatelist.append(gate)
 
-            gate_ids = []
+            gate_ids_dict = {}
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
                 name = gcmd.get('NAME', None)
@@ -7889,14 +8028,6 @@ class Mmu:
                     color = (color if color is not None else self.gate_color[gate]).lower()
                     temperature = temperature or self.gate_temperature
                     spool_id = spool_id or self.gate_spool_id[gate]
-                    # Clear other gates with same spool_id
-                    if spool_id != self.gate_spool_id[gate]:
-                        if spool_id in self.gate_spool_id:
-                            old_gate = self.gate_spool_id.index(spool_id)
-                            if old_gate != gate:
-                                self.gate_spool_id[old_gate] = -1
-                                gate_ids.append((old_gate, -1))
-                        gate_ids.append((gate, spool_id))
                     color = self._validate_color(color)
                     if color is None:
                         raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
@@ -7905,8 +8036,12 @@ class Mmu:
                     self.gate_material[gate] = material
                     self.gate_color[gate] = color
                     self.gate_temperature[gate] = temperature
-                    self.gate_spool_id[gate] = spool_id
                     self.gate_speed_override[gate] = speed_override
+
+                    if spool_id != self.gate_spool_id[gate]:
+                        mod_gate_ids = self.assign_spool_id(gate, spool_id)
+                        for (gate, sid) in mod_gate_ids:
+                            gate_ids_dict[gate] = sid
 
                 else:
                     # Remote (spoolman) gate map, don't update local attributes that are set by spoolman
@@ -7916,6 +8051,8 @@ class Mmu:
                         self.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % self.SPOOLMAN_PULL)
                         return
 
+            gate_ids = list(gate_ids_dict.items())
+            self.log_info("PAUL: gate_map separate_update: modified gate_ids=%s" % gate_ids)
             self._update_gate_color_rgb()
             self._persist_gate_map(spoolman_sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
 

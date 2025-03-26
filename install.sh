@@ -638,6 +638,18 @@ read_previous_config() {
             variable_pin_loc_compressed_xy="${pin_loc_x}, ${variable_pin_loc_compressed}"
         fi
     fi
+
+    # v3.2.0
+    # eSpooler move from macro to mmu_parameters
+    if [ "${variable_max_step_speed}" != "" ]; then
+        _param_espooler_max_stepper_speed=${variable_max_step_speed}
+    fi
+    if [ "${variable_min_distance}" != "" ]; then
+        _param_espooler_min_distance=${variable_min_distance}
+    fi
+    if [ "${variable_step_speed_exponent}" != "" ]; then
+        _param_espooler_speed_exponent=${variable_step_speed_exponent}
+    fi
 }
 
 # Helper for upgrade logic
@@ -646,6 +658,16 @@ convert_to_boolean_string() {
         echo "True"
     elif [ "$1" -eq 0 ] 2>/dev/null; then
         echo "False"
+    else
+        echo "$1"
+    fi
+}
+
+convert_boolean_string_to_int() {
+    if [ "$1" == "True" ] 2>/dev/null; then
+        echo 1
+    elif [ "$1" == "False" ] 2>/dev/null; then
+        echo 0
     else
         echo "$1"
     fi

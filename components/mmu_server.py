@@ -415,7 +415,7 @@ class MmuServer:
                 for gate, spool_id in gate_ids
             }
             try:
-                await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" {'REPLACE=1' if replace else ''} QUIET=1")
+                await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" {'REPLACE=1' if replace else ''} FROM_SPOOLMAN=1 QUIET=1")
             except Exception as e:
                 await self._log_n_send(f"Exception running MMU_GATE_MAP gcode: {str(e)}", error=True, silent=silent)
                 return False

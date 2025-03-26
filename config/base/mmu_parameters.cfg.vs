@@ -350,6 +350,40 @@ sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_
 sync_multiplier_low: 0.95		# Minimum factor to apply
 
 
+# ESpooler control -----------------------------------------------------------------------------------------------------
+# ███████╗███████╗██████╗  ██████╗  ██████╗ ██╗     ███████╗██████╗ 
+# ██╔════╝██╔════╝██╔══██╗██╔═══██╗██╔═══██╗██║     ██╔════╝██╔══██╗
+# █████╗  ███████╗██████╔╝██║   ██║██║   ██║██║     █████╗  ██████╔╝
+# ██╔══╝  ╚════██║██╔═══╝ ██║   ██║██║   ██║██║     ██╔══╝  ██╔══██╗
+# ███████╗███████║██║     ╚██████╔╝╚██████╔╝███████╗███████╗██║  ██║
+# ╚══════╝╚══════╝╚═╝      ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
+#                                                                  
+# If your MMU has a dc motor (ofter N20) controlled respooler/assist then how it operates can be controlled with these
+# settings. Typically the espooler will be controlled with PWM signal. This will be at the maximum at speeds equal or
+# above 'espooler.max_stepper_speed'. The PWM signal will scale downwards towards 0 for slower speeds. The falloff being
+# controlled by the 'espooler_speed_exponent' setting according to this formula and allows for non-linear characteristics
+# the DC motor (0.5 is a good starting value).
+# 
+#     espooler_pwm = {stepper_speed} / {max_stepper_speed}) ^ {speed_exponent}
+#
+# Regardless of h/w configuration you can enable/disable actions with the 'espooler_operations' list. E.g. remove 'play' to
+# turn off operation while printing. Options are:
+#
+#    load   - when filament is being loaded under MMU control
+#    unload - when filament is being unloaded under MMU control
+#    print  - while printing. Generally set 'espooler_printing_power' to a low value just to allow motor to be turned freely
+#
+# If using a digitally controlled espooler motor (not PWM) then you should turn off the "print" mode and set
+# 'espooler_min_stepper_speed' to prevent "over movement"
+#
+espooler_min_distance: 30                       # Individual stepper movements less than this distance will not active espooler
+espooler_max_stepper_speed: 300                 # Gear stepper speed at which espooler will be at maximum power
+espooler_min_stepper_speed: 0                   # Gear stepper speed at which espooler will become inactive (useful for non PWM control)
+espooler_speed_exponent: 0.5                    # Controls non-linear espooler power relative to stepper speed (see notes)
+espooler_printing_power: 0.1                    # If >0, fixes the PWM power while printing.
+espooler_operations: unload, load, print        # List of operational modes (allows disabling even if h/w is configured)
+
+
 # Filament Management Options ----------------------------------------------------------------------------------------
 # ███████╗██╗██╗            ███╗   ███╗ ██████╗ ███╗   ███╗████████╗
 # ██╔════╝██║██║            ████╗ ████║██╔════╝ ████╗ ████║╚══██╔══╝
@@ -541,8 +575,6 @@ pre_load_macro: _MMU_PRE_LOAD				# Called before starting the load
 post_load_macro: _MMU_POST_LOAD				# Called after the load is complete
 unload_sequence_macro: _MMU_UNLOAD_SEQUENCE		# VERY ADVANCED: Optionally called based on 'gcode_unload_sequence'
 load_sequence_macro: _MMU_LOAD_SEQUENCE			# VERY ADVANCED: Optionally called based on 'gcode_load_sequence'
-espooler_start_macro: ''				# Called to start eSpooler if fitted (params: GATE, STEP_SPEED, MAX_DISTANCE, HOMING)
-espooler_stop_macro: ''					# Called to stop eSpooler if fitted (params: GATE, DISTANCE)
 
 
 # ADVANCED: See documentation for use of these -----------------------------------------------------------------------
