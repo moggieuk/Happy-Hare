@@ -29,7 +29,7 @@ class MmuESpooler:
         # Get config
         self.mcu_motor_pin = {}
         self.last_value = {}
-        self.operation = []
+        self.operation = {}
         ppins = self.printer.lookup_object('pins')
 
         # These params are assumed to be shared accross the MMU unit
@@ -40,36 +40,39 @@ class MmuESpooler:
 
         for i in range(23):
             gate = first_gate + i
-            self.respool_motor_pins[gate] = config.get('respool_motor_pin_%d' % gate, None)
-            self.assist_motor_pins[gate] = config.get('assist_motor_pin_%d' % gate, None)
-            self.enable_motor_pins[gate] = config.get('enable_motor_pin_%d' % gate, None) # AFC MCU only
+            self.respool_motor_pin = config.get('respool_motor_pin_%d' % gate, None)
+            self.assist_motor_pin = config.get('assist_motor_pin_%d' % gate, None)
+            self.enable_motor_pin = config.get('enable_motor_pin_%d' % gate, None) # AFC MCU only
 
             # Setup pins
             if self.is_pwm:
                 if self.respool_motor_pin:
-                    mcu_pin = ppins.setup_pin("pwm", self.respool_motor_pins[gate])
+                    logging.info("PAUL respool_pin")
+                    mcu_pin = ppins.setup_pin("pwm", self.respool_motor_pin)
                     mcu_pin.setup_cycle_time(cycle_time, hardware_pwm)
                     mcu_pin.setup_max_duration(0.)
                     self.motor_mcu_pins['respool_%d' % gate] = mcu_pin
 
                 if self.assist_motor_pin:
-                    mcu_pin = ppins.setup_pin("pwm", self.assist_motor_pins[gate])
+                    logging.info("PAUL assist_pin")
+                    mcu_pin = ppins.setup_pin("pwm", self.assist_motor_pin)
                     mcu_pin.setup_cycle_time(cycle_time, hardware_pwm)
                     mcu_pin.setup_max_duration(0.)
                     self.motor_mcu_pins['assist_%d' % gate] = mcu_pin
             else:
                 if self.respool_motor_pin:
-                    mcu_pin = ppins.setup_pin("digital_out", self.respool_motor_pins[gate])
+                    mcu_pin = ppins.setup_pin("digital_out", self.respool_motor_pin)
                     mcu_pin.setup_max_duration(0.)
                     self.motor_mcu_pins['respool_%d' % gate] = mcu_pin
 
                 if self.assist_motor_pin:
-                    mcu_pin = ppins.setup_pin("digital_out", self.assist_motor_pins[gate])
+                    mcu_pin = ppins.setup_pin("digital_out", self.assist_motor_pin)
                     mcu_pin.setup_max_duration(0.)
                     self.motor_mcu_pins['assist_%d' % gate] = mcu_pin
 
-            if self.motor_enable_pin:
-                mcu_pin = ppins.setup_pin("digital_out", self.motor_enable_pins[gate])
+            if self.enable_motor_pin:
+                logging.info("PAUL enable_pin")
+                mcu_pin = ppins.setup_pin("digital_out", self.enable_motor_pin)
                 mcu_pin.setup_max_duration(0.)
                 self.motor_mcu_pins['enable_%d' % gate] = mcu_pin
  
@@ -113,7 +116,7 @@ class MmuESpooler:
     def _set_pin(self, print_time, name, value):
         mcu_pin = mcu_motor_pin.get(name, None)
         if mcu_pin:
-            if value == self.last_value.get(name, None)
+            if value == self.last_value.get(name, None):
                 return
         if self.is_pwm:
             mcu_pin.set_pwm(print_time, value)
@@ -121,11 +124,11 @@ class MmuESpooler:
             mcu_pin.set_digital(print_time, value)
         self.last_value[name] = value
 
-   def get_operation(self, gate):
-       return self.operation.get('%s_gate_%d' % (self.unit_name, gate), ('', 0))
+    def get_operation(self, gate):
+        return self.operation.get('%s_gate_%d' % (self.unit_name, gate), ('', 0))
 
-   def get_status(self, eventtime):
-       return self.operation
+    def get_status(self, eventtime):
+        return self.operation
 
 def load_config(config):
     return MmuESpooler(config)

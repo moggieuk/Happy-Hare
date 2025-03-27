@@ -294,10 +294,10 @@ toolhead_move_error_tolerance: 60
 # If opting for slicer tip forming you MUST configure where the slicer leaves the filament in the extruder since
 # there is no way to determine this. This can be ignored if all tip forming is performed by Happy Hare
 #
-force_form_tip_standalone: 1            # 0 = Slicer in print else standalone, 1 = Always standalone tip forming (TURN SLICER OFF!)
-form_tip_macro: _MMU_FORM_TIP           # Name of macro to call to perform the tip forming (or cutting) operation
-extruder_form_tip_current: 100          # % of extruder current (100%-150%) to use when forming tip (100 to disable)
-slicer_tip_park_pos: 0                  # This specifies the position of filament in extruder after slicer completes tip forming
+force_form_tip_standalone: 1		# 0 = Slicer in print else standalone, 1 = Always standalone tip forming (TURN SLICER OFF!)
+form_tip_macro: _MMU_FORM_TIP		# Name of macro to call to perform the tip forming (or cutting) operation
+extruder_form_tip_current: 100		# % of extruder current (100%-150%) to use when forming tip (100 to disable)
+slicer_tip_park_pos: 0			# This specifies the position of filament in extruder after slicer completes tip forming
 
 
 # Purging -------------------------------------------------------------------------------------------------------------
@@ -320,9 +320,9 @@ slicer_tip_park_pos: 0                  # This specifies the position of filamen
 #
 # Often it is useful to increase the extruder current for the often rapid puring movement to ensure high torque and no skipped steps
 #
-force_purge_standalone: 0               # 0 = Slicer wipetower in print else standalone, 1 = Always standalone purging (TURN WIPETOWER OFF!)
-purge_macro: ''                         # Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER
-extruder_purge_current: 100             # % of extruder current (100%-150%) to use when purging (100 to disable)
+force_purge_standalone: 0 		# 0 = Slicer wipetower in print else standalone, 1 = Always standalone purging (TURN WIPETOWER OFF!)
+purge_macro:				# Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER
+extruder_purge_current: 100		# % of extruder current (100%-150%) to use when purging (100 to disable)
 
 
 # Synchronized gear/extruder movement ----------------------------------------------------------------------------------

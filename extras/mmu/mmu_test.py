@@ -13,8 +13,8 @@
 #
 import random
 # Happy Hare imports
-from ..            import mmu_machine
-from ..mmu_machine import MmuToolHead
+# PAUL from ..            import mmu_machine
+from ..mmu_unit    import MmuToolHead
 
 # MMU subcomponent clases
 from .mmu_shared   import *
@@ -438,7 +438,7 @@ class MmuTest:
                 self.mmu._is_running_test = True
                 for i in range(loop):
                     self.mmu.log_info("Loop: %d" % i)
-                    if self.mmu.mmu_machine.multigear:
+                    if self.mmu.mmu_machine.multigear: # PAUL should be mmu_unit of current gate
                         self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
                     stop_on_endstop = random.randint(0, 1) * 2 - 1
                     motor = "gear+extruder" if random.randint(0, mix) else "extruder"
@@ -475,7 +475,7 @@ class MmuTest:
                 self.mmu._is_running_test = True
                 for i in range(loop):
                     self.mmu.log_info("Loop: %d" % i)
-                    if self.mmu.mmu_machine.multigear:
+                    if self.mmu.mmu_machine.multigear: # PAUL should be mmu_unit of current gate
                         self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
                     stop_on_endstop = random.randint(0, 1) * 2 - 1
                     motor = "gear"
