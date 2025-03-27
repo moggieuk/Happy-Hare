@@ -49,10 +49,10 @@ from .mmu_shared import MmuError
 
 class BaseSelector:
 
-    def __init__(self, mmu):
+    def __init__(self, mmu, mmu_unit):
         self.mmu = mmu
+        self.mmu_unit = mmu_unit
         self.is_homed = False
-        self.mmu_unit = 0
 
     def reinit(self):
         pass
@@ -125,8 +125,8 @@ class BaseSelector:
 
 class VirtualSelector(BaseSelector, object):
 
-    def __init__(self, mmu):
-        super(VirtualSelector, self).__init__(mmu)
+    def __init__(self, mmu, mmu_unit):
+        super(VirtualSelector, self).__init__(mmu, mmu_unit)
         self.is_homed = True
 
         # Read all controller parameters related to selector or servo to stop klipper complaining. This
@@ -174,8 +174,8 @@ class LinearSelector(BaseSelector, object):
     VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
     VARS_MMU_SELECTOR_BYPASS  = "mmu_selector_bypass"
 
-    def __init__(self, mmu):
-        super(LinearSelector, self).__init__(mmu)
+    def __init__(self, mmu, mmu_unit):
+        super(LinearSelector, self).__init__(mmu, mmu_unit)
         self.bypass_offset = -1
 
         # Process config
@@ -241,7 +241,7 @@ class LinearSelector(BaseSelector, object):
         self.cad_selector_tolerance = mmu.config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
 
         # Sub components
-        self.servo = LinearSelectorServo(mmu)
+        self.servo = LinearSelectorServo(mmu, mmu_unit)
 
         # Register GCODE commands specific to this module
         gcode = mmu.printer.lookup_object('gcode')
@@ -798,8 +798,9 @@ class LinearSelectorServo:
     # mmu_vars.cfg variables
     VARS_MMU_SERVO_ANGLES = "mmu_servo_angles"
 
-    def __init__(self, mmu):
+    def __init__(self, mmu, mmu_unit):
         self.mmu = mmu
+        self.mmu_unit = mmu_unit
 
         # Servo states
         self.SERVO_MOVE_STATE      = mmu.FILAMENT_HOLD_STATE
@@ -1030,8 +1031,8 @@ class RotarySelector(BaseSelector, object):
     # mmu_vars.cfg variables
     VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
 
-    def __init__(self, mmu):
-        super(RotarySelector, self).__init__(mmu)
+    def __init__(self, mmu, mmu_unit):
+        super(RotarySelector, self).__init__(mmu, mmu_unit)
 
         # Process config
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
@@ -1418,8 +1419,8 @@ gcode:
 
 class MacroSelector(BaseSelector, object):
 
-    def __init__(self, mmu):
-        super(MacroSelector, self).__init__(mmu)
+    def __init__(self, mmu, mmu_unit):
+        super(MacroSelector, self).__init__(mmu, mmu_unit)
         self.is_homed = True
 
         self.printer = mmu.printer
@@ -1497,9 +1498,9 @@ class ServoSelector(BaseSelector, object):
     VARS_MMU_SELECTOR_ANGLES       = "mmu_selector_angles"
     VARS_MMU_SELECTOR_BYPASS_ANGLE = "mmu_selector_bypass_angle"
 
-    def __init__(self, mmu):
+    def __init__(self, mmu, mmu_unit):
 
-        super(ServoSelector, self).__init__(mmu)
+        super(ServoSelector, self).__init__(mmu, mmu_unit)
         self.is_homed = True
         self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
         self.selector_bypass_angle = -1
