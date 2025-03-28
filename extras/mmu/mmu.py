@@ -299,12 +299,43 @@ class Mmu:
         # Detect Kalico (Danger Klipper) installation
         self.kalico = bool(self.printer.lookup_object('danger_options', False))
 
-        # Setup remaining hardware like MMU toolhead --------------------------------------------------------
-        # We setup MMU hardware during configuration since some hardware like endstop requires
-        # configuration during the MCU config phase, which happens before klipper connection
-        # This assumes that the hardware definition appears before the '[mmu]' section.
-        # The default recommended install will guarantee this order
-        self._setup_mmu_hardware(config)
+# PAUL
+#        # Setup remaining hardware like MMU toolhead --------------------------------------------------------
+#        # We setup MMU hardware during configuration since some hardware like endstop requires
+#        # configuration during the MCU config phase, which happens before klipper connection
+#        # This assumes that the hardware definition appears before the '[mmu]' section.
+#        # The default recommended install will guarantee this order
+#        self._setup_mmu_hardware(config)
+#
+# PAUL new vvv
+        self.mmu_machine = self.printer.lookup_object("mmu_machine")
+        self.num_gates = self.mmu_machine.num_gates
+
+# PAUL        self.homing_extruder = self.mmu_unit().homing_extruder
+        if not self.mmu_machine.homing_extruder:
+            self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
+
+        # Dynamically instantiate the selector class
+        self.selector = globals()[self.mmu_unit().selector_type](self, self.mmu_unit())
+        if not isinstance(self.selector, BaseSelector):
+            raise self.config.error("Invalid Selector class for MMU")
+
+        self.mmu_toolhead = self.mmu_unit().mmu_toolhead
+
+        rails = self.mmu_toolhead.get_kinematics().rails
+        self.gear_rail = rails[1]
+
+        # Setup filament sensors that are also used for homing (endstops). Must be done during initialization
+        self.sensor_manager = MmuSensorManager(self)
+
+        # Get optional encoder setup. TODO Multi-encoder: rework to default name to None and then use lookup to determine if present
+        encoder_name = config.get('encoder_name', 'mmu_encoder')
+        self.encoder_sensor = self.printer.lookup_object('mmu_encoder %s' % encoder_name, None)
+        if not self.encoder_sensor:
+            logging.warning("MMU: No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
+
+        self.espooler = None # PAUL TODO 
+# PAUL ^^^
 
         # Read user configuration ---------------------------------------------------------------------------
         #
@@ -669,59 +700,43 @@ class Mmu:
         self._reset_statistics()
         self.counters = {}
 
-    # Initialize MMU hardare. Note that logging not set up yet so use main klippy logger
-    def _setup_mmu_hardware(self, config):
-        logging.info("PAUL:MMU: Hardware Initialization -------------------------------")
-        logging.info("MMU: Hardware Initialization in mmu.py -------------------------------")
-
-# PAUL not sure about this section. Move to mmu_unit and just call here for each unit
-        self.mmu_machine = self.printer.lookup_object("mmu_machine")
-        self.num_gates = self.mmu_machine.num_gates
-
-# PAUL vvv new
-#        for mmu_unit in self.mmu_machine.units:
-#            homing_extruder = self.mmu_unit().homing_extruder # PAUL need this now?
+# PAUL
+#    # Initialize MMU hardare. Note that logging not set up yet so use main klippy logger
+#    def _setup_mmu_hardware(self, config):
+#        logging.info("PAUL:MMU: Hardware Initialization -------------------------------")
+#        logging.info("MMU: Hardware Initialization in mmu.py -------------------------------")
 #
-#            # Dynamically instantiate the selector class
-#            self.selector = globals()[self.mmu_unit().selector_type](self) # PAUL we want this stored on the mmu_unit
-#            if not isinstance(self.selector, BaseSelector):
-#                raise self.config.error("Invalid Selector class for MMU")
+## PAUL not sure about this section. Move to mmu_unit and just call here for each unit
+#        self.mmu_machine = self.printer.lookup_object("mmu_machine")
+#        self.num_gates = self.mmu_machine.num_gates
 #
-#            # Now we can instantiate the MMU toolhead
-#            self.mmu_toolhead = MmuToolHead(config, self) # PAUL we want this stored on the mmu_unit
-#            rails = self.mmu_toolhead.get_kinematics().rails
-#            self.gear_rail = rails[1] # PAUL how often is gear_rail accessed? do we need to store on this object?
-#            self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
-# PAUL ^^^
-
-
-# PAUL vvv old
-        self.homing_extruder = self.mmu_unit().homing_extruder
-
-        # Dynamically instantiate the selector class
-        self.selector = globals()[self.mmu_unit().selector_type](self, self.mmu_unit())
-        if not isinstance(self.selector, BaseSelector):
-            raise self.config.error("Invalid Selector class for MMU")
-
-        # Now we can instantiate the MMU toolhead
-        self.mmu_toolhead = MmuToolHead(config, self)
-        rails = self.mmu_toolhead.get_kinematics().rails
-        self.gear_rail = rails[1]
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
-
-
-
-
-        # Setup filament sensors that are also used for homing (endstops). Must be done during initialization
-        self.sensor_manager = MmuSensorManager(self)
-
-        # Get optional encoder setup. TODO Multi-encoder: rework to default name to None and then use lookup to determine if present
-        self.encoder_name = config.get('encoder_name', 'mmu_encoder')
-        self.encoder_sensor = self.printer.lookup_object('mmu_encoder %s' % self.encoder_name, None)
-        if not self.encoder_sensor:
-            logging.warning("MMU: No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
-
-        self.espooler = None # PAUL TODO 
+#        self.homing_extruder = self.mmu_unit().homing_extruder
+#
+#        # Dynamically instantiate the selector class
+#        self.selector = globals()[self.mmu_unit().selector_type](self, self.mmu_unit())
+#        if not isinstance(self.selector, BaseSelector):
+#            raise self.config.error("Invalid Selector class for MMU")
+#
+#        # Now we can instantiate the MMU toolhead
+## PAUL old        self.mmu_toolhead = MmuToolHead(config, self, self.mmu_unit()) # PAUL mmu_unit??
+#
+#        self.mmu_toolhead = self.mmu_unit().mmu_toolhead
+#        rails = self.mmu_toolhead.get_kinematics().rails
+#        self.gear_rail = rails[1]
+#        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
+#
+#        # Setup filament sensors that are also used for homing (endstops). Must be done during initialization
+#        self.sensor_manager = MmuSensorManager(self)
+#
+#        # Get optional encoder setup. TODO Multi-encoder: rework to default name to None and then use lookup to determine if present
+#        encoder_name = config.get('encoder_name', 'mmu_encoder')
+#        self.encoder_sensor = self.printer.lookup_object('mmu_encoder %s' % encoder_name, None)
+#        if not self.encoder_sensor:
+#            logging.warning("MMU: No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
+#
+#        self.espooler = None # PAUL TODO 
+#
+#        logging.info("PAUL: end of mmu_hardware")
 
     def _setup_logging(self):
         # Setup background file based logging before logging any messages
@@ -737,7 +752,7 @@ class Mmu:
             self.mmu_logger.log("\n\n\nMMU Startup -----------------------------------------------\n")
 
     def handle_connect(self):
-        self._setup_logging()
+        self._setup_logging() # PAUL can we move this to init() before setup hardware?
 
         self.toolhead = self.printer.lookup_object('toolhead')
         self.sensor_manager.reset_active_unit(self.UNIT_UNKNOWN)
@@ -758,7 +773,7 @@ class Mmu:
             if self.extruder_tmc is None:
                 self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, self.extruder_name), None)
                 if self.extruder_tmc is not None:
-                    self.log_debug("Found %s on extruder. Current control enabled. %s" % (chip, "Stallguard 'touch' homing possible." if self.homing_extruder else ""))
+                    self.log_debug("Found %s on extruder. Current control enabled. %s" % (chip, "Stallguard 'touch' homing possible." if self.mmu_machine.homing_extruder else ""))
         if self.gear_tmc is None:
             self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
         if self.extruder_tmc is None:
@@ -934,10 +949,11 @@ class Mmu:
             park_toolchange = sequence_vars_macro.variables.get('park_toolchange',(0))
             self.toolchange_retract = park_toolchange[-1]
 
-        # Reference correct extruder stepper which will definitely be available now
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
-        if not self.homing_extruder:
-            self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
+# PAUL not needed here - in init()
+#        # Reference correct extruder stepper which will definitely be available now
+# PAUL        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper
+#        if not self.mmu_machine.homing_extruder:
+#            self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
 
         # Restore state (only if fully calibrated)
         self._load_persisted_state()
@@ -2526,7 +2542,9 @@ class Mmu:
 
         # Enable the extruder stepper
         stepper_enable = self.printer.lookup_object('stepper_enable')
-        ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
+        mmu_extruder_stepper = self.mmu_unit().mmu_toolhead.mmu_extruder_stepper # PAUL added
+# PAUL        ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
+        ge = stepper_enable.lookup_enable(mmu_extruder_stepper.stepper.get_name())
         ge.motor_enable(self.toolhead.get_last_move_time())
 
         # Reliably force filament to the nozzle
@@ -4592,7 +4610,8 @@ class Mmu:
     def _home_to_extruder_collision_detection(self, max_length):
         # Lock the extruder stepper
         stepper_enable = self.printer.lookup_object('stepper_enable')
-        ge = stepper_enable.lookup_enable(self.mmu_extruder_stepper.stepper.get_name())
+        mmu_extruder_stepper = self.mmu_unit().mmu_toolhead.mmu_extruder_stepper # PAUL added
+        ge = stepper_enable.lookup_enable(mmu_extruder_stepper.stepper.get_name())
         ge.motor_enable(self.toolhead.get_last_move_time())
 
         step = self.extruder_collision_homing_step * math.ceil(self.encoder_resolution * 10) / 10
@@ -5217,7 +5236,8 @@ class Mmu:
 
     def _do_form_tip(self, test=False):
         with self._wrap_extruder_current(self.extruder_form_tip_current, "for tip forming move"):
-            initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
+            mmu_extruder_stepper = self.mmu_unit().mmu_toolhead.mmu_extruder_stepper # PAUL added
+            initial_mcu_pos = mmu_extruder_stepper.stepper.get_mcu_position()
             initial_encoder_position = self.get_encoder_distance()
 
             with self._wrap_pressure_advance(0., "for tip forming"):
@@ -5225,8 +5245,8 @@ class Mmu:
                 self.log_info("Forming tip...")
                 self.wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True, wait=True)
 
-            final_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
-            stepper_movement = (initial_mcu_pos - final_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
+            final_mcu_pos = mmu_extruder_stepper.stepper.get_mcu_position()
+            stepper_movement = (initial_mcu_pos - final_mcu_pos) * mmu_extruder_stepper.stepper.get_step_dist()
             measured = self.get_encoder_distance(dwell=None) - initial_encoder_position
             park_pos = gcode_macro.variables.get("output_park_pos", -1)
             try:
@@ -5387,13 +5407,14 @@ class Mmu:
                     if homing_move != 0:
                         trig_pos = [0., 0., 0., 0.]
                         hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
-                        init_ext_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
+                        mmu_extruder_stepper = self.mmu_unit().mmu_toolhead.mmu_extruder_stepper # PAUL added
+                        init_ext_mcu_pos = mmu_extruder_stepper.stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
                         init_pos = pos[1]
                         pos[1] += dist
                         for _ in range(self.canbus_comms_retries):  # HACK: We can repeat because homing move
                             got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
                             try:
-                                #initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
+                                #initial_mcu_pos = mmu_extruder_stepper.stepper.get_mcu_position()
                                 #init_pos = pos[1]
                                 #pos[1] += dist
                                 with self.wrap_accel(accel):
@@ -5416,10 +5437,10 @@ class Mmu:
                                 homed = False
                             finally:
                                 halt_pos = self.mmu_toolhead.get_position()
-                                ext_actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
+                                ext_actual = (mmu_extruder_stepper.stepper.get_mcu_position() - init_ext_mcu_pos) * mmu_extruder_stepper.stepper.get_step_dist()
 
                                 # Support setup where a non-homing extruder is being used
-                                if motor == "extruder" and not self.homing_extruder:
+                                if motor == "extruder" and not self.mmu_machine.homing_extruder:
                                     # This isn't super accurate if extruder isn't (homing) MmuExtruder because doesn't have required endstop, thus this will
                                     # overrun and even move slightly even if already homed. We can only correct the actual gear rail position.
                                     halt_pos[1] += ext_actual
@@ -6081,7 +6102,7 @@ class Mmu:
         mmu_unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
         if mmu_unit:
             return mmu_unit
-        logging.info("PAUL: **** FIXME: This is a problem because unit can never be unknown. Default to unit_0?")
+        logging.info("PAUL: mmu_unit() returning default unit_0?")
         return self.mmu_machine.get_mmu_unit_by_gate(0) # PAUL not sure if this is best!
 
 # PAUL new method above

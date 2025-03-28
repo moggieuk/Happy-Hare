@@ -19,6 +19,7 @@ from .mmu_shared   import MmuError
 class MmuSensorManager:
     def __init__(self, mmu):
         self.mmu = mmu
+        self.mmu_machine = mmu.mmu_machine
         self.all_sensors = {}      # All sensors on mmu unit optionally with unit prefix and gate suffix
         self.sensors = {}          # All (presence detection) sensors on active unit stripped of unit prefix
         self.viewable_sensors = {} # Sensors of all types for current gate/unit renamed with simple names
@@ -32,8 +33,8 @@ class MmuSensorManager:
             self.mmu.SENSOR_TENSION,
             self.mmu.SENSOR_COMPRESSION
         ])
-        if self.mmu.mmu_machine.num_units > 1:
-            for i in range(self.mmu.mmu_machine.num_units):
+        if self.mmu_machine.num_units > 1:
+            for i in range(self.mmu_machine.num_units):
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_GATE, i))
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
@@ -50,7 +51,7 @@ class MmuSensorManager:
 # PAUL require bowden is per-unit
 # PAUL need to rethink this. Commenting out for now
 #        # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
-#        if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
+#        if not self.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
 #            self.all_sensors[self.mmu.SENSOR_GATE] = self.all_sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
 
         # Setup subset of filament sensors that are also used for homing (endstops)
@@ -61,8 +62,8 @@ class MmuSensorManager:
             self.mmu.SENSOR_TENSION,
             self.mmu.SENSOR_COMPRESSION
         ])
-        if self.mmu.mmu_machine.num_units > 1:
-            for i in range(self.mmu.mmu_machine.num_units):
+        if self.mmu_machine.num_units > 1:
+            for i in range(self.mmu_machine.num_units):
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_GATE, i))
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
@@ -74,18 +75,20 @@ class MmuSensorManager:
             sensor_name = name if re.search(r'_(\d+)$', name) else "%s_sensor" % name # Must match mmu_sensors
             sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
             if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
-                # Add sensor pin as an extra endstop for gear rail
+                # Add sensor pin as an extra endstop for gear rail for all mmu_units
                 sensor_pin = sensor.runout_helper.switch_pin
                 ppins = self.mmu.printer.lookup_object('pins')
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
                 share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
                 ppins.allow_multi_use_pin(share_name)
-                mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name)
 
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 # otherwise the extruder can continue to move a small (speed dependent) distance
-                if self.mmu.homing_extruder and name == self.mmu.SENSOR_TOOLHEAD:
-                    mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
+                if self.mmu_machine.homing_extruder and name == self.mmu.SENSOR_TOOLHEAD:
+                    for unit in self.mmu_machine.units:
+                        gear_rail = unit.mmu_toolhead.get_kinematics().rails[1]
+                        mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, name)
+                        mcu_endstop.add_stepper(self.mmu_machine.mmu_extruder_stepper.stepper)
             else:
                 logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
 

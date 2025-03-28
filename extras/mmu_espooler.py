@@ -22,8 +22,8 @@ MAX_SCHEDULE_TIME = 5.0
 class MmuESpooler:
 
     def __init__(self, config, first_gate=0):
+        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
-        self.unit_name = config.get_name().split()[-1]
         self.first_gate = first_gate
 
         # Get config
@@ -76,20 +76,20 @@ class MmuESpooler:
                 mcu_pin.setup_max_duration(0.)
                 self.motor_mcu_pins['enable_%d' % gate] = mcu_pin
  
-            self.operation['%s_gate_%d' % (self.unit_name, gate)] = ('stop', 0)
+            self.operation['%s_gate_%d' % (self.name, gate)] = ('stop', 0)
 
         # Setup event handler for DC espooler motor operation
         self.printer.register_event_handler("mmu:espooler", self._handle_espooler_request)
 
     def _handle_espooler_request(self, eventtime, gate, value, operation):
          logging.info("Got espooler '%s' event for gate %d: value=%.2f" % (operation, gate, value))
-         self.operation['%s_gate_%d' % (self.unit_name, gate)] = (operation, value)
+         self.operation['%s_gate_%d' % (self.name, gate)] = (operation, value)
          self.operation = list(self.operation) # For moonraker visibility
          self._update_espooler(eventtime, gate, value)
 
     # Set the PWM or digital signal (-ve value is assume to be respool, +ve is assist, 0 is stop)
     def _update_espooler(eventtime, gate, value):
-        toolhead = self.printer.lookup_object('toolhead') # PAUL this is the wrong toolhead???
+        toolhead = self.printer.lookup_object('toolhead') # PAUL is the correct toolhead should it be mmu_toolhead?
 
         def _schedule_set_pin(name, value):
             mcu_pin = mcu_motor_pin.get(name, None)
@@ -125,10 +125,10 @@ class MmuESpooler:
         self.last_value[name] = value
 
     def get_operation(self, gate):
-        return self.operation.get('%s_gate_%d' % (self.unit_name, gate), ('', 0))
+        return self.operation.get('%s_gate_%d' % (self.name, gate), ('', 0))
 
     def get_status(self, eventtime):
         return self.operation
 
-def load_config(config):
+def load_config_prefix(config):
     return MmuESpooler(config)

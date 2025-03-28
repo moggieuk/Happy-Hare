@@ -15,7 +15,10 @@
 import logging
 
 # Happy Hare imports
-from .mmu_unit           import MmuUnit
+from .                   import mmu_unit
+
+# Klipper imports
+from kinematics.extruder import ExtruderStepper
 
 class MmuMachine:
 
@@ -25,24 +28,26 @@ class MmuMachine:
 
         self.unit_names = list(config.getlist('units'))
         self.num_units = len(self.unit_names)
+
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
+        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
+        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+
         self.num_gates = 0     # Total number of vitual mmu gates
         self.units = []        # Unit by index
         self.unit_by_name = {} # Unit lookup by name
         self.unit_by_gate = [] # Quick object lookup by gate
         self.unit_status = {}
 
-        logging.info("PAUL: unit_names=%s" % self.unit_names)
-        logging.info("PAUL: num_units=%s" % self.num_units)
-       
         for i, name in enumerate(self.unit_names):
             section = "mmu_unit %s" % name
-            logging.info("PAUL: load_object(%s)" % section)
 
             if not config.has_section(section):
                 raise config.error("Expected [%s] section not found" % section)
             c = config.getsection(section)
-            unit = MmuUnit(c, self, i, self.num_gates) # PAUL added
-            logging.info("PAUL: loaded. Registering: %s" % c.get_name())
+            unit = mmu_unit.MmuUnit(c, self, i, self.num_gates)
+            logging.info("MMU: Created mmu unit: %s" % c.get_name())
             self.printer.add_object(c.get_name(), unit) # Register mmu_unit to stop if being loaded by klipper
 
             self.units.append(unit)
@@ -69,6 +74,34 @@ class MmuMachine:
         self.unit_status['num_units'] = self.num_units
         self.unit_status['num_gates'] = self.num_gates
 
+        # Setup homing extruder
+        self.mmu_extruder_stepper = None
+        if self.homing_extruder:
+            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
+            self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.units) # Only the first extruder is handled
+
+            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
+            self.old_ext_options = {}
+            for i in mmu_unit.SHAREABLE_STEPPER_PARAMS + mmu_unit.OTHER_STEPPER_PARAMS:
+                if config.fileconfig.has_option('extruder', i):
+                    self.old_ext_options[i] = config.fileconfig.get('extruder', i)
+                    config.fileconfig.remove_option('extruder', i)
+
+        self.printer.register_event_handler('klippy:connect', self.handle_connect)
+
+    def handle_connect(self):
+        printer_extruder = self.printer.lookup_object('toolhead').get_extruder()
+        if self.homing_extruder:
+            # Restore original extruder options in case user macros reference them
+            for key, value in self.old_ext_options.items():
+                self.config.fileconfig.set('extruder', key, value)
+
+            # Now we can switch in homing MmuExtruderStepper
+            printer_extruder.extruder_stepper = self.mmu_extruder_stepper
+            self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
+        else:
+            self.mmu_extruder_stepper = printer_extruder.extruder_stepper
+
     def get_mmu_unit_by_index(self, index):
         if index >= 0 and index < self.num_units:
             return self.units[index]
@@ -84,6 +117,39 @@ class MmuMachine:
 
     def get_status(self, eventtime):
         return self.unit_status
+
+# Extend ExtruderStepper to allow for adding and managing endstops (useful only when part of gear rail, not operating as an Extruder)
+class MmuExtruderStepper(ExtruderStepper, object):
+    def __init__(self, config, units):
+        super(MmuExtruderStepper, self).__init__(config)
+
+        # Ensure sure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
+        for chip in mmu_unit.TMC_CHIPS:
+            try:
+                section = '%s extruder' % chip
+                _ = self.printer.load_object(config, section)
+                logging.info("MMU: Loaded: %s" % section)
+                break
+            except:
+                pass
+
+        # This allows for setup of stallguard as an option for nozzle homing on all mmu_units
+        endstop_pin = config.get('endstop_pin', None)
+        if endstop_pin:
+            for unit in units:
+                gear_rail = unit.mmu_toolhead.get_kinematics().rails[1]
+                mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False)
+                mcu_endstop.add_stepper(self.stepper)
+
+    # Override to add QUIET option to control console logging
+    def cmd_SET_PRESSURE_ADVANCE(self, gcmd):
+        pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
+        smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)
+        self._set_pressure_advance(pressure_advance, smooth_time)
+        msg = "pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time)
+        self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
+        if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
+            gcmd.respond_info(msg, log=False)
 
 def load_config(config):
     return MmuMachine(config)

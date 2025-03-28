@@ -23,10 +23,13 @@
 #
 import logging, importlib, math, os, time, re
 
+# Happy Hare imports
+from .                   import mmu_machine
+
 # Klipper imports
 import stepper, chelper, toolhead
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
-from .homing import Homing, HomingMove
+from .homing             import Homing, HomingMove
 
 
 # TMC chips to search for
@@ -60,20 +63,30 @@ UNIT_ALT_DISPLAY_NAMES = {
     VENDOR_NIGHT_OWL:    "Night Owl",
 }
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_OTHER]
-
+VENDORS = [
+    VENDOR_ERCF,
+    VENDOR_TRADRACK,
+    VENDOR_PRUSA,
+    VENDOR_ANGRY_BEAVER,
+    VENDOR_BOX_TURTLE,
+    VENDOR_NIGHT_OWL,
+    VENDOR_3MS,
+    VENDOR_3D_CHAMELEON,
+    VENDOR_PICO_MMU,
+    VENDOR_QUATTRO_BOX,
+    VENDOR_OTHER
+]
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
 class MmuUnit:
 
-    def __init__(self, config, mmu_machine, unit_index, first_gate):
-        self.mmu_machine = mmu_machine
-        self.unit_index = unit_index
-        self.first_gate = first_gate
-        self.name = config.get_name().split()[1] # PAUL added
-        self.printer = config.get_printer() # PAUL added
+    def __init__(self, config, *args):
+        if len(args) < 3:
+            raise config.error("[%s] cannot be instantiated directly. Add to 'mmu_units' in [mmu_machine]" % config.get_name())
+        self.mmu_machine, self.unit_index, self.first_gate = args
+        self.name = config.get_name().split()[1]
+        self.printer = config.get_printer()
         self.num_gates = config.getint('num_gates')
-        logging.info("PAUL:num_gates=%d" % self.num_gates)
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
         self.mmu_version_string = config.get('mmu_version', "1.0")
         version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
@@ -82,13 +95,16 @@ class MmuUnit:
         except ValueError:
             raise config.error("Invalid version parameter")
 
+        self.selector_name = "%s_%s" % (SELECTOR_STEPPER_CONFIG, self.name)
+        self.gear_name = "%s_%s" % (GEAR_STEPPER_CONFIG, self.name)
+
         # MMU design for control purposes can be broken down into the following choices:
         #  - Selector type or no selector
         #  - Does each gate of the MMU have different BMG drive gears (or similar). I.e. drive rotation distance is variable
         #  - Does each gate of the MMU have different bowden path
         #  - Does design require "bowden move" (i.e. non zero length bowden)
         #  - Is filament always gripped by MMU
-        #  - Does design has a filament bypass
+        #  - Does design has a filament bypass position (real or virtual)
         selector_type = 'LinearSelector'
         variable_rotation_distances = 1
         variable_bowden_lengths = 0
@@ -172,37 +188,39 @@ class MmuUnit:
             has_bypass = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
-        self.selector_type = config.getchoice(
-            'selector_type', 
-            {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector']},
-            selector_type
-        )
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
         self.has_bypass = bool(config.getint('has_bypass', has_bypass))
 
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
-        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
-        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+        self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
+        self.selector_type = config.getchoice(
+            'selector_type', 
+            {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector']},
+            selector_type
+        )
 
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
 
-        # Find the TMC controller for base stepper so we can fill in missing config for other matching steppers
+        # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
+        # and ensure all gear steppers are loaded
         base_tmc_chip = base_tmc_section = None
         for chip in TMC_CHIPS:
-            base_tmc_section = '%s %s' % (chip, GEAR_STEPPER_CONFIG)
+            base_tmc_section = '%s %s' % (chip, self.gear_name)
             if config.has_section(base_tmc_section):
                 base_tmc_chip = chip
+                _ = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
+                logging.info("MMU: Loaded: %s" % base_tmc_section)
                 break
+
+        if base_tmc_chip is None:
+           raise config.error("Gear stepper configuration not found for mmu_unit %s" % self.name)
 
         last_gear = 24
         for i in range(1, last_gear): # Don't allow "_0" or it is confusing with unprefixed initial stepper
-            section = "%s_%d" % (GEAR_STEPPER_CONFIG, i)
+            section = "%s_%d" % (self.gear_name, i)
             if not config.has_section(section):
                 last_gear = i
                 break
@@ -210,32 +228,56 @@ class MmuUnit:
             self.multigear = True
 
             # Share stepper config section with additional steppers
-            stepper_section = "%s_%d" % (GEAR_STEPPER_CONFIG, i)
+            stepper_section = "%s_%d" % (self.gear_name, i)
             for key in SHAREABLE_STEPPER_PARAMS:
-                if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(GEAR_STEPPER_CONFIG, key):
-                    base_value = config.fileconfig.get(GEAR_STEPPER_CONFIG, key)
+                if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(self.gear_name, key):
+                    base_value = config.fileconfig.get(self.gear_name, key)
                     if base_value:
                         logging.info("MMU: Sharing gear stepper config %s=%s with %s" % (key, base_value, stepper_section))
                         config.fileconfig.set(stepper_section, key, base_value)
 
-            # IF TMC controller for this additional stepper matches the base we can fill in missing TMC config
-            if base_tmc_chip:
-                tmc_section = '%s %s_%d' % (base_tmc_chip, GEAR_STEPPER_CONFIG, i)
-                if config.has_section(tmc_section):
-                    for key in SHAREABLE_TMC_PARAMS:
-                        if not config.fileconfig.has_option(tmc_section, key):
-                            base_value = config.fileconfig.get(base_tmc_section, key)
-                            if base_value:
-                                logging.info("MMU: Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
-                                config.fileconfig.set(tmc_section, key, base_value)
+            # IF tmc controller for this additional stepper matches the base we can fill in missing TMC config
+            tmc_section = '%s %s_%d' % (base_tmc_chip, self.gear_name, i)
+            if config.has_section(tmc_section):
+                for key in SHAREABLE_TMC_PARAMS:
+                    if not config.fileconfig.has_option(tmc_section, key):
+                        base_value = config.fileconfig.get(base_tmc_section, key)
+                        if base_value:
+                            logging.info("MMU: Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
+                            config.fileconfig.set(tmc_section, key, base_value)
+                _ = self.printer.load_object(config, tmc_section) # Load supplementary gear stepper now
+                logging.info("MMU: Loaded: %s" % tmc_section)
+            else:
+                # Regardless of tmc chip type, find and load all gear steppers
+                for chip in TMC_CHIPS:
+                    extra_tmc_section = '%s %s_%d' % (chip, self.gear_name, i)
+                    if config.has_section(extra_tmc_section):
+                        _ = self.printer.load_object(config, extra_tmc_section)
+                        logging.info("MMU: Loaded: %s" % extra_tmc_section)
+                        break
 
         # H/W validation checks
         if self.multigear and last_gear != self.num_gates:
-            raise config.error("MMU is configured with %d gates but %d gear stepper configurations were found" % (self.num_gates, last_gear))
+            raise config.error("MMU unit is configured with %d gates but %d gear stepper configurations were found" % (self.num_gates, last_gear))
 
-        # TODO add more h/w validation here based on num_gates & vendor, virtual selector, etc
-        # TODO would allow for easier to understand error messages for conflicting or missing
-        # TODO hardware definitions.
+        # Load selector stepper if applicable
+        if self.selector_type in ['LinearSelector', 'RotarySelector']:
+            found = False
+            for chip in TMC_CHIPS:
+                tmc_section = '%s %s' % (chip, self.selector_name)
+                if config.has_section(tmc_section):
+                    _ = self.printer.load_object(config, tmc_section)
+                    logging.info("MMU: Loaded: %s" % tmc_section)
+                    found = True
+                    break
+            if not found:
+                raise config.error("Selector stepper configuration not found for mmu_unit %s" % self.name)
+
+        # Now we have all the parts to create MmuToolHead
+        self.mmu_toolhead = MmuToolHead(config, self)
+        logging.info("MMU: Created toolhead for mmu %s" % self.name)
+#              .. look for encoder and store on unit
+#              .. look for espooler and store on unit
 
     def get_status(self, eventtime):
         return {
@@ -263,11 +305,9 @@ class MmuToolHead(toolhead.ToolHead, object):
     EXTRUDER_ONLY_ON_GEAR   = 2 # Aka 'extruder' (only)
     GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
 
-    def __init__(self, config, mmu):
-        self.mmu = mmu
-        self.mmu_unit = mmu.mmu_unit # PAUL added temp (could lookup based on name). Each mmu needs to know it's unit!
+    def __init__(self, config, mmu_unit):
+        self.mmu_unit = mmu_unit
         self.mmu_machine = self.mmu_unit.mmu_machine
-#PAUL        self.mmu_machine = self.printer.lookup_object('mmu_machine')
 
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -299,11 +339,12 @@ class MmuToolHead(toolhead.ToolHead, object):
         # For Creality Ender3v3 series (custom klipper)
         self.gap_auto_comp = None
 
-        # MMU velocity and acceleration control
-        self.gear_max_velocity = config.getfloat('gear_max_velocity', 300, above=0.)
-        self.gear_max_accel = config.getfloat('gear_max_accel', 500, above=0.)
-        self.selector_max_velocity = config.getfloat('selector_max_velocity', 250, above=0.)
-        self.selector_max_accel = config.getfloat('selector_max_accel', 1500, above=0.)
+        # MMU velocity and acceleration control (for legacy reasons is on mmu object)
+        mmu_config = config.getsection('mmu')
+        self.gear_max_velocity = mmu_config.getfloat('gear_max_velocity', 300, above=0.)
+        self.gear_max_accel = mmu_config.getfloat('gear_max_accel', 500, above=0.)
+        self.selector_max_velocity = mmu_config.getfloat('selector_max_velocity', 250, above=0.)
+        self.selector_max_accel = mmu_config.getfloat('selector_max_accel', 1500, above=0.)
 
         self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity)
         self.max_accel = max(self.selector_max_accel, self.gear_max_accel)
@@ -356,7 +397,6 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         # Create MMU kinematics
         try:
-            logging.info("PAUL: MmuKinematics(%s, %s)" % (config, self.mmu_unit))
             self.kin = MmuKinematics(self, config)
             self.all_gear_rail_steppers = self.kin.rails[1].get_steppers()
         except config.error:
@@ -368,23 +408,9 @@ class MmuToolHead(toolhead.ToolHead, object):
             logging.exception("MMU: %s" % msg)
             raise config.error(msg)
 
-        self.mmu_extruder_stepper = None
-        if self.mmu_unit.homing_extruder:
-            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
-            self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
-
-            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
-            self.old_ext_options = {}
-            for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
-                if config.fileconfig.has_option('extruder', i):
-                    self.old_ext_options[i] = config.fileconfig.get('extruder', i)
-                    config.fileconfig.remove_option('extruder', i)
-
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 
         # Add useful debugging command
-        # PAUL gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
-        logging.info("PAUL: Register DUMP_TOOLHEAD for %s" % self.mmu_unit.name)
         gcode.register_mux_command("_MMU_DUMP_TOOLHEAD", "UNIT", self.mmu_unit.name, self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
 
         # Bi-directional sync management of gear(s) and extruder(s)
@@ -394,18 +420,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def handle_connect(self):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
-        printer_extruder = self.printer_toolhead.get_extruder()
-
-        if self.mmu_unit.homing_extruder:
-            # Restore original extruder options in case user macros reference them
-            for key, value in self.old_ext_options.items():
-                self.config.fileconfig.set('extruder', key, value)
-
-            # Now we can switch in homing MmuExtruderStepper
-            printer_extruder.extruder_stepper = self.mmu_extruder_stepper
-            self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
-        else:
-            self.mmu_extruder_stepper = printer_extruder.extruder_stepper
+        self.mmu = self.printer.lookup_object('mmu')
 
     # Ensure the correct number of axes for convenience - MMU only has two
     # Also, handle case when gear rail is synced to extruder
@@ -423,7 +438,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     # Gear/Extruder synchronization and stepper swapping management...
 
     def select_gear_stepper(self, gate):
-        if not self.mmu_machine.multigear: return # PAUL on mmu_unit
+        if not self.mmu_unit.multigear: return
         if gate == 0:
             self._reconfigure_rail([GEAR_STEPPER_CONFIG])
         elif gate > 0:
@@ -485,7 +500,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
-        self.mmu.movequeues_sync() # PAUL really want this on mmu?
+        self.mmu.movequeues_sync()
 
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -539,7 +554,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         prev_sync_mode = self.sync_mode
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
-        self.mmu.movequeues_sync() # PAUL really want this on mmu?
+        self.mmu.movequeues_sync()
 
         if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead = self.mmu_toolhead
@@ -628,7 +643,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         e_stepper = self.printer_toolhead.get_extruder().extruder_stepper
         msg +=  "\nPRINTER TOOLHEAD: %s\n" % self.printer_toolhead.get_position()
-        header = "Extruder Stepper: %s %s %s" % (extruder_name, "(MmuExtruderStepper)" if isinstance(e_stepper, MmuExtruderStepper) else "(Non Homing Default)", '-' * 100)
+        header = "Extruder Stepper: %s %s %s" % (extruder_name, "(MmuExtruderStepper)" if isinstance(e_stepper, mmu_machine.MmuExtruderStepper) else "(Non Homing Default)", '-' * 100)
         msg += header[:100] + "\n"
         msg += "- Commanded Pos: %.2f, " % e_stepper.stepper.get_commanded_position()
         msg += "MCU Pos: %.2f, " % e_stepper.stepper.get_mcu_position()
@@ -643,19 +658,23 @@ class MmuKinematics:
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
         self.toolhead = toolhead
-# PAUL temp        self.mmu_machine = self.printer.lookup_object('mmu_machine')
-        self.mmu_unit = toolhead.mmu_unit # PAUL new
+        self.mmu_unit = toolhead.mmu_unit
         self.mmu_machine = self.mmu_unit.mmu_machine
-        logging.info("PAUL:MMU: Creating MmuKinematics for %s" % self.mmu_unit)
 
         # Setup "axis" rails
         self.rails = []
         if self.mmu_unit.selector_type in {'LinearSelector', 'RotarySelector'}:
-            self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
+            # Inject options into selector stepper config so it is set up correct. The selector class with correct once user config is known
+            config.fileconfig.set(self.mmu_unit.selector_name, 'position_min', -1.)
+            config.fileconfig.set(self.mmu_unit.selector_name, 'position_max', 99)
+            config.fileconfig.set(self.mmu_unit.selector_name, 'homing_speed', 99)
+
+            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_name), need_position_minmax=True, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         else:
             self.rails.append(DummyRail())
-        self.rails.append(MmuLookupMultiRail(config.getsection(GEAR_STEPPER_CONFIG), need_position_minmax=False, default_position_endstop=0.))
+
+        self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.gear_name), need_position_minmax=False, default_position_endstop=0.))
         self.rails[1].setup_itersolve('cartesian_stepper_alloc', b'y')
 
         for s in self.get_steppers():
