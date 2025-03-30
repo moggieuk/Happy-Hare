@@ -1987,17 +1987,40 @@ class Mmu:
                 msg += "\n- Extruder (synced) loads by homing a maximum of %s to TOOLHEAD sensor before moving the last %s to the nozzle" % (self._f_calc("toolhead_homing_max"), self._f_calc("toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining"))
             else:
                 msg += "\n- Extruder (synced) loads by moving %s to the nozzle" % self._f_calc("toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining")
-            msg += "\n- Purging is %s managed by %s" % (("sometimes", "SLICER") if not self.force_purge_standalone or self.purge_macro == '' else ("always", ("'%s' macro with extruder purging current of %d%%" % (self.purge_macro, self.extruder_purge_current))))
+
+            # Purging
+            if self.force_purge_standalone:
+                if self.purge_macro:
+                    msg += "\n- Purging is always managed by Happy Hare using '%s' macro with extruder purging current of %d%%" % (
+                        self.purge_macro, self.extruder_purge_current)
+                else:
+                    msg += "\n- No purging is performed!"
+            else:
+                if self.purge_macro:
+                    msg += "\n- Purging is managed by slicer when printing. Otherwise by Happy Hare using '%s' macro with extruder purging current of %d%% when not printing" % (
+                        self.purge_macro, self.extruder_purge_current)
+                else:
+                    msg += "\n- Purging is managed by slicer only when printing"
+
+            # Tightening
             if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
-                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
+                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder().get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
 
             msg += "\n\nUnload Sequence:"
 
             # Tip forming
-            msg += "\n- Tip is %s formed by %s%s" % (("sometimes", "SLICER", "") if not self.force_form_tip_standalone else ("always", ("'%s' macro" % self.form_tip_macro), " after initial retraction of %s" % self._f_calc("toolchange_retract")))
-            msg += " and tip forming extruder current is %d%%" % self.extruder_form_tip_current
-
-            msg += "\n- An estimated %s of filament is left in extruder (filament_remaining = tip-cutting fragment)" % self._f_calc("toolhead_residual_filament + filament_remaining")
+            if self.force_form_tip_standalone:
+                if self.form_tip_macro:
+                    msg += "\n- Tip is always formed by Happy Hare using '%s' macro after initial retract of %s with extruder current of %d%%" % (
+                        self.form_tip_macro, self._f_calc("toolchange_retract"), self.extruder_form_tip_current)
+                else:
+                    msg += "\n- No tip forming is performed!"
+            else:
+                if self.form_tip_macro:
+                    msg += "\n- Tip is formed by slicer when printing. Otherwise by Happy Hare using '%s' macro after initial retract of %s with extruder current of %d%%" % (
+                        self.form_tip_macro, self._f_calc("toolchange_retract"), self.extruder_form_tip_current)
+                else:
+                    msg += "\n- Tip is formed by slicer only when printing"
 
             # Extruder unloading
             if self.sensor_manager.has_sensor(self.SENSOR_EXTRUDER_ENTRY):
