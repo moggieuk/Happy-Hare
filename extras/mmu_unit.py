@@ -241,7 +241,7 @@ class MmuUnit:
             tmc_section = '%s %s_%d' % (base_gear_tmc, self.gear_name, i)
             if config.has_section(tmc_section):
                 for key in SHAREABLE_TMC_PARAMS:
-                    if not config.fileconfig.has_option(tmc_section, key):
+                    if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
                         base_value = config.fileconfig.get(base_tmc_section, key)
                         if base_value:
                             logging.info("MMU: Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
