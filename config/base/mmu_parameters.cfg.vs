@@ -369,19 +369,19 @@ sync_multiplier_low: 0.95		# Minimum factor to apply
 # Regardless of h/w configuration you can enable/disable actions with the 'espooler_operations' list. E.g. remove 'play' to
 # turn off operation while printing. Options are:
 #
-#    load   - when filament is being loaded under MMU control
-#    unload - when filament is being unloaded under MMU control
+#    rewind - when filament is being unloaded under MMU control (aka respool)
+#    assist - when filament is being loaded under MMU control
 #    print  - while printing. Generally set 'espooler_printing_power' to a low value just to allow motor to be turned freely
 #
 # If using a digitally controlled espooler motor (not PWM) then you should turn off the "print" mode and set
 # 'espooler_min_stepper_speed' to prevent "over movement"
 #
-espooler_min_distance: 30                       # Individual stepper movements less than this distance will not active espooler
-espooler_max_stepper_speed: 300                 # Gear stepper speed at which espooler will be at maximum power
-espooler_min_stepper_speed: 0                   # Gear stepper speed at which espooler will become inactive (useful for non PWM control)
-espooler_speed_exponent: 0.5                    # Controls non-linear espooler power relative to stepper speed (see notes)
-espooler_printing_power: 0.1                    # If >0, fixes the PWM power while printing.
-espooler_operations: unload, load, print        # List of operational modes (allows disabling even if h/w is configured)
+espooler_min_distance: 30			# Individual stepper movements less than this distance will not active espooler
+espooler_max_stepper_speed: 300			# Gear stepper speed at which espooler will be at maximum power
+espooler_min_stepper_speed: 0			# Gear stepper speed at which espooler will become inactive (useful for non PWM control)
+espooler_speed_exponent: 0.5			# Controls non-linear espooler power relative to stepper speed (see notes)
+espooler_printing_power: 0.1			# If >0, fixes the PWM power while printing.
+espooler_operations: rewind, assist, print	# List of operational modes (allows disabling even if h/w is configured)
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------
@@ -522,7 +522,6 @@ encoder_move_validation: 1	# ADVANCED: 1 = Normally Encoder validates move dista
 print_start_detection: 1	# ADVANCED: Enabled for Happy Hare to automatically detect start and end of print and call
 				# ADVANCED: MMU_START_PRINT and MMU_END_PRINT automatically. Harmless to leave enabled but can disable
                                 #           if you think it is causing problems and known START/END is covered in your macros
-extruder: extruder		# ADVANCED: Name of the toolhead extruder that MMU is using
 gcode_load_sequence: 0		# VERY ADVANCED: Gcode loading sequence 1=enabled, 0=internal logic (default)
 gcode_unload_sequence: 0	# VERY ADVANCED: Gcode unloading sequence, 1=enabled, 0=internal logic (default)
 

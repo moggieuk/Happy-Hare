@@ -52,6 +52,7 @@ class BaseSelector:
     def __init__(self, mmu, mmu_unit):
         self.mmu = mmu
         self.mmu_unit = mmu_unit
+        self.mmu_toolhead = mmu_unit.mmu_toolhead
         self.is_homed = False
 
     def reinit(self):
@@ -138,7 +139,6 @@ class VirtualSelector(BaseSelector, object):
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
-        self.mmu_toolhead = self.mmu.mmu_toolhead
         self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def select_gate(self, gate):
@@ -150,7 +150,7 @@ class VirtualSelector(BaseSelector, object):
             self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
 
     def restore_gate(self, gate):
-        self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
+        self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync MMU gear stepper now if design requires it
         if self.mmu_unit.filament_always_gripped:
@@ -248,15 +248,6 @@ class LinearSelector(BaseSelector, object):
         gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc = self.cmd_MMU_CALIBRATE_SELECTOR_help)
         gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
 
-# PAUL -- maybe leave this and the code in connect() even though already done by mmu_unit?
-#        # Selector stepper setup before MMU toolhead is instantiated
-#        section = MmuUnit.SELECTOR_STEPPER_CONFIG
-#        if mmu.config.has_section(section):
-#            # Inject options into selector stepper config regardless or what user sets
-#            mmu.config.fileconfig.set(section, 'position_min', -1.)
-#            mmu.config.fileconfig.set(section, 'position_max', self._get_max_selector_movement())
-#            mmu.config.fileconfig.set(section, 'homing_speed', self.selector_homing_speed)
-
     # Selector "Interface" methods ---------------------------------------------
 
     def reinit(self):
@@ -264,11 +255,10 @@ class LinearSelector(BaseSelector, object):
         self.servo.reinit()
 
     def handle_connect(self):
-        self.mmu_toolhead = self.mmu.mmu_toolhead # PAUL change to lookup via mmu_unit
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
 
-        # Adjust selector rail limits now we know the config # PAUL new maybe can be in init()?
+        # Adjust selector rail limits now we know the config
         self.selector_rail.position_min = -1
         self.selector_rail.position_max = self._get_max_selector_movement()
         self.selector_rail.homing_speed = self.selector_homing_speed
@@ -299,15 +289,10 @@ class LinearSelector(BaseSelector, object):
         self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_BYPASS] = self.bypass_offset
 
         # See if we have a TMC controller setup with stallguard
-        self.selector_tmc = None
-        for chip in MmuUnit.TMC_CHIPS:
-            if self.selector_tmc is None:
-# PAUL use mmu_unit.selector_name
-                self.selector_tmc = self.mmu.printer.lookup_object('%s %s' % (chip, MmuUnit.SELECTOR_STEPPER_CONFIG), None)
-                if self.selector_tmc is not None:
-                    self.mmu.log_debug("Found %s on selector_stepper. Stallguard 'touch' movement and recovery possible." % chip)
-        if self.selector_tmc is None:
-            self.mmu.log_debug("TMC driver not found for selector_stepper, cannot use 'touch' movement and recovery")
+        if not self.mmu_unit.selector_touch:
+            self.mmu.log_debug("Selector 'touch' not setup. Cannot automatically recovery from gate blockage")
+        else:
+            self.mmu.log_debug("Selector 'touch' movement and recovery possible")
 
         # Sub components
         self.servo.handle_connect()
@@ -657,7 +642,7 @@ class LinearSelector(BaseSelector, object):
         try:
             homing_state = MmuUnit.MmuHoming(self.mmu.printer, self.mmu_toolhead)
             homing_state.set_axes([0])
-            self.mmu.mmu_toolhead.get_kinematics().home(homing_state)
+            self.mmu_toolhead.get_kinematics().home(homing_state)
             self.is_homed = True
         except Exception as e: # Homing failed
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
@@ -792,7 +777,7 @@ class LinearSelector(BaseSelector, object):
         return traveled, homed
 
     def use_touch_move(self):
-        return self.selector_tmc and self.mmu.SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
+        return self.mmu_unit.selector_touch and self.mmu.SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
 
 
 
@@ -827,9 +812,10 @@ class LinearSelectorServo:
         self.servo_dwell = mmu.config.getfloat('servo_dwell', 0.4, minval=0.1)
         self.servo_buzz_gear_on_down = mmu.config.getint('servo_buzz_gear_on_down', 3, minval=0, maxval=10)
 
-        self.servo = mmu.printer.lookup_object('mmu_servo selector_servo', None)
+        # Get hardware
+        self.servo = self.mmu_unit.selector_servo
         if not self.servo:
-            raise mmu.config.error("No [mmu_servo selector_servo] definition found in mmu_hardware.cfg")
+            raise self.mmu.config.error("Selector servo not found")
 
         # Register GCODE commands specific to this module
         gcode = self.mmu.printer.lookup_object('gcode')
@@ -842,8 +828,6 @@ class LinearSelectorServo:
         self.servo_angle = self.SERVO_UNKNOWN_STATE
 
     def handle_connect(self):
-        self.mmu_toolhead = self.mmu.mmu_toolhead
-
         # Override with saved/calibrated servo positions (set with MMU_SERVO)
         try:
             servo_angles = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SERVO_ANGLES, {})
@@ -1080,26 +1064,16 @@ class RotarySelector(BaseSelector, object):
         gcode.register_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
         gcode.register_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
 
-# PAUL -- maybe leave this and the code in connect() even though already done by mmu_unit?
-#        # Selector stepper setup before MMU toolhead is instantiated
-#        section = MmuUnit.SELECTOR_STEPPER_CONFIG
-#        if mmu.config.has_section(section):
-#            # Inject options into selector stepper config regardless or what user sets
-#            mmu.config.fileconfig.set(section, 'position_min', -1.)
-#            mmu.config.fileconfig.set(section, 'position_max', self._get_max_selector_movement())
-#            mmu.config.fileconfig.set(section, 'homing_speed', self.selector_homing_speed)
-
     # Selector "Interface" methods ---------------------------------------------
 
     def reinit(self):
         self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
 
     def handle_connect(self):
-        self.mmu_toolhead = self.mmu.mmu_toolhead
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
 
-        # Adjust selector rail limits now we know the config # PAUL new maybe can be in init()?
+        # Adjust selector rail limits now we know the config
         self.selector_rail.position_min = -1
         self.selector_rail.position_max = self._get_max_selector_movement()
         self.selector_rail.homing_speed = self.selector_homing_speed
@@ -1348,7 +1322,7 @@ class RotarySelector(BaseSelector, object):
             if self.has_endstop:
                 homing_state = MmuUnit.MmuHoming(self.mmu.printer, self.mmu_toolhead)
                 homing_state.set_axes([0])
-                self.mmu.mmu_toolhead.get_kinematics().home(homing_state)
+                self.mmu_toolhead.get_kinematics().home(homing_state)
             else:
                 self._home_hard_endstop()
             self.is_homed = True
@@ -1463,7 +1437,6 @@ class MacroSelector(BaseSelector, object):
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
-        self.mmu_toolhead = self.mmu.mmu_toolhead
         self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
 
     def handle_ready(self):
@@ -1521,10 +1494,9 @@ class ServoSelector(BaseSelector, object):
         self.selector_bypass_angle = -1
 
         # Get hardware
-        servo_name = mmu.config.get('selector_servo_name', "selector_servo")
-        self.servo = mmu.printer.lookup_object("mmu_servo %s" % servo_name, None)
+        self.servo = self.mmu_unit.selector_servo
         if not self.servo:
-            raise self.mmu.config.error("Selector servo not found. Perhaps missing '[mmu_servo %s]' definition" % servo_name)
+            raise self.mmu.config.error("Selector servo not found")
 
         # Process config
         self.servo_duration = mmu.config.getfloat('servo_duration', 0.5, minval=0.1)

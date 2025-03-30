@@ -32,6 +32,7 @@ class MmuMachine:
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        self.extruder_name = config.getint('extruder_name', 'extruder')
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
 
         self.num_gates = 0     # Total number of vitual mmu gates
@@ -78,7 +79,7 @@ class MmuMachine:
         self.mmu_extruder_stepper = None
         if self.homing_extruder:
             # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
-            self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.units) # Only the first extruder is handled
+            self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection(self.extruder_name), self.units)
 
             # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
             self.old_ext_options = {}
@@ -102,6 +103,16 @@ class MmuMachine:
         else:
             self.mmu_extruder_stepper = printer_extruder.extruder_stepper
 
+        # Find TMC for extruder
+        self.extruder_tmc = None
+        for chip in mmu_unit.TMC_CHIPS:
+            self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, printer_extruder.name), None)
+            break
+        if self.extruder_tmc is not None:
+            logging.info("MMU: Found %s on extruder '%s'. Current control enabled. %s" % (chip, printer_extruder.name, "Stallguard 'touch' extruder homing possible." if self.homing_extruder else ""))
+        else:
+            logging.info("MMU: TMC driver not found for extruder, cannot use current increase for tip forming move")
+
     def get_mmu_unit_by_index(self, index):
         if index >= 0 and index < self.num_units:
             return self.units[index]
@@ -123,7 +134,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
     def __init__(self, config, units):
         super(MmuExtruderStepper, self).__init__(config)
 
-        # Ensure sure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
+        # Ensure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
         for chip in mmu_unit.TMC_CHIPS:
             try:
                 section = '%s extruder' % chip

@@ -48,12 +48,13 @@ class MmuSensorManager:
             if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
                 self.all_sensors[name] = sensor
 
-# PAUL require bowden is per-unit
+# PAUL TODO require bowden is per-unit
 # PAUL need to rethink this. Commenting out for now
 #        # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
 #        if not self.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
 #            self.all_sensors[self.mmu.SENSOR_GATE] = self.all_sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
 
+# Paul TODO maybe this should build up GEAR endstops for each unit based on if any sensors of that type on unit
         # Setup subset of filament sensors that are also used for homing (endstops)
         self.endstop_names = []
         self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
@@ -90,7 +91,7 @@ class MmuSensorManager:
                         mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, name)
                         mcu_endstop.add_stepper(self.mmu_machine.mmu_extruder_stepper.stepper)
             else:
-                logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
+                self.mmu.log_debug("Filament sensor/endstop %s is not defined in [mmu_sensors]" % name)
 
     # Reset the "viewable" sensors used in UI (unit must be updated first)
     def reset_active_gate(self, gate):

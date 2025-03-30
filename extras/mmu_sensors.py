@@ -174,8 +174,8 @@ class MmuSensors:
         self.RUNOUT_GCODE = "__MMU_SENSOR_RUNOUT"
 
         self.printer = config.get_printer()
-        mmu_machine = self.printer.lookup_object("mmu_machine", None) # PAUL may not need None logic. Fatal if mmu_machine not found
-        num_units = mmu_machine.num_units if mmu_machine else 1
+        mmu_machine = self.printer.lookup_object("mmu_machine")
+        num_units = mmu_machine.num_units
         event_delay = config.get('event_delay', 0.5)
 
         # Setup "mmu_pre_gate" sensors...

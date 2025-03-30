@@ -24,7 +24,7 @@
 import logging, importlib, math, os, time, re
 
 # Happy Hare imports
-from .                   import mmu_machine
+from .                   import mmu_machine, mmu_espooler
 
 # Klipper imports
 import stepper, chelper, toolhead
@@ -206,16 +206,17 @@ class MmuUnit:
 
         # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
         # and ensure all gear steppers are loaded
-        base_tmc_chip = base_tmc_section = None
+        self.gear_tmc = None
+        base_gear_tmc = base_tmc_section = None
         for chip in TMC_CHIPS:
             base_tmc_section = '%s %s' % (chip, self.gear_name)
             if config.has_section(base_tmc_section):
-                base_tmc_chip = chip
-                _ = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
+                base_gear_tmc = chip
+                self.gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
                 logging.info("MMU: Loaded: %s" % base_tmc_section)
                 break
 
-        if base_tmc_chip is None:
+        if self.gear_tmc is None:
            raise config.error("Gear stepper configuration not found for mmu_unit %s" % self.name)
 
         last_gear = 24
@@ -237,7 +238,7 @@ class MmuUnit:
                         config.fileconfig.set(stepper_section, key, base_value)
 
             # IF tmc controller for this additional stepper matches the base we can fill in missing TMC config
-            tmc_section = '%s %s_%d' % (base_tmc_chip, self.gear_name, i)
+            tmc_section = '%s %s_%d' % (base_gear_tmc, self.gear_name, i)
             if config.has_section(tmc_section):
                 for key in SHAREABLE_TMC_PARAMS:
                     if not config.fileconfig.has_option(tmc_section, key):
@@ -276,8 +277,39 @@ class MmuUnit:
         # Now we have all the parts to create MmuToolHead
         self.mmu_toolhead = MmuToolHead(config, self)
         logging.info("MMU: Created toolhead for mmu %s" % self.name)
-#              .. look for encoder and store on unit
-#              .. look for espooler and store on unit
+
+        # Does selector have "touch" (stallguard)?
+        self.selector_touch = False
+        rail = self.mmu_toolhead.get_kinematics().rails[0]
+        if not isinstance(rail, DummyRail):
+            self.selector_touch = "mmu_sel_touch" in rail.get_extra_endstop_names()
+
+        # Load selector servo if applicable
+        self.selector_servo = None
+        servo_name = config.get('selector_servo_name', self.name)
+        if self.selector_type in ['LinearSelector', 'ServoSelector']:
+            section = 'mmu_servo %s' % servo_name
+            if config.has_section(section):
+                self.selector_servo = self.printer.load_object(config, section)
+                logging.info("MMU: Loaded: %s" % section)
+            else:
+                raise config.error("Selector servo not found. Perhaps missing '[mmu_servo %s]' definition" % servo_name)
+
+        # Load optional encoder
+        self.encoder = None
+        section = 'mmu_encoder %s' % self.name
+        if config.has_section(section):
+            self.encoder = self.printer.load_object(config, section)
+            logging.info("MMU: Loaded: %s" % section)
+
+        # Load optional espooler
+        self.espooler = None
+        section = 'mmu_espooler %s' % self.name
+        if config.has_section(section):
+            c = config.getsection(section)
+            self.espooler = mmu_espooler.MmuESpooler(c, self.first_gate, self.num_gates)
+            logging.info("MMU: Created: %s" % c.get_name())
+            self.printer.add_object(c.get_name(), self.espooler) # Register mmu_espooler to stop it being loaded by klipper
 
     def get_status(self, eventtime):
         return {
@@ -612,7 +644,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcmd.respond_raw(msg)
 
     def dump_rails(self):
-        msg =  "MMU TOOLHEAD: %s\n" % self.get_position()
+        msg =  "MMU TOOLHEAD (%s): %s\n" % (self.mmu_unit.name, self.get_position())
         extruder_name = self.printer_toolhead.get_extruder().get_name()
         for axis, rail in enumerate(self.get_kinematics().rails):
             msg += "\n" if axis > 0 else ""
