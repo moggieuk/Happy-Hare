@@ -327,8 +327,8 @@ class Mmu:
         self.action_changed_macro = config.get('action_changed_macro', '_MMU_ACTION_CHANGED')
         self.print_state_changed_macro = config.get('print_state_changed_macro', '_MMU_PRINT_STATE_CHANGED')
         self.mmu_event_macro = config.get('mmu_event_macro', '_MMU_EVENT')
-        self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP')
-        self.purge_macro = config.get('purge_macro', '')
+        self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP').replace("''", "")
+        self.purge_macro = config.get('purge_macro', '').replace("''", "")
         self.pre_unload_macro = config.get('pre_unload_macro', '_MMU_PRE_UNLOAD')
         self.post_form_tip_macro = config.get('post_form_tip_macro', '_MMU_POST_FORM_TIP')
         self.post_unload_macro = config.get('post_unload_macro', '_MMU_POST_UNLOAD')
@@ -395,9 +395,9 @@ class Mmu:
         # Extra Gear/Extruder synchronization controls
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
         self.sync_form_tip = config.getint('sync_form_tip', 0, minval=0, maxval=1)
+        self.sync_purge = config.getint('sync_purge', 0, minval=0, maxval=1)
         if self.mmu_machine.filament_always_gripped:
-            self.sync_to_extruder = 1
-            self.sync_form_tip = 1
+            self.sync_to_extruder = self.sync_form_tip = self.sync_purge = 1
 
         self.sync_multiplier_high = config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
         self.sync_multiplier_low = config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
@@ -2043,13 +2043,15 @@ class Mmu:
             # Gate parking
             msg += "\n- Filament is stored by homing a maximum of %s to %s and parking %s in the gate\n" % (self._f_calc("gate_homing_max"), self._gate_homing_string(), self._f_calc("gate_parking_distance"))
 
-            if self.sync_form_tip or self.sync_to_extruder:
+            if self.sync_form_tip or self.sync_purge or self.sync_to_extruder:
                 msg += "\nGear and Extruder steppers are synchronized during: "
                 m = []
                 if self.sync_to_extruder:
                     m.append("Print (at %d%% current %s sync feedback)" % (self.sync_gear_current, "with" if self.sync_feedback_enable else "without"))
                 if self.sync_form_tip:
                     m.append("Tip forming")
+                if self.sync_purge:
+                    m.append("Purging")
                 msg += ", ".join(m)
 
             if hasattr(self.selector, 'use_touch_move'):
@@ -3914,9 +3916,11 @@ class Mmu:
         if operation not in self.ESPOOLER_OPERATIONS:
             raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(self.ESPOOLER_OPERATIONS))
 
-        gate = gcmd.get_int('GATE', self.gate_selected if self.gate_selected else None, minval=0, maxval=self.num_gates)
-        if gate <= 0:
-            raise gcmd.error("No gate specified")
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates)
+        if gate is None:
+            gate = self.gate_selected
+        if gate < 0:
+            raise gcmd.error("Invalid gate")
 
         power = gcmd.get_int('POWER', 50, minval=0, maxval=100) if operation != self.ESPOOLER_OFF else 0
 
@@ -4953,6 +4957,8 @@ class Mmu:
                 self.log_debug("Purging expected to be performed by slicer")
             elif purge == self.PURGE_STANDALONE and not skip_extruder and not self.is_handling_runout:
                 with self._wrap_track_time('purge'):
+                    sync = (self.is_printing() and self.sync_purge) or self._standalone_sync
+                    self.sync_gear_to_extruder(sync, grip=True, current=True)
                     with self.wrap_action(self.ACTION_PURGING):
                         self.purge_standalone()
 
@@ -6989,9 +6995,9 @@ class Mmu:
         # Synchronous motor control
         self.sync_to_extruder = gcmd.get_int('SYNC_TO_EXTRUDER', self.sync_to_extruder, minval=0, maxval=1)
         self.sync_form_tip = gcmd.get_int('SYNC_FORM_TIP', self.sync_form_tip, minval=0, maxval=1)
+        self.sync_purge = gcmd.get_int('SYNC_PURGE', self.sync_purge, minval=0, maxval=1)
         if self.mmu_machine.filament_always_gripped:
-            self.sync_to_extruder = 1
-            self.sync_form_tip = 1
+            self.sync_to_extruder = self.sync_form_tip = self.sync_purge = 1
 
         self.sync_feedback_enable = gcmd.get_int('SYNC_FEEDBACK_ENABLE', self.sync_feedback_enable, minval=0, maxval=1)
         self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
@@ -7149,6 +7155,7 @@ class Mmu:
             msg += "\n\nTMC & MOTOR SYNC CONTROL:"
             msg += "\nsync_to_extruder = %d" % self.sync_to_extruder
             msg += "\nsync_form_tip = %d" % self.sync_form_tip
+            msg += "\nsync_purge = %d" % self.sync_purge
             msg += "\nsync_feedback_enable = %d" % self.sync_feedback_enable
             msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
             msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low

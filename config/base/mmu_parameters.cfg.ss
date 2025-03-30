@@ -364,6 +364,7 @@ extruder_purge_current: 100             # % of extruder current (100%-150%) to u
 sync_to_extruder: 0                     # Gear motor is synchronized to extruder during print
 sync_gear_current: 70                   # % of gear_stepper current (10%-100%) to use when syncing with extruder during print
 sync_form_tip: 0                        # Synchronize during standalone tip formation (initial part of unload)
+sync_purge: 0				# Synchronize during standalone purging (last part of load)
 
 # Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
 # extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
