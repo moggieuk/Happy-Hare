@@ -650,9 +650,41 @@ read_previous_config() {
     if [ "${variable_step_speed_exponent}" != "" ]; then
         _param_espooler_speed_exponent=${variable_step_speed_exponent}
     fi
+    # Change -1 to -999 for no park move (allows for negative movement in user macros)
+    if ! check_for_999 \
+       "${variable_park_toolchange}" \
+       "${variable_park_runout}" \
+       "${variable_park_pause}" \
+       "${variable_park_cancel}" \
+       "${variable_park_complete}" \
+       "${variable_pre_unload_position}" \
+       "${variable_post_form_tip_position}" \
+       "${variable_pre_load_position}"
+    then
+        variable_park_toolchange=$(convert_neg_one "${variable_park_toolchange}")
+        variable_park_runout=$(convert_neg_one "${variable_park_runout}")
+        variable_park_pause=$(convert_neg_one "${variable_park_pause}")
+        variable_park_cancel=$(convert_neg_one "${variable_park_cancel}")
+        variable_park_complete=$(convert_neg_one "${variable_park_complete}")
+        variable_pre_unload_position=$(convert_neg_one "${variable_pre_unload_position}")
+        variable_post_form_tip_position=$(convert_neg_one "${variable_post_form_tip_position}")
+        variable_pre_load_position=$(convert_neg_one "${variable_pre_load_position}")
+    fi
 }
 
-# Helper for upgrade logic
+check_for_999() {
+    for var in "$@"; do
+        if echo "${var}" | grep -q "\-999"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+convert_neg_one() {
+    echo "$1" | sed -E 's/^(-1,)/-999,/; s/^(.*?,) *(-1,)/\1 -999,/'
+}
+
 convert_to_boolean_string() {
     if [ "$1" -eq 1 ] 2>/dev/null; then
         echo "True"
@@ -768,15 +800,16 @@ copy_config_files() {
         mkdir -p ${mmu_dir}/addons
     fi
 
-    _hw_additional_pins=
-    if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
-        for i in $(seq 0 $(expr $_hw_num_gates - 1)); do
-            espooler_pins="    MMU_DC_MOT_$(expr $i + 1)_EN={spooler_en_${i}_pin},\n"
-            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_A={spooler_rwd_${i}_pin},\n"
-            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_B={spooler_fwd_${i}_pin},\n"
-            _hw_additional_pins="${_hw_additional_pins}\n${espooler_pins}"
-        done
-    fi
+# PAUL
+#    _hw_additional_pins=
+#    if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
+#        for i in $(seq 0 $(expr $_hw_num_gates - 1)); do
+#            espooler_pins="    MMU_DC_MOT_$(expr $i + 1)_EN={spooler_en_${i}_pin},\n"
+#            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_A={spooler_rwd_${i}_pin},\n"
+#            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_B={spooler_fwd_${i}_pin},\n"
+#            _hw_additional_pins="${_hw_additional_pins}\n${espooler_pins}"
+#        done
+#    fi
 
     # Now substitute tokens using given brd_type and "questionaire" starting values
     : ${_hw_chain_count:=$(expr $_hw_num_gates \* 2 + 2)}
@@ -1076,13 +1109,14 @@ install_printer_includes() {
                     sed -i "1i ${i}" ${dest}
                 fi
             fi
-            if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
-                i='\[include mmu/addons/dc_espooler.cfg\]'
-                already_included=$(grep -c "${i}" ${dest} || true)
-                if [ "${already_included}" -eq 0 ]; then
-                    sed -i "1i ${i}" ${dest}
-                fi
-            fi
+# PAUL
+#            if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
+#                i='\[include mmu/addons/dc_espooler.cfg\]'
+#                already_included=$(grep -c "${i}" ${dest} || true)
+#                if [ "${already_included}" -eq 0 ]; then
+#                    sed -i "1i ${i}" ${dest}
+#                fi
+#            fi
             if [ ${ADDONS_EJECT_BUTTONS} -eq 1 ]; then
                 i='\[include mmu/addons/mmu_eject_buttons.cfg\]'
                 already_included=$(grep -c "${i}" ${dest} || true)
@@ -1509,7 +1543,7 @@ questionaire() {
             HAS_ENCODER=no
             HAS_SELECTOR=no
             HAS_SERVO=no
-            ADDONS_DC_ESPOOLER=1
+#PAUL            ADDONS_DC_ESPOOLER=1
             _hw_mmu_vendor="BoxTurtle"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1529,9 +1563,10 @@ questionaire() {
             _param_gate_final_eject_distance=100
             _param_has_filament_buffer=0
 
-            # Macro variable config
-            _param_espooler_start_macro="MMU_ESPOOLER_START"
-            _param_espooler_stop_macro="MMU_ESPOOLER_STOP"
+# PAUL
+#            # Macro variable config
+#            _param_espooler_start_macro="MMU_ESPOOLER_START"
+#            _param_espooler_stop_macro="MMU_ESPOOLER_STOP"
             ;;
 
         "$NIGHT_OWL")
@@ -2174,9 +2209,10 @@ questionaire() {
     echo "        [include mmu/optional/client_macros.cfg]"
     echo "        [include mmu/addons/blobifier.cfg]"
     echo "        [include mmu/addons/mmu_erec_cutter.cfg]"
-    if [ "${ADDONS_DC_ESPOOLER:-0}" -eq 1 ]; then
-        echo "        [include mmu/addons/dc_espooler.cfg]"
-    fi
+# PAUL
+#    if [ "${ADDONS_DC_ESPOOLER:-0}" -eq 1 ]; then
+#        echo "        [include mmu/addons/dc_espooler.cfg]"
+#    fi
     if [ "${ADDONS_EJECT_BUTTONS:-0}" -eq 1 ]; then
         echo "        [include mmu/addons/mmu_eject_buttons.cfg]"
     fi
@@ -2240,7 +2276,7 @@ HAS_ENCODER=yes
 HAS_SELECTOR=yes
 ADDONS_EREC=0
 ADDONS_BLOBIFIER=0
-ADDONS_DC_ESPOOLER=0
+#PAUL ADDONS_DC_ESPOOLER=0
 ADDONS_EJECT_BUTTONS=0
 
 INSTALL=0
