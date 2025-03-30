@@ -31,7 +31,7 @@ class MmuESpooler:
         self.assist_gates = []
 
         # Get config
-        self.mcu_motor_pin = {}
+        self.motor_mcu_pins = {}
         self.last_value = {}
         self.operation = {}
         ppins = self.printer.lookup_object('pins')
@@ -51,14 +51,14 @@ class MmuESpooler:
             if self.is_pwm:
                 if self.respool_motor_pin:
                     mcu_pin = ppins.setup_pin("pwm", self.respool_motor_pin)
-                    mcu_pin.setup_cycle_time(cycle_time, hardware_pwm)
+                    mcu_pin.setup_cycle_time(self.cycle_time, self.hardware_pwm)
                     mcu_pin.setup_max_duration(0.)
                     self.motor_mcu_pins['respool_%d' % gate] = mcu_pin
                     self.respool_gates.append(gate)
 
                 if self.assist_motor_pin:
                     mcu_pin = ppins.setup_pin("pwm", self.assist_motor_pin)
-                    mcu_pin.setup_cycle_time(cycle_time, hardware_pwm)
+                    mcu_pin.setup_cycle_time(self.cycle_time, self.hardware_pwm)
                     mcu_pin.setup_max_duration(0.)
                     self.motor_mcu_pins['assist_%d' % gate] = mcu_pin
                     self.assist_gates.append(gate)
@@ -92,11 +92,11 @@ class MmuESpooler:
 
     # Set the PWM or digital signal (-ve value is assume to be respool, +ve is assist, 0 is stop)
     def update(self, gate, value, operation):
-        toolhead = self.printer.lookup_object('toolhead') # PAUL is the correct toolhead should it be mmu_toolhead?
+        toolhead = self.printer.lookup_object('toolhead')
         self.operation['%s_gate_%d' % (self.name, gate)] = (operation, value)
 
         def _schedule_set_pin(name, value):
-            mcu_pin = self.mcu_motor_pin.get(name, None)
+            mcu_pin = self.motor_mcu_pins.get(name, None)
             if mcu_pin:
                 #toolhead.register_lookahead_callback(lambda print_time: self._set_pin(print_time, name, value))
                 toolhead.register_callback(lambda print_time: self._set_pin(print_time, name, value))
@@ -118,7 +118,7 @@ class MmuESpooler:
 
     # This is the actual callback method to update pin signal
     def _set_pin(self, print_time, name, value):
-        mcu_pin = self.mcu_motor_pin.get(name, None)
+        mcu_pin = self.motor_mcu_pins.get(name, None)
         if mcu_pin:
             if value == self.last_value.get(name, None):
                 return
