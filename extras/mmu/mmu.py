@@ -151,13 +151,8 @@ class Mmu:
     ESPOOLER_OFF    = 'off'
     ESPOOLER_REWIND = 'rewind'
     ESPOOLER_ASSIST = 'assist'
-    ESPOOLER_ON     = 'on'     # Special in-print assist state
-
-    # Possible operating modes for espooler. Each individual type of movement to be enabled/disabled
-    ESPOOLER_OPERATION_UNLOAD = 'unload' # Respool when unloading
-    ESPOOLER_OPERATION_LOAD   = 'load'   # Assist when loading
-    ESPOOLER_OPERATION_PRINT  = 'print'  # Mild assist while printing
-    ESPOOLER_OPERATIONS = [ESPOOLER_OPERATION_UNLOAD, ESPOOLER_OPERATION_LOAD, ESPOOLER_OPERATION_PRINT]
+    ESPOOLER_PRINT  = 'print'  # Special in-print assist state
+    ESPOOLER_OPERATIONS = [ESPOOLER_OFF, ESPOOLER_REWIND, ESPOOLER_ASSIST, ESPOOLER_PRINT]
 
     # Name used to save gcode state
     TOOLHEAD_POSITION_STATE = 'MMU_state'
@@ -693,7 +688,8 @@ class Mmu:
         if not self.encoder_sensor:
             logging.warning("MMU: No [mmu_encoder] definition found in mmu_hardware.cfg. Assuming encoder is not available")
 
-        self.espooler = None # PAUL TODO 
+        # Load espooler if it exists
+        self.espooler = self.printer.lookup_object('mmu_espooler mmu_espooler', None)
 
     def _setup_logging(self):
         # Setup background file based logging before logging any messages
@@ -3873,21 +3869,39 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if self._check_has_espooler(): return
         if self._check_not_printing(): return
-        gate = gcmd.get_int('GATE', minval=0)
-        operation = gcmd.getchoice('OPERATION', {o: o for o in self.ESPOOLER_OPERATIONS}, None)
+
+        alloff = bool(gcmd.get_int('ALLOFF', 0, minval=0, maxval=1))
+        if alloff:
+            for gate in range(self.num_gates):
+                self.espooler.update(gate, 0, self.ESPOOLER_OFF)
+
+        operation = gcmd.get('OPERATION', None)
+        if operation is None:
+            msg = ""
+            for gate in range(self.num_gates):
+                msg += "{}".format(gate).ljust(2, UI_SPACE) + ": "
+                if self.has_espooler():
+                    operation, value = self.espooler.get_operation(gate)
+                    msg += "{}".format(operation).ljust(7, UI_SPACE) + " (%d%%)" % round(value * 100) + "\n"
+                else:
+                    msg += "not fitted"
+            self.log_always(msg)
+            return
+
+        if operation not in self.ESPOOLER_OPERATIONS:
+            raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(self.ESPOOLER_OPERATIONS))
+
+        gate = gcmd.get_int('GATE', self.gate_selected if self.gate_selected else None, minval=0, maxval=self.num_gates)
+        if gate <= 0:
+            raise gcmd.error("No gate specified")
+
         power = gcmd.get_int('POWER', 50, minval=0, maxval=100) if operation != self.ESPOOLER_OFF else 0
-        if operation == None:
-            operation, value = self.espooler.get_operation(self.gate_selected)
-            if operation:
-                log.info("Espooler performing %s for gate %d at %d%% power" % (operation, gate, value * 100))
-            else:
-                log.info("Espooler is not operating")
 
         if operation != self.ESPOOLER_OFF:
-            log.info("Running espooler %s for gate %d at %d%% power" % (operation, gate, power))
+            self.log_info("Running espooler %s for gate %d at %d%% power" % (operation, gate, power))
         else:
-            log.info("Stopper espooler for gate %d" % gate)
-        self.printer.send_event("mmu:espooler", gate, effort / 100, operation)
+            self.log_info("Stopped espooler for gate %d" % gate)
+        self.espooler.update(gate, power / 100, operation)
 
     cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
     def cmd_MMU_LED(self, gcmd):
@@ -5463,42 +5477,45 @@ class Mmu:
     def _wrap_espooler(self, motor, dist, speed, accel, homing_move):
         self._wait_for_espooler = False
         espooler_state = self.ESPOOLER_OFF
-        pwm_value = 0
 
-        if abs(dist) > self.espooler_min_distance and speed > self.espooler_min_stepper_speed:
-            if dist > 0 and self.ESPOOLER_OPERATION_LOAD in self.espooler_operations:
-                espooler_state = self.ESPOOLER_ASSIST
-            elif dist < 0 and self.ESPOOLER_OPERATION_UNLOAD in self.espooler_operations:
-                espooler_state = self.ESPOOLER_REWIND
+        if self.has_espooler():
+            pwm_value = 0
+            if abs(dist) > self.espooler_min_distance and speed > self.espooler_min_stepper_speed:
+                if dist > 0 and self.ESPOOLER_ASSIST in self.espooler_operations:
+                    espooler_state = self.ESPOOLER_ASSIST
+                elif dist < 0 and self.ESPOOLER_REWIND in self.espooler_operations:
+                    espooler_state = self.ESPOOLER_REWIND
 
-            if espooler_state == self.ESPOOLER_OFF:
-                pwm_value = 0
-            elif speed >= self.espooler_max_stepper_speed:
-                pwm_value = 1
-            else:
-                pwm_value = (speed / self.espooler_max_stepper_speed) ** self.espooler_speed_exponent
+                if espooler_state == self.ESPOOLER_OFF:
+                    pwm_value = 0
+                elif speed >= self.espooler_max_stepper_speed:
+                    pwm_value = 1
+                else:
+                    pwm_value = (speed / self.espooler_max_stepper_speed) ** self.espooler_speed_exponent
 
-        if espooler_state != self.ESPOOLER_OFF:
-            self._wait_for_espooler = not homing_move
-        self.printer.send_event("mmu:espooler", self.gate_selected, pwm_value, espooler_state)
-        #initial_pos = self.mmu_toolhead.get_position()[1]
-
+            if espooler_state != self.ESPOOLER_OFF:
+                self._wait_for_espooler = not homing_move
+                self._espooler_update(self.gate_selected, pwm_value, espooler_state)
         try:
             yield self
 
         finally:
-            self._wait_for_espooler = False # PAUL: Rather then wait can we just register callback on mmu_toolhead? (in espooler)
+            self._wait_for_espooler = False
             if espooler_state != self.ESPOOLER_OFF:
-                #moved = abs(self.mmu_toolhead.get_position()[1] - initial_pos)
                 self._espooler_off()
 
     # In print espooler assist mode
     def _espooler_on(self):
-        if self.ESPOOLER_OPERATION_PRINT in self.espooler_operations and self.espooler_printing_power > 0.:
-            self.printer.send_event("mmu:espooler", self.gate_selected, self.espooler_printing_power, self.ESPOOLER_ON)
+        if self.ESPOOLER_PRINT in self.espooler_operations and self.espooler_printing_power > 0.:
+            self._espooler_update(self.gate_selected, self.espooler_printing_power, self.ESPOOLER_PRINT)
 
     def _espooler_off(self):
-        self.printer.send_event("mmu:espooler", self.gate_selected, 0, self.ESPOOLER_OFF)
+        self._espooler_update(self.gate_selected, 0, self.ESPOOLER_OFF)
+
+    def _espooler_update(self, gate, pwm_value, state):
+        if self.has_espooler():
+            self.log_debug("Espooler for gate %d set to %s (pwm: %.1f)" % (gate, state, pwm_value))
+            self.espooler.update(gate, pwm_value, state)
 
 
 ##############################################
@@ -5679,10 +5696,11 @@ class Mmu:
             yield self
         finally:
             if self.gate_selected >= 0:
-                restore_grip = prev_grip != self.selector.get_filament_grip_state() if not isinstance(self.selector, (ServoSelector)) else False
+# PAUL verify this..
+                restore_grip = prev_grip != self.selector.get_filament_grip_state() if not isinstance(self.selector, (ServoSelector)) else not self.is_printing()
+                #PAUL prev. restore_grip = prev_grip != self.selector.get_filament_grip_state() if not isinstance(self.selector, (ServoSelector)) else False
                 self.sync_gear_to_extruder(prev_sync, grip=restore_grip, current=prev_current)
             else:
-# PAUL maybe if ServoSelector and not in print set grip=False
                 self.sync_gear_to_extruder(False, grip=True, current=False)
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
@@ -6323,8 +6341,10 @@ class Mmu:
                 self.select_gate(gate)
                 self._ensure_ttg_match()
         finally:
-            if not isinstance(self.selector, (ServoSelector)): # PAUL don't like this for ServoSelector..
-                self._auto_filament_grip()
+            self._auto_filament_grip()
+# PAUL don't like this for ServoSelector.. see if new fix in sync works..
+#            if not isinstance(self.selector, (ServoSelector)):
+#                self._auto_filament_grip()
 
     cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap (called from Tx command)"
     def cmd_MMU_CHANGE_TOOL(self, gcmd):
@@ -7919,7 +7939,7 @@ class Mmu:
         if reset:
             self._reset_gate_map()
         else:
-            self._renew_gate_map() # # Ensure that webhooks sees changes
+            self._renew_gate_map() # Ensure that webhooks sees changes
 
         if next_spool_id:
             if self.spoolman_support != self.SPOOLMAN_PULL:
@@ -7934,6 +7954,7 @@ class Mmu:
                 self.log_error("Cannot use use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
                 return
 
+        changed_gate_ids = []
         if gate_map:
             try:
                 self.log_debug("Received gate map update (replace: %s)" % replace)
@@ -7959,12 +7980,9 @@ class Mmu:
                             self.gate_material[gate] = ''
                             self.gate_color[gate] = ''
                             self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
-
-                    self._update_gate_color_rgb()
-                    self._persist_gate_map() # This will also update LED status
                 else:
                     # Update map (ui or spoolman "readonly" or "push" modes)
-                    gate_ids_dict = {}
+                    ids_dict = {}
                     for gate, fil in gate_map.items():
                         if not (0 <= gate < self.num_gates):
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
@@ -7984,17 +8002,13 @@ class Mmu:
                                 self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
                                 mod_gate_ids = self.assign_spool_id(gate, spool_id)
                                 for (gate, sid) in mod_gate_ids:
-                                    gate_ids_dict[gate] = sid
+                                    ids_dict[gate] = sid
 
-                    gate_ids = list(gate_ids_dict.items())
-                    self.log_info("PAUL: gate_map map_update: gate_ids=%s" % gate_ids)
-                    self._update_gate_color_rgb()
-                    # PAUL self._persist_gate_map(spoolman_sync=bool(gate_ids) and not from_spoolman, gate_ids=gate_ids) # This will also update LED status
-                    self._persist_gate_map(spoolman_sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
+                    changed_gate_ids = list(ids_dict.items())
+                    self.log_info("PAUL: gate_map map_update: changed_gate_ids=%s" % changed_gate_ids)
             except Exception as e:
                 self.log_debug("Invalid MAP parameter: %s\nException: %s" % (gate_map, str(e)))
                 raise gcmd.error("Invalid MAP parameter. See mmu.log for details")
-
 
         elif gates != "!" or gate >= 0:
             gatelist = []
@@ -8011,7 +8025,7 @@ class Mmu:
                 # Specifying one gate (filament)
                 gatelist.append(gate)
 
-            gate_ids_dict = {}
+            ids_dict = {}
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
                 name = gcmd.get('NAME', None)
@@ -8041,7 +8055,7 @@ class Mmu:
                     if spool_id != self.gate_spool_id[gate]:
                         mod_gate_ids = self.assign_spool_id(gate, spool_id)
                         for (gate, sid) in mod_gate_ids:
-                            gate_ids_dict[gate] = sid
+                            ids_dict[gate] = sid
 
                 else:
                     # Remote (spoolman) gate map, don't update local attributes that are set by spoolman
@@ -8051,10 +8065,12 @@ class Mmu:
                         self.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % self.SPOOLMAN_PULL)
                         return
 
-            gate_ids = list(gate_ids_dict.items())
-            self.log_info("PAUL: gate_map separate_update: modified gate_ids=%s" % gate_ids)
-            self._update_gate_color_rgb()
-            self._persist_gate_map(spoolman_sync=bool(gate_ids), gate_ids=gate_ids) # This will also update LED status
+            changed_gate_ids = list(ids_dict.items())
+            self.log_info("PAUL: gate_map separate_update: modified changed_gate_ids=%s" % changed_gate_ids)
+
+        # Ensure everything is synced
+        self._update_gate_color_rgb()
+        self._persist_gate_map(spoolman_sync=bool(changed_gate_ids), gate_ids=changed_gate_ids) # This will also update LED status
 
         if not quiet:
             self.log_info(self._gate_map_to_string(detail))
