@@ -294,10 +294,10 @@ toolhead_move_error_tolerance: 60
 # If opting for slicer tip forming you MUST configure where the slicer leaves the filament in the extruder since
 # there is no way to determine this. This can be ignored if all tip forming is performed by Happy Hare
 #
-force_form_tip_standalone: 1            # 0 = Slicer in print else standalone, 1 = Always standalone tip forming (TURN SLICER OFF!)
-form_tip_macro: _MMU_FORM_TIP           # Name of macro to call to perform the tip forming (or cutting) operation
-extruder_form_tip_current: 100          # % of extruder current (100%-150%) to use when forming tip (100 to disable)
-slicer_tip_park_pos: 0                  # This specifies the position of filament in extruder after slicer completes tip forming
+force_form_tip_standalone: 1		# 0 = Slicer in print else standalone, 1 = Always standalone tip forming (TURN SLICER OFF!)
+form_tip_macro: _MMU_FORM_TIP		# Name of macro to call to perform the tip forming (or cutting) operation
+extruder_form_tip_current: 100		# % of extruder current (100%-150%) to use when forming tip (100 to disable)
+slicer_tip_park_pos: 0			# This specifies the position of filament in extruder after slicer completes tip forming
 
 
 # Purging -------------------------------------------------------------------------------------------------------------
@@ -320,9 +320,9 @@ slicer_tip_park_pos: 0                  # This specifies the position of filamen
 #
 # Often it is useful to increase the extruder current for the often rapid puring movement to ensure high torque and no skipped steps
 #
-force_purge_standalone: 0               # 0 = Slicer wipetower in print else standalone, 1 = Always standalone purging (TURN WIPETOWER OFF!)
-purge_macro: ''                         # Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER
-extruder_purge_current: 100             # % of extruder current (100%-150%) to use when purging (100 to disable)
+force_purge_standalone: 0 		# 0 = Slicer wipetower in print else standalone, 1 = Always standalone purging (TURN WIPETOWER OFF!)
+purge_macro:				# Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER
+extruder_purge_current: 100		# % of extruder current (100%-150%) to use when purging (100 to disable)
 
 
 # Synchronized gear/extruder movement ----------------------------------------------------------------------------------
@@ -369,19 +369,19 @@ sync_multiplier_low: 0.95		# Minimum factor to apply
 # Regardless of h/w configuration you can enable/disable actions with the 'espooler_operations' list. E.g. remove 'play' to
 # turn off operation while printing. Options are:
 #
-#    load   - when filament is being loaded under MMU control
-#    unload - when filament is being unloaded under MMU control
+#    rewind - when filament is being unloaded under MMU control (aka respool)
+#    assist - when filament is being loaded under MMU control
 #    print  - while printing. Generally set 'espooler_printing_power' to a low value just to allow motor to be turned freely
 #
 # If using a digitally controlled espooler motor (not PWM) then you should turn off the "print" mode and set
 # 'espooler_min_stepper_speed' to prevent "over movement"
 #
-espooler_min_distance: 30                       # Individual stepper movements less than this distance will not active espooler
-espooler_max_stepper_speed: 300                 # Gear stepper speed at which espooler will be at maximum power
-espooler_min_stepper_speed: 0                   # Gear stepper speed at which espooler will become inactive (useful for non PWM control)
-espooler_speed_exponent: 0.5                    # Controls non-linear espooler power relative to stepper speed (see notes)
-espooler_printing_power: 0.1                    # If >0, fixes the PWM power while printing.
-espooler_operations: unload, load, print        # List of operational modes (allows disabling even if h/w is configured)
+espooler_min_distance: 30			# Individual stepper movements less than this distance will not active espooler
+espooler_max_stepper_speed: 300			# Gear stepper speed at which espooler will be at maximum power
+espooler_min_stepper_speed: 0			# Gear stepper speed at which espooler will become inactive (useful for non PWM control)
+espooler_speed_exponent: 0.5			# Controls non-linear espooler power relative to stepper speed (see notes)
+espooler_printing_power: 0.1			# If >0, fixes the PWM power while printing.
+espooler_operations: rewind, assist, print	# List of operational modes (allows disabling even if h/w is configured)
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------
