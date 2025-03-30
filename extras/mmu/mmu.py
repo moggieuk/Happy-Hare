@@ -7107,12 +7107,16 @@ class Mmu:
 
         # Available only with espooler
         if self.has_espooler():
-            self.espooler_min_distance = config.getfloat('ESPOOLER_MIN_DISTANCE', self.espooler_min_distance, above=0)
-            self.espooler_max_stepper_speed = gcmd.getfloat('ESPOOLER_MAX_STEPPER_SPEED', self.espooler_max_stepper_speed, above=0)
-            self.espooler_min_stepper_speed = gcmd.getfloat('ESPOOLER_MIN_STEPPER_SPEED', self.espooler_min_stepper_speed, minval=0., below=self.espooler_max_stepper_speed)
-            self.espooler_speed_exponent = gcmd.getfloat('ESPOOLER_SPEED_EXPONENT', self.espooler_speed_exponent, above=0)
-            self.espooler_printing_power = gcmd.getfloat('ESPOOLER_PRINTING_POWER', self.espooler_printing_power, minval=0., below=1.)
-            self.espooler_operations = list(gcmd.getlist('ESPOOLER_OPERATIONS', self.espooler_operations, self.ESPOOLER_OPERATIONS))
+            self.espooler_min_distance = gcmd.get_float('ESPOOLER_MIN_DISTANCE', self.espooler_min_distance, above=0)
+            self.espooler_max_stepper_speed = gcmd.get_float('ESPOOLER_MAX_STEPPER_SPEED', self.espooler_max_stepper_speed, above=0)
+            self.espooler_min_stepper_speed = gcmd.get_float('ESPOOLER_MIN_STEPPER_SPEED', self.espooler_min_stepper_speed, minval=0., below=self.espooler_max_stepper_speed)
+            self.espooler_speed_exponent = gcmd.get_float('ESPOOLER_SPEED_EXPONENT', self.espooler_speed_exponent, above=0)
+            self.espooler_printing_power = gcmd.get_float('ESPOOLER_PRINTING_POWER', self.espooler_printing_power, minval=0., below=1.)
+            espooler_operations = list(gcmd.get('ESPOOLER_OPERATIONS', ','.join(self.espooler_operations)).split(','))
+            for op in espooler_operations:
+                if op not in self.ESPOOLER_OPERATIONS:
+                    raise gcmd.error("espooler_operations '%s' is invalid. Options are: %s" % (op, self.ESPOOLER_OPERATIONS))
+            self.espooler_operations = espooler_operations
 
         # Available only with encoder
         if self.has_encoder():
