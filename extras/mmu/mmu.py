@@ -1377,7 +1377,7 @@ class Mmu:
             if delta > 0:
                 self.toolhead.dwell(abs(delta))
             elif delta < 0:
-                self.mmu_toolhead.dwell(abs(delta))
+                self.mmu_toolhead().dwell(abs(delta))
 
 
 ####################################
