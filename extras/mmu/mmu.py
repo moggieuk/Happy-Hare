@@ -1326,10 +1326,12 @@ class Mmu:
         try:
             macro = command.split()[0]
             gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro, None)
-            if gcode_macro is None and ignore_empty:
-                return
-            if variables is not None:
-                gcode_macro.variables.update(variables)
+            if gcode_macro is None:
+                if ignore_empty:
+                    return
+            else:
+                if variables:
+                    gcode_macro.variables.update(variables)
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
             if wait:
@@ -1372,7 +1374,7 @@ class Mmu:
         delta = mmu_last_move - last_move
         if abs(delta) > 1:
             self.log_error("Unexpected time mismatch of movequeues. Will attempt to continue without syncing")
-            self.debug("mmu last_move: %.4f, toolhead last_move: %.4f" % (mmu_last_move, last_move))
+            self.log_debug("mmu last_move: %.4f, toolhead last_move: %.4f" % (mmu_last_move, last_move))
         else:
             if delta > 0:
                 self.toolhead.dwell(abs(delta))
@@ -3170,7 +3172,7 @@ class Mmu:
             # Establish syncing state and grip (servo) position
             self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
 
-            # Start respooler if configured
+            # Start espooler if configured
             self._espooler_on()
 
     # Hack: Force state transistion to printing for any early moves if MMU_PRINT_START not yet run
@@ -3308,7 +3310,7 @@ class Mmu:
             # Restablish syncing state and grip (servo) position
             self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
 
-        # Restart respooler if configured
+        # Restart espooler if configured
         self._espooler_on()
 
         # Restore print position as final step so no delay
@@ -3684,15 +3686,15 @@ class Mmu:
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
-        default_extruder_temp = self.gate_temperature[self.gate_selected] if self.gate_selected >= 0 else self.default_extruder_temp
-        self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, default_extruder_temp, source))
+        gate_temp = self.gate_temperature[self.gate_selected] if self.gate_selected >= 0 and self.gate_temperature[self.gate_selected] > 0 else self.default_extruder_temp
+        self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, gate_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, gate_temp, self.default_extruder_temp, source))
 
         if source == "pause":
             new_target_temp = self.paused_extruder_temp if self.paused_extruder_temp is not None else current_temp # Pause temp should not be None
             if self.paused_extruder_temp < klipper_minimum_temp:
                 # Don't wait if just messing with cold printer
                 wait = False
-        elif source == "auto":
+        elif source == "auto": # Normal case
             if self.is_mmu_paused():
                 # In a pause we always want to restore the temp we paused at
                 new_target_temp = self.paused_extruder_temp if self.paused_extruder_temp is not None else current_temp # Pause temp should not be None
@@ -3707,19 +3709,19 @@ class Mmu:
                     new_target_temp = current_target_temp
                     source = "current"
                 else:
-                    new_target_temp = default_extruder_temp
-                    source = "default"
+                    if self.gate_selected >= 0:
+                        new_target_temp = gate_temp
+                        source = "gatemap"
+                    else:
+                        new_target_temp = self.default_extruder_temp
+                        source = "mmu default"
 
             if new_target_temp < klipper_minimum_temp:
-                # If, for some reason, the target temp is below Klipper's minimum, set to minimum
-                # set the target to Happy Hare's default. This strikes a balance between utility
-                # and safety since Klipper's min is truly a bare minimum but our default should be
-                # a more realistic temperature for safe operation.
-                new_target_temp = default_extruder_temp
-                source = "minimum"
+                new_target_temp = klipper_minimum_temp
+                source = "klipper minimum"
 
         if new_target_temp > current_target_temp:
-            if source in ["default", "minimum"]:
+            if source in ["mmu default", "gatemap", "klipper minimum"]:
                 # We use error log channel to avoid heating surprise. This will also cause popup in Klipperscreen
                 self.log_error("Warning: Automatically heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             else:
@@ -6748,7 +6750,7 @@ class Mmu:
                 gcode_pos = self.gcode_move.get_status(self.reactor.monotonic())['gcode_position']
                 self.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = gcode_pos[:3]
 
-            self.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())))
+            self.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), exception=None, ignore_empty=False)
             self._continue_after("resume", force_in_print=force_in_print)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -6761,7 +6763,7 @@ class Mmu:
             self._fix_started_state() # Get out of 'started' state
             self.log_debug("MMU PAUSE wrapper called")
             self._save_toolhead_position_and_park("pause")
-        self.wrap_gcode_command(" ".join(("__PAUSE", gcmd.get_raw_command_parameters()))) # User defined or Klipper default behavior
+        self.wrap_gcode_command(" ".join(("__PAUSE", gcmd.get_raw_command_parameters())), exception=None, ignore_empty=False)
 
     # Not a user facing command - used in automatic wrapper
     cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
@@ -6772,7 +6774,7 @@ class Mmu:
             self._clear_macro_state()
             if self.saved_toolhead_operation == 'pause':
                 self._clear_saved_toolhead_position()
-        self.wrap_gcode_command("__CLEAR_PAUSE", None) # User defined or Klipper default behavior
+        self.wrap_gcode_command("__CLEAR_PAUSE", exception=None, ignore_empty=False)
 
     # Not a user facing command - used in automatic wrapper
     cmd_MMU_CANCEL_PRINT_help = "Wrapper around default CANCEL_PRINT macro"
@@ -6783,10 +6785,10 @@ class Mmu:
             self.log_debug("MMU_CANCEL_PRINT wrapper called")
             self._clear_mmu_error_dialog()
             self._save_toolhead_position_and_park("cancel")
-            self.wrap_gcode_command("__CANCEL_PRINT", None)
+            self.wrap_gcode_command("__CANCEL_PRINT", exception=None, ignore_empty=False)
             self._on_print_end("cancelled")
         else:
-            self.wrap_gcode_command("__CANCEL_PRINT", None) # User defined or Klipper default behavior
+            self.wrap_gcode_command("__CANCEL_PRINT", exception=None, ignore_empty=False)
 
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
     def cmd_MMU_RECOVER(self, gcmd):
