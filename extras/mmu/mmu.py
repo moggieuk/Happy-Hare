@@ -1370,10 +1370,14 @@ class Mmu:
         mmu_last_move = self.mmu_toolhead().get_last_move_time()
         last_move = self.toolhead.get_last_move_time()
         delta = mmu_last_move - last_move
-        if delta > 0:
-            self.toolhead.dwell(abs(delta))
-        elif delta < 0:
-            self.mmu_toolhead().dwell(abs(delta))
+        if abs(delta) > 1:
+            self.log_error("Unexpected time mismatch of movequeues. Will attempt to continue without syncing")
+            self.debug("mmu last_move: %.4f, toolhead last_move: %.4f" % (mmu_last_move, last_move))
+        else:
+            if delta > 0:
+                self.toolhead.dwell(abs(delta))
+            elif delta < 0:
+                self.mmu_toolhead.dwell(abs(delta))
 
 
 ####################################
@@ -3104,9 +3108,9 @@ class Mmu:
                 elif new_state in ["complete", "error"] and event_type == "ready":
                     self.log_trace("Automatically detected JOB %s, print_stats=%s, current mmu print_state=%s" % (new_state.upper(), new_state, self.print_state))
                     if new_state == "error":
-                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=error AUTOMATIC=1"))
+                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=error"))
                     else:
-                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=complete AUTOMATIC=1"))
+                        self.reactor.register_callback(lambda pt: self._print_event("MMU_PRINT_END STATE=complete"))
                 self.last_print_stats = dict(new_ps)
 
         # Capture transition to standby
