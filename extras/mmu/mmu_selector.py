@@ -1758,5 +1758,5 @@ class ServoSelector(BaseSelector, object):
             a = start_angle + i * spacing
             if not (self.servo_min_angle <= a <= self.servo_max_angle):
                 return None # Not possible
-            angles.append(a)
+            angles.append(round(a))
         return angles
