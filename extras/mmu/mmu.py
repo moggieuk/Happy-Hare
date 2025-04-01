@@ -1304,14 +1304,14 @@ class Mmu:
 
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False, ignore_empty=True):
         try:
-            macro = command.split()[0]
-            gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro, None)
-            if gcode_macro is None:
-                if ignore_empty:
-                    return
-            else:
-                if variables:
+            macro = command.split()[0].replace("''", "")
+            if ignore_empty and not macro: return
+
+            if variables:
+                gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro, None)
+                if gcode_macro:
                     gcode_macro.variables.update(variables)
+
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
             if wait:
@@ -1340,13 +1340,15 @@ class Mmu:
     # Dwell on desired move queues
     def movequeues_dwell(self, dwell, toolhead=True, mmu_toolhead=True):
         if dwell > 0.:
-            if toolhead and mmu_toolhead:
-                self.movequeues_sync()
+# PAUL
+#            if toolhead and mmu_toolhead:
+#                self.movequeues_sync()
             if toolhead:
                 self.toolhead.dwell(dwell)
             if mmu_toolhead:
                 self.mmu_toolhead.dwell(dwell)
 
+# PAUL REMOVE ME
     # Align timing of move queues
     def movequeues_sync(self):
         mmu_last_move = self.mmu_toolhead.get_last_move_time()
@@ -2892,14 +2894,12 @@ class Mmu:
 
     # Assign spool id to gate and clear from other gates returning list of changes
     def assign_spool_id(self, gate, spool_id):
-        self.log_info("PAUL: assign_spool_id: gate=%d, spool_id=%s" % (gate, spool_id))
         self.gate_spool_id[gate] = spool_id
         mod_gate_ids = [(gate, spool_id)]
         for i, sid in enumerate(self.gate_spool_id):
             if sid == spool_id and i != gate:
                 self.gate_spool_id[i] = -1
                 mod_gate_ids.append((i, -1))
-        self.log_info("PAUL: returning modified gate/id: %s" % mod_gate_ids)
         return mod_gate_ids
 
     def _handle_idle_timeout_printing(self, eventtime):
@@ -6737,7 +6737,7 @@ class Mmu:
                 gcode_pos = self.gcode_move.get_status(self.reactor.monotonic())['gcode_position']
                 self.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = gcode_pos[:3]
 
-            self.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), exception=None, ignore_empty=False)
+            self.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), exception=None)
             self._continue_after("resume", force_in_print=force_in_print)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -6750,7 +6750,7 @@ class Mmu:
             self._fix_started_state() # Get out of 'started' state
             self.log_debug("MMU PAUSE wrapper called")
             self._save_toolhead_position_and_park("pause")
-        self.wrap_gcode_command(" ".join(("__PAUSE", gcmd.get_raw_command_parameters())), exception=None, ignore_empty=False)
+        self.wrap_gcode_command(" ".join(("__PAUSE", gcmd.get_raw_command_parameters())), exception=None)
 
     # Not a user facing command - used in automatic wrapper
     cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
@@ -6761,7 +6761,7 @@ class Mmu:
             self._clear_macro_state()
             if self.saved_toolhead_operation == 'pause':
                 self._clear_saved_toolhead_position()
-        self.wrap_gcode_command("__CLEAR_PAUSE", exception=None, ignore_empty=False)
+        self.wrap_gcode_command("__CLEAR_PAUSE", exception=None)
 
     # Not a user facing command - used in automatic wrapper
     cmd_MMU_CANCEL_PRINT_help = "Wrapper around default CANCEL_PRINT macro"
@@ -6772,10 +6772,10 @@ class Mmu:
             self.log_debug("MMU_CANCEL_PRINT wrapper called")
             self._clear_mmu_error_dialog()
             self._save_toolhead_position_and_park("cancel")
-            self.wrap_gcode_command("__CANCEL_PRINT", exception=None, ignore_empty=False)
+            self.wrap_gcode_command("__CANCEL_PRINT", exception=None)
             self._on_print_end("cancelled")
         else:
-            self.wrap_gcode_command("__CANCEL_PRINT", exception=None, ignore_empty=False)
+            self.wrap_gcode_command("__CANCEL_PRINT", exception=None)
 
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
     def cmd_MMU_RECOVER(self, gcmd):
@@ -8045,7 +8045,6 @@ class Mmu:
                                     ids_dict[gate] = sid
 
                     changed_gate_ids = list(ids_dict.items())
-                    self.log_info("PAUL: gate_map map_update: changed_gate_ids=%s" % changed_gate_ids)
             except Exception as e:
                 self.log_debug("Invalid MAP parameter: %s\nException: %s" % (gate_map, str(e)))
                 raise gcmd.error("Invalid MAP parameter. See mmu.log for details")
@@ -8106,7 +8105,6 @@ class Mmu:
                         return
 
             changed_gate_ids = list(ids_dict.items())
-            self.log_info("PAUL: gate_map separate_update: modified changed_gate_ids=%s" % changed_gate_ids)
 
         # Ensure everything is synced
         self._update_gate_color_rgb()
