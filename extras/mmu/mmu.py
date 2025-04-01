@@ -1261,12 +1261,16 @@ class Mmu:
             self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
-    def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
+    def wrap_gcode_command(self, command, exception=False, variables=None, wait=False, ignore_empty=True):
         try:
-            macro = command.split()[0]
-            if variables is not None:
-                gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro)
-                gcode_macro.variables.update(variables)
+            macro = command.split()[0].replace("''", "")
+            if ignore_empty and not macro: return
+
+            if variables:
+                gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro, None)
+                if gcode_macro:
+                    gcode_macro.variables.update(variables)
+
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
             self.gcode.run_script_from_command(command)
             if wait:
@@ -1307,10 +1311,14 @@ class Mmu:
         mmu_last_move = self.mmu_toolhead.get_last_move_time()
         last_move = self.toolhead.get_last_move_time()
         delta = mmu_last_move - last_move
-        if delta > 0:
-            self.toolhead.dwell(abs(delta))
-        elif delta < 0:
-            self.mmu_toolhead.dwell(abs(delta))
+        if abs(delta) > 1:
+            self.log_debug("Unexpected time mismatch of movequeues. Will attempt to continue without syncing")
+            self.log_debug("mmu last_move: %.4f, toolhead last_move: %.4f" % (mmu_last_move, last_move))
+        else:
+            if delta > 0:
+                self.toolhead.dwell(abs(delta))
+            elif delta < 0:
+                self.mmu_toolhead.dwell(abs(delta))
 
 
 ####################################
@@ -6493,7 +6501,7 @@ class Mmu:
                 gcode_pos = self.gcode_move.get_status(self.reactor.monotonic())['gcode_position']
                 self.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = gcode_pos[:3]
 
-            self.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())))
+            self.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), exception=None)
             self._continue_after("resume", force_in_print=force_in_print)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
@@ -6506,7 +6514,7 @@ class Mmu:
             self._fix_started_state() # Get out of 'started' state
             self.log_debug("MMU PAUSE wrapper called")
             self._save_toolhead_position_and_park("pause")
-        self.wrap_gcode_command(" ".join(("__PAUSE", gcmd.get_raw_command_parameters()))) # User defined or Klipper default behavior
+        self.wrap_gcode_command(" ".join(("__PAUSE", gcmd.get_raw_command_parameters())), exception=None)
 
     # Not a user facing command - used in automatic wrapper
     cmd_CLEAR_PAUSE_help = "Wrapper around default CLEAR_PAUSE macro"
@@ -6517,7 +6525,7 @@ class Mmu:
             self._clear_macro_state()
             if self.saved_toolhead_operation == 'pause':
                 self._clear_saved_toolhead_position()
-        self.wrap_gcode_command("__CLEAR_PAUSE", None) # User defined or Klipper default behavior
+        self.wrap_gcode_command("__CLEAR_PAUSE", exception=None) # User defined or Klipper default behavior
 
     # Not a user facing command - used in automatic wrapper
     cmd_MMU_CANCEL_PRINT_help = "Wrapper around default CANCEL_PRINT macro"
@@ -6528,10 +6536,10 @@ class Mmu:
             self.log_debug("MMU_CANCEL_PRINT wrapper called")
             self._clear_mmu_error_dialog()
             self._save_toolhead_position_and_park("cancel")
-            self.wrap_gcode_command("__CANCEL_PRINT", None)
+            self.wrap_gcode_command("__CANCEL_PRINT", exception=None)
             self._on_print_end("cancelled")
         else:
-            self.wrap_gcode_command("__CANCEL_PRINT", None) # User defined or Klipper default behavior
+            self.wrap_gcode_command("__CANCEL_PRINT", exception=None) # User defined or Klipper default behavior
 
     cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
     def cmd_MMU_RECOVER(self, gcmd):
