@@ -1212,9 +1212,7 @@ class Mmu:
             errors.append("Invalid tool or gate specified with %s or %s" % (self.VARS_MMU_TOOL_SELECTED, self.VARS_MMU_GATE_SELECTED))
             tool_selected = gate_selected = self.TOOL_GATE_UNKNOWN
 
-        # Don't move the servo for ServoSelector on startup because it will immediately be moved again to release filament
-        if not isinstance(self.selector, (ServoSelector)):
-            self.selector.restore_gate(gate_selected)
+        self.selector.restore_gate(gate_selected)
         self._set_gate_selected(gate_selected)
         self._set_tool_selected(tool_selected)
         self._ensure_ttg_match() # Ensure tool/gate consistency
@@ -1356,7 +1354,7 @@ class Mmu:
         delta = mmu_last_move - last_move
         if abs(delta) > 1:
             self.log_error("Unexpected time mismatch of movequeues. Will attempt to continue without syncing")
-            self.log_debug("mmu last_move: %.4f, toolhead last_move: %.4f" % (mmu_last_move, last_move))
+            self.log_debug("mmu last_move: %.4f, toolhead last_move: %.4f, delta: %.4f" % (mmu_last_move, last_move, delta))
         else:
             if delta > 0:
                 self.toolhead.dwell(abs(delta))
@@ -2147,7 +2145,9 @@ class Mmu:
         elif not self.selector.is_homed or self.tool_selected < 0 or self.gate_selected < 0:
             self.selector.filament_hold()
         else:
-            self.selector.filament_release()
+            # Suppress release movement to prevent uncessary movement
+            if not isinstance(self.selector, (RotarySelector, ServoSelector)):
+                self.selector.filament_release()
 
     def motors_onoff(self, on=False, motor="all"):
         stepper_enable = self.printer.lookup_object('stepper_enable')
@@ -5731,9 +5731,7 @@ class Mmu:
             yield self
         finally:
             if self.gate_selected >= 0:
-# PAUL verify this..
-                restore_grip = prev_grip != self.selector.get_filament_grip_state() if not isinstance(self.selector, (ServoSelector)) else not self.is_printing()
-                #PAUL prev. restore_grip = prev_grip != self.selector.get_filament_grip_state() if not isinstance(self.selector, (ServoSelector)) else False
+                restore_grip = prev_grip != self.selector.get_filament_grip_state()
                 self.sync_gear_to_extruder(prev_sync, grip=restore_grip, current=prev_current)
             else:
                 self.sync_gear_to_extruder(False, grip=True, current=False)
@@ -5995,7 +5993,7 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        # RotarySelector and ServoSelector moves off gate to release so we must go through the process
+        # RotarySelector and ServoSelector moves off gate to release so we must go through the process to reselect
         if gate == self.gate_selected and not isinstance(self.selector, (RotarySelector, ServoSelector)):
             return
         try:
@@ -6377,9 +6375,6 @@ class Mmu:
                 self._ensure_ttg_match()
         finally:
             self._auto_filament_grip()
-# PAUL don't like this for ServoSelector.. see if new fix in sync works..
-#            if not isinstance(self.selector, (ServoSelector)):
-#                self._auto_filament_grip()
 
     cmd_MMU_CHANGE_TOOL_help = "Perform a tool swap (called from Tx command)"
     def cmd_MMU_CHANGE_TOOL(self, gcmd):
