@@ -482,7 +482,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
-        self.mmu.movequeues_sync()
+        self.printer_toolhead.dwell(0.01) # TTC Mitigation
 
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -536,7 +536,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         prev_sync_mode = self.sync_mode
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
-        self.mmu.movequeues_sync()
+        self.printer_toolhead.dwell(0.01) # TTC Mitigation
 
         if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead = self.mmu_toolhead

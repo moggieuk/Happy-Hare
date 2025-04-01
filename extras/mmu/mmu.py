@@ -1338,28 +1338,10 @@ class Mmu:
     # Dwell on desired move queues
     def movequeues_dwell(self, dwell, toolhead=True, mmu_toolhead=True):
         if dwell > 0.:
-# PAUL
-#            if toolhead and mmu_toolhead:
-#                self.movequeues_sync()
             if toolhead:
                 self.toolhead.dwell(dwell)
             if mmu_toolhead:
                 self.mmu_toolhead.dwell(dwell)
-
-# PAUL REMOVE ME
-    # Align timing of move queues
-    def movequeues_sync(self):
-        mmu_last_move = self.mmu_toolhead.get_last_move_time()
-        last_move = self.toolhead.get_last_move_time()
-        delta = mmu_last_move - last_move
-        if abs(delta) > 1:
-            self.log_error("Unexpected time mismatch of movequeues. Will attempt to continue without syncing")
-            self.log_debug("mmu last_move: %.4f, toolhead last_move: %.4f, delta: %.4f" % (mmu_last_move, last_move, delta))
-        else:
-            if delta > 0:
-                self.toolhead.dwell(abs(delta))
-            elif delta < 0:
-                self.mmu_toolhead.dwell(abs(delta))
 
 
 ####################################

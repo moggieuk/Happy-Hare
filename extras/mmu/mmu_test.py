@@ -317,12 +317,14 @@ class MmuTest:
         if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
             try:
                 self.mmu._is_running_test = True
-                endstop = gcmd.get('ENDSTOP', 'extruder')
+                endstop = gcmd.get('ENDSTOP', 'toolhead')
                 loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
+                select = gcmd.get_int('SELECT', 0, minval=0, maxval=1)
                 self.mmu.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
                 self.mmu._initialize_filament_position()
                 total = 0.
                 for i in range(loop):
+                    #endstop="toolhead" if random.randint(0, 1) else "extruder"
                     move_type = random.randint(0, 11) # 12 to enable tracking test
                     move = random.randint(0, 100) - 50
                     speed = random.uniform(50, 200)
@@ -330,6 +332,11 @@ class MmuTest:
                     homing = random.randint(0, 1)
                     extruder_only = random.randint(0, 1)
                     motor = random.choice(["gear", "gear+extruder", "extruder"])
+                    if select and self.mmu.mmu_machine.multigear:
+                        if random.randint(0, 1):
+                            gate = random.randint(0, self.mmu.num_gates - 1)
+                            self.mmu.log_info("Selecting gate: %d" % gate)
+                            self.mmu.select_gate(gate)
                     if move_type in (0, 1):
                         self.mmu.log_info("Loop: %d - Synced gear to extruder movement: %.1fmm" % (i, move))
                         self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
