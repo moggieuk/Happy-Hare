@@ -128,7 +128,7 @@ self_update() {
     if [ $? -ne 0 ]; then
         echo -e "${ERROR}Error updating from github"
         echo -e "${ERROR}You might have an old version of git"
-        echo -e "${ERROR}Skipping automatic update..." 
+        echo -e "${ERROR}Skipping automatic update..."
         set -e
         return
     fi
@@ -736,8 +736,8 @@ upgrade_mmu_hardware() {
 # MMU MACHINE / TYPE ---------------------------------------------------------------------------------------------------
 # ███╗   ███╗███╗   ███╗██╗   ██╗    ███╗   ███╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗███████╗
 # ████╗ ████║████╗ ████║██║   ██║    ████╗ ████║██╔══██╗██╔════╝██║  ██║██║████╗  ██║██╔════╝
-# ██╔████╔██║██╔████╔██║██║   ██║    ██╔████╔██║███████║██║     ███████║██║██╔██╗ ██║█████╗  
-# ██║╚██╔╝██║██║╚██╔╝██║██║   ██║    ██║╚██╔╝██║██╔══██║██║     ██╔══██║██║██║╚██╗██║██╔══╝  
+# ██╔████╔██║██╔████╔██║██║   ██║    ██╔████╔██║███████║██║     ███████║██║██╔██╗ ██║█████╗
+# ██║╚██╔╝██║██║╚██╔╝██║██║   ██║    ██║╚██╔╝██║██╔══██║██║     ██╔══██║██║██║╚██╗██║██╔══╝
 # ██║ ╚═╝ ██║██║ ╚═╝ ██║╚██████╔╝    ██║ ╚═╝ ██║██║  ██║╚██████╗██║  ██║██║██║ ╚████║███████╗
 # ╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝     ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝
 [mmu_machine]
@@ -795,7 +795,7 @@ EOF
 #
 # An espooler controls DC motors (typically NC-20) that are able to rewind a filament spool and optionally provide
 # forward assist to overcome spooler rotation friction. This should define pins for each of the gates on your mmu
-# starting with '_0'. 
+# starting with '_0'.
 # An empty pin can be deleted, commented or simply left blank. If you mcu has a separate "enable" pin
 #
 #[mmu_espooler mmu_espooler]
@@ -1319,11 +1319,11 @@ prompt_yn() {
         read -n1 -p "$@ (y/n)? " yn
         case "${yn}" in
             Y|y)
-                echo -n "y" 
+                echo -n "y"
                 break
                 ;;
             N|n)
-                echo -n "n" 
+                echo -n "n"
                 break
                 ;;
             *)
@@ -1627,7 +1627,7 @@ questionaire() {
             HAS_ENCODER=no
             HAS_SELECTOR=no
             HAS_SERVO=yes
-
+            ;;
         "$_3MS")
             HAS_ENCODER=no
             HAS_SELECTOR=no
@@ -2332,7 +2332,7 @@ questionaire() {
     echo "    Later:"
     echo "        * Tweak configurations like speed and distance in mmu_parameters.cfg"
     echo "        * Configure your operational preferences in mmu_macro_vars.cfg"
-    echo 
+    echo
     echo "    Good luck! MMU is complex to setup. Remember Discord is your friend.."
     echo -e "    Join the dedicated Happy Hare forum here: ${EMPHASIZE}https://discord.gg/98TYYUf6f2${INFO}"
     if [ -n "${HELP_URL}" ]; then
