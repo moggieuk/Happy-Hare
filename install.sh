@@ -776,6 +776,55 @@ EOF
 
         echo -e "${INFO}Updated [mmu_leds] section in mmu_hardware.cfg..."
     fi
+
+    # v3.2.0: Add new [mmu_espooler] section as first section
+    found_mmu_espooler=$(grep -E -c "^\[mmu_espooler\]" ${hardware_cfg} || true)
+    if [ "${found_mmu_espooler}" -eq 0 ]; then
+
+        # Note params will be comming from mmu_parameters
+        new_section=$(cat <<EOF
+
+
+# ESPOOLER (OPTIONAL) -------------------------------------------------------------------------------------------------
+# ███████╗███████╗██████╗  ██████╗  ██████╗ ██╗     ███████╗██████╗
+# ██╔════╝██╔════╝██╔══██╗██╔═══██╗██╔═══██╗██║     ██╔════╝██╔══██╗
+# █████╗  ███████╗██████╔╝██║   ██║██║   ██║██║     █████╗  ██████╔╝
+# ██╔══╝  ╚════██║██╔═══╝ ██║   ██║██║   ██║██║     ██╔══╝  ██╔══██╗
+# ███████╗███████║██║     ╚██████╔╝╚██████╔╝███████╗███████╗██║  ██║
+# ╚══════╝╚══════╝╚═╝      ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
+#
+# An espooler controls DC motors (typically NC-20) that are able to rewind a filament spool and optionally provide
+# forward assist to overcome spooler rotation friction. This should define pins for each of the gates on your mmu
+# starting with '_0'. 
+# An empty pin can be deleted, commented or simply left blank. If you mcu has a separate "enable" pin
+#
+#[mmu_espooler mmu_espooler]
+#pwm: 1                                          # 1=PWM control (typical), 0=digital on/off control
+##hardware_pwm: 0                                # See klipper doc
+##cycle_time: 0.100                              # See klipper doc
+#scale: 1                                        # Scales the PWM output range
+#
+#respool_motor_pin_0: mmu:MMU_ESPOOLER_RWD_0     # PWM (or digital) pin for rewind/respool movement
+#assist_motor_pin_0: mmu:MMU_ESPOOLER_FWD_0      # PWM (or digital) pin for forward motor movement
+#enable_motor_pin_0: mmu:MMU_ESPOOLER_EN_0       # Digital output for Afc mcu
+#
+#respool_motor_pin_1: mmu:MMU_ESPOOLER_RWD_1
+#assist_motor_pin_1: mmu:MMU_ESPOOLER_FWD_1
+#enable_motor_pin_1: mmu:MMU_ESPOOLER_EN_1
+#
+#respool_motor_pin_2: mmu:MMU_ESPOOLER_RWD_2
+#assist_motor_pin_2: mmu:MMU_ESPOOLER_FWD_2
+#enable_motor_pin_2: mmu:MMU_ESPOOLER_EN_2
+#
+#respool_motor_pin_3: mmu:MMU_ESPOOLER_RWD_3
+#assist_motor_pin_3: mmu:MMU_ESPOOLER_FWD_3
+#enable_motor_pin_3: mmu:MMU_ESPOOLER_EN_3
+
+EOF
+)
+        echo "${new_section}" >> "${hardware_cfg}"
+        echo -e "${INFO}Added new [mmu_machine] section to mmu_hardware.cfg..."
+    fi
 }
 
 copy_config_files() {
@@ -799,17 +848,6 @@ copy_config_files() {
         mkdir -p ${mmu_dir}/optional
         mkdir -p ${mmu_dir}/addons
     fi
-
-# PAUL
-#    _hw_additional_pins=
-#    if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
-#        for i in $(seq 0 $(expr $_hw_num_gates - 1)); do
-#            espooler_pins="    MMU_DC_MOT_$(expr $i + 1)_EN={spooler_en_${i}_pin},\n"
-#            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_A={spooler_rwd_${i}_pin},\n"
-#            espooler_pins="${espooler_pins}    MMU_DC_MOT_$(expr $i + 1)_B={spooler_fwd_${i}_pin},\n"
-#            _hw_additional_pins="${_hw_additional_pins}\n${espooler_pins}"
-#        done
-#    fi
 
     # Now substitute tokens using given brd_type and "questionaire" starting values
     : ${_hw_chain_count:=$(expr $_hw_num_gates \* 2 + 2)}
@@ -1109,14 +1147,6 @@ install_printer_includes() {
                     sed -i "1i ${i}" ${dest}
                 fi
             fi
-# PAUL
-#            if [ ${ADDONS_DC_ESPOOLER} -eq 1 ]; then
-#                i='\[include mmu/addons/dc_espooler.cfg\]'
-#                already_included=$(grep -c "${i}" ${dest} || true)
-#                if [ "${already_included}" -eq 0 ]; then
-#                    sed -i "1i ${i}" ${dest}
-#                fi
-#            fi
             if [ ${ADDONS_EJECT_BUTTONS} -eq 1 ]; then
                 i='\[include mmu/addons/mmu_eject_buttons.cfg\]'
                 already_included=$(grep -c "${i}" ${dest} || true)
@@ -1363,17 +1393,22 @@ questionaire() {
     echo
     echo -e "${PROMPT}${SECTION}What type of MMU are you running?${INPUT}"
     OPTIONS=()
-    option ERCF11         'ERCF v1.1 (inc TripleDecky, Springy, Binky mods)'
+    option ERCF11         'Enraged Rabbit Carrot Feeder v1.1'
     option ERCF20         'ERCF v2.0'
     option ERCF25         'ERCF v2.5'
     option TRADRACK       'Tradrack v1.0'
     option ANGRY_BEAVER   'Angry Beaver v1.0'
     option BOX_TURTLE     'Box Turtle v1.0'
     option NIGHT_OWL      'Night Owl v1.0'
+    #option HTLF           'Happy Turtle Lettuce Feeder'
     option _3MS           '3MS (Modular Multi Material System) v1.0'
     option _3D_CHAMELEON  '3D Chameleon'
     option PICO_MMU       'PicoMMU'
-    option QUATTRO_BOX    'QuattroBox'
+    option QUATTRO_BOX    'QuattroBox v1.0'
+    option QUATTRO_BOX11  'QuattroBox v1.1'
+    #option MMX            'MMX'
+    #option VVD            'BigTreeTech VVD'
+    #option KMS            'Biqu KMS'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
     case $opt in
@@ -1543,7 +1578,6 @@ questionaire() {
             HAS_ENCODER=no
             HAS_SELECTOR=no
             HAS_SERVO=no
-#PAUL            ADDONS_DC_ESPOOLER=1
             _hw_mmu_vendor="BoxTurtle"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1562,11 +1596,6 @@ questionaire() {
             _param_gate_parking_distance=100
             _param_gate_final_eject_distance=100
             _param_has_filament_buffer=0
-
-# PAUL
-#            # Macro variable config
-#            _param_espooler_start_macro="MMU_ESPOOLER_START"
-#            _param_espooler_stop_macro="MMU_ESPOOLER_STOP"
             ;;
 
         "$NIGHT_OWL")
@@ -1592,6 +1621,12 @@ questionaire() {
             _param_gate_final_eject_distance=100
             _param_has_filament_buffer=0
             ;;
+
+        "$HTLF")
+            # Comming soon...
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            HAS_SERVO=yes
 
         "$_3MS")
             HAS_ENCODER=no
@@ -1705,6 +1740,87 @@ questionaire() {
             # mmu_macro_vars config
             variable_default_status_effect='1, 0.15, 0.66'
             variable_default_logo_effect='1, 0.15, 0.66'
+            ;;
+
+        "$QUATTRO_BOX11")
+            HAS_ENCODER=yes
+            HAS_SELECTOR=no
+            HAS_SERVO=no
+            ADDONS_EJECT_BUTTONS=1
+
+            # mmu_hardware config
+            _hw_mmu_vendor="QuattroBox"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=1
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=1
+            _hw_gear_gear_ratio="50:17"
+            _hw_gear_run_current=1.27
+            _hw_gear_hold_current=0.2
+            _hw_chain_count=36
+            _hw_color_order="GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
+            _hw_exit_leds="neopixel:mmu_leds (2,4,6,8)"
+            _hw_entry_leds="neopixel:mmu_leds (1,3,5,7)"
+            _hw_status_leds="neopixel:mmu_leds (9-36)"
+
+            # mmu_parameters config
+            _param_extruder_homing_endstop="collision"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=200
+            _param_gate_preload_homing_max=200
+            _param_gate_unload_buffer=50
+            _param_gate_parking_distance=30
+            _param_gate_endstop_to_encoder=18
+            _param_gate_autoload=1
+            _param_gate_final_eject_distance=200
+            _param_has_filament_buffer=0
+
+            # mmu_macro_vars config
+            variable_default_exit_effect="gate_status_exit"
+            variable_default_entry_effect="gate_status"
+            variable_default_status_effect="filament_color"
+            ;;
+
+        "$MMX")
+            # Comming soon...
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            HAS_SERVO=yes
+            SETUP_SELECTOR_TOUCH=no
+            _hw_mmu_vendor="PicoMMU"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=ServoSelector
+            _hw_variable_bowden_lengths=0
+            _hw_variable_rotation_distances=0
+            _hw_require_bowden_move=1
+            _hw_filament_always_gripped=1
+            _hw_gear_gear_ratio="1.28:1"
+            _hw_gear_run_current=0.7
+            _hw_gear_hold_current=0.1
+            _hw_chain_count=4
+            _hw_exit_leds="neopixel:mmu_leds (1-4)"
+            _hw_entry_leds=""
+            _hw_status_leds=""
+            _hw_logo_leds=""
+            _param_extruder_homing_endstop="none"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=100
+            _param_gate_parking_distance=25
+            _param_gear_homing_speed=80
+            ;;
+
+        "$VVD")
+            # Comming soon (Bigtreetech)...
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
+            ;;
+
+        "$KMS")
+            # Comming soon (Biqu)...
+            HAS_ENCODER=no
+            HAS_SELECTOR=no
             ;;
 
         *)
@@ -2209,10 +2325,6 @@ questionaire() {
     echo "        [include mmu/optional/client_macros.cfg]"
     echo "        [include mmu/addons/blobifier.cfg]"
     echo "        [include mmu/addons/mmu_erec_cutter.cfg]"
-# PAUL
-#    if [ "${ADDONS_DC_ESPOOLER:-0}" -eq 1 ]; then
-#        echo "        [include mmu/addons/dc_espooler.cfg]"
-#    fi
     if [ "${ADDONS_EJECT_BUTTONS:-0}" -eq 1 ]; then
         echo "        [include mmu/addons/mmu_eject_buttons.cfg]"
     fi
@@ -2276,7 +2388,6 @@ HAS_ENCODER=yes
 HAS_SELECTOR=yes
 ADDONS_EREC=0
 ADDONS_BLOBIFIER=0
-#PAUL ADDONS_DC_ESPOOLER=0
 ADDONS_EJECT_BUTTONS=0
 
 INSTALL=0
