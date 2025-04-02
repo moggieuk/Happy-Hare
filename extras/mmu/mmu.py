@@ -5783,7 +5783,7 @@ class Mmu:
         current_helper = self.tmc_current_helpers.get(stepper, None)
         if current_helper:
             try:
-                print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time())
+                print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time()) # !FIXME : strange ?
                 c = list(current_helper.get_current())
                 req_hold_cur, max_cur = c[2], c[3] # Kalico now has 5 elements rather than 4 in tuple, so unpack just what we need...
                 new_cur = max(min(run_current, max_cur), 0)
