@@ -5850,6 +5850,8 @@ class Mmu:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")
         direction = -1 if move < 0 else 1
         stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', direction, minval=-1, maxval=1)
+        if abs(stop_on_endstop) != 1:
+            raise gcmd.error("STOP_ON_ENDSTOP can only be 1 (extrude direction) or -1 (retract direction)")
         endstop = self.sensor_manager.get_mapped_endstop_name(endstop)
         valid_endstops = list(self.gear_rail.get_extra_endstop_names())
         if endstop not in valid_endstops:
