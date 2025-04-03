@@ -735,7 +735,7 @@ class LinearSelector(BaseSelector, object):
                         delta = abs(new_pos - trig_pos[0])
                         if delta < 1.0:
                             homed = False
-                            self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
+                            self.mmu.log_trace("Trying selector %.4fmm to %.2fmm" % (delta, new_pos))
                             self.mmu_toolhead.move(pos, speed)
                         else:
                             homed = True

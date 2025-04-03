@@ -3345,27 +3345,24 @@ class Mmu:
             # Note: if user calls BASE_RESUME, print will restart but from incorrect position that could be restored later!
             if not self.is_paused() or operation == "resume":
                 # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final unload)
-                if restore:
-                    self.wrap_gcode_command(self.restore_position_macro) # Restore macro position and clear saved
+                restore_macro = self.restore_position_macro if restore else "%s SKIP_RESTORE=1" % self.restore_position_macro
+                # Restore macro position and clear saved
+                self.wrap_gcode_command(restore_macro) # Restore macro position and clear saved
 
-                    # Paranoia: no matter what macros do ensure position and state is good. Either last, next or none (current x,y)
-                    sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-                    travel_speed = 200
-                    if sequence_vars_macro:
-                        if sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
-                            # Don't change x,y position on toolchange
-                            current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
-                            self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
-                        travel_speed = sequence_vars_macro.variables.get('park_travel_speed', travel_speed)
-                    gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
-                    display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
-                    self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, travel_speed))
-                    self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
-                    self._clear_saved_toolhead_position()
-                else:
-                    # Special case of not restoring so just clear all saved state
-                    self._clear_macro_state()
-                    self._clear_saved_toolhead_position()
+                # Paranoia: no matter what macros do ensure position and state is good. Either last, next or none (current x,y)
+                sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+                travel_speed = 200
+                if sequence_vars_macro:
+                    if sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
+                        # Don't change x,y position on toolchange
+                        current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
+                        self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
+                    travel_speed = sequence_vars_macro.variables.get('park_travel_speed', travel_speed)
+                gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
+                display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
+                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, travel_speed))
+                self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
+                self._clear_saved_toolhead_position()
 
                 # Always restore toolhead velocity limits
                 if self.saved_toolhead_max_accel:
@@ -5786,7 +5783,7 @@ class Mmu:
         current_helper = self.tmc_current_helpers.get(stepper, None)
         if current_helper:
             try:
-                print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time())
+                print_time = max(self.toolhead.get_last_move_time(), self.toolhead.get_last_move_time()) # !FIXME : strange ?
                 c = list(current_helper.get_current())
                 req_hold_cur, max_cur = c[2], c[3] # Kalico now has 5 elements rather than 4 in tuple, so unpack just what we need...
                 new_cur = max(min(run_current, max_cur), 0)
@@ -7389,7 +7386,7 @@ class Mmu:
             for g in gate_indices:
                 msg_gates += "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g))
                 msg_avail += "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True))
-                tool_str = "+".join("T%d" % t for t in gate_indices if self.ttg_map[t] == g)
+                tool_str = "+".join("T%d" % t for t in range(self.num_gates) if self.ttg_map[t] == g)
                 tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
                 if self.gate_selected == g and self.gate_selected != self.TOOL_GATE_UNKNOWN:
                     select_strings.append("|\%s/|" % (UI_SEPARATOR if self.filament_pos < self.FILAMENT_POS_START_BOWDEN else "*"))
@@ -8205,6 +8202,7 @@ class Mmu:
 
         if initial_tool is not None:
             self.slicer_tool_map['initial_tool'] = initial_tool
+            self.slicer_tool_map['referenced_tools'] = sorted(set(self.slicer_tool_map['referenced_tools'] + [initial_tool]))
             quiet = True
 
         if total_toolchanges is not None:

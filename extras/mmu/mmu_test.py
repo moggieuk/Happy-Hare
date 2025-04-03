@@ -215,7 +215,7 @@ class MmuTest:
                 else:
                     self.mmu.log_error("Invalid sync state: %s" % sync_state)
                 # Generate a tension or compression event
-                self.mmu.log_trace(">>>>>> sync test Testing confugaration %s" % (sync_state.upper()))
+                self.mmu.log_trace(">>>>>> sync test Testing configuration %s" % (sync_state.upper()))
                 if compression_sensor is not None:
                     compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
                 if tension_sensor is not None:
