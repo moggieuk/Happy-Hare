@@ -312,18 +312,18 @@ PIN[B,MMB10,gear_sensor_8_pin]="";                         PIN[B,MMB11,gear_sens
 PIN[B,MMB10,gear_sensor_9_pin]="";                         PIN[B,MMB11,gear_sensor_9_pin]="";
 PIN[B,MMB10,gear_sensor_10_pin]="";                        PIN[B,MMB11,gear_sensor_10_pin]="";
 PIN[B,MMB10,gear_sensor_11_pin]="";                        PIN[B,MMB11,gear_sensor_11_pin]="";
-PIN[B,MMB10,spooler_en_0_pin]="";                          PIN[B,MMB11,spooler_en_0_pin]="";
-PIN[B,MMB10,spooler_en_1_pin]="";                          PIN[B,MMB11,spooler_en_1_pin]="";
-PIN[B,MMB10,spooler_en_2_pin]="";                          PIN[B,MMB11,spooler_en_2_pin]="";
-PIN[B,MMB10,spooler_en_3_pin]="";                          PIN[B,MMB11,spooler_en_3_pin]="";
-PIN[B,MMB10,spooler_rwd_0_pin]="PA0";                      PIN[B,MMB11,spooler_rwd_0_pin]="PA0";
-PIN[B,MMB10,spooler_rwd_1_pin]="PA1";                      PIN[B,MMB11,spooler_rwd_1_pin]="PA1";
-PIN[B,MMB10,spooler_rwd_2_pin]="PB10";                     PIN[B,MMB11,spooler_rwd_2_pin]="PB10";
-PIN[B,MMB10,spooler_rwd_3_pin]="PB2";                      PIN[B,MMB11,spooler_rwd_3_pin]="PB2";
-PIN[B,MMB10,spooler_fwd_0_pin]="";                         PIN[B,MMB11,spooler_fwd_0_pin]="";
-PIN[B,MMB10,spooler_fwd_1_pin]="";                         PIN[B,MMB11,spooler_fwd_1_pin]="";
-PIN[B,MMB10,spooler_fwd_2_pin]="";                         PIN[B,MMB11,spooler_fwd_2_pin]="";
-PIN[B,MMB10,spooler_fwd_3_pin]="";                         PIN[B,MMB11,spooler_fwd_3_pin]="";
+PIN[B,MMB10,espooler_en_0_pin]="";                         PIN[B,MMB11,espooler_en_0_pin]="";
+PIN[B,MMB10,espooler_en_1_pin]="";                         PIN[B,MMB11,espooler_en_1_pin]="";
+PIN[B,MMB10,espooler_en_2_pin]="";                         PIN[B,MMB11,espooler_en_2_pin]="";
+PIN[B,MMB10,espooler_en_3_pin]="";                         PIN[B,MMB11,espooler_en_3_pin]="";
+PIN[B,MMB10,espooler_rwd_0_pin]="PA0";                     PIN[B,MMB11,espooler_rwd_0_pin]="PA0";
+PIN[B,MMB10,espooler_rwd_1_pin]="PA1";                     PIN[B,MMB11,espooler_rwd_1_pin]="PA1";
+PIN[B,MMB10,espooler_rwd_2_pin]="PB10";                    PIN[B,MMB11,espooler_rwd_2_pin]="PB10";
+PIN[B,MMB10,espooler_rwd_3_pin]="PB2";                     PIN[B,MMB11,espooler_rwd_3_pin]="PB2";
+PIN[B,MMB10,espooler_fwd_0_pin]="";                        PIN[B,MMB11,espooler_fwd_0_pin]="";
+PIN[B,MMB10,espooler_fwd_1_pin]="";                        PIN[B,MMB11,espooler_fwd_1_pin]="";
+PIN[B,MMB10,espooler_fwd_2_pin]="";                        PIN[B,MMB11,espooler_fwd_2_pin]="";
+PIN[B,MMB10,espooler_fwd_3_pin]="";                        PIN[B,MMB11,espooler_fwd_3_pin]="";
 # Spare: PB10 (STP10), PB2 (STP11)                         PB10 (STP10), PB2 (STP11)
 
 
@@ -441,18 +441,18 @@ PIN[B,MMB20,gear_sensor_8_pin]="";
 PIN[B,MMB20,gear_sensor_9_pin]="";
 PIN[B,MMB20,gear_sensor_10_pin]="";
 PIN[B,MMB20,gear_sensor_11_pin]="";
-PIN[B,MMB20,spooler_en_0_pin]="";
-PIN[B,MMB20,spooler_en_1_pin]="";
-PIN[B,MMB20,spooler_en_2_pin]="";
-PIN[B,MMB20,spooler_en_3_pin]="";
-PIN[B,MMB20,spooler_rwd_0_pin]="PB1";
-PIN[B,MMB20,spooler_rwd_1_pin]="PC5";
-PIN[B,MMB20,spooler_rwd_2_pin]="PB0";
-PIN[B,MMB20,spooler_rwd_3_pin]="PC4";
-PIN[B,MMB20,spooler_fwd_0_pin]="";
-PIN[B,MMB20,spooler_fwd_1_pin]="";
-PIN[B,MMB20,spooler_fwd_2_pin]="";
-PIN[B,MMB20,spooler_fwd_3_pin]="";
+PIN[B,MMB20,espooler_en_0_pin]="";
+PIN[B,MMB20,espooler_en_1_pin]="";
+PIN[B,MMB20,espooler_en_2_pin]="";
+PIN[B,MMB20,espooler_en_3_pin]="";
+PIN[B,MMB20,espooler_rwd_0_pin]="PB1";
+PIN[B,MMB20,espooler_rwd_1_pin]="PC5";
+PIN[B,MMB20,espooler_rwd_2_pin]="PB0";
+PIN[B,MMB20,espooler_rwd_3_pin]="PC4";
+PIN[B,MMB20,espooler_fwd_0_pin]="";
+PIN[B,MMB20,espooler_fwd_1_pin]="";
+PIN[B,MMB20,espooler_fwd_2_pin]="";
+PIN[B,MMB20,espooler_fwd_3_pin]="";
 
 
 # Pins for AFC Lite board
@@ -512,18 +512,18 @@ PIN[B,AFC_LITE_1,gear_sensor_8_pin]="";
 PIN[B,AFC_LITE_1,gear_sensor_9_pin]="";
 PIN[B,AFC_LITE_1,gear_sensor_10_pin]="";
 PIN[B,AFC_LITE_1,gear_sensor_11_pin]="";
-PIN[B,AFC_LITE_1,spooler_en_0_pin]="PA2";
-PIN[B,AFC_LITE_1,spooler_en_1_pin]="PA5";
-PIN[B,AFC_LITE_1,spooler_en_2_pin]="PB13";
-PIN[B,AFC_LITE_1,spooler_en_3_pin]="PD11";
-PIN[B,AFC_LITE_1,spooler_rwd_0_pin]="PA0";
-PIN[B,AFC_LITE_1,spooler_rwd_1_pin]="PA6";
-PIN[B,AFC_LITE_1,spooler_rwd_2_pin]="PB14";
-PIN[B,AFC_LITE_1,spooler_rwd_3_pin]="PD12";
-PIN[B,AFC_LITE_1,spooler_fwd_0_pin]="PA1";
-PIN[B,AFC_LITE_1,spooler_fwd_1_pin]="PA7";
-PIN[B,AFC_LITE_1,spooler_fwd_2_pin]="PB15";
-PIN[B,AFC_LITE_1,spooler_fwd_3_pin]="PD13";
+PIN[B,AFC_LITE_1,espooler_en_0_pin]="PA2";
+PIN[B,AFC_LITE_1,espooler_en_1_pin]="PA5";
+PIN[B,AFC_LITE_1,espooler_en_2_pin]="PB13";
+PIN[B,AFC_LITE_1,espooler_en_3_pin]="PD11";
+PIN[B,AFC_LITE_1,espooler_rwd_0_pin]="PA0";
+PIN[B,AFC_LITE_1,espooler_rwd_1_pin]="PA6";
+PIN[B,AFC_LITE_1,espooler_rwd_2_pin]="PB14";
+PIN[B,AFC_LITE_1,espooler_rwd_3_pin]="PD12";
+PIN[B,AFC_LITE_1,espooler_fwd_0_pin]="PA1";
+PIN[B,AFC_LITE_1,espooler_fwd_1_pin]="PA7";
+PIN[B,AFC_LITE_1,espooler_fwd_2_pin]="PB15";
+PIN[B,AFC_LITE_1,espooler_fwd_3_pin]="PD13";
 
 
 #

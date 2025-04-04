@@ -440,7 +440,7 @@ class Mmu:
         self.espooler_max_stepper_speed = config.getfloat('espooler_max_stepper_speed', 300., above=0)
         self.espooler_min_stepper_speed = config.getfloat('espooler_min_stepper_speed', 0., minval=0., below=self.espooler_max_stepper_speed)
         self.espooler_speed_exponent = config.getfloat('espooler_speed_exponent', 0.5, above=0)
-        self.espooler_printing_power = config.getfloat('espooler_printing_power', 0.1, minval=0., below=1.)
+        self.espooler_printing_power = config.getint('espooler_printing_power', 10, minval=0, maxval=100)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
 
         # Optional features
@@ -3907,7 +3907,8 @@ class Mmu:
         if gate < 0:
             raise gcmd.error("Invalid gate")
 
-        power = gcmd.get_int('POWER', 50, minval=0, maxval=100) if operation != self.ESPOOLER_OFF else 0
+        default_power = self.espooler_printing_power if operation == self.ESPOOLER_PRINT else 50
+        power = gcmd.get_int('POWER', default_power, minval=0, maxval=100) if operation != self.ESPOOLER_OFF else 0
 
         if operation != self.ESPOOLER_OFF:
             self.log_info("Running espooler %s for gate %d at %d%% power" % (operation, gate, power))
@@ -4417,7 +4418,7 @@ class Mmu:
                 ratio = (length - delta) / length
 
                 # Encoder based validation test
-                if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance/100.) and not self.calibrating:
+                if self._can_use_encoder() and delta >= length * (self.bowden_move_error_tolerance / 100.) and not self.calibrating:
                     raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
                 # Encoder based validation test
@@ -4487,7 +4488,7 @@ class Mmu:
                     with self._require_encoder():
                         self.log_debug("Performing bowden pre-unload test")
                         _,_,_,delta = self.trace_filament_move("Bowden pre-unload test", -self.encoder_move_step_size)
-                        if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance/100.):
+                        if delta > self.encoder_move_step_size * (self.bowden_pre_unload_error_tolerance / 100.):
                             self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                             raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded\nOptionally use MMU_RECOVER to recover filament position")
                         length -= self.encoder_move_step_size
@@ -4761,7 +4762,7 @@ class Mmu:
                     msg = None
                     if measured < self.encoder_min:
                         msg = "any"
-                    elif synced and delta > length * (self.toolhead_move_error_tolerance/100.):
+                    elif synced and delta > length * (self.toolhead_move_error_tolerance / 100.):
                         msg = "suffient"
                     if msg:
                         self.log_error("Warning: Encoder not sensing %s movement during final extruder retraction move\nConcluding filament either stuck in the extruder, tip forming erroneously completely ejected filament or filament was not fully loaded\nWill attempt to continue..." % msg)
@@ -5520,8 +5521,8 @@ class Mmu:
 
     # In print espooler assist mode
     def _espooler_on(self):
-        if self.ESPOOLER_PRINT in self.espooler_operations and self.espooler_printing_power > 0.:
-            self._espooler_update(self.gate_selected, self.espooler_printing_power, self.ESPOOLER_PRINT)
+        if self.ESPOOLER_PRINT in self.espooler_operations and self.espooler_printing_power > 0:
+            self._espooler_update(self.gate_selected, self.espooler_printing_power / 100, self.ESPOOLER_PRINT)
 
     def _espooler_off(self):
         self._espooler_update(self.gate_selected, 0, self.ESPOOLER_OFF)
@@ -7093,7 +7094,7 @@ class Mmu:
             self.espooler_max_stepper_speed = gcmd.get_float('ESPOOLER_MAX_STEPPER_SPEED', self.espooler_max_stepper_speed, above=0)
             self.espooler_min_stepper_speed = gcmd.get_float('ESPOOLER_MIN_STEPPER_SPEED', self.espooler_min_stepper_speed, minval=0., below=self.espooler_max_stepper_speed)
             self.espooler_speed_exponent = gcmd.get_float('ESPOOLER_SPEED_EXPONENT', self.espooler_speed_exponent, above=0)
-            self.espooler_printing_power = gcmd.get_float('ESPOOLER_PRINTING_POWER', self.espooler_printing_power, minval=0., below=1.)
+            self.espooler_printing_power = gcmd.get_int('ESPOOLER_PRINTING_POWER', self.espooler_printing_power, minval=0, maxval=100)
             espooler_operations = list(gcmd.get('ESPOOLER_OPERATIONS', ','.join(self.espooler_operations)).split(','))
             for op in espooler_operations:
                 if op not in self.ESPOOLER_OPERATIONS:
@@ -7145,10 +7146,10 @@ class Mmu:
             msg += "\nsync_feedback_enable = %d" % self.sync_feedback_enable
             msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
             msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
-            msg += "\nsync_gear_current = %d" % self.sync_gear_current
-            msg += "\nextruder_collision_homing_current = %d" % self.extruder_collision_homing_current
-            msg += "\nextruder_form_tip_current = %d" % self.extruder_form_tip_current
-            msg += "\nextruder_purge_current = %d" % self.extruder_purge_current
+            msg += "\nsync_gear_current = %d%%" % self.sync_gear_current
+            msg += "\nextruder_collision_homing_current = %d%%" % self.extruder_collision_homing_current
+            msg += "\nextruder_form_tip_current = %d%%" % self.extruder_form_tip_current
+            msg += "\nextruder_purge_current = %d%%" % self.extruder_purge_current
 
             msg += "\n\nLOADING/UNLOADING:"
             msg += "\ngate_homing_endstop = %s" % self.gate_homing_endstop
@@ -7198,7 +7199,7 @@ class Mmu:
                 msg += "\nespooler_max_stepper_speed = %s" % self.espooler_max_stepper_speed
                 msg += "\nespooler_min_stepper_speed = %s" % self.espooler_min_stepper_speed
                 msg += "\nespooler_speed_exponent = %s" % self.espooler_speed_exponent
-                msg += "\nespooler_printing_power = %s" % self.espooler_printing_power
+                msg += "\nespooler_printing_power = %s%%" % self.espooler_printing_power
                 msg += "\nespooler_operations = %s"  % self.espooler_operations
 
             msg += "\n\nLOGGING:"

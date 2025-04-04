@@ -127,13 +127,13 @@ class MmuESpooler:
             _schedule_set_pin(active_motor_name, value)
             _schedule_set_pin('enable_%d' % gate, 1)
 
-    # This is the actual callback method to update pin signal
+    # This is the actual callback method to update pin signal (pwm or digital)
     def _set_pin(self, print_time, name, value):
         mcu_pin = self.motor_mcu_pins.get(name, None)
         if mcu_pin:
             if value == self.last_value.get(name, None):
                 return
-        if self.is_pwm:
+        if self.is_pwm and not name.startswith('enable_'):
             mcu_pin.set_pwm(print_time, value)
         else:
             mcu_pin.set_digital(print_time, value)

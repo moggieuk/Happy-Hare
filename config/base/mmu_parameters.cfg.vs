@@ -371,7 +371,7 @@ sync_multiplier_low: 0.95		# Minimum factor to apply
 #
 #    rewind - when filament is being unloaded under MMU control (aka respool)
 #    assist - when filament is being loaded under MMU control
-#    print  - while printing. Generally set 'espooler_printing_power' to a low value just to allow motor to be turned freely
+#    print  - while printing. Generally set 'espooler_printing_power' to a low percentage just to allow motor to be turned freely
 #
 # If using a digitally controlled espooler motor (not PWM) then you should turn off the "print" mode and set
 # 'espooler_min_stepper_speed' to prevent "over movement"
@@ -380,7 +380,7 @@ espooler_min_distance: 30			# Individual stepper movements less than this distan
 espooler_max_stepper_speed: 300			# Gear stepper speed at which espooler will be at maximum power
 espooler_min_stepper_speed: 0			# Gear stepper speed at which espooler will become inactive (useful for non PWM control)
 espooler_speed_exponent: 0.5			# Controls non-linear espooler power relative to stepper speed (see notes)
-espooler_printing_power: 0.1			# If >0, fixes the PWM power while printing.
+espooler_printing_power: 10			# If >0, fixes the % of PWM power while printing.
 espooler_operations: rewind, assist, print	# List of operational modes (allows disabling even if h/w is configured)
 
 
