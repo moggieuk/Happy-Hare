@@ -40,6 +40,8 @@ class MmuESpooler:
         self.hardware_pwm = config.getboolean("hardware_pwm", False)
         self.scale = config.getfloat('scale', 1., above=0.)
         self.cycle_time = config.getfloat("cycle_time", 0.100, above=0., maxval=MAX_SCHEDULE_TIME)
+        self.shutdown_value = config.getfloat('shutdown_value', 0., minval=0., maxval=self.scale) / self.scale
+        start_value = config.getfloat('value', 0., minval=0., maxval=self.scale) / self.scale # Starting value
 
         for gate in range(self.first_gate, self.first_gate + self.num_gates):
             self.respool_motor_pin = config.get('respool_motor_pin_%d' % gate, None)
@@ -47,39 +49,44 @@ class MmuESpooler:
             self.enable_motor_pin = config.get('enable_motor_pin_%d' % gate, None) # AFC MCU only
 
             # Setup pins
-            if self.is_pwm:
-                if self.respool_motor_pin and not self._is_empty_pin(self.respool_motor_pin):
+            if self.respool_motor_pin and not self._is_empty_pin(self.respool_motor_pin):
+                if self.is_pwm:
                     mcu_pin = ppins.setup_pin("pwm", self.respool_motor_pin)
                     mcu_pin.setup_cycle_time(self.cycle_time, self.hardware_pwm)
-                    mcu_pin.setup_max_duration(0.)
-                    self.motor_mcu_pins['respool_%d' % gate] = mcu_pin
-                    self.respool_gates.append(gate)
+                else:
+                    mcu_pin = ppins.setup_pin("digital_out", self.respool_motor_pin)
 
-                if self.assist_motor_pin and not self._is_empty_pin(self.assist_motor_pin):
+                name = "respool_%d" % gate
+                mcu_pin.setup_max_duration(0.)
+                mcu_pin.setup_start_value(start_value, self.shutdown_value)
+                self.motor_mcu_pins[name] = mcu_pin
+                self.last_value[name] = start_value
+                self.respool_gates.append(gate)
+
+            if self.assist_motor_pin and not self._is_empty_pin(self.assist_motor_pin):
+                if self.is_pwm:
                     mcu_pin = ppins.setup_pin("pwm", self.assist_motor_pin)
                     mcu_pin.setup_cycle_time(self.cycle_time, self.hardware_pwm)
-                    mcu_pin.setup_max_duration(0.)
-                    self.motor_mcu_pins['assist_%d' % gate] = mcu_pin
-                    self.assist_gates.append(gate)
-            else:
-                if self.respool_motor_pin and not self._is_empty_pin(self.respool_motor_pin):
-                    mcu_pin = ppins.setup_pin("digital_out", self.respool_motor_pin)
-                    mcu_pin.setup_max_duration(0.)
-                    self.motor_mcu_pins['respool_%d' % gate] = mcu_pin
-                    self.respool_gates.append(gate)
-
-                if self.assist_motor_pin and not self._is_empty_pin(self.assist_motor_pin):
+                else:
                     mcu_pin = ppins.setup_pin("digital_out", self.assist_motor_pin)
-                    mcu_pin.setup_max_duration(0.)
-                    self.motor_mcu_pins['assist_%d' % gate] = mcu_pin
-                    self.assist_gates.append(gate)
+
+                name = "assist_%d" % gate
+                mcu_pin.setup_max_duration(0.)
+                mcu_pin.setup_start_value(start_value, self.shutdown_value)
+                self.motor_mcu_pins[name] = mcu_pin
+                self.last_value[name] = start_value
+                self.assist_gates.append(gate)
 
             if self.enable_motor_pin and not self._is_empty_pin(self.enable_motor_pin):
                 mcu_pin = ppins.setup_pin("digital_out", self.enable_motor_pin)
+                name = "enable_%d" % gate
                 mcu_pin.setup_max_duration(0.)
-                self.motor_mcu_pins['enable_%d' % gate] = mcu_pin
- 
+                mcu_pin.setup_start_value(self.last_value, self.shutdown_value)
+                self.motor_mcu_pins[name] = mcu_pin
+                self.last_value[name] = last_value
+
             self.operation['%s_gate_%d' % (self.name, gate)] = ('off', 0)
+
 
         # Setup event handler for DC espooler motor operation
         self.printer.register_event_handler("mmu:espooler", self._handle_espooler_request)
