@@ -11,14 +11,15 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import random
+import random, logging
+
 # Happy Hare imports
 # PAUL from ..            import mmu_machine
 from ..mmu_unit    import MmuToolHead
 
 # MMU subcomponent clases
 from .mmu_shared   import *
-from .mmu_utils    import PurgeVolCalculator
+from .mmu_utils    import PurgeVolCalculator, DebugStepperMovement
 
 class MmuTest:
 
@@ -46,6 +47,9 @@ class MmuTest:
             self.mmu.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
             self.mmu.log_info("SEL_LOAD_TEST=1 : Load test selector movements. Params: LOOP|ENDSTOP")
             self.mmu.log_info("TTC_TEST=1 : Provoke known TTC condition. Parms: LOOP|MIX|DEBUG")
+            self.mmu.log_info("TTC_TEST2=1 : Provoke known TTC condition. Parms: LOOP|MIX|DEBUG")
+            self.mmu.log_info("TTC_TEST3=1 : Provoke known TTC condition. Parms: LOOP|MIX|DEBUG")
+            self.mmu.log_info("STEPCOMPRESS_TEST=1 : Provoke stepcompress error. Parms: LOOP|MIX|DEBUG")
             self.mmu.log_info("SYNC_G2E=1 : Sync gear to extruder")
             self.mmu.log_info("SYNC_E2G=1 : Sync extruder to gear. Params: EXTRUDER_ONLY")
             self.mmu.log_info("UNSYNC=1 : Unsync")
@@ -211,7 +215,7 @@ class MmuTest:
                 else:
                     self.mmu.log_error("Invalid sync state: %s" % sync_state)
                 # Generate a tension or compression event
-                self.mmu.log_trace(">>>>>> sync test Testing confugaration %s" % (sync_state.upper()))
+                self.mmu.log_trace(">>>>>> sync test Testing configuration %s" % (sync_state.upper()))
                 if compression_sensor is not None:
                     compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
                 if tension_sensor is not None:
@@ -317,12 +321,14 @@ class MmuTest:
         if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
             try:
                 self.mmu._is_running_test = True
-                endstop = gcmd.get('ENDSTOP', 'extruder')
+                endstop = gcmd.get('ENDSTOP', 'toolhead')
                 loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
+                select = gcmd.get_int('SELECT', 0, minval=0, maxval=1)
                 self.mmu.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
                 self.mmu._initialize_filament_position()
                 total = 0.
                 for i in range(loop):
+                    endstop="toolhead" if random.randint(0, 1) else "extruder"
                     move_type = random.randint(0, 11) # 12 to enable tracking test
                     move = random.randint(0, 100) - 50
                     speed = random.uniform(50, 200)
@@ -330,6 +336,11 @@ class MmuTest:
                     homing = random.randint(0, 1)
                     extruder_only = random.randint(0, 1)
                     motor = random.choice(["gear", "gear+extruder", "extruder"])
+                    if select and self.mmu.mmu_machine.multigear:
+                        if random.randint(0, 1):
+                            gate = random.randint(0, self.mmu.num_gates - 1)
+                            self.mmu.log_info("Selecting gate: %d" % gate)
+                            self.mmu.select_gate(gate)
                     if move_type in (0, 1):
                         self.mmu.log_info("Loop: %d - Synced gear to extruder movement: %.1fmm" % (i, move))
                         self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
@@ -440,7 +451,7 @@ class MmuTest:
                     self.mmu.log_info("Loop: %d" % i)
                     if self.mmu.mmu_machine.multigear: # PAUL should be mmu_unit of current gate
                         self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
-                    stop_on_endstop = random.randint(0, 1) * 2 - 1
+                    stop_on_endstop = random.choice([-1, 1])
                     motor = "gear+extruder" if random.randint(0, mix) else "extruder"
                     self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=5 ENDSTOP=toolhead STOP_ON_ENDSTOP=%d DEBUG=%d" % (motor, stop_on_endstop, debug))
                     if random.randint(0, 1):
@@ -457,7 +468,7 @@ class MmuTest:
             try:
                 self.mmu._is_running_test = True
                 for i in range(loop):
-                    stop_on_endstop = random.randint(-1, 1)
+                    stop_on_endstop = random.choice([-1, 0, 1])
                     wait = random.randint(0, 1)
                     self.mmu.log_info("Loop: %d" % i)
                     motor = "gear+extruder" if random.randint(0, mix) else "extruder"
@@ -477,13 +488,40 @@ class MmuTest:
                     self.mmu.log_info("Loop: %d" % i)
                     if self.mmu.mmu_machine.multigear: # PAUL should be mmu_unit of current gate
                         self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
-                    stop_on_endstop = random.randint(0, 1) * 2 - 1
+                    stop_on_endstop = random.choice([-1, 1])
                     motor = "gear"
                     self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=-70 SPEED=300 ACCEL=1000 ENDSTOP=toolhead STOP_ON_ENDSTOP=%d DEBUG=%d" % (motor, stop_on_endstop, debug))
                     if random.randint(0, 1):
                         self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=5 DEBUG=%d" % (motor, debug))
                     if random.randint(0, 1):
                         self.mmu.mmu_toolhead.get_last_move_time() # Try to provoke TTC
+            finally:
+                self.mmu._is_running_test = False
+
+        if gcmd.get_int('STEPCOMPRESS_TEST', 0, minval=0, maxval=1):
+            loop = gcmd.get_int('LOOP', 1, minval=1, maxval=1000)
+            debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
+            motor = gcmd.get('MOTOR', None)
+            wait = gcmd.get_int('WAIT', None, minval=0, maxval=1)
+            select = gcmd.get_int('SELECT', 1, minval=0, maxval=1)
+            stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', None, minval=-1, maxval=1)
+            try:
+                self.mmu._is_running_test = True
+                for i in range(loop):
+                    self.mmu.log_info("Loop: %d" % i)
+                    if self.mmu.mmu_machine.multigear and select:
+                        self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
+                    logging.info("Moving extruder 1mm with G1")
+                    self.mmu.gcode.run_script_from_command("M83")
+                    self.mmu.gcode.run_script_from_command("G1 E1 F300")
+                    if motor is None:
+                        motor = "gear+extruder" if random.randint(0, 1) else "extruder"
+                    if stop_on_endstop is None:
+                        stop_on_endstop = random.choice([-1, 0, 1])
+                    if wait is None:
+                        wait = random.randint(0, 1)
+                    with DebugStepperMovement(self.mmu, debug):
+                        self.mmu.trace_filament_move("test", 1, motor=motor, homing_move=stop_on_endstop, endstop_name="toolhead", wait=wait)
             finally:
                 self.mmu._is_running_test = False
 

@@ -452,6 +452,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def handle_connect(self):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
+        self.last_move_time = self.printer_toolhead.get_last_move_time()
         self.mmu = self.printer.lookup_object('mmu')
 
     # Ensure the correct number of axes for convenience - MMU only has two
@@ -483,8 +484,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if sync_mode:
             self.unsync()
         else:
-            self.printer_toolhead.flush_step_generation()
-            self.mmu_toolhead.flush_step_generation()
+            self._ready_rail()
 
         # Activate only the desired gear steppers
         gear_rail = self.get_kinematics().rails[1]
@@ -503,7 +503,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         if selected_steppers:
             if not gear_rail.steppers:
-                raise self.printer.command_error("None of these `%s` gear steppers where found!" % selected_steppers)
+                raise self.printer.command_error("None of these '%s' gear steppers where found!" % selected_steppers)
             gear_rail.set_position(pos)
         elif not gear_rail.steppers:
             # No steppers on rail is ok, because Rail keeps separate reference for the first stepper added
@@ -512,6 +512,15 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Restore previous synchronization state if any with new gear steppers
         if sync_mode:
             self.sync(sync_mode)
+
+    def _ready_rail(self):
+        lmt = self.printer_toolhead.get_last_move_time()
+        if lmt > self.last_move_time:
+            self.last_move_time = lmt
+            self.printer_toolhead.wait_moves()
+        self.printer_toolhead.flush_step_generation()
+        self.mmu_toolhead.flush_step_generation()
+        self.mmu_toolhead.dwell(0.01) # TTC Mitigation
 
     def is_synced(self):
         return self.sync_mode is not None
@@ -530,9 +539,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.unsync()
         if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
-        self.printer_toolhead.flush_step_generation()
-        self.mmu_toolhead.flush_step_generation()
-        self.mmu.movequeues_sync()
+        self._ready_rail()
 
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -584,9 +591,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.sync_mode is None: return None
         self.mmu.log_stepper("unsync()")
         prev_sync_mode = self.sync_mode
-        self.printer_toolhead.flush_step_generation()
-        self.mmu_toolhead.flush_step_generation()
-        self.mmu.movequeues_sync()
+        self._ready_rail()
 
         if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead = self.mmu_toolhead
@@ -650,8 +655,17 @@ class MmuToolHead(toolhead.ToolHead, object):
             msg += "\n" if axis > 0 else ""
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
             msg += header[:100] + "\n"
-            for idx, s in enumerate(rail.get_steppers()):
-                msg += "Stepper %d: %s%s\n" % (idx, s.get_name(), "(INACTIVE)" if axis == 1 and s in self.inactive_gear_steppers else "")
+            for idx, s in enumerate(self.all_gear_rail_steppers if axis == 1 else rail.get_steppers()):
+                ss = ""
+                if axis == 1:
+                    if s in self.inactive_gear_steppers:
+                        ss = "(INACTIVE)"
+                    elif s not in rail.get_steppers():
+                        ss = "(OFF RAIL)"
+                    elif gsd is None:
+                        ss = "(ACTIVE)"
+                        gsd = s.get_step_dist()
+                msg += "Stepper %d: %s %s\n" % (idx, s.get_name(), ss)
                 msg += "- Commanded Pos: %.2f, " % s.get_commanded_position()
                 msg += "MCU Pos: %.2f, " % s.get_mcu_position()
                 rd = s.get_rotation_distance()
@@ -680,7 +694,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         msg += "- Commanded Pos: %.2f, " % e_stepper.stepper.get_commanded_position()
         msg += "MCU Pos: %.2f, " % e_stepper.stepper.get_mcu_position()
         rd = e_stepper.stepper.get_rotation_distance()
-        msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], e_stepper.stepper.get_step_dist())
+        esd = e_stepper.stepper.get_step_dist()
+        msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], esd)
+        msg += "Step size ratio of gear:extruder = %.2f:1" % (gsd/esd)
         return msg
 
 
@@ -886,7 +902,7 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         extra_endstop_names = config.getlist('extra_endstop_names', [])
         if extra_endstop_pins:
             if len(extra_endstop_pins) != len(extra_endstop_names):
-                raise self.config.error("`extra_endstop_pins` and `extra_endstop_names` are different lengths")
+                raise self.config.error("'extra_endstop_pins' and 'extra_endstop_names' are different lengths")
             for idx, pin in enumerate(extra_endstop_pins):
                 name = extra_endstop_names[idx]
                 self.add_extra_endstop(pin, name)
