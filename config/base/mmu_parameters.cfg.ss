@@ -384,7 +384,7 @@ sync_multiplier_low: 0.95               # Minimum factor to apply
 # ███████╗███████║██║     ╚██████╔╝╚██████╔╝███████╗███████╗██║  ██║
 # ╚══════╝╚══════╝╚═╝      ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
 #                                                                  
-# If your MMU has a dc motor (ofter N20) controlled respooler/assist then how it operates can be controlled with these
+# If your MMU has a dc motor (often N20) controlled respooler/assist then how it operates can be controlled with these
 # settings. Typically the espooler will be controlled with PWM signal. This will be at the maximum at speeds equal or
 # above 'espooler.max_stepper_speed'. The PWM signal will scale downwards towards 0 for slower speeds. The falloff being
 # controlled by the 'espooler_speed_exponent' setting according to this formula and allows for non-linear characteristics

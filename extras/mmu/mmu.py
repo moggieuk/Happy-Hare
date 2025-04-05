@@ -5537,7 +5537,7 @@ class Mmu:
 
     def _espooler_update(self, gate, pwm_value, state):
         if self.has_espooler():
-            self.log_debug("Espooler for gate %d set to %s (pwm: %.1f)" % (gate, state, pwm_value))
+            self.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, state, pwm_value))
             self.espooler.update(gate, pwm_value, state)
 
 
