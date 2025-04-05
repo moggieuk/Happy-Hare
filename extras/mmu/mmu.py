@@ -440,6 +440,7 @@ class Mmu:
         self.espooler_max_stepper_speed = config.getfloat('espooler_max_stepper_speed', 300., above=0)
         self.espooler_min_stepper_speed = config.getfloat('espooler_min_stepper_speed', 0., minval=0., below=self.espooler_max_stepper_speed)
         self.espooler_speed_exponent = config.getfloat('espooler_speed_exponent', 0.5, above=0)
+        self.espooler_assist_reduced_speed = config.getint('espooler_assist_reduced_speed', 50, minval=0, maxval=100)
         self.espooler_printing_power = config.getint('espooler_printing_power', 10, minval=0, maxval=100)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
 
@@ -3168,9 +3169,9 @@ class Mmu:
         self._fix_started_state() # Get out of 'started' state before transistion to mmu pause
 
         run_pause_macro = run_error_macro = recover_pos = send_event = False
+        self._espooler_off()
         if self.is_in_print(force_in_print):
             if not self.is_mmu_paused():
-                self._espooler_off()
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._track_pause_start()
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
@@ -3349,19 +3350,21 @@ class Mmu:
                 # Restore macro position and clear saved
                 self.wrap_gcode_command(restore_macro) # Restore macro position and clear saved
 
-                # Paranoia: no matter what macros do ensure position and state is good. Either last, next or none (current x,y)
-                sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-                travel_speed = 200
-                if sequence_vars_macro:
-                    if sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
-                        # Don't change x,y position on toolchange
-                        current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
-                        self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
-                    travel_speed = sequence_vars_macro.variables.get('park_travel_speed', travel_speed)
-                gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
-                display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
-                self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, travel_speed))
-                self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
+                if restore:
+                    # Paranoia: no matter what macros do ensure position and state is good. Either last, next or none (current x,y)
+                    sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+                    travel_speed = 200
+                    if sequence_vars_macro:
+                        if sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'none' and self.saved_toolhead_operation in ['toolchange']:
+                            # Don't change x,y position on toolchange
+                            current_pos = self.gcode_move.get_status(eventtime)['gcode_position']
+                            self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position'][:2] = current_pos[:2]
+                        travel_speed = sequence_vars_macro.variables.get('park_travel_speed', travel_speed)
+                    gcode_pos = self.gcode_move.saved_states[self.TOOLHEAD_POSITION_STATE]['last_position']
+                    display_gcode_pos = " ".join(["%s:%.1f" % (a, v) for a, v in zip("XYZE", gcode_pos)])
+                    self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=%s MOVE=1 MOVE_SPEED=%.1f" % (self.TOOLHEAD_POSITION_STATE, travel_speed))
+                    self.log_debug("Ensuring correct gcode state and position (%s) after %s" % (display_gcode_pos, operation))
+
                 self._clear_saved_toolhead_position()
 
                 # Always restore toolhead velocity limits
@@ -3878,7 +3881,7 @@ class Mmu:
     def cmd_MMU_ESPOOLER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self._check_has_espooler(): return
-        if self._check_not_printing(): return
+        #if self._check_not_printing(): return
 
         alloff = bool(gcmd.get_int('ALLOFF', 0, minval=0, maxval=1))
         if alloff:
@@ -5508,6 +5511,11 @@ class Mmu:
                 else:
                     pwm_value = (speed / self.espooler_max_stepper_speed) ** self.espooler_speed_exponent
 
+            # Reduce assist speed compared to rewind but also apply the "print" minimum
+            # We want rewind to be faster than assist but never non-functional
+            if espooler_state == self.ESPOOLER_ASSIST:
+                pwm_value = max(pwm_value * (self.espooler_assist_reduced_speed / 100), self.espooler_printing_power)
+
             if espooler_state != self.ESPOOLER_OFF:
                 self._wait_for_espooler = not homing_move
                 self._espooler_update(self.gate_selected, pwm_value, espooler_state)
@@ -7094,6 +7102,7 @@ class Mmu:
             self.espooler_max_stepper_speed = gcmd.get_float('ESPOOLER_MAX_STEPPER_SPEED', self.espooler_max_stepper_speed, above=0)
             self.espooler_min_stepper_speed = gcmd.get_float('ESPOOLER_MIN_STEPPER_SPEED', self.espooler_min_stepper_speed, minval=0., below=self.espooler_max_stepper_speed)
             self.espooler_speed_exponent = gcmd.get_float('ESPOOLER_SPEED_EXPONENT', self.espooler_speed_exponent, above=0)
+            self.espooler_assist_reduced_speed = gcmd.get_int('ESPOOLER_ASSIST_REDUCED_SPEED', 50, minval=0, maxval=100)
             self.espooler_printing_power = gcmd.get_int('ESPOOLER_PRINTING_POWER', self.espooler_printing_power, minval=0, maxval=100)
             espooler_operations = list(gcmd.get('ESPOOLER_OPERATIONS', ','.join(self.espooler_operations)).split(','))
             for op in espooler_operations:
@@ -7199,6 +7208,7 @@ class Mmu:
                 msg += "\nespooler_max_stepper_speed = %s" % self.espooler_max_stepper_speed
                 msg += "\nespooler_min_stepper_speed = %s" % self.espooler_min_stepper_speed
                 msg += "\nespooler_speed_exponent = %s" % self.espooler_speed_exponent
+                msg += "\nespooler_assist_reduced_speed = %s%%" % self.espooler_assist_reduced_speed
                 msg += "\nespooler_printing_power = %s%%" % self.espooler_printing_power
                 msg += "\nespooler_operations = %s"  % self.espooler_operations
 
