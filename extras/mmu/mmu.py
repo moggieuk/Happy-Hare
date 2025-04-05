@@ -1439,7 +1439,7 @@ class Mmu:
             'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
             'spoolman_support': self.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
-            'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.espooler else ''
+            'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.has_espooler() else ''
         }
         status.update(self.selector.get_status())
         status['sensors'] = self.sensor_manager.get_status()
@@ -3285,6 +3285,8 @@ class Mmu:
             self.wrap_gcode_command("%s%s" % (self.clear_position_macro, " RESET=1" if reset else ""))
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
+        self._espooler_off() # Ensure espooler is off before parking
+
         if 'xyz' not in self.toolhead.get_status(self.reactor.monotonic())['homed_axes']:
             self.gcode.run_script_from_command(self.toolhead_homing_macro)
             self.movequeues_wait()
@@ -5537,7 +5539,7 @@ class Mmu:
 
     def _espooler_update(self, gate, pwm_value, state):
         if self.has_espooler():
-            self.log_debug("Espooler for gate %d set to %s (pwm: %.1f)" % (gate, state, pwm_value))
+            self.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, state, pwm_value))
             self.espooler.update(gate, pwm_value, state)
 
 
@@ -5715,9 +5717,17 @@ class Mmu:
         self._standalone_sync = prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
         prev_current = self.gear_percentage_run_current != 100
         prev_grip = self.selector.get_filament_grip_state()
+
+        espooler_state = None
+        if self.has_espooler():
+            espooler_state = self.espooler.get_operation(self.gate_selected)
+            self._espooler_off()
         try:
             yield self
         finally:
+            if self.has_espooler():
+                self._espooler_update(self.gate_selected, espooler_state[1], espooler_state[0])
+
             if self.gate_selected >= 0:
                 restore_grip = prev_grip != self.selector.get_filament_grip_state()
                 self.sync_gear_to_extruder(prev_sync, grip=restore_grip, current=prev_current)
