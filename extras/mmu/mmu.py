@@ -5514,7 +5514,7 @@ class Mmu:
             # Reduce assist speed compared to rewind but also apply the "print" minimum
             # We want rewind to be faster than assist but never non-functional
             if espooler_state == self.ESPOOLER_ASSIST:
-                pwm_value = max(pwm_value * (self.espooler_assist_reduced_speed / 100), self.espooler_printing_power)
+                pwm_value = max(pwm_value * (self.espooler_assist_reduced_speed / 100), self.espooler_printing_power / 100)
 
             if espooler_state != self.ESPOOLER_OFF:
                 self._wait_for_espooler = not homing_move
