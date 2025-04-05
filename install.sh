@@ -778,7 +778,7 @@ EOF
     fi
 
     # v3.2.0: Add new [mmu_espooler] section as first section
-    found_mmu_espooler=$(grep -E -c "^\[mmu_espooler\]" ${hardware_cfg} || true)
+    found_mmu_espooler=$(grep -E -c "^#?\[mmu_espooler" ${hardware_cfg} || true)
     found_stepper_mmu_gear_1=$(grep -E -c "^\[stepper_mmu_gear_1\]" ${hardware_cfg} || true)
     if [ "${found_mmu_espooler}" -eq 0 -a "${found_stepper_mmu_gear_1}" -eq 1 ]; then
 

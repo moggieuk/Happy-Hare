@@ -3272,8 +3272,8 @@ class Mmu:
             # Restablish syncing state and grip (servo) position
             self.sync_gear_to_extruder(self.sync_to_extruder, grip=True, current=True)
 
-        # Restart espooler if configured
-        self._espooler_on()
+            # Restart espooler if configured
+            self._espooler_on()
 
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
