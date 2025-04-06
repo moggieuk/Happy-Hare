@@ -778,11 +778,11 @@ EOF
     fi
 
     # v3.2.0: Add new [mmu_espooler] section as first section
-    found_mmu_espooler=$(grep -E -c "^\[mmu_espooler\]" ${hardware_cfg} || true)
+    found_mmu_espooler=$(grep -E -c "^#?\[mmu_espooler" ${hardware_cfg} || true)
     found_stepper_mmu_gear_1=$(grep -E -c "^\[stepper_mmu_gear_1\]" ${hardware_cfg} || true)
     if [ "${found_mmu_espooler}" -eq 0 -a "${found_stepper_mmu_gear_1}" -eq 1 ]; then
 
-        # Note params will be comming from mmu_parameters
+        # Note params will be coming from mmu_parameters
         new_section=$(cat <<EOF
 
 
@@ -794,7 +794,7 @@ EOF
 # ███████╗███████║██║     ╚██████╔╝╚██████╔╝███████╗███████╗██║  ██║
 # ╚══════╝╚══════╝╚═╝      ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
 #
-# An espooler controls DC motors (typically NC-20) that are able to rewind a filament spool and optionally provide
+# An espooler controls DC motors (typically N20) that are able to rewind a filament spool and optionally provide
 # forward assist to overcome spooler rotation friction. This should define pins for each of the gates on your mmu
 # starting with '_0'.
 # An empty pin can be deleted, commented or simply left blank. If you mcu has a separate "enable" pin
@@ -804,6 +804,8 @@ EOF
 ##hardware_pwm: 0                                # See klipper doc
 ##cycle_time: 0.100                              # See klipper doc
 #scale: 1                                        # Scales the PWM output range
+#value: 0                                        # See klipper doc
+#shutdown_value: 0                               # See klipper doc
 #
 #respool_motor_pin_0: mmu:MMU_ESPOOLER_RWD_0     # PWM (or digital) pin for rewind/respool movement
 #assist_motor_pin_0: mmu:MMU_ESPOOLER_FWD_0      # PWM (or digital) pin for forward motor movement

@@ -116,8 +116,8 @@ class MmuESpooler:
         def _schedule_set_pin(name, value):
             mcu_pin = self.motor_mcu_pins.get(name, None)
             if mcu_pin:
-                #toolhead.register_lookahead_callback(lambda print_time: self._set_pin(print_time, name, value))
-                self._set_pin(self.printer.get_reactor().monotonic(), name, value)
+                toolhead.register_lookahead_callback(lambda print_time: self._set_pin(print_time, name, value))
+                #self._set_pin(self.printer.get_reactor().monotonic(), name, value)
 
         value /= self.scale
         if not self.is_pwm:
