@@ -354,7 +354,7 @@ class LinearSelector(BaseSelector, object):
     def filament_release(self, measure=False):
         return self.servo.servo_up(measure=measure)
 
-    def filament_hold_move(self): # AKA position for selector movement
+    def filament_hold_move(self): # AKA position for holding filament and moving selector
         self.servo.servo_move()
 
     def get_filament_grip_state(self):

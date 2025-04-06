@@ -4982,9 +4982,6 @@ class Mmu:
             if macros_and_track:
                 self._track_time_end('load')
 
-            if not self.is_printing():
-                self.selector.filament_release()
-
     def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False):
         self.movequeues_wait()
 
@@ -5134,9 +5131,6 @@ class Mmu:
 
             if macros_and_track:
                 self._track_time_end('unload')
-
-            if not self.is_printing():
-                self.selector.filament_release()
 
     # Form tip prior to extraction from the extruder. This can take the form of shaping the filament or could simply
     # activate a filament cutting mechanism. Sets filament position based on park pos
