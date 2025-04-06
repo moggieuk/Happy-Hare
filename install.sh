@@ -615,16 +615,28 @@ read_previous_config() {
     if [ "${_param_endless_spool_final_eject}" != "" ]; then
         _param_gate_final_eject_distance=${_param_endless_spool_final_eject}
     fi
-    if [ "${_variable_eject_tool}" != "" ]; then
-        _variable_unload_tool=${_variable_eject_tool}
+    if [ "${variable_eject_tool}" != "" ]; then
+        variable_unload_tool=${variable_eject_tool}
     fi
-    if [ "${_variable_eject_tool_on_cancel}" != "" ]; then
-        _variable_unload_tool_on_cancel=${_variable_eject_tool_on_cancel}
+    if [ "${variable_eject_tool_on_cancel}" != "" ]; then
+        variable_unload_tool_on_cancel=${variable_eject_tool_on_cancel}
     fi
 
     # v3.0.2
     if [ "${_param_homing_extruder}" != "" ]; then
         _hw_homing_extruder=${_param_homing_extruder}
+    fi
+
+    # v3.1.0
+    if [ "${variable_pin_loc_compressed}" != "" ]; then
+        echo -e "${INFO}Upgrading variable_pin_loc_compressed --> variable_pin_loc_compressed_xy"
+        pin_loc_x=$(echo ${variable_pin_loc_xy} | cut -d ',' -f1)
+        pin_loc_y=$(echo ${variable_pin_loc_xy} | cut -d ',' -f2)
+        if expr "${variable_cutting_axis}" : '.*x.*' >/dev/null; then
+            variable_pin_loc_compressed_xy="${variable_pin_loc_compressed}, ${pin_loc_y}"
+        else
+            variable_pin_loc_compressed_xy="${pin_loc_x}, ${variable_pin_loc_compressed}"
+        fi
     fi
 }
 
@@ -821,6 +833,11 @@ copy_config_files() {
                 cat ${dest} | sed -e "\
                     s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
                         " > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            elif [ "${_hw_brd_type}" == "SKR_PICO_1" ]; then
+                # Share uart_pin to avoid duplicate alias problem
+                cat ${dest} | sed -e "\
+                    s/^uart_pin: mmu:MMU_SEL_UART/uart_pin: mmu:MMU_GEAR_UART/; \
+                        " > ${dest}.tmp && mv ${dest}.tmp ${dest}
             else
                 # Remove uart_address lines
                 cat ${dest} | sed -e "\
@@ -879,7 +896,12 @@ copy_config_files() {
                         echo >> ${dest}.tmp
                     done
                     awk '/^# ADDITIONAL FILAMENT DRIVE/ {flag=1; count=0} flag && count++ >= 12 {print}' ${dest} >> ${dest}.tmp && mv ${dest}.tmp ${dest}
-
+                    if [ "${_hw_brd_type}" == "SKR_PICO_1" ]; then
+                        # Remove duplicate uart_pin's and add proper uart_addresses
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_1/uart_pin: mmu:MMU_GEAR_UART\nuart_address: 2/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_2/uart_pin: mmu:MMU_GEAR_UART\nuart_address: 1/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                        cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_3/uart_pin: mmu:MMU_GEAR_UART\nuart_address: 3/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                    fi
                 else
                     if [ "$HAS_SERVO" == "no" ]; then
                         sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
@@ -1453,6 +1475,7 @@ questionaire() {
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=300
+            _param_gate_preload_homing_max=200
             _param_gate_parking_distance=100
             _param_gate_final_eject_distance=100
             _param_has_filament_buffer=0
@@ -1715,6 +1738,7 @@ questionaire() {
     OPTIONS=()
     option MMB10                'BTT MMB v1.0 (with CANbus)'
     option MMB11                'BTT MMB v1.1 (with CANbus)'
+    option MMB20                'BTT MMB v2.0 (with CANbus)'
     option FYSETC_BURROWS_ERB_1 'Fysetc Burrows ERB v1'
     option FYSETC_BURROWS_ERB_2 'Fysetc Burrows ERB v2'
     option EASY_BRD_SAMD21      'Standard EASY-BRD (with SAMD21)'
@@ -1722,6 +1746,7 @@ questionaire() {
     option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
     option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
     option AFC_LITE_1           'AFC Lite v1.0'
+    option SKR_PICO_1 'BTT SKR Pico v1.0'
     option OTHER                'Not in list / Unknown'
     prompt_option opt 'MCU Type' "${OPTIONS[@]}"
     case $opt in
@@ -1731,6 +1756,10 @@ questionaire() {
             ;;
         "$MMB11")
             _hw_brd_type="MMB11"
+            pattern="Klipper_stm32"
+            ;;
+        "$MMB20")
+            _hw_brd_type="MMB20"
             pattern="Klipper_stm32"
             ;;
         "$FYSETC_BURROWS_ERB_1")
@@ -1760,6 +1789,10 @@ questionaire() {
         "$AFC_LITE_1")
             _hw_brd_type="AFC_LITE_1"
             pattern="Klipper_stm32"
+            ;;
+        "$SKR_PICO_1")
+            _hw_brd_type="SKR_PICO_1"
+            pattern="Klipper_rp2040"
             ;;
         *)
             _hw_brd_type="unknown"
@@ -2248,7 +2281,9 @@ if [ "$UNINSTALL" -eq 0 ]; then
     _param_happy_hare_version=${VERSION}
 
     # Copy config files updating from in memory parmameters or h/w settings
+    set +e
     copy_config_files
+    set -e
 
     # Special upgrades of mmu_hardware.cfg
     upgrade_mmu_hardware
