@@ -327,22 +327,24 @@ class Mmu:
         self.action_changed_macro = config.get('action_changed_macro', '_MMU_ACTION_CHANGED')
         self.print_state_changed_macro = config.get('print_state_changed_macro', '_MMU_PRINT_STATE_CHANGED')
         self.mmu_event_macro = config.get('mmu_event_macro', '_MMU_EVENT')
-        self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP').replace("''", "")
-        self.purge_macro = config.get('purge_macro', '').replace("''", "")
-        self.pre_unload_macro = config.get('pre_unload_macro', '_MMU_PRE_UNLOAD')
-        self.post_form_tip_macro = config.get('post_form_tip_macro', '_MMU_POST_FORM_TIP')
-        self.post_unload_macro = config.get('post_unload_macro', '_MMU_POST_UNLOAD')
-        self.pre_load_macro = config.get('pre_load_macro', '_MMU_PRE_LOAD')
-        self.post_load_macro = config.get('post_load_macro', '_MMU_POST_LOAD_MACRO')
-        self.unload_sequence_macro = config.get('unload_sequence_macro', '_MMU_UNLOAD_SEQUENCE')
-        self.load_sequence_macro = config.get('load_sequence_macro', '_MMU_LOAD_SEQUENCE')
+        self.form_tip_macro = config.get('form_tip_macro', '_MMU_FORM_TIP').replace("'", "")
+        self.purge_macro = config.get('purge_macro', '').replace("'", "")
+        self.pre_unload_macro = config.get('pre_unload_macro', '_MMU_PRE_UNLOAD').replace("'", "")
+        self.post_form_tip_macro = config.get('post_form_tip_macro', '_MMU_POST_FORM_TIP').replace("'", "")
+        self.post_unload_macro = config.get('post_unload_macro', '_MMU_POST_UNLOAD').replace("'", "")
+        self.pre_load_macro = config.get('pre_load_macro', '_MMU_PRE_LOAD').replace("'", "")
+        self.post_load_macro = config.get('post_load_macro', '_MMU_POST_LOAD_MACRO').replace("'", "")
+        self.unload_sequence_macro = config.get('unload_sequence_macro', '_MMU_UNLOAD_SEQUENCE').replace("'", "")
+        self.load_sequence_macro = config.get('load_sequence_macro', '_MMU_LOAD_SEQUENCE').replace("'", "")
+
+        # These macros are not currently exposed but provide future flexability
         self.error_dialog_macro = config.get('error_dialog_macro', '_MMU_ERROR_DIALOG') # Not exposed
-        self.clear_position_macro = config.get('clear_position_macro', '_MMU_CLEAR_POSITION') # Not exposed
-        self.save_position_macro = config.get('save_position_macro', '_MMU_SAVE_POSITION') # Not exposed
-        self.restore_position_macro = config.get('restore_position_macro', '_MMU_RESTORE_POSITION') # Not exposed
-        self.park_macro = config.get('park_macro', '_MMU_PARK') # Not exposed
         self.error_macro = config.get('error_macro', '_MMU_ERROR') # Not exposed
         self.toolhead_homing_macro = config.get('toolhead_homing_macro', '_MMU_AUTO_HOME') # Not exposed
+        self.park_macro = config.get('park_macro', '_MMU_PARK') # Not exposed
+        self.save_position_macro = config.get('save_position_macro', '_MMU_SAVE_POSITION') # Not exposed
+        self.restore_position_macro = config.get('restore_position_macro', '_MMU_RESTORE_POSITION') # Not exposed
+        self.clear_position_macro = config.get('clear_position_macro', '_MMU_CLEAR_POSITION') # Not exposed
 
         # User default (reset state) gate map and TTG map
         self.default_ttg_map = list(config.getintlist('tool_to_gate_map', []))
