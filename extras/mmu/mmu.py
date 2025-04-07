@@ -8322,8 +8322,11 @@ class Mmu:
                 gate = self.ttg_map[tool]
                 tool_rgb_colors.append(self._color_to_rgb_hex(self.gate_color[gate]))
 
-        self.slicer_tool_map['purge_volumes'] = self._generate_purge_matrix(tool_rgb_colors, min_purge, max_purge, multiplier)
-        self.log_always("Purge map updated. Use 'MMU_SLICER_TOOL_MAP PURGE_MAP=1' to view")
+        try:
+            self.slicer_tool_map['purge_volumes'] = self._generate_purge_matrix(tool_rgb_colors, min_purge, max_purge, multiplier)
+            self.log_always("Purge map updated. Use 'MMU_SLICER_TOOL_MAP PURGE_MAP=1' to view")
+        except Exception as e:
+            raise MmuError("Error generating purge volues: %s" % str(e))
 
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
     def cmd_MMU_CHECK_GATE(self, gcmd):
