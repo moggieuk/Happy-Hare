@@ -321,7 +321,7 @@ slicer_tip_park_pos: 0			# This specifies the position of filament in extruder a
 # Often it is useful to increase the extruder current for the often rapid puring movement to ensure high torque and no skipped steps
 #
 force_purge_standalone: 0 		# 0 = Slicer wipetower in print else standalone, 1 = Always standalone purging (TURN WIPETOWER OFF!)
-purge_macro:				# Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER
+purge_macro: _MMU_PURGE			# Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER, _MMU_PURGE
 extruder_purge_current: 100		# % of extruder current (100%-150%) to use when purging (100 to disable)
 
 
@@ -563,7 +563,7 @@ update_bit_max_time: 1		# 1 = Increase BIT_MAX_TIME, 0 = Leave the klipper defau
 #
 # 'pause_macro' defines what macro to call on MMU error (must put printer in paused state)
 # Other macros are detailed in 'mmu_sequence.cfg'
-# Also see form_tip_macro in Tip Forming section
+# Also see form_tip_macro in Tip Forming section and purge_macro in Purging section
 #
 pause_macro: PAUSE 					# What macro to call to pause the print
 action_changed_macro: _MMU_ACTION_CHANGED		# Called when action (printer.mmu.action) changes
