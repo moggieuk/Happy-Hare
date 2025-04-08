@@ -3683,15 +3683,31 @@ class Mmu:
             if self.paused_extruder_temp < klipper_minimum_temp:
                 # Don't wait if just messing with cold printer
                 wait = False
+
         elif source == "auto": # Normal case
             if self.is_mmu_paused():
                 # In a pause we always want to restore the temp we paused at
-                new_target_temp = self.paused_extruder_temp if self.paused_extruder_temp is not None else current_temp # Pause temp should not be None
-                source = "pause"
+                if self.paused_extruder_temp is not None:
+                    new_target_temp = self.paused_extruder_temp
+                    source = "pause"
+                else: # Pause temp should not be None
+                    new_target_temp = current_temp
+                    source = "current"
+
             elif self.is_printing():
-                # While actively printing, we want to defer to the slicer for temperature
-                new_target_temp = current_target_temp
-                source = "slicer"
+                if current_target_temp < klipper_minimum_temp:
+                    # Almost certainly means the initial tool change before slicer has set
+                    if self.gate_selected >= 0:
+                        new_target_temp = gate_temp
+                        source = "gatemap"
+                    else:
+                        new_target_temp = self.default_extruder_temp
+                        source = "mmu default"
+                else:
+                    # While actively printing, we want to defer to the slicer for temperature
+                    new_target_temp = current_target_temp
+                    source = "slicer"
+
             else:
                 # Standalone "just messing" case
                 if current_target_temp > klipper_minimum_temp:
@@ -3705,19 +3721,13 @@ class Mmu:
                         new_target_temp = self.default_extruder_temp
                         source = "mmu default"
 
-            if new_target_temp < klipper_minimum_temp:
-                #new_target_temp = klipper_minimum_temp
-                #source = "klipper minimum"
-
-                # If, for some reason, the target temp is below Klipper's minimum, set to minimum
-                # set the target to Happy Hare's default. This strikes a balance between utility
-                # and safety since Klipper's min is truly a bare minimum but our default should be
-                # a more realistic temperature for safe operation.
-                new_target_temp = default_extruder_temp
+            # Final safety check
+            if new_target_temp <= klipper_minimum_temp:
+                new_target_temp = self.default_extruder_temp
                 source = "mmu default"
 
         if new_target_temp > current_target_temp:
-            if source in ["mmu default", "gatemap", "klipper minimum"]:
+            if source in ["mmu default", "gatemap"]:
                 # We use error log channel to avoid heating surprise. This will also cause popup in Klipperscreen
                 self.log_error("Warning: Automatically heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             else:
