@@ -472,6 +472,7 @@ class Mmu:
         self.log_statistics = config.getint('log_statistics', 0, minval=0, maxval=1)
         self.log_visual = config.getint('log_visual', 1, minval=0, maxval=1)
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
+        self.log_m117_messages = config.getint('log_m117_messages', 1, minval=0, maxval=1)
 
         # Cosmetic console stuff
         self.console_stat_columns = list(config.getlist('console_stat_columns', ['unload', 'load', 'total']))
@@ -6001,7 +6002,8 @@ class Mmu:
     # Important to always inform use of "toolchange" operation is case there is an error and manual recovery is necessary
     def _note_toolchange(self, m117_msg):
         self._last_toolchange = m117_msg
-        self.gcode.run_script_from_command("M117 %s" % m117_msg)
+        if self.log_m117_messages:
+            self.gcode.run_script_from_command("M117 %s" % m117_msg)
 
     # Tell the sequence macros about where to move to next
     def _set_next_position(self, next_pos):
@@ -6531,7 +6533,8 @@ class Mmu:
                                     self.recover_filament_pos()
 
                             self._track_swap_completed()
-                            self.gcode.run_script_from_command("M117 T%s" % tool)
+                            if self.log_m117_messages:
+                                self.gcode.run_script_from_command("M117 T%s" % tool)
                         finally:
                             self._track_time_end('total')
                             self._next_tool = self.TOOL_GATE_UNKNOWN
@@ -7111,6 +7114,7 @@ class Mmu:
         self.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.log_file_level, minval=0, maxval=4)
         self.log_visual = gcmd.get_int('LOG_VISUAL', self.log_visual, minval=0, maxval=1)
         self.log_statistics = gcmd.get_int('LOG_STATISTICS', self.log_statistics, minval=0, maxval=1)
+        self.log_m117_messages = gcmd.get_int('LOG_M117_MESSAGES', self.log_m117_messages, minval=0, maxval=1)
 
         console_gate_stat = gcmd.get('CONSOLE_GATE_STAT', self.console_gate_stat)
         if console_gate_stat not in self.GATE_STATS_TYPES:
@@ -7257,6 +7261,7 @@ class Mmu:
             if self.mmu_logger:
                 msg += "\nlog_file_level = %d" % self.log_file_level
             msg += "\nlog_statistics = %d" % self.log_statistics
+            msg += "\nlog_m117_messages = %d" % self.log_m117_messages
             msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
 
             msg += "\n\nOTHER:"

@@ -58,6 +58,7 @@ log_file_level: 2			# Can also be set to -1 to disable log file completely
 log_statistics: 1 			# 1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
 log_visual: 1				# 1 log visual representation of filament, 0 = disable
 log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = summary (default), 0 = disable
+log_m117_messages: 1			# Whether send toolchange message via M117 to screen
 
 
 # Movement speeds ------------------------------------------------------------------------------------------------------
