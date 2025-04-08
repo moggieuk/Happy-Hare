@@ -344,7 +344,7 @@ slicer_tip_park_pos: 0                  # This specifies the position of filamen
 # Often it is useful to increase the extruder current for the often rapid puring movement to ensure high torque and no skipped steps
 #
 force_purge_standalone: 0               # 0 = Slicer wipetower in print else standalone, 1 = Always standalone purging (TURN WIPETOWER OFF!)
-purge_macro:				# Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER
+purge_macro: _MMU_PURGE			# Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER, _MMU_PURGE
 extruder_purge_current: 100             # % of extruder current (100%-150%) to use when purging (100 to disable)
 
 
@@ -384,20 +384,21 @@ sync_multiplier_low: 0.95               # Minimum factor to apply
 # ███████╗███████║██║     ╚██████╔╝╚██████╔╝███████╗███████╗██║  ██║
 # ╚══════╝╚══════╝╚═╝      ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
 #                                                                  
-# If your MMU has a dc motor (ofter N20) controlled respooler/assist then how it operates can be controlled with these
+# If your MMU has a dc motor (often N20) controlled respooler/assist then how it operates can be controlled with these
 # settings. Typically the espooler will be controlled with PWM signal. This will be at the maximum at speeds equal or
 # above 'espooler.max_stepper_speed'. The PWM signal will scale downwards towards 0 for slower speeds. The falloff being
 # controlled by the 'espooler_speed_exponent' setting according to this formula and allows for non-linear characteristics
 # the DC motor (0.5 is a good starting value).
 # 
-#     espooler_pwm = {stepper_speed} / {max_stepper_speed}) ^ {speed_exponent}
+#     espooler_pwm = (stepper_speed / espooler_max_stepper_speed) ^ {espooler_speed_exponent}
 #
 # Regardless of h/w configuration you can enable/disable actions with the 'espooler_operations' list. E.g. remove 'play' to
 # turn off operation while printing. Options are:
 #
 #    rewind - when filament is being unloaded under MMU control (aka respool)
-#    assist - when filament is being loaded under MMU control
-#    print  - while printing. Generally set 'espooler_printing_power' to a low percentage just to allow motor to be turned freely
+#    assist - when filament is being loaded under MMU control (% of "rewind" speed but with minimum of "print" power)
+#    print  - while printing. Generally set 'espooler_printing_power' to a low percentage just to allow motor to be turned
+#             freely or set to 0 to enable/allow "burst" assist movements
 #
 # If using a digitally controlled espooler motor (not PWM) then you should turn off the "print" mode and set
 # 'espooler_min_stepper_speed' to prevent "over movement"
@@ -406,8 +407,15 @@ espooler_min_distance: 30			# Individual stepper movements less than this distan
 espooler_max_stepper_speed: 300			# Gear stepper speed at which espooler will be at maximum power
 espooler_min_stepper_speed: 0			# Gear stepper speed at which espooler will become inactive (useful for non PWM control)
 espooler_speed_exponent: 0.5			# Controls non-linear espooler power relative to stepper speed (see notes)
-espooler_printing_power: 10			# If >0, fixes the % of PWM power while printing.
+espooler_assist_reduced_speed: 50		# Control the % of the rewind speed that is applied to assisting load (want rewind to be faster)
+espooler_printing_power: 0			# If >0, fixes the % of PWM power while printing. 0=allows burst movement
 espooler_operations: rewind, assist, print	# List of operational modes (allows disabling even if h/w is configured)
+#
+# The following burst configuration is used only if 'print' operation is enabled and 'espooler_printing_power: 0'
+#
+espooler_assist_extruder_move_length: 100	# Distance (mm) extruder needs to move between each assist burst
+espooler_assist_burst_power: 100		# The % power of the burst move
+espooler_assist_burst_duration: 3.0		# The duration of the burst move is seconds
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------
@@ -587,7 +595,7 @@ update_bit_max_time: 1		# 1 = Increase BIT_MAX_TIME, 0 = Leave the klipper defau
 #
 # 'pause_macro' defines what macro to call on MMU error (must put printer in paused state)
 # Other macros are detailed in 'mmu_sequence.cfg'
-# Also see form_tip_macro in Tip Forming section
+# Also see form_tip_macro in Tip Forming section and purge_macro in Purging section
 #
 pause_macro: PAUSE 					# What macro to call to pause the print
 action_changed_macro: _MMU_ACTION_CHANGED		# Called when action (printer.mmu.action) changes
