@@ -22,6 +22,7 @@ MAX_SCHEDULE_TIME = 5.0
 class MmuESpooler:
 
     def __init__(self, config, first_gate=0, num_gates=23):
+        self.config = config
         self.first_gate = first_gate
         self.num_gates = num_gates
         self.name = config.get_name().split()[-1]
@@ -98,6 +99,13 @@ class MmuESpooler:
         self.toolhead = self.printer.lookup_object('toolhead')
         self.mmu = self.printer.lookup_object('mmu')
 
+        # Setup extruder monitor
+        try:
+            self.extruder_monitor = self.ExtruderMonitor(self)
+        except Exception as e:
+            self.mmu.log_error(str(e))
+            self.extruder_monitor = None
+
     def _key(self, gate):
         return '%s_gate_%d' % (self.name, gate)
 
@@ -109,26 +117,53 @@ class MmuESpooler:
         real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
         return real_pin == ''
 
-    # This event will advance the espooler by the speed/duration if in "in-print assist" mode
+    # This event will advance the espooler by the power/duration if in "in-print assist" mode
     def _handle_espooler_advance(self, gate, value, duration):
         from .mmu import Mmu # For operation names
 
-        cur_op, cur_value = self.operation[self._key(gate)]
-        msg = "Got espooler advance event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
-        if cur_op == Mmu.ESPOOLER_PRINT and cur_value == 0:
-            print_time = self.toolhead.get_last_move_time()
-            self.update(gate, value, Mmu.ESPOOLER_PRINT, print_time=print_time)      # On
-            self.update(gate, 0, Mmu.ESPOOLER_OFF, print_time=print_time + duration) # Off
-        else:
-            msg += " (Ignored because espooler state is %s, value: %.2f)" % (cur_op, cur_value)
-        self.mmu.log_debug(msg)
+        # If gate not specifed, find the (first) active gate
+        gate = (
+            gate if gate is not None else 
+            next(
+                (g for g in range(self.first_gate, self.first_gate + self.num_gates) 
+                 if self.operation[self._key(g)][0] == Mmu.ESPOOLER_PRINT), 
+                None
+            )
+        )
+
+        if gate is not None:
+            cur_op, cur_value = self.operation[self._key(gate)]
+            msg = "Got espooler advance event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
+            if cur_op == Mmu.ESPOOLER_PRINT and cur_value == 0:
+                print_time = self.toolhead.get_last_move_time()
+                self.update(gate, value, None, print_time=print_time) # On
+                self.update(gate, 0, None, print_time=print_time + duration)        # Off
+            else:
+                msg += " (Ignored because espooler state is %s, value: %.2f)" % (cur_op, cur_value)
+            self.mmu.log_debug(msg)
+
+    def advance(self):
+        # Advance by "mmu defined" parameters
+        self._handle_espooler_advance(None, self.mmu.espooler_assist_burst_power / 100, self.mmu.espooler_assist_burst_duration)
 
     # Set the PWM or digital signal
     def update(self, gate, value, operation, print_time=None):
         from .mmu import Mmu # For operation names
 
-        if operation == Mmu.ESPOOLER_OFF:
-            value = 0
+        # None operation is special case of updating without changing operation (typically end of in-print assist burst)
+        if operation is None:
+            operation = self.operation[self._key(gate)][0]
+        else:
+            if operation == Mmu.ESPOOLER_OFF:
+                value = 0
+            if operation == Mmu.ESPOOLER_PRINT and value == 0.:
+                # Only allow bursts if default "in-print assist" power is 0
+                if self.extruder_monitor:
+                    self.extruder_monitor.watch(True)
+            else:
+                if self.extruder_monitor:
+                    self.extruder_monitor.watch(False)
+
         self.operation[self._key(gate)] = (operation, value)
 
         def _schedule_set_pin(name, value, print_time=None):
@@ -177,6 +212,51 @@ class MmuESpooler:
             'respool_gates': self.respool_gates,
             'assist_gates': self.assist_gates
         }
+
+
+    # Class to monitor extruder movement an generate espooler "advance" events
+    class ExtruderMonitor:
+
+        CHECK_MOVEMENT_TIMEOUT = 1. # How often to check extruder movement
+
+        def __init__(self, espooler):
+            self.espooler = espooler
+            self.reactor = espooler.printer.get_reactor()
+            self.estimated_print_time = espooler.printer.lookup_object('mcu').estimated_print_time
+            self.extruder = espooler.printer.lookup_object(espooler.mmu.extruder_name, None)
+            if not self.extruder:
+                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu.extruder_name)
+
+            self.enabled = False
+            self.last_extruder_pos = None
+            self._extruder_pos_update_timer = self.reactor.register_timer(self._extruder_pos_update_event)
+
+        def watch(self, enable):
+            if not self.enabled and enable:
+                self.last_extruder_pos = None
+                self.enabled = True
+                self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NOW) # Enabled
+            elif not enable:
+                self.last_extruder_pos = None
+                self.enabled = False
+                self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NEVER) # Disabled
+
+        def _get_extruder_pos(self, eventtime=None):
+            if eventtime is None:
+                eventtime = self.reactor.monotonic()
+            print_time = self.estimated_print_time(eventtime)
+            if self.extruder:
+                return self.extruder.find_past_position(print_time)
+            else:
+                return 0.
+
+        # Called periodically to check extruder movement
+        def _extruder_pos_update_event(self, eventtime):
+            extruder_pos = self._get_extruder_pos(eventtime)
+            if self.last_extruder_pos is None or extruder_pos > self.last_extruder_pos + self.espooler.mmu.espooler_assist_extruder_move_length:
+                self.espooler.advance() # Initiate burst
+                self.last_extruder_pos = extruder_pos
+            return eventtime + self.CHECK_MOVEMENT_TIMEOUT
 
 def load_config_prefix(config):
     return MmuESpooler(config)

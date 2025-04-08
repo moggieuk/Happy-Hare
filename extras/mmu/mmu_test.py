@@ -236,8 +236,8 @@ class MmuTest:
             gate = gcmd.get_int('GATE', 0, minval=-2, maxval=self.mmu.num_gates)
             duration = gcmd.get_float('DURATION', 1., above=0.)
             value = gcmd.get_float('VALUE', .5, above=0., maxval=1.)
-            self.mmu.log_info("Sending 'mmu:espooler_advance event(gate=%d, duration=%.2fs, pwm_value=%.2f)" % (gate, duration, value))
-            self.mmu.printer.send_event("mmu:espooler_advance", self.mmu.toolhead.get_last_move_time(), gate, duration, value)
+            self.mmu.log_info("Sending 'mmu:espooler_advance event(gate=%d, pwm_value=%.2f, duration=%.2fs)" % (gate, value, duration))
+            self.mmu.printer.send_event("mmu:espooler_advance", gate, value, duration)
 
         if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
             self.mmu.log_info("UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s, UI_CASCADE=%s" % (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE))

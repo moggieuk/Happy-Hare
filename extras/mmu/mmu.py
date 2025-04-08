@@ -443,8 +443,12 @@ class Mmu:
         self.espooler_min_stepper_speed = config.getfloat('espooler_min_stepper_speed', 0., minval=0., below=self.espooler_max_stepper_speed)
         self.espooler_speed_exponent = config.getfloat('espooler_speed_exponent', 0.5, above=0)
         self.espooler_assist_reduced_speed = config.getint('espooler_assist_reduced_speed', 50, minval=0, maxval=100)
-        self.espooler_printing_power = config.getint('espooler_printing_power', 10, minval=0, maxval=100)
+        self.espooler_printing_power = config.getint('espooler_printing_power', 0, minval=0, maxval=100)
+        self.espooler_assist_extruder_move_length = config.getfloat("espooler_assist_extruder_move_length", 100, above=10.)
+        self.espooler_assist_burst_power = config.getint("espooler_assist_burst_power", 50, minval=0, maxval=100)
+        self.espooler_assist_burst_duration = config.getfloat("espooler_assist_burst_duration", 4, above=0., maxval=10.)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
+
 
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
@@ -3906,15 +3910,27 @@ class Mmu:
                     msg += "not fitted"
             self.log_always(msg)
             return
-
-        if operation not in self.ESPOOLER_OPERATIONS:
-            raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(self.ESPOOLER_OPERATIONS))
+        operation = operation.lower()
 
         gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates)
         if gate is None:
             gate = self.gate_selected
         if gate < 0:
             raise gcmd.error("Invalid gate")
+
+        if operation == "burst":
+            power = gcmd.get_int('POWER', self.espooler_assist_burst_power, minval=0, maxval=100)
+            duration = gcmd.get_float('DURATION', 3. , above=0., maxval=10.)
+            cur_op, cur_value = self.espooler.get_operation(gate)
+            if cur_op == self.ESPOOLER_PRINT:
+                self.log_info("Sending 'mmu:espooler_advance' event(gate=%d, power=%d, duration=%.2fs)" % (gate, power, duration))
+                self.printer.send_event("mmu:espooler_advance", gate, power / 100., duration)
+            else:
+                raise gcmd.error("Espooler on gate %d is not in 'print' mode" % gate)
+            return
+
+        if operation not in self.ESPOOLER_OPERATIONS:
+            raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(self.ESPOOLER_OPERATIONS))
 
         default_power = self.espooler_printing_power if operation == self.ESPOOLER_PRINT else 50
         power = gcmd.get_int('POWER', default_power, minval=0, maxval=100) if operation != self.ESPOOLER_OFF else 0
@@ -8322,8 +8338,11 @@ class Mmu:
                 gate = self.ttg_map[tool]
                 tool_rgb_colors.append(self._color_to_rgb_hex(self.gate_color[gate]))
 
-        self.slicer_tool_map['purge_volumes'] = self._generate_purge_matrix(tool_rgb_colors, min_purge, max_purge, multiplier)
-        self.log_always("Purge map updated. Use 'MMU_SLICER_TOOL_MAP PURGE_MAP=1' to view")
+        try:
+            self.slicer_tool_map['purge_volumes'] = self._generate_purge_matrix(tool_rgb_colors, min_purge, max_purge, multiplier)
+            self.log_always("Purge map updated. Use 'MMU_SLICER_TOOL_MAP PURGE_MAP=1' to view")
+        except Exception as e:
+            raise MmuError("Error generating purge volues: %s" % str(e))
 
     cmd_MMU_CHECK_GATE_help = "Automatically inspects gate(s), parks filament and marks availability"
     def cmd_MMU_CHECK_GATE(self, gcmd):
