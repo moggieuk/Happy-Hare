@@ -3706,8 +3706,15 @@ class Mmu:
                         source = "mmu default"
 
             if new_target_temp < klipper_minimum_temp:
-                new_target_temp = klipper_minimum_temp
-                source = "klipper minimum"
+                #new_target_temp = klipper_minimum_temp
+                #source = "klipper minimum"
+
+                # If, for some reason, the target temp is below Klipper's minimum, set to minimum
+                # set the target to Happy Hare's default. This strikes a balance between utility
+                # and safety since Klipper's min is truly a bare minimum but our default should be
+                # a more realistic temperature for safe operation.
+                new_target_temp = default_extruder_temp
+                source = "mmu default"
 
         if new_target_temp > current_target_temp:
             if source in ["mmu default", "gatemap", "klipper minimum"]:
