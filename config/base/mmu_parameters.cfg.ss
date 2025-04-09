@@ -55,7 +55,7 @@ gear_max_accel: 1500			# Never to be exceeded gear acceleration regardless of sp
 servo_duration: 0.5			# Duration of PWM burst sent to servo (default non-active mode, automatically turns off)
 servo_dwell: 0.8			# Minimum time given to servo to complete movement prior to next move
 servo_always_active: 0			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
-#selector_gate_angles: 45, 90, 135, 180	# Optionally set default list of gate angles (overriden by calibration)
+selector_gate_angles: 45, 90, 135, 180	# Optionally set default list of gate angles (overriden by calibration)
 selector_bypass_angle: -1		# Optionally set default servo angle when bypass is selected, -1=No default
 selector_release_angle: -1		# Optionally force a specific "release" angle, -1=Default (between gate angles) behavior
 
