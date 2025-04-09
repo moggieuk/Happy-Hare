@@ -1409,7 +1409,7 @@ questionaire() {
     option PICO_MMU       'PicoMMU'
     option QUATTRO_BOX    'QuattroBox v1.0'
     option QUATTRO_BOX11  'QuattroBox v1.1'
-    #option MMX            'MMX'
+    option MMX            'MMX'
     #option VVD            'BigTreeTech VVD'
     #option KMS            'Biqu KMS'
     option OTHER          'Other / Custom (or just want starter config files)'
@@ -1787,12 +1787,11 @@ questionaire() {
             ;;
 
         "$MMX")
-            # Comming soon...
             HAS_ENCODER=no
             HAS_SELECTOR=no
             HAS_SERVO=yes
             SETUP_SELECTOR_TOUCH=no
-            _hw_mmu_vendor="PicoMMU"
+            _hw_mmu_vendor="MMX"
             _hw_mmu_version="1.0"
             _hw_selector_type=ServoSelector
             _hw_variable_bowden_lengths=0
