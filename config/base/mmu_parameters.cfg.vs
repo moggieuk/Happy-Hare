@@ -391,6 +391,8 @@ espooler_operations: rewind, assist, print	# List of operational modes (allows d
 espooler_assist_extruder_move_length: 100	# Distance (mm) extruder needs to move between each assist burst
 espooler_assist_burst_power: 100		# The % power of the burst move
 espooler_assist_burst_duration: 0.4		# The duration of the burst move is seconds
+espooler_assist_burst_trigger: 0		# If trigger assist switch is fitted 0=disable, 1=enable
+espooler_assist_burst_trigger_max: 3		# If trigger assist switch is fitted this limits the max number of back-to-back advances
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------
