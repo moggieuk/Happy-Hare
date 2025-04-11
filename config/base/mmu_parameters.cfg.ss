@@ -45,14 +45,19 @@ gear_max_accel: 1500			# Never to be exceeded gear acceleration regardless of sp
 # ███████║███████╗██║  ██║ ╚████╔╝ ╚██████╔╝
 # ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ 
 #
-# Note that selector servo positions are stored in `mmu_vars.cfg` after calibration
+# Selector servo positions are stored in `mmu_vars.cfg` after calibration.
+# Note that the "release angle" is by default the nearest position between calibrated selection angles. This can be overriden
+# by setting and explicit servo_release_angle
 #
-# Note that leaving the servo active when down can stress the electronics and is not recommended unless you have a goo
+# Note that leaving the servo active when down can stress the electronics and is not recommended unless you have a good
 # 5v power supply. Make sure your hardware is suitable for the job!
 #
 servo_duration: 0.5			# Duration of PWM burst sent to servo (default non-active mode, automatically turns off)
 servo_dwell: 0.8			# Minimum time given to servo to complete movement prior to next move
-servo_always_active: 0 			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
+servo_always_active: 0			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
+#selector_gate_angles: 45, 90, 135, 180	# Optionally set default list of gate angles (overriden by calibration)
+selector_bypass_angle: -1		# Optionally set default servo angle when bypass is selected, -1=No default
+selector_release_angle: -1		# Optionally force a specific "release" angle, -1=Default (between gate angles) behavior
 
 
 # Logging --------------------------------------------------------------------------------------------------------------
@@ -328,16 +333,18 @@ slicer_tip_park_pos: 0			 # This specifies the position of filament in extruder 
 # If equipped with TMC drivers the current of the gear and extruder motors can be controlled to optimize performance.
 # This can be useful to control gear stepper temperature when printing with synchronized motor
 #
-sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
+sync_to_extruder: 0                     # Gear motor is synchronized to extruder during print
+sync_gear_current: 70                   # % of gear_stepper current (10%-100%) to use when syncing with extruder during print
+sync_form_tip: 0                        # Synchronize during standalone tip formation (initial part of unload)
 
 # Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
 # extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
 # binary supplied by one or two switches: -1 (expanded) and 1 (compressed) of proportional value between -1.0 and 1.0
 # Requires [mmu_sensors] setting
 #
-sync_feedback_enable: 0			# 0 = Turn off (even with fitted sensor), 1 = Turn on
-sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
-sync_multiplier_low: 0.95		# Minimum factor to apply
+sync_feedback_enable: 0                 # 0 = Turn off (even with fitted sensor), 1 = Turn on
+sync_multiplier_high: 1.05              # Maximum factor to apply to gear stepper 'rotation_distance'
+sync_multiplier_low: 0.95               # Minimum factor to apply
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------
@@ -385,10 +392,11 @@ pending_spool_id_timeout: 20            # Seconds after which this pending spool
 #    slicer   - Color from slicer tool map (what the slicer expects)
 #    allgates - Color from all the tools in the gate map after running through the TTG map
 #    gatemap  - As per gatemap but hide empty tools
+#    off      - Turns off support
 #
 # Note: Happy Hare will also add the 'spool_id' variable to the Tx macro if spoolman is enabled
 #
-t_macro_color: slicer			# 'slicer' = default | 'allgates' = mmu | 'gatemap' = mmu without empty gates
+t_macro_color: slicer			# 'slicer' = default | 'allgates' = mmu | 'gatemap' = mmu without empty gates | 'off'
 
 
 # Print Statistics ---------------------------------------------------------------------------------------------------

@@ -81,18 +81,18 @@ Some users have inquired about making donations to support this project (and to 
 - Moonraker update-manager support
 - Moonraker gcode pre-parsing to extract important print information
 - Complete persistence of state and statistics across restarts
-- Highly configurable speed control
 - Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!
 - Vast customization options most of which can be changed and tested at runtime
 - Integrated help, testing and soak-testing procedures
 - Gcode pre-processor check that all the required tools are avaialble!
 - Drives LEDs for functional feed and some bling!
 - Built in tip forming and filament cutter support (both toolhead and at MMU)
+- Klipperscreen and Mainsail/Fluidd UI
 - Lots more... Detail change log can be found in the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki/Change-Log)
 
-Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control!
+Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control and new Mainsail/Fluidd integration!
 
-<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="600" alt="KlipperScreen-Happy Hare edition"></p>
+<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="60%" alt="KlipperScreen-Happy Hare edition"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/mainsail_mmu_panel.png" width="35%" alt="Mailsail/Fluidd support"></p>
 
 <br>
  
@@ -118,18 +118,14 @@ MMU's are complexd! Fortunately Happy Hare has elaborate documentation logically
 
 **Other Resources:**
 <div align="left">
-<a href="https://www.youtube.com/watch?v=uaPLuWJBdQU"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube1.png" width="30%"></a>
-German instructional video created by Crydteam
-<!--
-    <img src="https://i9.ytimg.com/vi_webp/uaPLuWJBdQU/maxresdefault.webp?v=6522d1a6&sqp=CKycn6kG&rs=AOn4CLBCiHQsjGJ0c8ywvkxy9uWEk_yUXw" 
-         alt="Everything Is AWESOME" 
-         style="width:50%;">
--->
+<a href="https://www.youtube.com/watch?v=S4SVm6W368A"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube0.png" width="30%"></a>
+Great (english) overview including Mainsail UI support
 
-<p><br>
+<br><a href="https://www.youtube.com/watch?v=uaPLuWJBdQU"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube1.png" width="30%"></a>
+Instructional video (german) created by Crydteam
 
-<a href="https://www.youtube.com/watch?v=FCl5NfQnulg"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube2.png" width="30%"></a>
-English Happy Hare introduction by Silverback
+<br><a href="https://www.youtube.com/watch?v=FCl5NfQnulg"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/youtube2.png" width="30%"></a>
+Happy Hare introduction (introduction) by Silverback
 </div>
 
 </td>
