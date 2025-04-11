@@ -810,22 +810,22 @@ EOF
 #respool_motor_pin_0: mmu:MMU_ESPOOLER_RWD_0	# PWM (or digital) pin for rewind/respool movement
 #assist_motor_pin_0: mmu:MMU_ESPOOLER_FWD_0	# PWM (or digital) pin for forward motor movement
 #enable_motor_pin_0: mmu:MMU_ESPOOLER_EN_0	# Digital output for Afc mcu
-#assist_trigger_pin_0:				# Trigger pin for sensing need to assist during print
+#assist_trigger_pin_0: mmu:MMU_ESPOOLER_TRIG_0	# Trigger pin for sensing need to assist during print
 #
 #respool_motor_pin_1: mmu:MMU_ESPOOLER_RWD_1
 #assist_motor_pin_1: mmu:MMU_ESPOOLER_FWD_1
 #enable_motor_pin_1: mmu:MMU_ESPOOLER_EN_1
-#assist_trigger_pin_1:
+#assist_trigger_pin_1: mmu:MMU_ESPOOLER_TRIG_1
 #
 #respool_motor_pin_2: mmu:MMU_ESPOOLER_RWD_2
 #assist_motor_pin_2: mmu:MMU_ESPOOLER_FWD_2
 #enable_motor_pin_2: mmu:MMU_ESPOOLER_EN_2
-#assist_trigger_pin_2:
+#assist_trigger_pin_2: mmu:MMU_ESPOOLER_TRIG_2
 #
 #respool_motor_pin_3: mmu:MMU_ESPOOLER_RWD_3
 #assist_motor_pin_3: mmu:MMU_ESPOOLER_FWD_3
 #enable_motor_pin_3: mmu:MMU_ESPOOLER_EN_3
-#assist_trigger_pin_3:
+#assist_trigger_pin_3: mmu:MMU_ESPOOLER_TRIG_3
 
 EOF
 )
