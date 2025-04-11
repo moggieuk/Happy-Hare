@@ -5056,7 +5056,7 @@ class Mmu:
             if reported and before_extruder:
                 # The cutter is located before the extruder.
                 # Therefore the filament is definitely somewhere before the extruder entry
-                self._set_filament_pos_state(self.FILAMENT_POS_HOMED_EXTRUDER)
+                self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
             elif detected or extruder_only:
                 # Definitely in extruder
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
