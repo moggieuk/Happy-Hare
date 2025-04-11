@@ -5573,12 +5573,13 @@ class Mmu:
 
     # Turn on print espooler assist mode for current gate
     def _espooler_assist_on(self):
-        if self.is_printing() and self.ESPOOLER_PRINT in self.espooler_operations:
+        if self.has_espooler() and self.is_printing() and self.ESPOOLER_PRINT in self.espooler_operations:
             self.espooler.set_operation(self.gate_selected, self.espooler_printing_power / 100, self.ESPOOLER_PRINT)
 
     # Turn off espooler in-print assist mode for all gates
     def _espooler_assist_off(self):
-        self.espooler.set_operation(None, 0, self.ESPOOLER_PRINT)
+        if self.has_espooler():
+            self.espooler.set_operation(None, 0, self.ESPOOLER_PRINT)
 
 
 ##############################################
