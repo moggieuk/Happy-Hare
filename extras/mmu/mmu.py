@@ -5074,7 +5074,7 @@ class Mmu:
             with self._wrap_pressure_advance(0., "for tip forming"):
                 gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
                 self.log_info("Forming tip...")
-                self.wrap_gcode_command("%s %s %s %s" % (self.form_tip_macro, f"TOOLHEAD_EXTRUDER_TO_NOZZLE={self.toolhead_extruder_to_nozzle}", "SYNC=1" if self.mmu_toolhead.is_gear_synced_to_extruder() else "SYNC=0", "FINAL_EJECT=1" if test else ""), exception=True, wait=True)
+                self.wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True, wait=True)
 
             final_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
             stepper_movement = (initial_mcu_pos - final_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
