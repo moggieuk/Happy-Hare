@@ -5108,10 +5108,9 @@ class Mmu:
                 else:
                     self.log_trace(msg)
 
-            if reported and park_pos > self.toolhead_extruder_to_nozzle:
+            if reported and self.has_toolhead_cutter and park_pos > self.toolhead_extruder_to_nozzle:
                 self.log_debug("park_pos (%.1fmm) is greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assuming cutter is located before extruder." % (park_pos, self.toolhead_extruder_to_nozzle))
                 before_extruder = True
-                filament_remaining = max(0., filament_remaining)
             elif not test and park_pos > self.toolhead_extruder_to_nozzle:
                 self.log_error("Warning: park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
                 park_pos = self.toolhead_extruder_to_nozzle
