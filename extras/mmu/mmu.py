@@ -3216,7 +3216,9 @@ class Mmu:
             self.wrap_gcode_command(self.error_macro)
 
         if run_pause_macro:
-            self.wrap_gcode_command(self.pause_macro)
+            # Report errors and ensure we always pause
+            self.wrap_gcode_command(self.pause_macro, exception=False)
+            self.pause_resume.send_pause_command()
 
         if recover_pos:
             self.recover_filament_pos(message=True)
