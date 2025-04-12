@@ -17,6 +17,8 @@
 #
 import logging, time
 
+from . import output_pin
+
 MAX_SCHEDULE_TIME = 5.0
 
 class MmuESpooler:
@@ -43,7 +45,7 @@ class MmuESpooler:
         ppins = self.printer.lookup_object('pins')
         buttons = self.printer.load_object(config, 'buttons')
 
-        # These params are assumed to be shared accross the MMU unit
+        # These params are assumed to be shared accross the espooler unit
         self.is_pwm = config.getboolean("pwm", True)
         self.hardware_pwm = config.getboolean("hardware_pwm", False)
         self.scale = config.getfloat('scale', 1., above=0.)
@@ -54,7 +56,7 @@ class MmuESpooler:
         for gate in range(self.first_gate, self.first_gate + self.num_gates + 1):
             self.respool_motor_pin = config.get('respool_motor_pin_%d' % gate, None)
             self.assist_motor_pin = config.get('assist_motor_pin_%d' % gate, None)
-            self.enable_motor_pin = config.get('enable_motor_pin_%d' % gate, None) # AFC MCU only(?)
+            self.enable_motor_pin = config.get('enable_motor_pin_%d' % gate, None)
             self.assist_trigger_pin = config.get('assist_trigger_pin_%d' % gate, None)
 
             # Setup pins
@@ -102,6 +104,11 @@ class MmuESpooler:
 
             self.operation[self._key(gate)] = ('off', 0)
 
+        # PAUL Experiment: setup minimum number of gcode request queues
+        self.gcrqs = {}
+        for mcu_pin in self.motor_mcu_pins.values():
+            mcu = mcu_pin.get_mcu()
+            self.gcrqs.setdefault(mcu, output_pin.GCodeRequestQueue(config, mcu, self._set_pin))
 
         # Setup event handler for DC espooler motor operation
         self.printer.register_event_handler("mmu:espooler_advance", self._handle_espooler_advance)
@@ -210,6 +217,7 @@ class MmuESpooler:
     # Direct call to 
     def set_operation(self, gate, value, operation):
         from .mmu import Mmu # For operation names
+        self.mmu.log_trace("TEMP: set_operation(gate=%s, value=%s, operation=%s" % (gate, value, operation))
 
         def _clear_in_print_assist(gate):
             updated = False
@@ -223,11 +231,6 @@ class MmuESpooler:
         if gate is None:
             if _clear_in_print_assist(None):
                 self.mmu.log_debug("Espooler in-print assist canceled")
-            return
-
-        # Check if anything to do
-        cur_op, cur_val = self.get_operation(gate)
-        if cur_op == operation and cur_val == value:
             return
 
         self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, operation, value))
@@ -260,46 +263,54 @@ class MmuESpooler:
         self.mmu.log_trace("TEMP: _update(%s, %s, %s)" % (gate, value, operation))
         from .mmu import Mmu # For operation names
 
+        def _schedule_set_pin(name, value):
+            mcu_pin = self.motor_mcu_pins.get(name, None)
+            if mcu_pin:
+                estimated_print_time = mcu_pin.get_mcu().estimated_print_time(self.printer.reactor.monotonic())
+                self.mmu.log_trace("TEMP: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.4f" % (name, value, estimated_print_time))
+                # PAUL testing - these two lines are alternative queuing strategies
+                self.toolhead.register_lookahead_callback(lambda print_time: self._set_pin(print_time, (name, value)))
+                #self.gcrqs[mcu_pin.get_mcu()].queue_gcode_request((name, value))
+       
         # None operation is special case of updating without changing operation (typically in-print assist burst)
         if operation is None:
             operation = self.operation[self._key(gate)][0]
         elif operation == Mmu.ESPOOLER_OFF:
             value = 0
 
-        self.operation[self._key(gate)] = (operation, value)
-
         # Clamp and scale value
         value = max(0, min(1, value)) / self.scale
         if not self.is_pwm:
             value = 1 if value > 0 else 0
 
-        def _schedule_set_pin(name, value):
-            mcu_pin = self.motor_mcu_pins.get(name, None)
-            if mcu_pin:
-                self.toolhead.register_lookahead_callback(lambda print_time: self._set_pin(print_time, name, value))
-       
-        if value == 0: # Stop motor
-            _schedule_set_pin('enable_%d' % gate, 0)
-            _schedule_set_pin('respool_%d' % gate, 0)
-            _schedule_set_pin('assist_%d' % gate, 0)
-        else:
-            active_motor_name = 'respool_%d' % gate if operation == Mmu.ESPOOLER_REWIND else 'assist_%d' % gate
-            inactive_motor_name = 'assist_%d' % gate if operation == Mmu.ESPOOLER_REWIND else 'respool_%d' % gate
-            _schedule_set_pin(inactive_motor_name, 0)
-            _schedule_set_pin(active_motor_name, value)
-            _schedule_set_pin('enable_%d' % gate, 1)
+        if self.operation[self._key(gate)] != (operation, value):
+
+            if value == 0: # Stop motor
+                _schedule_set_pin('enable_%d' % gate, 0)
+                _schedule_set_pin('respool_%d' % gate, 0)
+                _schedule_set_pin('assist_%d' % gate, 0)
+            else:
+                active_motor_name = 'respool_%d' % gate if operation == Mmu.ESPOOLER_REWIND else 'assist_%d' % gate
+                inactive_motor_name = 'assist_%d' % gate if operation == Mmu.ESPOOLER_REWIND else 'respool_%d' % gate
+                _schedule_set_pin(inactive_motor_name, 0)
+                _schedule_set_pin(active_motor_name, value)
+                _schedule_set_pin('enable_%d' % gate, 1)
+
+            self.operation[self._key(gate)] = (operation, value)
 
     # This is the actual callback method to update pin signal (pwm or digital)
-    def _set_pin(self, print_time, name, value):
+    def _set_pin(self, print_time, descriptor):
+        name, value = descriptor
         mcu_pin = self.motor_mcu_pins.get(name, None)
         if mcu_pin:
+            self.mmu.log_trace("TEMP: -----> _set_pin(name=%s, value=%s) @ print_time: %.4f" % (name, value, print_time))
             if value == self.last_value.get(name, None):
                 return
-        if self.is_pwm and not name.startswith('enable_'):
-            mcu_pin.set_pwm(print_time, value)
-        else:
-            mcu_pin.set_digital(print_time, value)
-        self.last_value[name] = value
+            if self.is_pwm and not name.startswith('enable_'):
+                mcu_pin.set_pwm(print_time, value)
+            else:
+                mcu_pin.set_digital(print_time, value)
+            self.last_value[name] = value
 
     def get_status(self, eventtime):
         return {

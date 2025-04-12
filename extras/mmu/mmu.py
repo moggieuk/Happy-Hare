@@ -1310,10 +1310,11 @@ class Mmu:
             self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
-    def wrap_gcode_command(self, command, exception=False, variables=None, wait=False, ignore_empty=True):
+    def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
-            macro = command.split()[0].replace("''", "")
-            if ignore_empty and not macro: return
+            command = command.replace("''", "")
+            macro = command.split()[0]
+            if not macro: return
 
             if variables:
                 gcode_macro = self.printer.lookup_object("gcode_macro %s" % macro, None)
@@ -3954,6 +3955,8 @@ class Mmu:
         if not quiet:
             msg = ""
             for gate in range(self.num_gates):
+                if msg:
+                    msg += "\n"
                 msg += "{}".format(gate).ljust(2, UI_SPACE) + ": "
                 if self.has_espooler():
                     operation, value = self.espooler.get_operation(gate)
@@ -3964,7 +3967,7 @@ class Mmu:
                             burst += "on trigger, max %d bursts]" % self.espooler_assist_burst_trigger_max
                         else:
                             burst += "every %.1fmm of extruder movement]" % self.espooler_assist_extruder_move_length
-                    msg += "{}".format(operation).ljust(7, UI_SPACE) + " (%d%%)%s" % (round(value * 100), burst) + "\n"
+                    msg += "{}".format(operation).ljust(7, UI_SPACE) + " (%d%%)%s" % (round(value * 100), burst)
                 else:
                     msg += "not fitted"
             self.log_always(msg)
