@@ -271,10 +271,13 @@ class MmuESpooler:
             mcu_pin = self.motor_mcu_pins.get(name, None)
             if mcu_pin:
                 estimated_print_time = mcu_pin.get_mcu().estimated_print_time(self.printer.reactor.monotonic())
-                self.mmu.log_trace("TEMP: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.4f" % (name, value, estimated_print_time))
-                # PAUL TEMP experiment - these two lines are alternative queuing strategies. Chose one or the other
-                self.toolhead.register_lookahead_callback(lambda print_time: self._set_pin(print_time, (name, value)))
+                self.mmu.log_trace("TEMP: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
+                # PAUL TEMP experiment - these two lines are alternative queuing strategies. Chose one or the other (or try setting immediately!)
+                #self.toolhead.register_lookahead_callback(lambda print_time: self._set_pin(print_time, (name, value)))
                 #self.gcrqs[mcu_pin.get_mcu()].queue_gcode_request((name, value))
+                #self._set_pin(estimated_print_time, (name, value)) # Schedule immediately
+                #self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value), estimated_print_time)
+                self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value))
        
         # None operation is special case of updating without changing operation (typically in-print assist burst)
         if operation is None:
@@ -309,7 +312,7 @@ class MmuESpooler:
         if mcu_pin:
             if value == self.last_value.get(name, None):
                 return
-            self.mmu.log_trace("TEMP: -----> _set_pin(name=%s, value=%s) @ print_time: %.4f" % (name, value, print_time))
+            self.mmu.log_trace("TEMP: -----> _set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, print_time))
             if self.is_pwm and not name.startswith('enable_'):
                 mcu_pin.set_pwm(print_time, value)
             else:
