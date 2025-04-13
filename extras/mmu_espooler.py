@@ -225,7 +225,7 @@ class MmuESpooler:
         for g in range(self.first_gate, self.first_gate + self.num_gates):
             if (
                 (self.operation[self._key(g)][0] == Mmu.ESPOOLER_PRINT and g != gate) or 
-                (g == gate and operation == Mmu.ESPOOLER_PRINT and value == 0)
+                (g == gate and operation == Mmu.ESPOOLER_PRINT and value != 0)
             ):
                 self._update(g, 0, Mmu.ESPOOLER_OFF)
 
