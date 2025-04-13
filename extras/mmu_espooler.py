@@ -238,10 +238,10 @@ class MmuESpooler:
 
         if gate is not None:
             self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, operation, value))
+            self._update(gate, value, operation)
 
             if operation == Mmu.ESPOOLER_PRINT and value == 0:
                 self.mmu.log_trace("ESPOOLER: Entering in-print assist mode for gate %d" % gate)
-                self._update(gate, value, operation)
 
                 # Enable appropriate trigger
                 if self.mmu.espooler_assist_burst_trigger:
