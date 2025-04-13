@@ -107,12 +107,11 @@ class MmuESpooler:
             self.back_to_back_burst_count[gate] = 0
             self.burst_trigger_state[gate] = 0
 
-        # PAUL vvv TEMP experiment: setup minimum number of gcode request queues
+        # Setup minimum number of gcode request queues
         self.gcrqs = {}
         for mcu_pin in self.motor_mcu_pins.values():
             mcu = mcu_pin.get_mcu()
             self.gcrqs.setdefault(mcu, output_pin.GCodeRequestQueue(config, mcu, self._set_pin))
-        # PAUL ^^^ TEMP experiment
 
         # Setup event handler for DC espooler motor operation
         self.printer.register_event_handler("mmu:espooler_advance", self._handle_espooler_advance)
@@ -217,47 +216,38 @@ class MmuESpooler:
                 msg += " (Ignored because espooler state is %s, value: %.2f)" % (cur_op, cur_value)
                 self.mmu.log_debug(msg)
 
-    # Direct call to 
+    # Direct call to change the operation of the espooler
     def set_operation(self, gate, value, operation):
         from .mmu import Mmu # For operation names
         self.mmu.log_trace("TEMP: set_operation(gate=%s, value=%s, operation=%s)" % (gate, value, operation))
 
-        # Turn off assist for all gates except specified gate
-        def _clear_in_print_assist(gate):
-            updated = False
-            for g in range(self.first_gate, self.first_gate + self.num_gates):
-                if self.operation[self._key(g)][0] == Mmu.ESPOOLER_PRINT and g != gate:
-                    self._update(g, 0, Mmu.ESPOOLER_OFF)
-                    updated = True
-            return updated
+        # Turn off assist for all gates except specified gate if still wanted
+        for g in range(self.first_gate, self.first_gate + self.num_gates):
+            if (
+                (self.operation[self._key(g)][0] == Mmu.ESPOOLER_PRINT and g != gate) or 
+                (g == gate and operation == Mmu.ESPOOLER_PRINT and value == 0)
+            ):
+                self._update(g, 0, Mmu.ESPOOLER_OFF)
 
-        # Special case to clear print assist
-        if gate is None:
-            if _clear_in_print_assist(None):
-                self.mmu.log_debug("Espooler in-print assist canceled")
-            return
+                # Disable all triggers
+                if self.mmu.espooler_assist_burst_trigger:
+                    self.enable_burst_trigger(g, False)
+                if self.extruder_monitor:
+                    self.extruder_monitor.watch(False)
+                self.mmu.log_trace("ESPOOLER: In-print assist for gate %d canceled" % g)
 
-        self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, operation, value))
+        if gate is not None:
+            self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, operation, value))
 
-        if self.operation[self._key(gate)][0] == Mmu.ESPOOLER_PRINT and operation != Mmu.ESPOOLER_PRINT:
-            self.mmu.log_trace("ESPOOLER: Leaving in-print assist mode")
-            # Leaving in-print burst assist mode
-            self.enable_burst_trigger(gate, False)
-            if self.extruder_monitor:
-                self.extruder_monitor.watch(False)
+            if operation == Mmu.ESPOOLER_PRINT and value == 0:
+                self.mmu.log_trace("ESPOOLER: Entering in-print assist mode for gate %d" % gate)
+                self._update(gate, value, operation)
 
-        elif self.operation[self._key(gate)][0] != Mmu.ESPOOLER_PRINT and operation == Mmu.ESPOOLER_PRINT and value == 0:
-            self.mmu.log_trace("ESPOOLER: Entering in-print assist mode")
-            # Entering in-print burst assist mode
-            _clear_in_print_assist(gate)
-
-            # Enable appropriate trigger
-            if self.mmu.espooler_assist_burst_trigger:
-                self.enable_burst_trigger(gate, True)
-            elif self.extruder_monitor:
-                self.extruder_monitor.watch(True)
-
-        self._update(gate, value, operation)
+                # Enable appropriate trigger
+                if self.mmu.espooler_assist_burst_trigger:
+                    self.enable_burst_trigger(gate, True)
+                elif self.extruder_monitor:
+                    self.extruder_monitor.watch(True)
 
     def get_operation(self, gate):
         return self.operation.get(self._key(gate), ('', 0))
@@ -272,11 +262,6 @@ class MmuESpooler:
             if mcu_pin:
                 estimated_print_time = mcu_pin.get_mcu().estimated_print_time(self.printer.reactor.monotonic())
                 self.mmu.log_trace("TEMP: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
-                # PAUL TEMP experiment - these two lines are alternative queuing strategies. Chose one or the other (or try setting immediately!)
-                #self.toolhead.register_lookahead_callback(lambda print_time: self._set_pin(print_time, (name, value)))
-                #self.gcrqs[mcu_pin.get_mcu()].queue_gcode_request((name, value))
-                #self._set_pin(estimated_print_time, (name, value)) # Schedule immediately
-                #self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value), estimated_print_time)
                 self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value))
        
         # None operation is special case of updating without changing operation (typically in-print assist burst)
