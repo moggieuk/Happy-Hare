@@ -5584,7 +5584,7 @@ class Mmu:
     # Turn off espooler in-print assist mode for all gates
     def _espooler_assist_off(self):
         if self.has_espooler():
-            self.espooler.set_operation(None, 0, self.ESPOOLER_PRINT)
+            self.espooler.set_operation(None, 0, self.ESPOOLER_OFF)
 
 
 ##############################################
@@ -5762,6 +5762,7 @@ class Mmu:
         prev_current = self.gear_percentage_run_current != 100
         prev_grip = self.selector.get_filament_grip_state()
 
+        # Turn espooler in-print assist off
         espooler_state = None
         if self.has_espooler():
             espooler_state = self.espooler.get_operation(self.gate_selected)
@@ -5769,14 +5770,15 @@ class Mmu:
         try:
             yield self
         finally:
-            if self.has_espooler():
-                self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
-
             if self.gate_selected >= 0:
                 restore_grip = prev_grip != self.selector.get_filament_grip_state()
                 self.sync_gear_to_extruder(prev_sync, grip=restore_grip, current=prev_current)
             else:
                 self.sync_gear_to_extruder(False, grip=True, current=False)
+
+            # Restore espooler state
+            if self.has_espooler():
+                self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
     # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
