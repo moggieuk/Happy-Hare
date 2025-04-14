@@ -219,7 +219,9 @@ class MmuESpooler:
     # Direct call to change the operation of the espooler
     def set_operation(self, gate, value, operation):
         from .mmu import Mmu # For operation names
-        self.mmu.log_trace("TEMP: set_operation(gate=%s, value=%s, operation=%s)" % (gate, value, operation))
+
+        if self.mmu.log_enabled(Mmu.LOG_TRACE):
+            self.mmu.log_trace("ESPOOLER: set_operation(gate=%s, value=%s, operation=%s)" % (gate, value, operation))
 
         # Turn off assist for all gates except specified gate if still wanted
         for g in range(self.first_gate, self.first_gate + self.num_gates):
@@ -234,14 +236,16 @@ class MmuESpooler:
                     self.enable_burst_trigger(g, False)
                 if self.extruder_monitor:
                     self.extruder_monitor.watch(False)
-                self.mmu.log_trace("ESPOOLER: In-print assist for gate %d canceled" % g)
+                if self.mmu.log_enabled(Mmu.LOG_TRACE):
+                    self.mmu.log_trace("ESPOOLER: In-print assist for gate %d canceled" % g)
 
         if gate is not None:
             self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, operation, value))
             self._update(gate, value, operation)
 
             if operation == Mmu.ESPOOLER_PRINT and value == 0:
-                self.mmu.log_trace("ESPOOLER: Entering in-print assist mode for gate %d" % gate)
+                if self.mmu.log_enabled(Mmu.LOG_TRACE):
+                    self.mmu.log_trace("ESPOOLER: Entering in-print assist mode for gate %d" % gate)
 
                 # Enable appropriate trigger
                 if self.mmu.espooler_assist_burst_trigger:
@@ -254,14 +258,17 @@ class MmuESpooler:
 
     # Set the PWM or digital signal
     def _update(self, gate, value, operation):
-        self.mmu.log_trace("TEMP: _update(%s, %s, %s)" % (gate, value, operation))
         from .mmu import Mmu # For operation names
+
+        if self.mmu.log_enabled(Mmu.LOG_TRACE):
+            self.mmu.log_trace("ESPOOLER: _update(%s, %s, %s)" % (gate, value, operation))
 
         def _schedule_set_pin(name, value):
             mcu_pin = self.motor_mcu_pins.get(name, None)
             if mcu_pin:
                 estimated_print_time = mcu_pin.get_mcu().estimated_print_time(self.printer.reactor.monotonic())
-                self.mmu.log_trace("TEMP: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
+                if self.mmu.log_enabled(Mmu.LOG_TRACE):
+                    self.mmu.log_trace("ESPOOLER: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
                 self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value))
        
         # None operation is special case of updating without changing operation (typically in-print assist burst)
@@ -291,13 +298,16 @@ class MmuESpooler:
             self.operation[self._key(gate)] = (operation, value)
 
     # This is the actual callback method to update pin signal (pwm or digital)
-    def _set_pin(self, print_time, descriptor):
-        name, value = descriptor
+    def _set_pin(self, print_time, action):
+        from .mmu import Mmu # For operation names
+
+        name, value = action
         mcu_pin = self.motor_mcu_pins.get(name, None)
         if mcu_pin:
             if value == self.last_value.get(name, None):
                 return
-            self.mmu.log_trace("TEMP: -----> _set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, print_time))
+            if self.mmu.log_enabled(Mmu.LOG_TRACE):
+                self.mmu.log_trace("ESPOOLER: -----> _set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, print_time))
             if self.is_pwm and not name.startswith('enable_'):
                 mcu_pin.set_pwm(print_time, value)
             else:
