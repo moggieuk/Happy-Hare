@@ -31,6 +31,7 @@ from .mmu_selector       import *
 from .mmu_test           import MmuTest
 from .mmu_utils          import DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager import MmuSensorManager
+from extras.mmu_sensors import SyncTensionSensorAdj
 
 
 # Main klipper module
@@ -391,6 +392,17 @@ class Mmu:
         self.sync_multiplier_high = config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
         self.sync_multiplier_low = config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
         self.sync_feedback_enable = config.getint('sync_feedback_enable', 0, minval=0, maxval=1)
+
+        # must have two tension sensors for expanded and compressed, otherwise it's impossible to work.
+        sync_auto_adjust_rotation_dist_enable = config.getint('sync_auto_adjust_rotation_dist_enable', 0, minval=0,
+                                                               maxval=1)
+        if sync_auto_adjust_rotation_dist_enable:
+            self.sync_tension_sensor_adj = SyncTensionSensorAdj()
+            # reuse the main logger
+            self.sync_tension_sensor_adj.set_logger(self.log_debug, self.log_always, self.log_error)
+        else:
+            self.sync_tension_sensor_adj = None
+
 
         # TMC current control
         self.extruder_collision_homing_current = config.getint('extruder_collision_homing_current', 50, minval=10, maxval=100)
@@ -2894,6 +2906,7 @@ class Mmu:
 
     def _update_sync_feedback(self, eventtime):
         if self.is_enabled:
+
             estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time(eventtime)
             extruder = self.toolhead.get_extruder()
             pos = extruder.find_past_position(estimated_print_time)
@@ -2901,14 +2914,42 @@ class Mmu:
             if abs(pos - past_pos) >= self.SYNC_POSITION_MIN_DELTA:
                 prev_direction = self.sync_feedback_last_direction
                 self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
-                if self.sync_feedback_last_direction != prev_direction:
-                    d = self.sync_feedback_last_direction
-                    self.log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
-                    self._update_sync_multiplier()
+
+                if self.sync_tension_sensor_adj:
+                   # only when feature sync_auto_adjust_rotation_dist_enable is enabled.
+                    if self.sync_feedback_last_direction == self.DIRECTION_LOAD:
+                       self._update_sync_multiplier()
+                else:
+                   if self.sync_feedback_last_direction != prev_direction:
+                       d = self.sync_feedback_last_direction
+                       self.log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
+                       self._update_sync_multiplier()
+
         return eventtime + self.SYNC_FEEDBACK_INTERVAL
 
     def _update_sync_multiplier(self):
         if not self.sync_feedback_enable or not self.sync_feedback_operational: return
+
+        if self.sync_tension_sensor_adj :
+            # auto adjust rotation_dist ONLY when
+            #    * this feaature is enabled - for obviously reason
+            #    * is printing - when not printing, really not much meaning to adjust rotation dist, loading / unloading filament shouldn't matter much
+            #    * direction load: when printing, most distance's direction is load, very little is unload only when retracting. unload's distance is cancelled by load.
+            #                         therefore can be ignored. to make thing much easier.
+            # adjust the rotation_distance when bad state stays the same for too long (mostly because the initial value is too off)
+
+            if not self.is_printing():
+                return
+            rotation_distance = self.sync_tension_sensor_adj.update_sync_rotation_dist(self.sync_feedback_last_state)
+            if rotation_distance:
+                # if it's the same value (None), don't set it again and again
+                self.log_debug(f"_update_sync_multiplier(): sync state:{self.sync_feedback_last_state}, setting new rotation_dist {rotation_distance:.5f}")
+                self._set_rotation_distance(rotation_distance)
+            return
+        # end of if sync_tension_sensor_adj processing
+        #################################################################
+
+
         if self.sync_feedback_last_state == self.SYNC_STATE_NEUTRAL:
             multiplier = 1.
         else:
@@ -2946,6 +2987,44 @@ class Mmu:
     def _update_sync_starting_state(self):
         eventtime = self.reactor.monotonic()
         sss = self._get_current_sync_state()
+
+        has_both_sensors = False
+        has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
+        has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
+
+        if has_tension and has_compression:
+            has_both_sensors = True
+
+        # adjusting the sync_auto_adjust_rotation_dist_enabled setting based on hw/sw config
+        # can only enable the advance auto adjust rotation_dist feature when we have both expanded and compressed sensor.
+        # and only when user enable it in config
+        if not self.sync_feedback_enable:
+            self.log_debug("disabling sync_auto_adjust_rotation_dist since the whole sync feedback feature is disabled")
+            self.sync_tension_sensor_adj = None
+        elif not has_both_sensors:
+            if self.sync_tension_sensor_adj:
+                self.log_always(
+                    "even though user enabled sync_auto_adjust_rotation_dist but since the system doesn't have two sensors for sync tension, disabling it")
+            # SyncTensionSensorAdj.set_auto_adjust_feature_enable(False)
+            self.sync_tension_sensor_adj = None
+
+
+        if self.sync_tension_sensor_adj and self.is_printing():
+             self.log_debug(f"sync_tension_sensor_adj working and is_printing.")
+             rd = self._get_rotation_distance(self.gate_selected)
+             self.log_debug(f"_update_sync_starting_state() {self.gate_selected=} {rd=}")
+
+             if rd <= 0:
+                if self.rotation_distances[0]>0:
+                   rd = self.rotation_distances[0]
+                   self.log_debug(
+                       f"current gate{self.gate_selected} gear not calibrated, but it's OK, we use gate0's rd {self.rotation_distances[0]} as starting value")
+                else :
+                   rd = self.default_rotation_distance
+                   self.log_debug(f"gate0 gear not calibrated, but it's OK, we use default {rd} as starting value")
+
+             self.sync_tension_sensor_adj.init_for_next_print(sss, rd)
+
         self._handle_sync_feedback(eventtime, sss)
         self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string(detail=True))
 
@@ -3541,13 +3620,19 @@ class Mmu:
             if required & self.CALIBRATED_GEAR_RDS and not self.calibration_status & self.CALIBRATED_GEAR_RDS:
                 if self.mmu_machine.variable_rotation_distances:
                     uncalibrated = [gate for gate, value in enumerate(self.rotation_distances) if gate != 0 and value == -1 and gate in check_gates]
-                    if uncalibrated:
+                    if uncalibrated and not self.sync_tension_sensor_adj:
                         if self.has_encoder():
                             msg += "\nUse MMU_CALIBRATE_GEAR (with gate selected) or MMU_CALIBRATE_GATES GATE=xx"
                             msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
                         else:
                             msg += "\nUse MMU_CALIBRATE_GEAR (with gate selected)"
                             msg += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
+                    elif uncalibrated and self.sync_tension_sensor_adj:
+                        self.log_info(f"some gear not calibrated, but it's OK since we are using option sync_auto_adjust_rotation_dist_enable, using gate0 rotation dist as starting point {self.rotation_distances[0]}")
+                        # import traceback
+                        # for line in traceback.format_stack():
+                        #    self.log_info(line.strip())
+
                 elif self.rotation_distances[0] == -1:
                     msg += "\nUse MMU_CALIBRATE_GEAR (with gate 0 selected)"
 
