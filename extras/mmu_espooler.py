@@ -111,7 +111,11 @@ class MmuESpooler:
         self.gcrqs = {}
         for mcu_pin in self.motor_mcu_pins.values():
             mcu = mcu_pin.get_mcu()
-            self.gcrqs.setdefault(mcu, output_pin.GCodeRequestQueue(config, mcu, self._set_pin))
+            # TODO Temporary workaround to allow Kalico to work since it lacks GCodeRequestQueue
+            if hasattr(output_pin, 'GCodeRequestQueue'):
+                self.gcrqs.setdefault(mcu, output_pin.GCodeRequestQueue(config, mcu, self._set_pin))
+            else:
+                self.gcrqs.setdefault(mcu, GCodeRequestQueue(config, mcu, self._set_pin))
 
         # Setup event handler for DC espooler motor operation
         self.printer.register_event_handler("mmu:espooler_advance", self._handle_espooler_advance)
@@ -373,3 +377,76 @@ class MmuESpooler:
 
 def load_config_prefix(config):
     return MmuESpooler(config)
+
+
+######################################################################
+# G-Code request queuing helper
+# This is included to allow Kalico to work since it has not yet picked
+# up this klipper functionality 4/18/25
+# Copyright (C) 2017-2024  Kevin O'Connor <kevin@koconnor.net>
+######################################################################
+
+PIN_MIN_TIME = 0.100
+
+# Helper code to queue g-code requests
+class GCodeRequestQueue:
+    def __init__(self, config, mcu, callback):
+        self.printer = printer = config.get_printer()
+        self.mcu = mcu
+        self.callback = callback
+        self.rqueue = []
+        self.next_min_flush_time = 0.
+        self.toolhead = None
+        mcu.register_flush_callback(self._flush_notification)
+        printer.register_event_handler("klippy:connect", self._handle_connect)
+    def _handle_connect(self):
+        self.toolhead = self.printer.lookup_object('toolhead')
+    def _flush_notification(self, print_time, clock):
+        rqueue = self.rqueue
+        while rqueue:
+            next_time = max(rqueue[0][0], self.next_min_flush_time)
+            if next_time > print_time:
+                return
+            # Skip requests that have been overridden with a following request
+            pos = 0
+            while pos + 1 < len(rqueue) and rqueue[pos + 1][0] <= next_time:
+                pos += 1
+            req_pt, req_val = rqueue[pos]
+            # Invoke callback for the request
+            min_wait = 0.
+            ret = self.callback(next_time, req_val)
+            if ret is not None:
+                # Handle special cases
+                action, min_wait = ret
+                if action == "discard":
+                    del rqueue[:pos+1]
+                    continue
+                if action == "delay":
+                    pos -= 1
+            del rqueue[:pos+1]
+            self.next_min_flush_time = next_time + max(min_wait, PIN_MIN_TIME)
+            # Ensure following queue items are flushed
+            self.toolhead.note_mcu_movequeue_activity(self.next_min_flush_time)
+    def _queue_request(self, print_time, value):
+        self.rqueue.append((print_time, value))
+        self.toolhead.note_mcu_movequeue_activity(print_time)
+    def queue_gcode_request(self, value):
+        self.toolhead.register_lookahead_callback(
+            (lambda pt: self._queue_request(pt, value)))
+    def send_async_request(self, value, print_time=None):
+        if print_time is None:
+            systime = self.printer.get_reactor().monotonic()
+            print_time = self.mcu.estimated_print_time(systime + PIN_MIN_TIME)
+        while 1:
+            next_time = max(print_time, self.next_min_flush_time)
+            # Invoke callback for the request
+            action, min_wait = "normal", 0.
+            ret = self.callback(next_time, value)
+            if ret is not None:
+                # Handle special cases
+                action, min_wait = ret
+                if action == "discard":
+                    break
+            self.next_min_flush_time = next_time + max(min_wait, PIN_MIN_TIME)
+            if action != "delay":
+                break
