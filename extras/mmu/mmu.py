@@ -2214,7 +2214,8 @@ class Mmu:
         grip = gcmd.get_int('GRIP', 1, minval=0, maxval=1)
         servo = gcmd.get_int('SERVO', 1, minval=0, maxval=1) # DEPRECATED (use GRIP=0 instead)
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
-        self._standalone_sync = sync
+        if not self.is_in_print():
+            self._standalone_sync = sync # Make sticky if not in a print
         self.sync_gear_to_extruder(sync, grip=(grip and servo), current=True)
 
 
