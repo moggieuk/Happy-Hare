@@ -3936,7 +3936,7 @@ class Mmu:
                     # Mimick in print if requested
                     self.sync_gear_to_extruder(self.sync_form_tip and self.is_in_print(force_in_print), grip=True, current=self.is_in_print(force_in_print))
 
-                    _,_,_ = self._do_form_tip(test=True)
+                    _,_,_,_ = self._do_form_tip(test=True)
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
@@ -4521,7 +4521,7 @@ class Mmu:
             self._set_filament_remaining(0.)
 
             # Encoder based validation test if short of deterministic sensors and test makes sense
-            if self._can_use_encoder() and not fhomed and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS:
+            if length > self.encoder_min and self._can_use_encoder() and not fhomed and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS:
                 self.log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
                 if measured < self.encoder_min:
                     raise MmuError("Move to nozzle failed (encoder didn't sense any movement). Extruder may not have picked up filament or filament did not find homing sensor")
@@ -5028,7 +5028,7 @@ class Mmu:
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
-            park_pos, remaining, reported = self._do_form_tip()
+            park_pos, remaining, reported, before_extruder = self._do_form_tip()
             measured = self.get_encoder_distance(dwell=None) - initial_encoder_position
             self._set_filament_remaining(remaining, self.gate_color[self.gate_selected] if self.gate_selected != self.TOOL_GATE_UNKNOWN else '')
 
@@ -5053,7 +5053,11 @@ class Mmu:
             self._set_filament_position(-park_pos)
             self.set_encoder_distance(initial_encoder_position + park_pos)
 
-            if detected or extruder_only:
+            if reported and before_extruder:
+                # The cutter is located before the extruder.
+                # Therefore the filament is definitely somewhere before the extruder entry
+                self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
+            elif detected or extruder_only:
                 # Definitely in extruder
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
             else:
@@ -5082,6 +5086,8 @@ class Mmu:
                 self.log_error("Reported 'output_park_pos: %s' could not be parsed: %s" % (park_pos, str(e)))
                 park_pos = -1
 
+            # assume we are in extruder
+            before_extruder = False
             if park_pos < 0:
                 # Use stepper movement
                 reported = False
@@ -5102,12 +5108,15 @@ class Mmu:
                 else:
                     self.log_trace(msg)
 
-            if not test and park_pos > self.toolhead_extruder_to_nozzle:
+            if reported and self.has_toolhead_cutter and park_pos > self.toolhead_extruder_to_nozzle:
+                self.log_debug("park_pos (%.1fmm) is greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assuming cutter is located before extruder." % (park_pos, self.toolhead_extruder_to_nozzle))
+                before_extruder = True
+            elif not test and park_pos > self.toolhead_extruder_to_nozzle:
                 self.log_error("Warning: park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
                 park_pos = self.toolhead_extruder_to_nozzle
                 filament_remaining = 0.
 
-        return park_pos, filament_remaining, reported
+        return park_pos, filament_remaining, reported, before_extruder
 
 
 #################################
