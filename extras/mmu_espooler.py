@@ -243,7 +243,7 @@ class MmuESpooler:
                 if self.mmu.log_enabled(Mmu.LOG_TRACE):
                     self.mmu.log_trace("ESPOOLER: In-print assist for gate %d canceled" % g)
 
-        if gate is not None:
+        if gate is not None and gate >= 0:
             self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, operation, value))
             self._update(gate, value, operation)
 
@@ -258,7 +258,7 @@ class MmuESpooler:
                     self.extruder_monitor.watch(True)
 
     def get_operation(self, gate):
-        return self.operation.get(self._key(gate), ('', 0))
+        return self.operation.get(self._key(gate), ('off', 0))
 
     # Set the PWM or digital signal
     def _update(self, gate, value, operation):
