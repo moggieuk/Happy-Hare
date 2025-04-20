@@ -1121,6 +1121,16 @@ copy_config_files() {
     done
 }
 
+remove_old_config_files() {
+    mmu_dir="${KLIPPER_CONFIG_HOME}/mmu"
+    if [ -f "${mmu_dir}/addons/dc_espooler.cfg" ]; then
+        echo -e "${WARNING}Removing legacy dc_spooler macros - configuration now in mmu_hardware.cfg"
+        rm -f "${mmu_dir}/addons/dc_espooler.cfg"
+        rm -f "${mmu_dir}/addons/dc_espooler_hw.cfg"
+    fi
+}
+
+
 uninstall_config_files() {
     if [ -d "${KLIPPER_CONFIG_HOME}/mmu" ]; then
         echo -e "${INFO}Removing MMU configuration files from ${KLIPPER_CONFIG_HOME}"
@@ -2486,6 +2496,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
     # Copy config files updating from in memory parmameters or h/w settings
     set +e
     copy_config_files
+    remove_old_config_files
     set -e
 
     # Special upgrades of mmu_hardware.cfg
