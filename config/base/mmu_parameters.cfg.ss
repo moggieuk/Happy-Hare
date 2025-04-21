@@ -55,7 +55,7 @@ gear_max_accel: 1500			# Never to be exceeded gear acceleration regardless of sp
 servo_duration: 0.5			# Duration of PWM burst sent to servo (default non-active mode, automatically turns off)
 servo_dwell: 0.8			# Minimum time given to servo to complete movement prior to next move
 servo_always_active: 0			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
-#selector_gate_angles: 45, 90, 135, 180	# Optionally set default list of gate angles (overriden by calibration)
+selector_gate_angles: 45, 90, 135, 180	# Optionally set default list of gate angles (overriden by calibration)
 selector_bypass_angle: -1		# Optionally set default servo angle when bypass is selected, -1=No default
 selector_release_angle: -1		# Optionally force a specific "release" angle, -1=Default (between gate angles) behavior
 
@@ -79,6 +79,7 @@ log_file_level: 2			# Can also be set to -1 to disable log file completely
 log_statistics: 1 			# 1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
 log_visual: 1				# 1 log visual representation of filament, 0 = disable
 log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = summary (default), 0 = disable
+log_m117_messages: 1			# Whether send toolchange message via M117 to screen
 
 
 # Movement speeds ------------------------------------------------------------------------------------------------------
@@ -415,7 +416,9 @@ espooler_operations: rewind, assist, print	# List of operational modes (allows d
 #
 espooler_assist_extruder_move_length: 100	# Distance (mm) extruder needs to move between each assist burst
 espooler_assist_burst_power: 100		# The % power of the burst move
-espooler_assist_burst_duration: 3.0		# The duration of the burst move is seconds
+espooler_assist_burst_duration: 0.4		# The duration of the burst move is seconds
+espooler_assist_burst_trigger: 0		# If trigger assist switch is fitted 0=disable, 1=enable
+espooler_assist_burst_trigger_max: 3		# If trigger assist switch is fitted this limits the max number of back-to-back advances
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------

@@ -801,28 +801,32 @@ EOF
 # An empty pin can be deleted, commented or simply left blank. If you mcu has a separate "enable" pin
 #
 #[mmu_espooler mmu_espooler]
-#pwm: 1                                          # 1=PWM control (typical), 0=digital on/off control
-##hardware_pwm: 0                                # See klipper doc
-##cycle_time: 0.100                              # See klipper doc
-#scale: 1                                        # Scales the PWM output range
-#value: 0                                        # See klipper doc
-#shutdown_value: 0                               # See klipper doc
+#pwm: 1						# 1=PWM control (typical), 0=digital on/off control
+##hardware_pwm: 0				# See klipper doc
+##cycle_time: 0.100				# See klipper doc
+#scale: 1					# Scales the PWM output range
+#value: 0					# See klipper doc
+#shutdown_value: 0				# See klipper doc
 #
-#respool_motor_pin_0: mmu:MMU_ESPOOLER_RWD_0     # PWM (or digital) pin for rewind/respool movement
-#assist_motor_pin_0: mmu:MMU_ESPOOLER_FWD_0      # PWM (or digital) pin for forward motor movement
-#enable_motor_pin_0: mmu:MMU_ESPOOLER_EN_0       # Digital output for Afc mcu
+#respool_motor_pin_0: mmu:MMU_ESPOOLER_RWD_0	# PWM (or digital) pin for rewind/respool movement
+#assist_motor_pin_0: mmu:MMU_ESPOOLER_FWD_0	# PWM (or digital) pin for forward motor movement
+#enable_motor_pin_0: mmu:MMU_ESPOOLER_EN_0	# Digital output for Afc mcu
+#assist_trigger_pin_0: mmu:MMU_ESPOOLER_TRIG_0	# Trigger pin for sensing need to assist during print
 #
 #respool_motor_pin_1: mmu:MMU_ESPOOLER_RWD_1
 #assist_motor_pin_1: mmu:MMU_ESPOOLER_FWD_1
 #enable_motor_pin_1: mmu:MMU_ESPOOLER_EN_1
+#assist_trigger_pin_1: mmu:MMU_ESPOOLER_TRIG_1
 #
 #respool_motor_pin_2: mmu:MMU_ESPOOLER_RWD_2
 #assist_motor_pin_2: mmu:MMU_ESPOOLER_FWD_2
 #enable_motor_pin_2: mmu:MMU_ESPOOLER_EN_2
+#assist_trigger_pin_2: mmu:MMU_ESPOOLER_TRIG_2
 #
 #respool_motor_pin_3: mmu:MMU_ESPOOLER_RWD_3
 #assist_motor_pin_3: mmu:MMU_ESPOOLER_FWD_3
 #enable_motor_pin_3: mmu:MMU_ESPOOLER_EN_3
+#assist_trigger_pin_3: mmu:MMU_ESPOOLER_TRIG_3
 
 EOF
 )
@@ -1118,6 +1122,16 @@ copy_config_files() {
     done
 }
 
+remove_old_config_files() {
+    mmu_dir="${KLIPPER_CONFIG_HOME}/mmu"
+    if [ -f "${mmu_dir}/addons/dc_espooler.cfg" ]; then
+        echo -e "${WARNING}Removing legacy dc_spooler macros - configuration now in mmu_hardware.cfg"
+        rm -f "${mmu_dir}/addons/dc_espooler.cfg"
+        rm -f "${mmu_dir}/addons/dc_espooler_hw.cfg"
+    fi
+}
+
+
 uninstall_config_files() {
     if [ -d "${KLIPPER_CONFIG_HOME}/mmu" ]; then
         echo -e "${INFO}Removing MMU configuration files from ${KLIPPER_CONFIG_HOME}"
@@ -1410,7 +1424,7 @@ questionaire() {
     option PICO_MMU       'PicoMMU'
     option QUATTRO_BOX    'QuattroBox v1.0'
     option QUATTRO_BOX11  'QuattroBox v1.1'
-    #option MMX            'MMX'
+    option MMX            'MMX'
     #option VVD            'BigTreeTech VVD'
     #option KMS            'Biqu KMS'
     option OTHER          'Other / Custom (or just want starter config files)'
@@ -1788,31 +1802,31 @@ questionaire() {
             ;;
 
         "$MMX")
-            # Comming soon...
             HAS_ENCODER=no
             HAS_SELECTOR=no
             HAS_SERVO=yes
             SETUP_SELECTOR_TOUCH=no
-            _hw_mmu_vendor="PicoMMU"
+            _hw_mmu_vendor="MMX"
             _hw_mmu_version="1.0"
             _hw_selector_type=ServoSelector
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=0
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=1
-            _hw_gear_gear_ratio="1.28:1"
+            _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _hw_chain_count=4
-            _hw_exit_leds="neopixel:mmu_leds (1-4)"
+            _hw_exit_leds="neopixel:mmu_leds (4-1)"
             _hw_entry_leds=""
             _hw_status_leds=""
             _hw_logo_leds=""
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
-            _param_gate_homing_max=100
+            _param_gate_homing_max=1000
             _param_gate_parking_distance=25
             _param_gear_homing_speed=80
+            _param_selector_gate_angles="60,0,180,120"
             ;;
 
         "$VVD")
@@ -2173,11 +2187,11 @@ questionaire() {
         elif [ "${_hw_mmu_vendor}" == "PicoMMU" ]; then
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
             OPTIONS=()
-            option PICOMMU_BOM 'MG996R'
+            option MMX_BOM 'MG996R'
             option OTHER 'Not listed / Other'
             prompt_option opt 'Servo' "${OPTIONS[@]}"
             case $opt in
-                "$PICOMMU_BOM")
+                "$MMX_BOM")
                     _hw_maximum_servo_angle=180
                     _hw_minimum_pulse_width=0.00070
                     _hw_maximum_pulse_width=0.00230
@@ -2438,8 +2452,8 @@ cleanup_old_klippy_modules
 if [ "$UNINSTALL" -eq 0 ]; then
     if [ "${INSTALL}" -eq 1 ]; then
         echo -e "${TITLE}$(get_logo "Happy Hare interactive installer...")"
-        read_default_config  # Parses template file parameters into memory
         questionaire         # Update in memory parameters from questionaire
+        read_default_config  # Parses template file parameters into memory
 
         if [ "${INSTALL_PRINTER_INCLUDES}" == "yes" ]; then
             install_printer_includes
@@ -2483,6 +2497,7 @@ if [ "$UNINSTALL" -eq 0 ]; then
     # Copy config files updating from in memory parmameters or h/w settings
     set +e
     copy_config_files
+    remove_old_config_files
     set -e
 
     # Special upgrades of mmu_hardware.cfg
