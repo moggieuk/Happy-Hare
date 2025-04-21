@@ -5575,19 +5575,19 @@ class Mmu:
 
             if espooler_operation != self.ESPOOLER_OFF:
                 self._wait_for_espooler = not homing_move
-                self.espooler.set_operation(self.gate_selected, pwm_value, espooler_operation)
+                self.espooler().set_operation(self.gate_selected, pwm_value, espooler_operation)
         try:
             yield self
 
         finally:
             self._wait_for_espooler = False
             if espooler_operation != self.ESPOOLER_OFF:
-                self.espooler.set_operation(self.gate_selected, 0, self.ESPOOLER_OFF)
+                self.espooler().set_operation(self.gate_selected, 0, self.ESPOOLER_OFF)
 
     # Turn on print espooler assist mode for current gate
     def _espooler_assist_on(self):
         if self.has_espooler() and self.is_printing() and self.ESPOOLER_PRINT in self.espooler_operations:
-            self.espooler.set_operation(self.gate_selected, self.espooler_printing_power / 100, self.ESPOOLER_PRINT)
+            self.espooler().set_operation(self.gate_selected, self.espooler_printing_power / 100, self.ESPOOLER_PRINT)
 
     # Turn off espooler in-print assist mode for all gates
     def _espooler_assist_off(self):
@@ -5777,7 +5777,7 @@ class Mmu:
         # Turn espooler in-print assist off
         espooler_state = None
         if self.has_espooler():
-            espooler_state = self.espooler.get_operation(self.gate_selected)
+            espooler_state = self.espooler().get_operation(self.gate_selected)
             self._espooler_assist_off()
         try:
             yield self
@@ -5790,7 +5790,7 @@ class Mmu:
 
             # Restore espooler state
             if self.has_espooler():
-                self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
+                self.espooler().set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
     # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
