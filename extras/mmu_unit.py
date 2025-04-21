@@ -360,7 +360,10 @@ class MmuToolHead(toolhead.ToolHead, object):
             time_high = self.buffer_time_high
 
         if hasattr(toolhead, 'LookAheadQueue'):
-            self.lookahead = toolhead.LookAheadQueue(self)
+            try:
+                self.lookahead = toolhead.LookAheadQueue(self) # Klipper < 3.13.0-46
+            except:
+                self.lookahead = toolhead.LookAheadQueue() # >= Klipper 3.13.0-46
             self.lookahead.set_flush_time(time_high)
         else:
             # Klipper backward compatibility
