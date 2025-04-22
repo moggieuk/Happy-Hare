@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.2 # Important: Keep synced with mmy.py
+VERSION=3.3 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -452,7 +452,7 @@ read_previous_mmu_type() {
     HAS_SELECTOR="yes"
     dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
     if [ -f "${dest_cfg}" ]; then
-        if ! grep -q "^\[stepper_mmu_selector\]" "${dest_cfg}"; then
+        if ! grep -q "^\[stepper_mmu_selector.*\]" "${dest_cfg}"; then
             HAS_SELECTOR="no"
         fi
     fi
@@ -470,6 +470,13 @@ read_previous_mmu_type() {
             HAS_ENCODER="no"
         fi
     fi
+    HAS_ESPOOLER="yes"
+    dest_cfg="${KLIPPER_CONFIG_HOME}/mmu/base/mmu_hardware.cfg"
+    if [ -f "${dest_cfg}" ]; then
+        if ! grep -q "^\[mmu_espooler mmu_espooler\]" "${dest_cfg}"; then
+            HAS_ESPOOLER="no"
+        fi
+    fi
 
     # Figure out the selector type based on h/w presence
     if [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "no" ]; then
@@ -481,6 +488,7 @@ read_previous_mmu_type() {
     else
         _hw_selector_type='LinearSelector'
     fi
+    echo -e "${INFO}Determined you have a ${_hw_selector_type}"
 }
 
 # Set default parameters from the distribution (reference) config files
@@ -978,6 +986,12 @@ copy_config_files() {
                 #sed "/^# ENCODER/,+24 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
             fi
 
+            # Handle Espooler option - Comment out if not fitted so can easily be added later
+            if [ "${file}" == "mmu_hardware.cfg" -a "$HAS_ESPOOLER" == "no" ]; then
+                sed "/^\[mmu_espooler mmu_espooler\]/,+27 {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                #sed "/^# ESPOOLER/,+41 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+            fi
+
             # Handle Selector options - Delete if not required (sections are 8 and 38 lines respectively)
             if [ "${file}" == "mmu_hardware.cfg" ]; then
                 if [ "$HAS_SELECTOR" == "no" ]; then
@@ -1403,6 +1417,8 @@ questionaire() {
     _hw_color_order="GRBW"
     _hw_has_bypass=0
 
+    HAS_ESPOOLER=no
+
     echo
     echo -e "${INFO}Let me see if I can get you started with initial configuration"
     echo -e "You will still have some manual editing to perform but I will explain that later"
@@ -1595,6 +1611,7 @@ questionaire() {
             HAS_ENCODER=no
             HAS_SELECTOR=no
             HAS_SERVO=no
+            HAS_ESPOOLER=yes
             _hw_mmu_vendor="BoxTurtle"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1640,11 +1657,12 @@ questionaire() {
             ;;
 
         "$HTLF")
-            # Comming soon...
+            # Comming soon (j/k)...
             HAS_ENCODER=no
             HAS_SELECTOR=no
             HAS_SERVO=yes
             ;;
+
         "$_3MS")
             HAS_ENCODER=no
             HAS_SELECTOR=no
@@ -1844,6 +1862,7 @@ questionaire() {
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
             HAS_SERVO=yes
+            HAS_ESPOOLER=yes
             SETUP_LED=yes
             SETUP_SELECTOR_TOUCH=no
             _hw_mmu_vendor="Other"
@@ -1930,6 +1949,7 @@ questionaire() {
                     HAS_SELECTOR=no
                     HAS_SERVO=no
                     HAS_ENCODER=no
+                    HAS_ESPOOLER=yes
                     _hw_selector_type=VirtualSelector
                     _hw_variable_bowden_lengths=1
                     _hw_variable_rotation_distances=1
@@ -2183,7 +2203,7 @@ questionaire() {
                     ;;
             esac
 
-        elif [ "${_hw_mmu_vendor}" == "PicoMMU" ]; then
+        elif [ "${_hw_mmu_vendor}" == "PicoMMU" -o "${_hw_mmu_vendor}" == "MMX" ]; then
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
             OPTIONS=()
             option MMX_BOM 'MG996R'
