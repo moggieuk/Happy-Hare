@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.3 # Important: Keep synced with mmy.py
+VERSION=3.2 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -1721,6 +1721,7 @@ questionaire() {
             HAS_SELECTOR=no
             HAS_SERVO=yes
             SETUP_SELECTOR_TOUCH=no
+
             _hw_mmu_vendor="PicoMMU"
             _hw_mmu_version="1.0"
             _hw_selector_type=ServoSelector
@@ -1874,6 +1875,7 @@ questionaire() {
             HAS_ESPOOLER=yes
             SETUP_LED=yes
             SETUP_SELECTOR_TOUCH=no
+
             _hw_mmu_vendor="Other"
             _hw_mmu_version="1.0"
             _hw_selector_type=LinearSelector
@@ -1992,7 +1994,8 @@ questionaire() {
     option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
     option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
     option AFC_LITE_1           'AFC Lite v1.0'
-    option SKR_PICO_1 'BTT SKR Pico v1.0'
+    option SKR_PICO_1           'BTT SKR Pico v1.0'
+    option EBB42_12             'BTT EBB 42 CANbus v1.2 (for MMX or Pico)'
     option OTHER                'Not in list / Unknown'
     prompt_option opt 'MCU Type' "${OPTIONS[@]}"
     case $opt in
@@ -2039,6 +2042,10 @@ questionaire() {
         "$SKR_PICO_1")
             _hw_brd_type="SKR_PICO_1"
             pattern="Klipper_rp2040"
+            ;;
+        "$EBB42_12")
+            _hw_brd_type="EBB42_12"
+            pattern="Klipper_"
             ;;
         *)
             _hw_brd_type="unknown"
