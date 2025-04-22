@@ -901,11 +901,11 @@ copy_config_files() {
     done
 
     # Find all variables in the form of PIN[$_hw_brd_type,*]
-    if [ "$HAS_SELECTOR" == "yes" ]; then
-        key_match="$_hw_brd_type"
-    else
+    if [ "$_hw_selector_type" == "VirtualSelector" ]; then
         # Type-B MMU has alternative pin allocation
         key_match="B,$_hw_brd_type"
+    else
+        key_match="$_hw_brd_type"
     fi
     for key in "${!PIN[@]}"; do
         if [[ $key == "$key_match"* ]]; then
@@ -1006,7 +1006,7 @@ copy_config_files() {
                     sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
                 fi
 
-                if [ "_hw_selector_type" == "VirtualSelector" ]; then
+                if [ "$_hw_selector_type" == "VirtualSelector" ]; then
                     # Expand out the additional filament drive for each gate
                     additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
                     awk '{ print } /^# ADDITIONAL FILAMENT DRIVE/ { for (i=1; i<=11; i++) { getline; print }; exit }' ${dest} > ${dest}.tmp
