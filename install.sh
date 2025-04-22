@@ -488,6 +488,10 @@ read_previous_mmu_type() {
     else
         _hw_selector_type='LinearSelector'
     fi
+    echo -e "${INFO}HAS_SELECTOR=${HAS_SELECTOR}"
+    echo -e "${INFO}HAS_SERVO=${HAS_SERVO}"
+    echo -e "${INFO}HAS_ENCODER=${HAS_ENCODER}"
+    echo -e "${INFO}HAS_ESPOOLER=${HAS_ESPOOLER}"
     echo -e "${INFO}Determined you have a ${_hw_selector_type}"
 }
 
@@ -996,11 +1000,13 @@ copy_config_files() {
             if [ "${file}" == "mmu_hardware.cfg" ]; then
                 if [ "$HAS_SELECTOR" == "no" ]; then
                     sed "/^# SELECTOR STEPPER/,+37 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                fi
 
-                    if [ "$HAS_SERVO" == "no" ]; then
-                        sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                    fi
+                if [ "$HAS_SERVO" == "no" ]; then
+                    sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                fi
 
+                if [ "_hw_selector_type" == "VirtualSelector" ]; then
                     # Expand out the additional filament drive for each gate
                     additional_gear_section=$(sed -n "/^# ADDITIONAL FILAMENT DRIVE/,+10 p" ${dest} | sed "1,3d")
                     awk '{ print } /^# ADDITIONAL FILAMENT DRIVE/ { for (i=1; i<=11; i++) { getline; print }; exit }' ${dest} > ${dest}.tmp
@@ -1017,10 +1023,6 @@ copy_config_files() {
                         cat ${dest} | sed -e "s/^uart_pin: mmu:MMU_GEAR_UART_3/uart_pin: mmu:MMU_GEAR_UART\nuart_address: 3/" > ${dest}.tmp && mv ${dest}.tmp ${dest}
                     fi
                 else
-                    if [ "$HAS_SERVO" == "no" ]; then
-                        sed "/^# SELECTOR SERVO/,+7 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                    fi
-
                     # Delete additional gear drivers template section
                     sed "/^# ADDITIONAL FILAMENT DRIVE/,+10 d" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
                 fi
@@ -1669,6 +1671,7 @@ questionaire() {
             HAS_SERVO=no
             HELP_URL="https://github.com/moggieuk/Happy-Hare/wiki/Quick-Start-3MS"
             HELP_URL_B="https://3dcoded.github.io/3MS/instructions/"
+
             _hw_mmu_vendor="3MS"
             _hw_mmu_version="1.0"
             _hw_selector_type=VirtualSelector
@@ -1679,6 +1682,7 @@ questionaire() {
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+
             _param_extruder_homing_endstop="extruder"
             _param_gate_homing_endstop="extruder"
             _param_gate_homing_max=500
@@ -1691,6 +1695,7 @@ questionaire() {
             HAS_SELECTOR=yes
             HAS_SERVO=no
             SETUP_SELECTOR_TOUCH=no
+
             _hw_mmu_vendor="3DChameleon"
             _hw_mmu_version="1.0"
             _hw_selector_type=RotarySelector
@@ -1703,6 +1708,7 @@ questionaire() {
             _hw_gear_hold_current=0.1
             _hw_sel_run_current=0.63
             _hw_sel_hold_current=0.2
+
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=500
@@ -1730,6 +1736,7 @@ questionaire() {
             _hw_entry_leds=""
             _hw_status_leds=""
             _hw_logo_leds=""
+
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=100
@@ -1823,6 +1830,7 @@ questionaire() {
             HAS_SELECTOR=no
             HAS_SERVO=yes
             SETUP_SELECTOR_TOUCH=no
+
             _hw_mmu_vendor="MMX"
             _hw_mmu_version="1.0"
             _hw_selector_type=ServoSelector
@@ -1838,6 +1846,7 @@ questionaire() {
             _hw_entry_leds=""
             _hw_status_leds=""
             _hw_logo_leds=""
+
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=1000
@@ -2471,8 +2480,8 @@ cleanup_old_klippy_modules
 if [ "$UNINSTALL" -eq 0 ]; then
     if [ "${INSTALL}" -eq 1 ]; then
         echo -e "${TITLE}$(get_logo "Happy Hare interactive installer...")"
-        questionaire         # Update in memory parameters from questionaire
         read_default_config  # Parses template file parameters into memory
+        questionaire         # Update in memory parameters from questionaire
 
         if [ "${INSTALL_PRINTER_INCLUDES}" == "yes" ]; then
             install_printer_includes

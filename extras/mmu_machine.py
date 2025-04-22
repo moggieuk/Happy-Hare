@@ -95,9 +95,9 @@ class MmuMachine:
         selector_type = 'LinearSelector'
         variable_rotation_distances = 1
         variable_bowden_lengths = 0
-        require_bowden_move = 1 # Will allow mmu_gate sensor and extruder sensor to share the same pin
+        require_bowden_move = 1     # Will allow mmu_gate sensor and extruder sensor to share the same pin
         filament_always_gripped = 0 # Whether MMU design has ability to release filament (overrides gear/extruder syncing)
-        has_bypass = 0 # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearSelector)
+        has_bypass = 0              # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearSelector)
 
         if self.mmu_vendor == VENDOR_ERCF:
             selector_type = 'LinearSelector'
@@ -173,6 +173,20 @@ class MmuMachine:
             require_bowden_move = 1
             filament_always_gripped = 1
             has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_MMX:
+            selector_type = 'ServoSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 0
+            has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_VVD:
+            pass
+
+        elif self.mmu_vendor == VENDOR_KMS:
+            pass
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
