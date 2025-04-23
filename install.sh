@@ -331,8 +331,7 @@ parse_file() {
     file="$1"
     prefix_filter="$2"
     namespace="$3"
-    checkdup="$4"
-    checkdup=""
+    merge="$4"
 
     if [ ! -f "${file}" ]; then
         return
@@ -361,9 +360,14 @@ parse_file() {
             if echo "$parameter" | grep -E -q "${prefix_filter}"; then
                 if [ "${value}" != "" ]; then
                     combined="${namespace}${parameter}"
-                    if [ -n "${checkdup}" ] && [ ! -z "${!combined+x}" ]; then
-                        echo -e "${ERROR}${parameter} defined multiple times!"
+                    if [ ! -z "${!combined+x}" ]; then
+                        if [ "${merge}" == "merge" ]; then
+                            continue # Use existing value
+                        elif [ "${merge}" == "checkdup" ]; then
+                            echo -e "${ERROR}${parameter} defined multiple times!"
+                        fi
                     fi
+                    # Set/overwrite value in memory
                     if echo "$value" | grep -q '^{.*}$'; then
                         eval "${combined}=\$${value}"
                     elif [ "${value%"${value#?}"}" = "'" ]; then
@@ -497,20 +501,27 @@ read_previous_mmu_type() {
 
 # Set default parameters from the distribution (reference) config files
 read_default_config() {
-    echo -e "${INFO}Reading default configuration parameters..."
+    if [ "$1" == "merge" ]; then
+        echo -e "${INFO}Merging default configuration parameters..."
+        merge="merge"
+    else
+        echo -e "${INFO}Reading default configuration parameters..."
+        merge="checkdup"
+    fi
+
     if [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "no" ]; then
-        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.vs" ""            "_param_" "checkdup"
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.vs" ""            "_param_" "$merge"
     elif [ "$HAS_SELECTOR" == "no" -a "$HAS_SERVO" == "yes" ]; then
-        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.ss" ""            "_param_" "checkdup"
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.ss" ""            "_param_" "$merge"
     elif [ "$HAS_SELECTOR" == "yes" -a "$HAS_SERVO" == "no" ]; then
-        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.rs" ""            "_param_" "checkdup"
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg.rs" ""            "_param_" "$merge"
     else
         # All other selector types
-        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""               "_param_" "checkdup"
+        parse_file "${SRCDIR}/config/base/mmu_parameters.cfg" ""               "_param_" "$merge"
     fi
-    parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_|filename" ""        "checkdup"
+    parse_file "${SRCDIR}/config/base/mmu_macro_vars.cfg" "variable_|filename" ""        "$merge"
     for file in `cd ${SRCDIR}/config/addons ; ls *.cfg | grep -v "_hw" | grep -v "my_"`; do
-        parse_file "${SRCDIR}/config/addons/${file}"      "variable_"          ""        "checkdup"
+        parse_file "${SRCDIR}/config/addons/${file}"      "variable_"          ""        "$merge"
     done
 }
 
@@ -2487,8 +2498,8 @@ cleanup_old_klippy_modules
 if [ "$UNINSTALL" -eq 0 ]; then
     if [ "${INSTALL}" -eq 1 ]; then
         echo -e "${TITLE}$(get_logo "Happy Hare interactive installer...")"
-        read_default_config  # Parses template file parameters into memory
-        questionaire         # Update in memory parameters from questionaire
+        questionaire              # Update in memory parameters from questionaire
+        read_default_config merge # Parses template file parameters and merges into memory
 
         if [ "${INSTALL_PRINTER_INCLUDES}" == "yes" ]; then
             install_printer_includes
