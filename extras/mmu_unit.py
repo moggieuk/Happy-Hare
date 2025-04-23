@@ -55,12 +55,16 @@ VENDOR_3MS            = "3MS"
 VENDOR_3D_CHAMELEON   = "3DChameleon"
 VENDOR_PICO_MMU       = "PicoMMU"
 VENDOR_QUATTRO_BOX    = "QuattroBox"
+VENDOR_MMX            = "MMX"
+VENDOR_VVD            = "VVD"
+VENDOR_KMS            = "KMS"
 VENDOR_OTHER          = "Other"
 
 UNIT_ALT_DISPLAY_NAMES = {
     VENDOR_ANGRY_BEAVER: "Angry Beaver",
     VENDOR_BOX_TURTLE:   "Box Turtle",
     VENDOR_NIGHT_OWL:    "Night Owl",
+    VENDOR_VVD:          "BTT VVD",
 }
 
 VENDORS = [
@@ -74,6 +78,9 @@ VENDORS = [
     VENDOR_3D_CHAMELEON,
     VENDOR_PICO_MMU,
     VENDOR_QUATTRO_BOX,
+    VENDOR_MMX,
+    VENDOR_VVD,
+    VENDOR_KMS,
     VENDOR_OTHER
 ]
 
@@ -186,6 +193,20 @@ class MmuUnit:
             require_bowden_move = 1
             filament_always_gripped = 1
             has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_MMX:
+            selector_type = 'ServoSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 0
+            has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_VVD:
+            pass
+
+        elif self.mmu_vendor == VENDOR_KMS:
+            pass
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
