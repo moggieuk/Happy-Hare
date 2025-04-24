@@ -1,0 +1,70 @@
+choice CHOICE_BOARD_TYPE
+  config BOARD_TYPE_SKR_PICO_1
+    bool "BTT SKR Pico v1.0"
+endchoice
+
+choice CHOICE_SERIAL_DEVICE
+  default $(serial_config,1,rp2040)
+endchoice
+
+if BOARD_TYPE_SKR_PICO_1
+  config PARAM_BOARD_TYPE
+    default "SKR_PICO_1"
+
+  # MMU Type B
+  config PIN_GEAR_UART 
+    default "gpio9" 
+  config PIN_GEAR_STEP
+    default "gpio11" 
+  config PIN_GEAR_DIR
+    default "gpio10" 
+  config PIN_GEAR_ENABLE
+    default "gpio12" 
+  config PIN_GEAR_DIAG
+    default "gpio4" 
+
+  if PARAM_SELECTOR_TYPE = "VirtualSelector"
+    config PIN_GEAR_1_STEP
+      default "gpio6" 
+    config PIN_GEAR_1_DIR
+      default "gpio5" 
+    config PIN_GEAR_1_ENABLE
+      default "gpio7" 
+    config PIN_GEAR_1_DIAG
+      default "gpop3" 
+
+    config PIN_GEAR_2_STEP
+      default "gpio19" 
+    config PIN_GEAR_2_DIR
+      default "gpio28" 
+    config PIN_GEAR_2_ENABLE
+      default "gpio2" 
+    config PIN_GEAR_2_DIAG
+	  default "gpio25"
+
+    config PIN_GEAR_3_STEP
+      default "gpio14" 
+    config PIN_GEAR_3_DIR
+      default "gpio13" 
+    config PIN_GEAR_3_ENABLE
+      default "gpio15" 
+    config PIN_GEAR_3_DIAG
+      default "gpio16" 
+  endif
+
+  if PARAM_SELECTOR_TYPE != "VirtualSelector"
+    config PIN_SELECTOR_STEP
+      default "gpio19" 
+    config PIN_SELECTOR_DIR
+      default "gpio28" 
+    config PIN_SELECTOR_ENABLE
+      default "gpio2" 
+    config PIN_SELECTOR_DIAG
+      default "gpio25" 
+    config PIN_SELECTOR_SERVO
+      default "gpio29" 
+  endif
+
+  config PIN_NEOPIXEL
+    default "gpio24" 
+endif

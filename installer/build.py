@@ -217,11 +217,11 @@ def build_mmu_cfg(builder, cfg):
     else:
         builder.remove_placeholder("cfg_encoder")
 
-    if cfg.is_enabled("INSTALL_DC_ESPOOLER"):
-        builder.use_config("dc_espooler")
-        builder.expand_value_line("board_pins mmu", "aliases", r"MMU_DC_MOT_%_\w+", num_gates)
+    if cfg.is_enabled("MMU_HAS_ESPOOLER"):
+        builder.use_config("espooler")
+        builder.expand_value_line("board_pins mmu", "aliases", r"MMU_ESPOOLER\w+_%", num_gates)
     else:
-        builder.remove_placeholder("cfg_dc_espooler")
+        builder.remove_placeholder("cfg_espooler")
 
     return builder
 
@@ -248,6 +248,11 @@ def build_mmu_hardware_cfg(builder, cfg):
         builder.use_config("selector_servo")
     else:
         builder.remove_placeholder("cfg_selector_servo")
+
+    if cfg.is_enabled("MMU_HAS_ESPOOLER"):
+        builder.use_config("espooler")
+    else:
+        builder.remove_placeholder("cfg_espooler")
 
     if not cfg.is_enabled("MMU_HAS_SELECTOR") and not cfg.is_enabled("MMU_HAS_SERVO"):
         builder.use_config("gear_steppers")
@@ -470,7 +475,6 @@ def install_includes(dest_file, kconfig):
     check_include(builder, "INSTALL_CLIENT_MACROS", "mmu/optional/client_macros.cfg")
     check_include(builder, "INSTALL_EREC_CUTTER", "mmu/addons/mmu_erec_cutter.cfg")
     check_include(builder, "INSTALL_BLOBIFIER", "mmu/addons/blobifier.cfg")
-    check_include(builder, "INSTALL_DC_ESPOOLER", "mmu/addons/dc_espooler.cfg")
     check_include(builder, "INSTALL_EJECT_BUTTONS", "mmu/addons/mmu_eject_buttons.cfg")
 
     if not builder.has_section("include mmu/base/*.cfg"):

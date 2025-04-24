@@ -139,8 +139,10 @@ class PurgeVolCalculator:
         hex_color = hex_color.lstrip('#')
         if len(hex_color) == 3:
             hex_color = ''.join([c * 2 for c in hex_color])
+        if len(hex_color) == 8:
+            hex_color = hex_color[:6]
         if len(hex_color) != 6:
-            raise ValueError("Invalid hex color code, it should be 3 or 6 digits long")
+            raise ValueError("Invalid hex color code, it should be 3, 6 or 8 digits long")
         color_value = int(hex_color, 16)
         r = (color_value >> 16) & 0xFF
         g = (color_value >> 8) & 0xFF

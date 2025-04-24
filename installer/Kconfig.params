@@ -8,6 +8,8 @@ config MMU_HAS_SERVO
 config MMU_HAS_SELECTOR
   bool
 
+config MMU_HAS_ESPOOLER
+  bool
 
 config PARAM_SELECTOR_TYPE
   string

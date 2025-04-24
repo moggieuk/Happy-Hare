@@ -484,9 +484,6 @@ class ConfigBuilder(object):
             if item["type"] == "option" and item["name"] == option_name:
                 section["body"][i:i] = [self.parser.whitespace("#")]
                 return
-        # comment = self.parser.serialize(option, "")
-        # comment = re.sub(r"^", "#", comment, flags=re.MULTILINE)
-        # self._for_option(section_name, option_name, lambda node, _: self.parser.parse_comment(Tokenizer
 
     def replace_placeholder(self, placeholder, value):
         tmp = self.parser.serialize(self.document)

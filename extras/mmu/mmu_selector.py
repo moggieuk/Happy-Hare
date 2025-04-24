@@ -81,7 +81,7 @@ class BaseSelector:
     def filament_release(self, measure=False):
         return 0. # Encoder movement
 
-    def filament_hold(self):
+    def filament_hold_move(self):
         pass
 
     def get_filament_grip_state(self):
@@ -335,7 +335,7 @@ class LinearSelector(BaseSelector, object):
     def select_gate(self, gate):
         if gate == self.mmu.gate_selected: return
         with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
-            self.filament_hold()
+            self.filament_hold_move()
             if gate == self.mmu.TOOL_GATE_BYPASS:
                 self._position(self.bypass_offset)
             elif gate >= 0:
@@ -354,7 +354,7 @@ class LinearSelector(BaseSelector, object):
     def filament_release(self, measure=False):
         return self.servo.servo_up(measure=measure)
 
-    def filament_hold(self): # AKA position for selector movement
+    def filament_hold_move(self): # AKA position for holding filament and moving selector
         self.servo.servo_move()
 
     def get_filament_grip_state(self):
@@ -446,7 +446,7 @@ class LinearSelector(BaseSelector, object):
                     self.mmu.log_always("Selector calibration complete")
                     self.mmu.select_tool(0)
                 else:
-                    self.mmu.motors_off(motor="selector")
+                    self.mmu.motors_onoff(on=False, motor="selector")
 
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
@@ -475,7 +475,7 @@ class LinearSelector(BaseSelector, object):
                         if random.randint(0, 10) == 0 and home:
                             self.mmu.home(tool=tool)
                         else:
-                            self.mmu.select_tool(tool, move_servo=servo)
+                            self.mmu.select_tool(tool, adjust_grip=servo)
                     if servo:
                         self.filament_drive()
         except MmuError as ee:
@@ -735,7 +735,7 @@ class LinearSelector(BaseSelector, object):
                         delta = abs(new_pos - trig_pos[0])
                         if delta < 1.0:
                             homed = False
-                            self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
+                            self.mmu.log_trace("Trying selector %.4fmm to %.2fmm" % (delta, new_pos))
                             self.mmu_toolhead.move(pos, speed)
                         else:
                             homed = True
@@ -852,9 +852,13 @@ class LinearSelectorServo:
     def cmd_MMU_SERVO(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
+        reset = gcmd.get_int('RESET', 0)
         save = gcmd.get_int('SAVE', 0)
         pos = gcmd.get('POS', "").lower()
-        if pos == "off":
+        if reset:
+            self.mmu.delete_variable(self.VARS_MMU_SERVO_ANGLES, write=True)
+            self.mmu.log_info("Calibrated servo angles have be reset to configured defaults")
+        elif pos == "off":
             self.servo_off() # For 'servo_always_active' case
         elif pos == "up":
             if save:
@@ -900,7 +904,7 @@ class LinearSelectorServo:
             self.mmu.log_info("Servo angle unknown")
 
     def servo_down(self, buzz_gear=True):
-        if self.mmu.internal_test: return # Save servo while testing
+        if self.mmu._is_running_test: return # Save servo while testing
         if self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS: return
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
@@ -918,7 +922,7 @@ class LinearSelectorServo:
         self.mmu.mmu_macro_event(self.mmu.MACRO_EVENT_FILAMENT_GRIPPED)
 
     def servo_move(self): # Position servo for selector movement
-        if self.mmu.internal_test: return # Save servo while testing
+        if self.mmu._is_running_test: return # Save servo while testing
         if self.servo_state == self.SERVO_MOVE_STATE: return
         self.mmu.log_trace("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
@@ -929,7 +933,7 @@ class LinearSelectorServo:
             self.servo_state = self.SERVO_MOVE_STATE
 
     def servo_up(self, measure=False):
-        if self.mmu.internal_test: return 0. # Save servo while testing
+        if self.mmu._is_running_test: return 0. # Save servo while testing
         if self.servo_state == self.SERVO_UP_STATE: return 0.
         self.mmu.log_trace("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up'])
         delta = 0.
@@ -1174,6 +1178,7 @@ class RotarySelector(BaseSelector, object):
         status.update({
             'grip': "Gripped" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
         })
+        return status
 
     def get_mmu_status_config(self):
         msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
@@ -1244,7 +1249,7 @@ class RotarySelector(BaseSelector, object):
                 self.mmu.log_always("Selector calibration complete")
                 self.mmu.select_tool(0)
             else:
-                self.mmu.motors_off(motor="selector")
+                self.mmu.motors_onoff(on=False, motor="selector")
 
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
@@ -1387,6 +1392,7 @@ class RotarySelector(BaseSelector, object):
             pass # Home not found
         mcu_position = self.selector_stepper.get_mcu_position()
         traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
+        return traveled, homed
 
 
 
@@ -1476,7 +1482,7 @@ class MacroSelector(BaseSelector, object):
 # Servo Selector
 # Implements Servo based Selector for type-A MMU's like PicoMMU. Filament is
 # always gripped when gate selected but a release position is assumed between
-# each gate position
+# each gate position (or specified release position, often 0 degrees)
 #
 # Implements commands:
 #   MMU_CALIBRATE_SELECTOR
@@ -1496,6 +1502,7 @@ class ServoSelector(BaseSelector, object):
         super(ServoSelector, self).__init__(mmu)
         self.is_homed = True
         self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
+        self.selector_bypass_angle = -1
 
         # Get hardware
         servo_name = mmu.config.get('selector_servo_name', "selector_servo")
@@ -1510,6 +1517,9 @@ class ServoSelector(BaseSelector, object):
         self.servo_min_angle = mmu.config.getfloat('servo_min_angle', 0, above=0)                    # Not exposed
         self.servo_max_angle = mmu.config.getfloat('servo_max_angle', self.servo.max_angle, above=0) # Not exposed
         self.servo_angle = self.servo_min_angle + (self.servo_max_angle - self.servo_min_angle) / 2
+        self.selector_release_angle = mmu.config.getfloat('selector_release_angle', -1, minval=-1, maxval=self.servo_max_angle)
+        self.selector_bypass_angle = mmu.config.getfloat('selector_bypass_angle', -1, minval=-1, maxval=self.servo_max_angle)
+        self.selector_angles = list(mmu.config.getintlist('selector_gate_angles', []))
 
         # Register GCODE commands specific to this module
         gcode = mmu.printer.lookup_object('gcode')
@@ -1530,51 +1540,76 @@ class ServoSelector(BaseSelector, object):
         self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
 
     def handle_connect(self):
-        # Load selector angles (calibration set with MMU_CALIBRATE_SELECTOR) --------------------------------
-        self.selector_angles = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_ANGLES, None)
-        if self.selector_angles:
-            # Ensure list size
-            if len(self.selector_angles) == self.mmu.num_gates:
-                self.mmu.log_debug("Loaded saved selector angles: %s" % self.selector_angles)
-            else:
-                self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.VARS_MMU_SELECTOR_ANGLES)
-                self.selector_angles = self._ensure_list_size(self.selector_angles, self.mmu.num_gates)
+        # Load and merge calibrated selector angles (calibration set with MMU_CALIBRATE_SELECTOR) -----------
+        self.selector_angles = self._ensure_list_size(self.selector_angles, self.mmu.num_gates)
 
-            if not any(x == -1 for x in self.selector_angles):
-                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+        cal_selector_angles = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_ANGLES, [])
+        if cal_selector_angles:
+            self.mmu.log_debug("Loaded saved selector angles: %s" % cal_selector_angles)
         else:
-            self.mmu.log_always("Warning: Selector angles not found in mmu_vars.cfg. Probably not calibrated")
-            self.selector_angles = [-1] * self.mmu.num_gates
-        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_ANGLES] = self.selector_angles
+            self.mmu.log_always("Warning: Selector angles not found in mmu_vars.cfg. Using configured defaults")
 
-        self.selector_bypass_angle = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, 0)
-        if self.selector_bypass_angle > 0:
+        # Merge calibrated angles with conf angles
+        for gate, angle in enumerate(zip(self.selector_angles, cal_selector_angles)):
+            if angle[1] >= 0:
+                self.selector_angles[gate] = angle[1]
+
+        if not any(x == -1 for x in self.selector_angles):
+            self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+
+        selector_bypass_angle = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, -1)
+        if selector_bypass_angle >= 0:
+            self.selector_bypass_angle = selector_bypass_angle
             self.mmu.log_debug("Loaded saved bypass angle: %s" % self.selector_bypass_angle)
-        else:
-            self.selector_bypass_angle = -1 # Ensure -1 value for uncalibrated / non-existent
-        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_BYPASS_ANGLE] = self.selector_bypass_angle
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
         lst.extend([default_value] * (size - len(lst)))
         return lst
 
-    # Physically move selector to correct gate position. Always move because filament release
-    # could have changed servo position
+    # We defer the actual gate selection (servo movement) until the filament_drive/release/hold
+    # calls to prevent unecessary flutter
     def select_gate(self, gate):
         if gate != self.mmu.gate_selected:
             with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
-                self.restore_gate(gate)
-        else:
-            self.restore_gate(gate)
+                pass # Ensure action macro is called
 
     def restore_gate(self, gate):
         if gate == self.mmu.TOOL_GATE_BYPASS:
             self.servo_state = self.mmu.FILAMENT_RELEASE_STATE
+            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.selector_bypass_angle)
             self._set_servo_angle(self.selector_bypass_angle)
-        elif 0 <= gate < self.mmu.num_gates:
-            self.servo_state = self.mmu.FILAMENT_DRIVE_STATE
-            self._set_servo_angle(self.selector_angles[gate])
+        else:
+            # Defer movement until filament_drive/release/hold call
+            self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
+
+    def filament_drive(self):
+        self._grip()
+
+    def filament_release(self, measure=False):
+        self._grip(release=True)
+        return 0. # Encoder movement
+
+    def filament_hold_move(self):
+        self._grip(release=True)
+
+    # Common logic for servo manipulation
+    def _grip(self, release=False):
+        if self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS:
+            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.selector_bypass_angle)
+            self._set_servo_angle(self.selector_bypass_angle)
+            self.servo_state = self.mmu.FILAMENT_RELEASE_STATE
+        elif self.mmu.gate_selected >= 0:
+            if release:
+                release_angle = self._get_closest_released_angle()
+                self.mmu.log_trace("Setting servo to filament released position at angle: %.1f" % release_angle)
+                self._set_servo_angle(release_angle)
+                self.servo_state = self.mmu.FILAMENT_RELEASE_STATE
+            else:
+                angle = self.selector_angles[self.mmu.gate_selected]
+                self.mmu.log_trace("Setting servo to filament grip position at angle: %.1f" % angle)
+                self._set_servo_angle(angle)
+                self.servo_state = self.mmu.FILAMENT_DRIVE_STATE
         else:
             self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
 
@@ -1608,7 +1643,7 @@ class ServoSelector(BaseSelector, object):
 
     def get_mmu_status_config(self):
         msg = super(ServoSelector, self).get_mmu_status_config()
-        msg += ". Servo in %s position" % ("DRIVE" if self.servo_state == self.mmu.FILAMENT_DRIVE_STATE else \
+        msg += ". Servo in %s position" % ("GRIP" if self.servo_state == self.mmu.FILAMENT_DRIVE_STATE else \
                 "RELEASE" if self.servo_state == self.mmu.FILAMENT_RELEASE_STATE else "unknown")
         return msg
 
@@ -1619,26 +1654,19 @@ class ServoSelector(BaseSelector, object):
 
     cmd_MMU_GRIP_help = "Grip filament in current gate"
     def cmd_MMU_GRIP(self, gcmd):
-        if self.mmu.gate_selected >= 0:
-            angle = self.selector_angles[self.mmu.gate_selected]
-            self.mmu.log_trace("Setting servo to filament grip position at angle: %.1f" % angle)
-            self._set_servo_angle(angle)
-            self.servo_state = self.mmu.FILAMENT_DRIVE_STATE
+        self.filament_drive()
 
     cmd_MMU_RELEASE_help = "Ungrip filament in current gate"
     def cmd_MMU_RELEASE(self, gcmd):
-        if self.mmu.gate_selected >= 0:
-            release_angle = self._get_closest_released_angle()
-            self.mmu.log_trace("Setting servo to filament released position at angle: %.1f" % release_angle)
-            self._set_servo_angle(release_angle)
-            self.servo_state = self.mmu.FILAMENT_RELEASE_STATE
+        self.filament_release()
 
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector servo angle for specifed gate(s)"
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
 
-        usage = "\nUsage: MMU_CALIBRATE_SELECTOR [GATE=x] [BYPASS=0|1] [SPACING=x] [ANGLE=x] [SAVE=0|1] [SINGLE=0|1]"
+        usage = "\nUsage: MMU_CALIBRATE_SELECTOR [GATE=x] [BYPASS=0|1] [SPACING=x] [ANGLE=x] [SAVE=0|1] [SINGLE=0|1] [SHOW=0|1]"
+        show = gcmd.get_int('SHOW', 0)
         angle = gcmd.get_int('ANGLE', None)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
@@ -1647,10 +1675,26 @@ class ServoSelector(BaseSelector, object):
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = self.mmu.TOOL_GATE_BYPASS
 
-        if angle is not None:
+        if show:
+            msg = ""
+            if not self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR:
+                msg += "Calibration not complete\n"
+            msg += "Current selector gate angle positions are: %s degrees" % self.selector_angles
+            if self.selector_release_angle >= 0:
+                msg += "\nRelease angle is fixed at: %s degrees" % self.selector_release_angle
+            else:
+                msg += "\nRelease angles configured to be between each gate angle"
+            if self.has_bypass():
+                msg += "\nBypass angle: %s" % self.selector_bypass_angle
+            else:
+                msg += "\nBypass angle not configured"
+            self.mmu.log_info(msg)
+
+        elif angle is not None:
             self.mmu.log_debug("Setting selector servo to angle: %d" % angle)
             self._set_servo_angle(angle)
             self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
+
         elif save:
             if gate == self.mmu.TOOL_GATE_BYPASS:
                 self.selector_bypass_angle = self.servo_angle
@@ -1667,13 +1711,13 @@ class ServoSelector(BaseSelector, object):
                     if angles:
                         self.selector_angles = angles
                         self.mmu.save_variable(self.VARS_MMU_SELECTOR_ANGLES, self.selector_angles, write=True)
-                        self.mmu.log_info("Selector lane angle positions %s has been saved" % self.selector_angles)
+                        self.mmu.log_info("Selector gate angle positions %s has been saved" % self.selector_angles)
                     else:
                         self.mmu.log_error("Not possible to distribute angles with separation of %.1f degrees with gate %d at %.1f%s" % (spacing, gate, self.servo_angle, usage))
             else:
                 self.mmu.log_error("No gate specified%s" % usage)
         else:
-            self.mmu.log_always("Current selector servo angle: %d, Selector lane angle positions: %s" % (self.servo_angle, self.selector_angles))
+            self.mmu.log_always("Current selector servo angle: %d, Selector gate angle positions: %s" % (self.servo_angle, self.selector_angles))
 
         if not any(x == -1 for x in self.selector_angles):
             self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
@@ -1696,11 +1740,14 @@ class ServoSelector(BaseSelector, object):
 
     def _set_servo_angle(self, angle):
         if angle >= 0 and angle != self.servo_angle:
+            self.mmu.movequeues_wait();
             self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
             self.servo_angle = angle
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
 
     def _get_closest_released_angle(self):
+        if self.selector_release_angle >= 0:
+            return self.selector_release_angle
         neutral_angles = [(self.selector_angles[i] + self.selector_angles[i + 1]) / 2 for i in range(len(self.selector_angles) - 1)]
         closest_angle = 0
         min_difference = float('inf')
@@ -1718,5 +1765,5 @@ class ServoSelector(BaseSelector, object):
             a = start_angle + i * spacing
             if not (self.servo_min_angle <= a <= self.servo_max_angle):
                 return None # Not possible
-            angles.append(a)
+            angles.append(round(a))
         return angles

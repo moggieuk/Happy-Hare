@@ -3,13 +3,13 @@ choice CHOICE_BOARD_TYPE
     bool "EASY-BRD with RP2040"
 endchoice
 
-choice CHOICE_SERIAL_DEVICE
-  default $(serial_config,1,rp2040)
-endchoice
-
 if BOARD_TYPE_EASY_BRD_RP2040
   config PARAM_BOARD_TYPE
     default "EASY-BRD-RP2040"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,rp2040)
+  endchoice
 
   config PIN_GEAR_UART
     default "gpio6" 

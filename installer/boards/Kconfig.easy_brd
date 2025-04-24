@@ -3,13 +3,14 @@ choice CHOICE_BOARD_TYPE
     bool "Standard EASY-BRD (with SAMD21)"
 endchoice
 
-choice CHOICE_SERIAL_DEVICE
-  default $(serial_config,1,samd21)
-endchoice
 
 if BOARD_TYPE_EASY_BRD
   config PARAM_BOARD_TYPE
     default "EASY-BRD"
+  
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,samd21)
+  endchoice
 
   config PIN_GEAR_UART
     default "PA8" 

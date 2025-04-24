@@ -3,13 +3,13 @@ choice CHOICE_BOARD_TYPE
     bool "Fysetc Burrows ERB v1"
 endchoice
 
-choice CHOICE_SERIAL_DEVICE
-  default $(serial_config,1,rp2040)
-endchoice
-
 if BOARD_TYPE_ERB_1
   config PARAM_BOARD_TYPE
     default "ERB"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,rp2040)
+  endchoice
 
   config PIN_GEAR_UART
     default "gpio20" 

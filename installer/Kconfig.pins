@@ -1,178 +1,240 @@
 # This just defines the pins menu layout. To change the actual defaults create a Kconfig.board_type under the boards directory.
 
-menu "Gear pins"
-  config PIN_GEAR_UART 
-    string "Gear UART pin"
-  config PIN_GEAR_STEP
-    string "Gear step pin"
-  config PIN_GEAR_DIR
-    string "Gear dir pin"
-  config PIN_GEAR_ENABLE
-    string "Gear enable pin"
-  config PIN_GEAR_DIAG
-    string "Gear diag pin"
+config OVERRIDE_PINS
+  bool "Override pins? (Note: Changes to the board type will no longer have effect on these pin values after enabling this option)"
+  default n
+  help
+    If you want to override the default pin layout for your board, select this option. 
+    This will allow you to specify custom pins for each function.
+    Note: When enabling this option, changing the board type might no longer have an effect on these pin values.
 
-  if PARAM_SELECTOR_TYPE = "VirtualSelector"
-    if PARAM_NUM_GATES > 1 
-      config PIN_GEAR_1_UART 
-        string "Gear 1 UART pin"
-      config PIN_GEAR_1_STEP
-        string "Gear 1 step pin"
-      config PIN_GEAR_1_DIR
-        string "Gear 1 dir pin"
-      config PIN_GEAR_1_ENABLE
-        string "Gear 1 enable pin"
-      config PIN_GEAR_1_DIAG
-        string "Gear 1 diag pin"
-    endif 
-
-    if PARAM_NUM_GATES > 2
-      config PIN_GEAR_2_UART 
-        string "Gear 2 UART pin"
-      config PIN_GEAR_2_STEP
-        string "Gear 2 step pin"
-      config PIN_GEAR_2_DIR
-        string "Gear 2 dir pin"
-      config PIN_GEAR_2_ENABLE
-        string "Gear 2 enable pin"
-      config PIN_GEAR_2_DIAG
-        string "Gear 2 diag pin"
+if OVERRIDE_PINS
+  menu "Gear pins"
+    config PIN_GEAR_UART 
+      string "Gear UART pin" 
+    config PIN_GEAR_STEP
+      string "Gear step pin"
+    config PIN_GEAR_DIR
+      string "Gear dir pin"
+    config PIN_GEAR_ENABLE
+      string "Gear enable pin"
+    config PIN_GEAR_DIAG
+      string "Gear diag pin"
+  
+    if PARAM_SELECTOR_TYPE = "VirtualSelector"
+      if PARAM_NUM_GATES > 1 
+        config PIN_GEAR_1_UART 
+          string "Gear 1 UART pin"
+        config PIN_GEAR_1_STEP
+          string "Gear 1 step pin"
+        config PIN_GEAR_1_DIR
+          string "Gear 1 dir pin"
+        config PIN_GEAR_1_ENABLE
+          string "Gear 1 enable pin"
+        config PIN_GEAR_1_DIAG
+          string "Gear 1 diag pin"
+      endif 
+  
+      if PARAM_NUM_GATES > 2
+        config PIN_GEAR_2_UART 
+          string "Gear 2 UART pin"
+        config PIN_GEAR_2_STEP
+          string "Gear 2 step pin"
+        config PIN_GEAR_2_DIR
+          string "Gear 2 dir pin"
+        config PIN_GEAR_2_ENABLE
+          string "Gear 2 enable pin"
+        config PIN_GEAR_2_DIAG
+          string "Gear 2 diag pin"
+      endif
+  
+      if PARAM_NUM_GATES > 3
+        config PIN_GEAR_3_UART 
+          string "Gear 3 UART pin"
+        config PIN_GEAR_3_STEP
+          string "Gear 3 step pin"
+        config PIN_GEAR_3_DIR
+          string "Gear 3 dir pin"
+        config PIN_GEAR_3_ENABLE
+          string "Gear 3 enable pin"
+        config PIN_GEAR_3_DIAG
+          string "Gear 3 diag pin"
+      endif
     endif
-
-    if PARAM_NUM_GATES > 3
-      config PIN_GEAR_3_UART 
-        string "Gear 3 UART pin"
-      config PIN_GEAR_3_STEP
-        string "Gear 3 step pin"
-      config PIN_GEAR_3_DIR
-        string "Gear 3 dir pin"
-      config PIN_GEAR_3_ENABLE
-        string "Gear 3 enable pin"
-      config PIN_GEAR_3_DIAG
-        string "Gear 3 diag pin"
-    endif
-  endif
-endmenu
-
-if PARAM_SELECTOR_TYPE = "LinearSelector"
-  menu "Selector pins"
-    config PIN_SELECTOR_UART
-      string "Selector UART pin"
-    config PIN_SELECTOR_STEP
-      string "Selector step pin"
-    config PIN_SELECTOR_DIR
-      string "Selector dir pin"
-    config PIN_SELECTOR_ENABLE
-      string "Selector enable pin"
-    config PIN_SELECTOR_DIAG
-      string "Selector diag pin"
-    config PIN_SELECTOR_ENDSTOP
-      string "Selector endstop pin"
-    config PIN_SELECTOR_SERVO
-      string "Servo pin"
   endmenu
+  
+  if PARAM_SELECTOR_TYPE = "LinearSelector"
+    menu "Selector pins"
+      config PIN_SELECTOR_UART
+        string "Selector UART pin"
+      config PIN_SELECTOR_STEP
+        string "Selector step pin"
+      config PIN_SELECTOR_DIR
+        string "Selector dir pin"
+      config PIN_SELECTOR_ENABLE
+        string "Selector enable pin"
+      config PIN_SELECTOR_DIAG
+        string "Selector diag pin"
+      config PIN_SELECTOR_ENDSTOP
+        string "Selector endstop pin"
+      config PIN_SELECTOR_SERVO
+        string "Servo pin"
+    endmenu
+  endif
+  
+  menu "Pre-gate pins"
+    config PIN_PRE_GATE_0
+      string "Pre-gate 0 pin"
+      depends on PARAM_NUM_GATES > 0
+    config PIN_PRE_GATE_1
+      string "Pre-gate 1 pin"
+      depends on PARAM_NUM_GATES > 1
+    config PIN_PRE_GATE_2
+      string "Pre-gate 2 pin"
+      depends on PARAM_NUM_GATES > 2
+    config PIN_PRE_GATE_3
+      string "Pre-gate 3 pin"
+      depends on PARAM_NUM_GATES > 3
+    config PIN_PRE_GATE_4
+      string "Pre-gate 4 pin"
+      depends on PARAM_NUM_GATES > 4
+    config PIN_PRE_GATE_5
+      string "Pre-gate 5 pin"
+      depends on PARAM_NUM_GATES > 5
+    config PIN_PRE_GATE_6
+      string "Pre-gate 6 pin"
+      depends on PARAM_NUM_GATES > 6
+    config PIN_PRE_GATE_7
+      string "Pre-gate 7 pin"
+      depends on PARAM_NUM_GATES > 7
+    config PIN_PRE_GATE_8
+      string "Pre-gate 8 pin"
+      depends on PARAM_NUM_GATES > 8
+    config PIN_PRE_GATE_9	
+      string "Pre-gate 9 pin"
+      depends on PARAM_NUM_GATES > 9
+    config PIN_PRE_GATE_10
+      string "Pre-gate 10 pin"
+      depends on PARAM_NUM_GATES > 10
+    config PIN_PRE_GATE_11
+      string "Pre-gate 11 pin"
+      depends on PARAM_NUM_GATES > 11
+  endmenu
+  
+  menu "Gear sensor pins"
+    config PIN_GEAR_SENSOR_0
+      string "Gear sensor 0 pin"
+      depends on PARAM_NUM_GATES > 0
+    config PIN_GEAR_SENSOR_1
+      string "Gear sensor 1 pin"
+      depends on PARAM_NUM_GATES > 1
+    config PIN_GEAR_SENSOR_2
+      string "Gear sensor 2 pin"
+      depends on PARAM_NUM_GATES > 2
+    config PIN_GEAR_SENSOR_3
+      string "Gear sensor 3 pin"
+      depends on PARAM_NUM_GATES > 3
+    config PIN_GEAR_SENSOR_4
+      string "Gear sensor 4 pin"
+      depends on PARAM_NUM_GATES > 4
+    config PIN_GEAR_SENSOR_5
+      string "Gear sensor 5 pin"
+      depends on PARAM_NUM_GATES > 5
+    config PIN_GEAR_SENSOR_6
+      string "Gear sensor 6 pin"
+      depends on PARAM_NUM_GATES > 6
+    config PIN_GEAR_SENSOR_7
+      string "Gear sensor 7 pin"
+      depends on PARAM_NUM_GATES > 7
+    config PIN_GEAR_SENSOR_8
+      string "Gear sensor 8 pin"
+      depends on PARAM_NUM_GATES > 8
+    config PIN_GEAR_SENSOR_9	
+      string "Gear sensor 9 pin"
+      depends on PARAM_NUM_GATES > 9
+    config PIN_GEAR_SENSOR_10
+      string "Gear sensor 10 pin"
+      depends on PARAM_NUM_GATES > 10
+    config PIN_GEAR_SENSOR_11
+      string "Gear sensor 11 pin"
+      depends on PARAM_NUM_GATES > 11
+  endmenu
+ 
+  if MMU_HAS_ESPOOLER
+    menu "eSpooler pins"
+      if PARAM_NUM_GATES > 0
+        config PIN_ESPOOLER_EN_0
+          string "eSpooler enable 0 pin"
+          depends on USE_ENABLE_PINS
+        config PIN_ESPOOLER_RWD_0
+          string "eSpooler rewind 0 pin"
+        config PIN_ESPOOLER_FWD_0
+          string "eSpooler forward 0 pin"
+        config PIN_ESPOOLER_TRIG_0
+          string "eSpooler trigger 0 pin"
+      endif
+    
+      if PARAM_NUM_GATES > 1
+        config PIN_ESPOOLER_EN_1
+          string "eSpooler enable 1 pin"
+          depends on USE_ENABLE_PINS
+        config PIN_ESPOOLER_RWD_1
+          string "eSpooler rewind 1 pin"
+        config PIN_ESPOOLER_FWD_1
+          string "eSpooler forward 1 pin"
+        config PIN_ESPOOLER_TRIG_1
+          string "eSpooler trigger 1 pin"
+      endif
+    
+      if PARAM_NUM_GATES > 2
+        config PIN_ESPOOLER_EN_2
+          string "eSpooler enable 2 pin"
+          depends on USE_ENABLE_PINS
+        config PIN_ESPOOLER_RWD_2
+          string "eSpooler rewind 2 pin"
+        config PIN_ESPOOLER_FWD_2
+          string "eSpooler forward 2 pin"
+        config PIN_ESPOOLER_TRIG_2
+          string "eSpooler trigger 2 pin"
+      endif
+    
+      if PARAM_NUM_GATES > 3
+        config PIN_ESPOOLER_EN_3
+          string "eSpooler enable 3 pin"
+          depends on USE_ENABLE_PINS
+        config PIN_ESPOOLER_RWD_3
+          string "eSpooler rewind 3 pin"
+        config PIN_ESPOOLER_FWD_3
+          string "eSpooler forward 3 pin"
+        config PIN_ESPOOLER_TRIG_3
+          string "eSpooler trigger 3 pin"
+      endif
+    endmenu
+  endif
+
+  config PIN_ENCODER
+    string "Encoder pin"
+    depends on MMU_HAS_ENCODER
+  
+  config PIN_NEOPIXEL
+    string "Neopixel pin"
+  
+  config PIN_GATE_SENSOR
+    string "Gate sensor pin"
+    depends on !MMU_HAS_ENCODER
+  
+  config PIN_EXTRUDER_SENSOR
+    string "Extruder sensor pin"
+  
+  config PIN_TOOLHEAD_SENSOR
+    string "Toolhead sensor pin"
+  
+  config PIN_SYNC_FEEDBACK_TENSION
+    string "Sync feedback tension pin"
+  
+  config PIN_SYNC_FEEDBACK_COMPRESSION
+    string "Sync feedback compression pin"
+  
+  config PIN_GANTRY_SERVO
+    string "Gantry servo pin"
 endif
-
-menu "Pre-gate pins"
-  config PIN_PRE_GATE_0
-    string "Pre-gate 0 pin"
-    depends on PARAM_NUM_GATES > 0
-  config PIN_PRE_GATE_1
-    string "Pre-gate 1 pin"
-    depends on PARAM_NUM_GATES > 1
-  config PIN_PRE_GATE_2
-    string "Pre-gate 2 pin"
-    depends on PARAM_NUM_GATES > 2
-  config PIN_PRE_GATE_3
-    string "Pre-gate 3 pin"
-    depends on PARAM_NUM_GATES > 3
-  config PIN_PRE_GATE_4
-    string "Pre-gate 4 pin"
-    depends on PARAM_NUM_GATES > 4
-  config PIN_PRE_GATE_5
-    string "Pre-gate 5 pin"
-    depends on PARAM_NUM_GATES > 5
-  config PIN_PRE_GATE_6
-    string "Pre-gate 6 pin"
-    depends on PARAM_NUM_GATES > 6
-  config PIN_PRE_GATE_7
-    string "Pre-gate 7 pin"
-    depends on PARAM_NUM_GATES > 7
-  config PIN_PRE_GATE_8
-    string "Pre-gate 8 pin"
-    depends on PARAM_NUM_GATES > 8
-  config PIN_PRE_GATE_9	
-    string "Pre-gate 9 pin"
-    depends on PARAM_NUM_GATES > 9
-  config PIN_PRE_GATE_10
-    string "Pre-gate 10 pin"
-    depends on PARAM_NUM_GATES > 10
-  config PIN_PRE_GATE_11
-    string "Pre-gate 11 pin"
-    depends on PARAM_NUM_GATES > 11
-endmenu
-
-menu "Gear sensor pins"
-  config PIN_GEAR_SENSOR_0
-    string "Gear sensor 0 pin"
-    depends on PARAM_NUM_GATES > 0
-  config PIN_GEAR_SENSOR_1
-    string "Gear sensor 1 pin"
-    depends on PARAM_NUM_GATES > 1
-  config PIN_GEAR_SENSOR_2
-    string "Gear sensor 2 pin"
-    depends on PARAM_NUM_GATES > 2
-  config PIN_GEAR_SENSOR_3
-    string "Gear sensor 3 pin"
-    depends on PARAM_NUM_GATES > 3
-  config PIN_GEAR_SENSOR_4
-    string "Gear sensor 4 pin"
-    depends on PARAM_NUM_GATES > 4
-  config PIN_GEAR_SENSOR_5
-    string "Gear sensor 5 pin"
-    depends on PARAM_NUM_GATES > 5
-  config PIN_GEAR_SENSOR_6
-    string "Gear sensor 6 pin"
-    depends on PARAM_NUM_GATES > 6
-  config PIN_GEAR_SENSOR_7
-    string "Gear sensor 7 pin"
-    depends on PARAM_NUM_GATES > 7
-  config PIN_GEAR_SENSOR_8
-    string "Gear sensor 8 pin"
-    depends on PARAM_NUM_GATES > 8
-  config PIN_GEAR_SENSOR_9	
-    string "Gear sensor 9 pin"
-    depends on PARAM_NUM_GATES > 9
-  config PIN_GEAR_SENSOR_10
-    string "Gear sensor 10 pin"
-    depends on PARAM_NUM_GATES > 10
-  config PIN_GEAR_SENSOR_11
-    string "Gear sensor 11 pin"
-    depends on PARAM_NUM_GATES > 11
-endmenu
-
-config PIN_ENCODER
-  string "Encoder pin"
-  depends on MMU_HAS_ENCODER
-
-config PIN_NEOPIXEL
-  string "Neopixel pin"
-
-config PIN_GATE_SENSOR
-  string "Gate sensor pin"
-  depends on !MMU_HAS_ENCODER
-
-config PIN_EXTRUDER_SENSOR
-  string "Extruder sensor pin"
-
-config PIN_TOOLHEAD_SENSOR
-  string "Toolhead sensor pin"
-
-config PIN_SYNC_FEEDBACK_TENSION
-  string "Sync feedback tension pin"
-
-config PIN_SYNC_FEEDBACK_COMPRESSION
-  string "Sync feedback compression pin"
-
-config PIN_GANTRY_SERVO
-  string "Gantry servo pin"

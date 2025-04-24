@@ -3,13 +3,13 @@ choice CHOICE_BOARD_TYPE
     bool "BTT MMB v1.0 (with CANbus)"
 endchoice
 
-choice CHOICE_SERIAL_DEVICE
-  default $(serial_config,1,stm32)
-endchoice
-
 if BOARD_TYPE_MMB_1_0
   config PARAM_BOARD_TYPE
     default "MMB10"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,stm32)
+  endchoice
 
   config PIN_GEAR_UART 
     default "PA10" 
@@ -43,6 +43,7 @@ if BOARD_TYPE_MMB_1_0
     config PIN_GEAR_2_ENABLE
       default "PA15" 
     config PIN_GEAR_2_DIAG
+      default "PB9"
 
     config PIN_GEAR_3_UART 
       default "PA9" 
@@ -73,17 +74,17 @@ if BOARD_TYPE_MMB_1_0
     config PIN_GEAR_SENSOR_3
       default "PC12"
     
-    config PIN_DC_ESPOOLER_0_A
+    config PIN_ESPOOLER_RWD_0
       default "PA0"
-    config PIN_DC_ESPOOLER_1_A
+    config PIN_ESPOOLER_RWD_1
       default "PA1"
-    config PIN_DC_ESPOOLER_2_A
+    config PIN_ESPOOLER_RWD_2
       default "PB10"
-    config PIN_DC_ESPOOLER_3_A
+    config PIN_ESPOOLER_RWD_3
       default "PB2"
   endif
 
-  if PARAM_SELECTOR_TYPE = "LinearSelector"
+  if PARAM_SELECTOR_TYPE != "VirtualSelector"
     config PIN_SELECTOR_UART
       default "PC7" 
     config PIN_SELECTOR_STEP
@@ -107,7 +108,6 @@ if BOARD_TYPE_MMB_1_0
       default "PC15" 
     config PIN_PRE_GATE_3
       default "PC13" 
-
     config PIN_PRE_GATE_4
       default "PC14"
     config PIN_PRE_GATE_5

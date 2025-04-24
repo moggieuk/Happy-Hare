@@ -3,11 +3,15 @@ choice CHOICE_BOARD_TYPE
     bool "AFC Lite v1.0"
 endchoice
 
-choice CHOICE_SERIAL_DEVICE
-  default $(serial_config,1,stm32)
-endchoice
 
 if BOARD_TYPE_AFC_LITE_1
+  config PARAM_BOARD_TYPE
+    default "AFC_LITE_1"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,stm32)
+  endchoice
+
   config PIN_GEAR_UART 
     default "PD5" 
   config PIN_GEAR_STEP
@@ -70,32 +74,32 @@ if BOARD_TYPE_AFC_LITE_1
   config PIN_GEAR_SENSOR_3
     default "PE11" 
 
-  config PIN_DC_ESPOOLER_0_EN
+  config PIN_ESPOOLER_EN_0
     default "PA2" 
-  config PIN_DC_ESPOOLER_0_A
+  config PIN_ESPOOLER_RWD_0
     default "PA0" 
-  config PIN_DC_ESPOOLER_0_B
+  config PIN_ESPOOLER_FWD_0
     default "PA1" 
 
-  config PIN_DC_ESPOOLER_1_EN
+  config PIN_ESPOOLER_EN_1
     default "PA5" 
-  config PIN_DC_ESPOOLER_1_A
+  config PIN_ESPOOLER_RWD_1
     default "PA6" 
-  config PIN_DC_ESPOOLER_1_B
+  config PIN_ESPOOLER_FWD_1
     default "PA7" 
 
-  config PIN_DC_ESPOOLER_2_EN
+  config PIN_ESPOOLER_EN_2
     default "PB13" 
-  config PIN_DC_ESPOOLER_2_A
+  config PIN_ESPOOLER_RWD_2
     default "PB14" 
-  config PIN_DC_ESPOOLER_2_B
+  config PIN_ESPOOLER_FWD_2
     default "PB15" 
 
-  config PIN_DC_ESPOOLER_3_EN
+  config PIN_ESPOOLER_EN_3
     default "PD11" 
-  config PIN_DC_ESPOOLER_3_A
+  config PIN_ESPOOLER_RWD_3
     default "PD12" 
-  config PIN_DC_ESPOOLER_3_B
+  config PIN_ESPOOLER_FWD_3
     default "PD13" 
 
   config PIN_NEOPIXEL

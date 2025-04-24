@@ -1,6 +1,7 @@
 choice CHOICE_MMU_TYPE
   config MMU_TYPE_BOX_TURTLE_1_0
     bool "Box Turtle v1.0"
+    select MMU_HAS_ESPOOLER
     select VARIABLE_ROTATION_DISTANCES
     select REQUIRE_BOWDEN_MOVE
     select FILAMENT_ALWAYS_GRIPPED

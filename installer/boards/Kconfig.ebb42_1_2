@@ -1,0 +1,39 @@
+choice CHOICE_BOARD_TYPE
+  config BOARD_TYPE_EBB42_1_2
+    bool "BTT EBB 42 CANbus V1.2 (for MMX or Pico)"
+endchoice
+
+if BOARD_TYPE_EBB42_1_2
+  config PARAM_BOARD_TYPE
+    default "MMB10"
+  
+  choice CHOICE_SERIAL_DEVICE
+	default $(serial_config,1,)
+  endchoice
+
+  config PIN_GEAR_UART 
+    default "PA15" 
+  config PIN_GEAR_STEP
+    default "PD0" 
+  config PIN_GEAR_DIR
+    default "PD1" 
+  config PIN_GEAR_ENABLE
+    default "PD2" 
+
+  config PIN_SELECTOR_SERVO
+    default "PB9"
+
+  config PIN_PRE_GATE_0
+    default "PB7" 
+  config PIN_PRE_GATE_1
+    default "PB5" 
+  config PIN_PRE_GATE_2
+    default "PB6" 
+  config PIN_PRE_GATE_3
+    default "PB8"
+
+  config PIN_NEOPIXEL
+    default "PD3" 
+  config PIN_GATE_SENSOR
+    default "PB4" if !MMU_HAS_ENCODER
+endif
