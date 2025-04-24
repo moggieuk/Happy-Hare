@@ -14,7 +14,7 @@ serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "PARAM_SERIA
 
 ### Start of configuration
 config PARAM_HAPPY_HARE_VERSION
-  string	
+  string
   default "$(happy_hare_version)"
 
 config F_VERSION

@@ -40,7 +40,7 @@ if BOARD_TYPE_SKR_PICO_1
     config PIN_GEAR_2_ENABLE
       default "gpio2" 
     config PIN_GEAR_2_DIAG
-	  default "gpio25"
+      default "gpio25"
 
     config PIN_GEAR_3_STEP
       default "gpio14" 

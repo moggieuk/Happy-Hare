@@ -8,7 +8,7 @@ if BOARD_TYPE_EBB42_1_2
     default "MMB10"
   
   choice CHOICE_SERIAL_DEVICE
-	default $(serial_config,1,)
+    default $(serial_config,1,)
   endchoice
 
   config PIN_GEAR_UART 

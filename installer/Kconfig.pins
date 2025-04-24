@@ -110,7 +110,7 @@ if OVERRIDE_PINS
     config PIN_PRE_GATE_8
       string "Pre-gate 8 pin"
       depends on PARAM_NUM_GATES > 8
-    config PIN_PRE_GATE_9	
+    config PIN_PRE_GATE_9
       string "Pre-gate 9 pin"
       depends on PARAM_NUM_GATES > 9
     config PIN_PRE_GATE_10
@@ -149,7 +149,7 @@ if OVERRIDE_PINS
     config PIN_GEAR_SENSOR_8
       string "Gear sensor 8 pin"
       depends on PARAM_NUM_GATES > 8
-    config PIN_GEAR_SENSOR_9	
+    config PIN_GEAR_SENSOR_9
       string "Gear sensor 9 pin"
       depends on PARAM_NUM_GATES > 9
     config PIN_GEAR_SENSOR_10

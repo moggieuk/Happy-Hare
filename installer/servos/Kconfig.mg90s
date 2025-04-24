@@ -1,5 +1,3 @@
-
-
 if PARAM_MMU_VENDOR = "ERCF"
   choice CHOICE_SERVO_TYPE 
     config SERVO_TYPE_MG_90S

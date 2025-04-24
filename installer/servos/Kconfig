@@ -1,5 +1,5 @@
 if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
-  rsource	"Kconfig.*"
+  rsource  "Kconfig.*"
 
   choice CHOICE_SERVO_TYPE 
     prompt "Selector servo type"

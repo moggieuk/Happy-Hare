@@ -4,7 +4,7 @@ choice CHOICE_MMU_TYPE
     select MMU_HAS_SERVO
     select VARIABLE_REQUIRE_BOWDEN_MOVE
     select FILAMENT_ALWAYS_GRIPPED
-	imply ENABLE_LEDS
+    imply ENABLE_LEDS
 endchoice
 
 if MMU_TYPE_PICO_MMU_1_0
@@ -30,9 +30,9 @@ if MMU_TYPE_PICO_MMU_1_0
     default "25"
 
   config PARAM_CHAIN_COUNT
-	default 4   
+    default 4   
   config PARAM_EXIT_LEDS 
-	default "neopixel:mmu_leds (1-4)"
+    default "neopixel:mmu_leds (1-4)"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE

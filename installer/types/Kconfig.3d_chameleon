@@ -2,7 +2,7 @@ choice CHOICE_MMU_TYPE
   config MMU_TYPE_3D_CHAMELEON_1_0
     bool "3D Chameleon"
     select MMU_HAS_SELECTOR
-	select REQUIRE_BOWDEN_MOVE
+    select REQUIRE_BOWDEN_MOVE
 endchoice
 
 if MMU_TYPE_3D_CHAMELEON_1_0
@@ -29,7 +29,7 @@ if MMU_TYPE_3D_CHAMELEON_1_0
   config PARAM_GATE_PARKING_DISTANCE
     default "250"
   config PARAM_GATE_HOMING_MAX
-	default "500"
+    default "500"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
