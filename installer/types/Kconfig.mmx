@@ -1,0 +1,44 @@
+choice CHOICE_MMU_TYPE
+  config MMU_TYPE_MMX_1_0
+    bool "MMX"
+	select MMU_HAS_SERVO
+    select REQUIRE_BOWDEN_MOVE
+    select FILAMENT_ALWAYS_GRIPPED
+endchoice
+
+if MMU_TYPE_NIGHT_OWL_1_0
+  config PARAM_MMU_VENDOR
+    default "MMX"
+  config PARAM_MMU_VERSION
+    default "1.0"
+  config PARAM_NUM_GATES
+    default 4
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "80:20"
+  config PARAM_GEAR_RUN_CURRENT
+    default "0.7"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.1"
+
+  config PARAM_GATE_PARKING_DISTANCE
+    default "25"
+  config PARAM_GATE_HOMING_MAX
+    default "1000"
+  config PARAM_CHAIN_COUNT
+    default 4   
+
+  config PARAM_SELECTOR_GATE_ANGLES
+    default "60,0,180,120"
+
+  config PARAM_EXIT_LEDS 
+    default "neopixel:mmu_leds (1-4)"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_GATE
+  endchoice
+  
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 

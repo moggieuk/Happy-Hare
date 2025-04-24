@@ -1,0 +1,63 @@
+
+config MMU_HAS_ENCODER
+  bool
+
+config MMU_HAS_SERVO
+  bool
+
+config MMU_HAS_SELECTOR
+  bool
+
+config MMU_HAS_ESPOOLER
+  bool
+
+config PARAM_SELECTOR_TYPE
+  string
+  default "VirtualSelector" if !MMU_HAS_SELECTOR && !MMU_HAS_SERVO
+  default "ServoSelector" if !MMU_HAS_SELECTOR && MMU_HAS_SERVO
+  default "RotarySelector" if MMU_HAS_SELECTOR && !MMU_HAS_SERVO
+  default "LinearSelector"
+
+config VARIABLE_BOWDEN_LENGTHS
+  bool "Variable bowden lengths?" 
+
+config PARAM_VARIABLE_BOWDEN_LENGTHS
+  int
+  default 1 if VARIABLE_BOWDEN_LENGTHS
+
+config VARIABLE_ROTATION_DISTANCES
+  bool "Variable rotation distances?"
+
+config PARAM_VARIABLE_ROTATION_DISTANCES
+  int
+  default 1 if VARIABLE_ROTATION_DISTANCES
+
+config REQUIRE_BOWDEN_MOVE
+  bool "Require bowden move?"
+
+config PARAM_REQUIRE_BOWDEN_MOVE
+  int
+  default 1 if REQUIRE_BOWDEN_MOVE
+
+config FILAMENT_ALWAYS_GRIPPED
+  bool "Filament always gripped?"
+
+config PARAM_FILAMENT_ALWAYS_GRIPPED
+  int 
+  default 1 if FILAMENT_ALWAYS_GRIPPED
+
+config PARAM_ENCODER_RESOLUTION
+  string "Encoder resolution"
+  depends on MMU_HAS_ENCODER
+  default "1.0"
+
+config PARAM_GEAR_HOMING_SPEED
+  string "Gear homing speed (mm/s)"
+  default "50"
+
+config HAS_BYPASS
+  bool "Has bypass?"
+
+config PARAM_HAS_BYPASS
+  int
+  default 1 if HAS_BYPASS

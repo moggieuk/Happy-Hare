@@ -1,0 +1,80 @@
+happy_hare_version = 3.20
+formatted_version = $(shell, echo "$(happy_hare_version)" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
+
+mainmenu "Happy Hare $(formatted_version) Configuration"
+
+### Helper functions
+# Used to convert a shell command result to a y/n value
+to_bool = $(shell, $(1) && echo y || echo n)
+
+# Used to get the serial device paths
+serial=$(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
+serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
+serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "PARAM_SERIAL_" toupper($0)}')
+
+### Start of configuration
+config PARAM_HAPPY_HARE_VERSION
+  string
+  default "$(happy_hare_version)"
+
+config F_VERSION
+  string
+  default "$(formatted_version)"
+
+comment '					'
+comment '(\\_/)					'
+comment '( *,*)					'
+comment '(")_(") Happy Hare version $(formatted_version) 	'	
+comment '					'
+
+
+rsource "types/Kconfig"
+rsource "boards/Kconfig"
+rsource "Kconfig.serial"
+
+config PARAM_NUM_GATES
+  prompt "Number of gates"
+
+rsource "servos/Kconfig"
+
+menu "Options"
+  rsource "Kconfig.options"
+endmenu
+
+menu "Addons"
+  rsource "addons/Kconfig.*"
+endmenu
+
+menu "Advanced settings"
+  config SHOW_ADVANCED_SETTINGS
+    bool "Show advanced settings?"
+    default n
+  
+  menu "Pins"
+    rsource "Kconfig.pins"
+  endmenu
+
+  menu "Motors"
+    rsource "Kconfig.motors"
+  endmenu
+
+  menu "Endstops"
+    rsource "Kconfig.endstops"
+  endmenu
+
+  menu "Gates"
+    rsource "Kconfig.gates"
+  endmenu
+
+  menu "Leds"
+    rsource "Kconfig.leds"
+  endmenu
+
+  menu "Parameters"
+    rsource "Kconfig.params"
+  endmenu
+
+  menu "Paths & Services"
+    rsource "Kconfig.paths_services"
+  endmenu
+endmenu

@@ -1,0 +1,7 @@
+
+    MMU_ESPOOLER_EN_%={pin_espooler_en_%},
+    MMU_ESPOOLER_RWD_%={pin_espooler_rwd_%},
+    MMU_ESPOOLER_FWD_%={pin_espooler_fwd_%},
+    MMU_ESPOOLER_TRIG_%={pin_espooler_trig_%},
+
+
