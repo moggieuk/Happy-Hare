@@ -1,12 +1,24 @@
 choice CHOICE_MMU_TYPE
   config MMU_TYPE_QUATTRO_BOX_1_0
-    bool "Quattro Box"
+    bool "QuattroBox v1.0"
     select MMU_HAS_ENCODER
-	select VARIABLE_ROTATION_DISTANCES
+	  select VARIABLE_ROTATION_DISTANCES
     select VARIABLE_BOWDEN_LENGTHS
     select FILAMENT_ALWAYS_GRIPPED
-	select ADDDN_EJECT_BUTTONS
-	imply ENABLE_LEDS
+	  select ADDDN_EJECT_BUTTONS
+    select REQUIRE_BOWDEN_MOVE
+	  imply ENABLE_LEDS
+
+  config MMU_TYPE_QUATTRO_BOX_1_1
+    bool "QuattroBox v1.1"
+    select MMU_HAS_ENCODER
+	  select VARIABLE_ROTATION_DISTANCES
+    select VARIABLE_BOWDEN_LENGTHS
+    select FILAMENT_ALWAYS_GRIPPED
+	  select ADDDN_EJECT_BUTTONS
+    select REQUIRE_BOWDEN_MOVE
+	  imply ENABLE_LEDS
+
 endchoice
 
 if MMU_TYPE_QUATTRO_BOX_1_0
@@ -33,20 +45,68 @@ if MMU_TYPE_QUATTRO_BOX_1_0
   config PARAM_GATE_PARKING_DISTANCE
     default "30"
   config PARAM_GATE_ENDSTOP_TO_ENCODER
-	default "18"
+	  default "18"
   config PARAM_GATE_FINAL_EJECT_DISTANCE
-	default "200"
+	  default "200"
 
   config PARAM_CHAIN_COUNT
-	default 32   
+	  default 32   
   config PARAM_COLOR_ORDER
-	default "GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
+	  default "GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
   config PARAM_EXIT_LEDS 
-	default "neopixel:mmu_leds (1-4)"
+	  default "neopixel:mmu_leds (1-4)"
   config PARAM_STATUS_LEDS
-	default "neopixel:mmu_leds (5-14)"
+	  default "neopixel:mmu_leds (5-14)"
   config PARAM_LOGO_LEDS
-	default "neopixel:mmu_leds (15-32)"
+	  default "neopixel:mmu_leds (15-32)"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_GATE
+  endchoice
+  
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_COLLISION
+  endchoice
+endif 
+
+if MMU_TYPE_QUATTRO_BOX_1_1
+  config PARAM_MMU_VENDOR
+    default "QuattroBox"
+  config PARAM_MMU_VERSION
+    default "1.1"  
+  config PARAM_NUM_GATES
+    default 4
+
+  config PARAM_GEAR_GEAR_RATIO
+	  default "50:17"
+  config PARAM_GEAR_RUN_CURRENT
+    default "1.27"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.2"
+  config PARAM_GEAR_HOMING_SPEED
+    default "80"
+  
+  config PARAM_GATE_HOMING_MAX
+    default "200"
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default "200"
+  config PARAM_GATE_PARKING_DISTANCE
+    default "30"
+  config PARAM_GATE_ENDSTOP_TO_ENCODER
+	  default "18"
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+	  default "200"
+
+  config PARAM_CHAIN_COUNT
+	  default 36   
+  config PARAM_COLOR_ORDER
+	  default "GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
+  config PARAM_EXIT_LEDS 
+	  default "neopixel:mmu_leds (2,4,6,8)"
+  config PARAM_STATUS_LEDS
+	  default "neopixel:mmu_leds (1,3,5,7)"
+  config PARAM_LOGO_LEDS
+	  default "neopixel:mmu_leds (9-36)"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
