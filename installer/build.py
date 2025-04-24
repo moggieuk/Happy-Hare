@@ -294,26 +294,30 @@ def build_mmu_parameters_cfg(builder, cfg):
     if cfg.is_enabled("MMU_HAS_SELECTOR"):
         builder.use_config("selector_speeds")
         builder.use_config("selector_servo")
+        builder.remove_placeholder("cfg_selector_servo_servo")
         if cfg.is_enabled("MMU_HAS_SERVO"):
             builder.use_config("selector_servo_linear")
         else:
             builder.remove_placeholder("cfg_selector_servo_linear")
     else:
         builder.remove_placeholder("cfg_selector_speeds")
-        builder.remove_placeholder("cfg_selector_servo")
         builder.remove_option("mmu", "selector_max_velocity")
         builder.remove_option("mmu", "selector_max_accel")
+        if cfg.is_enabled("MMU_HAS_SERVO"):
+            builder.use_config("selector_servo")
+            builder.remove_placeholder("cfg_selector_servo_linear")
+            builder.use_config("selector_servo_servo")
+        else:
+            builder.remove_placeholder("cfg_selector_servo")
+            builder.remove_option("mmu", "sync_to_extruder:")
+            builder.remove_option("mmu", "sync_form_tip:")
+            builder.remove_option("mmu", "preload_attempts:")
+            builder.remove_option("mmu", "gate_load_retries:")
 
     if cfg.is_enabled("MMU_TYPE_CUSTOM"):
         builder.use_config("custom_mmu")
     else:
         builder.remove_placeholder("cfg_custom_mmu")
-
-    if not cfg.is_enabled("MMU_HAS_SELECTOR") and not cfg.is_enabled("MMU_HAS_SERVO"):
-        builder.remove_option("mmu", "sync_to_extruder:")
-        builder.remove_option("mmu", "sync_form_tip:")
-        builder.remove_option("mmu", "preload_attempts:")
-        builder.remove_option("mmu", "gate_load_retries:")
 
     for param in supplemental_params.split() + hidden_params.split():
         if cfg.hhcfg.has_option("mmu", param):

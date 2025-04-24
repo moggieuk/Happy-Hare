@@ -1,4 +1,4 @@
-if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
+if MMU_HAS_SERVO
   rsource  "Kconfig.*"
 
   choice CHOICE_SERVO_TYPE 
@@ -9,4 +9,11 @@ if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
     config SERVO_TYPE_OTHER
       bool "Not listed / Other"
   endchoice
+
+  if !MMU_HAS_SELECTOR
+    # TODO: Probably should be moved to somewhere else. Need to figure out a better split for selector/servo
+    config PARAM_SELECTOR_GATE_ANGLES
+      string
+      default "45, 90, 135, 180"
+  endif
 endif

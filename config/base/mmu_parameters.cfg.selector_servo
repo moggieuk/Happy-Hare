@@ -21,3 +21,4 @@ servo_duration: {param_servo_duration}			# Duration of PWM burst sent to servo (
 servo_dwell: {param_servo_dwell}			# Minimum time given to servo to complete movement prior to next move
 servo_always_active: {param_servo_always_active} 			# CAUTION: 1=Force servo to always stay active, 0=Release after movement
 {cfg_selector_servo_linear}
+{cfg_selector_servo_servo}
