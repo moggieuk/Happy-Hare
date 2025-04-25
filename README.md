@@ -26,7 +26,7 @@ Universal Automated Filament Changer / MMU driver for Klipper
   <a aria-label="Size" href="https://github.com/moggieuk/Happy-Hare/">
     <img src="https://img.shields.io/github/repo-size/moggieuk/Happy-Hare?style=flat-square"></a> &nbsp;
 <!--
-  <a aria-label="Discord" href="https://discord.gg/98TYYUf6f2">
+  <a aria-label="Discord" href="https://discord.gg/aABQUjkZPk">
     <img src="https://img.shields.io/discord/1305204275315474452?color=%235865F2&label=discord&logo=discord&logoColor=white&style=flat-square"></a> &nbsp;
   <a aria-label="Patreon" href="https://www.patreon.com/moggieuk">
     <img src="https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dmoggieuk%26type%3Dpatrons&style=flat-square"></a>
@@ -44,7 +44,7 @@ Happy Hare is under active development, with a meticulous focus on the quality o
 - **Additional MMU Support:** _Striving for inclusivity—support for Prusa MMU, KMS, Open AMS, Pico MMU, and others is in progress_
 - **Mainsail/Fluidd Plugin:** _While the KlipperScreen extension offers a rich user interface, many users have requested similar functionality for Mainsail. This integration is coming soon!_
 
-Some users have inquired about making donations to support this project (and to keep my coffee or G&T supply steady!). While this project is a labor of love and not financially motivated, it is a substantial undertaking—comprising 13,000 lines of Python code, 8,500 lines of documentation, and 5,500 lines of macros/configuration. If you’ve found value in Happy Hare and wish to contribute, donations can be made via PayPal https://www.paypal.me/moggieuk. Any support will be spent improving your experience with your favorite MMU. Thank you!
+Some users have inquired about making donations to support this project (and to keep my coffee or G&T supply steady!). While this project is a labor of love and not financially motivated, it is a substantial undertaking—comprising 17,000 lines of Python code, 10,000 lines of documentation, 160 illustrations and 6,000 lines of macros/configuration. If you’ve found value in Happy Hare and wish to contribute, donations can be made via PayPal https://www.paypal.me/moggieuk. Any support will be spent improving your experience with your favorite MMU. Thank you!
 <p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="30%"></a></p>
 
 <br>
@@ -55,7 +55,7 @@ Some users have inquired about making donations to support this project (and to 
 
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Just a few of the features:
 
-- Support almost any brand of MMU or user defined monsters:
+- Support almost any brand of MMU (including mods) or custom monsters:
   - ERCF
   - Tradrack
   - Box Turtle
@@ -65,6 +65,7 @@ Some users have inquired about making donations to support this project (and to 
   - 3D Chameleon
   - Quattro Box
   - PicoMMU
+  - MMX
   - Custom...
 - Synchronized movement of extruder and gear motors (with sync feedback control) to overcome friction and even work with FLEX materials!
 - Support for all type of sensor: pre-gate, post-gear, combiner gate sensors, extruder entry sensors, toolhead sensors
@@ -92,9 +93,10 @@ Some users have inquired about making donations to support this project (and to 
 
 Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control and new Mainsail/Fluidd integration!
 
+<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/universal_mmu_driver.png" width="100%" alt="universal_mmu_driver.png"></p>
+
 <p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="60%" alt="KlipperScreen-Happy Hare edition"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/mainsail_mmu_panel.png" width="35%" alt="Mailsail/Fluidd support"></p>
 
-<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/universal_mmu_driver.png" width="100%" alt="universal_mmu_driver.png"></p>
 <br>
  
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Installation
