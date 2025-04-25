@@ -94,6 +94,7 @@ Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https:/
 
 <p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/my_klipperscreen.png" width="60%" alt="KlipperScreen-Happy Hare edition"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/mainsail_mmu_panel.png" width="35%" alt="Mailsail/Fluidd support"></p>
 
+<p align="center"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/universal_mmu_driver.png" width="100%" alt="universal_mmu_driver.png"></p>
 <br>
  
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Installation
