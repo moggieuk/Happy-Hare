@@ -7707,6 +7707,8 @@ class Mmu:
                     # When matching by name normalize possible unicode characters and match case-insensitive
                     if strategy == self.AUTOMAP_FILAMENT_NAME:
                         equal = self._compare_unicode(tool_to_remap[tool_field], gate_feature)
+                    elif strategy == self.AUTOMAP_COLOR:
+                        equal = tool_to_remap[tool_field].ljust(8,'F') == gate_feature.ljust(8,'F')
                     else:
                         equal = tool_to_remap[tool_field] == gate_feature
                     if equal:
