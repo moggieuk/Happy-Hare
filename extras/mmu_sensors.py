@@ -370,7 +370,9 @@ class SyncTensionSensorAdj:
         self.upper_rotation_dist_expanded = 0
         self.rotation_dist = SyncTensionSensorAdj.DEFAULT_ROTA_DIST	 # doesn't really matter
         self.sync_state = SyncTensionSensorAdj.SYNC_STATE_NEUTRAL
+        self.stayed_in_tension_count = 0
     def init_for_next_print(self, state, rota_dist=DEFAULT_ROTA_DIST):
+        self.log_debug("init_for_next_print working")
         self.rotation_dist = rota_dist
         self.set_lower_upper_limit_values(rota_dist)
         self.stayed_in_tension_count = 0
