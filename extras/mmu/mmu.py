@@ -4554,7 +4554,7 @@ class Mmu:
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
                 # Sensor validation
-                if not self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False):
+                if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is False:
                     sensors = self.sensor_manager.get_all_sensors()
                     self.log_error("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden: %s\nWill attempt to continue..." % sensors)
 
