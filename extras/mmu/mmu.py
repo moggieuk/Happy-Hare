@@ -4553,18 +4553,21 @@ class Mmu:
                         length -= self.encoder_move_step_size
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
-                # "Fast" unload
-                ratio = 0.
-                if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is not False:
-                    _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
-                    delta -= self._get_encoder_dead_space()
-                    ratio = (length - delta) / length
+                # Sensor validation
+                if not self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False):
+                    sensors = self.sensor_manager.get_all_sensors()
+                    self.log_error("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden: %s\nWill attempt to continue..." % sensors)
 
-                    # Encoder based validation test
-                    if self._can_use_encoder() and delta >= self.bowden_allowable_unload_delta and not self.calibrating:
-                        ratio = 0.
-                        # Only a warning because _unload_gate() will deal with it
-                        self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
+                # "Fast" unload
+                _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
+                delta -= self._get_encoder_dead_space()
+                ratio = (length - delta) / length
+
+                # Encoder based validation test
+                if self._can_use_encoder() and delta >= self.bowden_allowable_unload_delta and not self.calibrating:
+                    ratio = 0.
+                    # Only a warning because _unload_gate() will deal with it
+                    self.log_info("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
                 self._random_failure() # Testing
                 self.movequeues_wait()
