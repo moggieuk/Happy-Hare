@@ -705,7 +705,15 @@ check_for_999() {
 }
 
 convert_neg_one() {
-    echo "$1" | sed -E 's/^(-1,)/-999,/; s/^(.*?,) *(-1,)/\1 -999,/'
+    echo "$1" | awk -F',' '
+    {
+        if ($1 ~ /^ *-1 *$/) $1 = " -999";
+        if ($2 ~ /^ *-1 *$/) $2 = " -999";
+        OFS=","
+        for (i=1; i<=NF; i++) {
+            printf "%s%s", $i, (i<NF ? OFS : ORS)
+        }
+    }'
 }
 
 convert_to_boolean_string() {
