@@ -6536,6 +6536,7 @@ class Mmu:
                         # Ok, now ready to park and perform the swap
                         self._next_tool = tool # Valid only during the change process
                         self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
+                        self._set_next_position(next_pos) # This can also clear next_position
                         self._track_time_start('total')
                         self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
 
@@ -6545,7 +6546,6 @@ class Mmu:
                                 try:
                                     if self.filament_pos != self.FILAMENT_POS_UNLOADED:
                                         self._unload_tool(form_tip=do_form_tip)
-                                    self._set_next_position(next_pos)
                                     self._select_and_load_tool(tool, purge=do_purge)
                                     break
                                 except MmuError as ee:
