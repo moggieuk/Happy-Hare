@@ -134,107 +134,6 @@ class HHConfig(ConfigBuilder):
         ]
 
 
-class ConfigInput:
-    def __init__(self, hhcfg, kcfg):
-        self.hhcfg = hhcfg
-        self.kcfg = kcfg
-        self.used_options = set()
-
-    def extra_params(self):
-        """Return extra parameters based on the Kconfig, that are impossible to define in the config file"""
-        params = {}
-
-        config_home = self.get_param("KLIPPER_CONFIG_HOME")
-        if config_home is not None:
-            params["param_mmu_vars_cfg"] = "{}/mmu/mmu_vars.cfg".format(config_home)
-
-        return params
-
-    def as_dict(self):
-        """Return the config as a dictionary"""
-        kcfg_dict = self.kcfg.as_dict()
-        if self.hhcfg is None:
-            return {}
-        return {section: dict(self.hhcfg.items(section)) for section in self.hhcfg.sections()}
-
-    def is_selected(self, choice, value):
-        """Check if the choice is selected in the Kconfig file"""
-        if self.kcfg is None:
-            return False
-        return self.kcfg.is_selected(choice, value)
-
-    def is_enabled(self, sym):
-        """Check if the symbol is enabled in the Kconfig file"""
-        if self.kcfg is None:
-            return False
-        return self.kcfg.is_enabled(sym)
-
-    def has_option(self, section, key, kcfg_param=None):
-        """Check if the option is defined in the existing config file or else check if kcfg_param is defined from the Kconfig file"""
-        if self.hhcfg.has_option(section, key):
-            return True
-        if self.kcfg is None or self.kcfg.syms is None or kcfg_param is None:
-            return False
-        if kcfg_param not in self.kcfg.syms:
-            return False
-
-        return self.kcfg.syms[kcfg_param].user_value is not None
-
-    def get(self, section, key, kcfg_param=None, default=None):
-        """Get the value of the option from the existing config file or else get the value of kcfg_param from the Kconfig file
-        If neither is defined, return the default value"""
-        if self.hhcfg is not None and self.hhcfg.has_option(section, key):
-            return self.hhcfg.get(section, key)
-
-        if self.kcfg is None or kcfg_param is None:
-            return default
-
-        return self.kcfg.syms[kcfg_param].user_value
-
-    def getint(self, section, key, kcfg_param=None, default=None):
-        """Get the value of the option from the existing config file or else get the value of kcfg_param from the Kconfig file
-        If neither is defined, return the default value"""
-        value = self.get(section, key, kcfg_param, default)
-        if value is not None:
-            return int(value)
-        return default
-
-    def get_param(self, key, default=None):
-        """Get the value of the parameter from the Kconfig file"""
-        if self.kcfg is None or self.kcfg.syms is None:
-            return default
-        return self.kcfg.syms[key].user_value
-
-    def getint_param(self, key, default=None):
-        """Get the value of the parameter from the Kconfig file"""
-        if self.kcfg is None or self.kcfg.syms is None:
-            return default
-        return int(self.kcfg.syms[key].user_value)
-
-    def getbool_param(self, key, default=None):
-        """Get the value of the parameter from the Kconfig file"""
-        if self.kcfg is None or self.kcfg.syms is None:
-            return default
-        return self.kcfg.syms[key].user_value not in [0, None]
-
-    def update_builder(self, builder):
-        """Update the builder config with the existing config file and replace the placeholders with the Kconfig values"""
-        for section in builder.sections():
-            for option in builder.options(section):
-                if self.has_option(section, option):
-                    if not option.startswith("gcode"):  # Don't ever resuse the gcode
-                        builder.set(section, option, self.get(section, option))
-                    self.used_options.add((section, option))
-        #
-        # if self.kcfg is not None:
-        #     for key, sym in self.kcfg.syms.items():
-        #         if key.startswith("PARAM_") or key.startswith("PIN_"):
-        #             builder.replace_placeholder(key.lower(), sym.user_value or "")
-
-        # for param, value in self.extra_params().items():
-        #     builder.replace_placeholder(param, str(value))
-
-
 def build_mmu_parameters_cfg(builder, hhcfg):
     for param in supplemental_params.split() + hidden_params.split():
         if hhcfg.has_option("mmu", param):
@@ -254,6 +153,12 @@ def jinja_env():
         trim_blocks=True,
     )
     return env
+
+
+def render_template(template_file, kcfg):
+    env = jinja_env()
+    template = env.get_template(os.path.relpath(template_file))
+    return template.render(kcfg.as_dict())
 
 
 def build(cfg_file, dest_file, kconfig_file, input_files):
@@ -277,9 +182,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     hhcfg = HHConfig(input_files)
     kcfg = KConfig(kconfig_file)
 
-    env = jinja_env()
-    template = env.get_template("config/" + basename)
-    buffer = template.render(kcfg.as_dict())
+    buffer = render_template("config/" + basename, kcfg)
     builder = ConfigBuilder()
     builder.read_buf(buffer)
 
@@ -317,33 +220,26 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     logging.info("Adding moonraker components")
-    cfg_input = ConfigInput(HHConfig([moonraker_cfg]), KConfig(kconfig))
+
+    kcfg = KConfig(kconfig)
+    buffer = render_template(moonraker_cfg, kcfg)
+    update = ConfigBuilder()
+    update.read_buf(buffer)
     builder = ConfigBuilder(existing_cfg)
 
-    if not builder.has_section("update_manager happy-hare"):
-        logging.debug("Adding [update_manager happy-hare]")
-        builder.add_section("update_manager happy-hare")
-        for option, value in cfg_input.hhcfg.items("update_manager happy-hare"):
-            logging.debug("Adding [update_manager happy-hare] {} = {}".format(option, value))
-            builder.set("update_manager happy-hare", option, value)
+    def update_section(section):
+        if not builder.has_section(section):
+            logging.debug("Adding [{}]".format(section))
+            builder.add_section(section)
 
-    if not builder.has_section("mmu_server"):
-        builder.add_section("mmu_server")
-        for option, value in cfg_input.hhcfg.items("mmu_server"):
-            builder.set("mmu_server", option, value)
-    else:
-        if not builder.has_option("mmu_server", "enable_toolchange_next_pos"):
-            builder.set(
-                "mmu_server",
-                "enable_toolchange_next_pos",
-                cfg_input.hhcfg.get("mmu_server", "enable_toolchange_next_pos"),
-            )
-        if not builder.has_option("mmu_server", "update_spoolman_location"):
-            builder.set(
-                "mmu_server", "update_spoolman_location", cfg_input.hhcfg.get("mmu_server", "update_spoolman_location")
-            )
+        for option, value in update.items(section):
+            if not builder.has_option(section, option):
+                logging.debug("Adding [{}] {} = {}".format(section, option, value))
+                builder.set(section, option, value)
 
-    cfg_input.update_builder(builder)
+    update_section("update_manager happy-hare")
+    update_section("mmu_server")
+
     with open(existing_cfg, "w") as f:
         f.write(builder.write())
 
@@ -366,12 +262,12 @@ def uninstall_moonraker(moonraker_cfg):
 
 def install_includes(dest_file, kconfig):
     logging.info("Configuring includes")
-    cfg_input = ConfigInput(None, KConfig(kconfig))
+    kcfg = KConfig(kconfig)
     builder = ConfigBuilder(dest_file)
 
     def check_include(builder, param, include):
         include = "include " + include
-        if cfg_input.getbool_param(param, False):
+        if kcfg.is_enabled(param):
             if not builder.has_section(include):
                 logging.debug("Adding include [{}]".format(include))
                 builder.add_section(include, at_top=True, extra_newline=False)
@@ -429,8 +325,8 @@ def restart_service(name, service, kconfig):
     else:
         logging.info("Restarting {}...".format(name))
 
-    cfg_input = ConfigInput(None, KConfig(kconfig))
-    if cfg_input.is_enabled("INIT_SYSTEMD"):
+    kcfg = KConfig(kconfig)
+    if kcfg.is_enabled("INIT_SYSTEMD"):
         if not service.endswith(".service"):
             service = service + ".service"
         if subprocess.call("systemctl list-unit-files '{}'".format(service), stdout=open(os.devnull, "w"), shell=True):
@@ -445,15 +341,16 @@ def restart_service(name, service, kconfig):
 
 
 def check_version(kconfig_file, input_files):
-    cfg_input = ConfigInput(HHConfig(input_files), KConfig(kconfig_file))
+    hhcfg = HHConfig(input_files)
+    kcfg = KConfig(kconfig_file)
 
-    current_version = cfg_input.get("mmu", "happy_hare_version")
+    current_version = hhcfg.get("mmu", "happy_hare_version")
     if current_version is None:
         logging.log(LEVEL_NOTICE, "Fresh install detected")
         return
 
     logging.log(LEVEL_NOTICE, "Current version: " + current_version)
-    target_version = cfg_input.get_param("PARAM_HAPPY_HARE_VERSION")
+    target_version = kcfg.get("PARAM_HAPPY_HARE_VERSION")
     if target_version is None:
         logging.error("Target version is not defined")
         exit(1)
@@ -464,7 +361,7 @@ def check_version(kconfig_file, input_files):
 
     if float(current_version) > float(target_version):
         logging.warning(
-            "Automatic 'downgrade' to earlier version is not guaranteed!\n"
+            "Automatic 'downgrade' to earlier version is not guaranteed!"
             "If you encounter startup problems you may need to manually compare "
             "the backed-up 'mmu_parameters.cfg' with current one to restore differences"
         )

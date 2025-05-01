@@ -237,17 +237,22 @@ class Parser(object):
         return DocumentNode(body)
 
     def _post_process(self, document):
+        """Move trailing whitespace/comments from sections a level up to be part of the document body"""
         new_body = []
-        # Move trailing whitespace/comments from sections a level up to be part of the document body
         for item in document.body:
             new_body.append(item)
             if isinstance(item, SectionNode):
-                # Find the index of the last option in the section
-                idx = max([i for i, n in enumerate(item.body) if isinstance(n, OptionNode)] or [0])
+                # Find the index of the next item after last option in the section
+                idx = max([i + 1 for i, n in enumerate(item.body) if isinstance(n, OptionNode)] or [0])
+                if len(item.body) <= idx:
+                    continue
+                # If the next item is whitespace, still keep it in the section
                 if isinstance(item.body[idx], WhitespaceNode):
                     idx += 1
-                new_body += item.body[idx:]
-                item.body = item.body[:idx]
+                # All remaining items get moved up a level
+                if len(item.body) > idx:
+                    new_body += item.body[idx:]
+                    item.body = item.body[:idx]
 
         document.body = new_body
         return document
@@ -278,7 +283,7 @@ class Parser(object):
         if tokenizer.peek().type == "whitespace":
             trailing_ws = tokenizer.take("whitespace").value
         assign_op = tokenizer.take("assign_op").value
-        if token.value.startswith("gcode"):  # parse gcode options as is so we don't parse it as many placeholders
+        if token.value.startswith("gcode"):  # parse gcode options as-is, so we don't parse gcode as structure'
             value = self.parse_value(tokenizer, as_is=True)
         else:
             value = self.parse_value(tokenizer)
