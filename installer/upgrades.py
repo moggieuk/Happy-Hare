@@ -3,8 +3,8 @@ import logging
 
 
 class Upgrades:
-    def upgrade(self, cfg_input, from_version, to_version):
-        """Will recursively upgrade cfg_input from from_version to to_version"""
+    def upgrade(self, cfg, from_version, to_version):
+        """Will recursively upgrade cfg from from_version to to_version"""
         if from_version == to_version:
             return
 
@@ -17,6 +17,7 @@ class Upgrades:
         if len(all_upgrades) == 0:
             return
 
+        print(from_version)
         try:
             upgrade_path = next(upgrade for upgrade in all_upgrades if upgrade[1] > float(from_version))
         except ValueError:
@@ -32,12 +33,12 @@ class Upgrades:
         upgrade_path = ["{:.2f}".format(v) for v in upgrade_path]
         logging.debug("Upgrading from {} to {}".format(from_version, upgrade_path[1]))
         upgrade_fn = "upgrade_{}_to_{}".format(upgrade_path[0].replace(".", "_"), upgrade_path[1].replace(".", "_"))
-        getattr(self, upgrade_fn)(cfg_input)
-        cfg_input.hhcfg.set("mmu", "happy_hare_version", upgrade_path[1])
-        self.upgrade(cfg_input, upgrade_path[1], to_version)
+        getattr(self, upgrade_fn)(cfg)
+        cfg.set("mmu", "happy_hare_version", upgrade_path[1])
+        self.upgrade(cfg, upgrade_path[1], to_version)
 
-    def upgrade_2_70_to_2_71(self, cfg_input):
-        cfg = cfg_input.hhcfg
+    def upgrade_2_70_to_2_71(self, cfg):
+        cfg = cfg.hhcfg
 
         section = "gcode_macro _MMU_CUT_TIP_VARS"
         cfg.rename_option(section, "variable_pin_park_x_dist", "variable_pin_park_dist")
@@ -79,16 +80,12 @@ class Upgrades:
                 else "'pause,cancel'",
             )
 
-    def upgrade_2_71_to_2_72(self, cfg_input):
-        cfg = cfg_input.hhcfg
-
+    def upgrade_2_71_to_2_72(self, cfg):
         if cfg.get("mmu", "toolhead_residual_filament") == "0" and cfg.get("mmu", "toolhead_ooze_reduction") != "0":
             cfg.set("mmu", "toolhead_residual_filament", cfg.get("mmu", "toolhead_ooze_reduction"))
             cfg.set("mmu", "toolhead_ooze_reduction", "0")
 
-    def upgrade_2_72_to_2_73(self, cfg_input):
-        cfg = cfg_input.hhcfg
-
+    def upgrade_2_72_to_2_73(self, cfg):
         section = "gcode_macro BLOBIFIER"
         if cfg.has_option(section, "variable_iteration_z_raise"):
             max_i_per_blob = cfg.getint(section, "variable_max_iterations_per_blob")
@@ -107,9 +104,7 @@ class Upgrades:
             cfg.remove_option(section, "variable_iteration_z_change")
             cfg.remove_option(section, "variable_max_iteration_length")
 
-    def upgrade_2_73_to_3_00(self, cfg_input):
-        cfg = cfg_input.hhcfg
-
+    def upgrade_2_73_to_3_00(self, cfg):
         if cfg.has_section("mmu_servo mmu_servo"):
             cfg.rename_section("mmu_servo mmu_servo", "mmu_servo selector_servo")
             if cfg.get("mmu_servo selector_servo", "pin") == "mmu:MMU_SERVO":
@@ -129,12 +124,10 @@ class Upgrades:
             "gcode_macro _MMU_CLIENT_VARS", "variable_eject_tool_on_cancel", "variable_unload_tool_on_cancel"
         )
 
-    def upgrade_3_00_to_3_10(self, cfg_input):
-        cfg_input.hhcfg.move_option("mmu", "homing_extruder", "mmu_machine")
+    def upgrade_3_00_to_3_10(self, cfg):
+        cfg.move_option("mmu", "homing_extruder", "mmu_machine")
 
-    def upgrade_3_10_to_3_20(self, cfg_input):
-        cfg = cfg_input.hhcfg
-
+    def upgrade_3_10_to_3_20(self, cfg):
         # change the dc espooler pins so they are easier to expand with the new script.
         # e.g [output_pin _mmu_dc_espooler_rwd_0] pin = mmu:MMU_DC_MOT_1_A -> mmu:MMU_DC_MOT_0_A
         for i in range(0, 12):

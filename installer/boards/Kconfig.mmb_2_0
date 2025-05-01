@@ -23,37 +23,37 @@ if BOARD_TYPE_MMB_2_0
     default "PB9" 
 
   if PARAM_SELECTOR_TYPE = "VirtualSelector"
-    config PIN_GEAR_1_UART 
+    config PIN_GEAR_UART_1 
       default "PB4" 
-    config PIN_GEAR_1_STEP
+    config PIN_GEAR_STEP_1
       default "PC9" 
-    config PIN_GEAR_1_DIR
+    config PIN_GEAR_DIR_1
       default "PC8" 
-    config PIN_GEAR_1_ENABLE
+    config PIN_GEAR_ENABLE_1
       default "PD2" 
-    config PIN_GEAR_1_DIAG
+    config PIN_GEAR_DIAG_1
       default "PB8" 
 
-    config PIN_GEAR_2_UART 
+    config PIN_GEAR_UART_2 
       default "PB3" 
-    config PIN_GEAR_2_STEP
+    config PIN_GEAR_STEP_2
       default "PC15" 
-    config PIN_GEAR_2_DIR
+    config PIN_GEAR_DIR_2
       default "PC11" 
-    config PIN_GEAR_2_ENABLE
+    config PIN_GEAR_ENABLE_2
       default "PC10" 
-    config PIN_GEAR_2_DIAG
+    config PIN_GEAR_DIAG_2
       default "PB7"
 
-    config PIN_GEAR_3_UART 
+    config PIN_GEAR_UART_3 
       default "PD6" 
-    config PIN_GEAR_3_STEP
+    config PIN_GEAR_STEP_3
       default "PC13" 
-    config PIN_GEAR_3_DIR
+    config PIN_GEAR_DIR_3
       default "PC12" 
-    config PIN_GEAR_3_ENABLE
+    config PIN_GEAR_ENABLE_3
       default "PC14" 
-    config PIN_GEAR_3_DIAG
+    config PIN_GEAR_DIAG_3
       default "PB6" 
 
     config PIN_PRE_GATE_0

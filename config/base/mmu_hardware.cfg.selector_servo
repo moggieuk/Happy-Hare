@@ -1,8 +1,0 @@
-#
-# SELECTOR SERVO -------------------------------------------------------------------------------------------------------
-#
-[mmu_servo selector_servo]
-pin: mmu:MMU_SEL_SERVO
-maximum_servo_angle: {param_servo_max_angle}
-minimum_pulse_width: {param_servo_min_pulse_width}
-maximum_pulse_width: {param_servo_max_pulse_width}

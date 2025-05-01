@@ -4,6 +4,7 @@ import os
 import logging
 import subprocess
 from pprint import pprint
+from jinja2 import Environment, FileSystemLoader
 
 
 import kconfiglib
@@ -35,15 +36,44 @@ class KConfig(kconfiglib.Kconfig):
     def getint(self, sym):
         return int(self.syms[sym].user_value)
 
+    def get(self, sym):
+        """Get the value of the symbol"""
+        if sym not in self.syms:
+            return None
+        return self.syms[sym].user_value
+
+    def as_dict(self):
+        """Return the Kconfig as a dictionary"""
+        result = {}
+        for sym in self.syms:
+            if self.syms[sym].user_value is None:
+                continue
+            if re.match(r".+\d+$", sym):
+                split = re.split(r"(\d+$)", sym)
+                key = split[0]
+                nr = int(split[1])
+                if key in result:
+                    result[key][nr] = self.syms[sym].user_value
+                else:
+                    result[key] = {nr: self.syms[sym].user_value}
+            else:
+                result[sym] = self.syms[sym].user_value
+        return result
+
+        # return {sym: self.syms[sym].user_value for sym in self.syms if self.syms[sym].user_value is not None}
+
 
 class HHConfig(ConfigBuilder):
     def __init__(self, cfg_files):
         super(HHConfig, self).__init__()
         self.origins = {}
+        self.used_options = set()
+        # self.document = super(HHConfig, self).document  # because Python's inheritance apparently completly broken
         prefix = os.path.commonprefix(cfg_files)
         for cfg_file in cfg_files:
+            logging.info("Reading config file: " + cfg_file)
             basename = cfg_file.replace(prefix, "")
-            self.read(cfg_file)
+            super(HHConfig, self).read(cfg_file)
             for section in self.sections():
                 for option in self.options(section):
                     if (section, option) not in self.origins:
@@ -79,6 +109,30 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
+    def update_builder(self, builder):
+        """Update the builder config with the existing config file and replace the placeholders with the Kconfig values"""
+        for section in builder.sections():
+            for option in builder.options(section):
+                if self.has_option(section, option):
+                    if not option.startswith("gcode"):  # Don't ever resuse the gcode
+                        builder.set(section, option, self.get(section, option))
+                    self.used_options.add((section, option))
+        #
+        # if self.kcfg is not None:
+        #     for key, sym in self.kcfg.syms.items():
+        #         if key.startswith("PARAM_") or key.startswith("PIN_"):
+        #             builder.replace_placeholder(key.lower(), sym.user_value or "")
+
+        # for param, value in self.extra_params().items():
+        #     builder.replace_placeholder(param, str(value))
+
+    def unused_options_for(self, origin):
+        return [
+            (section, key)
+            for (section, key), file in self.origins.items()
+            if file == origin and (section, key) not in self.used_options
+        ]
+
 
 class ConfigInput:
     def __init__(self, hhcfg, kcfg):
@@ -96,12 +150,12 @@ class ConfigInput:
 
         return params
 
-    def unused_options_for(self, origin):
-        return [
-            (section, key)
-            for (section, key), file in self.hhcfg.origins.items()
-            if file == origin and (section, key) not in self.used_options
-        ]
+    def as_dict(self):
+        """Return the config as a dictionary"""
+        kcfg_dict = self.kcfg.as_dict()
+        if self.hhcfg is None:
+            return {}
+        return {section: dict(self.hhcfg.items(section)) for section in self.hhcfg.sections()}
 
     def is_selected(self, choice, value):
         """Check if the choice is selected in the Kconfig file"""
@@ -171,183 +225,35 @@ class ConfigInput:
                     if not option.startswith("gcode"):  # Don't ever resuse the gcode
                         builder.set(section, option, self.get(section, option))
                     self.used_options.add((section, option))
+        #
+        # if self.kcfg is not None:
+        #     for key, sym in self.kcfg.syms.items():
+        #         if key.startswith("PARAM_") or key.startswith("PIN_"):
+        #             builder.replace_placeholder(key.lower(), sym.user_value or "")
 
-        if self.kcfg is not None:
-            for key, sym in self.kcfg.syms.items():
-                if key.startswith("PARAM_") or key.startswith("PIN_"):
-                    builder.replace_placeholder(key.lower(), sym.user_value or "")
-
-        for param, value in self.extra_params().items():
-            builder.replace_placeholder(param, str(value))
-
-
-def build_mmu_cfg(builder, cfg):
-    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
-    if num_gates is None:
-        logging.error("num_gates is not defined")
-        exit(1)
-
-    builder.expand_value_line("board_pins mmu", "aliases", "MMU_PRE_GATE_%", num_gates)
-    builder.expand_value_line("board_pins mmu", "aliases", "MMU_POST_GEAR_%", num_gates)
-
-    if cfg.is_enabled("MMU_HAS_SELECTOR"):
-        builder.use_config("selector")
-    else:
-        builder.remove_placeholder("cfg_selector")
-
-    if cfg.is_enabled("MMU_HAS_SERVO"):
-        builder.use_config("selector_servo")
-    else:
-        builder.remove_placeholder("cfg_selector_servo")
-
-    if not cfg.is_enabled("MMU_HAS_SELECTOR") and not cfg.is_enabled("MMU_HAS_SERVO"):
-        builder.use_config("gears")
-        builder.expand_value_line(
-            "board_pins mmu",
-            "aliases",
-            r"MMU_GEAR_\w+_%",
-            num_gates - 1,
-            start_idx=1,
-        )
-    else:
-        builder.remove_placeholder("cfg_gears")
-
-    if cfg.is_enabled("MMU_HAS_ENCODER"):
-        builder.use_config("encoder")
-    else:
-        builder.remove_placeholder("cfg_encoder")
-
-    if cfg.is_enabled("MMU_HAS_ESPOOLER"):
-        builder.use_config("espooler")
-        builder.expand_value_line("board_pins mmu", "aliases", r"MMU_ESPOOLER\w+_%", num_gates)
-    else:
-        builder.remove_placeholder("cfg_espooler")
-
-    return builder
+        # for param, value in self.extra_params().items():
+        #     builder.replace_placeholder(param, str(value))
 
 
-def build_mmu_hardware_cfg(builder, cfg):
-    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
-    if num_gates is None:
-        logging.error("num_gates is not defined")
-        exit(1)
-
-    builder.expand_option("mmu_sensors", "switch_pin_%", num_gates)
-
-    if cfg.is_enabled("MMU_HAS_SELECTOR"):
-        builder.use_config("selector_stepper")
-        if cfg.is_selected("CHOICE_BOARD_TYPE", "BOARD_TYPE_EASY_BRD"):
-            # Share uart_pin to avoid duplicate alias problem
-            builder.set("tmc2209 stepper_mmu_selector", "uart_pin", " mmu:MMU_GEAR_UART")
-        else:
-            builder.remove_option("tmc2209 stepper_mmu_gear", "uart_address")
-    else:
-        builder.remove_placeholder("cfg_selector_stepper")
-
-    if cfg.is_enabled("MMU_HAS_SERVO"):
-        builder.use_config("selector_servo")
-    else:
-        builder.remove_placeholder("cfg_selector_servo")
-
-    if cfg.is_enabled("MMU_HAS_ESPOOLER"):
-        builder.use_config("espooler")
-    else:
-        builder.remove_placeholder("cfg_espooler")
-
-    if not cfg.is_enabled("MMU_HAS_SELECTOR") and not cfg.is_enabled("MMU_HAS_SERVO"):
-        builder.use_config("gear_steppers")
-        builder.expand_section(
-            "tmc2209 stepper_mmu_gear_%",
-            num_gates - 1,
-            start_idx=1,
-            newline=True,
-        )
-        builder.expand_section(
-            "stepper_mmu_gear_%",
-            num_gates - 1,
-            start_idx=1,
-            newline=True,
-        )
-    else:
-        builder.remove_placeholder("cfg_gear_steppers")
-
-    if cfg.is_enabled("MMU_HAS_ENCODER"):
-        builder.use_config("encoder")
-    else:
-        builder.remove_placeholder("cfg_encoder")
-
-    if cfg.is_enabled("ENABLE_LEDS"):
-        builder.use_config("leds")
-    else:
-        builder.remove_placeholder("cfg_leds")
-
-    if cfg.is_enabled("ENABLE_SELECTOR_TOUCH"):
-        builder.remove_option("tmc2209 stepper_mmu_gear", "uart_address")
-    else:
-        builder.comment_out_option("tmc2209 stepper_mmu_gear", "diag_pin")
-        builder.comment_out_option("tmc2209 stepper_mmu_gear", "driver_SGTHRS")
-        builder.comment_out_option("stepper_mmu_gear", "extra_endstop_pins")
-        builder.comment_out_option("stepper_mmu_gear", "extra_endstop_names")
-
-
-def build_mmu_parameters_cfg(builder, cfg):
-    if cfg.is_enabled("MMU_HAS_SELECTOR"):
-        builder.use_config("selector_speeds")
-        builder.use_config("selector_servo")
-        builder.remove_placeholder("cfg_selector_servo_servo")
-        if cfg.is_enabled("MMU_HAS_SERVO"):
-            builder.use_config("selector_servo_linear")
-        else:
-            builder.remove_placeholder("cfg_selector_servo_linear")
-    else:
-        builder.remove_placeholder("cfg_selector_speeds")
-        builder.remove_option("mmu", "selector_max_velocity")
-        builder.remove_option("mmu", "selector_max_accel")
-        if cfg.is_enabled("MMU_HAS_SERVO"):
-            builder.use_config("selector_servo")
-            builder.remove_placeholder("cfg_selector_servo_linear")
-            builder.use_config("selector_servo_servo")
-        else:
-            builder.remove_placeholder("cfg_selector_servo")
-            builder.remove_option("mmu", "sync_to_extruder:")
-            builder.remove_option("mmu", "sync_form_tip:")
-            builder.remove_option("mmu", "preload_attempts:")
-            builder.remove_option("mmu", "gate_load_retries:")
-
-    if cfg.is_enabled("MMU_TYPE_CUSTOM"):
-        builder.use_config("custom_mmu")
-    else:
-        builder.remove_placeholder("cfg_custom_mmu")
-
+def build_mmu_parameters_cfg(builder, hhcfg):
     for param in supplemental_params.split() + hidden_params.split():
-        if cfg.hhcfg.has_option("mmu", param):
-            builder.buf += param + ": " + cfg.hhcfg.get("mmu", param) + "\n"
-            cfg.hhcfg.remove_option("mmu", param)
+        if hhcfg.has_option("mmu", param):
+            builder.buf += param + ": " + hhcfg.get("mmu", param) + "\n"
+            hhcfg.remove_option("mmu", param)
 
 
-def build_mmu_macro_vars_cfg(builder, cfg):
-    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
-    if num_gates is None:
-        logging.error("num_gates is not defined")
-        exit(1)
-    builder.expand_section("gcode_macro T%", num_gates)
-
-
-def build_addon_dc_espooler_cfg(builder, cfg):
-    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
-    if num_gates is None:
-        logging.error("num_gates is not defined")
-        exit(1)
-    builder.expand_section("output_pin _mmu_dc_espooler_rwd_%", num_gates)
-    builder.expand_section("output_pin _mmu_dc_espooler_en_%", num_gates)
-
-
-def build_addon_eject_buttons_cfg(builder, cfg):
-    num_gates = cfg.getint("mmu_machine", "num_gates", "PARAM_NUM_GATES")
-    if num_gates is None:
-        logging.error("num_gates is not defined")
-        exit(1)
-    builder.expand_section("gcode_button mmu_eject_button_%", num_gates)
+def jinja_env():
+    env = Environment(
+        loader=FileSystemLoader("."),
+        block_start_string="[%",
+        block_end_string="%]",
+        variable_start_string="[[",
+        variable_end_string="]]",
+        comment_start_string="[#",
+        comment_end_string="#]",
+        trim_blocks=True,
+    )
+    return env
 
 
 def build(cfg_file, dest_file, kconfig_file, input_files):
@@ -358,7 +264,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         logging.error("Invalid config file: " + cfg_file)
         exit(1)
 
-    if (not basename.startswith("addons/") or basename.endswith("_hw.cfg")) and basename not in [
+    if (not basename.startswith("addons/") or not basename.endswith("_hw.cfg")) and basename not in [
         "base/mmu.cfg",
         "base/mmu_hardware.cfg",
         "base/mmu_parameters.cfg",
@@ -366,41 +272,38 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         "mmu_vars.cfg",
     ]:
         return
+    logging.info("Building config file: " + cfg_file)
 
-    logging.info("Building " + dest_file)
-    cfg_input = ConfigInput(HHConfig(input_files), KConfig(kconfig_file))
-    builder = ConfigBuilder(cfg_file)
+    hhcfg = HHConfig(input_files)
+    kcfg = KConfig(kconfig_file)
 
-    to_version = cfg_input.get_param("PARAM_HAPPY_HARE_VERSION")
-    if cfg_input.has_option("mmu", "happy_hare_version"):
-        from_version = cfg_input.get("mmu", "happy_hare_version")
+    env = jinja_env()
+    template = env.get_template("config/" + basename)
+    buffer = template.render(kcfg.as_dict())
+    builder = ConfigBuilder()
+    builder.read_buf(buffer)
+
+    to_version = kcfg.get("PARAM_HAPPY_HARE_VERSION")
+    if hhcfg.has_option("mmu", "happy_hare_version"):
+        from_version = hhcfg.get("mmu", "happy_hare_version")
     else:
         from_version = to_version
 
+    logging.info("Upgrading from {} to {}".format(from_version, to_version))
     upgrades = Upgrades()
-    upgrades.upgrade(cfg_input, from_version, to_version)
+    upgrades.upgrade(hhcfg, from_version, to_version)
 
-    if basename == "base/mmu.cfg":
-        build_mmu_cfg(builder, cfg_input)
-    elif basename == "base/mmu_hardware.cfg":
-        build_mmu_hardware_cfg(builder, cfg_input)
-    elif basename == "base/mmu_parameters.cfg":
-        build_mmu_parameters_cfg(builder, cfg_input)
-    elif basename == "base/mmu_macro_vars.cfg":
-        build_mmu_macro_vars_cfg(builder, cfg_input)
-    elif basename == "addons/dc_espooler_hw.cfg":
-        build_addon_dc_espooler_cfg(builder, cfg_input)
-    elif basename == "addons/mmu_eject_buttons_hw.cfg":
-        build_addon_eject_buttons_cfg(builder, cfg_input)
+    if basename == "base/mmu_parameters.cfg":
+        build_mmu_parameters_cfg(builder, hhcfg)
 
-    cfg_input.update_builder(builder)
+    hhcfg.update_builder(builder)
 
     first = True
-    for section, option in cfg_input.unused_options_for(basename):
+    for section, option in hhcfg.unused_options_for(basename):
         if first:
             first = False
             logging.warning("The following parameters in {} have been dropped:".format(basename))
-        logging.warning("[{}] {}: {}".format(section, option, cfg_input.get(section, option)))
+        logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
 
     for ph in builder.placeholders():
         logging.warning("Placeholder {{{}}} not replaced".format(ph))
@@ -409,7 +312,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         os.remove(dest_file)
 
     with open(dest_file, "w") as f:
-        f.write(builder.write())
+        f.write(builder.write().encode("utf-8"))
 
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
@@ -431,11 +334,13 @@ def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     else:
         if not builder.has_option("mmu_server", "enable_toolchange_next_pos"):
             builder.set(
-                "mmu_server", "enable_toolchange_next_pos", cfg_input.get("mmu_server", "enable_toolchange_next_pos")
+                "mmu_server",
+                "enable_toolchange_next_pos",
+                cfg_input.hhcfg.get("mmu_server", "enable_toolchange_next_pos"),
             )
         if not builder.has_option("mmu_server", "update_spoolman_location"):
             builder.set(
-                "mmu_server", "update_spoolman_location", cfg_input.get("mmu_server", "update_spoolman_location")
+                "mmu_server", "update_spoolman_location", cfg_input.hhcfg.get("mmu_server", "update_spoolman_location")
             )
 
     cfg_input.update_builder(builder)
@@ -574,7 +479,7 @@ def main():
     logging.addLevelName(LEVEL_NOTICE, os.getenv("C_NOTICE", ""))
     logging.addLevelName(logging.WARNING, os.getenv("C_WARNING", ""))
     logging.addLevelName(logging.ERROR, os.getenv("C_ERROR", ""))
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s%(message)s" + os.getenv("C_OFF", ""))
+    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s%(message)s" + os.getenv("C_OFF", ""))
 
     parser = argparse.ArgumentParser(description="Build script")
     parser.add_argument("-v", "--verbose", action="store_true")

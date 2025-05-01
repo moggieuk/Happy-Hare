@@ -1,6 +1,0 @@
-
-    MMU_GEAR_UART_%={pin_gear_%_uart},
-    MMU_GEAR_STEP_%={pin_gear_%_step},
-    MMU_GEAR_DIR_%={pin_gear_%_dir},
-    MMU_GEAR_ENABLE_%={pin_gear_%_enable},
-    MMU_GEAR_DIAG_%={pin_gear_%_diag},

@@ -1,3 +1,0 @@
-selector_gate_angles: {param_selector_gate_angles}	# Optionally set default list of gate angles (overriden by calibration)
-selector_bypass_angle: -1		# Optionally set default servo angle when bypass is selected, -1=No default
-selector_release_angle: -1		# Optionally force a specific "release" angle, -1=Default (between gate angles) behavior

@@ -1,7 +1,0 @@
-
-    MMU_SEL_UART={pin_selector_uart},
-    MMU_SEL_STEP={pin_selector_step},
-    MMU_SEL_DIR={pin_selector_dir},
-    MMU_SEL_ENABLE={pin_selector_enable},
-    MMU_SEL_DIAG={pin_selector_diag},
-    MMU_SEL_ENDSTOP={pin_selector_endstop},

@@ -23,41 +23,41 @@ if OVERRIDE_PINS
   
     if PARAM_SELECTOR_TYPE = "VirtualSelector"
       if PARAM_NUM_GATES > 1 
-        config PIN_GEAR_1_UART 
+        config PIN_GEAR_UART_1 
           string "Gear 1 UART pin"
-        config PIN_GEAR_1_STEP
+        config PIN_GEAR_STEP_1
           string "Gear 1 step pin"
-        config PIN_GEAR_1_DIR
+        config PIN_GEAR_DIR_1
           string "Gear 1 dir pin"
-        config PIN_GEAR_1_ENABLE
+        config PIN_GEAR_ENABLE_1
           string "Gear 1 enable pin"
-        config PIN_GEAR_1_DIAG
+        config PIN_GEAR_DIAG_1
           string "Gear 1 diag pin"
       endif 
   
       if PARAM_NUM_GATES > 2
-        config PIN_GEAR_2_UART 
+        config PIN_GEAR_UART_2 
           string "Gear 2 UART pin"
-        config PIN_GEAR_2_STEP
+        config PIN_GEAR_STEP_2
           string "Gear 2 step pin"
-        config PIN_GEAR_2_DIR
+        config PIN_GEAR_DIR_2
           string "Gear 2 dir pin"
-        config PIN_GEAR_2_ENABLE
+        config PIN_GEAR_ENABLE_2
           string "Gear 2 enable pin"
-        config PIN_GEAR_2_DIAG
+        config PIN_GEAR_DIAG_2
           string "Gear 2 diag pin"
       endif
   
       if PARAM_NUM_GATES > 3
-        config PIN_GEAR_3_UART 
+        config PIN_GEAR_UART_3 
           string "Gear 3 UART pin"
-        config PIN_GEAR_3_STEP
+        config PIN_GEAR_STEP_3
           string "Gear 3 step pin"
-        config PIN_GEAR_3_DIR
+        config PIN_GEAR_DIR_3
           string "Gear 3 dir pin"
-        config PIN_GEAR_3_ENABLE
+        config PIN_GEAR_ENABLE_3
           string "Gear 3 enable pin"
-        config PIN_GEAR_3_DIAG
+        config PIN_GEAR_DIAG_3
           string "Gear 3 diag pin"
       endif
     endif

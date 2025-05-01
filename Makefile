@@ -76,7 +76,7 @@ hh_moonraker_components = $(patsubst components/%,%,$(wildcard components/*.py))
 SUDO:=$(shell [ -d $(KLIPPER_HOME) ] && [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && echo "sudo " || echo "")
 
 # Look for installed configs that would need be parsed by the build script
-cfg_addons = $(filter-out %_hw.cfg,$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*.cfg))
+cfg_addons = $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*_hw.cfg)
 cfg_base = $(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
 				base/mmu.cfg \
 				base/mmu_parameters.cfg \
