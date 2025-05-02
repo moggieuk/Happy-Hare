@@ -71,27 +71,29 @@ class MmuTest:
                 gathered_states = []
                 tests = []
 
-                def get_float_state(has_compr_sensor, has_tension_sensor, is_compressed=None, is_tensioned=None):
+                def get_float_state(has_compr_sensor, has_tension_sensor, is_compressed, is_tensioned):
                     '''
                     Return the expected float state with given inputs and current sensor states.
                     '''
                     if has_compr_sensor and has_tension_sensor:
-                        if (is_compressed and is_tensioned) or (not is_compressed and not is_tensioned):
+                        if is_compressed == is_tensioned:
                             return 0.
                         elif not is_compressed and is_tensioned:
-                            return 1.
-                        elif is_compressed and not is_tensioned:
                             return -1.
+                        elif is_compressed and not is_tensioned:
+                            return 1.
                     elif has_compr_sensor:
                         if is_compressed:
-                            return -1.
-                        else:
                             return 1.
+                        else:
+                            return -1.
                     elif has_tension_sensor:
                         if is_tensioned:
-                            return 1.
-                        else:
                             return -1.
+                        else:
+                            return 1.
+                    else :
+                        return 0.
                 def test_2_string(test):
                     has_compr_sensor = test[0] is not None
                     has_tens_sensor = test[1] is not None
