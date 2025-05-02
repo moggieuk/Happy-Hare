@@ -70,6 +70,8 @@ class MmuTest:
                 nb_iterations = gcmd.get_int('LOOP', 1000, minval=1, maxval=10000000)
                 gathered_states = []
                 tests = []
+                global finished
+                finished = False
 
                 def get_float_state(has_compr_sensor, has_tension_sensor, is_compressed, is_tensioned):
                     '''
@@ -104,6 +106,13 @@ class MmuTest:
                     while len(gathered_states) != len(tests):
                         pass
                     display_results()
+                    global finished
+                    finished = True
+                def wait_run():
+                    global finished
+                    while not finished:
+                        pass
+                    finished = False
                 def display_results():
                     nb_tests_by_expected = {}
                     self.mmu.log_info("NB Gathered states: %s" % len(gathered_states))
@@ -219,7 +228,10 @@ class MmuTest:
                                 compr_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
                                 tests.append([(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
 
-                self.mmu.printer.send_event("mmu:test_gen_finished")
+                    self.mmu.printer.send_event("mmu:test_gen_finished")
+                    wait_run()
+                    gathered_states = []
+                    tests = []
                 # remove test sensors and associated config
                 ppins = self.mmu.printer.lookup_object('pins')
                 for sensor in [self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
