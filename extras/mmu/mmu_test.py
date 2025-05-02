@@ -218,41 +218,47 @@ class MmuTest:
                                 tests.append([(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
 
                 self.mmu.printer.send_event("mmu:test_gen_finished")
-                # remove test sensors
-                self.mmu.printer.objects.pop("filament_switch_sensor test_%s_sensor"  % self.mmu.SENSOR_COMPRESSION)
-                self.mmu.printer.objects.pop("filament_switch_sensor test_%s_sensor"  % self.mmu.SENSOR_TENSION)
-                config.fileconfig.pop("filament_switch_sensor test_%s_sensor"  % self.mmu.SENSOR_COMPRESSION)
-                config.fileconfig.pop("filament_switch_sensor test_%s_sensor"  % self.mmu.SENSOR_TENSION)
+                # remove test sensors and associated config
+                ppins = self.mmu.printer.lookup_object('pins')
+                for sensor in [self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
+                    self.mmu.printer.objects.pop("filament_switch_sensor test_%s_sensor"  % sensor)
+                    config.fileconfig.pop("filament_switch_sensor test_%s_sensor"  % sensor)
+                    share_name = "%s:%s" % (ppins.parse_pin('test_'+sensor+'_pin')['chip_name'], ppins.parse_pin('test_'+sensor+'_pin')['pin'])
+                    ppins.active_pins.pop(share_name)
+                    for cmd, (key, val) in self.mmu.gcode.mux_commands.items() :
+                        if ("test_%s_sensor" % sensor) in [k for k in [v for v in val.keys() if v]]:
+                            self.mmu.gcode.mux_commands[cmd][1].pop(("test_%s_sensor" % sensor))
+
             else:
                 if sync_state == 'compression':
-                    if compression_sensor is not None:
+                    if compression_test_sensor is not None:
                         self.mmu.log_info("Setting compression sensor to 'detected'")
                         compression_sensor_filament_present = True
-                    if tension_sensor is not None:
+                    if tension_test_sensor is not None:
                         self.mmu.log_info("Setting tension sensor to 'not detected'")
                         tension_sensor_filament_present = False
                 elif sync_state == 'tension':
-                    if compression_sensor is not None:
+                    if compression_test_sensor is not None:
                         self.mmu.log_info("Setting compression sensor to 'not detected'")
                         compression_sensor_filament_present = False
-                    if tension_sensor is not None:
+                    if tension_test_sensor is not None:
                         self.mmu.log_info("Setting tension sensor to 'detected'")
                         tension_sensor_filament_present = True
                 elif sync_state in ['both', 'neutral']:
-                    if compression_sensor is not None:
+                    if compression_test_sensor is not None:
                         self.mmu.log_info("Setting compression sensor to 'detected'")
                         compression_sensor_filament_present = True
-                    if tension_sensor is not None:
+                    if tension_test_sensor is not None:
                         self.mmu.log_info("Setting tension sensor to 'detected'")
                         tension_sensor_filament_present = True
                 else:
                     self.mmu.log_error("Invalid sync state: %s" % sync_state)
                 # Generate a tension or compression event
                 self.mmu.log_trace(">>>>>> sync test Testing configuration %s" % (sync_state.upper()))
-                if compression_sensor is not None:
-                    compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                if tension_sensor is not None:
-                    tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
+                if compression_test_sensor is not None:
+                    compression_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
+                if tension_test_sensor is not None:
+                    tension_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
             # Remove event handlers
             self.mmu.printer.event_handlers.pop("mmu:sync_feedback_finished", None)
             self.mmu.printer.event_handlers.pop("mmu:test_gen_finished", None)
