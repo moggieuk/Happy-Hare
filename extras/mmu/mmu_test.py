@@ -115,8 +115,6 @@ class MmuTest:
                     finished = False
                 def display_results():
                     nb_tests_by_expected = {}
-                    self.mmu.log_info("NB Gathered states: %s" % len(gathered_states))
-                    self.mmu.log_info("NB Tests: %s" % len(tests))
                     # For each configuration print the number of times it was run
                     self.mmu.log_debug("Configuration repartition")
                     nb_hits = {}
@@ -141,9 +139,9 @@ class MmuTest:
                     mismatches = {}
                     for i, (test, sync_state_float) in enumerate(tests):
                         if test not in mismatches:
-                            mismatches.update({test: 0})
+                            mismatches.update({(test, sync_state_float): 0})
                         if sync_state_float != gathered_states[i]:
-                            mismatches[test] += 1
+                            mismatches[(test, sync_state_float)] += 1
                     # Display mismatches
                     self.mmu.log_info("Total Mismatches: "+str(sum(mismatches.values())) + '/' + str(len(tests)) + ' (' + str(round(sum(mismatches.values()) / len(tests) * 100, 2)) +' %)')
 
@@ -151,26 +149,26 @@ class MmuTest:
                         self.mmu.log_info("See mmu.log for a detailed list")
                         # Sort by most mismatches.values (highest first)
                         mismatches = dict(sorted(mismatches.items(), key=lambda item: item[1], reverse=True))
-                        for test, count in mismatches.items():
+                        for (test, __), count in mismatches.items():
                             self.mmu.log_debug("MISMATCH: %s -> %s" % (test_2_string(test), count))
                         # Summary displaying which expected state has which percentage of total errors
                         for expected in [1,0,-1]:
                             if nb_tests_by_expected[expected]:
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected])
-                                self.mmu.log_debug(">>>>>> Expected state " + str(expected) + " -> " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %)')
-                                self.mmu.log_debug("   Edge detection error repartition")
+                                nb_err_count = sum([c for (__, gathered_state), c in mismatches.items() if gathered_state == expected])
+                                self.mmu.log_debug(">>>>>> Expected state " + str(expected) + " -> " + str(nb_err_count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(nb_err_count / nb_tests_by_expected[expected] * 100, 2)) + ' %)')
+                                self.mmu.log_debug("   Edge detection error repartition according to edge detection")
                                 # Group by compression rising edge
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected and test[2] == 'rising edge'])
-                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'compression rising edge')
+                                count = sum([c for (__, gathered_state), c in mismatches.items() if gathered_state == expected and test[4] == 'rising edge'])
+                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_err_count) + ' (' + str(round(((count / nb_err_count) if nb_err_count else 0) * 100, 2)) + ' %) ' + 'compression rising edge')
                                 # Group by compression falling edge
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected and test[2] == 'falling edge'])
-                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'compression falling edge')
+                                count = sum([c for (__, gathered_state), c in mismatches.items() if gathered_state == expected and test[4] == 'falling edge'])
+                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_err_count) + ' (' + str(round(((count / nb_err_count) if nb_err_count else 0) * 100, 2)) + ' %) ' + 'compression falling edge')
                                 # Group by tension rising edge
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected and test[3] == 'rising edge'])
-                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'tension rising edge')
+                                count = sum([c for (__, gathered_state), c in mismatches.items() if gathered_state == expected and test[5] == 'rising edge'])
+                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_err_count) + ' (' + str(round(((count / nb_err_count) if nb_err_count else 0) * 100, 2)) + ' %) ' + 'tension rising edge')
                                 # Group by tension falling edge
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected and test[3] == 'falling edge'])
-                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'tension falling edge')
+                                count = sum([c for (__, gathered_state), c in mismatches.items() if gathered_state == expected and test[5] == 'falling edge'])
+                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_err_count) + ' (' + str(round(((count / nb_err_count) if nb_err_count else 0) * 100, 2)) + ' %) ' + 'tension falling edge')
 
                     else:
                         self.mmu.log_info("No mismatches")
