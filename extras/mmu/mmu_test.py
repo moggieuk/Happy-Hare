@@ -62,10 +62,8 @@ class MmuTest:
             # create phony sensors for testing purposes (will be removed after the test)
             sensors : MmuSensors = self.mmu.printer.lookup_object("mmu_sensors")
             config = self.mmu.config.getsection('mmu_sensors')
-            compr_switch_pins = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION).runout_helper.switch_pin
-            tens_switch_pins = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION).runout_helper.switch_pin
-            sensors._create_mmu_sensor(config, 'test_'+self.mmu.SENSOR_COMPRESSION, None, compr_switch_pins, 0, button_handler=sensors._sync_compression_callback)
-            sensors._create_mmu_sensor(config, 'test_'+self.mmu.SENSOR_TENSION, None, tens_switch_pins, 0, button_handler=sensors._sync_tension_callback)
+            sensors._create_mmu_sensor(config, 'test_'+self.mmu.SENSOR_COMPRESSION, None, 'test_'+self.mmu.SENSOR_COMPRESSION+'_pin', 0, button_handler=sensors._sync_compression_callback)
+            sensors._create_mmu_sensor(config, 'test_'+self.mmu.SENSOR_TENSION, None, 'test_'+self.mmu.SENSOR_TENSION+'_pin', 0, button_handler=sensors._sync_tension_callback)
             compression_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor test_%s_sensor" % self.mmu.SENSOR_COMPRESSION)
             tension_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor test_%s_sensor" % self.mmu.SENSOR_TENSION)
             if sync_state == 'loop':
