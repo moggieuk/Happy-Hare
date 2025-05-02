@@ -13,6 +13,8 @@
 #
 import random, logging
 
+from ..mmu_sensors import MmuSensors
+
 # Happy Hare imports
 from ..            import mmu_machine
 from ..mmu_machine import MmuToolHead
@@ -57,29 +59,45 @@ class MmuTest:
 
         sync_state = gcmd.get('SYNC_STATE', None)
         if sync_state is not None:
-            compression_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION, None)
-            tension_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION, None)
+            # create phony sensors for testing purposes (will be removed after the test)
+            sensors : MmuSensors = self.mmu.printer.lookup_object("mmu_sensors")
+            config = self.mmu.config.getsection('mmu_sensors')
+            compr_switch_pins = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION).runout_helper.switch_pin
+            tens_switch_pins = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION).runout_helper.switch_pin
+            sensors._create_mmu_sensor(config, 'test_'+self.mmu.SENSOR_COMPRESSION, None, compr_switch_pins, 0, button_handler=sensors._sync_compression_callback)
+            sensors._create_mmu_sensor(config, 'test_'+self.mmu.SENSOR_TENSION, None, tens_switch_pins, 0, button_handler=sensors._sync_tension_callback)
+            compression_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor test_%s_sensor" % self.mmu.SENSOR_COMPRESSION)
+            tension_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor test_%s_sensor" % self.mmu.SENSOR_TENSION)
             if sync_state == 'loop':
                 nb_iterations = gcmd.get_int('LOOP', 1000, minval=1, maxval=10000000)
                 gathered_states = []
                 tests = []
 
-                def get_float_state(compression=None, tension=None):
+                def get_float_state(has_compr_sensor, has_tension_sensor, is_compressed=None, is_tensioned=None):
                     '''
                     Return the expected float state with given inputs and current sensor states.
                     '''
-                    if compression is None:
-                        compression = compression_sensor.runout_helper.filament_present
-                    if tension is None:
-                        tension = tension_sensor.runout_helper.filament_present
-                    if compression == tension:
-                        return 0.
-                    elif compression:
-                        return 1.
-                    else:
-                        return -1.
+                    if has_compr_sensor and has_tension_sensor:
+                        if (is_compressed and is_tensioned) or (not is_compressed and not is_tensioned):
+                            return 0.
+                        elif not is_compressed and is_tensioned:
+                            return 1.
+                        elif is_compressed and not is_tensioned:
+                            return -1.
+                    elif has_compr_sensor:
+                        if is_compressed:
+                            return -1.
+                        else:
+                            return 1.
+                    elif has_tension_sensor:
+                        if is_tensioned:
+                            return 1.
+                        else:
+                            return -1.
                 def test_2_string(test):
-                    return "compression=%s, tension=%s, toggle_compression=%s, toggle_tension=%s" % (test[0], test[1], test[2], test[3])
+                    has_compr_sensor = test[0] is not None
+                    has_tens_sensor = test[1] is not None
+                    return "has_compr_sensor=%s, has_tens_sensor=%s, compression=%s, tension=%s, toggle_compression=%s, toggle_tension=%s" % (has_compr_sensor, has_tens_sensor, test[2], test[3], test[4], test[5])
                 def gather_state(state):
                     gathered_states.append(state)
                 def wait_for_results():
@@ -152,45 +170,61 @@ class MmuTest:
                 self.mmu.printer.register_event_handler("mmu:test_gen_finished", wait_for_results)
 
                 while len(tests) < nb_iterations:
+                    # randomly remove tension or compression sensor
+                    sensor_scenario = random.choice(['compression_only', 'tension_only', 'both'])
+                    if sensor_scenario == 'compression_only':
+                        compr_test_sensor = compression_test_sensor
+                        tens_test_sensor = None
+                    elif sensor_scenario == 'tension_only':
+                        compr_test_sensor = None
+                        tens_test_sensor = tension_test_sensor
+                    else:
+                        compr_test_sensor = compression_test_sensor
+                        tens_test_sensor = tension_test_sensor
+
                     compression_sensor_filament_present = None
                     tension_sensor_filament_present = None
                     toggle_compression = "no change"
                     toggle_tension = "no change"
                     if random.choice([True, False]):
-                        if compression_sensor is not None:
+                        if compr_test_sensor is not None:
                             compression_sensor_filament_present = random.choice([True, False])
-                            sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
-                            if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
+                            sync_state_float = get_float_state(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present)
+                            if compression_sensor_filament_present != compr_test_sensor.runout_helper.filament_present:
                                 toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
-                                compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                                tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
-                        if tension_sensor is not None:
+                                compr_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
+                                tests.append([(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
+                        if tens_test_sensor is not None:
                             tension_sensor_filament_present = random.choice([True, False])
-                            sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
-                            if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
+                            sync_state_float = get_float_state(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present)
+                            if tension_sensor_filament_present != tens_test_sensor.runout_helper.filament_present:
                                 toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
-                                tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
-                                tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
+                                tens_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
+                                tests.append([(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
                         if len(tests) >= nb_iterations:
                             break
                     else:
-                        if tension_sensor is not None:
+                        if tens_test_sensor is not None:
                             tension_sensor_filament_present = random.choice([True, False])
-                            sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
-                            if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
+                            sync_state_float = get_float_state(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present)
+                            if tension_sensor_filament_present != tens_test_sensor.runout_helper.filament_present:
                                 toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
-                                tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
-                                tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
-                        if compression_sensor is not None:
+                                tens_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
+                                tests.append([(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
+                        if compr_test_sensor is not None:
                             compression_sensor_filament_present = random.choice([True, False])
-                            sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
-                            if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
+                            sync_state_float = get_float_state(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present)
+                            if compression_sensor_filament_present != compr_test_sensor.runout_helper.filament_present:
                                 toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
-                                compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                                tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
+                                compr_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
+                                tests.append([(compr_test_sensor, tens_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
 
                 self.mmu.printer.send_event("mmu:test_gen_finished")
-
+                # remove test sensors
+                self.mmu.printer.objects.pop("filament_switch_sensor test_%s_sensor"  % self.mmu.SENSOR_COMPRESSION)
+                self.mmu.printer.objects.pop("filament_switch_sensor test_%s_sensor"  % self.mmu.SENSOR_TENSION)
+                config.fileconfig.pop("filament_switch_sensor test_%s_sensor"  % self.mmu.SENSOR_COMPRESSION)
+                config.fileconfig.pop("filament_switch_sensor test_%s_sensor"  % self.mmu.SENSOR_TENSION)
             else:
                 if sync_state == 'compression':
                     if compression_sensor is not None:
