@@ -264,7 +264,7 @@ class MmuSensors:
                     event_value = 0
                 elif tension_state and not compression_state:
                     event_value = -1
-                elif not tension_state and compression_state:
+                else:
                     event_value = 1
             else:
                 if tension_state :
@@ -289,7 +289,7 @@ class MmuSensors:
                     event_value = 0
                 elif compression_state and not tension_state:
                     event_value = 1
-                elif not compression_state and tension_state:
+                else:
                     event_value = -1
             else:
                 if compression_state:
