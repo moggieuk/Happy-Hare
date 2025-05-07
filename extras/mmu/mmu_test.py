@@ -27,7 +27,7 @@ class SyncStateTest(object):
     '''
     This class describes what a sync_state test case is and offers methods to manipulate them.
     '''
-    def __init__(self, compression_sensor, tension_sensor, compression_state, tension_state, toggle_compression, toggle_tension):
+    def __init__(self, compression_sensor, tension_sensor, compression_state, tension_state, toggle_compression, toggle_tension, triggered_sensor, id):
         self.compression_sensor = compression_sensor.runout_helper.sensor_enabled
         self.tension_sensor = tension_sensor.runout_helper.sensor_enabled
         self.compression_state = compression_state
@@ -35,6 +35,8 @@ class SyncStateTest(object):
         self.toggle_compression = toggle_compression
         self.toggle_tension = toggle_tension
         self.expected = None
+        self.triggered_sensor = triggered_sensor
+        self.id = id
         self.set_expected()
 
     def set_expected(self):
@@ -62,7 +64,7 @@ class SyncStateTest(object):
             self.expected = 0.
 
     def __str__(self):
-        return "compression_sensor=%s, tension_sensor=%s, compression_state=%s, tension_state=%s, toggle_compression=%s, toggle_tension=%s" % (self.compression_sensor, self.tension_sensor, self.compression_state, self.tension_state, self.toggle_compression, self.toggle_tension)
+        return "compression_sensor=%s, tension_sensor=%s, compression_state=%s, tension_state=%s, toggle_compression=%s, toggle_tension=%s, triggered_sensor=%s" % (self.compression_sensor, self.tension_sensor, self.compression_state, self.tension_state, self.toggle_compression, self.toggle_tension, self.triggered_sensor)
 
     def __repr__(self):
         return self.__str__()
@@ -168,6 +170,8 @@ class MmuTest:
                         if test not in mismatches:
                             mismatches.update({str(test): {'test' : test, 'count' : 0}})
                         if test.expected != gathered_states[i]:
+                            self.mmu.log_debug("MISMATCH on test id:%s (expected : %s) -> %s" % (str(test.id), test.expected, gathered_states[i]))
+                            self.mmu.log_debug("   Test : %s" % (str(test)))
                             mismatches[str(test)]['count'] += 1
                     # Display mismatches
                     nb_mismatches = sum([v['count'] for v in mismatches.values()])
@@ -235,15 +239,17 @@ class MmuTest:
                         if toggle_compression != 'no_change' and toggle_tension != 'no_change':
                             if random.choice([True, False]):
                                 compression_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
+                                triggered_sensor = "compression"
                             else :
                                 tension_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
-                            tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension))
+                                triggered_sensor = "tension"
+                            tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension, triggered_sensor, len(tests)))
                         elif toggle_compression != 'no_change':
                             compression_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                            tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension))
+                            tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension, 'compression', len(tests)))
                         elif toggle_tension != 'no_change':
                             tension_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
-                            tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension))
+                            tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension, 'tension', len(tests)))
 
 
                     self.mmu.log_trace(" -- All %d were generated" % len(tests))
