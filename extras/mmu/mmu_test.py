@@ -261,7 +261,7 @@ class MmuTest:
                 # remove test sensors and associated config
                 ppins = self.mmu.printer.lookup_object('pins')
                 for sensor in sensors_to_remove:
-                    self.mmu.printer.objects.pop("filament_switch_sensor test_%s_sensor"  % sensor)
+                    self.mmu.printer.objects.pop("filament_switch_sensor %s_sensor"  % sensor)
                     config.fileconfig.pop("filament_switch_sensor %s_sensor"  % sensor)
                     share_name = "%s:%s" % (ppins.parse_pin('test_'+sensor+'_pin')['chip_name'], ppins.parse_pin('test_'+sensor+'_pin')['pin'])
                     ppins.active_pins.pop(share_name)
