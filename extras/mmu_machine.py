@@ -822,7 +822,7 @@ class MmuHoming(Homing, object):
 
 # Extend PrinterRail to allow for multiple (switchable) endstops and to allow for no default endstop
 # (defined in stepper.py)
-class MmuPrinterRail(stepper.GenericPrinterRail, object):
+class MmuPrinterRail(stepper.PrinterRail, object):
     def __init__(self, config, **kwargs):
         self.printer = config.get_printer()
         self.config = config
