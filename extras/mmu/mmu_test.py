@@ -262,12 +262,12 @@ class MmuTest:
                 ppins = self.mmu.printer.lookup_object('pins')
                 for sensor in sensors_to_remove:
                     self.mmu.printer.objects.pop("filament_switch_sensor test_%s_sensor"  % sensor)
-                    config.fileconfig.pop("filament_switch_sensor test_%s_sensor"  % sensor)
+                    config.fileconfig.pop("filament_switch_sensor %s_sensor"  % sensor)
                     share_name = "%s:%s" % (ppins.parse_pin('test_'+sensor+'_pin')['chip_name'], ppins.parse_pin('test_'+sensor+'_pin')['pin'])
                     ppins.active_pins.pop(share_name)
                     for cmd, (__, val) in self.mmu.gcode.mux_commands.items() :
-                        if ("test_%s_sensor" % sensor) in [k for k in [v for v in val.keys() if v]]:
-                            self.mmu.gcode.mux_commands[cmd][1].pop(("test_%s_sensor" % sensor))
+                        if ("%s_sensor" % sensor) in [k for k in [v for v in val.keys() if v]]:
+                            self.mmu.gcode.mux_commands[cmd][1].pop(("%s_sensor" % sensor))
 
                 # restore the original sensor state
                 compression_test_sensor.runout_helper.sensor_enabled = saved_compr
