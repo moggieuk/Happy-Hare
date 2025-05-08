@@ -231,7 +231,6 @@ class MmuTest:
                     self.mmu.log_info(">>>>>> Testing sensor configuration '%s'" % sensor_scenario)
 
                     while len(tests) < nb_iterations:
-                        self.mmu.log_trace(" -- Generated test: %s" % len(tests))
                         compression_sensor_filament_present = compression_test_sensor.runout_helper.filament_present
                         tension_sensor_filament_present = tension_test_sensor.runout_helper.filament_present
                         toggle_compression = "no change"
@@ -243,6 +242,7 @@ class MmuTest:
                                 compression_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
                                 triggered_sensor = "compression"
                                 toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
+                                self.mmu.log_trace(" -- Generated test: %s" % len(tests))
                                 tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension, triggered_sensor, len(tests)))
                         else :
                             tension_sensor_filament_present = random.choice([True, False])
@@ -250,6 +250,7 @@ class MmuTest:
                                 tension_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
                                 triggered_sensor = "tension"
                                 toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
+                                self.mmu.log_trace(" -- Generated test: %s" % len(tests))
                                 tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension, triggered_sensor, len(tests)))
 
 
