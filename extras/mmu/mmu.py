@@ -2988,20 +2988,17 @@ class Mmu:
         has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
         has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
 
-        sss = self.SYNC_STATE_NEUTRAL
-        if has_tension and not has_compression:
-            sss = self.SYNC_STATE_EXPANDED if self.sensor_manager.check_sensor(self.SENSOR_TENSION) else self.SYNC_STATE_COMPRESSED
+        if has_tension and has_compression:
+            if self.sensor_manager.check_sensor(self.SENSOR_TENSION) == self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
+                sss = self.SYNC_STATE_NEUTRAL
+            elif self.sensor_manager.check_sensor(self.SENSOR_TENSION) and not self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
+                sss = self.SYNC_STATE_EXPANDED
+            else:
+                sss = self.SYNC_STATE_COMPRESSED
         elif has_compression and not has_tension:
             sss = self.SYNC_STATE_COMPRESSED if self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION) else self.SYNC_STATE_EXPANDED
-        elif has_compression and has_tension:
-            state_expanded = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
-            state_compressed = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
-            if state_expanded and state_compressed:
-                self.log_error("Both expanded and compressed sync feedback sensors are triggered at the same time. Check hardware!")
-            elif state_expanded:
-                sss = self.SYNC_STATE_EXPANDED
-            elif state_compressed:
-                sss = self.SYNC_STATE_COMPRESSED
+        else:
+            sss = self.SYNC_STATE_EXPANDED if self.sensor_manager.check_sensor(self.SENSOR_TENSION) else self.SYNC_STATE_COMPRESSED
         return sss
 
     # Ensure correct sync_feedback starting assumption by generating a fake event
