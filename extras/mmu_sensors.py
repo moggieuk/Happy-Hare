@@ -259,18 +259,26 @@ class MmuSensors:
         compression_state = compression_sensor.runout_helper.filament_present if has_active_compression else False
 
         if tension_enabled:
-            if has_active_compression and compression_state:
-                if tension_state and compression_state:
-                    logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
+            if has_active_compression:
+                if tension_state == compression_state:
                     event_value = 0
                 elif tension_state and not compression_state:
                     event_value = -1
-                elif not tension_state and compression_state:
+                else:
                     event_value = 1
             else:
-                event_value = -tension_state # -1 or 0 (neutral)
+                if tension_state :
+                    event_value = -1
+                else:
+                    event_value = 1
         else:
-            event_value = 0 # Neutral
+            if has_active_compression:
+                if compression_state:
+                    event_value = 1
+                else:
+                    event_value = -1
+            else:
+                event_value = 0
 
         self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
 
@@ -282,18 +290,26 @@ class MmuSensors:
         tension_state = tension_sensor.runout_helper.filament_present if has_active_tension else False
 
         if compression_enabled:
-            if has_active_tension and tension_state:
-                if compression_state and tension_state:
-                    logging.info("Malfunction of sync-feedback unit: both tension and compression sensors are triggered at the same time!")
+            if has_active_tension:
+                if tension_state == compression_state:
                     event_value = 0
                 elif compression_state and not tension_state:
                     event_value = 1
-                elif not compression_state and tension_state:
+                else:
                     event_value = -1
             else:
-                event_value = compression_state # 1 or 0 (neutral)
+                if compression_state:
+                    event_value = 1
+                else:
+                    event_value = -1
         else:
-            event_value = 0 # Neutral
+            if has_active_tension:
+                if tension_state:
+                    event_value = -1
+                else:
+                    event_value = 1
+            else:
+                event_value = 0
 
         self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
 
