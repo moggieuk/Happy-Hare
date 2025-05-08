@@ -2914,9 +2914,9 @@ class Mmu:
     # or can be a proportional float value between -1.0 and 1.0
     def _handle_sync_feedback(self, eventtime, state):
         if not self.is_enabled: return
-        self.log_trace("Got sync force feedback update. State: %s" % state)
         if abs(state) <= 1:
             self.sync_feedback_last_state = float(state)
+            self.log_trace("Got sync force feedback update. State: %s" % self._get_sync_feedback_string(detail=True))
             if self.sync_feedback_enable and self.sync_feedback_operational:
                 self._update_sync_multiplier()
         else:
