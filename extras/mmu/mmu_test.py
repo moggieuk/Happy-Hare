@@ -47,19 +47,19 @@ class SyncStateTest(object):
             if self.compression_state == self.tension_state:
                 self.expected = 0.
             elif not self.compression_state and self.tension_state:
-                self.expected = -1.
-            elif self.compression_state and not self.tension_state:
                 self.expected = 1.
+            elif self.compression_state and not self.tension_state:
+                self.expected = -1.
         elif self.compression_sensor:
             if self.compression_state:
-                self.expected = 1.
-            else:
                 self.expected = -1.
+            else:
+                self.expected = 1.
         elif self.tension_sensor:
             if self.tension_state:
-                self.expected = -1.
-            else:
                 self.expected = 1.
+            else:
+                self.expected = -1.
         else :
             self.expected = 0.
 
