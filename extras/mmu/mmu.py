@@ -2916,7 +2916,7 @@ class Mmu:
         if not self.is_enabled: return
         if abs(state) <= 1:
             self.sync_feedback_last_state = float(state)
-            self.log_trace("Got sync force feedback update. State: %s" % self._get_sync_feedback_string(detail=True))
+            self.log_trace("Got sync force feedback update. State: %s (%s)" % (self._get_sync_feedback_string(detail=True), float(state)))
             if self.sync_feedback_enable and self.sync_feedback_operational:
                 self._update_sync_multiplier()
         else:
@@ -2978,9 +2978,11 @@ class Mmu:
             if go_slower(self.sync_feedback_last_state, self.sync_feedback_last_direction):
                 # Expanded when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
                 multiplier = 1. - (abs(1. - self.sync_multiplier_low) * abs(self.sync_feedback_last_state))
+                self.log_trace("Slowing gear motor down")
             else:
                 # Compressed when extruding or expanded when retracting, so increase the rotation distance of gear stepper to slow it down
                 multiplier = 1. + (abs(1. - self.sync_multiplier_high) * abs(self.sync_feedback_last_state))
+                self.log_trace("Speeding gear motor up")
         self.log_trace("Updated sync multiplier: %.4f" % multiplier)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected) / multiplier)
 
