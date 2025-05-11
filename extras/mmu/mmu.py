@@ -2991,6 +2991,7 @@ class Mmu:
         has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
 
         if has_tension and has_compression:
+            # Allow for sync-feedback sensor designs with minimal travel where both sensors can be triggered at same time
             if self.sensor_manager.check_sensor(self.SENSOR_TENSION) == self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
                 sss = self.SYNC_STATE_NEUTRAL
             elif self.sensor_manager.check_sensor(self.SENSOR_TENSION) and not self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
@@ -3003,7 +3004,7 @@ class Mmu:
             sss = self.SYNC_STATE_EXPANDED if self.sensor_manager.check_sensor(self.SENSOR_TENSION) else self.SYNC_STATE_COMPRESSED
         return sss
 
-    # Ensure correct sync_feedback starting assumption by generating a fake event
+    # Ensure correct sync_feedback starting state by generating a fake event
     def _update_sync_starting_state(self):
         eventtime = self.reactor.monotonic()
         sss = self._get_current_sync_state()
