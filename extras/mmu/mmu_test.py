@@ -13,6 +13,8 @@
 #
 import random, logging
 
+from ..mmu_sensors import MmuSensors
+
 # Happy Hare imports
 # PAUL from ..            import mmu_machine
 from ..mmu_unit    import MmuToolHead
@@ -20,6 +22,52 @@ from ..mmu_unit    import MmuToolHead
 # MMU subcomponent clases
 from .mmu_shared   import *
 from .mmu_utils    import PurgeVolCalculator, DebugStepperMovement
+
+class SyncStateTest(object):
+    '''
+    This class describes what a sync_state test case is and offers methods to manipulate them.
+    '''
+    def __init__(self, compression_sensor, tension_sensor, compression_state, tension_state, toggle_compression, toggle_tension, triggered_sensor, id):
+        self.compression_sensor = compression_sensor.runout_helper.sensor_enabled
+        self.tension_sensor = tension_sensor.runout_helper.sensor_enabled
+        self.compression_state = compression_state
+        self.tension_state = tension_state
+        self.toggle_compression = toggle_compression
+        self.toggle_tension = toggle_tension
+        self.expected = None
+        self.triggered_sensor = triggered_sensor
+        self.id = id
+        self.set_expected()
+
+    def set_expected(self):
+        '''
+        Return the expected float state with given inputs and current sensor states.
+        '''
+        if self.compression_sensor and self.tension_sensor:
+            if self.compression_state == self.tension_state:
+                self.expected = 0.
+            elif self.compression_state and not self.tension_state:
+                self.expected = 1.
+            elif not self.compression_state and self.tension_state:
+                self.expected = -1.
+        elif self.compression_sensor:
+            if self.compression_state:
+                self.expected = 1.
+            else:
+                self.expected = -1.
+        elif self.tension_sensor:
+            if self.tension_state:
+                self.expected = -1.
+            else:
+                self.expected = 1.
+        else :
+            self.expected = 0.
+
+    def __str__(self):
+        return "compression_sensor=%s, tension_sensor=%s, compression_state=%s, tension_state=%s, toggle_compression=%s, toggle_tension=%s, triggered_sensor=%s" % (self.compression_sensor, self.tension_sensor, self.compression_state, self.tension_state, self.toggle_compression, self.toggle_tension, self.triggered_sensor)
+
+    def __repr__(self):
+        return self.__str__()
 
 class MmuTest:
 
@@ -57,170 +105,206 @@ class MmuTest:
 
         sync_state = gcmd.get('SYNC_STATE', None)
         if sync_state is not None:
-            compression_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION, None)
-            tension_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION, None)
+            # create phony sensors for testing purposes (will be removed after the test)
+            sensors : MmuSensors = self.mmu.printer.lookup_object("mmu_sensors")
+            config = self.mmu.config.getsection('mmu_sensors')
+            sensors_to_remove = []
+            # use the temporary sensors for the test if the real ones are not present
+            compression_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION, None)
+            if compression_test_sensor is None:
+                sensors._create_mmu_sensor(config, self.mmu.SENSOR_COMPRESSION, None, 'test_'+self.mmu.SENSOR_COMPRESSION+'_pin', 0, button_handler=sensors._sync_compression_callback)
+                compression_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION)
+                sensors_to_remove.append(self.mmu.SENSOR_COMPRESSION)
+            tension_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION, None)
+            if tension_test_sensor is None:
+                sensors._create_mmu_sensor(config, self.mmu.SENSOR_TENSION, None, 'test_'+self.mmu.SENSOR_TENSION+'_pin', 0, button_handler=sensors._sync_tension_callback)
+                tension_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION)
+                sensors_to_remove.append(self.mmu.SENSOR_TENSION)
+
             if sync_state == 'loop':
                 nb_iterations = gcmd.get_int('LOOP', 1000, minval=1, maxval=10000000)
                 gathered_states = []
                 tests = []
+                global finished
+                finished = False
+                # save the sensor state
+                saved_compr = compression_test_sensor.runout_helper.sensor_enabled
+                saved_tens = tension_test_sensor.runout_helper.sensor_enabled
 
-                def get_float_state(compression=None, tension=None):
-                    '''
-                    Return the expected float state with given inputs and current sensor states.
-                    '''
-                    if compression is None:
-                        compression = compression_sensor.runout_helper.filament_present
-                    if tension is None:
-                        tension = tension_sensor.runout_helper.filament_present
-                    if compression == tension:
-                        return 0.
-                    elif compression:
-                        return 1.
-                    else:
-                        return -1.
-                def test_2_string(test):
-                    return "compression=%s, tension=%s, toggle_compression=%s, toggle_tension=%s" % (test[0], test[1], test[2], test[3])
                 def gather_state(state):
+                    self.mmu.log_trace(" -- Gathered state: %s" % len(gathered_states))
                     gathered_states.append(state)
                 def wait_for_results():
-                    while len(gathered_states) != len(tests):
+                    while len(gathered_states) < len(tests):
                         pass
+                    self.mmu.log_trace(" -- All states were gatherred : %s" % len(gathered_states))
                     display_results()
+                    global finished
+                    finished = True
+                def wait_run():
+                    global finished
+                    while not finished:
+                        pass
+                    finished = False
                 def display_results():
                     nb_tests_by_expected = {}
-                    self.mmu.log_info("NB Gathered states: %s" % len(gathered_states))
-                    self.mmu.log_info("NB Tests: %s" % len(tests))
                     # For each configuration print the number of times it was run
                     self.mmu.log_debug("Configuration repartition")
                     nb_hits = {}
                     for comp in [None, True, False]:
                         for tens in [None, True, False]:
                             for t in tests:
+                                t : SyncStateTest
                                 if (comp, tens) not in nb_hits:
                                     nb_hits.update({(comp, tens): 0})
-                                if (t[0][0], t[0][1]) == (comp, tens):
+                                if (t.compression_state, t.tension_state) == (comp, tens):
                                     nb_hits[(comp, tens)] += 1
                     # Print the hits from most to least frequent
                     for key, value in sorted(nb_hits.items(), key=lambda item: item[1], reverse=True):
-                        self.mmu.log_debug("   compression : %s - tension : %s -> %s" % (key[0], key[1], value))
+                        if value : self.mmu.log_debug("   compression : %s - tension : %s -> %s" % (key[0], key[1], value))
 
                     # Group by expected result and print how many tests should result in that state
                     self.mmu.log_debug("Expected state repartition")
                     for expected in [1.,0.,-1.]:
-                        count = len([1 for __, sync_state_float in tests if sync_state_float == expected])
+                        count = len([1 for t in tests if t.expected == expected])
                         self.mmu.log_debug("   Expected state %s -> %s" % (expected, count))
                         nb_tests_by_expected.update({expected: count})
 
                     mismatches = {}
-                    for i, (test, sync_state_float) in enumerate(tests):
-                        if test not in mismatches:
-                            mismatches.update({test: 0})
-                        if sync_state_float != gathered_states[i]:
-                            mismatches[test] += 1
+                    for i, test in enumerate(tests):
+                        test : SyncStateTest
+                        if str(test) not in mismatches:
+                            mismatches[str(test)] = {'test' : test, 'count' : 0}
+                        if test.expected != gathered_states[i]:
+                            self.mmu.log_debug("MISMATCH on test id:%s (expected : %s) -> %s" % (str(test.id), test.expected, gathered_states[i]))
+                            self.mmu.log_debug("   Test : %s" % (str(test)))
+                            mismatches[str(test)]['count'] += 1
                     # Display mismatches
-                    self.mmu.log_info("Total Mismatches: "+str(sum(mismatches.values())) + '/' + str(len(tests)) + ' (' + str(round(sum(mismatches.values()) / len(tests) * 100, 2)) +' %)')
+                    nb_mismatches = sum([v['count'] for v in mismatches.values()])
+                    self.mmu.log_info("Total Mismatches: "+str(nb_mismatches) + '/' + str(len(tests)) + ' (' + str(round(nb_mismatches / len(tests) * 100, 2)) +' %)')
 
                     if mismatches:
-                        self.mmu.log_info("See mmu.log for a detailed list")
                         # Sort by most mismatches.values (highest first)
-                        mismatches = dict(sorted(mismatches.items(), key=lambda item: item[1], reverse=True))
-                        for test, count in mismatches.items():
-                            self.mmu.log_debug("MISMATCH: %s -> %s" % (test_2_string(test), count))
+                        mismatches = dict(sorted(mismatches.items(), key=lambda item: item[1]['count'], reverse=True))
+                        for test_str, info in mismatches.items():
+                            test : SyncStateTest
+                            if info['count'] : self.mmu.log_debug("MISMATCH: %s (expected : %s) -> %s" % (test_str, info['test'].expected, info['count']))
                         # Summary displaying which expected state has which percentage of total errors
                         for expected in [1,0,-1]:
                             if nb_tests_by_expected[expected]:
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected])
-                                self.mmu.log_debug(">>>>>> Expected state " + str(expected) + " -> " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %)')
+                                nb_err_count = sum([info['count'] for __, info in mismatches.items() if info['test'].expected == expected])
+                                self.mmu.log_debug(">>>>>> Expected state " + str(expected) + " -> " + str(nb_err_count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(nb_err_count / nb_tests_by_expected[expected] * 100, 2)) + ' %)')
                                 self.mmu.log_debug("   Edge detection error repartition")
                                 # Group by compression rising edge
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected and test[2] == 'rising edge'])
-                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'compression rising edge')
+                                count = sum([info['count'] for __, info in mismatches.items() if info['test'].expected == expected and info['test'].toggle_compression == 'rising edge'])
+                                if count : self.mmu.log_debug("      " + str(count) + '/' + str(nb_err_count) + ' (' + str(round(((count / nb_err_count) if nb_err_count else 0) * 100, 2)) + ' %) ' + 'compression rising edge')
                                 # Group by compression falling edge
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected and test[2] == 'falling edge'])
-                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'compression falling edge')
+                                count = sum([info['count'] for __, info in mismatches.items() if info['test'].expected == expected and info['test'].toggle_compression == 'falling edge'])
+                                if count : self.mmu.log_debug("      " + str(count) + '/' + str(nb_err_count) + ' (' + str(round(((count / nb_err_count) if nb_err_count else 0) * 100, 2)) + ' %) ' + 'compression falling edge')
                                 # Group by tension rising edge
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected and test[3] == 'rising edge'])
-                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'tension rising edge')
+                                count = sum([info['count'] for __, info in mismatches.items() if info['test'].expected == expected and info['test'].toggle_tension == 'rising edge'])
+                                if count : self.mmu.log_debug("      " + str(count) + '/' + str(nb_err_count) + ' (' + str(round(((count / nb_err_count) if nb_err_count else 0) * 100, 2)) + ' %) ' + 'tension rising edge')
                                 # Group by tension falling edge
-                                count = sum([c for test, c in mismatches.items() if test[1] == expected and test[3] == 'falling edge'])
-                                self.mmu.log_debug("      " + str(count) + '/' + str(nb_tests_by_expected[expected]) + ' (' + str(round(count / nb_tests_by_expected[expected] * 100, 2)) + ' %) ' + 'tension falling edge')
+                                count = sum([info['count'] for __, info in mismatches.items() if info['test'].expected == expected and info['test'].toggle_tension == 'falling edge'])
+                                if count : self.mmu.log_debug("      " + str(count) + '/' + str(nb_err_count) + ' (' + str(round(((count / nb_err_count) if nb_err_count else 0) * 100, 2)) + ' %) ' + 'tension falling edge')
 
                     else:
                         self.mmu.log_info("No mismatches")
 
                 self.mmu.printer.register_event_handler("mmu:sync_feedback_finished", gather_state)
                 self.mmu.printer.register_event_handler("mmu:test_gen_finished", wait_for_results)
-
-                while len(tests) < nb_iterations:
-                    compression_sensor_filament_present = None
-                    tension_sensor_filament_present = None
-                    toggle_compression = "no change"
-                    toggle_tension = "no change"
-                    if random.choice([True, False]):
-                        if compression_sensor is not None:
-                            compression_sensor_filament_present = random.choice([True, False])
-                            sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
-                            if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
-                                toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
-                                compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                                tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
-                        if tension_sensor is not None:
-                            tension_sensor_filament_present = random.choice([True, False])
-                            sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
-                            if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
-                                toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
-                                tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
-                                tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
-                        if len(tests) >= nb_iterations:
-                            break
+                # randomly remove tension or compression sensor
+                for sensor_scenario in ['compression_only', 'tension_only', 'both', 'none']:
+                    if sensor_scenario == 'compression_only':
+                        compression_test_sensor.runout_helper.sensor_enabled = True
+                        tension_test_sensor.runout_helper.sensor_enabled = False
+                    elif sensor_scenario == 'tension_only':
+                        compression_test_sensor.runout_helper.sensor_enabled = False
+                        tension_test_sensor.runout_helper.sensor_enabled = True
+                    elif sensor_scenario == 'both':
+                        compression_test_sensor.runout_helper.sensor_enabled = True
+                        tension_test_sensor.runout_helper.sensor_enabled = True
                     else:
-                        if tension_sensor is not None:
-                            tension_sensor_filament_present = random.choice([True, False])
-                            sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
-                            if tension_sensor_filament_present != tension_sensor.runout_helper.filament_present:
-                                toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
-                                tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
-                                tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
-                        if compression_sensor is not None:
-                            compression_sensor_filament_present = random.choice([True, False])
-                            sync_state_float = get_float_state(compression=compression_sensor_filament_present, tension=tension_sensor_filament_present)
-                            if compression_sensor_filament_present != compression_sensor.runout_helper.filament_present:
-                                toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
-                                compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                                tests.append([(compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension), sync_state_float])
+                        compression_test_sensor.runout_helper.sensor_enabled = False
+                        tension_test_sensor.runout_helper.sensor_enabled = False
 
-                self.mmu.printer.send_event("mmu:test_gen_finished")
+                    self.mmu.log_info(">>>>>> Testing sensor configuration '%s'" % sensor_scenario)
+
+                    while len(tests) < nb_iterations:
+                        compression_sensor_filament_present = compression_test_sensor.runout_helper.filament_present
+                        tension_sensor_filament_present = tension_test_sensor.runout_helper.filament_present
+                        toggle_compression = "no change"
+                        toggle_tension = "no change"
+                        # generate a random sync state
+                        if random.choice([True, False]): # we consider only one sensor can change state at a time
+                            compression_sensor_filament_present = random.choice([True, False])
+                            if compression_sensor_filament_present != compression_test_sensor.runout_helper.filament_present:
+                                compression_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
+                                triggered_sensor = "compression"
+                                toggle_compression = "rising edge" if compression_sensor_filament_present else "falling edge"
+                                self.mmu.log_trace(" -- Generated test: %s" % len(tests))
+                                tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension, triggered_sensor, len(tests)))
+                        else :
+                            tension_sensor_filament_present = random.choice([True, False])
+                            if tension_sensor_filament_present != tension_test_sensor.runout_helper.filament_present:
+                                tension_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
+                                triggered_sensor = "tension"
+                                toggle_tension = "rising edge" if tension_sensor_filament_present else "falling edge"
+                                self.mmu.log_trace(" -- Generated test: %s" % len(tests))
+                                tests.append(SyncStateTest(compression_test_sensor, tension_test_sensor, compression_sensor_filament_present, tension_sensor_filament_present, toggle_compression, toggle_tension, triggered_sensor, len(tests)))
+
+
+                    self.mmu.log_trace(" -- All %d were generated" % len(tests))
+                    self.mmu.printer.send_event("mmu:test_gen_finished")
+                    wait_run()
+                    gathered_states = []
+                    tests = []
+                # remove test sensors and associated config
+                ppins = self.mmu.printer.lookup_object('pins')
+                for sensor in sensors_to_remove:
+                    self.mmu.printer.objects.pop("filament_switch_sensor %s_sensor"  % sensor)
+                    config.fileconfig.pop("filament_switch_sensor %s_sensor"  % sensor)
+                    share_name = "%s:%s" % (ppins.parse_pin('test_'+sensor+'_pin')['chip_name'], ppins.parse_pin('test_'+sensor+'_pin')['pin'])
+                    ppins.active_pins.pop(share_name)
+                    for cmd, (__, val) in self.mmu.gcode.mux_commands.items() :
+                        if ("%s_sensor" % sensor) in [k for k in [v for v in val.keys() if v]]:
+                            self.mmu.gcode.mux_commands[cmd][1].pop(("%s_sensor" % sensor))
+
+                # restore the original sensor state
+                compression_test_sensor.runout_helper.sensor_enabled = saved_compr
+                tension_test_sensor.runout_helper.sensor_enabled = saved_tens
+                self.mmu.log_info("See mmu.log for a more details")
 
             else:
                 if sync_state == 'compression':
-                    if compression_sensor is not None:
+                    if compression_test_sensor is not None:
                         self.mmu.log_info("Setting compression sensor to 'detected'")
                         compression_sensor_filament_present = True
-                    if tension_sensor is not None:
+                    if tension_test_sensor is not None:
                         self.mmu.log_info("Setting tension sensor to 'not detected'")
                         tension_sensor_filament_present = False
                 elif sync_state == 'tension':
-                    if compression_sensor is not None:
+                    if compression_test_sensor is not None:
                         self.mmu.log_info("Setting compression sensor to 'not detected'")
                         compression_sensor_filament_present = False
-                    if tension_sensor is not None:
+                    if tension_test_sensor is not None:
                         self.mmu.log_info("Setting tension sensor to 'detected'")
                         tension_sensor_filament_present = True
                 elif sync_state in ['both', 'neutral']:
-                    if compression_sensor is not None:
+                    if compression_test_sensor is not None:
                         self.mmu.log_info("Setting compression sensor to 'detected'")
                         compression_sensor_filament_present = True
-                    if tension_sensor is not None:
+                    if tension_test_sensor is not None:
                         self.mmu.log_info("Setting tension sensor to 'detected'")
                         tension_sensor_filament_present = True
                 else:
                     self.mmu.log_error("Invalid sync state: %s" % sync_state)
                 # Generate a tension or compression event
                 self.mmu.log_trace(">>>>>> sync test Testing configuration %s" % (sync_state.upper()))
-                if compression_sensor is not None:
-                    compression_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
-                if tension_sensor is not None:
-                    tension_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
+                if compression_test_sensor is not None:
+                    compression_test_sensor.runout_helper.note_filament_present(compression_sensor_filament_present)
+                if tension_test_sensor is not None:
+                    tension_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
             # Remove event handlers
             self.mmu.printer.event_handlers.pop("mmu:sync_feedback_finished", None)
             self.mmu.printer.event_handlers.pop("mmu:test_gen_finished", None)
