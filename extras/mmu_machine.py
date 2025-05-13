@@ -372,7 +372,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
         self.extruder = DummyExtruder(self.printer)
-        self.extra_axes = []
+        self.extra_axes = [self.extruder]
 
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
 
