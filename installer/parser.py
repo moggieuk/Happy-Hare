@@ -1,4 +1,3 @@
-import copy
 import logging
 import re
 
@@ -83,11 +82,11 @@ class Node(object):
             for k, v in vars(node).items():
                 if k in ["type", "body"]:
                     continue
-                lines.append(" " * (depth + 1) * tab + "{}: `{}`".format(k, v))
+                lines.append(unicode(" " * (depth + 1) * tab + "{}: `{}`").format(k, v))
             return True, lines
 
         lines = self.walk(_print, [])
-        return "\n".join(lines)
+        return "\n".join(lines).encode("utf-8")
 
     def __str__(self):
         return self._pretty_print()
@@ -97,7 +96,7 @@ class Node(object):
         return context
 
     def serialize(self):
-        return str("")
+        return unicode("")
 
 
 class BodyNode(Node):
@@ -124,7 +123,7 @@ class SectionNode(BodyNode):
         self.name = name
 
     def serialize(self):
-        return "[" + self.name + "]"
+        return unicode("[" + self.name + "]")
 
 
 class OptionNode(BodyNode):
@@ -545,7 +544,7 @@ class ConfigBuilder(object):
         return default
 
     def set(self, section_name, option_name, value):
-        value = str(value).strip()
+        value = value.strip()
         idx = value.find("\n")
         if idx != -1:
             value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
