@@ -365,11 +365,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
         self.trapq_append = ffi_lib.trapq_append
         self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
+        # Motion flushing
         self.step_generators = []
+        self.flush_trapqs = [self.trapq]
         # Create kinematics class
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
         self.extruder = DummyExtruder(self.printer)
+        self.extra_axes = []
 
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
 
