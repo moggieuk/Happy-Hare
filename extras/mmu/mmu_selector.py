@@ -1389,23 +1389,20 @@ class RotarySelector(BaseSelector, object):
 ################################################################################
 # Macro Selector
 # Implements macro-based selector for MMU's
-################################################################################
-
-"""
-Example demultiplexer-style SELECT_TOOL macro:
-[gcode_macro SELECT_TOOL]
-gcode:
-    SET_PIN PIN=d0 VALUE={params.S0}
-    SET_PIN PIN=d1 VALUE={params.S1}
-    SET_PIN PIN=d2 VALUE={params.S2}
-
-Example optocoupler-style SELECT_TOOL macro:
-[gcode_macro SELECT_TOOL]
-gcode:
-    SET_PIN PIN=o{printer.mmu.gate} VALUE=0
-    SET_PIN PIN=o{params.GATE} VALUE=1
-"""
-
+#
+# Example demultiplexer-style SELECT_TOOL macro:
+# [gcode_macro SELECT_TOOL]
+# gcode:
+#     SET_PIN PIN=d0 VALUE={params.S0}
+#     SET_PIN PIN=d1 VALUE={params.S1}
+#     SET_PIN PIN=d2 VALUE={params.S2}
+# 
+# Example optocoupler-style SELECT_TOOL macro:
+# [gcode_macro SELECT_TOOL]
+# gcode:
+#     SET_PIN PIN=o{printer.mmu.gate} VALUE=0
+#     SET_PIN PIN=o{params.GATE} VALUE=1
+#
 class MacroSelector(BaseSelector, object):
 
     def __init__(self, mmu, mmu_unit):

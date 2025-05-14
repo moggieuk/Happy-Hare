@@ -238,7 +238,7 @@ class MmuUnit:
                 break
 
         if self.gear_tmc is None:
-           raise config.error("Gear stepper configuration not found for mmu_unit %s" % self.name)
+            raise config.error("Gear stepper configuration not found for mmu_unit %s" % self.name)
 
         last_gear = 24
         for i in range(1, last_gear): # Don't allow "_0" or it is confusing with unprefixed initial stepper
@@ -900,7 +900,7 @@ class MmuPrinterRail(_StepperPrinterRail, object):
         super(MmuPrinterRail, self).__init__(config, **kwargs)
 
         # Prior to klipper v0.13.0-79 this was done in the base class
-        if (len(self.get_steppers()) == 0):
+        if len(self.get_steppers()) == 0:
             self.add_stepper_from_config(config)
 
     def lookup_endstop(self, endstop_pin, name, **kwargs):
@@ -1008,35 +1008,6 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
         rail.add_stepper_from_config(config.getsection(section_name))
     return rail
 
-
-# Extend ExtruderStepper to allow for adding and managing endstops (useful only when part of gear rail, not operating as an Extruder)
-class MmuExtruderStepper(ExtruderStepper, object):
-    def __init__(self, config, gear_rail):
-        super(MmuExtruderStepper, self).__init__(config)
-
-        # Ensure sure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
-        for chip in TMC_CHIPS:
-            try:
-                _ = self.printer.load_object(config, '%s extruder' % chip)
-                break
-            except:
-                pass
-
-        # This allows for setup of stallguard as an option for nozzle homing
-        endstop_pin = config.get('endstop_pin', None)
-        if endstop_pin:
-            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False)
-            mcu_endstop.add_stepper(self.stepper)
-
-    # Override to add QUIET option to control console logging
-    def cmd_SET_PRESSURE_ADVANCE(self, gcmd):
-        pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
-        smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)
-        self._set_pressure_advance(pressure_advance, smooth_time)
-        msg = "pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time)
-        self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
-        if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
-            gcmd.respond_info(msg, log=False)
 
 class DummyRail:
     def __init__(self):

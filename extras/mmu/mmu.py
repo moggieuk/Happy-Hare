@@ -994,9 +994,9 @@ class Mmu:
     def mmu_unit(self, gate=None):
         if gate is None:
             gate = self.gate_selected
-        mmu_unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
-        if mmu_unit:
-            return mmu_unit
+        unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
+        if unit:
+            return unit
         #logging.info("PAUL: mmu_unit() returning default unit_0?")
         return self.mmu_machine.get_mmu_unit_by_gate(0) # PAUL not sure if this is best!
         # PAUL would like to return None but what about bypass (and gate unknown state)
@@ -1011,9 +1011,9 @@ class Mmu:
     def espooler(self, gate=None):
         if gate is None:
             gate = self.gate_selected
-        mmu_unit = self.mmu_unit(gate)
-        if mmu_unit:
-            return mmu_unit.espooler
+        unit = self.mmu_unit(gate)
+        if unit:
+            return unit.espooler
         return None
 
     def has_espooler(self, gate=None):
@@ -1028,9 +1028,9 @@ class Mmu:
     def encoder(self, gate=None):
         if gate is None:
             gate = self.gate_selected
-        mmu_unit = self.mmu_unit(gate)
-        if mmu_unit:
-            return mmu_unit.encoder
+        unit = self.mmu_unit(gate)
+        if unit:
+            return unit.encoder
         return None
 
     def has_encoder(self, gate=None):
@@ -6130,9 +6130,9 @@ class Mmu:
 
     # Return unit number for gate
     def find_unit_by_gate(self, gate): # PAUL updated
-        mmu_unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
-        if mmu_unit:
-            return mmu_unit.unit_index
+        unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
+        if unit:
+            return unit.unit_index
         logging.info("PAUL: **** FIXME: This is a problem because unit can never be unknown. Default to unit_0?")
         return self.UNIT_UNKNOWN
 
@@ -7489,8 +7489,8 @@ class Mmu:
         for unit in range(self.mmu_machine.num_units):
 # PAUL        for unit_index, gate_count in enumerate(self.mmu_machine.units):
 # PAUL            gate_indices = range(c_sum, c_sum + gate_count)
-            mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit)
-            gate_indices = range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates)
+            unit = self.mmu_machine.get_mmu_unit_by_index(unit)
+            gate_indices = range(unit.first_gate, unit.first_gate + unit.num_gates)
 # PAUL            c_sum += gate_count
             last_gate = gate_indices[-1] == self.num_gates - 1
             sep = ("|" + divider) if not last_gate else "|"
