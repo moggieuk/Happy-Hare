@@ -1,7 +1,7 @@
 
     config INIT_SYSTEMD
       bool
-      prompt "Systemd" if SHOW_ADVANCED_SETTINGS
+      prompt "Systemd" if SHOW_ADVANCED_OPTIONS
       default $(to_bool, [ -d /etc/systemd/system ])
 
     config KLIPPER_HOME

@@ -1,3 +1,9 @@
+comment '							'
+comment 'This covers some of the more common setup options.	'
+comment 'Further configuration can be achieved later by editing	'
+comment 'generated klipper config files				'
+comment '							'
+
 config ENABLE_SELECTOR_TOUCH
   bool "Enable touch selector operation using TMC Stallguard?"
   help
@@ -19,7 +25,7 @@ config PARAM_ENABLE_SELECTOR_TOUCH
   default 0
 
 menu "Gear/Extruder Synchronization Options"
-  rsource "Kconfig.options_sync"
+  rsource "Kconfig.sync"
 endmenu
 
 config ENABLE_CLOG_DETECT
@@ -101,11 +107,11 @@ config INSTALL_CLIENT_MACROS
   default y
 
 config REPETIER
-  bool "Enable Repetier support?" if SHOW_ADVANCED_SETTINGS
+  bool "Enable Repetier support?" if SHOW_ADVANCED_OPTIONS
 
 config REPETIER_NAME
   string "Repetier name"
   depends on REPETIER
 
 config OCTOPRINT
-  bool "Enable Octoprint support?" if SHOW_ADVANCED_SETTINGS
+  bool "Enable Octoprint support?" if SHOW_ADVANCED_OPTIONS

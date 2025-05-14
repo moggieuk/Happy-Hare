@@ -11,4 +11,3 @@ endchoice
 
 config PARAM_BOARD_TYPE
   string
-

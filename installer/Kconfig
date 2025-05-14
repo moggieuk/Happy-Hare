@@ -21,12 +21,16 @@ config F_VERSION
   string
   default "$(formatted_version)"
 
-comment '					'
-comment '(\\_/)					'
-comment '( *,*)					'
-comment '(")_(") Happy Hare version $(formatted_version) 	'	
-comment '					'
-
+comment '							'
+comment '(\\_/)							'
+comment '( *,*)							'
+comment '(")_(") Happy Hare version $(formatted_version)	 		'	
+comment '							'
+comment 'Setting the MMU/AFC type should be done first and will	'
+comment 'default many options to those recommended by the	'
+comment 'designer. After selectiing the mcu board pins can be	'
+comment 'customized in Advanced Settings				'			
+comment '							'
 
 rsource "types/Kconfig"
 rsource "boards/Kconfig"
@@ -37,25 +41,33 @@ config PARAM_NUM_GATES
 
 rsource "servos/Kconfig"
 
-menu "Options"
+menu "Common Options"
   rsource "Kconfig.options"
 endmenu
 
-menu "Addons"
+menu "Optional Printer/MMU Addons"
+  comment '							'
+  comment 'MMU functionality can be extended with popular addon	'
+  comment 'macro options. Select which to include here and		'
+  comment 'configure pins and features				'
+  comment '							'
+
   rsource "addons/Kconfig.*"
 endmenu
 
-menu "Advanced settings"
-  config SHOW_ADVANCED_SETTINGS
-    bool "Show advanced settings?"
-    default n
-  
-  menu "Pins"
-    rsource "Kconfig.pins"
-  endmenu
+menu "Advanced Settings"
+  comment '							'
+  comment 'Only change these settings if you know what you are	'
+  comment 'doing (or have MMU customizations) because doing so	'
+  comment 'may alter designer detaults. Can be changed later	'
+  comment '							'
 
-  menu "Motors"
-    rsource "Kconfig.motors"
+  config SHOW_ADVANCED_OPTIONS
+    bool "Show advanced options in menus?"
+    default n
+
+  menu "Leds"
+    rsource "Kconfig.leds"
   endmenu
 
   menu "Endstops"
@@ -66,8 +78,12 @@ menu "Advanced settings"
     rsource "Kconfig.gates"
   endmenu
 
-  menu "Leds"
-    rsource "Kconfig.leds"
+  menu "Motors"
+    rsource "Kconfig.motors"
+  endmenu
+
+  menu "Pins"
+    rsource "Kconfig.pins"
   endmenu
 
   menu "Parameters"
