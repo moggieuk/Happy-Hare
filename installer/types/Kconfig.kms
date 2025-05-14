@@ -1,0 +1,92 @@
+choice CHOICE_MMU_TYPE
+  config MMU_TYPE_KMS_1_0
+    bool "KMS v1.0"
+    select MMU_HAS_ENCODER
+    select MMU_HAS_ESPOOLER
+    select VARIABLE_ROTATION_DISTANCES
+    select REQUIRE_BOWDEN_MOVE
+    select FILAMENT_ALWAYS_GRIPPED
+endchoice
+
+if MMU_TYPE_KMS_1_0
+  config PARAM_MMU_VENDOR
+    default "KMS"
+  config PARAM_MMU_VERSION
+    default "1.0"  
+  config PARAM_NUM_GATES
+    default 4
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "50:17"
+  config PARAM_GEAR_RUN_CURRENT
+    default "0.7"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.1"
+
+  config PARAM_GATE_HOMING_MAX
+    default "300"
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default "200"
+  config PARAM_GATE_PARKING_DISTANCE
+    default "100"
+  config PARAM_GATE_ENDSTOP_TO_ENCODER
+    default "10"
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default "100"
+
+  config PARAM_CHAIN_COUNT
+    default 4
+  config PARAM_COLOR_ORDER
+    default "GRBW"
+  config PARAM_EXIT_LEDS 
+    default "neopixel:mmu_leds (1-4)"
+  
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_GATE
+  endchoice
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 
+
+# TODO integrate custom additional hardware for KMS
+#
+# [temperature_sensor Environment]
+# sensor_type: HTU21D
+# i2c_mcu:mmu
+# htu21d_report_time:5
+# i2c_software_scl_pin:PB10
+# i2c_software_sda_pin:PB11
+# 
+# [heater_fan KMS_BOX_FAN_LEFT]
+# ##  Hotend Fan - FAN1
+# pin: mmu:PC3
+# max_power: 1
+# kick_start_time: 0.5
+# heater: KMS_BOX_HOT
+# heater_temp: 20
+# 
+# [heater_fan MMU_BOX_FAN_RIGHT]
+# ##  Hotend Fan - FAN1
+# pin: mmu:PC1
+# max_power: 1
+# kick_start_time: 0.5
+# heater: KMS_BOX_HOT
+# heater_temp: 20
+# 
+# [heater_generic KMS_BOX_HOT]
+# # ID used when querying temperature using M105.
+# # This parameter is required.
+# gcode_id:BOX
+# heater_pin:mmu:PB1
+# max_power:1.0
+# sensor_type: EPCOS 100K B57560G104F
+# sensor_pin: mmu:PA4
+# #smooth_time:
+# control:watermark
+# #pid_Kp:
+# #pid_Ki:
+# #pid_Kd:
+# #pwm_cycle_time:
+# min_temp:0
+# max_temp:60

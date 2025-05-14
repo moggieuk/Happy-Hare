@@ -1,0 +1,43 @@
+choice CHOICE_MMU_TYPE 
+  config MMU_TYPE_VVD_1_0
+    bool "BTT ViViD"
+    select MMU_HAS_SELECTOR
+    select REQUIRE_BOWDEN_MOVE
+endchoice
+
+if MMU_TYPE_VVD_1_0
+  config PARAM_MMU_VENDOR
+    default "VVD"
+  config PARAM_MMU_VERSION
+    default "1.0" 
+
+  config PARAM_NUM_GATES
+    default 4
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "1:1"
+  config PARAM_GEAR_RUN_CURRENT
+    default "0.7"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.1"
+  config PARAM_SELECTOR_RUN_CURRENT
+    default "0.8"
+  config PARAM_SELECTOR_HOLD_CURRENT
+    default "0.4"
+  config PARAM_GEAR_HOMING_SPEED
+    default "80"
+  config PARAM_GEAR_ROTATION_DISTANCE
+    default "7.8"
+
+  config PARAM_GATE_PARKING_DISTANCE
+    default "-10"
+  config PARAM_GATE_HOMING_MAX
+    default "500"
+  
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_GEAR
+  endchoice
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 
