@@ -12,7 +12,7 @@ if MMU_TYPE_NIGHT_OWL_1_0
   config PARAM_MMU_VERSION
     default "1.0"
   config PARAM_NUM_GATES
-    default 4
+    default 2
 
   config PARAM_GEAR_GEAR_RATIO
     default "50:10"

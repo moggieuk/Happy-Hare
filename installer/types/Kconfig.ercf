@@ -43,7 +43,7 @@ if MMU_TYPE_ERCF_1_1
     default "1.1t" if EXT_TRIPLE_DECK
     default "1.1"
   config PARAM_NUM_GATES
-    default 6
+    default 9
 
    
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
@@ -81,7 +81,7 @@ if MMU_TYPE_ERCF_2_0
   config PARAM_MMU_VERSION
     default "2.0"
   config PARAM_NUM_GATES
-    default 6
+    default 8
   
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 3

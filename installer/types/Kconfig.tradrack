@@ -19,7 +19,7 @@ if MMU_TYPE_TRADRACK_1_0
     default "1.0e" if EXT_BINKY
     default "1.0"
   config PARAM_NUM_GATES
-    default 4
+    default 8
 
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0

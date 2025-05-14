@@ -11,7 +11,7 @@ if MMU_TYPE_3D_CHAMELEON_1_0
   config PARAM_MMU_VERSION
     default "1.0" 
   config PARAM_NUM_GATES
-    default 6
+    default 4
 
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"

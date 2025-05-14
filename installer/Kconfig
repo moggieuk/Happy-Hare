@@ -26,18 +26,19 @@ comment '(\\_/)							'
 comment '( *,*)							'
 comment '(")_(") Happy Hare version $(formatted_version)	 		'	
 comment '							'
-comment 'Setting the MMU/AFC type should be done first and will	'
-comment 'default many options to those recommended by the	'
-comment 'designer. After selectiing the mcu board pins can be	'
-comment 'customized in Advanced Settings				'			
-comment '							'
+#comment 'Setting the MMU/AFC type should be done first and will	'
+#comment 'default many options to those recommended by the	'
+#comment 'designer. After selectiing the mcu board pins can be	'
+#comment 'customized in Advanced Settings				'			
+#comment '							'
 
 rsource "types/Kconfig"
 rsource "boards/Kconfig"
 rsource "Kconfig.serial"
 
 config PARAM_NUM_GATES
-  prompt "Number of gates"
+  int "Number of gates"
+  default 4 
 
 rsource "servos/Kconfig"
 
