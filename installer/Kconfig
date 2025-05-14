@@ -98,9 +98,7 @@ menu "Advanced Settings"
     rsource "Kconfig.params"
   endmenu
 
-  if SHOW_ADVANCED_OPTIONS
-    menu "Paths & Services"
-      rsource "Kconfig.paths_services"
-    endmenu
-  endif
+  menu "Paths & Services"
+    rsource "Kconfig.paths_services"
+  endmenu
 endmenu
