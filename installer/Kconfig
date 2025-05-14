@@ -94,11 +94,11 @@ menu "Advanced Settings"
     rsource "Kconfig.pins"
   endmenu
 
-  if SHOW_ADVANCED_OPTIONS
-    menu "Physical control parameters"
-      rsource "Kconfig.params"
-    endmenu
+  menu "Physical control parameters"
+    rsource "Kconfig.params"
+  endmenu
 
+  if SHOW_ADVANCED_OPTIONS
     menu "Paths & Services"
       rsource "Kconfig.paths_services"
     endmenu
