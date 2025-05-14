@@ -1,14 +1,9 @@
 #!/usr/bin/env sh
 # Happy Hare MMU Software
 #
-# Updater script
+# Updater script. Pull latest version of Happy Hare
 #
-# Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
-#
-# Creality K1 Support
-#               2024  hamyy <oudy_1999@hotmail.com>
-#               2024  Unsweeticetea <iamzevle@gmail.com>
-#               2024  Dmitry Kychanov <k1-801@mail.ru>
+# Copyright (C) 2022-2025 moggieuk#6538 (discord) moggieuk@hotmail.com
 #
 
 set -e # Exit immediately on error
@@ -27,7 +22,7 @@ self_update() {
 
     if ! current_branch=$(${git_cmd}); then
         echo "${C_ERROR}Error updating from github" \
-            "You might have an old version of gitn" \
+            "You might have an old version of git" \
             "Skipping automatic update...${C_OFF}"
         return
     fi

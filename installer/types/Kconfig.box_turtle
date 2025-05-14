@@ -12,6 +12,7 @@ if MMU_TYPE_BOX_TURTLE_1_0
     default "BoxTurtle"
   config PARAM_MMU_VERSION
     default "1.0"  
+
   config PARAM_NUM_GATES
     default 4
 
@@ -21,8 +22,11 @@ if MMU_TYPE_BOX_TURTLE_1_0
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+
   config PARAM_GATE_HOMING_MAX
     default "300"
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default "200"
   config PARAM_GATE_PARKING_DISTANCE
     default "100"
   config PARAM_GATE_FINAL_EJECT_DISTANCE
