@@ -28,7 +28,7 @@ comment '(")_(") Happy Hare version $(formatted_version)	 		'
 comment '							'
 #comment 'Setting the MMU/AFC type should be done first and will	'
 #comment 'default many options to those recommended by the	'
-#comment 'designer. After selectiing the mcu board pins can be	'
+#comment 'designer. After selecting the mcu board pins can be	'
 #comment 'customized in Advanced Settings				'			
 #comment '							'
 
@@ -38,11 +38,16 @@ rsource "Kconfig.serial"
 
 config PARAM_NUM_GATES
   int "Number of gates"
-  default 4 
 
 rsource "servos/Kconfig"
 
 menu "Common Options"
+  comment '							'
+  comment 'This covers some of the more common setup options.	'
+  comment 'Further configuration can be achieved later by editing	'
+  comment 'generated klipper config files				'
+  comment '							'
+
   rsource "Kconfig.options"
 endmenu
 
@@ -60,7 +65,7 @@ menu "Advanced Settings"
   comment '							'
   comment 'Only change these settings if you know what you are	'
   comment 'doing (or have MMU customizations) because doing so	'
-  comment 'may alter designer detaults. Can be changed later	'
+  comment 'may alter designer defaults. Can be changed later	'
   comment '							'
 
   config SHOW_ADVANCED_OPTIONS

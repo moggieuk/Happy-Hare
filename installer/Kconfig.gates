@@ -17,4 +17,3 @@ config PARAM_GATE_ENDSTOP_TO_ENCODER
 config PARAM_GATE_FINAL_EJECT_DISTANCE
   string "Distance to eject filament on eject rather than unload (mm)"
   default "0"
-

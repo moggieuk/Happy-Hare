@@ -3,7 +3,6 @@ choice CHOICE_BOARD_TYPE
     bool "AFC Lite v1.0"
 endchoice
 
-
 if BOARD_TYPE_AFC_LITE_1
   config PARAM_BOARD_TYPE
     default "AFC_LITE_1"

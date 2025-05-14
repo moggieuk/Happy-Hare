@@ -6,7 +6,7 @@ choice CHOICE_MMU_TYPE
     select FILAMENT_ALWAYS_GRIPPED
 endchoice
 
-if MMU_TYPE_NIGHT_OWL_1_0
+if MMU_TYPE_MMX_1_0
   config PARAM_MMU_VENDOR
     default "MMX"
   config PARAM_MMU_VERSION

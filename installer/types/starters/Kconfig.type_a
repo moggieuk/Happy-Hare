@@ -16,6 +16,9 @@ if MMU_CUSTOM_TYPE_A
   config PARAM_MMU_VERSION
     default "1.0"
 
+  config PARAM_NUM_GATES
+    default 8
+
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
   config PARAM_GEAR_RUN_CURRENT

@@ -1,4 +1,3 @@
-
 config MMU_HAS_ENCODER
   bool
 

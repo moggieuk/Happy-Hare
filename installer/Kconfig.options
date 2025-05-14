@@ -1,9 +1,3 @@
-comment '							'
-comment 'This covers some of the more common setup options.	'
-comment 'Further configuration can be achieved later by editing	'
-comment 'generated klipper config files				'
-comment '							'
-
 config ENABLE_SELECTOR_TOUCH
   bool "Enable touch selector operation using TMC Stallguard?"
   help

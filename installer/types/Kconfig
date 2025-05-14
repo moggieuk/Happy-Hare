@@ -6,7 +6,7 @@ config PARAM_MMU_VENDOR
 
 config PARAM_MMU_VERSION
   string
-  default "0.1" 
+  default "1.0" 
 
 choice CHOICE_MMU_TYPE 
   prompt "MMU Type"

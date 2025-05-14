@@ -10,6 +10,7 @@ if MMU_TYPE_3D_CHAMELEON_1_0
     default "3DChameleon"
   config PARAM_MMU_VERSION
     default "1.0" 
+
   config PARAM_NUM_GATES
     default 4
 
