@@ -63,8 +63,11 @@ menu "Advanced Settings"
   comment '							'
 
   config SHOW_ADVANCED_OPTIONS
-    bool "Show advanced options in menus?"
+    bool "Show advanced options in config menus?"
     default n
+    help
+      When enabled additional (advanced) options will be shown
+      throughout the config menus.
 
   menu "Leds"
     rsource "Kconfig.leds"
@@ -74,7 +77,7 @@ menu "Advanced Settings"
     rsource "Kconfig.endstops"
   endmenu
 
-  menu "Gates"
+  menu "Gate loading & parking"
     rsource "Kconfig.gates"
   endmenu
 
@@ -82,15 +85,21 @@ menu "Advanced Settings"
     rsource "Kconfig.motors"
   endmenu
 
+  menu "Speeds"
+    rsource "Kconfig.speeds"
+  endmenu
+
   menu "Pins"
     rsource "Kconfig.pins"
   endmenu
 
-  menu "Parameters"
-    rsource "Kconfig.params"
-  endmenu
+  if SHOW_ADVANCED_OPTIONS
+    menu "Physical control parameters"
+      rsource "Kconfig.params"
+    endmenu
 
-  menu "Paths & Services"
-    rsource "Kconfig.paths_services"
-  endmenu
+    menu "Paths & Services"
+      rsource "Kconfig.paths_services"
+    endmenu
+  endif
 endmenu

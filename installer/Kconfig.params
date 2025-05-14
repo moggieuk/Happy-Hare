@@ -51,10 +51,6 @@ config PARAM_ENCODER_RESOLUTION
   depends on MMU_HAS_ENCODER
   default "1.0"
 
-config PARAM_GEAR_HOMING_SPEED
-  string "Gear homing speed (mm/s)"
-  default "50"
-
 config HAS_BYPASS
   bool "Has bypass?"
 

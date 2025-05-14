@@ -1,7 +1,3 @@
-config PARAM_NUM_GATES
-  int "Number of gates"
-  default 12
-
 config PARAM_GATE_HOMING_MAX
   string "Maximum homing distance to the gate (mm)"
   default "70"
