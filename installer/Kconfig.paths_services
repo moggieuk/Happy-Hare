@@ -1,58 +1,57 @@
+config INIT_SYSTEMD
+  bool
+  prompt "Systemd" if SHOW_ADVANCED_OPTIONS
+  default $(to_bool, [ -d /etc/systemd/system ])
 
-    config INIT_SYSTEMD
-      bool
-      prompt "Systemd" if SHOW_ADVANCED_OPTIONS
-      default $(to_bool, [ -d /etc/systemd/system ])
+config KLIPPER_HOME
+  string "Klipper directory"
+  # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture)
+  # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
+  default "$(CONFIG_KLIPPER_HOME)"
 
-    config KLIPPER_HOME
-      string "Klipper directory"
-      # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture)
-      # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
-      default "$(CONFIG_KLIPPER_HOME)"
+config PRINTER_CONFIG_FILE
+  string "Printer config file"
+  depends on !REPETIER
+  default "printer.cfg"
 
-    config PRINTER_CONFIG_FILE
-      string "Printer config file"
-      depends on !REPETIER
-      default "printer.cfg"
+config KLIPPER_CONFIG_HOME
+  string "Klipper config directory"
+  default "~" if OCTOPRINT
+  default "/usr/data/printer_data/config" if $(to_bool, [ -e "/usr/data/printer_data" ])
+  default "~/printer_data/config"
 
-    config KLIPPER_CONFIG_HOME
-      string "Klipper config directory"
-      default "~" if OCTOPRINT
-      default "/usr/data/printer_data/config" if $(to_bool, [ -e "/usr/data/printer_data" ])
-      default "~/printer_data/config"
+config MOONRAKER_CONFIG_FILE
+  string "Moonraker config file"
+  default "moonraker.conf"
 
-    config MOONRAKER_CONFIG_FILE
-      string "Moonraker config file"
-      default "moonraker.conf"
+config MOONRAKER_HOME
+  string "Moonraker directory"
+  depends on !OCTOPRINT
+  default "/usr/data/moonraker" if $(to_bool, [ -e "/usr/data/moonraker" ])
+  default "~/moonraker"
 
-    config MOONRAKER_HOME
-      string "Moonraker directory"
-      depends on !OCTOPRINT
-      default "/usr/data/moonraker" if $(to_bool, [ -e "/usr/data/moonraker" ])
-      default "~/moonraker"
+config PARAM_HAPPY_HARE_HOME
+  string "Happy Hare directory"
+  default "$(SRC)"
 
-    config PARAM_HAPPY_HARE_HOME
-      string "Happy Hare directory"
-      default "$(SRC)"
+config PARAM_GCODES_PATH
+  string "Gcodes directory"
+  default "/usr/data/printer_data/gcodes" if $(to_bool, [ -e "/usr/data/printer_data" ])
+  default "~/printer_data/gcodes"
 
-    config PARAM_GCODES_PATH
-      string "Gcodes directory"
-      default "/usr/data/printer_data/gcodes" if $(to_bool, [ -e "/usr/data/printer_data" ])
-      default "~/printer_data/gcodes"
+config SERVICE_KLIPPER
+  string "Klipper service name"
+  depends on !REPETIER
+  default "klipper.service" if INIT_SYSTEMD
+  default "klipper_service"
 
-    config SERVICE_KLIPPER
-      string "Klipper service name"
-      depends on !REPETIER
-      default "klipper.service" if INIT_SYSTEMD
-      default "klipper_service"
+config SERVICE_MOONRAKER
+  string "Moonraker service name"
+  depends on !OCTOPRINT
+  default "moonraker.service" if INIT_SYSTEMD 
+  default "moonraker_service"
 
-    config SERVICE_MOONRAKER
-      string "Moonraker service name"
-      depends on !OCTOPRINT
-      default "moonraker.service" if INIT_SYSTEMD 
-      default "moonraker_service"
-
-    config SERVICE_OCTOPRINT
-      string "Octoprint service name"
-      depends on OCTOPRINT
-      default "octoprint.service"
+config SERVICE_OCTOPRINT
+  string "Octoprint service name"
+  depends on OCTOPRINT
+  default "octoprint.service"
