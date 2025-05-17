@@ -365,11 +365,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
         self.trapq_append = ffi_lib.trapq_append
         self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
+        # Motion flushing
         self.step_generators = []
+        self.flush_trapqs = [self.trapq]
         # Create kinematics class
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
         self.extruder = DummyExtruder(self.printer)
+        self.extra_axes = [self.extruder]
 
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
 
@@ -820,9 +823,12 @@ class MmuHoming(Homing, object):
             self.toolhead.set_position(homepos)
 
 
+_StepperPrinterRail = stepper.PrinterRail if hasattr(stepper, 'PrinterRail') else stepper.GenericPrinterRail
+
+
 # Extend PrinterRail to allow for multiple (switchable) endstops and to allow for no default endstop
 # (defined in stepper.py)
-class MmuPrinterRail(stepper.PrinterRail, object):
+class MmuPrinterRail(_StepperPrinterRail, object):
     def __init__(self, config, **kwargs):
         self.printer = config.get_printer()
         self.config = config
@@ -830,18 +836,37 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         self.query_endstops = self.printer.load_object(config, 'query_endstops')
         self.extra_endstops = []
         self.virtual_endstops = []
+        # Starting with klipper v0.13.0-79 there is a `config.get('endstop_pin')` with no default which throws an error
+        # So we must put a fake value in there to avoid the error, but we don't want to do that on older versions
+        if config.get('endstop_pin', None) is None and hasattr(super(MmuPrinterRail, self), 'lookup_endstop'):
+            config.fileconfig.set(config.section, 'endstop_pin', 'mock')
         super(MmuPrinterRail, self).__init__(config, **kwargs)
 
-    def add_extra_stepper(self, config, **kwargs):
+        # Prior to klipper v0.13.0-79 this was done in the base class
+        if (len(self.get_steppers()) == 0):
+            self.add_stepper_from_config(config)
+
+    def lookup_endstop(self, endstop_pin, name, **kwargs):
+        if endstop_pin == 'mock':
+            return self.MockEndstop()
+        elif hasattr(super(MmuPrinterRail, self), 'lookup_endstop'):
+            return super(MmuPrinterRail, self).lookup_endstop(endstop_pin, name, **kwargs)
+
+    def add_stepper_from_config(self, config, **kwargs):
         if not self.endstops and config.get('endstop_pin', None) is None:
             # No endstop defined, so configure a mock endstop. The rail is, of course, only homable
             # if it has a properly configured endstop at runtime
             self.endstops = [(self.MockEndstop(), "mock")] # Hack: pretend we have a default endstop so super class will work
-        super(MmuPrinterRail, self).add_extra_stepper(config, **kwargs)
 
+        if hasattr(super(MmuPrinterRail, self), 'add_extra_stepper'):
+            super(MmuPrinterRail, self).add_extra_stepper(config, **kwargs)
+        else:
+            super(MmuPrinterRail, self).add_stepper_from_config(config, **kwargs)
+
+        logging.info("setting up mmu stepper %s" % config.section)
         # Setup default endstop similarly to "extra" endstops with vanity sensor name
         endstop_pin = config.get('endstop_pin', None)
-        if endstop_pin:
+        if endstop_pin and endstop_pin != 'mock':
             last_mcu_es=self.endstops[-1]
             # Remove the default endstop name if alternative name is specified
             endstop_name = config.get('endstop_name', None)
@@ -868,6 +893,10 @@ class MmuPrinterRail(stepper.PrinterRail, object):
             for idx, pin in enumerate(extra_endstop_pins):
                 name = extra_endstop_names[idx]
                 self.add_extra_endstop(pin, name)
+
+    # backwards compatibility (klipper v0.13.0-79) ... old: add_extra_stepper. new: add_stepper_from_config
+    def add_extra_stepper(self, config, **kwargs):
+        self.add_stepper_from_config(config, **kwargs)
 
     def add_extra_endstop(self, pin, name, register=True, bind_rail_steppers=True):
         is_virtual = 'virtual_endstop' in pin
@@ -919,7 +948,7 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
         section_name = "%s_%d" % (config.get_name(), i)
         if not config.has_section(section_name):
             break
-        rail.add_extra_stepper(config.getsection(section_name))
+        rail.add_stepper_from_config(config.getsection(section_name))
     return rail
 
 

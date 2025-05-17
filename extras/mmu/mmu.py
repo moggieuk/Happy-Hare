@@ -2914,9 +2914,9 @@ class Mmu:
     # or can be a proportional float value between -1.0 and 1.0
     def _handle_sync_feedback(self, eventtime, state):
         if not self.is_enabled: return
-        self.log_trace("Got sync force feedback update. State: %s" % state)
         if abs(state) <= 1:
             self.sync_feedback_last_state = float(state)
+            self.log_trace("Got sync force feedback update. State: %s (%s)" % (self._get_sync_feedback_string(detail=True), float(state)))
             if self.sync_feedback_enable and self.sync_feedback_operational:
                 self._update_sync_multiplier()
         else:
@@ -2978,9 +2978,11 @@ class Mmu:
             if go_slower(self.sync_feedback_last_state, self.sync_feedback_last_direction):
                 # Expanded when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
                 multiplier = 1. - (abs(1. - self.sync_multiplier_low) * abs(self.sync_feedback_last_state))
+                self.log_trace("Slowing gear motor down")
             else:
                 # Compressed when extruding or expanded when retracting, so increase the rotation distance of gear stepper to slow it down
                 multiplier = 1. + (abs(1. - self.sync_multiplier_high) * abs(self.sync_feedback_last_state))
+                self.log_trace("Speeding gear motor up")
         self.log_trace("Updated sync multiplier: %.4f" % multiplier)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected) / multiplier)
 
@@ -2988,23 +2990,21 @@ class Mmu:
         has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
         has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
 
-        sss = self.SYNC_STATE_NEUTRAL
-        if has_tension and not has_compression:
-            sss = self.SYNC_STATE_EXPANDED if self.sensor_manager.check_sensor(self.SENSOR_TENSION) else self.SYNC_STATE_COMPRESSED
+        if has_tension and has_compression:
+            # Allow for sync-feedback sensor designs with minimal travel where both sensors can be triggered at same time
+            if self.sensor_manager.check_sensor(self.SENSOR_TENSION) == self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
+                sss = self.SYNC_STATE_NEUTRAL
+            elif self.sensor_manager.check_sensor(self.SENSOR_TENSION) and not self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
+                sss = self.SYNC_STATE_EXPANDED
+            else:
+                sss = self.SYNC_STATE_COMPRESSED
         elif has_compression and not has_tension:
             sss = self.SYNC_STATE_COMPRESSED if self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION) else self.SYNC_STATE_EXPANDED
-        elif has_compression and has_tension:
-            state_expanded = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
-            state_compressed = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
-            if state_expanded and state_compressed:
-                self.log_error("Both expanded and compressed sync feedback sensors are triggered at the same time. Check hardware!")
-            elif state_expanded:
-                sss = self.SYNC_STATE_EXPANDED
-            elif state_compressed:
-                sss = self.SYNC_STATE_COMPRESSED
+        else:
+            sss = self.SYNC_STATE_EXPANDED if self.sensor_manager.check_sensor(self.SENSOR_TENSION) else self.SYNC_STATE_COMPRESSED
         return sss
 
-    # Ensure correct sync_feedback starting assumption by generating a fake event
+    # Ensure correct sync_feedback starting state by generating a fake event
     def _update_sync_starting_state(self):
         eventtime = self.reactor.monotonic()
         sss = self._get_current_sync_state()
