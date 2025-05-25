@@ -52,15 +52,19 @@ VENDOR_3MS            = "3MS"
 VENDOR_3D_CHAMELEON   = "3DChameleon"
 VENDOR_PICO_MMU       = "PicoMMU"
 VENDOR_QUATTRO_BOX    = "QuattroBox"
+VENDOR_MMX            = "MMX"
+VENDOR_VVD            = "VVD"
+VENDOR_KMS            = "KMS"
 VENDOR_OTHER          = "Other"
 
 UNIT_ALT_DISPLAY_NAMES = {
     VENDOR_ANGRY_BEAVER: "Angry Beaver",
     VENDOR_BOX_TURTLE:   "Box Turtle",
     VENDOR_NIGHT_OWL:    "Night Owl",
+    VENDOR_VVD:          "BTT VVD",
 }
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_MMX, VENDOR_VVD, VENDOR_KMS, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -91,9 +95,9 @@ class MmuMachine:
         selector_type = 'LinearSelector'
         variable_rotation_distances = 1
         variable_bowden_lengths = 0
-        require_bowden_move = 1 # Will allow mmu_gate sensor and extruder sensor to share the same pin
+        require_bowden_move = 1     # Will allow mmu_gate sensor and extruder sensor to share the same pin
         filament_always_gripped = 0 # Whether MMU design has ability to release filament (overrides gear/extruder syncing)
-        has_bypass = 0 # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearSelector)
+        has_bypass = 0              # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearSelector)
 
         if self.mmu_vendor == VENDOR_ERCF:
             selector_type = 'LinearSelector'
@@ -169,6 +173,20 @@ class MmuMachine:
             require_bowden_move = 1
             filament_always_gripped = 1
             has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_MMX:
+            selector_type = 'ServoSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 0
+            has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_VVD:
+            pass
+
+        elif self.mmu_vendor == VENDOR_KMS:
+            pass
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
@@ -286,7 +304,10 @@ class MmuToolHead(toolhead.ToolHead, object):
             time_high = self.buffer_time_high
 
         if hasattr(toolhead, 'LookAheadQueue'):
-            self.lookahead = toolhead.LookAheadQueue(self)
+            try:
+                self.lookahead = toolhead.LookAheadQueue(self) # Klipper < 3.13.0-46
+            except:
+                self.lookahead = toolhead.LookAheadQueue() # >= Klipper 3.13.0-46
             self.lookahead.set_flush_time(time_high)
         else:
             # Klipper backward compatibility
@@ -330,7 +351,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.print_time = 0.
         self.special_queuing_state = "NeedPrime"
         self.priming_timer = None
-        self.drip_completion = None
+        self.drip_completion = None # TODO No longer part of Klipper >v0.13.0-46
         # Flush tracking
         self.flush_timer = self.reactor.register_timer(self._flush_handler)
         self.do_kick_flush_timer = True
@@ -344,11 +365,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
         self.trapq_append = ffi_lib.trapq_append
         self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
+        # Motion flushing
         self.step_generators = []
+        self.flush_trapqs = [self.trapq]
         # Create kinematics class
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
         self.extruder = DummyExtruder(self.printer)
+        self.extra_axes = [self.extruder]
 
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
 
@@ -391,6 +415,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def handle_connect(self):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
+        self.last_move_time = self.printer_toolhead.get_last_move_time()
 
         printer_extruder = self.printer_toolhead.get_extruder()
         if self.mmu_machine.homing_extruder:
@@ -433,8 +458,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if sync_mode:
             self.unsync()
         else:
-            self.printer_toolhead.flush_step_generation()
-            self.mmu_toolhead.flush_step_generation()
+            self._ready_rail()
 
         # Activate only the desired gear steppers
         gear_rail = self.get_kinematics().rails[1]
@@ -453,15 +477,20 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         if selected_steppers:
             if not gear_rail.steppers:
-                raise self.printer.command_error("None of these `%s` gear steppers where found!" % selected_steppers)
+                raise self.printer.command_error("None of these '%s' gear steppers where found!" % selected_steppers)
             gear_rail.set_position(pos)
         elif not gear_rail.steppers:
             # No steppers on rail is ok, because Rail keeps separate reference for the first stepper added
             pass
 
-        # Restore previous synchronization state if any with new gear steppers
-        if sync_mode:
-            self.sync(sync_mode)
+    def _ready_rail(self):
+        lmt = self.printer_toolhead.get_last_move_time()
+        if lmt > self.last_move_time:
+            self.last_move_time = lmt
+            self.printer_toolhead.wait_moves()
+        self.printer_toolhead.flush_step_generation()
+        self.mmu_toolhead.flush_step_generation()
+        self.mmu_toolhead.dwell(0.01) # TTC Mitigation
 
     def is_synced(self):
         return self.sync_mode is not None
@@ -480,9 +509,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.unsync()
         if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
-        self.printer_toolhead.flush_step_generation()
-        self.mmu_toolhead.flush_step_generation()
-        self.mmu.movequeues_sync()
+        self._ready_rail()
 
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -532,11 +559,10 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def unsync(self):
         if self.sync_mode is None: return None
+
         self.mmu.log_stepper("unsync()")
         prev_sync_mode = self.sync_mode
-        self.printer_toolhead.flush_step_generation()
-        self.mmu_toolhead.flush_step_generation()
-        self.mmu.movequeues_sync()
+        self._ready_rail()
 
         if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead = self.mmu_toolhead
@@ -600,8 +626,18 @@ class MmuToolHead(toolhead.ToolHead, object):
             msg += "\n" if axis > 0 else ""
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
             msg += header[:100] + "\n"
-            for idx, s in enumerate(rail.get_steppers()):
-                msg += "Stepper %d: %s%s\n" % (idx, s.get_name(), "(INACTIVE)" if axis == 1 and s in self.inactive_gear_steppers else "")
+            gsd = None
+            for idx, s in enumerate(self.all_gear_rail_steppers if axis == 1 else rail.get_steppers()):
+                ss = ""
+                if axis == 1:
+                    if s in self.inactive_gear_steppers:
+                        ss = "(INACTIVE)"
+                    elif s not in rail.get_steppers():
+                        ss = "(OFF RAIL)"
+                    elif gsd is None:
+                        ss = "(ACTIVE)"
+                        gsd = s.get_step_dist()
+                msg += "Stepper %d: %s %s\n" % (idx, s.get_name(), ss)
                 msg += "- Commanded Pos: %.2f, " % s.get_commanded_position()
                 msg += "MCU Pos: %.2f, " % s.get_mcu_position()
                 rd = s.get_rotation_distance()
@@ -630,7 +666,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         msg += "- Commanded Pos: %.2f, " % e_stepper.stepper.get_commanded_position()
         msg += "MCU Pos: %.2f, " % e_stepper.stepper.get_mcu_position()
         rd = e_stepper.stepper.get_rotation_distance()
-        msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], e_stepper.stepper.get_step_dist())
+        esd = e_stepper.stepper.get_step_dist()
+        msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], esd)
+        msg += "Step size ratio of gear:extruder = %.2f:1" % (gsd/esd)
         return msg
 
 
@@ -785,9 +823,12 @@ class MmuHoming(Homing, object):
             self.toolhead.set_position(homepos)
 
 
+_StepperPrinterRail = stepper.PrinterRail if hasattr(stepper, 'PrinterRail') else stepper.GenericPrinterRail
+
+
 # Extend PrinterRail to allow for multiple (switchable) endstops and to allow for no default endstop
 # (defined in stepper.py)
-class MmuPrinterRail(stepper.PrinterRail, object):
+class MmuPrinterRail(_StepperPrinterRail, object):
     def __init__(self, config, **kwargs):
         self.printer = config.get_printer()
         self.config = config
@@ -795,18 +836,37 @@ class MmuPrinterRail(stepper.PrinterRail, object):
         self.query_endstops = self.printer.load_object(config, 'query_endstops')
         self.extra_endstops = []
         self.virtual_endstops = []
+        # Starting with klipper v0.13.0-79 there is a `config.get('endstop_pin')` with no default which throws an error
+        # So we must put a fake value in there to avoid the error, but we don't want to do that on older versions
+        if config.get('endstop_pin', None) is None and hasattr(super(MmuPrinterRail, self), 'lookup_endstop'):
+            config.fileconfig.set(config.section, 'endstop_pin', 'mock')
         super(MmuPrinterRail, self).__init__(config, **kwargs)
 
-    def add_extra_stepper(self, config, **kwargs):
+        # Prior to klipper v0.13.0-79 this was done in the base class
+        if (len(self.get_steppers()) == 0):
+            self.add_stepper_from_config(config)
+
+    def lookup_endstop(self, endstop_pin, name, **kwargs):
+        if endstop_pin == 'mock':
+            return self.MockEndstop()
+        elif hasattr(super(MmuPrinterRail, self), 'lookup_endstop'):
+            return super(MmuPrinterRail, self).lookup_endstop(endstop_pin, name, **kwargs)
+
+    def add_stepper_from_config(self, config, **kwargs):
         if not self.endstops and config.get('endstop_pin', None) is None:
             # No endstop defined, so configure a mock endstop. The rail is, of course, only homable
             # if it has a properly configured endstop at runtime
             self.endstops = [(self.MockEndstop(), "mock")] # Hack: pretend we have a default endstop so super class will work
-        super(MmuPrinterRail, self).add_extra_stepper(config, **kwargs)
 
+        if hasattr(super(MmuPrinterRail, self), 'add_extra_stepper'):
+            super(MmuPrinterRail, self).add_extra_stepper(config, **kwargs)
+        else:
+            super(MmuPrinterRail, self).add_stepper_from_config(config, **kwargs)
+
+        logging.info("setting up mmu stepper %s" % config.section)
         # Setup default endstop similarly to "extra" endstops with vanity sensor name
         endstop_pin = config.get('endstop_pin', None)
-        if endstop_pin:
+        if endstop_pin and endstop_pin != 'mock':
             last_mcu_es=self.endstops[-1]
             # Remove the default endstop name if alternative name is specified
             endstop_name = config.get('endstop_name', None)
@@ -833,6 +893,10 @@ class MmuPrinterRail(stepper.PrinterRail, object):
             for idx, pin in enumerate(extra_endstop_pins):
                 name = extra_endstop_names[idx]
                 self.add_extra_endstop(pin, name)
+
+    # backwards compatibility (klipper v0.13.0-79) ... old: add_extra_stepper. new: add_stepper_from_config
+    def add_extra_stepper(self, config, **kwargs):
+        self.add_stepper_from_config(config, **kwargs)
 
     def add_extra_endstop(self, pin, name, register=True, bind_rail_steppers=True):
         is_virtual = 'virtual_endstop' in pin
@@ -884,7 +948,7 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
         section_name = "%s_%d" % (config.get_name(), i)
         if not config.has_section(section_name):
             break
-        rail.add_extra_stepper(config.getsection(section_name))
+        rail.add_stepper_from_config(config.getsection(section_name))
     return rail
 
 
