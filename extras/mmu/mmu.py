@@ -5273,8 +5273,6 @@ class Mmu:
                 self.log_error("Reported 'output_park_pos: %s' could not be parsed: %s" % (park_pos, str(e)))
                 park_pos = -1
 
-            # assume we are in extruder
-            before_extruder = False
             reported = False
             if park_pos < 0:
                 # Use stepper movement (tip forming)
@@ -5297,6 +5295,8 @@ class Mmu:
                 else:
                     self.log_trace(msg)
 
+            # assume we are in extruder
+            before_extruder = False
             if reported and self.has_toolhead_cutter and park_pos > self.toolhead_extruder_to_nozzle:
                 self.log_debug("park_pos (%.1fmm) is greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assuming cutter is located before extruder." % (park_pos, self.toolhead_extruder_to_nozzle))
                 before_extruder = True
