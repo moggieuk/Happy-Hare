@@ -1,111 +1,127 @@
-config ENABLE_SELECTOR_TOUCH
-  bool "Enable touch selector operation using TMC Stallguard?"
+menu "Software Options"
   help
-    This allows for additional selector recovery steps but is difficult to tune.
-    Not recommended if you are new to MMU/Happy-Hare.
-    The MCU must have DIAG output for steppers. Possible to configure later.
-  depends on PARAM_SELECTOR_TYPE = "LinearSelector"
+    Step 6 - Software Options
+    This covers some of the more common software setup options. Further
+    configuration can be achieved later by editing generated klipper
+    config files.
 
-if BOARD_TYPE_EASY_BRD
-  comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
-    depends on ENABLE_SELECTOR_TOUCH
-  comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
-    depends on !ENABLE_SELECTOR_TOUCH
-endif
+  config ENABLE_SELECTOR_TOUCH
+    bool "Enable touch selector operation using TMC Stallguard?"
+    help
+      This allows for additional selector recovery steps but is difficult to tune.
+      Not recommended if you are new to MMU/Happy-Hare.
+      The MCU must have DIAG output for steppers. Possible to configure later
+    depends on PARAM_SELECTOR_TYPE = "LinearSelector"
 
-config PARAM_ENABLE_SELECTOR_TOUCH
-  int
-  default 1 if ENABLE_SELECTOR_TOUCH
-  default 0
+  if BOARD_TYPE_EASY_BRD
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
+      depends on ENABLE_SELECTOR_TOUCH
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
+      depends on !ENABLE_SELECTOR_TOUCH
+  endif
 
-menu "Gear/Extruder Synchronization Options"
-  rsource "Kconfig.sync"
+  config PARAM_ENABLE_SELECTOR_TOUCH
+    int
+    default 1 if ENABLE_SELECTOR_TOUCH
+    default 0
+
+  menu "Gear/Extruder Synchronization Options"
+    help
+      Some MMU designs allow fine control over when the MMU stepper is
+      synced with the extruder stepper. Synchronization helps to
+      overcome friction in the filament path.
+    rsource "Kconfig.sync"
+  endmenu
+
+  config ENABLE_CLOG_DETECT
+    bool "Enable clog detection?"
+    help
+      Clog detection uses the encoder to detect when filament is no longer moving and pauses print
+    depends on MMU_HAS_ENCODER
+
+  config ENABLE_AUTO_CLOG_DETECT
+    bool "Enable automatic clog detection length?"
+    help
+      This constantly tunes the clog detection length to help avoid false triggering
+    depends on ENABLE_CLOG_DETECT
+    default y
+
+  config PARAM_ENABLE_CLOG_DETECTION
+    int 
+    default 2 if ENABLE_AUTO_CLOG_DETECT
+    default 1 if ENABLE_CLOG_DETECT
+    default 0
+
+  config ENABLE_ENDLESS_SPOOL
+    bool "Enable EndlessSpool?"
+    help
+      This uses filament runout detection to automate switching to a new spool without interruption
+
+  config PARAM_ENABLE_ENDLESS_SPOOL
+    int
+    default 1 if ENABLE_ENDLESS_SPOOL
+    default 0
+
+  choice CHOICE_SPOOLMAN_SUPPORT
+    prompt "Select spoolman spool manager support"
+    default SPOOLMAN_OFF
+    help
+      `                  | Activate/  | Fetch filament attributes | Filament gate    | Filament gate     |
+        spoolman_support | Deactivate | attributes from spoolman  | assignment shown | assignment pulled |
+                         | spool?     | based on spool_id?        | in spoolman db?  | from spoolman db? |
+        -----------------+------------+---------------------------+------------------+-------------------+
+             off         |     no     |           no              |        no        |        no         |
+             readonly    |     yes    |           yes             |        no        |        no         |
+             push        |     yes    |           yes             |        yes       |        no         |
+             pull        |     yes    |           yes             |        yes       |        yes        |
+
+    config SPOOLMAN_OFF
+      bool "Off"
+      help
+        Don't connect to spoolman
+    config SPOOLMAN_RO
+      bool "Read-only"
+      help
+        Fetch filament attributes based on spool ID
+    config SPOOLMAN_PUSH
+      bool "Push"
+      help
+        Fetch filament attributes and publish gate assignment to spoolman
+    config SPOOLMAN_PULL
+      bool "Pull"
+      help
+        Fetch filament attributes and pull gate assignment from spoolman (print farms)
+  endchoice
+
+  config PARAM_SPOOLMAN_SUPPORT
+    string
+    default "off" if SPOOLMAN_OFF
+    default "readonly" if SPOOLMAN_RO
+    default "push" if SPOOLMAN_PUSH
+    default "pull" if SPOOLMAN_PULL
+
+  config INSTALL_12864_MENU
+    bool "Install Mini 12864 menu configuration?"
+    help
+      Installs MMU menu for Mini 12864 display.
+      Select only if printer has a Mini 12864 character display
+
+  config INSTALL_CLIENT_MACROS
+    bool "Install default client macros supplied with Happy Hare? (strongly recommended)"
+    help
+      Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.
+      This is highly recommended and incorporates all functionality from popular alternatives
+      like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
+    default y
+
+  config REPETIER
+    bool "Enable Repetier support?" if SHOW_ADVANCED_OPTIONS
+
+  config REPETIER_NAME
+    string "Repetier name"
+    depends on REPETIER
+
+  config OCTOPRINT
+    bool "Enable Octoprint support?" if SHOW_ADVANCED_OPTIONS
+
 endmenu
-
-config ENABLE_CLOG_DETECT
-  bool "Enable clog detection?"
-  help
-    Clog detection uses the encoder to detect when filament is no longer moving and pauses print
-  depends on MMU_HAS_ENCODER
-
-config ENABLE_AUTO_CLOG_DETECT
-  bool "Enable automatic clog detection length?"
-  help
-    This constantly tunes the clog detection length to help avoid false triggering
-  depends on ENABLE_CLOG_DETECT
-  default y
-
-config PARAM_ENABLE_CLOG_DETECTION
-  int 
-  default 2 if ENABLE_AUTO_CLOG_DETECT
-  default 1 if ENABLE_CLOG_DETECT
-  default 0
-
-config ENABLE_ENDLESS_SPOOL
-  bool "Enable EndlessSpool?"
-  help
-    This uses filament runout detection to automate switching to a new spool without interruption
-
-config PARAM_ENABLE_ENDLESS_SPOOL
-  int
-  default 1 if ENABLE_ENDLESS_SPOOL
-  default 0
-
-choice CHOICE_SPOOLMAN_SUPPORT
-  prompt "Select spoolman spool manager support"
-  default SPOOLMAN_OFF
-  help
-    Select the type of spoolman integration
-
-                        | Activate/  | Fetch filament attributes | Filament gate    | Filament gate     |
-       spoolman_support | Deactivate | attributes from spoolman  | assignment shown | assignment pulled |
-                        | spool?     | based on spool_id?        | in spoolman db?  | from spoolman db? |
-       -----------------+------------+---------------------------+------------------+-------------------+
-            off         |     no     |           no              |        no        |        no         |
-            readonly    |     yes    |           yes             |        no        |        no         |
-            push        |     yes    |           yes             |        yes       |        no         |
-            pull        |     yes    |           yes             |        yes       |        yes        |
-
-  config SPOOLMAN_OFF
-    bool "Off"
-    help
-      Don't connect to spoolman
-  config SPOOLMAN_RO
-    bool "Read-only"
-    help
-      Fetch filament attributes based on spool ID
-  config SPOOLMAN_PUSH
-    bool "Push"
-    help
-      Fetch filament attributes and publish gate assignment to spoolman
-  config SPOOLMAN_PULL
-    bool "Pull"
-    help
-      Fetch filament attributes and pull gate assignment from spoolman (print farms)
-endchoice
-
-config PARAM_SPOOLMAN_SUPPORT
-  string
-  default "off" if SPOOLMAN_OFF
-  default "readonly" if SPOOLMAN_RO
-  default "push" if SPOOLMAN_PUSH
-  default "pull" if SPOOLMAN_PULL
-
-config INSTALL_12864_MENU
-  bool "Install Mini 12864 menu configuration?"
-  help
-    Select only if printer has a Mini 12864 character display
-
-config INSTALL_CLIENT_MACROS
-  bool "Install default pause/resume macros supplied with Happy Hare? (recommended)"
-  default y
-
-config REPETIER
-  bool "Enable Repetier support?" if SHOW_ADVANCED_OPTIONS
-
-config REPETIER_NAME
-  string "Repetier name"
-  depends on REPETIER
-
-config OCTOPRINT
-  bool "Enable Octoprint support?" if SHOW_ADVANCED_OPTIONS

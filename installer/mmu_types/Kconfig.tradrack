@@ -1,22 +1,23 @@
-choice CHOICE_MMU_TYPE
-  config MMU_TYPE_TRADRACK_1_0
-    bool "Tradrack v1.0"
-    select REQUIRE_BOWDEN_MOVE
-    select MMU_HAS_SERVO
-    select MMU_HAS_SELECTOR
-    imply SERVO_ALWAYS_ACTIVE
-    
-  config EXT_BINKY
-    bool "Binky" 
-    select MMU_HAS_ENCODER
-    depends on MMU_TYPE_TRADRACK_1_0
-endchoice
+config MMU_TYPE_TRADRACK_1_0
+  bool "Tradrack v1.0"
+  select MMU_HAS_SELECTOR
+  select MMU_HAS_SERVO
+  select MMU_HAS_SENSOR_GATE
+  select REQUIRE_BOWDEN_MOVE
+  imply SERVO_ALWAYS_ACTIVE
+  
+if MMU_TYPE_TRADRACK_1_0
+  rsource "../Kconfig.num_gates"
+  rsource "../servos/Kconfig"
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
 
 if MMU_TYPE_TRADRACK_1_0
   config PARAM_MMU_VENDOR
     default "Tradrack"
   config PARAM_MMU_VERSION
-    default "1.0e" if EXT_BINKY
     default "1.0"
   config PARAM_NUM_GATES
     default 8
@@ -39,21 +40,19 @@ if MMU_TYPE_TRADRACK_1_0
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0
   config PARAM_ENCODER_RESOLUTION
-    default "1.0" if EXT_BINKY
+    default "1.0" if MOD_BINKY
 
   config PARAM_GATE_PARKING_DISTANCE
-    default "48" if EXT_BINKY 
+    default "48" if MOD_BINKY 
     default "17.5"
   config PARAM_GATE_ENDSTOP_TO_ENCODER
-    default "31" if EXT_BINKY
+    default "31" if MOD_BINKY
 
   choice CHOICE_GATE_HOMING_ENDSTOP
-    default GATE_HOMING_ENDSTOP_ENCODER if EXT_BINKY
     default GATE_HOMING_ENDSTOP_GATE
   endchoice
-  
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default EXTRUDER_HOMING_ENDSTOP_COLLISION if EXT_BINKY
+    default EXTRUDER_HOMING_ENDSTOP_COLLISION if MOD_BINKY
     default EXTRUDER_HOMING_ENDSTOP_NONE
   endchoice
 endif 

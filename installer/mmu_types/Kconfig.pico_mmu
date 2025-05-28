@@ -1,11 +1,16 @@
-choice CHOICE_MMU_TYPE
-  config MMU_TYPE_PICO_MMU_1_0
-    bool "Pico MMU"
-    select MMU_HAS_SERVO
-    select REQUIRE_BOWDEN_MOVE
-    select FILAMENT_ALWAYS_GRIPPED
-    imply ENABLE_LEDS
-endchoice
+config MMU_TYPE_PICO_MMU_1_0
+  bool "Pico MMU"
+  select MMU_HAS_SERVO
+  select REQUIRE_BOWDEN_MOVE
+  select FILAMENT_ALWAYS_GRIPPED
+  imply ENABLE_LEDS
+
+if MMU_TYPE_PICO_MMU_1_0
+  rsource "../servos/Kconfig"
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
 
 if MMU_TYPE_PICO_MMU_1_0
   config PARAM_MMU_VENDOR
@@ -37,7 +42,6 @@ if MMU_TYPE_PICO_MMU_1_0
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
   endchoice
-  
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     default EXTRUDER_HOMING_ENDSTOP_NONE
   endchoice

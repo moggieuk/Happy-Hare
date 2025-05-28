@@ -1,46 +1,72 @@
-config PARAM_GEAR_GEAR_RATIO
-  string "Gear ratio"
-config PARAM_GEAR_RUN_CURRENT
-  string "Gear run current"
-config PARAM_GEAR_HOLD_CURRENT
-  string "Gear hold current"
+menu "Motors"
 
-if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
-  config PARAM_SERVO_MAX_ANGLE
-    int "Servo maximum angle"
-    range 0 360
-    default 180
-  config PARAM_SERVO_MIN_PULSE_WIDTH
-    string "Servo minimum pulse width"
-  config PARAM_SERVO_MAX_PULSE_WIDTH
-    string "Servo maximum pulse width"
-  config PARAM_SERVO_UP_ANGLE
-    int "Servo up angle"
-  config PARAM_SERVO_MOVE_ANGLE
-    int "Servo move angle"
-  config PARAM_SERVO_DOWN_ANGLE
-    int "Servo down angle"
-  config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-    int "How often to buzz servo on down angle"
-    default 1 
-  config PARAM_SERVO_DURATION
-    string "Servo duration"
-    default "0.4" if SELECTOR_TYPE_LINEAR
-    default "0.5" if SELECTOR_TYPE_SERVO
-  config PARAM_SERVO_DWELL
-    string "Servo dwell"
-    default "0.5" if SELECTOR_TYPE_LINEAR
-    default "0.8" if SELECTOR_TYPE_SERVO
-  config SERVO_ALWAYS_ACTIVE
-    bool "Servo always active?"
-  config PARAM_SERVO_ALWAYS_ACTIVE
-    int
-    default 1 if SERVO_ALWAYS_ACTIVE
-    default 0
-  config PARAM_SELECTOR_RUN_CURRENT
-    string "Selector run current"
-    default "0.5"
-  config PARAM_SELECTOR_HOLD_CURRENT
-    string "Selector hold current"
-    default "0.2"
-endif 
+  config PARAM_GEAR_GEAR_RATIO
+    string "Gear ratio"
+    default "1:1"
+
+  config PARAM_GEAR_ROTATION_DISTANCE
+    string "Gear rotation distance"
+    default "22.7316868"
+
+  config PARAM_GEAR_RUN_CURRENT
+    string "Gear run current"
+    default "0.7"
+
+  config PARAM_GEAR_HOLD_CURRENT
+    string "Gear hold current"
+    default "0.1"
+
+  if SELECTOR_TYPE_LINEAR || SELECTOR_TYPE_SERVO
+    config PARAM_SERVO_MAX_ANGLE
+      int "Servo maximum angle"
+      range 0 360
+      default 180
+
+    config PARAM_SERVO_MIN_PULSE_WIDTH
+      string "Servo minimum pulse width"
+      default "0.001"
+
+    config PARAM_SERVO_MAX_PULSE_WIDTH
+      string "Servo maximum pulse width"
+      default "0.002"
+
+    config PARAM_SERVO_UP_ANGLE
+      int "Servo up angle"
+
+    config PARAM_SERVO_MOVE_ANGLE
+      int "Servo move angle"
+
+    config PARAM_SERVO_DOWN_ANGLE
+      int "Servo down angle"
+
+    config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
+      int "How often to buzz servo on down angle"
+      default 1 
+
+    config PARAM_SERVO_DURATION
+      string "Servo duration"
+      default "0.4" if SELECTOR_TYPE_LINEAR
+      default "0.5" if SELECTOR_TYPE_SERVO
+
+    config PARAM_SERVO_DWELL
+      string "Servo dwell"
+      default "0.5" if SELECTOR_TYPE_LINEAR
+      default "0.8" if SELECTOR_TYPE_SERVO
+
+    config SERVO_ALWAYS_ACTIVE
+      bool "Servo always active?"
+    config PARAM_SERVO_ALWAYS_ACTIVE
+      int
+      default 1 if SERVO_ALWAYS_ACTIVE
+      default 0
+
+    config PARAM_SELECTOR_RUN_CURRENT
+      string "Selector run current"
+      default "0.5"
+
+    config PARAM_SELECTOR_HOLD_CURRENT
+      string "Selector hold current"
+      default "0.2"
+  endif 
+
+endmenu

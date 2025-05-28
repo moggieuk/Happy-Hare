@@ -1,7 +1,14 @@
 # Make the first 10 available serial tty devices selectable, it's unlikely people have more.
-# And if they do, they propably know what they are doing and have no issue manually selecting it.
+# And if they do, they probably know what they are doing and have no issue manually selecting it.
 # Not the prettiest configuration, but it works
 choice CHOICE_SERIAL_DEVICE 
+  help
+    Step 5 - MCU connection
+    Specify the path of the serial device connected to the MMU MCU.
+    It's best to use the /dev/serial/by-id/ path, as it's unique and
+    doesn't change when you plug in multiple serial devices.
+    Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
+    (CANbus must be configured manually by editing config files)
   prompt "Select MCU serial device"
   depends on $(serial_exists,1) # Only show if there are any serial tty devices to select. Likely an issue with the setup
 
@@ -36,16 +43,19 @@ choice CHOICE_SERIAL_DEVICE
     bool "$(serial,10)"
     depends on $(serial_exists,10)
   config PARAM_SERIAL_OTHER
-    bool "Other (specify in parent menu)"
+    bool "Other Manually Entered"
 endchoice
 
 config PARAM_SERIAL
   string
   prompt "MCU serial device path" if PARAM_SERIAL_OTHER || !$(serial_exists,1)
   help
-    Specify the path of the serial device connected to the MMU MCU. 
-    It's best to use the /dev/serial/by-id/ path, as it's unique and doesn't change when you plug in multiple serial devices.
+    Step 5 - MCU connection
+    Specify the path of the serial device connected to the MMU MCU.
+    It's best to use the /dev/serial/by-id/ path, as it's unique and
+    doesn't change when you plug in multiple serial devices.
     Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
+    (CANbus must be configured manually by editing config files)
   default "$(serial,1)" if $(serial_config,1)
   default "$(serial,2)" if $(serial_config,2)
   default "$(serial,3)" if $(serial_config,3)

@@ -1,0 +1,9 @@
+if !MMU_CANNOT_HAVE_FILAMENT_BUFFER
+
+  config MMU_HAS_FILAMENT_BUFFER
+    bool "Has filament buffer?"
+    help
+      Does MMU have a buffer to catch the uncoiled filament on unload. Note
+      that a passive rewinder like Filamentum is not a filament buffer.
+
+endif

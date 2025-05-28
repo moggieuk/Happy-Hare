@@ -1,11 +1,11 @@
 config ADDON_EREC_CUTTER
+  help
+    Enable for all servo based filament cutters on the MMU itself.
+    EREC was the first example of this but this macro can work
+    with other similar designs.
   bool "Enable EREC filament cutter support?"
 
 if ADDON_EREC_CUTTER
-  config INSTALL_EREC_CUTTER
-    bool "Install EREC filament cutter include in printer.cfg?"
-    default y
-
   menu "EREC filament cutter pins"
     config PIN_EREC_CUTTER_SERVO
       string "EREC filament cutter servo pin"

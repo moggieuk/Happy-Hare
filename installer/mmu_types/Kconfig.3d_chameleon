@@ -1,16 +1,22 @@
-choice CHOICE_MMU_TYPE 
-  config MMU_TYPE_3D_CHAMELEON_1_0
-    bool "3D Chameleon"
-    select MMU_HAS_SELECTOR
-    select REQUIRE_BOWDEN_MOVE
-endchoice
+config MMU_TYPE_3D_CHAMELEON_1_0
+  help
+    3D Chameleon is a 4 gate MMU using innovative "opposing gate"
+    filament selection mechanism.
+  bool "3D Chameleon"
+  select MMU_HAS_SELECTOR
+  select REQUIRE_BOWDEN_MOVE
+
+if MMU_TYPE_3D_CHAMELEON_1_0
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
 
 if MMU_TYPE_3D_CHAMELEON_1_0
   config PARAM_MMU_VENDOR
     default "3DChameleon"
   config PARAM_MMU_VERSION
     default "1.0" 
-
   config PARAM_NUM_GATES
     default 4
 
@@ -35,7 +41,6 @@ if MMU_TYPE_3D_CHAMELEON_1_0
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
   endchoice
-  
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     default EXTRUDER_HOMING_ENDSTOP_NONE
   endchoice

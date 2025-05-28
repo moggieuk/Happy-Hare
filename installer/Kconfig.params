@@ -1,58 +1,76 @@
-config MMU_HAS_ENCODER
+# Define MMU base capabilities excluding filament sensors. Each token has
+# prefix "MMU_". These are not designed to be directly exposed in UI.
+# Also allow editing of behavior parameters which are generally determined
+# by MMU type but can be tuned, especially for custom designs.
+
+config MMU_HAS_SELECTOR
   bool
 
 config MMU_HAS_SERVO
   bool
 
-config MMU_HAS_SELECTOR
+config MMU_HAS_ENCODER
   bool
 
 config MMU_HAS_ESPOOLER
   bool
+config MMU_CANNOT_HAVE_ESPOOLER
+  bool
 
-config PARAM_SELECTOR_TYPE
-  string
-  default "VirtualSelector" if !MMU_HAS_SELECTOR && !MMU_HAS_SERVO
-  default "ServoSelector" if !MMU_HAS_SELECTOR && MMU_HAS_SERVO
-  default "RotarySelector" if MMU_HAS_SELECTOR && !MMU_HAS_SERVO
-  default "LinearSelector"
+config MMU_HAS_FILAMENT_BUFFER
+  bool
+config MMU_CANNOT_HAVE_FILAMENT_BUFFER
+  bool
 
-config VARIABLE_BOWDEN_LENGTHS
-  bool "Variable bowden lengths?" 
+config MMU_HAS_SYNC_FEEDBACK
+  bool
 
-config PARAM_VARIABLE_BOWDEN_LENGTHS
-  int
-  default 1 if VARIABLE_BOWDEN_LENGTHS
+config MMU_HAS_LEDS
+  bool
 
-config VARIABLE_ROTATION_DISTANCES
-  bool "Variable rotation distances?"
 
-config PARAM_VARIABLE_ROTATION_DISTANCES
-  int
-  default 1 if VARIABLE_ROTATION_DISTANCES
+menu "Parameters"
 
-config REQUIRE_BOWDEN_MOVE
-  bool "Require bowden move?"
+  config PARAM_SELECTOR_TYPE
+    string
+    default "VirtualSelector" if !MMU_HAS_SELECTOR && !MMU_HAS_SERVO
+    default "ServoSelector" if !MMU_HAS_SELECTOR && MMU_HAS_SERVO
+    default "RotarySelector" if MMU_HAS_SELECTOR && !MMU_HAS_SERVO
+    default "LinearSelector"
 
-config PARAM_REQUIRE_BOWDEN_MOVE
-  int
-  default 1 if REQUIRE_BOWDEN_MOVE
+  config MMU_HAS_BYPASS
+    bool "Has filament bypass?"
+  config PARAM_HAS_BYPASS
+    int
+    default 0
+    default 1 if HAS_BYPASS
 
-config FILAMENT_ALWAYS_GRIPPED
-  bool "Filament always gripped?"
+  config VARIABLE_BOWDEN_LENGTHS
+    bool "Variable bowden lengths?" 
+  config PARAM_VARIABLE_BOWDEN_LENGTHS
+    int
+    default 0
+    default 1 if VARIABLE_BOWDEN_LENGTHS
 
-config PARAM_FILAMENT_ALWAYS_GRIPPED
-  int 
-  default 1 if FILAMENT_ALWAYS_GRIPPED
+  config VARIABLE_ROTATION_DISTANCES
+    bool "Variable rotation distances?"
+  config PARAM_VARIABLE_ROTATION_DISTANCES
+    int
+    default 0
+    default 1 if VARIABLE_ROTATION_DISTANCES
 
-config PARAM_ENCODER_RESOLUTION
-  string "Encoder resolution"
-  depends on MMU_HAS_ENCODER
-  default "1.0"
+  config REQUIRE_BOWDEN_MOVE
+    bool "Require bowden move?"
+  config PARAM_REQUIRE_BOWDEN_MOVE
+    int
+    default 0
+    default 1 if REQUIRE_BOWDEN_MOVE
 
-config HAS_BYPASS
-  bool "Has bypass?"
+  config FILAMENT_ALWAYS_GRIPPED
+    bool "Filament always gripped?"
+  config PARAM_FILAMENT_ALWAYS_GRIPPED
+    int 
+    default 0
+    default 1 if FILAMENT_ALWAYS_GRIPPED
 
-config PARAM_HAS_BYPASS
-  int
-  default 1 if HAS_BYPASS
+endmenu

@@ -1,19 +1,36 @@
 if MMU_HAS_SERVO
-  rsource  "Kconfig.*"
 
   choice CHOICE_SERVO_TYPE 
     prompt "Selector servo type"
     help
       Select the type of servo you are using for the selector. 
-  
-    config SERVO_TYPE_OTHER
-      bool "Not listed / Other"
   endchoice
 
-  if !MMU_HAS_SELECTOR
-    # TODO: Probably should be moved to somewhere else. Need to figure out a better split for selector/servo
-    config PARAM_SELECTOR_GATE_ANGLES
-      string
-      default "45, 90, 135, 180"
+  rsource  "Kconfig.*"
+
+  choice CHOICE_SERVO_TYPE
+    config SERVO_TYPE_OTHER
+      bool "Not listed"
+  endchoice
+
+  if SERVO_TYPE_OTHER
+    config PARAM_SERVO_MIN_PULSE_WIDTH
+      default "0.001"
+
+    config PARAM_SERVO_MAX_PULSE_WIDTH
+      default "0.002"
+
+    config PARAM_SERVO_MAX_ANGLE
+      default 180
+
+    config PARAM_SERVO_UP_ANGLE
+      default 0
+
+    config PARAM_SERVO_MOVE_ANGLE
+      default 0
+
+    config PARAM_SERVO_DOWN_ANGLE
+      default 0
   endif
+
 endif

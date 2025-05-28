@@ -1,13 +1,16 @@
+config PARAM_BOARD_TYPE
+  string
+
 rsource "Kconfig.*"
 
 choice CHOICE_BOARD_TYPE
   prompt "Board type"
   help 
-    Select the type of board you are using. This will configure the default pin layout for your setup.
+    Step 4 - MCU type
+    Select the type of mcu board you are using. This will configure
+    the default pin layout for your setup. After selecting board
+    pins can be customized in Advanced Settings.
 
   config BOARD_TYPE_OTHER
     bool "Not listed / Other"
 endchoice
-
-config PARAM_BOARD_TYPE
-  string

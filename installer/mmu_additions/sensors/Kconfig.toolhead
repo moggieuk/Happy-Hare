@@ -1,0 +1,12 @@
+config MMU_HAS_SENSOR_TOOLHEAD
+  help
+    Select if you have a filament sensor inside of your toolhead after
+    the extruder drive. This is normally connected to a pin on your main
+    printer MCU so specify it here.
+  bool "Toolhead sensor?"
+
+if MMU_HAS_SENSOR_TOOLHEAD
+  config PIN_TOOLHEAD_SENSOR
+    string "Toolhead sensor pin"
+    default "pinX"
+endif

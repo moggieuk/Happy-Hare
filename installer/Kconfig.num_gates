@@ -1,0 +1,6 @@
+config PARAM_NUM_GATES
+  help
+    The number of gates is set based on MMU type but some
+    designs allow for a configurable number. Ensure this
+    matches the number in your specific build.
+  int "Number of gates/lanes?"

@@ -1,42 +1,43 @@
-config ENABLE_SYNC_TO_EXTRUDER
-  bool "Enable sync to extruder?"
-  help
-    This controls whether the extruder and gear steppers are synchronized during printing operations
+if !FILAMENT_ALWAYS_GRIPPED
 
-config PARAM_SYNC_TO_EXTRUDER
-  int
-  default 1 if ENABLE_SYNC_TO_EXTRUDER
-  default 0
+  config ENABLE_SYNC_TO_EXTRUDER
+    bool "Enable sync to extruder?"
+    help
+      This controls whether the extruder and gear steppers are synchronized during printing operations
+  config PARAM_SYNC_TO_EXTRUDER
+    int
+    default 1 if ENABLE_SYNC_TO_EXTRUDER
+    default 0
+
+  config ENABLE_SYNC_FORM_TIP
+    bool "Enable syncing while tip forming?"
+    default y if ENABLE_SYNC_TO_EXTRUDER
+    help
+      This controls whether the extruder and gear steppers are synchronized during tip forming operation
+  config PARAM_SYNC_FORM_TIP
+    int
+    default 1 if ENABLE_FORM_TIP
+    default 0
+
+  config ENABLE_SYNC_PURGE
+    bool "Enable syncing while purging?"
+    default y if ENABLE_SYNC_TO_EXTRUDER
+    help
+      This controls whether the extruder and gear steppers are synchronized during purging operation
+  config PARAM_SYNC_PURGE
+    int
+    default 1 if ENABLE_SYNC_PURGE
+    default 0
+
+endif
 
 config ENABLE_SYNC_FEEDBACK
   bool "Enable sync feedback?"
   help
     Sync feedback will be used to dynamically adjust the gear stepper speed to match the extruder
-  depends on ENABLE_SYNC_TO_EXTRUDER
-
+  depends on MMU_HAS_SYNC_FEEDBACK && (ENABLE_SYNC_TO_EXTRUDER || FILAMENT_ALWAYS_GRIPPED)
 config PARAM_SYNC_FEEDBACK
   int
   default 1 if ENABLE_SYNC_FEEDBACK
   default 0
 
-config ENABLE_SYNC_FORM_TIP
-  bool "Enable syncing while tip forming?"
-  default y if ENABLE_SYNC_TO_EXTRUDER
-  help
-    This controls whether the extruder and gear steppers are synchronized during tip forming operation
-
-config PARAM_SYNC_FORM_TIP
-  int
-  default 1 if ENABLE_FORM_TIP
-  default 0
-
-config ENABLE_SYNC_PURGE
-  bool "Enable syncing while purging?"
-  default y if ENABLE_SYNC_TO_EXTRUDER
-  help
-    This controls whether the extruder and gear steppers are synchronized during purging operation
-
-config PARAM_SYNC_PURGE
-  int
-  default 1 if ENABLE_SYNC_PURGE
-  default 0

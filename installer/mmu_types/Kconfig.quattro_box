@@ -1,25 +1,26 @@
-choice CHOICE_MMU_TYPE
-  config MMU_TYPE_QUATTRO_BOX_1_0
-    bool "QuattroBox v1.0"
-    select MMU_HAS_ENCODER
-    select VARIABLE_ROTATION_DISTANCES
-    select VARIABLE_BOWDEN_LENGTHS
-    select FILAMENT_ALWAYS_GRIPPED
-    select ADDON_EJECT_BUTTONS
-    select REQUIRE_BOWDEN_MOVE
-    imply ENABLE_LEDS
+config MMU_TYPE_QUATTRO_BOX_1_0
+  help
+    QuattroBox is type-B MMU with 4 gates. It uses a Filamentum based
+    design for spool respooling leveraging gear steppers for motion.
+    Has integrated encoder for measurement of filament movement.
+    Has eject button option -- be sure to install eject button addon.
+  bool "QuattroBox v1.0"
+  select MMU_HAS_ENCODER
+  select MMU_HAS_LEDS
+  select VARIABLE_ROTATION_DISTANCES
+  select VARIABLE_BOWDEN_LENGTHS
+  select FILAMENT_ALWAYS_GRIPPED
+  select ADDON_EJECT_BUTTONS
+  select REQUIRE_BOWDEN_MOVE
+  imply ENABLE_LEDS
+  select MMU_CANNOT_HAVE_ESPOOLER
+  select MMU_CANNOT_HAVE_FILAMENT_BUFFER
 
-  config MMU_TYPE_QUATTRO_BOX_1_1
-    bool "QuattroBox v1.1"
-    select MMU_HAS_ENCODER
-    select VARIABLE_ROTATION_DISTANCES
-    select VARIABLE_BOWDEN_LENGTHS
-    select FILAMENT_ALWAYS_GRIPPED
-    select ADDON_EJECT_BUTTONS
-    select REQUIRE_BOWDEN_MOVE
-    imply ENABLE_LEDS
-
-endchoice
+if MMU_TYPE_QUATTRO_BOX_1_0
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
 
 if MMU_TYPE_QUATTRO_BOX_1_0
   config PARAM_MMU_VENDOR
@@ -28,7 +29,6 @@ if MMU_TYPE_QUATTRO_BOX_1_0
     default "1.0"  
   config PARAM_NUM_GATES
     default 4
-
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"
   config PARAM_GEAR_RUN_CURRENT
@@ -63,11 +63,35 @@ if MMU_TYPE_QUATTRO_BOX_1_0
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
   endchoice
-  
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     default EXTRUDER_HOMING_ENDSTOP_COLLISION
   endchoice
 endif 
+
+
+config MMU_TYPE_QUATTRO_BOX_1_1
+  help
+    QuattroBox is type-B MMU with 4 gates. It uses a Filamentum based
+    design for spool respooling leveraging gear steppers for motion.
+    Has integrated encoder for measurement of filament movement.
+    Has eject button option -- be sure to install eject button addon.
+    Version 1.1 has updated LEDs.
+  bool "QuattroBox v1.1"
+  select MMU_HAS_ENCODER
+  select VARIABLE_ROTATION_DISTANCES
+  select VARIABLE_BOWDEN_LENGTHS
+  select FILAMENT_ALWAYS_GRIPPED
+  select ADDON_EJECT_BUTTONS
+  select REQUIRE_BOWDEN_MOVE
+  imply ENABLE_LEDS
+  select MMU_CANNOT_HAVE_ESPOOLER
+  select MMU_CANNOT_HAVE_FILAMENT_BUFFER
+
+if MMU_TYPE_QUATTRO_BOX_1_1
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
 
 if MMU_TYPE_QUATTRO_BOX_1_1
   config PARAM_MMU_VENDOR
@@ -111,7 +135,6 @@ if MMU_TYPE_QUATTRO_BOX_1_1
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
   endchoice
-  
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     default EXTRUDER_HOMING_ENDSTOP_COLLISION
   endchoice

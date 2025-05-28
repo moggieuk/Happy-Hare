@@ -1,22 +1,33 @@
-if PARAM_MMU_VENDOR = "ERCF"
-  choice CHOICE_SERVO_TYPE 
+# Savox GDW_DS041MG servo
+# Used by ERCF v1.1, v2.0
+
+choice CHOICE_SERVO_TYPE 
+  if PARAM_MMU_VENDOR = "ERCF"
     config SERVO_TYPE_GDW_DS041MG
       bool "GDW DS041MG"
-  endchoice
-endif
+  endif
+endchoice
 
 if SERVO_TYPE_GDW_DS041MG
   config PARAM_SERVO_MIN_PULSE_WIDTH
     default "0.00050"
+
   config PARAM_SERVO_MAX_PULSE_WIDTH
     default "0.00250" 
+
   config PARAM_SERVO_MAX_ANGLE
     default 180
+
   config PARAM_SERVO_UP_ANGLE
     default 30 
+
   config PARAM_SERVO_MOVE_ANGLE
     default 50 if MMU_TYPE_ERCF_2_0
     default PARAM_SERVO_UP_ANGLE 
+
   config PARAM_SERVO_DOWN_ANGLE
     default 100 
+
+  config PARAM_SERVO_ALWAYS_ACTIVE
+    default 1
 endif

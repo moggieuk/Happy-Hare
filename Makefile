@@ -31,7 +31,7 @@ include $(KCONFIG_CONFIG)
 Q ?= @ # For quiet builds, override with make Q= for verbose output
 UT ?= * # For unittests, e.g. make UT=test_build.py test
 ifneq ($(strip $(Q)),@)
-	V ?= -v # For verbose output of build.py
+  V ?= -v # For verbose output of build.py
 endif
 
 SRC ?= $(CURDIR)
@@ -262,10 +262,10 @@ $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*
 # touch in case .config does not get updated by olddefconfig.py
 ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig) # only if menuconfig is not the target, else it will run twice
 	$(Q)$(MAKE) MAKEFLAGS= menuconfig
-	$(Q)$(PY) $(KLIPPER_HOME)/lib/kconfiglib/olddefconfig.py $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
+	$(Q)$(PY) $(SRC)/installer/lib/kconfiglib/olddefconfig.py $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)
 endif
 
 menuconfig: $(SRC)/installer/Kconfig
-	$(Q)MENUCONFIG_STYLE="aquatic" $(PY) $(KLIPPER_HOME)/lib/kconfiglib/menuconfig.py $(SRC)/installer/Kconfig
+	$(Q)MENUCONFIG_STYLE="aquatic" $(PY) $(SRC)/installer/lib/kconfiglib/menuconfig.py $(SRC)/installer/Kconfig
 

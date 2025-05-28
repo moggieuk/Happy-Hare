@@ -1,0 +1,11 @@
+if MMU_HAS_ENCODER
+
+  menu "Encoder"
+    config PARAM_ENCODER_RESOLUTION
+      help
+        Ensure this matches the resolution of your encoder.
+      string "Encoder resolution"
+      default "1.0"
+  endmenu
+
+endif

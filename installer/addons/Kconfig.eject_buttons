@@ -1,8 +1,6 @@
 config ADDON_EJECT_BUTTONS
-  bool "Enable Eject Buttons support?"
+  help
+    Enable if you have dedicated eject buttons on each gate. Note that
+    The pin connections will still need to be setup in the macro.
+  bool "Enable eject buttons support?"
 
-if ADDON_EJECT_BUTTONS
-  config INSTALL_EJECT_BUTTONS
-    bool "Install Eject Buttons include in printer.cfg?"
-    default y
-endif 

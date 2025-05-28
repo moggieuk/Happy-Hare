@@ -21,52 +21,45 @@ config F_VERSION
   string
   default "$(formatted_version)"
 
+# y to shows MMU additions menu inline with type
+# n to show as top level menu
+config SHOW_EMBEDDED_MMU_ADDITIONS
+  bool
+  default n
+
 comment '							'
 comment '(\\_/)							'
 comment '( *,*)							'
-comment '(")_(") Happy Hare version $(formatted_version)	 		'	
+comment '(")_(") Happy Hare version $(formatted_version) 			'	
 comment '							'
-#comment 'Setting the MMU/AFC type should be done first and will	'
-#comment 'default many options to those recommended by the	'
-#comment 'designer. After selecting the mcu board pins can be	'
-#comment 'customized in Advanced Settings				'			
-#comment '							'
 
-rsource "types/Kconfig"
+# Step 1 - Base MMU
+rsource "mmu_types/Kconfig"
+
+# Step 2 - MMU Additions/Customization (optionally inline with base type)
+if !SHOW_EMBEDDED_MMU_ADDITIONS
+  rsource "mmu_additions/Kconfig"
+endif
+
+# Step 3 - Addon Features
+rsource "addons/Kconfig"
+
+# Step 4 - MCU
 rsource "boards/Kconfig"
+
+# Step 5 - MCU connection
 rsource "Kconfig.serial"
 
-config PARAM_NUM_GATES
-  int "Number of gates"
+# Step 6 - Popular options
+rsource "Kconfig.options"
 
-rsource "servos/Kconfig"
-
-menu "Common Options"
-  comment '							'
-  comment 'This covers some of the more common setup options.	'
-  comment 'Further configuration can be achieved later by editing	'
-  comment 'generated klipper config files				'
-  comment '							'
-
-  rsource "Kconfig.options"
-endmenu
-
-menu "Optional Printer/MMU Addons"
-  comment '							'
-  comment 'MMU functionality can be extended with popular addon	'
-  comment 'macro options. Select which to include here and		'
-  comment 'configure pins and features				'
-  comment '							'
-
-  rsource "addons/Kconfig.*"
-endmenu
-
+# Raw access to suggested settings
 menu "Advanced Settings"
-  comment '							'
-  comment 'Only change these settings if you know what you are	'
-  comment 'doing (or have MMU customizations) because doing so	'
-  comment 'may alter designer defaults. Can be changed later	'
-  comment '							'
+  help
+    Advanced Settings
+    Only change these settings if you know what you are doing (or have
+    MMU customizations) because doing so may alter designer defaults.
+    Can always be changed later in generated klipper config files.
 
   config SHOW_ADVANCED_OPTIONS
     bool "Show advanced options in config menus?"
@@ -75,35 +68,14 @@ menu "Advanced Settings"
       When enabled additional (advanced) options will be shown
       throughout the config menus.
 
-  menu "Leds"
-    rsource "Kconfig.leds"
-  endmenu
-
-  menu "Endstops"
-    rsource "Kconfig.endstops"
-  endmenu
-
-  menu "Gate loading & parking"
-    rsource "Kconfig.gates"
-  endmenu
-
-  menu "Motors"
-    rsource "Kconfig.motors"
-  endmenu
-
-  menu "Speeds"
-    rsource "Kconfig.speeds"
-  endmenu
-
-  menu "Pins"
-    rsource "Kconfig.pins"
-  endmenu
-
-  menu "Physical control parameters"
-    rsource "Kconfig.params"
-  endmenu
-
-  menu "Paths & Services"
-    rsource "Kconfig.paths_services"
-  endmenu
+  rsource "Kconfig.num_gates"
+  rsource "Kconfig.leds"
+  rsource "Kconfig.encoder"
+  rsource "Kconfig.endstops"
+  rsource "Kconfig.gates"
+  rsource "Kconfig.motors"
+  rsource "Kconfig.speeds"
+  rsource "Kconfig.pins"
+  rsource "Kconfig.params"
+  rsource "Kconfig.paths_services"
 endmenu

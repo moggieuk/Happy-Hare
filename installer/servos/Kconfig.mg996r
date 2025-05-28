@@ -1,0 +1,32 @@
+# MG-996R servo
+# Used by PicoMMU and MMX as RotarySelector
+
+choice CHOICE_SERVO_TYPE 
+  if PARAM_MMU_VENDOR = "MMX" || PARAM_MMU_VENDOR = "PicoMMU"
+    config SERVO_TYPE_MG_996R
+      bool "MG-996R"
+  endif
+endchoice
+
+if SERVO_TYPE_MG_996R
+  config PARAM_SERVO_MIN_PULSE_WIDTH
+    default "0.00070"
+
+  config PARAM_SERVO_MAX_PULSE_WIDTH
+    default "0.00230"
+
+  config PARAM_SERVO_MAX_ANGLE
+    default 180
+
+  config PARAM_SERVO_DURATION
+    default "0.6"
+
+  config PARAM_SERVO_DWELL
+    default "1.0"
+
+  if PARAM_MMU_VENDOR = "MMX"
+    config PARAM_SELECTOR_GATE_ANGLES
+      string
+      default "45, 90, 135, 180"
+  endif
+endif

@@ -1,15 +1,14 @@
 config ADDON_BLOBIFIER
+  help
+    Enable this if you have a Blobifer (or derivative) purging system.
   bool "Enable Blobifier support?"
 
 if ADDON_BLOBIFIER
-  config INSTALL_BLOBIFIER
-    bool "Install Blobifier include in printer.cfg?"
-    default y
-
   menu "Blobifier pins"
     config PIN_BLOBIFIER_SERVO
       string "Blobifier servo pin"
       default "PG14"
+
     config PIN_BLOBIFIER_BUCKET_SWITCH
       string "Blobifier bucket switch pin"
       default "PG15"

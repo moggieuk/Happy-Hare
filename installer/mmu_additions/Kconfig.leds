@@ -1,0 +1,7 @@
+config MMU_HAS_LEDS
+  help
+    Select if your MMU has LEDs. This will install the LED driver but
+    will still need to finialize configuration in the generated klipper
+    config files or you can edit parameters in "Advanced" section.
+  prompt "Has Leds?"
+

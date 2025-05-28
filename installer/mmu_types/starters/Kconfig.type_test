@@ -1,0 +1,30 @@
+config MMU_CUSTOM_TYPE_EVERYTHING
+  help 
+    Select this custom starter config for testing or to create
+    a fully populated set of klipper config files.
+  bool "Test config with everything"
+  select MMU_HAS_SELECTOR
+  select MMU_HAS_SERVO
+  select MMU_HAS_ENCODER
+  select MMU_HAS_ESPOOLER
+  select MMU_HAS_LEDS
+  select MMU_HAS_SENSOR_PRE_GATE
+  select MMU_HAS_SENSOR_POST_GEAR
+  select MMU_HAS_SENSOR_GATE
+  select MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+  select MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+  select MMU_HAS_SENSOR_EXTRUDER
+  select MMU_HAS_SENSOR_TOOLHEAD
+  imply REQUIRE_BOWDEN_MOVE
+  imply VARIABLE_ROTATION_DISTANCES
+  imply VARIABLE_BOWDEN_LENGTHS
+  imply FILAMENT_ALWAYS_GRIPPED
+
+if MMU_CUSTOM_TYPE_EVERYTHING
+  config PARAM_MMU_VENDOR
+    default "Other"
+  config PARAM_MMU_VERSION
+    default "1.0"
+  config PARAM_NUM_GATES
+    default 4
+endif 

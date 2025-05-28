@@ -1,0 +1,26 @@
+# Feetech FT1117M servo
+# Used by Tradrack v1.0
+
+choice CHOICE_SERVO_TYPE 
+  if PARAM_MMU_VENDOR = "Tradrack"
+    config SERVO_TYPE_FEETECH_FT1117M
+      bool "Feetech FT1117M"
+  endif
+endchoice
+
+if SERVO_TYPE_FEETECH_FT1117M
+  config PARAM_SERVO_MIN_PULSE_WIDTH
+    default "0.00070"
+
+  config PARAM_SERVO_MAX_PULSE_WIDTH
+    default "0.00220" 
+
+  config PARAM_SERVO_MAX_ANGLE
+    default 131
+
+  config PARAM_SERVO_UP_ANGLE
+    default 145 
+
+  config PARAM_SERVO_DOWN_ANGLE
+    default 1 
+endif

@@ -1,0 +1,11 @@
+if !MMU_CANNOT_HAVE_ESPOOLER
+
+  config MMU_HAS_ESPOOLER
+    help
+      An eSpooler is primarily used to rewind filament to prevent
+      it tangling but can also be driven to assist loading and even
+      assist in print. Select if you have added a DC motor controlled
+      eSpooler.
+    prompt "Has eSpooler?"
+
+endif

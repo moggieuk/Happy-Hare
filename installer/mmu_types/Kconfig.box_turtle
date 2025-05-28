@@ -1,0 +1,70 @@
+config MMU_TYPE_BOX_TURTLE_1_0
+  help
+    Box Turtle is typically a 4 gate type-B MMU/AFC with separate
+    gear steppers for each gate and untilizes a DC motor for respooling
+    and optionally assisting spool movement. Build options include TurtleNeck
+    "buffer" which provides feeback of filament compression/tension.
+  bool "Box Turtle v1.0"
+  select MMU_HAS_ESPOOLER
+  select MMU_HAS_LEDS
+  select VARIABLE_ROTATION_DISTANCES
+  select REQUIRE_BOWDEN_MOVE
+  select FILAMENT_ALWAYS_GRIPPED
+  select MMU_CANNOT_HAVE_FILAMENT_BUFFER
+
+if MMU_TYPE_BOX_TURTLE_1_0
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
+
+if MMU_TYPE_BOX_TURTLE_1_0
+  choice CHOICE_TURTLE_NECK
+    prompt "Turtle Neck"
+
+    config EXT_TURTLE_NECK_V1
+      help
+        The v1 version is only able to detect filament compression.
+      bool "Turtle Neck v1"
+      select MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+
+    config EXT_TURTLE_NECK_V2
+      help
+        The v2 version has both filament tension and compression switches.
+      bool "Turtle Neck v2"
+      select MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+      select MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+  endchoice
+endif
+
+if MMU_TYPE_BOX_TURTLE_1_0
+  config PARAM_MMU_VENDOR
+    default "BoxTurtle"
+  config PARAM_MMU_VERSION
+    default "1.0"  
+  config PARAM_NUM_GATES
+    default 4
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "50:10"
+  config PARAM_GEAR_RUN_CURRENT
+    default "0.7"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.1"
+
+  config PARAM_GATE_HOMING_MAX
+    default "300"
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    default "200"
+  config PARAM_GATE_PARKING_DISTANCE
+    default "100"
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default "100"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_GATE
+  endchoice
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 

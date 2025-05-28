@@ -1,21 +1,31 @@
-choice CHOICE_MMU_TYPE 
-  config MMU_TYPE_VVD_1_0
-    bool "BTT ViViD"
-    select MMU_HAS_SELECTOR
-    select REQUIRE_BOWDEN_MOVE
-endchoice
+config MMU_TYPE_VVD_1_0
+  bool "BTT ViViD"
+  select MMU_HAS_SELECTOR
+  select MMU_HAS_LEDS
+  select MMU_HAS_SYNC_FEEDBACK
+  select REQUIRE_BOWDEN_MOVE
+  select MMU_CANNOT_HAVE_ESPOOLER
+  select MMU_CANNOT_HAVE_FILAMENT_BUFFER
+  depends on n # Not released yet
+
+if MMU_TYPE_VVD_1_0
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
 
 if MMU_TYPE_VVD_1_0
   config PARAM_MMU_VENDOR
     default "VVD"
   config PARAM_MMU_VERSION
     default "1.0" 
-
   config PARAM_NUM_GATES
     default 4
 
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
+  config PARAM_GEAR_ROTATION_DISTANCE
+    default "7.8"
   config PARAM_GEAR_RUN_CURRENT
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
@@ -26,8 +36,6 @@ if MMU_TYPE_VVD_1_0
     default "0.4"
   config PARAM_GEAR_HOMING_SPEED
     default "80"
-  config PARAM_GEAR_ROTATION_DISTANCE
-    default "7.8"
 
   config PARAM_GATE_PARKING_DISTANCE
     default "-10"

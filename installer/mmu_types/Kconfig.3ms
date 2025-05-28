@@ -1,9 +1,13 @@
-choice CHOICE_MMU_TYPE
-  config MMU_TYPE_3MS_1_0
-    bool "3MS v1.0"
-    select VARIABLE_ROTATION_DISTANCES
-    select FILAMENT_ALWAYS_GRIPPED
-endchoice
+config MMU_TYPE_3MS_1_0
+  bool "3MS v1.0"
+  select VARIABLE_ROTATION_DISTANCES
+  select FILAMENT_ALWAYS_GRIPPED
+
+if MMU_TYPE_3MS_1_0
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
 
 if MMU_TYPE_3MS_1_0
   config PARAM_MMU_VENDOR
@@ -30,7 +34,6 @@ if MMU_TYPE_3MS_1_0
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_EXTRUDER
   endchoice
-  
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     default EXTRUDER_HOMING_ENDSTOP_EXTRUDER
   endchoice
