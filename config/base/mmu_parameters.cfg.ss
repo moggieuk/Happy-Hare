@@ -18,7 +18,7 @@
 #
 # Notes:
 #   Macro configuration is specified separately in 'mmu_macro_vars.cfg'.
-#   Full details in https://github.com/moggieuk/Happy-Hare/tree/main/doc/configuration.md
+#   Full details in the Happy Hare wiki: https://github.com/moggieuk/Happy-Hare/wiki
 #
 [mmu]
 happy_hare_version: {happy_hare_version}			# Don't mess, used for upgrade detection
