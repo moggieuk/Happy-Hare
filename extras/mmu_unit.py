@@ -429,7 +429,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.print_time = 0.
         self.special_queuing_state = "NeedPrime"
         self.priming_timer = None
-        self.drip_completion = None
+        self.drip_completion = None # TODO No longer part of Klipper >v0.13.0-46
         # Flush tracking
         self.flush_timer = self.reactor.register_timer(self._flush_handler)
         self.do_kick_flush_timer = True
@@ -450,6 +450,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
         self.extruder = DummyExtruder(self.printer)
+        self.extra_axes = [self.extruder]
 
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
 

@@ -482,6 +482,8 @@ class Mmu:
 
         # Turn off splash bling for boring people
         self.serious = config.getint('serious', 0, minval=0, maxval=1) # Not exposed
+        # Suppress the Kalico warning for dangerous people
+        self.suppress_kalico_warning = config.getint('suppress_kalico_warning', 0, minval=0, maxval=1) # Not exposed
 
         # Currently hidden and testing options
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1) # Not exposed
@@ -1288,7 +1290,10 @@ class Mmu:
             msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % self._fversion(self.config_version)
             self.log_always(msg, color=True)
             if self.kalico:
-                self.log_error("Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!")
+                if self.suppress_kalico_warning:
+                    self.log_trace("Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed! Message was suppressed.")
+                else:
+                    self.log_error("Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!")
             self._set_print_state("initialized")
 
             # Use pre-gate sensors to adjust gate map
@@ -2022,7 +2027,7 @@ class Mmu:
 
             # Tightening
             if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
-                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder().get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
+                msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
 
             msg += "\n\nUnload Sequence:"
 
@@ -3750,7 +3755,7 @@ class Mmu:
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > self.extruder_temp_variance:
                 with self.wrap_action(self.ACTION_HEATING):
                     self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
-                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=extruder MINIMUM=%.1f MAXIMUM=%.1f" % (new_target_temp - self.extruder_temp_variance, new_target_temp + self.extruder_temp_variance))
+                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=%s MINIMUM=%.1f MAXIMUM=%.1f" % (self.extruder_name, new_target_temp - self.extruder_temp_variance, new_target_temp + self.extruder_temp_variance))
 
     def _selected_tool_string(self, tool=None):
         if tool is None:
