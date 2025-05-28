@@ -484,6 +484,8 @@ class Mmu:
 
         # Turn off splash bling for boring people
         self.serious = config.getint('serious', 0, minval=0, maxval=1)
+        # Suppress the Kalico warning for dangerous people
+        self.suppress_kalico_warning = config.getint('suppress_kalico_warning', 0, minval=0, maxval=1)
 
         # Currently hidden and testing options
         self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
@@ -1269,7 +1271,10 @@ class Mmu:
             msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % self._fversion(self.config_version)
             self.log_always(msg, color=True)
             if self.kalico:
-                self.log_error("Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!")
+                if self.suppress_kalico_warning:
+                    self.log_trace("Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed! Message was suppressed.")
+                else:
+                    self.log_error("Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!")
             self._set_print_state("initialized")
 
             # Use pre-gate sensors to adjust gate map
