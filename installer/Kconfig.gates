@@ -17,7 +17,7 @@ menu "Gate loading & parking"
     default "10"
 
   config PARAM_GATE_FINAL_EJECT_DISTANCE
-    string "Distance to eject filament on eject rather than unload (mm)"
+    string "Distance to eject filament after unload (mm)"
     default "0"
 
 endmenu

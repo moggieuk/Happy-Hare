@@ -1,4 +1,8 @@
 config MMU_TYPE_KMS_1_0
+ help
+   KMS is a type-B MMU with kits from BIQU. It had many features (including
+   integrated encoder) in a sealed enclosure utilizing a passive respooler
+   system based on Filamentalist.
   bool "KMS v1.0"
   select MMU_HAS_ENCODER
   select MMU_HAS_ESPOOLER

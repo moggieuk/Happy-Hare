@@ -1,6 +1,6 @@
 config MMU_TYPE_QUATTRO_BOX_1_0
   help
-    QuattroBox is type-B MMU with 4 gates. It uses a Filamentum based
+    QuattroBox is type-B MMU with 4 gates. It uses a Filamentalist based
     design for spool respooling leveraging gear steppers for motion.
     Has integrated encoder for measurement of filament movement.
     Has eject button option -- be sure to install eject button addon.
@@ -71,7 +71,7 @@ endif
 
 config MMU_TYPE_QUATTRO_BOX_1_1
   help
-    QuattroBox is type-B MMU with 4 gates. It uses a Filamentum based
+    QuattroBox is type-B MMU with 4 gates. It uses a Filamentalist based
     design for spool respooling leveraging gear steppers for motion.
     Has integrated encoder for measurement of filament movement.
     Has eject button option -- be sure to install eject button addon.

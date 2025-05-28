@@ -1,4 +1,9 @@
 config MMU_TYPE_TRADRACK_1_0
+ help
+   Tradrack is a type-A MMU designed by the Annex Engineering team.
+   It differed from ERCF in that it is easier to add additional gates/lanes
+   but also uses the same BMG gear to drive all filaments. It has a shared
+   gate sensor but a Binky based encoder is a popular option.
   bool "Tradrack v1.0"
   select MMU_HAS_SELECTOR
   select MMU_HAS_SERVO
@@ -9,6 +14,18 @@ config MMU_TYPE_TRADRACK_1_0
 if MMU_TYPE_TRADRACK_1_0
   rsource "../Kconfig.num_gates"
   rsource "../servos/Kconfig"
+
+  menu "Project Options"
+    help
+      If you have any project upgrades then you can specify them here.
+
+    config MOD_BINKY
+      bool "Binky encoder"
+      help
+        Select if building with a Binky based encoder.
+      imply MMU_HAS_ENCODER
+  endmenu
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     rsource "../mmu_additions/Kconfig"
   endif
@@ -20,7 +37,7 @@ if MMU_TYPE_TRADRACK_1_0
   config PARAM_MMU_VERSION
     default "1.0"
   config PARAM_NUM_GATES
-    default 8
+    default 10
 
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0
@@ -39,8 +56,6 @@ if MMU_TYPE_TRADRACK_1_0
     default "0.4"
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0
-  config PARAM_ENCODER_RESOLUTION
-    default "1.0" if MOD_BINKY
 
   config PARAM_GATE_PARKING_DISTANCE
     default "48" if MOD_BINKY 

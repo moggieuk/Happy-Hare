@@ -7,9 +7,13 @@ config MMU_HAS_LEDS
 
 if MMU_HAS_LEDS
   config ENABLE_LEDS
+    help
+      This allows you to install but turn off LEDs.
     prompt "Enable on start?"
 
   config ANIMATE_LEDS
+    help
+      This allows you to turn off LED animations perhaps reducing the overhead
+      on your main klipper CPU. Only disable if you have frequent TTC errors.
     prompt "Enable animation?"
 endif
-

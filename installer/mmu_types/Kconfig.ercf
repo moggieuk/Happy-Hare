@@ -137,7 +137,7 @@ if MMU_TYPE_ERCF_2_0
       bool "Has Cotton Tail filament buffer?"
       help 
         Does MMU have the Cotton Tail filament buffer to catch the uncoiled
-        filament on unload. NOTE unselect if you are using Filamentum.
+        filament on unload. NOTE unselect if you are using Filamentalist.
   endmenu
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE

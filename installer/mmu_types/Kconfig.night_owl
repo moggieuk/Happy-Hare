@@ -2,7 +2,7 @@ config MMU_TYPE_NIGHT_OWL_1_0
   help
     Night Owl is type-B MMU similar to Box Turtle but without the
     active dc-motor respooler and often with just 2 gates. Instead
-    of active respooler it uses a Filamentum based design leveraging
+    of active respooler it uses a Filamentalist based design leveraging
     gear steppers for motion.
   bool "Night Owl v1.0"
   select MMU_HAS_LEDS

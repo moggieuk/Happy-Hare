@@ -1,4 +1,9 @@
 config MMU_TYPE_ANGRY_BEAVER_1_0
+  help
+    Angry Beaver is a very simple type-B MMU design that emphasizes
+    reliability. A unique feature is the 4-filament bowden that parks
+    filament near the toolhead for fast tool swaps. Exploiting this
+    feature does limit the MMU to 4 gates/lanes.
   bool "Angry Beaver v1.0"
   select MMU_HAS_LEDS
   select VARIABLE_ROTATION_DISTANCES
