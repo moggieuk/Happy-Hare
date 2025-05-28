@@ -1,42 +1,44 @@
 if MMU_HAS_LEDS
+  menu "Leds"
+    config ENABLE_LEDS
+      bool "Enable on start?"
+      default y
+    config PARAM_LED_ENABLE
+      int
+      default 0
+      default 1 if ENABLE_LEDS
 
-  config ENABLE_LEDS
-    bool "Enable?"
-  config PARAM_LED_ENABLE
-    int
-    default 0
-    default 1 if ENBLE_LEDS
+    config ANIMATE_LEDS
+      bool "Enable animation?"
+      default y
+    config PARAM_LED_ANIMATION
+      int
+      default 0
+      default 1 if ANIMATE_LEDS
 
-  config ANIMATE_LEDS
-    bool "Enable animation?"
-  config PARAM_LED_ANIMATION
-    int
-    default 0
-    default 1 if ANIMATE_LEDS
+    config PARAM_CHAIN_COUNT
+      int "Chain count"
+      default PARAM_NUM_GATES
 
-  config PARAM_CHAIN_COUNT
-    int
-    default PARAM_NUM_GATES
+    config PARAM_COLOR_ORDER
+      string "Color order"
+      default "GRBW"
 
-  config PARAM_COLOR_ORDER
-    string
-    default "GRBW"
+    config PARAM_EXIT_LEDS
+      string "Exit leds"
+      default "neopixel:mmu_leds (1-4)"
 
-  config PARAM_EXIT_LEDS
-    string
-    default "neopixel:mmu_leds (1-4)"
+    config PARAM_ENTRY_LEDS
+      string "Entry leds"
+      default ""
 
-  config PARAM_ENTRY_LEDS
-    string
-    default ""
+    config PARAM_STATUS_LEDS
+      string "Status leds"
+      default ""
 
-  config PARAM_STATUS_LEDS
-    string
-    default ""
-
-  config PARAM_LOGO_LEDS
-    string
-    default ""
-
+    config PARAM_LOGO_LEDS
+      string "Logo leds"
+      default ""
+  endmenu
 endif
 

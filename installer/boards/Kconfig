@@ -5,6 +5,7 @@ rsource "Kconfig.*"
 
 choice CHOICE_BOARD_TYPE
   prompt "Board type"
+  default BOARD_TYPE_OTHER
   help 
     Step 4 - MCU type
     Select the type of mcu board you are using. This will configure
@@ -13,4 +14,5 @@ choice CHOICE_BOARD_TYPE
 
   config BOARD_TYPE_OTHER
     bool "Not listed / Other"
+    select OVERRIDE_PINS # Force user to define pins
 endchoice

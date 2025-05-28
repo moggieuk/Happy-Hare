@@ -5,3 +5,11 @@ config MMU_HAS_LEDS
     config files or you can edit parameters in "Advanced" section.
   prompt "Has Leds?"
 
+if MMU_HAS_LEDS
+  config ENABLE_LEDS
+    prompt "Enable on start?"
+
+  config ANIMATE_LEDS
+    prompt "Enable animation?"
+endif
+
