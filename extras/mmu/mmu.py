@@ -450,7 +450,6 @@ class Mmu:
         self.espooler_assist_burst_trigger_max = config.getint("espooler_assist_burst_trigger_max", 3, minval=1)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
 
-
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
         self.preload_attempts = config.getint('preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament
@@ -482,11 +481,11 @@ class Mmu:
         self.console_always_output_full = config.getint('console_always_output_full', 1, minval=0, maxval=1)
 
         # Turn off splash bling for boring people
-        self.serious = config.getint('serious', 0, minval=0, maxval=1)
+        self.serious = config.getint('serious', 0, minval=0, maxval=1) # Not exposed
 
         # Currently hidden and testing options
-        self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1)
-        self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1)
+        self.test_random_failures = config.getint('test_random_failures', 0, minval=0, maxval=1) # Not exposed
+        self.test_force_in_print = config.getint('test_force_in_print', 0, minval=0, maxval=1) # Not exposed
 
         # Klipper tuning (aka hacks)
         # Timer too close is a catch all error, however it has been found to occur on some systems during homing and probing

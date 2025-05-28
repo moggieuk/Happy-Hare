@@ -194,6 +194,7 @@ class LinearSelector(BaseSelector, object):
         #  cad_block_width        - width of bearing block (ERCF v1.1)
         #  cad_bypass_block_width - width of bypass block (ERCF v1.1)
         #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
+        #  cad_selector_tolerance - extra movement allowed by selector
         #
         self.cad_gate0_pos = 4.2
         self.cad_gate_width = 21.
