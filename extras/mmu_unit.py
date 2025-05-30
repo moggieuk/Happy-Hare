@@ -681,6 +681,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             msg += "\n" if axis > 0 else ""
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
             msg += header[:100] + "\n"
+            gsd = None
             for idx, s in enumerate(self.all_gear_rail_steppers if axis == 1 else rail.get_steppers()):
                 ss = ""
                 if axis == 1:

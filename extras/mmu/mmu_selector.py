@@ -106,7 +106,7 @@ class BaseSelector:
         }
 
     def get_mmu_status_config(self):
-        return "\nSelector Type: %s" % self.__class__.__name__
+        return "Selector Type: %s" % self.__class__.__name__
 
     def set_test_config(self, gcmd):
         pass
@@ -390,7 +390,7 @@ class LinearSelector(BaseSelector, object):
         return status
 
     def get_mmu_status_config(self):
-        msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
+        msg = "Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
         msg += self.servo.get_mmu_status_config()
         return msg
 
@@ -1211,7 +1211,7 @@ class RotarySelector(BaseSelector, object):
         return status
 
     def get_mmu_status_config(self):
-        msg = "\nSelector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
+        msg = "Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
         msg += ". Filament is %s" % ("GRIPPED" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "RELEASED")
         return msg
 

@@ -1956,13 +1956,15 @@ class Mmu:
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
         on_off = lambda x: "ON" if x else "OFF"
 
-        msg = "MMU: Happy Hare %s running %s v%s" % (self._fversion(self.config_version), self.mmu_unit().mmu_vendor, self.mmu_unit().mmu_version_string)
-        msg += " with %d gates" % self.num_gates
-        msg += (" over %d units" % self.mmu_machine.num_units) if self.mmu_machine.num_units > 1 else ""
-        msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_mmu_paused() else "OPERATIONAL")
-        msg += self.selector.get_mmu_status_config()
-        if self.has_encoder():
-            msg += ". Encoder reads %.1fmm" % self.get_encoder_distance()
+        msg = "MMU: Happy Hare %s controlling %d units:" % (self._fversion(self.config_version), self.mmu_machine.num_units)
+        msg += (" (DISABLED)" if not self.is_enabled else " (PAUSED)" if self.is_mmu_paused() else "")
+        for i in range(self.mmu_machine.num_units):
+            unit = self.mmu_machine.get_mmu_unit_by_index(i)
+            msg += "\n+ %s v%s (gates %d-%d)" % (unit.mmu_vendor, unit.mmu_version_string, unit.first_gate, unit.first_gate + unit.num_gates)
+            msg += "\n%s %s" % (UI_CASCADE, self.selector.get_mmu_status_config())
+            if self.has_encoder():
+                msg += ". Encoder reads %.1fmm" % self.get_encoder_distance()
+
         msg += "\nPrint state is %s" % self.print_state.upper()
         msg += ". Tool %s selected on gate %s%s" % (self._selected_tool_string(), self._selected_gate_string(), self._selected_unit_string())
         msg += ". Toolhead position saved" if self.saved_toolhead_operation else ""
@@ -1970,7 +1972,7 @@ class Mmu:
         if self.sync_feedback_enable:
             msg += "\nSync feedback indicates filament in bowden is: %s" % self._get_sync_feedback_string(detail=True).upper()
             if not self.sync_feedback_operational:
-                msg += " (not currently active)"
+                msg += " (but not currently active)"
         elif self.sync_feedback_enable:
             msg += "\nSync feedback is disabled"
 
