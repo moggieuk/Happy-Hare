@@ -23,7 +23,7 @@ config F_VERSION
 
 # y to shows MMU additions menu inline with type
 # n to show as top level menu
-config SHOW_EMBEDDED_MMU_ADDITIONS
+config SHOW_MMU_ADDITIONS_WITH_TYPE
   bool
   default n
 
@@ -37,7 +37,7 @@ comment '							'
 rsource "mmu_types/Kconfig"
 
 # Step 2 - MMU Additions/Customization (optionally inline with base type)
-if !SHOW_EMBEDDED_MMU_ADDITIONS
+if !SHOW_MMU_ADDITIONS_WITH_TYPE
   rsource "mmu_additions/Kconfig"
 endif
 
