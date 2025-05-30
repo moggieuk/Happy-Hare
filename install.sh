@@ -1747,10 +1747,10 @@ questionaire() {
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=0
             _hw_require_bowden_move=1
-            _hw_filament_always_gripped=1
-            _hw_gear_gear_ratio="1.28:1"
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="1.25:1"
             _hw_gear_run_current=0.7
-            _hw_gear_hold_current=0.1
+            _hw_gear_hold_current=0.4
             _hw_chain_count=4
             _hw_exit_leds="neopixel:mmu_leds (1-4)"
             _hw_entry_leds=""
@@ -2242,6 +2242,7 @@ questionaire() {
             echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
             OPTIONS=()
             option MMX_BOM 'MG996R'
+            option EMAX_ES3004 'EMAX ES3004'
             option OTHER 'Not listed / Other'
             prompt_option opt 'Servo' "${OPTIONS[@]}"
             case $opt in
@@ -2253,6 +2254,13 @@ questionaire() {
                     _param_servo_duration=0.6
                     _param_servo_dwell=1.0
                     ;;
+                "$EMAX_ES3004")
+                    _hw_maximum_servo_angle=140
+                    _hw_minimum_pulse_width=0.00070
+                    _hw_maximum_pulse_width=0.00230
+                    _param_servo_always_active=0
+                    _param_servo_duration=0.6
+                    _param_servo_dwell=1.2
                 *)
                     _hw_maximum_servo_angle=180
                     _hw_minimum_pulse_width=0.001
