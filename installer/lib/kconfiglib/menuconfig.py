@@ -918,7 +918,7 @@ def _menuconfig(stdscr):
 
         elif c in ("f", "F"):
             _show_help = not _show_help
-            _set_style(_help_win, "show-help" if _show_help else "help")
+            # _set_style(_help_win, "show-help" if _show_help else "help")
             _resize_main()
 
         elif False and c in ("c", "C"):
@@ -1023,7 +1023,8 @@ def _init():
     _shown = _shown_nodes(_cur_menu)
     _sel_node_i = _menu_scroll = 0
 
-    _show_help = _show_name = False
+    _show_help = True
+    _show_name = False
 
     # Give windows their initial size
     _resize_main()
@@ -1041,8 +1042,7 @@ def _resize_main():
     _top_sep_win.resize(1, screen_width)
     _bot_sep_win.resize(1, screen_width)
 
-    help_win_height = _SHOW_HELP_HEIGHT if _show_help else \
-        len(_MAIN_HELP_LINES)
+    help_win_height = (_SHOW_HELP_HEIGHT if _show_help and _node_has_help() else 0) + len(_MAIN_HELP_LINES)
 
     menu_win_height = screen_height - help_win_height - 3
 
@@ -1395,8 +1395,9 @@ def _draw_main():
 
     # Indicate when show-name/show-help/show-all mode is enabled
     enabled_modes = []
-    if _show_help:
-        enabled_modes.append("show-help (toggle with [F])")
+    # Happy Hare - Always showing the help lines anyways
+    # if _show_help:
+    #     enabled_modes.append("show-help (toggle with [F])")
     if _show_name:
         enabled_modes.append("show-name")
     if _show_all:
@@ -1405,28 +1406,34 @@ def _draw_main():
         s = " and ".join(enabled_modes) + " mode enabled"
         _safe_addstr(_bot_sep_win, 0, max(term_width - len(s) - 2, 0), s)
 
-    _bot_sep_win.noutrefresh()
-
     #
     # Update the help window, which shows either key bindings or help texts
     #
 
-    _help_win.erase()
+    if _show_help and _node_has_help():  # Happy Hare
+        _set_style(_help_win, "show-help")
+        _resize_main()
+        _help_win.erase()
 
-    if _show_help:
         node = _shown[_sel_node_i]
-        #if isinstance(node.item, (Symbol, Choice)) and node.help:
-        if (isinstance(node.item, (Symbol, Choice)) or node.item == MENU) and node.help: # Happy Hare
-            #help_lines = textwrap.wrap(node.help, _width(_help_win))
-            help_lines = node.help.split('\n') # Happy Hare - Retain line formatting
-            for i in range(min(_height(_help_win), len(help_lines))):
-                _safe_addstr(_help_win, i, 0, help_lines[i])
-        else:
-            _safe_addstr(_help_win, 0, 0, "(no help available)")
-    else:
-        for i, line in enumerate(_MAIN_HELP_LINES):
-            _safe_addstr(_help_win, i, 0, line)
+        help_lines = node.help.split("\n")  # Happy Hare - Retain line formatting
+        for i in range(min(_height(_help_win), len(help_lines))):
+            _safe_addstr(_help_win, i, 0, help_lines[i])
 
+        # Happy Hare - Reset the background of the main help lines
+        _set_style(_help_win, "help")
+        for i in range(len(_MAIN_HELP_LINES)):
+            _help_win.chgat(_SHOW_HELP_HEIGHT + i, 0, -1, _style["help"])
+    else:
+        _set_style(_help_win, "help")
+        _resize_main()
+        _help_win.erase()
+
+    # Happy Hare - Always show the main help lines
+    for i, line in enumerate(_MAIN_HELP_LINES):
+        _safe_addstr(_help_win, (_SHOW_HELP_HEIGHT if _show_help and _node_has_help() else 0) + i, 0, line)
+
+    _bot_sep_win.noutrefresh()
     _help_win.noutrefresh()
 
     #
@@ -1554,6 +1561,11 @@ def _shown_nodes(menu):
         return res
 
     return rec(menu.list)
+
+
+def _node_has_help():
+    node = _shown[_sel_node_i]
+    return (isinstance(node.item, (Symbol, Choice)) or node.item == MENU) and node.help
 
 
 def _visible(node):
