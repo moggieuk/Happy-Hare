@@ -7,9 +7,8 @@ menu "Paths & Services"
 
   config KLIPPER_HOME
     string "Klipper directory"
-    # will be bootstrapped by Makefile. (default ~/klipper or /usr/share/klipper, depending on architecture)
-    # Or can be overridden on first call with 'CONFIG_KLIPPER_HOME=/klipper/path make menuconfig'
-    default "$(CONFIG_KLIPPER_HOME)"
+    default "/usr/share/klipper" if $(to_bool, [ -d "/usr/share/klipper" ])
+    default "~/klipper"
 
   config PRINTER_CONFIG_FILE
     string "Printer config file"

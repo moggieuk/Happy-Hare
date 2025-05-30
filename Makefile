@@ -2,6 +2,7 @@ SHELL=/usr/bin/env sh
 PY:=python
 MAKEFLAGS += --jobs 16 # Parallel build
 
+
 # Print Colors (exported for use in py installer)
 ifneq ($(shell which tput 2>/dev/null),)
   export C_OFF:=$(shell tput -Txterm-256color sgr0)
@@ -20,7 +21,7 @@ else
 endif
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
-# Just checking for root isn't enough, as user on Creality K1 printers usually run as root (ugh)
+# Just checking for root isn't enough, as users on Creality K1 printers usually run as root (ugh)
 ifneq ($(SUDO_COMMAND),) 
   $(error $(C_ERROR)Please do not run with sudo$(C_OFF))
 endif
@@ -43,17 +44,7 @@ else
 endif
 
 export IN=$(OUT)/in
-
-
-# If CONFIG_KLIPPER_HOME is not yet set by .config, set it to the default value.
-# This is required to make menuconfig work the first time.
-# If the klipper directory is not at one of the standard locations,
-# it can be overridden with 'make CONFIG_KLIPPER_HOME=/path/to/klipper <target>'
-ifneq ($(wildcard /usr/share/klipper),)
-  export CONFIG_KLIPPER_HOME ?= /usr/share/klipper
-else
-  export CONFIG_KLIPPER_HOME ?= ~/klipper
-endif
+export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 
 # replace ~ with $(HOME) and remove quotes
 unwrap = $(subst ~,$(HOME),$(patsubst "%",%,$(1)))
@@ -62,9 +53,6 @@ KLIPPER_CONFIG_HOME := $(call unwrap,$(CONFIG_KLIPPER_CONFIG_HOME))
 MOONRAKER_HOME := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
 PRINTER_CONFIG_FILE := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
 MOONRAKER_CONFIG_FILE := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
-
-export PYTHONPATH:=$(KLIPPER_HOME)/lib/kconfiglib:$(PYTHONPATH)
-
 BUILD_MODULE:=$(PY) -m installer.build $(V)
 
 hh_klipper_extras_files = $(patsubst extras/%,%,$(wildcard extras/*.py extras/*/*.py))
@@ -262,10 +250,10 @@ $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*
 # touch in case .config does not get updated by olddefconfig.py
 ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig) # only if menuconfig is not the target, else it will run twice
 	$(Q)$(MAKE) MAKEFLAGS= menuconfig
-	$(Q)$(PY) $(SRC)/installer/lib/kconfiglib/olddefconfig.py $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case user doesn't save it
+	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case the user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)
 endif
 
 menuconfig: $(SRC)/installer/Kconfig
-	$(Q)MENUCONFIG_STYLE="aquatic" $(PY) $(SRC)/installer/lib/kconfiglib/menuconfig.py $(SRC)/installer/Kconfig
+	$(Q)MENUCONFIG_STYLE="aquatic" $(PY) -m menuconfig $(SRC)/installer/Kconfig
 
