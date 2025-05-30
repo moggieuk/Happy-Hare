@@ -214,11 +214,10 @@ class MmuUnit:
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
         self.has_bypass = bool(config.getint('has_bypass', has_bypass))
-
         self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
         self.selector_type = config.getchoice(
             'selector_type', 
-            {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector']},
+            {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'ServoSelector2']},
             selector_type
         )
 
