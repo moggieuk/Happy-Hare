@@ -50,16 +50,23 @@ class KConfig(kconfiglib.Kconfig):
         for sym in self.syms:
             if self.syms[sym].user_value is None:
                 continue
+
+            # Convert
+            if self.syms[sym].type in [kconfiglib.BOOL, kconfiglib.TRISTATE]:
+                value = 1 if self.syms[sym].user_value else 0
+            else:
+                value = self.syms[sym].user_value
+
             if re.match(r".+\d+$", sym):
                 split = re.split(r"(\d+$)", sym)
                 key = split[0]
                 nr = int(split[1])
                 if key in result:
-                    result[key][nr] = self.syms[sym].user_value
+                    result[key][nr] = value
                 else:
-                    result[key] = {nr: self.syms[sym].user_value}
+                    result[key] = {nr: value}
             else:
-                result[sym] = self.syms[sym].user_value
+                result[sym] = value
         return result
 
         # return {sym: self.syms[sym].user_value for sym in self.syms if self.syms[sym].user_value is not None}
@@ -280,9 +287,9 @@ def install_includes(dest_file, kconfig):
 
     check_include(builder, "INSTALL_12864_MENU", "mmu/optional/mmu_menu.cfg")
     check_include(builder, "INSTALL_CLIENT_MACROS", "mmu/optional/client_macros.cfg")
-    check_include(builder, "INSTALL_EREC_CUTTER", "mmu/addons/mmu_erec_cutter.cfg")
-    check_include(builder, "INSTALL_BLOBIFIER", "mmu/addons/blobifier.cfg")
-    check_include(builder, "INSTALL_EJECT_BUTTONS", "mmu/addons/mmu_eject_buttons.cfg")
+    check_include(builder, "ADDON_EREC_CUTTER", "mmu/addons/mmu_erec_cutter.cfg")
+    check_include(builder, "ADDON_BLOBIFIER", "mmu/addons/blobifier.cfg")
+    check_include(builder, "ADDON_EJECT_BUTTONS", "mmu/addons/mmu_eject_buttons.cfg")
 
     if not builder.has_section("include mmu/base/*.cfg"):
         logging.debug("Adding include [include mmu/base/*.cfg]")

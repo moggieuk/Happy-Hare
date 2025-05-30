@@ -7,8 +7,8 @@ config MMU_CUSTOM_TYPE_A
   bool "Custom type A - with selector"
   imply MMU_HAS_SELECTOR
   imply MMU_HAS_SERVO
-  imply REQUIRE_BOWDEN_MOVE
-  imply VARIABLE_ROTATION_DISTANCES
+  imply PARAM_REQUIRE_BOWDEN_MOVE
+  imply PARAM_VARIABLE_ROTATION_DISTANCES
   
 if MMU_CUSTOM_TYPE_A 
   rsource "../../Kconfig.num_gates"
@@ -23,7 +23,7 @@ if MMU_CUSTOM_TYPE_A
       Select if the filament selection or gripping mechanism uses a servo.
     bool "Has selector servo?"
 
-  config VARIABLE_ROTATION_DISTANCES
+  config PARAM_VARIABLE_ROTATION_DISTANCES
     help
       Select if each gate has a different BMG gear and thus can have different
       rotation distances. Unselect if a single drive gear moved to the selected

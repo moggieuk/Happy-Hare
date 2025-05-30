@@ -5,13 +5,13 @@ config MMU_CUSTOM_TYPE_B
     add options under "MMU Additions".
     You can fine tune the klipper configuration as necessary.
   bool "Custom type B - with multiple filament drivers"
-  select VARIABLE_ROTATION_DISTANCES
-  select FILAMENT_ALWAYS_GRIPPED
-  imply VARIABLE_BOWDEN_LENGTHS
-  imply REQUIRE_BOWDEN_MOVE
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  imply PARAM_VARIABLE_BOWDEN_LENGTHS
+  imply PARAM_REQUIRE_BOWDEN_MOVE
 
 if MMU_CUSTOM_TYPE_B
-  config REQUIRE_BOWDEN_MOVE
+  config PARAM_REQUIRE_BOWDEN_MOVE
     help
       If you have a single long bowden tube connecting you toolhead
       you should select this option. Unselect if you have a

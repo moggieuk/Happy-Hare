@@ -5,8 +5,8 @@ config MMU_TYPE_MMX_1_0
    bool "MMX 1.0"
    select MMU_HAS_SERVO
    select MMU_HAS_LEDS
-   select REQUIRE_BOWDEN_MOVE
-   select FILAMENT_ALWAYS_GRIPPED
+   select PARAM_REQUIRE_BOWDEN_MOVE
+   select PARAM_FILAMENT_ALWAYS_GRIPPED
 
 if MMU_TYPE_MMX_1_0
   rsource "../servos/Kconfig"

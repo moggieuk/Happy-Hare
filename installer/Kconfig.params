@@ -45,32 +45,16 @@ menu "Parameters"
     default 0
     default 1 if HAS_BYPASS
 
-  config VARIABLE_BOWDEN_LENGTHS
-    bool "Variable bowden lengths?" 
   config PARAM_VARIABLE_BOWDEN_LENGTHS
-    int
-    default 0
-    default 1 if VARIABLE_BOWDEN_LENGTHS
+    bool "Variable bowden lengths?" 
 
-  config VARIABLE_ROTATION_DISTANCES
-    bool "Variable rotation distances?"
   config PARAM_VARIABLE_ROTATION_DISTANCES
-    int
-    default 0
-    default 1 if VARIABLE_ROTATION_DISTANCES
+    bool "Variable rotation distances?"
 
-  config REQUIRE_BOWDEN_MOVE
-    bool "Require bowden move?"
   config PARAM_REQUIRE_BOWDEN_MOVE
-    int
-    default 0
-    default 1 if REQUIRE_BOWDEN_MOVE
+    bool "Require bowden move?"
 
-  config FILAMENT_ALWAYS_GRIPPED
-    bool "Filament always gripped?"
   config PARAM_FILAMENT_ALWAYS_GRIPPED
-    int 
-    default 0
-    default 1 if FILAMENT_ALWAYS_GRIPPED
+    bool "Filament always gripped?"
 
 endmenu
