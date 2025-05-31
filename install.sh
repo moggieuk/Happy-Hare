@@ -30,9 +30,6 @@ usage() {
     exit 0
 }
 
-F_INSTALL=0
-F_UNINSTALL=0
-
 while getopts "a:b:k:c:m:r:idsze" arg; do
     case $arg in
     a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
@@ -46,7 +43,7 @@ while getopts "a:b:k:c:m:r:idsze" arg; do
     #     KLIPPER_SERVICE=klipper_${OPTARG}.service
     #     echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
     #     ;;
-    i) F_INSTALL=1 ;;
+    i) F_MENUCONFIG=1 ;;
     d) F_UNINSTALL=1 ;;
     s) export F_NOSERVICE=1 ;;
     z) export F_SKIP_UPDATE=1 ;;
@@ -54,15 +51,18 @@ while getopts "a:b:k:c:m:r:idsze" arg; do
     esac
 done
 
-if [ "${F_INSTALL}" -eq 1 ] && [ "${F_UNINSTALL}" -eq 1 ]; then
+if [ "${F_MENUCONFIG}" -eq 1 ] && [ "${F_UNINSTALL}" -eq 1 ]; then
     echo "${C_ERROR}Can't install and uninstall at the same time!${C_OFF}"
     usage
 fi
 
-if [ "${F_INSTALL}" -eq 1 ]; then
-    make install
-fi
-
 if [ "${F_UNINSTALL}" -eq 1 ]; then
     make uninstall
+    exit 0
 fi
+
+if [ "${F_MENUCONFIG}" -eq 1 ]; then
+    make menuconfig
+fi
+
+make install
