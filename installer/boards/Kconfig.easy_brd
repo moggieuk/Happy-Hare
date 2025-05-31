@@ -18,6 +18,8 @@ if BOARD_TYPE_EASY_BRD
   config PIN_GEAR_ENABLE
     default "!mmu:PA2" 
 
+  config PIN_SELECTOR_UART
+    default PIN_GEAR_UART 
   config PIN_SELECTOR_STEP
     default "mmu:PA9" 
   config PIN_SELECTOR_DIR
