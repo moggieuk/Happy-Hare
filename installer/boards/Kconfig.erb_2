@@ -1,7 +1,5 @@
-choice CHOICE_BOARD_TYPE
-  config BOARD_TYPE_ERB_2
-    bool "Fysetc Burrows ERB v2"
-endchoice
+config BOARD_TYPE_ERB_2
+  bool "Fysetc Burrows ERB v2"
 
 if BOARD_TYPE_ERB_2
   config PARAM_BOARD_TYPE

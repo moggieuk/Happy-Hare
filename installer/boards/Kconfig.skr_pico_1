@@ -1,15 +1,13 @@
-choice CHOICE_BOARD_TYPE
-  config BOARD_TYPE_SKR_PICO_1
-    bool "BTT SKR Pico v1.0"
-endchoice
-
-choice CHOICE_SERIAL_DEVICE
-  default $(serial_config,1,rp2040)
-endchoice
+config BOARD_TYPE_SKR_PICO_1
+  bool "BTT SKR Pico v1.0"
 
 if BOARD_TYPE_SKR_PICO_1
   config PARAM_BOARD_TYPE
     default "SKR_PICO_1"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,rp2040)
+  endchoice
 
   # MMU Type B
   config PIN_GEAR_UART 

@@ -1,7 +1,5 @@
-choice CHOICE_BOARD_TYPE
-  config BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
-    bool "Mellow EASY-BRD v1.x (with CANbus)"
-endchoice
+config BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
+  bool "Mellow EASY-BRD v1.x (with CANbus)"
 
 if BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
   config PARAM_BOARD_TYPE

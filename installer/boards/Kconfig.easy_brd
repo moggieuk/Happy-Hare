@@ -1,8 +1,5 @@
-choice CHOICE_BOARD_TYPE
-  config BOARD_TYPE_EASY_BRD 
-    bool "Standard EASY-BRD (with SAMD21)"
-endchoice
-
+config BOARD_TYPE_EASY_BRD 
+  bool "Standard EASY-BRD (with SAMD21)"
 
 if BOARD_TYPE_EASY_BRD
   config PARAM_BOARD_TYPE

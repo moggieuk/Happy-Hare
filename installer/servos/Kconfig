@@ -4,11 +4,9 @@ if MMU_HAS_SERVO
     prompt "Selector servo type"
     help
       Select the type of servo you are using for the selector. 
-  endchoice
 
-  rsource  "Kconfig.*"
+    rsource  "Kconfig.*"
 
-  choice CHOICE_SERVO_TYPE
     config SERVO_TYPE_OTHER
       bool "Not listed"
   endchoice

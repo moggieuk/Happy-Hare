@@ -1,7 +1,5 @@
-choice CHOICE_BOARD_TYPE
-  config BOARD_TYPE_EBB42_1_2
-    bool "BTT EBB 42 CANbus V1.2 (for MMX or Pico)"
-endchoice
+config BOARD_TYPE_EBB42_1_2
+  bool "BTT EBB 42 CANbus V1.2 (for MMX or Pico)"
 
 if BOARD_TYPE_EBB42_1_2
   config PARAM_BOARD_TYPE
