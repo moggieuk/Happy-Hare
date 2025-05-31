@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile.debian
     environment:
       - PRINTER_DATA=/home/klippy/printer_data
-      - SKIP_UPDATE=
+      - F_SKIP_UPDATE=1
     volumes:
       - ./config:/home/klippy/printer_data/config
       - ../:/home/klippy/Happy-Hare
@@ -16,7 +16,7 @@ services:
       dockerfile: Dockerfile.alpine
     environment:
       - PRINTER_DATA=/usr/data/printer_data
-      - SKIP_UPDATE=
+      - F_SKIP_UPDATE=1
     volumes:
       - ./config:/usr/data/printer_data/config
       - ../:/usr/data/Happy-Hare

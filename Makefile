@@ -1,7 +1,6 @@
-SHELL=/usr/bin/env sh
+SHELL:=/usr/bin/env sh
 PY:=python
 MAKEFLAGS += --jobs 16 # Parallel build
-
 
 # Print Colors (exported for use in py installer)
 ifneq ($(shell which tput 2>/dev/null),)
@@ -11,13 +10,6 @@ ifneq ($(shell which tput 2>/dev/null),)
   export C_NOTICE:=$(shell tput -Txterm-256color setaf 2)
   export C_WARNING:=$(shell tput -Txterm-256color setaf 3)
   export C_ERROR:=$(shell tput -Txterm-256color setaf 1)
-else
-  export C_OFF:=
-  export C_DEBUG:=
-  export C_INFO:=
-  export C_NOTICE:=
-  export C_WARNING:=
-  export C_ERROR:=
 endif
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
@@ -105,6 +97,13 @@ backup = \
 	if [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
 		echo "$(C_NOTICE)Making a backup of '$(1)' to '$(call backup_name,$(1))'$(C_OFF)"; \
 		$(SUDO)cp -a "$(1)" "$(call backup_name,$(1))"; \
+	fi
+
+restart_service = \
+	if [ "$(F_NOSERVICE)" -eq 1 ]; then \
+		echo "$(C_INFO)Skipping restart of $(2) service$(C_OFF)"; \
+	else \
+		[ "$(1)" -eq 0 ] || $(BUILD_MODULE) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
 	fi
 
 # Bool to check if moonraker/klipper needs to be restarted
@@ -203,8 +202,8 @@ $(install_targets): build
 
 install: $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras,$(hh_old_klipper_modules))
-	$(Q)[ "$(restart_moonraker)" -eq 0 ] || $(BUILD_MODULE) --restart-service "Moonraker" $(CONFIG_SERVICE_MOONRAKER) "$(KCONFIG_CONFIG)"
-	$(Q)[ "$(restart_klipper)" -eq 0 ] || $(BUILD_MODULE) --restart-service "Klipper" $(CONFIG_SERVICE_KLIPPER) "$(KCONFIG_CONFIG)"
+	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
+	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(BUILD_MODULE) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
 
 uninstall:
@@ -216,8 +215,8 @@ uninstall:
 	$(Q)rm -rf $(KLIPPER_CONFIG_HOME)/mmu
 	$(Q)$(BUILD_MODULE) --uninstall-moonraker $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
 	$(Q)$(BUILD_MODULE) --uninstall-includes $(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE)
-	$(Q)$(BUILD_MODULE) --restart-service "Moonraker" $(CONFIG_SERVICE_MOONRAKER) "$(KCONFIG_CONFIG)"
-	$(Q)$(BUILD_MODULE) --restart-service "Klipper" $(CONFIG_SERVICE_KLIPPER) "$(KCONFIG_CONFIG)"
+	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
+	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(BUILD_MODULE) --print-unhappy-hare "Done... Very unHappy Hare."
 
 

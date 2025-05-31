@@ -7,6 +7,7 @@ menu "Paths & Services"
 
   config KLIPPER_HOME
     string "Klipper directory"
+    default "$(CONFIG_KLIPPER_HOME)" if $(to_bool, [ -n "$(CONFIG_KLIPPER_HOME)" ])
     default "/usr/share/klipper" if $(to_bool, [ -d "/usr/share/klipper" ])
     default "~/klipper"
 
@@ -18,6 +19,7 @@ menu "Paths & Services"
   config KLIPPER_CONFIG_HOME
     string "Klipper config directory"
     default "~" if OCTOPRINT
+    default "$(CONFIG_KLIPPER_CONFIG_HOME)" if $(to_bool, [ -n "$(CONFIG_KLIPPER_CONFIG_HOME)" ])
     default "/usr/data/printer_data/config" if $(to_bool, [ -e "/usr/data/printer_data" ])
     default "~/printer_data/config"
 
@@ -28,6 +30,7 @@ menu "Paths & Services"
   config MOONRAKER_HOME
     string "Moonraker directory"
     depends on !OCTOPRINT
+    default "$(CONFIG_MOONRAKER_HOME)" if $(to_bool, [ -n "$(CONFIG_MOONRAKER_HOME)" ])
     default "/usr/data/moonraker" if $(to_bool, [ -e "/usr/data/moonraker" ])
     default "~/moonraker"
 
@@ -43,6 +46,7 @@ menu "Paths & Services"
   config SERVICE_KLIPPER
     string "Klipper service name"
     depends on !REPETIER
+    default "${CONFIG_SERVICE_KLIPPER}" if $(to_bool, [ -n "$(CONFIG_SERVICE_KLIPPER)" ])
     default "klipper.service" if INIT_SYSTEMD
     default "klipper_service"
 

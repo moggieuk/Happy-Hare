@@ -2,6 +2,7 @@
 # And if they do, they probably know what they are doing and have no issue manually selecting it.
 # Not the prettiest configuration, but it works
 choice CHOICE_SERIAL_DEVICE 
+  prompt "Select MCU serial device"
   help
     Step 5 - MCU connection
     Specify the path of the serial device connected to the MMU MCU.
@@ -9,7 +10,6 @@ choice CHOICE_SERIAL_DEVICE
     doesn't change when you plug in multiple serial devices.
     Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
     (CANbus must be configured manually by editing config files)
-  prompt "Select MCU serial device"
   depends on $(serial_exists,1) # Only show if there are any serial tty devices to select. Likely an issue with the setup
 
   config $(serial_config,1)
