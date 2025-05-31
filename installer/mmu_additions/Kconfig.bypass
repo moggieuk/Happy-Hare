@@ -1,4 +1,4 @@
-config MMU_HAS_BYPASS
+config PARAM_HAS_BYPASS
   help
     Select if your MMU has a filament bypass option or you have added
     an additonal combiner/splitter bowden for non-MMU use.

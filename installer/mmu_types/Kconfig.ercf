@@ -41,7 +41,7 @@ if MMU_TYPE_ERCF_1_1
         Does MMU have the Enraged Rabbit Carrot Patch (ERCP) filament buffer
         to catch the uncoiled filament on unload.
 
-    config MMU_HAS_BYPASS
+    config PARAM_HAS_BYPASS
       prompt "Built with filament bypass block?"
       help
         Select if you built the filament bypass block option.
@@ -112,7 +112,7 @@ config MMU_TYPE_ERCF_2_0
   select PARAM_REQUIRE_BOWDEN_MOVE
   imply MMU_HAS_LEDS
   imply MMU_HAS_FILAMENT_BUFFER
-  imply MMU_HAS_BYPASS
+  imply PARAM_HAS_BYPASS
 
 if MMU_TYPE_ERCF_2_0
   choice CHOICE_ENCODER_TYPE

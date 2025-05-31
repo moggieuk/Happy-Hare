@@ -38,12 +38,8 @@ menu "Parameters"
     default "RotarySelector" if MMU_HAS_SELECTOR && !MMU_HAS_SERVO
     default "LinearSelector"
 
-  config MMU_HAS_BYPASS
-    bool "Has filament bypass?"
   config PARAM_HAS_BYPASS
-    int
-    default 0
-    default 1 if HAS_BYPASS
+    bool "Has filament bypass?"
 
   config PARAM_VARIABLE_BOWDEN_LENGTHS
     bool "Variable bowden lengths?" 
