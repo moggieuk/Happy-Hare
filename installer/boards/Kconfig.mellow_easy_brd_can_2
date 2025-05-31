@@ -12,58 +12,58 @@ if BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
   endchoice
 
   config PIN_GEAR_UART
-    default "gpio9" 
+    default "mmu:gpio9" 
   config PIN_GEAR_STEP
-    default "gpio7" 
+    default "mmu:gpio7" 
   config PIN_GEAR_DIR
-    default "gpio8" 
+    default "mmu:gpio8" 
   config PIN_GEAR_ENABLE
-    default "gpio6"
+    default "!mmu:gpio6"
 
   config PIN_SELECTOR_UART
-    default "gpio2" 
+    default "mmu:gpio2" 
   config PIN_SELECTOR_STEP
-    default "gpio4" 
+    default "mmu:gpio4" 
   config PIN_SELECTOR_DIR
-    default "gpio3" 
+    default "mmu:gpio3" 
   config PIN_SELECTOR_ENABLE
-    default "gpio5" 
+    default "!mmu:gpio5" 
   config PIN_SELECTOR_DIAG
-    default "gpio20" if MMU_SELECTOR_TOUCH 
+    default "mmu:gpio20" if MMU_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "gpio20" if !MMU_SELECTOR_TOUCH
+    default "^mmu:gpio20" if !MMU_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
-    default "gpio21" 
+    default "mmu:gpio21" 
 
   config PIN_PRE_GATE_0
-    default "gpio24"
+    default "^mmu:gpio24"
   config PIN_PRE_GATE_1
-    default "gpio22"
+    default "^mmu:gpio22"
   config PIN_PRE_GATE_2
-    default "gpio25"
+    default "^mmu:gpio25"
   config PIN_PRE_GATE_3
-    default "gpio23"
+    default "^mmu:gpio23"
   config PIN_PRE_GATE_4
-    default "gpio13"
+    default "^mmu:gpio13"
   config PIN_PRE_GATE_5
-    default "gpio26"
+    default "^mmu:gpio26"
   config PIN_PRE_GATE_6
-    default "gpio12"
+    default "^mmu:gpio12"
   config PIN_PRE_GATE_7
-    default "gpio27"
+    default "^mmu:gpio27"
   config PIN_PRE_GATE_8
-    default "gpio11"
+    default "^mmu:gpio11"
   config PIN_PRE_GATE_9
-    default "gpio28"
+    default "^mmu:gpio28"
   config PIN_PRE_GATE_10
-    default "gpio10"
+    default "^mmu:gpio10"
   config PIN_PRE_GATE_11
-    default "gpio29"
+    default "^mmu:gpio29"
 
   config PIN_ENCODER
-    default "gpio15" if MMU_HAS_ENCODER
+    default "^mmu:gpio15" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "gpio15" if !MMU_HAS_ENCODER
+    default "^mmu:gpio15" if !MMU_HAS_ENCODER
   config PIN_NEOPIXEL
-    default "gpio14"
+    default "mmu:gpio14"
 endif

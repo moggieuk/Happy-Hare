@@ -9,119 +9,119 @@ endchoice
 
 if BOARD_TYPE_MMB_2_0
   config PARAM_BOARD_TYPE
-    default "MMB20"
+    default "mmu:MMB20"
 
   config PIN_GEAR_UART 
-    default "PB5" 
+    default "mmu:PB5" 
   config PIN_GEAR_STEP
-    default "PD4" 
+    default "mmu:PD4" 
   config PIN_GEAR_DIR
-    default "PD3" 
+    default "mmu:PD3" 
   config PIN_GEAR_ENABLE
-    default "PD5" 
+    default "!mmu:PD5" 
   config PIN_GEAR_DIAG
-    default "PB9" 
+    default "mmu:PB9" 
 
   if PARAM_SELECTOR_TYPE = "VirtualSelector"
     config PIN_GEAR_UART_1 
-      default "PB4" 
+      default "mmu:PB4" 
     config PIN_GEAR_STEP_1
-      default "PC9" 
+      default "mmu:PC9" 
     config PIN_GEAR_DIR_1
-      default "PC8" 
+      default "mmu:PC8" 
     config PIN_GEAR_ENABLE_1
-      default "PD2" 
+      default "!mmu:PD2" 
     config PIN_GEAR_DIAG_1
-      default "PB8" 
+      default "mmu:PB8" 
 
     config PIN_GEAR_UART_2 
-      default "PB3" 
+      default "mmu:PB3" 
     config PIN_GEAR_STEP_2
-      default "PC15" 
+      default "mmu:PC15" 
     config PIN_GEAR_DIR_2
-      default "PC11" 
+      default "mmu:PC11" 
     config PIN_GEAR_ENABLE_2
-      default "PC10" 
+      default "!mmu:PC10" 
     config PIN_GEAR_DIAG_2
-      default "PB7"
+      default "mmu:PB7"
 
     config PIN_GEAR_UART_3 
-      default "PD6" 
+      default "mmu:PD6" 
     config PIN_GEAR_STEP_3
-      default "PC13" 
+      default "mmu:PC13" 
     config PIN_GEAR_DIR_3
-      default "PC12" 
+      default "mmu:PC12" 
     config PIN_GEAR_ENABLE_3
-      default "PC14" 
+      default "!mmu:PC14" 
     config PIN_GEAR_DIAG_3
-      default "PB6" 
+      default "mmu:PB6" 
 
     config PIN_PRE_GATE_0
-      default "PC7" 
+      default "mmu:PC7" 
     config PIN_PRE_GATE_1
-      default "PA9" 
+      default "mmu:PA9" 
     config PIN_PRE_GATE_2
-      default "PB12" 
+      default "mmu:PB12" 
     config PIN_PRE_GATE_3
-      default "PB10" 
+      default "mmu:PB10" 
 
     config PIN_GEAR_SENSOR_0
-      default "PC6"
+      default "mmu:PC6"
     config PIN_GEAR_SENSOR_1
-      default "PA8"
+      default "mmu:PA8"
     config PIN_GEAR_SENSOR_2
-      default "PB11"
+      default "mmu:PB11"
     config PIN_GEAR_SENSOR_3
-      default "PB2"
+      default "mmu:PB2"
     
     config PIN_ESPOOLER_RWD_0
-      default "PB1"
+      default "mmu:PB1"
     config PIN_ESPOOLER_RWD_1
-      default "PC5"
+      default "mmu:PC5"
     config PIN_ESPOOLER_RWD_2
-      default "PB0"
+      default "mmu:PB0"
     config PIN_ESPOOLER_RWD_3
-      default "PC4"
+      default "mmu:PC4"
   endif
 
   if PARAM_SELECTOR_TYPE != "VirtualSelector"
     config PIN_SELECTOR_UART
-      default "PB4" 
+      default "mmu:PB4" 
     config PIN_SELECTOR_STEP
-      default "PC9" 
+      default "mmu:PC9" 
     config PIN_SELECTOR_DIR
-      default "PC8" 
+      default "mmu:PC8" 
     config PIN_SELECTOR_ENABLE
-      default "PD2" 
+      default "!mmu:PD2" 
     config PIN_SELECTOR_DIAG
-      default "PB8" 
+      default "mmu:PB8" 
     config PIN_SELECTOR_ENDSTOP
-      default "PA15" 
+      default "^mmu:PA15" 
     config PIN_SELECTOR_SERVO
-      default "PA1" 
+      default "mmu:PA1" 
 
     config PIN_PRE_GATE_0
-      default "PC6" 
+      default "^mmu:PC6" 
     config PIN_PRE_GATE_1
-      default "PA8" 
+      default "^mmu:PA8" 
     config PIN_PRE_GATE_2
-      default "PB11" 
+      default "^mmu:PB11" 
     config PIN_PRE_GATE_3
-      default "PB2" 
+      default "^mmu:PB2" 
     config PIN_PRE_GATE_4
-      default "PB0"
+      default "^mmu:PB0"
     config PIN_PRE_GATE_5
-      default "PC4"
+      default "^mmu:PC4"
     config PIN_PRE_GATE_6
-      default "PC5"
+      default "^mmu:PC5"
     config PIN_PRE_GATE_7
-      default "PB1"
+      default "^mmu:PB1"
   endif
 
   config PIN_ENCODER
-    default "PC2" if MMU_HAS_ENCODER
+    default "^mmu:PC2" if MMU_HAS_ENCODER
   config PIN_NEOPIXEL
-    default "PC3" 
+    default "mmu:PC3" 
   config PIN_GATE_SENSOR
-    default "PA15" if !MMU_HAS_ENCODER 
+    default "^mmu:PA15" if !MMU_HAS_ENCODER 
 endif

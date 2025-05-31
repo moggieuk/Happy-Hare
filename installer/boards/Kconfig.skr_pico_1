@@ -13,58 +13,58 @@ if BOARD_TYPE_SKR_PICO_1
 
   # MMU Type B
   config PIN_GEAR_UART 
-    default "gpio9" 
+    default "mmu:gpio9" 
   config PIN_GEAR_STEP
-    default "gpio11" 
+    default "mmu:gpio11" 
   config PIN_GEAR_DIR
-    default "gpio10" 
+    default "mmu:gpio10" 
   config PIN_GEAR_ENABLE
-    default "gpio12" 
+    default "!mmu:gpio12" 
   config PIN_GEAR_DIAG
-    default "gpio4" 
+    default "mmu:gpio4" 
 
   if PARAM_SELECTOR_TYPE = "VirtualSelector"
     config PIN_GEAR_STEP_1
-      default "gpio6" 
+      default "mmu:gpio6" 
     config PIN_GEAR_DIR_1
-      default "gpio5" 
+      default "mmu:gpio5" 
     config PIN_GEAR_ENABLE_1
-      default "gpio7" 
+      default "!mmu:gpio7" 
     config PIN_GEAR_DIAG_1
-      default "gpop3" 
+      default "mmu:gpop3" 
 
     config PIN_GEAR_STEP_2
-      default "gpio19" 
+      default "mmu:gpio19" 
     config PIN_GEAR_DIR_2
-      default "gpio28" 
+      default "mmu:gpio28" 
     config PIN_GEAR_ENABLE_2
-      default "gpio2" 
+      default "!mmu:gpio2" 
     config PIN_GEAR_DIAG_2
-      default "gpio25"
+      default "mmu:gpio25"
 
     config PIN_GEAR_STEP_3
-      default "gpio14" 
+      default "mmu:gpio14" 
     config PIN_GEAR_DIR_3
-      default "gpio13" 
+      default "mmu:gpio13" 
     config PIN_GEAR_ENABLE_3
-      default "gpio15" 
+      default "!mmu:gpio15" 
     config PIN_GEAR_DIAG_3
-      default "gpio16" 
+      default "mmu:gpio16" 
   endif
 
   if PARAM_SELECTOR_TYPE != "VirtualSelector"
     config PIN_SELECTOR_STEP
-      default "gpio19" 
+      default "mmu:gpio19" 
     config PIN_SELECTOR_DIR
-      default "gpio28" 
+      default "mmu:gpio28" 
     config PIN_SELECTOR_ENABLE
-      default "gpio2" 
+      default "!mmu:gpio2" 
     config PIN_SELECTOR_DIAG
-      default "gpio25" 
+      default "mmu:gpio25" 
     config PIN_SELECTOR_SERVO
-      default "gpio29" 
+      default "mmu:gpio29" 
   endif
 
   config PIN_NEOPIXEL
-    default "gpio24" 
+    default "mmu:gpio24" 
 endif

@@ -12,31 +12,31 @@ if BOARD_TYPE_EASY_BRD_RP2040
   endchoice
 
   config PIN_GEAR_UART
-    default "gpio6" 
+    default "mmu:gpio6" 
   config PIN_GEAR_STEP
-    default "gpio27" 
+    default "mmu:gpio27" 
   config PIN_GEAR_DIR
-    default "gpio28" 
+    default "mmu:gpio28" 
   config PIN_GEAR_ENABLE
-    default "gpio26" 
+    default "!mmu:gpio26" 
 
   config PIN_SELECTOR_UART
-    default "gpio6" 
+    default "mmu:gpio6" 
   config PIN_SELECTOR_STEP
-    default "gpio7" 
+    default "mmu:gpio7" 
   config PIN_SELECTOR_DIR
-    default "gpio0" 
+    default "mmu:gpio0" 
   config PIN_SELECTOR_ENABLE
-    default "gpio29" 
+    default "!mmu:gpio29" 
   config PIN_SELECTOR_DIAG
-    default "gpio2" if MMU_SELECTOR_TOUCH 
+    default "mmu:gpio2" if MMU_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "gpio1" if !MMU_SELECTOR_TOUCH
+    default "^mmu:gpio1" if !MMU_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
-    default "gpio4" 
+    default "mmu:gpio4" 
 
   config PIN_ENCODER
-    default "gpio3" if MMU_HAS_ENCODER
+    default "^mmu:gpio3" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "gpio3" if !MMU_HAS_ENCODER 
+    default "^mmu:gpio3" if !MMU_HAS_ENCODER 
 endif

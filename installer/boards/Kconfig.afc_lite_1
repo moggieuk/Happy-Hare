@@ -12,97 +12,97 @@ if BOARD_TYPE_AFC_LITE_1
   endchoice
 
   config PIN_GEAR_UART 
-    default "PD5" 
+    default "mmu:PD5" 
   config PIN_GEAR_STEP
-    default "PD4" 
+    default "mmu:PD4" 
   config PIN_GEAR_DIR
-    default "PD3" 
+    default "mmu:PD3" 
   config PIN_GEAR_ENABLE
-    default "PD6" 
+    default "!mmu:PD6" 
   config PIN_GEAR_DIAG
-    default "PD2" 
+    default "mmu:PD2" 
 
   config PIN_GEAR_UART_1 
-    default "PD0" 
+    default "mmu:PD0" 
   config PIN_GEAR_STEP_1
-    default "PC12" 
+    default "mmu:PC12" 
   config PIN_GEAR_DIR_1
-    default "PC11" 
+    default "mmu:PC11" 
   config PIN_GEAR_ENABLE_1
-    default "PD1" 
+    default "!mmu:PD1" 
   config PIN_GEAR_DIAG_1
-    default "PC10" 
+    default "mmu:PC10" 
 
   config PIN_GEAR_UART_2 
-    default "PE1" 
+    default "mmu:PE1" 
   config PIN_GEAR_STEP_2
-    default "PE2" 
+    default "mmu:PE2" 
   config PIN_GEAR_DIR_2
-    default "PE3" 
+    default "mmu:PE3" 
   config PIN_GEAR_ENABLE_2
-    default "PE0" 
+    default "!mmu:PE0" 
   config PIN_GEAR_DIAG_2
-    default "PE4" 
+    default "mmu:PE4" 
 
   config PIN_GEAR_UART_3 
-    default "PC6" 
+    default "mmu:PC6" 
   config PIN_GEAR_STEP_3
-    default "PD15" 
+    default "mmu:PD15" 
   config PIN_GEAR_DIR_3
-    default "PD14" 
+    default "mmu:PD14" 
   config PIN_GEAR_ENABLE_3
-    default "PC7" 
+    default "!mmu:PC7" 
   config PIN_GEAR_DIAG_3
-    default "PC8" 
+    default "mmu:PC8" 
 
   config PIN_PRE_GATE_0
-    default "PC5" 
+    default "^mmu:PC5" 
   config PIN_PRE_GATE_1
-    default "PB0" 
+    default "^mmu:PB0" 
   config PIN_PRE_GATE_2
-    default "PB1" 
+    default "^mmu:PB1" 
   config PIN_PRE_GATE_3
-    default "PB2" 
+    default "^mmu:PB2" 
 
   config PIN_GEAR_SENSOR_0
-    default "PE8" 
+    default "^mmu:PE8" 
   config PIN_GEAR_SENSOR_1
-    default "PE9" 
+    default "^mmu:PE9" 
   config PIN_GEAR_SENSOR_2
-    default "PE10" 
+    default "^mmu:PE10" 
   config PIN_GEAR_SENSOR_3
-    default "PE11" 
+    default "^mmu:PE11" 
 
   config PIN_ESPOOLER_EN_0
-    default "PA2" 
+    default "mmu:PA2" 
   config PIN_ESPOOLER_RWD_0
-    default "PA0" 
+    default "mmu:PA0" 
   config PIN_ESPOOLER_FWD_0
-    default "PA1" 
+    default "mmu:PA1" 
 
   config PIN_ESPOOLER_EN_1
-    default "PA5" 
+    default "mmu:PA5" 
   config PIN_ESPOOLER_RWD_1
-    default "PA6" 
+    default "mmu:PA6" 
   config PIN_ESPOOLER_FWD_1
-    default "PA7" 
+    default "mmu:PA7" 
 
   config PIN_ESPOOLER_EN_2
-    default "PB13" 
+    default "mmu:PB13" 
   config PIN_ESPOOLER_RWD_2
-    default "PB14" 
+    default "mmu:PB14" 
   config PIN_ESPOOLER_FWD_2
-    default "PB15" 
+    default "mmu:PB15" 
 
   config PIN_ESPOOLER_EN_3
-    default "PD11" 
+    default "mmu:PD11" 
   config PIN_ESPOOLER_RWD_3
-    default "PD12" 
+    default "mmu:PD12" 
   config PIN_ESPOOLER_FWD_3
-    default "PD13" 
+    default "mmu:PD13" 
 
   config PIN_NEOPIXEL
-    default "PE14"
+    default "mmu:PE14"
   config PIN_GATE_SENSOR
-    default "PC4"
+    default "^mmu:PC4"
 endif
