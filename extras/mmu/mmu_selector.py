@@ -150,14 +150,16 @@ class VirtualSelector(BaseSelector, object):
 
         # Sync new MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
+#PAUL            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
 
     def restore_gate(self, gate):
         self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
         # Sync MMU gear stepper now if design requires it
         if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
+#PAUL            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
+            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
 
     def get_mmu_status_config(self):
         msg = "\nVirtual selector"
@@ -352,12 +354,15 @@ class LinearSelector(BaseSelector, object):
             self.set_position(self.selector_offsets[gate])
 
     def filament_drive(self, buzz_gear=True):
+        self.mmu.log_error("PAUL: filament_drive()")
         self.servo.servo_down(buzz_gear=buzz_gear)
 
     def filament_release(self, measure=False):
+        self.mmu.log_error("PAUL: filament_release()")
         return self.servo.servo_up(measure=measure)
 
     def filament_hold_move(self): # AKA position for holding filament and moving selector
+        self.mmu.log_error("PAUL: filament_hold_move()")
         self.servo.servo_move()
 
     def get_filament_grip_state(self):
@@ -1779,7 +1784,7 @@ class ServoSelector(BaseSelector, object):
 
     def _set_servo_angle(self, angle):
         if angle >= 0 and angle != self.servo_angle:
-            self.mmu.movequeues_wait();
+            self.mmu.movequeues_wait()
             self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
             self.servo_angle = angle
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))

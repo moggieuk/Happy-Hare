@@ -28,7 +28,7 @@ class MmuSensorManager:
         sensor_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, i) for i in range(self.mmu.num_gates)])
         sensor_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
         sensor_names.extend([
-            self.mmu.SENSOR_GATE, 
+            self.mmu.SENSOR_GATE,
             self.mmu.SENSOR_TENSION,
             self.mmu.SENSOR_COMPRESSION
         ])
@@ -38,7 +38,7 @@ class MmuSensorManager:
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
         sensor_names.extend([
-            self.mmu.SENSOR_EXTRUDER_ENTRY, 
+            self.mmu.SENSOR_EXTRUDER_ENTRY,
             self.mmu.SENSOR_TOOLHEAD
         ])
         for name in sensor_names:
@@ -55,7 +55,7 @@ class MmuSensorManager:
         self.endstop_names = []
         self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
         self.endstop_names.extend([
-            self.mmu.SENSOR_GATE, 
+            self.mmu.SENSOR_GATE,
             self.mmu.SENSOR_TENSION,
             self.mmu.SENSOR_COMPRESSION
         ])
@@ -65,7 +65,7 @@ class MmuSensorManager:
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
         self.endstop_names.extend([
-            self.mmu.SENSOR_EXTRUDER_ENTRY, 
+            self.mmu.SENSOR_EXTRUDER_ENTRY,
             self.mmu.SENSOR_TOOLHEAD
         ])
         for name in self.endstop_names:

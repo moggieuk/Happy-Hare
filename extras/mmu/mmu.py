@@ -394,7 +394,7 @@ class Mmu:
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
         self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 60, minval=0, maxval=100) # Whether to apply filament tightening move after load (if not synced)
 
-        # Extra Gear/Extruder synchronization controls
+        # Synchronous motor control
         self.sync_to_extruder = config.getint('sync_to_extruder', 0, minval=0, maxval=1)
         self.sync_form_tip = config.getint('sync_form_tip', 0, minval=0, maxval=1)
         self.sync_purge = config.getint('sync_purge', 0, minval=0, maxval=1)
@@ -931,7 +931,7 @@ class Mmu:
         self.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
         self.printer.register_event_handler("mmu:unsynced", self._handle_mmu_unsynced)
         self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
-        self._setup_sync_feedback()
+        self._setup_sync_feedback_timer()
 
         self._setup_hotend_off_timer()
         self._setup_pending_spool_id_timer()
@@ -995,8 +995,9 @@ class Mmu:
         # Sub components
         self.selector.handle_ready()
 
-        # Ensure sync_feedback starting state. This is mainly cosmetic because state is ensured when enabling
-        self._update_sync_starting_state()
+# PAUL definitely not right. Must be in neutral state when started
+#        # Ensure sync_feedback starting state. This is mainly cosmetic because state is ensured when enabling
+#        self._update_sync_starting_state()
 
         # Schedule bootup tasks to run after klipper and hopefully spoolman have settled
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
@@ -1948,6 +1949,8 @@ class Mmu:
         msg += ". Tool %s selected on gate %s%s" % (self._selected_tool_string(), self._selected_gate_string(), self._selected_unit_string())
         msg += ". Toolhead position saved" if self.saved_toolhead_operation else ""
         msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
+        if self._standalone_sync:
+            msg += ". Standalone sync mode is ENABLED"
         if self.sync_feedback_enable:
             msg += "\nSync feedback indicates filament in bowden is: %s" % self._get_sync_feedback_string(detail=True).upper()
             if not self.sync_feedback_operational:
@@ -2141,7 +2144,8 @@ class Mmu:
         return msg
 
     # Instruct the selector to enguage the desired method of filament gripping based on MMU state
-    def _auto_filament_grip(self):
+    def _auto_filament_grip(self): # PAUL may not need this
+        self.log_error("PAUL: _auto_filament_grip()")
         if not self.selector.is_homed or self.gate_selected < 0:
             self.selector.filament_hold_move() # Aka selector grip move/neutral position
         else:
@@ -2218,11 +2222,12 @@ class Mmu:
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_not_homed(): return
-        if self.check_if_always_synced(): return
+        if self.check_if_always_gripped(): return
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         if not self.is_in_print():
             self._standalone_sync = bool(sync) # Make sticky if not in a print
-        self.sync_gear_to_extruder(sync, current=True)
+#PAUL        self.sync_gear_to_extruder(sync, current=True)
+        self.sync_gear_to_extruder(sync)
 
 
 #########################
@@ -2324,7 +2329,7 @@ class Mmu:
 
         except MmuError as ee:
             raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (self.gate_selected, str(ee)))
-        finally:
+        finally: # PAUL check if we need filament_grip and try/finally block
             self._auto_filament_grip()
 
     # Bowden calibration - Method 2
@@ -2356,7 +2361,7 @@ class Mmu:
 
         except MmuError as ee:
             raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (self.gate_selected, str(ee)))
-        finally:
+        finally: # PAUL check if we need filament_grip and try/finally block
             self._auto_filament_grip()
 
     # Bowden calibration - Method 3
@@ -2429,7 +2434,7 @@ class Mmu:
             raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (self.gate_selected, str(ee)))
         finally:
             self.extruder_homing_endstop = orig_endstop
-            self._auto_filament_grip()
+            self._auto_filament_grip() # PAUL check if we need filament_grip (keep finally block)
 
     # Automatically calibrate the rotation_distance for gate>0 using encoder measurements and gate 0 as reference
     # Gate 0 is always calibrated with MMU_CALILBRATE_GEAR
@@ -2482,7 +2487,7 @@ class Mmu:
         except MmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration for gate %d failed. Aborting, because:\n%s" % (gate, str(ee)))
-        finally:
+        finally: # PAUL check if we need filament_grip and try/finally block
             self._auto_filament_grip()
 
     def _sample_stats(self, values):
@@ -2913,10 +2918,10 @@ class Mmu:
     def _handle_idle_timeout_idle(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "idle")
 
-    def _setup_sync_feedback(self):
+    def _setup_sync_feedback_timer(self):
         self.sync_feedback_timer = self.reactor.register_timer(self._update_sync_feedback)
 
-    # Gear/Extruder sync feedback state should be -1 (expanded) and 1 (compressed)
+    # Gear/Extruder sync feedback event. State should be -1 (expanded) and 1 (compressed)
     # or can be a proportional float value between -1.0 and 1.0
     def _handle_sync_feedback(self, eventtime, state):
         if not self.is_enabled: return
@@ -2930,6 +2935,7 @@ class Mmu:
         if self._is_running_test:
             self.printer.send_event("mmu:sync_feedback_finished", state)
 
+    # Event indicating that gear stepper is now synced with extruder
     def _handle_mmu_synced(self):
         if not self.is_enabled: return
         msg = "Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enable else "")
@@ -2944,6 +2950,7 @@ class Mmu:
             self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
             self._update_sync_starting_state()
 
+    # Event indicating that gear stepper has been unsynced from extruder
     def _handle_mmu_unsynced(self):
         if not self.is_enabled: return
         msg = "Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enable else "")
@@ -3137,7 +3144,6 @@ class Mmu:
 
         if not pre_start_only and self.print_state not in ["printing"]:
             self.log_trace("_on_print_start(->printing)")
-            self.sync_gear_to_extruder(self.sync_to_extruder, current=True)
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=min_lifted_z VALUE=0" % self.park_macro) # Sequential printing movement "floor"
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.park_macro)
             msg = "Happy Hare initialized ready for print"
@@ -3151,7 +3157,12 @@ class Mmu:
             self._set_print_state("printing")
 
             # Establish syncing state and grip (servo) position
-            self.sync_gear_to_extruder(self.sync_to_extruder, current=True)
+            sync = (
+                self.sync_to_extruder
+                or self.mmu_machine.filament_always_gripped
+            )
+#PAUL            self.sync_gear_to_extruder(sync, current=True)
+            self.sync_gear_to_extruder(sync)
 
             # Start espooler for current gate
             self._espooler_assist_on()
@@ -3177,8 +3188,10 @@ class Mmu:
 
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
-            self._set_print_state(state) # Must be before the unsyncing below for grip (servo) to operate
+# PAUL            self._set_print_state(state) # Must be before the unsyncing below for grip (servo) to operate
+            self._standalone_sync = False # Safer to clear this on print end or idle_timeout to standby to avoid user confusion
             self.sync_gear_to_extruder(False)
+            self._set_print_state(state)
 
         if state == "standby" and not self.is_in_standby():
             self._set_print_state(state)
@@ -3230,11 +3243,16 @@ class Mmu:
         if recover_pos:
             self.recover_filament_pos(message=True)
 
-        if self.mmu_machine.filament_always_gripped:
-            self.sync_gear_to_extruder(True) # Should already be in this state
-        else:
-            # Default to unsynced (if possible) on error. Will be restored on resume/continue_printing
-            self.sync_gear_to_extruder(False)
+# PAUL maybe this whole block is wrong! Need to carefully think about whether we need to mess with state at all
+# PAUL maybe just the unsync() logic
+#        if self.mmu_machine.filament_always_gripped: # PAUL think about this. What if error occurs on unload?
+#            self.sync_gear_to_extruder(True) # Should already be in this state
+#        else:
+#            # Default to unsynced (if possible) on error. Will be restored on resume/continue_printing
+#            self.sync_gear_to_extruder(False)
+# PAUL ^^^
+        # Default to unsynced on error. Will be restored on resume/continue_printing or as needed by manual operations
+        self.sync_gear_to_extruder(False) # PAUL new
 
         if send_event:
             self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
@@ -3291,7 +3309,11 @@ class Mmu:
             self._initialize_encoder(dwell=None) # Encoder 0000
 
             # Restablish syncing state and grip (servo) position
-            self.sync_gear_to_extruder(self.sync_to_extruder, current=True)
+            sync = (
+                self.sync_to_extruder
+                or self.mmu_machine.filament_always_gripped
+            )
+            self.sync_gear_to_extruder(sync)
 
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
@@ -3598,9 +3620,9 @@ class Mmu:
             return True
         return False
 
-    def check_if_always_synced(self):
+    def check_if_always_gripped(self):
         if self.mmu_machine.filament_always_gripped:
-            self.log_error("Operation not possible. MMU design required continuous gear/extruder syncing")
+            self.log_error("Operation not possible. MMU design doesn't allow for manual override of syncing state")
             return True
         return False
 
@@ -4117,7 +4139,14 @@ class Mmu:
                     self._ensure_safe_extruder_temperature(wait=True)
 
                     # Mimick in print if requested
-                    self.sync_gear_to_extruder(self.sync_form_tip and self.is_in_print(force_in_print), current=self.is_in_print(force_in_print))
+                    sync = (
+                        (self.sync_form_tip and self.is_printing(force_in_print))
+                        or (self._standalone_sync and not self.is_printing(force_in_print))
+                        or self.mmu_machine.filament_always_gripped
+                    )
+#PAUL                    self.sync_gear_to_extruder(sync, current=True)
+                    self.sync_gear_to_extruder(sync)
+#PAUL                    self.sync_gear_to_extruder(self.sync_form_tip and self.is_in_print(force_in_print), current=self.is_in_print(force_in_print))
 
                     _,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
@@ -4339,8 +4368,9 @@ class Mmu:
 
         self._set_gate_status(self.gate_selected, self.GATE_EMPTY)
         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-        if adjust_grip_on_error:
-            self._auto_filament_grip()
+# PAUL
+#        if adjust_grip_on_error:
+#            self._auto_filament_grip()
         msg = "Couldn't pick up filament at gate"
         if self.gate_homing_endstop == self.SENSOR_ENCODER:
             msg += " (encoder didn't report enough movement)"
@@ -4716,14 +4746,14 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
                     raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not find homing sensor")
 
-            # Tightening move to prevent erroneous clog detection / runout if gear stepper is not synced with extruder
+            # Tightening move to prevent erroneous clog detection/runout if gear stepper is not synced with extruder
             if (
                 self._can_use_encoder()
                 and self.toolhead_post_load_tighten
                 and not extruder_only
                 and self.gate_selected != self.TOOL_GATE_BYPASS
                 and not self.sync_to_extruder
-                and not self.mmu_machine.filament_always_gripped
+#PAUL                and not self.mmu_machine.filament_always_gripped # PAUL not necessary
                 and self.enable_clog_detection
             ):
                 with self._wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
@@ -5011,8 +5041,14 @@ class Mmu:
                 self.log_debug("Purging expected to be performed by slicer")
             elif purge == self.PURGE_STANDALONE and not skip_extruder and not self.is_handling_runout:
                 with self._wrap_track_time('purge'):
-                    sync = (self.is_printing() and self.sync_purge) or self._standalone_sync
-                    self.sync_gear_to_extruder(sync, current=True)
+                    sync = not extruder_only and (
+                        self.sync_purge
+                        or (self._standalone_sync and not self.is_printing())
+                        or self.mmu_machine.filament_always_gripped
+                    )
+#PAUL                    sync = (self.is_printing() and self.sync_purge) or self._standalone_sync
+#PAUL                    self.sync_gear_to_extruder(sync, current=True)
+                    self.sync_gear_to_extruder(sync)
                     with self.wrap_action(self.ACTION_PURGING):
                         self.purge_standalone()
 
@@ -5020,8 +5056,14 @@ class Mmu:
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
                     # Restore the expected sync state now before running this macro
-                    sync = (self.is_printing() and self.sync_to_extruder) or self._standalone_sync
-                    self.sync_gear_to_extruder(sync, current=True)
+                    sync = not extruder_only and (
+                        (self.sync_to_extruder and self.is_printing())
+                        or (self._standalone_sync and not self.is_printing())
+                        or self.mmu_machine.filament_always_gripped
+                    )
+#PAUL                    sync = (self.is_printing() and self.sync_to_extruder) or self._standalone_sync
+#PAUL                    self.sync_gear_to_extruder(sync, current=True)
+                    self.sync_gear_to_extruder(sync)
                     if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
                         with self.wrap_action(self.ACTION_PURGING):
                             self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
@@ -5062,7 +5104,7 @@ class Mmu:
 
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_debug("Filament already ejected")
-            self._auto_filament_grip()
+# PAUL            self._auto_filament_grip()
             return
 
         try:
@@ -5215,8 +5257,20 @@ class Mmu:
             raise MmuError("Filament tip forming macro '%s' not found" % self.form_tip_macro)
 
         with self.wrap_action(self.ACTION_CUTTING_TIP if self.has_toolhead_cutter else self.ACTION_FORMING_TIP):
-            synced = self.sync_form_tip and not extruder_only
-            self.sync_gear_to_extruder(synced, current=False)
+            sync = not extruder_only and (
+                self.sync_form_tip
+                or (self._standalone_sync and not self.is_printing())
+                or self.mmu_machine.filament_always_gripped
+            )
+#PAUL
+#            sync = not extruder_only and (
+#                (self.sync_form_tip and self.is_printing())
+#                or (self._standalone_sync and not self.is_printing())
+#                or self.mmu_machine.filament_always_gripped
+#            )
+#PAUL            sync = (self.sync_form_tip and not extruder_only)
+#PAUL            self.sync_gear_to_extruder(sync, current=False) # PAUL current?
+            self.sync_gear_to_extruder(sync)
             self._ensure_safe_extruder_temperature(wait=True)
 
             # Perform the tip forming move and establish park_pos
@@ -5238,7 +5292,7 @@ class Mmu:
                     if not measured > self.encoder_min:
                         # No movement. We can be confident we are/were empty
                         detected = False
-                    elif synced:
+                    elif sync:
                         # A further test is needed to see if the filament is actually in the extruder
                         detected, moved = self._test_filament_in_extruder_by_retracting()
                         park_pos += moved
@@ -5690,7 +5744,7 @@ class Mmu:
     # sensor this can happen if the filament is in the short distance from sensor to gears.
     def check_filament_still_in_extruder(self):
         detected = None
-        if self.has_encoder() and not self.mmu_machine.filament_always_gripped:
+        if self.has_encoder() and not self.mmu_machine.filament_always_gripped: # PAUL correct -- cannot do this unless we can release filament
             self.log_debug("Checking for possibility of filament still in extruder gears...")
             self._ensure_safe_extruder_temperature(wait=False)
             self.selector.filament_release()
@@ -5730,17 +5784,54 @@ class Mmu:
             self.trace_filament_move(None, -5, accel=self.gear_buzz_accel)
         return None
 
+# PAUL old logic
+#    # Sync/unsync gear motor with extruder, handle filament engagement and current control
+#    # lazy_ungrip: True=don't ungrip, False=ensure grip matches sync state (default)
+#    # current: True=optionally reduce, False=restore to current default
+#    def sync_gear_to_extruder(self, sync, gate=None, lazy_ungrip=False, current=False):
+#        # Safety in case somehow called with bypass/unknown selected. Usually this is called after
+#        # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
+#        gate = gate if gate is not None else self.gate_selected
+#        if gate < 0:
+#            sync = current = False
+#        elif self.mmu_machine.filament_always_gripped: # PAUL: sure this isn't being called on say a MMU_MOVE MOTOR="gear" for example?
+#            sync = current = True
+#
+#        # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
+#        if sync:
+#            self.selector.filament_drive()
+#        elif not lazy_ungrip:
+#            self.selector.filament_release()
+#
+#        # Sync / Unsync
+#        new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
+#        if new_sync_mode != self.mmu_toolhead.sync_mode:
+#            self.movequeues_wait() # Safety but should not be required(?)
+#            self.mmu_toolhead.sync(new_sync_mode)
+#
+#        # See if we need to set a reduced gear current. If we do then make sure it is
+#        # restored on previous gear stepper if we are on a multigear MMU
+#        if current and sync:
+#            # Reset current on old gear stepper before adjusting new
+#            if self.mmu_machine.multigear and gate != self.gate_selected:
+#                self._restore_gear_current()
+#            self._adjust_gear_current(gate=gate, percent=self.sync_gear_current, reason="for extruder syncing")
+#        else:
+#            self._restore_gear_current()
+
     # Sync/unsync gear motor with extruder, handle filament engagement and current control
     # lazy_ungrip: True=don't ungrip, False=ensure grip matches sync state (default)
-    # current: True=optionally reduce, False=restore to current default
-    def sync_gear_to_extruder(self, sync, gate=None, lazy_ungrip=False, current=False):
+    def sync_gear_to_extruder(self, sync, gate=None, lazy_ungrip=False): # PAUL don't need lazy_ungrip
+        self.log_error("PAUL: sync_gear_to_extruder(sync=%s, lazy_ungrip=%s)" % (sync, lazy_ungrip))
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
         gate = gate if gate is not None else self.gate_selected
-        if gate < 0:
-            sync = current = False
-        elif self.mmu_machine.filament_always_gripped:
-            sync = current = True
+
+        # Protect cases where we shouldn't sync (note type-B always have homed selector)
+        if gate < 0 or not self.selector.is_homed:
+            sync = False
+            self.log_error("PAUL: forcing standalone_sync off")
+            self._standalone_sync = False
 
         # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
         if sync:
@@ -5756,7 +5847,7 @@ class Mmu:
 
         # See if we need to set a reduced gear current. If we do then make sure it is
         # restored on previous gear stepper if we are on a multigear MMU
-        if current and sync:
+        if sync:
             # Reset current on old gear stepper before adjusting new
             if self.mmu_machine.multigear and gate != self.gate_selected:
                 self._restore_gear_current()
@@ -5764,12 +5855,14 @@ class Mmu:
         else:
             self._restore_gear_current()
 
-    # This is used to protect the in print synchronization state and is used as an outermost wrapper for calls back
-    # into Happy Hare during a print. It also ensures that grip (e.g. servo) and current are correctly restored
+    # This is used to protect the in print synchronization, current and grip states and is used
+    # as an outermost wrapper for calls back into Happy Hare during a print or for standalone
+    # commands.
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
-        prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
-        prev_current = self.gear_percentage_run_current != 100
+#PAUL        prev_sync = self.mmu_machine.filament_always_gripped or self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+        prev_sync = self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+#PAUL        prev_current = self.gear_percentage_run_current != 100 # PAUL needed?
         prev_grip = self.selector.get_filament_grip_state()
 
         # Turn espooler in-print assist off
@@ -5783,9 +5876,22 @@ class Mmu:
             if self.gate_selected >= 0:
                 # We are lazy on the ungrip to prevent selector/servo movement flutter on type-A MMU's
                 # but caution must be used by all modules not to assume grip state
-                self.sync_gear_to_extruder(prev_sync, lazy_ungrip=True, current=prev_current)
+#PAUL                self.sync_gear_to_extruder(prev_sync, lazy_ungrip=True, current=prev_current)
+#                self.sync_gear_to_extruder(prev_sync, lazy_ungrip=True)
+                self.sync_gear_to_extruder(prev_sync)
             else:
-                self.sync_gear_to_extruder(False, current=False)
+#PAUL                self.sync_gear_to_extruder(False, current=False)
+#                self.sync_gear_to_extruder(False, lazy_ungrip=True)
+                self.sync_gear_to_extruder(False)
+
+# PAUL could this just be not lazy above?
+#                # Ensure exactly the same grip state
+#                if prev_grip == self.FILAMENT_DRIVE_STATE:
+#                    self.selector.filament_drive()
+#                elif prev_grip == self.FILAMENT_RELEASE_STATE:
+#                    self.selector.filament_release()
+#                else:
+#                    self.selector.filament_hold_move()
 
             # Restore espooler state
             if self.has_espooler():
@@ -5793,7 +5899,7 @@ class Mmu:
 
     # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
     # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
-    # grip (servo) movment control since that would lead to unecessary "flutter" and premature wear
+    # grip (servo) movement control since that would lead to unecessary "flutter" and premature wear
     @contextlib.contextmanager
     def _wrap_sync_mode(self, sync_mode):
         prev_sync_mode = self.mmu_toolhead.sync_mode
@@ -5865,6 +5971,7 @@ class Mmu:
                 new_cur = max(min(run_current, max_cur), 0)
                 current_helper.set_current(new_cur, req_hold_cur, print_time)
                 self.log_debug(msg.format(new_cur))
+                self.log_error("PAUL: " + msg.format(new_cur))
             except Exception as e:
                 # Fallback
                 self.log_debug("Unexpected error setting stepper current: %s. Falling back to default approach" % str(e))
@@ -6081,8 +6188,9 @@ class Mmu:
         self.log_debug("Selecting tool T%d on gate %d..." % (tool, gate))
         self.select_gate(gate)
         self._set_tool_selected(tool)
-        if adjust_grip:
-            self._auto_filament_grip()
+# PAUL
+#        if adjust_grip:
+#            self._auto_filament_grip()
         self.log_info("Tool T%d enabled%s" % (tool, (" on gate %d" % gate) if tool != gate else ""))
 
     def select_bypass(self):
@@ -6107,7 +6215,8 @@ class Mmu:
         if new_unit != self.unit_selected:
             self.unit_selected = new_unit
             self.sensor_manager.reset_active_unit(self.unit_selected)
-            self._update_sync_starting_state()
+            if self.sync_feedback_enable: # PAUL added this condition condition
+                self._update_sync_starting_state()
         self.sensor_manager.reset_active_gate(self.gate_selected) # Call after unit_selected is set
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
@@ -6677,7 +6786,7 @@ class Mmu:
                         self.select_gate(current_gate)
                     else:
                         self._initialize_encoder() # Encoder 0000
-                        self._auto_filament_grip()
+#PAUL                        self._auto_filament_grip()
 
                     self._persist_swap_statistics()
 
@@ -6869,7 +6978,7 @@ class Mmu:
                     self.log_warning("Warning: Making assumption that bypass is unloaded")
                     self._set_filament_direction(self.DIRECTION_UNKNOWN)
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
-                    self._auto_filament_grip()
+# PAUL                    self._auto_filament_grip()
                     return
 
                 if loaded == 1:
@@ -6883,7 +6992,7 @@ class Mmu:
 
                 # Filament position not specified so auto recover
                 self.recover_filament_pos(strict=strict, message=True)
-                self._auto_filament_grip()
+# PAUL                self._auto_filament_grip()
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
@@ -7052,7 +7161,7 @@ class Mmu:
         self.sync_to_extruder = gcmd.get_int('SYNC_TO_EXTRUDER', self.sync_to_extruder, minval=0, maxval=1)
         self.sync_form_tip = gcmd.get_int('SYNC_FORM_TIP', self.sync_form_tip, minval=0, maxval=1)
         self.sync_purge = gcmd.get_int('SYNC_PURGE', self.sync_purge, minval=0, maxval=1)
-        if self.mmu_machine.filament_always_gripped:
+        if self.mmu_machine.filament_always_gripped: # PAUL: correct
             self.sync_to_extruder = self.sync_form_tip = self.sync_purge = 1
 
         self.sync_feedback_enable = gcmd.get_int('SYNC_FEEDBACK_ENABLE', self.sync_feedback_enable, minval=0, maxval=1)
@@ -8460,7 +8569,7 @@ class Mmu:
                                                 gates_tools.append([gate, tool])
                                     if len(gates_tools) == 0:
                                         self.log_debug("No tools to check, assuming default tool is already loaded")
-                                        self._auto_filament_grip()
+# PAUL                                        self._auto_filament_grip()
                                         return
                                 except ValueError:
                                     raise MmuError("Invalid TOOLS parameter: %s" % tools)
@@ -8529,7 +8638,7 @@ class Mmu:
                             if not quiet:
                                 self.log_info(self._mmu_visual_to_string())
 
-                            self._auto_filament_grip()
+#PAUL                            self._auto_filament_grip()
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
@@ -8559,7 +8668,7 @@ class Mmu:
                             self.select_gate(current_gate)
                         else:
                             self._initialize_encoder() # Encoder 0000
-                            self._auto_filament_grip()
+# PAUL                            self._auto_filament_grip()
         except MmuError as ee:
             self.handle_mmu_error("Filament preload for gate %d failed: %s" % (gate, str(ee)))
 
