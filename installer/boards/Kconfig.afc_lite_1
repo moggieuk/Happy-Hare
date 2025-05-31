@@ -1,7 +1,5 @@
-choice CHOICE_BOARD_TYPE
-  config BOARD_TYPE_AFC_LITE_1
-    bool "AFC Lite v1.0"
-endchoice
+config BOARD_TYPE_AFC_LITE_1
+  bool "AFC Lite v1.0"
 
 if BOARD_TYPE_AFC_LITE_1
   config PARAM_BOARD_TYPE

@@ -9,7 +9,7 @@
 set -e # Exit immediately on error
 
 self_update() {
-    if [ -n "${SKIP_UPDATE+x}" ]; then
+    if [ -n "${F_SKIP_UPDATE+x}" ]; then
         echo "${C_NOTICE}Skipping self update${C_OFF}"
         return
     fi

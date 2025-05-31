@@ -2,12 +2,12 @@
 menu "Pins"
 
   config OVERRIDE_PINS
-    bool "Override pins? (Note: Changes to the board type will no longer have effect on these pin values after enabling this option)"
+    bool "Override pins? (Note: Changes to the board type will no longer have effect on these pin values when this option is enabled)"
     default n
     help
       If you want to override the default pin layout for your board, select this option. 
       This will allow you to specify custom pins for each function.
-      Note: When enabling this option, changing the board type might no longer have an effect on these pin values.
+      Note: When this option is enabled, changing the board type might no longer have an effect on these pin values.
 
   if OVERRIDE_PINS
     menu "Gear pins"

@@ -1,15 +1,13 @@
-choice CHOICE_BOARD_TYPE
-  config BOARD_TYPE_MMB_1_1
-    bool "BTT MMB v1.1 (with CANbus)"
-endchoice
-
-choice CHOICE_SERIAL_DEVICE
-  default $(serial_config,1,stm32)
-endchoice
+config BOARD_TYPE_MMB_1_1
+  bool "BTT MMB v1.1 (with CANbus)"
 
 if BOARD_TYPE_MMB_1_1
   config PARAM_BOARD_TYPE
     default "MMB11"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,stm32)
+  endchoice
 
   config PIN_GEAR_UART 
     default "mmu:PA10" 
