@@ -34,6 +34,9 @@
 #
 import logging, time
 
+# Happy Hare imports
+from .mmu.mmu_sensor_utils import MmuSensorFactory
+
 class MmuSensors:
 
     def __init__(self, config):
@@ -63,9 +66,9 @@ class MmuSensors:
 
         # Setup motor syncing feedback sensors...
         switch_pin = config.get('sync_feedback_compression_pin', None)
-        self.compression_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pin, 0, button_handler=self._sync_compression_callback)
+        self.compression_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pin, 0, button_handler=sf.sync_compression_callback)
         switch_pin = config.get('sync_feedback_tension_pin', None)
-        self.tension_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_TENSION, None, switch_pin, 0, button_handler=self._sync_tension_callback)
+        self.tension_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_TENSION, None, switch_pin, 0, button_handler=sf.sync_tension_callback)
 
-def load_config(config):
+def load_config_prefix(config):
     return MmuSensors(config)

@@ -137,5 +137,5 @@ class MmuLeds:
         })
         return status
 
-def load_config(config):
+def load_config_prefix(config):
     return MmuLeds(config)

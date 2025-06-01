@@ -184,7 +184,7 @@ class MmuSensorFactory:
 
     # Button event handlers for sync-feedback
     # Feedback state should be between -1 (expanded) and 1 (compressed)
-    def _sync_tension_callback(self, eventtime, tension_state, runout_helper):
+    def sync_tension_callback(self, eventtime, tension_state, runout_helper):
         tension_enabled = runout_helper.sensor_enabled
         compression_sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % Mmu.SENSOR_COMPRESSION, None)
         has_active_compression = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
@@ -214,7 +214,7 @@ class MmuSensorFactory:
 
         self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
 
-    def _sync_compression_callback(self, eventtime, compression_state, runout_helper):
+    def sync_compression_callback(self, eventtime, compression_state, runout_helper):
         compression_enabled = runout_helper.sensor_enabled
         tension_sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % Mmu.SENSOR_TENSION, None)
         has_active_tension = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False

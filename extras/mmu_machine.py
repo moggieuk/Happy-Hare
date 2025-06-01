@@ -63,9 +63,9 @@ class MmuMachine:
 
         # Setup motor syncing feedback sensors...
         switch_pin = config.get('sync_feedback_compression_pin', None)
-        self.compression_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pin, 0, button_handler=self._sync_compression_callback)
+        self.compression_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pin, 0, button_handler=sf.sync_compression_callback)
         switch_pin = config.get('sync_feedback_tension_pin', None)
-        self.tension_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_TENSION, None, switch_pin, 0, button_handler=self._sync_tension_callback)
+        self.tension_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_TENSION, None, switch_pin, 0, button_handler=sf.sync_tension_callback)
 
         self.num_gates = 0     # Total number of vitual mmu gates
         self.units = []        # Unit by index
