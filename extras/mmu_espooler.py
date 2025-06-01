@@ -25,7 +25,7 @@ class MmuESpooler:
 
     def __init__(self, config, *args):
         if len(args) < 2:
-            raise config.error("[%s] cannot be instantiated directly. It must be laoded by [mmu_unit]" % config.get_name())
+            raise config.error("[%s] cannot be instantiated directly. It must be loaded by [mmu_unit]" % config.get_name())
         self.first_gate, self.num_gates = args
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()

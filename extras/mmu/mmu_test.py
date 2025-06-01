@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Define internal test operations to aid development
+# Goal: Define internal test operations to aid development. Note these tests are "raw"
 #
 # (\_/)
 # ( *,*)
@@ -95,9 +95,9 @@ class MmuTest:
             self.mmu.log_info("SEL_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP")
             self.mmu.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
             self.mmu.log_info("SEL_LOAD_TEST=1 : Load test selector movements. Params: LOOP|ENDSTOP")
-            self.mmu.log_info("TTC_TEST=1 : Provoke known TTC condition. Parms: LOOP|MIX|DEBUG")
-            self.mmu.log_info("TTC_TEST2=1 : Provoke known TTC condition. Parms: LOOP|MIX|DEBUG")
-            self.mmu.log_info("TTC_TEST3=1 : Provoke known TTC condition. Parms: LOOP|MIX|DEBUG")
+            self.mmu.log_info("TTC_TEST=1 : Provoke known TTC condition. Params: LOOP|MIX|DEBUG")
+            self.mmu.log_info("TTC_TEST2=1 : Provoke known TTC condition. Params: LOOP|MIX|DEBUG")
+            self.mmu.log_info("TTC_TEST3=1 : Provoke known TTC condition. Params: LOOP|MIX|DEBUG")
             self.mmu.log_info("STEPCOMPRESS_TEST=1 : Provoke stepcompress error. Parms: LOOP|MIX|DEBUG")
             self.mmu.log_info("SYNC_G2E=1 : Sync gear to extruder")
             self.mmu.log_info("SYNC_E2G=1 : Sync extruder to gear. Params: EXTRUDER_ONLY")
@@ -105,18 +105,20 @@ class MmuTest:
 
         sync_state = gcmd.get('SYNC_STATE', None)
         if sync_state is not None:
-            # create phony sensors for testing purposes (will be removed after the test)
+            # Create phony sensors for testing purposes (will be removed after the test)
             sensors = self.mmu.printer.lookup_object("mmu_sensors")
             config = self.mmu.config.getsection('mmu_sensors')
             sensors_to_remove = []
-            # use the temporary sensors for the test if the real ones are not present
+            compression_sensor_filament_present = tension_sensor_filament_present = False
+
+            # Use the temporary sensors for the test if the real ones are not present or disabled
             compression_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION, None)
-            if compression_test_sensor is None:
+            if compression_test_sensor is None or not compression_test_sensor.runout_helper.sensor_enabled:
                 sensors._create_mmu_sensor(config, self.mmu.SENSOR_COMPRESSION, None, 'test_'+self.mmu.SENSOR_COMPRESSION+'_pin', 0, button_handler=sensors._sync_compression_callback)
                 compression_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION)
                 sensors_to_remove.append(self.mmu.SENSOR_COMPRESSION)
             tension_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION, None)
-            if tension_test_sensor is None:
+            if tension_test_sensor is None or not tension_test_sensor.runout_helper.sensor_enabled:
                 sensors._create_mmu_sensor(config, self.mmu.SENSOR_TENSION, None, 'test_'+self.mmu.SENSOR_TENSION+'_pin', 0, button_handler=sensors._sync_tension_callback)
                 tension_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION)
                 sensors_to_remove.append(self.mmu.SENSOR_TENSION)

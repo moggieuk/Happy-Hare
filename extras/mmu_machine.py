@@ -15,10 +15,12 @@
 import logging
 
 # Happy Hare imports
-from .                   import mmu_unit
+from .                     import mmu_unit
+from .mmu                  import Mmu
+from .mmu.mmu_sensor_utils import MmuSensorFactory
 
 # Klipper imports
-from kinematics.extruder import ExtruderStepper
+from kinematics.extruder   import ExtruderStepper
 
 class MmuMachine:
 
@@ -32,14 +34,44 @@ class MmuMachine:
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        self.extruder_name = config.getint('extruder_name', 'extruder')
+        self.extruder_name = config.get('extruder_name', 'extruder')
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+
+        # Setup sensors common to all mmu_units
+        #
+        # extruder & toolhead sensor:
+        #   Wrapper around `filament_switch_sensor` disabling all functionality - just for visability
+        #   Named `extruder` & `toolhead`
+        #
+        # optional sync feedback sensor(s):
+        #   Creates buttons handlers (with filament_switch_sensor for visibility and control) and publishes events based on state change
+        #   Named `sync_feedback_compression` & `sync_feedback_tension`
+        event_delay = config.get('event_delay', 0.5)
+        sf = MmuSensorFactory(self.printer)
+
+        # Setup single extruder (entrance) sensor...
+        switch_pin = config.get('extruder_switch_pin', None)
+        self.extruder_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, event_delay, insert=True, runout=True)
+
+        # Setup single toolhead sensor...
+        switch_pin = config.get('toolhead_switch_pin', None)
+        self.toolhead_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, event_delay)
+
+        # Setup single "mmu_gate" sensor...
+        switch_pin = config.get('gate_switch_pin', None)
+        self.gate_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_GATE, None, switch_pin, event_delay, runout=True)
+
+        # Setup motor syncing feedback sensors...
+        switch_pin = config.get('sync_feedback_compression_pin', None)
+        self.compression_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pin, 0, button_handler=self._sync_compression_callback)
+        switch_pin = config.get('sync_feedback_tension_pin', None)
+        self.tension_sensor = sf.create_mmu_sensor(config, Mmu.SENSOR_TENSION, None, switch_pin, 0, button_handler=self._sync_tension_callback)
 
         self.num_gates = 0     # Total number of vitual mmu gates
         self.units = []        # Unit by index
         self.unit_by_name = {} # Unit lookup by name
-        self.unit_by_gate = [] # Quick object lookup by gate
-        self.unit_status = {}
+        self.unit_by_gate = [] # Quick unit lookup by gate
+        self.unit_status = {}  # Aggregated status for backward comptability
 
         for i, name in enumerate(self.unit_names):
             section = "mmu_unit %s" % name
