@@ -1,5 +1,6 @@
 # Happy Hare MMU Software
-# Manager to centralize mmu_sensor operations
+#
+# Manager to centralize mmu_sensor operations and utilities
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com

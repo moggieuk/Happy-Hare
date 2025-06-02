@@ -24,7 +24,7 @@
 import logging, importlib, math, os, time, re
 
 # Happy Hare imports
-from .                   import mmu_machine, mmu_espooler
+from .                   import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder
 
 # Klipper imports
 import stepper, chelper, toolhead
@@ -315,21 +315,55 @@ class MmuUnit:
             else:
                 raise config.error("Selector servo not found. Perhaps missing '[mmu_servo %s]' definition" % servo_name)
 
-        # Load optional encoder
-        self.encoder = None
-        section = 'mmu_encoder %s' % self.name
-        if config.has_section(section):
-            self.encoder = self.printer.load_object(config, section)
-            logging.info("MMU: Loaded: %s" % section)
+# PAUL would be load if not already loaded..
+#        # Load optional mmu_encoder
+#        self.encoder = None
+#        section = 'mmu_encoder %s' % self.name
+#        if config.has_section(section):
+#            c = config.getsection(section)
+#            self.encoder = mmu_encoder.MmuEncoder(c, self.mmu_machine, self, self.first_gate, self.num_gates)
+#            logging.info("MMU: Created: %s" % c.get_name())
+#            self.printer.add_object(c.get_name(), self.encoder) # Register mmu_encoder to stop it being loaded by klipper
+#
+# PAUL would need load mmu_sync_feedback if not already loaded..
 
-        # Load optional espooler
+# PAUL
+#            self.encoder = self.printer.load_object(config, section)
+#            logging.info("MMU: Loaded: %s" % section)
+
+        # Load mmu_sensors
+        self.sensors = None
+        section = 'mmu_sensors %s' % self.name
+        if config.has_section(section):
+            c = config.getsection(section)
+            self.sensors = mmu_sensors.MmuSensors(c, self.mmu_machine, self, self.first_gate, self.num_gates)
+            logging.info("MMU: Created: %s" % c.get_name())
+            self.printer.add_object(c.get_name(), self.sensors) # Register mmu_sensors to stop it being loaded by klipper
+
+        # Load optional mmu_espooler
         self.espooler = None
         section = 'mmu_espooler %s' % self.name
         if config.has_section(section):
             c = config.getsection(section)
-            self.espooler = mmu_espooler.MmuESpooler(c, self.first_gate, self.num_gates)
+            self.espooler = mmu_espooler.MmuESpooler(c, self.mmu_machine, self, self.first_gate, self.num_gates)
             logging.info("MMU: Created: %s" % c.get_name())
             self.printer.add_object(c.get_name(), self.espooler) # Register mmu_espooler to stop it being loaded by klipper
+
+        # Load optional mmu_encoder (could be a shared encoder)
+        self.encoder = None
+        encoder_name = config.get('encoder', None)
+        if encoder_name:
+            section = 'mmu_encoder %s' % self.name
+            self.encoder = self.printer.load_object(config, section) # PAUL what about if already loaded?
+            logging.info("MMU: Loaded: %s" % section)
+
+        # Load optional sync-feedback mmu_buffer (could be a shared buffer)
+        self.buffer = None
+        buffer_name = config.get('buffer', None)
+        if buffer_name:
+            section = 'mmu_buffer %s' % self.name
+            self.buffer = self.printer.load_object(config, section) # PAUL what about if already loaded?
+            logging.info("MMU: Loaded: %s" % section)
 
     def get_status(self, eventtime):
         return {
