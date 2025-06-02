@@ -1037,7 +1037,7 @@ class Mmu:
     def _check_has_encoder(self):
         if any(self.has_encoder(gate) for gate in range(self.num_gates)):
             return False
-        self.log_error("No encoderes configured!")
+        self.log_error("No encoders configured!")
         return True
 
     # -----------------------------------------------------------------------------------------------------------

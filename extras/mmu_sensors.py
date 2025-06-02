@@ -43,7 +43,7 @@ class MmuSensors:
 
         # Setup "mmu_pre_gate" sensors...
         self.pre_gate_sensors = {}
-        for i, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates + 1)):
+        for i, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates)):
             switch_pin = config.get('pre_gate_switch_pin_%d' % i, None)
             self.pre_gate_sensors[gate] = sf.create_mmu_sensor(
                 config,
@@ -71,7 +71,7 @@ class MmuSensors:
 
         # Setup "mmu_gear" sensors...
         self.post_gear_sensors = {}
-        for i, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates + 1)):
+        for i, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates)):
             switch_pin = config.get('post_gear_switch_pin_%d' % i, None)
             self.post_gear_sensors[gate] = sf.create_mmu_sensor(
                 config,

@@ -24,7 +24,7 @@
 import logging, importlib, math, os, time, re
 
 # Happy Hare imports
-from .                   import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder
+from .                   import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder, mmu_leds
 
 # Klipper imports
 import stepper, chelper, toolhead
@@ -64,7 +64,7 @@ UNIT_ALT_DISPLAY_NAMES = {
     VENDOR_ANGRY_BEAVER: "Angry Beaver",
     VENDOR_BOX_TURTLE:   "Box Turtle",
     VENDOR_NIGHT_OWL:    "Night Owl",
-    VENDOR_VVD:          "BTT VVD",
+    VENDOR_VVD:          "BTT ViViD",
 }
 
 VENDORS = [
@@ -224,79 +224,82 @@ class MmuUnit:
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
 
-        # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
-        # and ensure all gear steppers are loaded
-        self.gear_tmc = None
-        base_gear_tmc = base_tmc_section = None
-        for chip in TMC_CHIPS:
-            base_tmc_section = '%s %s' % (chip, self.gear_name)
-            if config.has_section(base_tmc_section):
-                base_gear_tmc = chip
-                self.gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
-                logging.info("MMU: Loaded: %s" % base_tmc_section)
-                break
-
-        if self.gear_tmc is None:
-            raise config.error("Gear stepper configuration not found for mmu_unit %s" % self.name)
-
-        last_gear = 24
-        for i in range(1, last_gear): # Don't allow "_0" or it is confusing with unprefixed initial stepper
-            section = "%s_%d" % (self.gear_name, i)
-            if not config.has_section(section):
-                last_gear = i
-                break
-
-            self.multigear = True
-
-            # Share stepper config section with additional steppers
-            stepper_section = "%s_%d" % (self.gear_name, i)
-            for key in SHAREABLE_STEPPER_PARAMS:
-                if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(self.gear_name, key):
-                    base_value = config.fileconfig.get(self.gear_name, key)
-                    if base_value:
-                        logging.info("MMU: Sharing gear stepper config %s=%s with %s" % (key, base_value, stepper_section))
-                        config.fileconfig.set(stepper_section, key, base_value)
-
-            # IF tmc controller for this additional stepper matches the base we can fill in missing TMC config
-            tmc_section = '%s %s_%d' % (base_gear_tmc, self.gear_name, i)
-            if config.has_section(tmc_section):
-                for key in SHAREABLE_TMC_PARAMS:
-                    if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
-                        base_value = config.fileconfig.get(base_tmc_section, key)
-                        if base_value:
-                            logging.info("MMU: Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
-                            config.fileconfig.set(tmc_section, key, base_value)
-                _ = self.printer.load_object(config, tmc_section) # Load supplementary gear stepper now
-                logging.info("MMU: Loaded: %s" % tmc_section)
-            else:
-                # Regardless of tmc chip type, find and load all gear steppers
-                for chip in TMC_CHIPS:
-                    extra_tmc_section = '%s %s_%d' % (chip, self.gear_name, i)
-                    if config.has_section(extra_tmc_section):
-                        _ = self.printer.load_object(config, extra_tmc_section)
-                        logging.info("MMU: Loaded: %s" % extra_tmc_section)
-                        break
-
-        # H/W validation checks
-        if self.multigear and last_gear != self.num_gates:
-            raise config.error("MMU unit is configured with %d gates but %d gear stepper configurations were found" % (self.num_gates, last_gear))
-
-        # Load selector stepper if applicable
-        if self.selector_type in ['LinearSelector', 'RotarySelector']:
-            found = False
+        if self.name != "unit2": # PAUL TEMP HACK TO ALLOW SINGLE TYPE-A MMU to be split in two for testing sharing same MmuToolhead
+            # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
+            # and ensure all gear steppers are loaded
+            self.gear_tmc = None
+            base_gear_tmc = base_tmc_section = None
             for chip in TMC_CHIPS:
-                tmc_section = '%s %s' % (chip, self.selector_name)
-                if config.has_section(tmc_section):
-                    _ = self.printer.load_object(config, tmc_section)
-                    logging.info("MMU: Loaded: %s" % tmc_section)
-                    found = True
+                base_tmc_section = '%s %s' % (chip, self.gear_name)
+                if config.has_section(base_tmc_section):
+                    base_gear_tmc = chip
+                    self.gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
+                    logging.info("MMU: Loaded: %s" % base_tmc_section)
                     break
-            if not found:
-                raise config.error("Selector stepper configuration not found for mmu_unit %s" % self.name)
 
-        # Now we have all the parts to create MmuToolHead
-        self.mmu_toolhead = MmuToolHead(config, self)
-        logging.info("MMU: Created toolhead for mmu %s" % self.name)
+            if self.gear_tmc is None:
+                raise config.error("Gear stepper configuration not found for mmu_unit %s" % self.name)
+
+            last_gear = 24
+            for i in range(1, last_gear): # Don't allow "_0" or it is confusing with unprefixed initial stepper
+                section = "%s_%d" % (self.gear_name, i)
+                if not config.has_section(section):
+                    last_gear = i
+                    break
+
+                self.multigear = True
+
+                # Share stepper config section with additional steppers
+                stepper_section = "%s_%d" % (self.gear_name, i)
+                for key in SHAREABLE_STEPPER_PARAMS:
+                    if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(self.gear_name, key):
+                        base_value = config.fileconfig.get(self.gear_name, key)
+                        if base_value:
+                            logging.info("MMU: Sharing gear stepper config %s=%s with %s" % (key, base_value, stepper_section))
+                            config.fileconfig.set(stepper_section, key, base_value)
+
+                # If tmc controller for this additional stepper matches the base we can fill in missing TMC config
+                tmc_section = '%s %s_%d' % (base_gear_tmc, self.gear_name, i)
+                if config.has_section(tmc_section):
+                    for key in SHAREABLE_TMC_PARAMS:
+                        if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
+                            base_value = config.fileconfig.get(base_tmc_section, key)
+                            if base_value:
+                                logging.info("MMU: Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
+                                config.fileconfig.set(tmc_section, key, base_value)
+                    _ = self.printer.load_object(config, tmc_section) # Load supplementary gear stepper now
+                    logging.info("MMU: Loaded: %s" % tmc_section)
+                else:
+                    # Regardless of tmc chip type, find and load all gear steppers
+                    for chip in TMC_CHIPS:
+                        extra_tmc_section = '%s %s_%d' % (chip, self.gear_name, i)
+                        if config.has_section(extra_tmc_section):
+                            _ = self.printer.load_object(config, extra_tmc_section)
+                            logging.info("MMU: Loaded: %s" % extra_tmc_section)
+                            break
+
+            # H/W validation checks
+            if self.multigear and last_gear != self.num_gates:
+                raise config.error("MMU unit is configured with %d gates but %d gear stepper configurations were found" % (self.num_gates, last_gear))
+
+            # Load selector stepper if applicable
+            if self.selector_type in ['LinearSelector', 'RotarySelector']:
+                found = False
+                for chip in TMC_CHIPS:
+                    tmc_section = '%s %s' % (chip, self.selector_name)
+                    if config.has_section(tmc_section):
+                        _ = self.printer.load_object(config, tmc_section)
+                        logging.info("MMU: Loaded: %s" % tmc_section)
+                        found = True
+                        break
+                if not found:
+                    raise config.error("Selector stepper configuration not found for mmu_unit %s" % self.name)
+
+            # Now we have all the parts to create MmuToolHead
+            self.mmu_toolhead = MmuToolHead(config, self)
+            logging.info("MMU: Instantiated: Toolhead for %s" % self.name)
+        else: # PAUL HACK
+            self.mmu_toolhead = self.mmu_machine.get_mmu_unit_by_name('unit1').mmu_toolhead # PAUL HACK
 
         # Does selector have "touch" (stallguard)?
         self.selector_touch = False
@@ -315,29 +318,13 @@ class MmuUnit:
             else:
                 raise config.error("Selector servo not found. Perhaps missing '[mmu_servo %s]' definition" % servo_name)
 
-# PAUL would be load if not already loaded..
-#        # Load optional mmu_encoder
-#        self.encoder = None
-#        section = 'mmu_encoder %s' % self.name
-#        if config.has_section(section):
-#            c = config.getsection(section)
-#            self.encoder = mmu_encoder.MmuEncoder(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-#            logging.info("MMU: Created: %s" % c.get_name())
-#            self.printer.add_object(c.get_name(), self.encoder) # Register mmu_encoder to stop it being loaded by klipper
-#
-# PAUL would need load mmu_sync_feedback if not already loaded..
-
-# PAUL
-#            self.encoder = self.printer.load_object(config, section)
-#            logging.info("MMU: Loaded: %s" % section)
-
         # Load mmu_sensors
         self.sensors = None
         section = 'mmu_sensors %s' % self.name
         if config.has_section(section):
             c = config.getsection(section)
             self.sensors = mmu_sensors.MmuSensors(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Created: %s" % c.get_name())
+            logging.info("MMU: Instantiated: %s" % c.get_name())
             self.printer.add_object(c.get_name(), self.sensors) # Register mmu_sensors to stop it being loaded by klipper
 
         # Load optional mmu_espooler
@@ -346,24 +333,41 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.espooler = mmu_espooler.MmuESpooler(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Created: %s" % c.get_name())
+            logging.info("MMU: Instantiated: %s" % c.get_name())
             self.printer.add_object(c.get_name(), self.espooler) # Register mmu_espooler to stop it being loaded by klipper
+
+        # Load optional mmu_leds
+        self.leds = None
+        section = 'mmu_leds %s' % self.name
+        if config.has_section(section):
+            c = config.getsection(section)
+            self.leds = mmu_leds.MmuLeds(c, self.mmu_machine, self, self.first_gate, self.num_gates)
+            logging.info("MMU: Instantiated: %s" % c.get_name())
+            self.printer.add_object(c.get_name(), self.leds) # Register mmu_leds to stop it being loaded by klipper
 
         # Load optional mmu_encoder (could be a shared encoder)
         self.encoder = None
         encoder_name = config.get('encoder', None)
         if encoder_name:
-            section = 'mmu_encoder %s' % self.name
-            self.encoder = self.printer.load_object(config, section) # PAUL what about if already loaded?
-            logging.info("MMU: Loaded: %s" % section)
+            section = 'mmu_encoder %s' % encoder_name
+            self.encoder = self.printer.lookup_object(section, None)
+            if self.encoder is None:
+                self.encoder = self.printer.load_object(config, section)
+                logging.info("MMU: Loaded: %s" % section)
+            else:
+                logging.info("MMU: Skipping: %s" % section)
 
         # Load optional sync-feedback mmu_buffer (could be a shared buffer)
         self.buffer = None
         buffer_name = config.get('buffer', None)
         if buffer_name:
-            section = 'mmu_buffer %s' % self.name
-            self.buffer = self.printer.load_object(config, section) # PAUL what about if already loaded?
-            logging.info("MMU: Loaded: %s" % section)
+            section = 'mmu_buffer %s' % buffer_name
+            self.buffer = self.printer.lookup_object(section, None)
+            if self.buffer is None:
+                self.buffer = self.printer.load_object(config, section)
+                logging.info("MMU: Loaded: %s" % section)
+            else:
+                logging.info("MMU: Skipping: %s" % section)
 
     def get_status(self, eventtime):
         return {

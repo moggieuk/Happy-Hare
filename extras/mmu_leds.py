@@ -18,9 +18,9 @@ import logging
 from . import led as klipper_led
 
 class VirtualMmuLedChain:
-    def __init__(self, config, segment, config_chains):
+    def __init__(self, config, unit_name, segment, config_chains):
         self.printer = config.get_printer()
-        self.name = "mmu_%s_leds" % segment
+        self.name = "mmu_%s_%s_leds" % (unit_name, segment)
         self.config_chains = config_chains
 
         # Create temporary config section just to access led helper
@@ -39,6 +39,10 @@ class VirtualMmuLedChain:
                     self.leds.append((chain, led))
             else:
                 raise config.error("MMU LED chain '%s' referenced in '%s' doesn't exist" % (chain_name, self.name))
+
+        # Register led object with klipper
+        logging.info("MMU: Created: %s" % led_section)
+        self.printer.add_object(self.name, self)
 
     def update_leds(self, led_state, print_time):
         chains_to_update = set()
@@ -64,10 +68,12 @@ class MmuLeds:
     PER_GATE_SEGMENTS = ['exit', 'entry']
     SEGMENTS = PER_GATE_SEGMENTS + ['status', 'logo']
 
-    def __init__(self, config):
+    def __init__(self, config, *args):
+        if len(args) < 2:
+            raise config.error("[%s] cannot be instantiated directly. It must be loaded by [mmu_unit]" % config.get_name())
+        self.mmu_machine, self.mmu_unit, self.first_gate, self.num_gates = args
+        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
-
-        self.num_gates = self.printer.lookup_object("mmu_machine").num_gates
         self.frame_rate = config.getint('frame_rate', 24)
 
         # Create virtual led chains
@@ -75,8 +81,7 @@ class MmuLeds:
         for segment in self.SEGMENTS:
             name = "%s_leds" % segment
             config_chains = [self.parse_chain(line) for line in config.get(name, '').split('\n') if line.strip()]
-            self.virtual_chains[segment] = VirtualMmuLedChain(config, segment, config_chains)
-            self.printer.add_object("mmu_%s" % name, self.virtual_chains[segment])
+            self.virtual_chains[segment] = VirtualMmuLedChain(config, self.mmu_unit.name, segment, config_chains)
 
             num_leds = len(self.virtual_chains[segment].leds)
             if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds != self.num_gates:
