@@ -1750,7 +1750,7 @@ questionaire() {
             _hw_filament_always_gripped=0
             _hw_gear_gear_ratio="1.25:1"
             _hw_gear_run_current=0.7
-            _hw_gear_hold_current=0.4
+            _hw_gear_hold_current=0.1
             _hw_chain_count=4
             _hw_exit_leds="neopixel:mmu_leds (1-4)"
             _hw_entry_leds=""
