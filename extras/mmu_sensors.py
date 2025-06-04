@@ -62,7 +62,7 @@ class MmuSensors:
         switch_pin = config.get('gate_switch_pin', None)
         self.gate_sensor = sf.create_mmu_sensor(
             config,
-            "%s_%s" % (Mmu.SENSOR_GATE, self.mmu_unit.name),
+            "unit%d_%s" % (self.mmu_unit.unit_index, Mmu.SENSOR_GATE),
             None,
             switch_pin,
             event_delay,

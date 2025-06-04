@@ -31,6 +31,7 @@ from .mmu_test           import MmuTest
 from .mmu_utils          import DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager import MmuSensorManager
 from .mmu_sensor_utils   import MmuRunoutHelper
+from .mmu_led_manager    import MmuLedManager
 
 
 # Main klipper module
@@ -516,10 +517,11 @@ class Mmu:
         self.selector = globals()[self.mmu_unit().selector_type](self, self.mmu_unit())
         if not isinstance(self.selector, BaseSelector):
             raise self.config.error("Invalid Selector class for MMU")
-
-        # Setup filament sensors that are also used for homing (endstops). Must be done during initialization
-        self.sensor_manager = MmuSensorManager(self)
 # PAUL ^^^
+
+        # Managers are responsible for handling multiple mmu_units
+        self.sensor_manager = MmuSensorManager(self) # Must be done during initialization because also setsup homing endstops
+        self.led_manager = MmuLedManager(self)
 
         # Establish defaults for "reset" operation ----------------------------------------------------------
         # These lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
@@ -1165,7 +1167,8 @@ class Mmu:
             gate = self.ttg_map[tool]
             self.slicer_color_rgb[gate] = self._color_to_rgb_tuple(tool_value['color'])
         self._update_t_macros()
-        self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1") # Cheat to force LED update
+        self.led_manager.gate_map_changed(-1) # Force LED update
+#PAUL        self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1") # Cheat to force LED update
 
     # Helper to determine purge volume for toolchange
     def _get_purge_volume(self, from_tool, to_tool):
@@ -1333,6 +1336,7 @@ class Mmu:
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
+        logging.info("PAUL: gcode: %s" % command)
         try:
             command = command.replace("''", "")
             macro = command.split()[0]
@@ -2153,7 +2157,7 @@ class Mmu:
             msg += self._get_encoder_summary(detail=detail)
         self.log_always(msg)
 
-    def _get_encoder_summary(self, detail=False): # TODO move to mmu_sensor_manager?
+    def _get_encoder_summary(self, detail=False):
         status = self.encoder().get_status(0)
         msg = "Encoder position: %.1f" % status['encoder_pos']
         if detail:
@@ -3130,6 +3134,7 @@ class Mmu:
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead().is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_operation, self.is_printer_paused(), idle_timeout))
             if call_macro:
+                self.led_manager.print_state_changed(print_state, self.print_state) # PAUL
                 if self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro, None) is not None:
                     self.wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.print_state_changed_macro, print_state, self.print_state))
             self.print_state = print_state
@@ -3794,6 +3799,7 @@ class Mmu:
         if action == self.action: return action
         old_action = self.action
         self.action = action
+        self.led_manager.action_changed(action, old_action) # PAUL
         if self.printer.lookup_object("gcode_macro %s" % self.action_changed_macro, None) is not None:
             self.wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % (self.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
         return old_action
@@ -4332,7 +4338,7 @@ class Mmu:
                             self.selector.filament_release()
                             self.selector.filament_drive()
 
-        else: # Gate sensor... SENSOR_GATE is shared, but SENSOR_GEAR_PREFIX is specific
+        else: # Gate sensor... SENSOR_GATE is shared, but SENSOR_GEAR_PREFIX is gate specific
             for i in range(retries):
                 endstop_name = self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop)
                 msg = ("Initial homing to %s sensor" % endstop_name) if i == 0 else ("Retry homing to gate sensor (retry #%d)" % i)
@@ -6135,7 +6141,7 @@ class Mmu:
             self.sensor_manager.reset_active_unit(self.unit_selected)
             if self.sync_feedback_enable:
                 self._update_sync_starting_state()
-        self.sensor_manager.reset_active_gate(self.gate_selected) # Call after unit_selected is set
+        self.sensor_manager.reset_active_gate(self.gate_selected)
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
         self._update_sync_multiplier() # Refine rotation distance based on sync feedback status
@@ -7642,6 +7648,7 @@ class Mmu:
                 self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
                 self.gate_status[gate] = state
                 self._persist_gate_status()
+                self.led_manager.gate_map_changed(gate) # PAUL
                 self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
 
     def _persist_gate_status(self):
@@ -7679,6 +7686,7 @@ class Mmu:
             elif self.spoolman_support == self.SPOOLMAN_READONLY:
                 self._spoolman_update_filaments(gate_ids)
 
+        self.led_manager.gate_map_changed(-1) # PAUL
         if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
             self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
 

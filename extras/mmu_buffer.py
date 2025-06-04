@@ -32,7 +32,7 @@ class MmuBuffer:
         switch_pin = config.get('sync_feedback_compression_pin', None)
         self.compression_sensor = sf.create_mmu_sensor(
             config,
-            "%s_%s" % (Mmu.SENSOR_COMPRESSION, self.name),
+            "%s_%s" % (self.name, Mmu.SENSOR_COMPRESSION),
             None,
             switch_pin,
             0,
@@ -42,12 +42,14 @@ class MmuBuffer:
         switch_pin = config.get('sync_feedback_tension_pin', None)
         self.tension_sensor = sf.create_mmu_sensor(
             config,
-            "%s_%s" % (Mmu.SENSOR_TENSION, self.name),
+            "%s_%s" % (self.name, Mmu.SENSOR_TENSION),
             None,
             switch_pin,
             0,
             button_handler=sf.sync_tension_callback
         )
+
+# TODO with analogue pin support
 
 def load_config_prefix(config):
     return MmuBuffer(config)

@@ -152,11 +152,10 @@ class MmuSensorFactory:
     def __init__(self, printer):
         self.printer = printer
 
-    def create_mmu_sensor(self, config, name_prefix, gate, switch_pin, event_delay, insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None):
+    def create_mmu_sensor(self, config, name_prefix, gate, switch_pin, event_delay,
+                          insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None):
         fs = None
         if not self._is_empty_pin(switch_pin):
-# PAUL need the unit number? Actually caller can define name
-#            name = "%s_%d" % (name_prefix, gate) if gate is not None else "unit_%d_%s" % (unit, name_prefix) if len(switch_pins) > 1 else name_prefix
             name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
             sensor = name if gate is not None else "%s_sensor" % name
             section = "filament_switch_sensor %s" % sensor

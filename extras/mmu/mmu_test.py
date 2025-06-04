@@ -479,7 +479,8 @@ class MmuTest:
                         if not tracking:
                             self.mmu.log_error(">>>>>> Position tracking error")
                             break
-                self.mmu.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD")
+                for unit_name in self.mmu.mmu_machine.units_names:
+                    self.mmu.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD UNIT=%s" % unit_name)
                 self.mmu.log_info("Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" % (total, self.mmu._get_filament_position()))
             finally:
                 self.mmu._is_running_test = False

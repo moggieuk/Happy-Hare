@@ -224,7 +224,7 @@ class MmuUnit:
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
 
-        if self.name != "unit2": # PAUL TEMP HACK TO ALLOW SINGLE TYPE-A MMU to be split in two for testing sharing same MmuToolhead
+        if self.name != "unit1": # PAUL TEMP HACK TO ALLOW SINGLE TYPE-A MMU to be split in two for testing sharing same MmuToolhead
             # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
             # and ensure all gear steppers are loaded
             self.gear_tmc = None
@@ -299,7 +299,7 @@ class MmuUnit:
             self.mmu_toolhead = MmuToolHead(config, self)
             logging.info("MMU: Instantiated: Toolhead for %s" % self.name)
         else: # PAUL HACK
-            self.mmu_toolhead = self.mmu_machine.get_mmu_unit_by_name('unit1').mmu_toolhead # PAUL HACK
+            self.mmu_toolhead = self.mmu_machine.get_mmu_unit_by_name('unit0').mmu_toolhead # PAUL HACK
 
         # Does selector have "touch" (stallguard)?
         self.selector_touch = False
@@ -670,7 +670,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 for s in self.inactive_gear_steppers:
                     self.mmu_toolhead.register_step_generator(s.generate_steps)
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
-                self.inactive_gear_steppers = [] # python3 - self.inactive_gear_steppers.clear()
+                self.inactive_gear_steppers = []
             rail.steppers = rail.steppers[:-len(following_steppers)]
 
         elif self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:

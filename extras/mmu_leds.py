@@ -20,7 +20,7 @@ from . import led as klipper_led
 class VirtualMmuLedChain:
     def __init__(self, config, unit_name, segment, config_chains):
         self.printer = config.get_printer()
-        self.name = "mmu_%s_%s_leds" % (unit_name, segment)
+        self.name = "%s_mmu_%s_leds" % (unit_name, segment)
         self.config_chains = config_chains
 
         # Create temporary config section just to access led helper
@@ -107,6 +107,17 @@ class MmuLeds:
         except Exception:
             pass
 
+        # Read default effects for each segment and other options
+        self.enabled = config.get('enabled', True)
+        self.animation = config.get('animation', self.led_effect_module)
+        self.exit_effect = config.get('exit_effect', 'gate_status')
+        self.entry_effect = config.get('entry_effect', 'filament_color')
+        self.status_effect = config.get('status_effect', 'filament_color')
+        self.logo_effect = config.get('logo_effect', '0,0,0.3')
+        self.white_light = config.get('white_light', '1,1,1')
+        self.black_light = config.get('black_light', '0.01,0,0.02')
+        self.empty_light = config.get('empty_light', '0,0,0')
+
     def parse_chain(self, chain):
         chain = chain.strip()
         leds=[]
@@ -136,9 +147,13 @@ class MmuLeds:
     def get_status(self, eventtime=None):
         status = {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
         status.update({
-            'led_effect_module': self.led_effect_module,
+            'enabled': self.enabled,
+            'animation': self.animation,
+            'exit_effect': self.exit_effect,
+            'entry_effect': self.entry_effect,
+            'status_effect': self.status_effect,
+            'logo_effect': self.logo_effect,
             'num_gates': self.num_gates,
-            'default_frame_rate': self.frame_rate
         })
         return status
 
