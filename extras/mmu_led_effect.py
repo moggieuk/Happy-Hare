@@ -60,9 +60,9 @@ class MmuLedEffect:
                             if segment in MmuLeds.PER_GATE_SEGMENTS and not define_on and segment != 'status':
 #PAUL                                for idx in range(num_leds): # PAUL would have to be num_leds / num_gates
                                 for idx in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
-                                    section_to = "led_effect %s_%s_%d" % (led_effect_section, segment, idx + 1)
-                                    logging.info("PAUL: add_led_effect(%s, %s (%d))" % (section_to, led_segment_name, idx + 1))
-                                    self._add_led_effect(config, section_to, "%s (%d)" % (led_segment_name, idx + 1))
+                                    section_to = "led_effect %s_%s_%d" % (led_effect_section, segment, idx)
+                                    logging.info("PAUL: add_led_effect(%s, %s (%d))" % (section_to, led_segment_name, idx - mmu_unit.first_gate + 1))
+                                    self._add_led_effect(config, section_to, "%s (%d)" % (led_segment_name, idx - mmu_unit.first_gate + 1))
 
     def _add_led_effect(self, config, section_to, leds):
         config.fileconfig.add_section(section_to)

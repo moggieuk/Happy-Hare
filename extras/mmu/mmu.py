@@ -256,6 +256,8 @@ class Mmu:
         self.config = config
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self.gcode = self.printer.lookup_object('gcode')
+        self.gcode_move = self.printer.load_object(config, 'gcode_move')
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.num_gates = self.mmu_machine.num_gates
 
@@ -276,7 +278,6 @@ class Mmu:
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
-        self.has_leds = self.has_led_animation = False
         self.bowden_start_pos = None
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
@@ -568,8 +569,6 @@ class Mmu:
         self.tool_speed_multipliers.extend([1.] * self.num_gates)
 
         # Register GCODE commands ---------------------------------------------------------------------------
-        self.gcode = self.printer.lookup_object('gcode')
-        self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
         # Logging and Stats
         self.gcode.register_command('MMU_RESET', self.cmd_MMU_RESET, desc = self.cmd_MMU_RESET_help)
@@ -595,7 +594,6 @@ class Mmu:
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
         self.gcode.register_command('MMU_ESPOOLER', self.cmd_MMU_ESPOOLER, desc = self.cmd_MMU_ESPOOLER_help)
-        self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
         self.gcode.register_command('MMU_SELECT', self.cmd_MMU_SELECT, desc = self.cmd_MMU_SELECT_help)
         self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help) # Alias for MMU_SELECT BYPASS=1
@@ -934,28 +932,20 @@ class Mmu:
         except Exception as e:
             self.log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
-        # Basic LED validation
-        gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-        if gcode_macro:
-            mmu_leds = self.printer.lookup_object('mmu_leds', None)
-            self.has_leds = bool(mmu_leds)
-            self.has_led_animation = mmu_leds.get_status().get('led_effect_module', False) if mmu_leds else False
-
-            if self.has_leds:
-                self.log_debug("LEDs support enabled %s" % "with optional animation" if self.has_led_animation else "")
-            else:
-                self.log_debug("LEDs support is not configured")
-        else:
-            self.log_error("LEDs macro _MMU_SET_LED not available")
-
-        # Override user configuration based on actual h/w setup
-        led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
-        if led_vars_macro:
-            variables = led_vars_macro.variables
-            led_vars = {}
-            led_vars['led_enable'] = variables.get('led_enable', True) & self.has_leds
-            led_vars['led_animation'] = variables.get('led_animation', True) & self.has_led_animation
-            led_vars_macro.variables.update(led_vars)
+# PAUL change this before to check mmu_unit.leds .. ?
+#        # Basic LED validation
+#        gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
+#        if gcode_macro:
+#            mmu_leds = self.printer.lookup_object('mmu_leds', None)
+#            self.has_leds = bool(mmu_leds)
+#            self.has_led_animation = mmu_leds.get_status().get('led_effect_module', False) if mmu_leds else False
+#
+#            if self.has_leds:
+#                self.log_debug("LEDs support enabled %s" % "with optional animation" if self.has_led_animation else "")
+#            else:
+#                self.log_debug("LEDs support is not configured")
+#        else:
+#            self.log_error("LEDs macro _MMU_SET_LED not available")
 
         # Sub components
         self.selector.handle_ready()
@@ -1337,6 +1327,7 @@ class Mmu:
 
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         logging.info("PAUL: gcode: %s" % command)
+        self.log_error("PAUL: gcode: %s" % command)
         try:
             command = command.replace("''", "")
             macro = command.split()[0]
@@ -1802,7 +1793,7 @@ class Mmu:
 
     def _color_message(self, msg):
         # 0=end_color, 1=grey, 2=red, 3=green, 4=blue, 5=bold_on, 6=bold_off
-        html_msg = msg.format('</span>', '<span style=\"color:#C0C0C0\">', '<span style=\"color:#FF69B4\">', '<span style=\"color:#90EE90\">', '<span style=\"color:#87CEEB\">', '<b>', '</b>')
+        html_msg = msg.format('</span>', '<span style=\"color:#A0A0A0\">', '<span style=\"color:#FF69B4\">', '<span style=\"color:#90EE90\">', '<span style=\"color:#87CEEB\">', '<b>', '</b>')
         msg = re.sub(r'\{\d\}', '', msg)
         if self.serious:
             html_msg = msg
@@ -3681,12 +3672,6 @@ class Mmu:
                 return True
         return False
 
-    def check_if_has_leds(self):
-        if not self.has_leds:
-            self.log_error("No LEDs configured on MMU")
-            return True
-        return False
-
     def check_if_spoolman_enabled(self):
         if self.spoolman_support == self.SPOOLMAN_OFF:
             self.log_error("Spoolman support is currently disabled")
@@ -3994,62 +3979,6 @@ class Mmu:
                 else:
                     msg += "not fitted"
             self.log_always(msg)
-
-    cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
-    def cmd_MMU_LED(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        if self.check_if_has_leds(): return
-        if self.check_if_disabled(): return
-        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-
-        set_led_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-        led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
-        mmu_leds = self.printer.lookup_object('mmu_leds', None)
-        if led_vars_macro and set_led_macro and mmu_leds:
-
-            current_led_enable = led_vars_macro.variables['led_enable']
-            current_led_animation = led_vars_macro.variables['led_animation']
-            led_enable = bool(gcmd.get_int('ENABLE', current_led_enable, minval=0, maxval=1))
-            led_animation = bool(gcmd.get_int('ANIMATION', current_led_animation, minval=0, maxval=1))
-            if led_animation and not self.has_led_animation:
-                raise gcmd.error("Led animation is unavailable. Klipper led_effects module is missing")
-
-            default_exit_effect = gcmd.get('EXIT_EFFECT', led_vars_macro.variables['default_exit_effect'])
-            default_entry_effect = gcmd.get('ENTRY_EFFECT', led_vars_macro.variables['default_entry_effect'])
-            default_status_effect = gcmd.get('STATUS_EFFECT', led_vars_macro.variables['default_status_effect'])
-            default_logo_effect = gcmd.get('LOGO_EFFECT', led_vars_macro.variables['default_logo_effect'])
-
-            led_vars = {}
-            led_vars['led_enable'] = led_enable
-            led_vars['led_animation'] = led_animation
-            led_vars['default_exit_effect'] = default_exit_effect
-            led_vars['default_entry_effect'] = default_entry_effect
-            led_vars['default_status_effect'] = default_status_effect
-            led_vars['default_logo_effect'] = default_logo_effect
-
-            if current_led_enable and not led_enable:
-                # Enabled to disabled
-                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off LOGO_EFFECT=off")
-                led_vars_macro.variables.update(led_vars)
-            else:
-                if current_led_animation and not led_animation:
-                    # Turning animation off so clear existing effects
-                    self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off LOGO_EFFECT=off FADETIME=0")
-                led_vars_macro.variables.update(led_vars)
-                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default LOGO_EFFECT=default")
-
-            if not quiet:
-                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled > 0 else "Unavailable"
-                msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
-                msg += "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
-                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, mmu_leds.get_status()['exit'])
-                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, mmu_leds.get_status()['entry'])
-                msg += "Default status effect: %s\n" % effect_string(default_status_effect, mmu_leds.get_status()['status'])
-                msg += "Default logo effect: %s\n" % effect_string(default_logo_effect, mmu_leds.get_status()['logo'])
-                msg += "\nOptions:\nENABLE=[0|1]\nANIMATION=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\nENTRY_EFFECT=[off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\nSTATUS_EFFECT=[off|on|filament_color|slicer_color|r,g,b|_effect_]\nLOGO_EFFECT=[off|r,g,b|_effect_]"
-                self.log_always(msg)
-        else:
-            self.log_error("LEDs not available")
 
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
     def cmd_MMU_RESET(self, gcmd):

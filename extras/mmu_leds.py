@@ -12,7 +12,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging
+import logging, re
 
 # Klipper imports
 from . import led as klipper_led
@@ -113,10 +113,10 @@ class MmuLeds:
         self.exit_effect = config.get('exit_effect', 'gate_status')
         self.entry_effect = config.get('entry_effect', 'filament_color')
         self.status_effect = config.get('status_effect', 'filament_color')
-        self.logo_effect = config.get('logo_effect', '0,0,0.3')
-        self.white_light = config.get('white_light', '1,1,1')
-        self.black_light = config.get('black_light', '0.01,0,0.02')
-        self.empty_light = config.get('empty_light', '0,0,0')
+        self.logo_effect = MmuLeds.string_to_rgb(config.get('logo_effect', '(0,0,0.3)'))
+        self.white_light = MmuLeds.string_to_rgb(config.get('white_light', '(1,1,1)'))
+        self.black_light = MmuLeds.string_to_rgb(config.get('black_light', '(0.01,0,0.02)'))
+        self.empty_light = MmuLeds.string_to_rgb(config.get('empty_light', '(0,0,0)'))
 
     def parse_chain(self, chain):
         chain = chain.strip()
@@ -148,7 +148,7 @@ class MmuLeds:
         status = {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
         status.update({
             'enabled': self.enabled,
-            'animation': self.animation,
+            'animation': self.animation and self.led_effect_module,
             'exit_effect': self.exit_effect,
             'entry_effect': self.entry_effect,
             'status_effect': self.status_effect,
@@ -156,6 +156,17 @@ class MmuLeds:
             'num_gates': self.num_gates,
         })
         return status
+
+    @staticmethod
+    def string_to_rgb(rgb_string):
+        if not isinstance(rgb_string, tuple):
+            rgb = re.sub(r"[\"'()]", '', rgb_string) # Clean up strings
+            rgb = tuple(float(x) for x in rgb.split(','))
+        else:
+           rgb = rgb_string
+        if len(rgb) != 3:
+            raise ValueError("%s is not a valid rgb tuple" % str(rgb_string))
+        return rgb
 
 def load_config_prefix(config):
     return MmuLeds(config)
