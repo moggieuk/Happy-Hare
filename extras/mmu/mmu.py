@@ -1157,7 +1157,7 @@ class Mmu:
             gate = self.ttg_map[tool]
             self.slicer_color_rgb[gate] = self._color_to_rgb_tuple(tool_value['color'])
         self._update_t_macros()
-        self.led_manager.gate_map_changed(-1) # Force LED update
+        self.led_manager.gate_map_changed(None) # Force LED update
 #PAUL        self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1") # Cheat to force LED update
 
     # Helper to determine purge volume for toolchange
@@ -1323,6 +1323,7 @@ class Mmu:
             self._spoolman_sync()
         except Exception as e:
             self.log_error('Error booting up MMU: %s' % str(e))
+            raise e # PAUL
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
@@ -7615,7 +7616,7 @@ class Mmu:
             elif self.spoolman_support == self.SPOOLMAN_READONLY:
                 self._spoolman_update_filaments(gate_ids)
 
-        self.led_manager.gate_map_changed(-1) # PAUL
+        self.led_manager.gate_map_changed(None) # PAUL
         if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
             self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
 

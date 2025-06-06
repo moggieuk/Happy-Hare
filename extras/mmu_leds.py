@@ -84,8 +84,8 @@ class MmuLeds:
             self.virtual_chains[segment] = VirtualMmuLedChain(config, self.mmu_unit.name, segment, config_chains)
 
             num_leds = len(self.virtual_chains[segment].leds)
-            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds != self.num_gates:
-                raise config.error("Number of MMU '%s' LEDs (%d) doesn't match num_gates (%d)" % (segment, num_leds, self.num_gates))
+            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds % self.num_gates:
+                raise config.error("Number of MMU '%s' LEDs (%d) cannot be spread over num_gates (%d)" % (segment, num_leds, self.num_gates))
 
         # Check for LED chain overlap or unavailable LEDs
         used = {}
@@ -99,17 +99,9 @@ class MmuLeds:
                 else:
                     used[led] = segment
 
-        # Check if LED effects module is installed
-        self.led_effect_module = False
-        try:
-            _ = config.get_printer().load_object(config, 'led_effect')
-            self.led_effect_module = True
-        except Exception:
-            pass
-
         # Read default effects for each segment and other options
         self.enabled = config.get('enabled', True)
-        self.animation = config.get('animation', self.led_effect_module)
+        self.animation = config.get('animation', True)
         self.exit_effect = config.get('exit_effect', 'gate_status')
         self.entry_effect = config.get('entry_effect', 'filament_color')
         self.status_effect = config.get('status_effect', 'filament_color')
@@ -117,6 +109,34 @@ class MmuLeds:
         self.white_light = MmuLeds.string_to_rgb(config.get('white_light', '(1,1,1)'))
         self.black_light = MmuLeds.string_to_rgb(config.get('black_light', '(0.01,0,0.02)'))
         self.empty_light = MmuLeds.string_to_rgb(config.get('empty_light', '(0,0,0)'))
+
+        # Read operation to effect mappings
+        self.effects = {}
+        self.effect_rgb = {}
+        effect_keys = [
+            'effect_loading',
+            'effect_loading_extruder',
+            'effect_unloading',
+            'effect_unloading_extruder',
+            'effect_heating',
+            'effect_selecting',
+            'effect_checking',
+            'effect_initialized',
+            'effect_error',
+            'effect_complete',
+            'effect_gate_available',
+            'effect_gate_unknown',
+            'effect_gate_empty',
+            'effect_gate_selected'
+        ]
+        for key in effect_keys:
+            parts = [part.strip() for part in config.get(key, '').split(",", 1)]
+            effect = parts[0]
+            rgb_string = parts[1] if len(parts) == 2 else config.get('empty_light', '(0,0,0)')
+            operation = key[len('effect_'):]
+            self.effects[operation] = effect
+            self.effect_rgb[effect] = MmuLeds.string_to_rgb(rgb_string)
+        self.effect_rgb[''] = (0,0,0)
 
     def parse_chain(self, chain):
         chain = chain.strip()
@@ -144,11 +164,17 @@ class MmuLeds:
         else:
             return None, None
 
+    def get_effect(self, operation):
+        return self.effects.get(operation, '')
+
+    def get_rgb_for_effect(self, effect):
+        return self.effect_rgb[effect]
+
     def get_status(self, eventtime=None):
         status = {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
         status.update({
             'enabled': self.enabled,
-            'animation': self.animation and self.led_effect_module,
+            'animation': self.animation,
             'exit_effect': self.exit_effect,
             'entry_effect': self.entry_effect,
             'status_effect': self.status_effect,

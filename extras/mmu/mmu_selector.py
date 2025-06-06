@@ -346,15 +346,12 @@ class LinearSelector(BaseSelector, object):
             self.set_position(self.selector_offsets[gate])
 
     def filament_drive(self, buzz_gear=True):
-        self.mmu.log_error("PAUL: filament_drive()")
         self.servo.servo_down(buzz_gear=buzz_gear)
 
     def filament_release(self, measure=False):
-        self.mmu.log_error("PAUL: filament_release()")
         return self.servo.servo_up(measure=measure)
 
     def filament_hold_move(self): # AKA position for holding filament and moving selector
-        self.mmu.log_error("PAUL: filament_hold_move()")
         self.servo.servo_move()
 
     def get_filament_grip_state(self):
@@ -968,14 +965,6 @@ class LinearSelectorServo:
         self.servo_angle = self.servo_angles['up']
         self.servo_state = self.SERVO_UP_STATE
         return delta
-
-    def _servo_auto(self):
-        if self.mmu.is_printing() and self.mmu_toolhead.is_gear_synced_to_extruder():
-            self.servo_down()
-        elif not self.mmu.selector.is_homed or self.mmu.tool_selected < 0 or self.mmu.gate_selected < 0:
-            self.servo_move()
-        else:
-            self.servo_up()
 
     # De-energize servo if 'servo_always_active' or 'servo_active_down' are being used
     def servo_off(self):
