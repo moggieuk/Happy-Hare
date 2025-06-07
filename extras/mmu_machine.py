@@ -80,7 +80,7 @@ class MmuMachine:
                 raise config.error("Expected [%s] section not found" % section)
             c = config.getsection(section)
             unit = mmu_unit.MmuUnit(c, self, i, self.num_gates)
-            logging.info("MMU: Instantiated: %s" % c.get_name())
+            logging.info("MMU: Created: %s" % c.get_name())
             self.printer.add_object(c.get_name(), unit) # Register mmu_unit to stop if being loaded by klipper
 
             self.units.append(unit)

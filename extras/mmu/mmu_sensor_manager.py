@@ -108,15 +108,14 @@ class MmuSensorManager:
         # We do this in two steps to allow sensor sharing
         # First esure any excluded sensor is completely deactivated
         for sname, sensor in self.all_sensor_map.items():
-            if unit == self.mmu.UNIT_UNKNOWN or (re.match(r'^unit\d+_', sname) and not sname.startswith("unit%d_" % unit)):
+            if re.match(r'^unit\d+_', sname) and not sname.startswith("unit%d_" % unit):
                 sensor.runout_helper.enable_runout(False) # PAUL how does runout get re-enabled?
                 sensor.runout_helper.enable_button_feedback(False)
 
         # Activate just this unit sensors
-        if unit != self.mmu.UNIT_UNKNOWN:
-            for sname, sensor in self.unit_sensors[unit].items():
-                if sname.startswith("unit%d_" % unit):
-                    sensor.runout_helper.enable_button_feedback(True)
+        for sname, sensor in self.unit_sensors[unit].items():
+            if sname.startswith("unit%d_" % unit):
+                sensor.runout_helper.enable_button_feedback(True)
 
     # Return dict of all sensor states (or None if sensor disabled)
     def get_all_sensors(self, inactive=False):

@@ -36,9 +36,13 @@ from .mmu_leds import MmuLeds
 #   "mmu_flash_exit_3" for gate 2 (led 3)
 #   "mmu_flash_exit_4" for gate 3 (led 4)
 #
+# Created effects can be restricted with by specifing 'define_on' and a let of segment
+# names or 'gates' to indicate creation on exit/entry gates. If ommitted all possible
+# effects will be created
+#
 # Then you can set effects with commands like:
-#  SET_LED_EFFECT EFFECT=my_flash_exit     # apply effect to all exit leds
-#  SET_LED_EFFECT EFFECT=my_flash_exit_2   # apply effect entry led for gate #1
+#   _MMU_SET_LED_EFFECT EFFECT=my_flash_exit     # apply effect to all exit leds
+#   _MMU_SET_LED_EFFECT EFFECT=my_flash_exit_2   # apply effect entry led for gate #1
 #
 # or set simple RBGW color with commands like:
 #  SET_LED LED=mmu_exit_led INDEX=2 RED=50 GREEN=50 BLUE=50 WHITE=0 TRANSMIT=1
@@ -63,7 +67,7 @@ class MmuLedEffect:
             if mmu_leds:
                 frame_rate = mmu_leds.frame_rate
                 define_on = [segment.strip() for segment in define_on_str.split(',') if segment.strip()]
-                if define_on and not all(e in MmuLeds.SEGMENTS for e in define_on):
+                if define_on and not all(e in MmuLeds.SEGMENTS + ['gates'] for e in define_on):
                     raise config.error("Unknown LED segment name specified in '%s'" % define_on_str)
                 config.fileconfig.set(config.get_name(), 'frame_rate', config.get('frame_rate', frame_rate))
                 led_effect_section = config.get_name().split()[1]
@@ -73,24 +77,22 @@ class MmuLedEffect:
                     led_segment_name = "unit%d_mmu_%s_leds" % (unit_index, segment)
                     led_chain = self.printer.lookup_object(led_segment_name)
                     num_leds = led_chain.led_helper.led_count
-                    leds_per_gate = num_leds // mmu_unit.num_gates # PAUL
+                    leds_per_gate = num_leds // mmu_unit.num_gates
     
                     if num_leds > 0:
                         # Full segment effects
                         if not define_on or segment in define_on:
                             section_to = "_led_effect unit%d_%s_%s" % (unit_index, led_effect_section, segment)
-# PAUL                            logging.info("PAUL: add_led_effect(%s, %s)" % (section_to, led_segment_name))
                             self._add_led_effect(config, section_to, led_segment_name)
     
                         # Per gate
-                        if segment in MmuLeds.PER_GATE_SEGMENTS and not define_on and segment != 'status':
+                        if segment in MmuLeds.PER_GATE_SEGMENTS and (not define_on or 'gates' in define_on):
                             for idx in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
                                 led0 = idx * leds_per_gate - mmu_unit.first_gate + 1
                                 led_spec = str(led0)
                                 if leds_per_gate > 1:
                                     led_spec = "%d-%d" % (led0, led0 + leds_per_gate - 1)
                                 section_to = "_led_effect %s_%s_%d" % (led_effect_section, segment, idx)
-# PAUL                                logging.info("PAUL: add_led_effect(%s, %s (%s))" % (section_to, led_segment_name, led_spec))
                                 self._add_led_effect(config, section_to, "%s (%s)" % (led_segment_name, led_spec))
 
     def _add_led_effect(self, config, section_to, leds):
@@ -102,7 +104,7 @@ class MmuLedEffect:
  
         c = config.getsection(section_to)
         led_effect = _ledEffect(c)
-        logging.info("MMU: Instantiated: %s on %s" % (c.get_name(), leds))
+        logging.info("MMU: Created: %s on %s" % (c.get_name(), leds))
         self.printer.add_object(c.get_name(), led_effect) # Register _led_effect to stop it trying to be loaded by klipper
 
 def load_config_prefix(config):
@@ -180,7 +182,6 @@ class colorArray(list):
 
 class ledFrameHandler:
     def __init__(self, config):
-        logging.info("PAUL: ******** ledFrameHandler **********")
         self.printer = config.get_printer()
         self.gcode   = self.printer.lookup_object('gcode')
         self.printer.load_object(config, "display_status")

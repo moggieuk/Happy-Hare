@@ -49,8 +49,6 @@ class Mmu:
     CALIBRATED_ESSENTIAL = 0b01111
     CALIBRATED_ALL       = 0b11111
 
-    UNIT_UNKNOWN = -1
-
     TOOL_GATE_UNKNOWN = -1
     TOOL_GATE_BYPASS = -2
 
@@ -699,7 +697,7 @@ class Mmu:
 
     def handle_connect(self):
         self.toolhead = self.printer.lookup_object('toolhead')
-        self.sensor_manager.reset_active_unit(self.UNIT_UNKNOWN) # PAUL check this?
+        self.sensor_manager.reset_active_unit(self.unit_selected)
 
         # Sanity check extruder name
         extruder = self.printer.lookup_object(self.extruder_name, None)
@@ -959,7 +957,7 @@ class Mmu:
         self.is_handling_runout = self.calibrating = False
         self.last_print_stats = self.paused_extruder_temp = self.reason_for_pause = None
         self.tool_selected = self._next_tool = self.gate_selected = self.TOOL_GATE_UNKNOWN
-        self.unit_selected = self.UNIT_UNKNOWN # Which MMU unit is active if more than one
+        self.unit_selected = 0 # Which MMU unit is active if more than one
         self._last_toolchange = "Unknown"
         self.active_filament = {}
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
@@ -1328,7 +1326,6 @@ class Mmu:
 
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         logging.info("PAUL: gcode: %s" % command)
-        self.log_error("PAUL: gcode: %s" % command)
         try:
             command = command.replace("''", "")
             macro = command.split()[0]
@@ -3165,7 +3162,7 @@ class Mmu:
             # Establish syncing state and grip (servo) position
             sync = (
                 self.sync_to_extruder
-                or self.mmu_machine.filament_always_gripped
+                or self.mmu_unit().filament_always_gripped
             )
             self.sync_gear_to_extruder(sync)
 
@@ -3312,7 +3309,7 @@ class Mmu:
             # Restablish syncing state and grip (servo) position
             sync = (
                 self.sync_to_extruder
-                or self.mmu_machine.filament_always_gripped
+                or self.mmu_unit().filament_always_gripped
             )
             self.sync_gear_to_extruder(sync)
 
@@ -3776,10 +3773,7 @@ class Mmu:
             return "#%d" % gate
 
     def _selected_unit_string(self, unit=None):
-        if self.mmu_machine.num_units > 1 and self.unit_selected != self.UNIT_UNKNOWN:
-            return " (unit #%d)" % self.unit_selected
-        else:
-            return ""
+        return " (unit #%d)" % self.unit_selected if self.mmu_machine.num_units > 1 else ""
 
     def _set_action(self, action):
         if action == self.action: return action
@@ -4977,7 +4971,7 @@ class Mmu:
                     sync = not extruder_only and (
                         (self.sync_to_extruder and self.is_printing())
                         or (self._standalone_sync and not self.is_printing())
-                        or self.mmu_machine.filament_always_gripped
+                        or self.mmu_unit().filament_always_gripped
                     )
                     self.sync_gear_to_extruder(sync)
                     if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
@@ -5175,7 +5169,7 @@ class Mmu:
             sync = not extruder_only and (
                 self.sync_form_tip
                 or (self._standalone_sync and not self.is_printing())
-                or self.mmu_machine.filament_always_gripped
+                or self.mmu_unit().filament_always_gripped
             )
             self.sync_gear_to_extruder(sync)
             self._ensure_safe_extruder_temperature(wait=True)
@@ -5771,18 +5765,14 @@ class Mmu:
         gate = gate if gate is not None else self.gate_selected
         if gate >= 0:
             if self.gear_tmc and 0 < percent < 200 and percent != self.gear_percentage_run_current:
-                gear_stepper_name = mmu_unit.GEAR_STEPPER_CONFIG
-                if self.mmu_unit().multigear and gate > 0:
-                    gear_stepper_name = "%s_%d" % (mmu_unit.GEAR_STEPPER_CONFIG, gate)
+                gear_stepper_name = self.mmu_unit(gate).mmu_toolhead.get_gear_stepper_name(gate)
                 msg = "Modifying MMU %s run current to %d%% ({:.2f}A) %s" % (gear_stepper_name, percent, reason)
                 self._set_tmc_current(gear_stepper_name, (self.gear_default_run_current * percent) / 100., msg)
                 self.gear_percentage_run_current = percent
 
     def _restore_gear_current(self):
         if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
-            gear_stepper_name = mmu_unit.GEAR_STEPPER_CONFIG
-            if self.mmu_unit().multigear and self.gate_selected > 0:
-                gear_stepper_name = "%s_%d" % (mmu_unit.GEAR_STEPPER_CONFIG, self.gate_selected)
+            gear_stepper_name = self.mmu_unit().mmu_toolhead.get_gear_stepper_name(self.gate_selected)
             msg = "Restoring MMU %s run current to %d%% ({:.2f}A)" % (gear_stepper_name, self.gear_restore_percent_run_current)
             self._set_tmc_current(gear_stepper_name, self.gear_default_run_current, msg)
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
@@ -6084,21 +6074,12 @@ class Mmu:
         } if gate >= 0 else {}
 
     # Return unit number for gate
-    def find_unit_by_gate(self, gate): # PAUL updated
+    def find_unit_by_gate(self, gate):
         unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
         if unit:
             return unit.unit_index
-        logging.info("PAUL: **** FIXME: This is a problem because unit can never be unknown. Default to unit_0?")
-        return self.UNIT_UNKNOWN
-
-# PAUL new method above
-#        if gate >= 0:
-#            c_sum = 0
-#            for unit_index, gate_count in enumerate(self.mmu_machine.units):
-#                c_sum += gate_count
-#                if gate < c_sum:
-#                    return unit_index
-#        return self.UNIT_UNKNOWN
+        self.log_debug("Assertion failure: Gate %d has no unit!" % gate)
+        return 0
 
     def _get_rotation_distance(self, gate):
         return self.rotation_distances[gate if gate >= 0 and self.mmu_unit().variable_rotation_distances else 0]

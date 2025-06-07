@@ -104,6 +104,7 @@ class MmuUnit:
 
         self.selector_name = "%s_%s" % (SELECTOR_STEPPER_CONFIG, self.name)
         self.gear_name = "%s_%s" % (GEAR_STEPPER_CONFIG, self.name)
+        logging.info("PAUL: selector_name = %s, gear_name = %s" %(self.selector_name, self.gear_name)) # PAUL these are correct
 
         # MMU design for control purposes can be broken down into the following choices:
         #  - Selector type or no selector
@@ -297,7 +298,7 @@ class MmuUnit:
 
             # Now we have all the parts to create MmuToolHead
             self.mmu_toolhead = MmuToolHead(config, self)
-            logging.info("MMU: Instantiated: Toolhead for %s" % self.name)
+            logging.info("MMU: Created: Toolhead for %s" % self.name)
         else: # PAUL HACK
             self.mmu_toolhead = self.mmu_machine.get_mmu_unit_by_name('unit0').mmu_toolhead # PAUL HACK
 
@@ -324,7 +325,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.sensors = mmu_sensors.MmuSensors(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Instantiated: %s" % c.get_name())
+            logging.info("MMU: Created: %s" % c.get_name())
             self.printer.add_object(c.get_name(), self.sensors) # Register mmu_sensors to stop it being loaded by klipper
 
         # Load optional mmu_espooler
@@ -333,7 +334,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.espooler = mmu_espooler.MmuESpooler(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Instantiated: %s" % c.get_name())
+            logging.info("MMU: Created: %s" % c.get_name())
             self.printer.add_object(c.get_name(), self.espooler) # Register mmu_espooler to stop it being loaded by klipper
 
         # Load optional mmu_leds
@@ -342,7 +343,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.leds = mmu_leds.MmuLeds(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Instantiated: %s" % c.get_name())
+            logging.info("MMU: Created: %s" % c.get_name())
             self.printer.add_object(c.get_name(), self.leds) # Register mmu_leds to stop it being loaded by klipper
 
         # Load optional mmu_encoder (could be a shared encoder)
@@ -519,6 +520,12 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.last_move_time = self.printer_toolhead.get_last_move_time()
         self.mmu = self.printer.lookup_object('mmu')
 
+    def get_gear_stepper_name(self, gate):
+        if not self.mmu_unit.multigear or gate == 0:
+            return self.mmu_unit.gear_name
+        else:
+            return "%s_%d" % (self.mmu_unit.gear_name, gate)
+
     # Ensure the correct number of axes for convenience - MMU only has two
     # Also, handle case when gear rail is synced to extruder
     def set_position(self, newpos, homing_axes=()):
@@ -536,10 +543,8 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def select_gear_stepper(self, gate):
         if not self.mmu_unit.multigear: return
-        if gate == 0:
-            self._reconfigure_rail([GEAR_STEPPER_CONFIG])
-        elif gate > 0:
-            self._reconfigure_rail(["%s_%d" % (GEAR_STEPPER_CONFIG, gate)])
+        if gate > 0:
+            self._reconfigure_rail([self.get_gear_stepper_name])
         else:
             self._reconfigure_rail(None)
 
@@ -602,6 +607,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         prev_sync_mode = self.sync_mode
         self.unsync()
         if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
+        logging.info("PAUL: sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
         self._ready_rail()
 
@@ -649,6 +655,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.sync_mode = new_sync_mode
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             self.printer.send_event("mmu:synced")
+        logging.info("PAUL: DONE sync()")
         return prev_sync_mode
 
     def unsync(self):
