@@ -572,7 +572,6 @@ class Mmu:
         self.gcode.register_command('MMU_RESET', self.cmd_MMU_RESET, desc = self.cmd_MMU_RESET_help)
         self.gcode.register_command('MMU_STATS', self.cmd_MMU_STATS, desc = self.cmd_MMU_STATS_help)
         self.gcode.register_command('MMU_STATUS', self.cmd_MMU_STATUS, desc = self.cmd_MMU_STATUS_help)
-        self.gcode.register_command('MMU_SENSORS', self.cmd_MMU_SENSORS, desc = self.cmd_MMU_SENSORS_help)
 
         # Calibration
         self.gcode.register_command('MMU_CALIBRATE_GEAR', self.cmd_MMU_CALIBRATE_GEAR, desc=self.cmd_MMU_CALIBRATE_GEAR_help)
@@ -1321,7 +1320,7 @@ class Mmu:
             self._spoolman_sync()
         except Exception as e:
             self.log_error('Error booting up MMU: %s' % str(e))
-            raise e # PAUL
+            raise e # PAUL temp for testing
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
@@ -2090,7 +2089,7 @@ class Mmu:
                 msg += "\nMMU does not have an encoder - move validation or clog detection is not possible"
             msg += "\nSpoolMan is %s" % ("ENABLED (pulling gate map)" if self.spoolman_support == self.SPOOLMAN_PULL else "ENABLED (push gate map)" if self.spoolman_support == self.SPOOLMAN_PUSH else "ENABLED" if self.spoolman_support == self.SPOOLMAN_READONLY else "DISABLED")
             msg += "\nSensors: "
-            sensors = self.sensor_manager.get_all_sensors(inactive=True)
+            sensors = self.sensor_manager.get_active_sensors(all_sensors=True)
             for name, state in sensors.items():
                 msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state is True else "Empty"))
             msg += "\nLogging: Console %d(%s)" % (self.log_level, self.LOG_LEVELS[self.log_level])
@@ -2133,18 +2132,6 @@ class Mmu:
                 formatted_formula += term
         formatted_formula += ")"
         return formatted_formula
-
-    cmd_MMU_SENSORS_help = "Query state of sensors fitted to mmu"
-    def cmd_MMU_SENSORS(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        if self.check_if_disabled(): return
-        detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
-
-        eventtime = self.reactor.monotonic()
-        msg = self.sensor_manager.get_sensor_summary(detail=detail)
-        if self.has_encoder():
-            msg += self._get_encoder_summary(detail=detail)
-        self.log_always(msg)
 
     def _get_encoder_summary(self, detail=False):
         status = self.encoder().get_status(0)
@@ -4500,8 +4487,9 @@ class Mmu:
                         self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
                 # Sensor validation
+# PAUL get KeyError: "'mmu_pre_gate'" here...
                 if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is False:
-                    sensors = self.sensor_manager.get_all_sensors()
+                    sensors = self.sensor_manager.get_active_sensors()
                     self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden: %s\nWill attempt to continue..." % sensors)
 
                 # "Fast" unload

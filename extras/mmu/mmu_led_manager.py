@@ -56,8 +56,8 @@ class MmuLedManager:
         self.mmu.log_to_file(gcmd.get_commandline())
 
         help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
-        unit = gcmd.get_int('UNIT', 0, minval=0, maxval=self.mmu_machine.num_units)
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_machine.num_gates)
+        unit = gcmd.get_int('UNIT', 0, minval=0, maxval=self.mmu_machine.num_units - 1)
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_machine.num_gates - 1)
         exit_effect = gcmd.get('EXIT_EFFECT', None)
         entry_effect = gcmd.get('ENTRY_EFFECT', None)
         status_effect = gcmd.get('STATUS_EFFECT', None)
@@ -492,8 +492,15 @@ class MmuLedManager:
         #
         try:
             mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit)
-            if not mmu_unit.leds or not mmu_unit.leds.enabled:
-                return # Ignore units without leds or if disabled
+            if (
+                not mmu_unit.leds or
+                not mmu_unit.leds.enabled or
+                (gate is not None and not mmu_unit.manages_gate(gate))
+            ):
+                # Ignore if unit doesn have leds, is disabled for doesn't manage the specific gate
+                # (saves callers from checking)
+                logging.info("PAUL: unit/gate combo invalid. Returning")
+                return
 
             if gate is not None and gate < 0:
                 self.mmu.log_error("PAUL: FIXME saftey .. gate <0")
