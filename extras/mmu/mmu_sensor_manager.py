@@ -204,7 +204,7 @@ class MmuSensorManager:
         if endstop_name in [self.mmu.SENSOR_GATE, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
             return self.get_unit_sensor_name(endstop_name, mmu.unit_selected)
 
-        if endstop_name in [self.mmu.SENSOR_PREGATE_PREFIX, self.mmu.SENSOR_GEAR_PREFIX]:
+        if endstop_name in [self.mmu.SENSOR_PRE_GATE_PREFIX, self.mmu.SENSOR_GEAR_PREFIX]:
             return self.get_gate_sensor_name(endstop_name, mmu.gate_selected)
 
         return endstop_name

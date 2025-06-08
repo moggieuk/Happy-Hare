@@ -203,7 +203,7 @@ class MmuLedManager:
             units_to_update = [self.mmu.unit_selected]
         else:
             units_to_update = range(self.mmu_machine.num_units)
-        self.mmu.log_error("PAUL: action_changed(action=%s, old_action=%s" % (action, old_action))
+        self.mmu.log_error("PAUL: action_changed(action=%s, old_action=%s)" % (action, old_action))
 
         for unit in units_to_update:
 
