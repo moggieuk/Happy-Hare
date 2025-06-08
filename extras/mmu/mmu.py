@@ -1324,7 +1324,6 @@ class Mmu:
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
-        logging.info("PAUL: gcode: %s" % command)
         try:
             command = command.replace("''", "")
             macro = command.split()[0]

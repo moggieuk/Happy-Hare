@@ -65,7 +65,10 @@ class MmuLedManager:
         duration = gcmd.get_float('DURATION', None, minval=0)
         fadetime = gcmd.get_float('FADETIME', 1, minval=0)
 
-        if help:
+        if self.mmu_machine.get_mmu_unit_by_index(unit).leds is None:
+            self.mmu.log_error("No LEDs configured on MMU unit %d" % unit)
+
+        elif help:
             msg = (
                 "%s: %s\n" % (gcmd.get_command().upper(), self.cmd_MMU_SET_LED_help)
                 + "{1}%s{0} UNIT          = # (int)\n" % UI_CASCADE
@@ -194,56 +197,84 @@ class MmuLedManager:
     # (this could be changed to klipper event)
     def action_changed(self, action, old_action):
         gate = self.mmu.gate_selected
-        if action in [self.mmu.ACTION_HOMING, self.mmu.ACTION_SELECTING]: # PAUL and ['Checking']?
+
+        # Check for unit specific actions
+        if action in [self.mmu.ACTION_HOMING, self.mmu.ACTION_SELECTING]:
             units_to_update = [self.mmu.unit_selected]
         else:
             units_to_update = range(self.mmu_machine.num_units)
-        logging.info("PAUL: action_changed(action=%s, old_action=%s" % (action, old_action))
-        logging.info("PAUL: units_to_update=%s" % (units_to_update))
-
+        self.mmu.log_error("PAUL: action_changed(action=%s, old_action=%s" % (action, old_action))
 
         for unit in units_to_update:
+
             # Load sequence...
+            # idle -> loading -> load_ext -> [heat -> load_ext] -> loading* -> purging* -> loading* -> idle (*=excluded)
+
             if action == self.mmu.ACTION_LOADING:
-                self._set_led(
-                    unit, gate,
-                    exit_effect=self.effect_name(unit, 'loading'),
-                    status_effect=self.effect_name(unit, 'loading')
-                )
+                if old_action not in [self.mmu.ACTION_LOADING_EXT, self.mmu.ACTION_PURGING]:
+                    self._set_led(
+                        unit, gate,
+                        exit_effect=self.effect_name(unit, 'loading'),
+                        status_effect=self.effect_name(unit, 'loading'),
+                        fadetime=0.5
+                    )
+
             elif action == self.mmu.ACTION_LOADING_EXTRUDER:
                 self._set_led(
                     unit, gate,
                     exit_effect=self.effect_name(unit, 'loading_extruder'),
-                    status_effect=self.effect_name(unit, 'loading_extruder')
+                    status_effect=self.effect_name(unit, 'loading_extruder'),
+                    fadetime=0.5
                 )
+
             elif action == self.mmu.ACTION_PURGING:
                 pass
 
             # Unload sequence...
-            elif action in [self.mmu.ACTION_FORMING_TIP, self.mmu.ACTION_FORMING_TIP]:
-                pass
+            # idle -> unloading -> form_tip/cut -> [heat -> form_tip/cut] -> unloading* -> unload_ext -> unloading*
+            # [cutting* -> unloading*] -> idle (*=excluded)
+
+            elif action == self.mmu.ACTION_UNLOADING:
+                if old_action not in [
+                    self.mmu.ACTION_FORMING_TIP,
+                    self.mmu.ACTION_UNLOADING_EXT,
+                    self.mmu.ACTION_CUTTING_FILAMENT
+                ]:
+                    self._set_led(
+                        unit, gate,
+                        exit_effect=self.effect_name(unit, 'unloading'),
+                        status_effect=self.effect_name(unit, 'unloading'),
+                        fadetime=0.5
+                    )
+
             elif action == self.mmu.ACTION_UNLOADING_EXTRUDER:
                 self._set_led(
                     unit, gate,
                     exit_effect=self.effect_name(unit, 'unloading_extruder'),
-                    status_effect=self.effect_name(unit, 'unloading_extruder')
+                    status_effect=self.effect_name(unit, 'unloading_extruder'),
+                    fadetime=0.5
                 )
-            elif action == self.mmu.ACTION_UNLOADING:
+
+            elif action in [self.mmu.ACTION_FORMING_TIP, self.mmu.ACTION_FORMING_TIP]:
                 self._set_led(
                     unit, gate,
-                    exit_effect=self.effect_name(unit, 'unloading'),
-                    status_effect=self.effect_name(unit, 'unloading')
+                    exit_effect=self.effect_name(unit, 'unloading_extruder'),
+                    status_effect=self.effect_name(unit, 'unloading_extruder'),
+                    fadetime=0.5
                 )
+
             elif action == self.mmu.ACTION_CUTTING_FILAMENT:
                 pass
 
             # Other actions...
+
             elif action == self.mmu.ACTION_HEATING:
                 self._set_led(
                     unit, gate,
                     exit_effect=self.effect_name(unit, 'heating'),
                     status_effect=self.effect_name(unit, 'heating')
                 )
+
             elif action == self.mmu.ACTION_IDLE:
                 self._set_led(
                     unit, None,
@@ -251,21 +282,36 @@ class MmuLedManager:
                     status_effect='default'
                 )
 
-            # Type-A MMU actions...
-            elif action in [self.mmu.ACTION_HOMING, self.mmu.ACTION_SELECTING]:
-                if old_action not in [self.mmu.ACTION_HOMING, self.mmu.ACTION_CHECKING]: # PAUL needs checking
+            # Type-A MMU actions involving selector (unit specific)...
+
+            # idle -> home -> select -> home* -> idle (*=excluded)
+            elif action == self.mmu.ACTION_HOMING:
+                if old_action == self.mmu.ACTION_IDLE:
                     self._set_led(
                         unit, None,
                         exit_effect=self.effect_name(unit, 'selecting'),
-                        status_effect='off',
+                        status_effect=self.effect_name(unit, 'selecting'),
                         fadetime=0
                     )
+
+            # idle -> select -> idle
+            elif action == self.mmu.ACTION_SELECTING:
+                if old_action not in [self.mmu.ACTION_CHECKING]:
+                    self._set_led(
+                        unit, None,
+                        exit_effect='default',
+                        status_effect=self.effect_name(unit, 'selecting'),
+                        fadetime=0
+                    )
+
+            # idle -> check -> select* -> check* -> select* -> check* -> idle
             elif action == self.mmu.ACTION_CHECKING:
-                self._set_led(
-                    unit, None,
-                    exit_effect='default',
-                    status_effect=self.effect_name(unit, 'checking')
-                )
+                if old_action == self.mmu.ACTION_IDLE:
+                    self._set_led(
+                        unit, None,
+                        exit_effect='default',
+                        status_effect=self.effect_name(unit, 'checking')
+                    )
 
     # Called when print state changes to update LEDs
     # (this could be changed to klipper event)
@@ -282,8 +328,10 @@ class MmuLedManager:
                     unit, None,
                     exit_effect=self.effect_name(unit, 'initialized'),
                     entry_effect=self.effect_name(unit, 'initialized'),
+                    status_effect=self.effect_name(unit, 'initialized'),
                     duration=8
                 )
+
             elif state == "printing":
                 self._set_led(
                     unit, None,
@@ -291,18 +339,21 @@ class MmuLedManager:
                     entry_effect='default',
                     status_effect='default'
                 )
+
             elif state == "pause_locked":
                 self._set_led(
                     unit, None,
                     exit_effect=self.effect_name(unit, 'error'),
                     status_effect=self.effect_name(unit, 'error')
                 )
+
             elif state == "paused":
                 self._set_led(
                     unit, gate, # Focus to specific gate
                     exit_effect=self.effect_name(unit, 'error'),
                     status_effect=self.effect_name(unit, 'error')
                 )
+
             elif state == "ready":
                 self._set_led(
                     unit, None,
@@ -310,6 +361,7 @@ class MmuLedManager:
                     entry_effect='default',
                     status_effect='default'
                 )
+
             elif state == "complete":
                 self._set_led(
                     unit, None,
@@ -317,6 +369,7 @@ class MmuLedManager:
                     status_effect='default',
                     duration=20
                 )
+
             elif state == "error":
                 self._set_led(
                     unit, None,
@@ -324,6 +377,7 @@ class MmuLedManager:
                     status_effect='default',
                     duration=20
                 )
+
             elif state == "cancelled":
                 self._set_led(
                     unit, None,
@@ -331,6 +385,7 @@ class MmuLedManager:
                     entry_effect='default',
                     status_effect='default'
                 )
+
             elif state == "standby":
                 self._set_led(
                     unit, None,
@@ -344,7 +399,7 @@ class MmuLedManager:
     # (this could be changed to klipper event)
     def gate_map_changed(self, gate):
         if gate is not None and gate < 0:
-            gate = None # PAUL check this is ok to do on bypass
+            gate = None
         gate_effects = {'gate_status', 'filament_color', 'slicer_color'}
         units = [self.mmu_machine.get_mmu_unit_by_gate(gate)] if gate is not None else self.mmu_machine.units
         for mmu_unit in units:
@@ -382,6 +437,7 @@ class MmuLedManager:
     #   "slicer_color"    - display slicer defined color for each gate
     def _set_led(self, unit, gate, duration=None, fadetime=1, exit_effect=None, entry_effect=None, status_effect=None, logo_effect=None):
         logging.info("PAUL: _set_led(unit=%s, gate=%s, duration=%s, fadetime=%s, exit_effect=%s, entry_effect=%s, status_effect=%s, logo_effect=%s)" % (unit, gate, duration, fadetime, exit_effect, entry_effect, status_effect, logo_effect))
+        self.mmu.log_error("PAUL: _set_led(unit=%s, gate=%s, duration=%s, fadetime=%s, exit_effect=%s, entry_effect=%s, status_effect=%s, logo_effect=%s)" % (unit, gate, duration, fadetime, exit_effect, entry_effect, status_effect, logo_effect))
         effects = {
             'entry': entry_effect,
             'exit': exit_effect,
@@ -443,6 +499,7 @@ class MmuLedManager:
         # Stop the current effect on the gate led(s)
         def stop_gate_effect(unit, segment, gate, fadetime=None):
             if self.mmu_machine.get_mmu_unit_by_index(unit).leds.animation:
+                logging.info("PAUL: _MMU_STOP_LED_EFFECTS LEDS='%s' %s" % (effect_leds_spec(unit, segment, gate), ('FADETIME=%d' % fadetime) if fadetime is not None else ''))
                 self.mmu.gcode.run_script_from_command(
                     "_MMU_STOP_LED_EFFECTS LEDS='%s' %s" % (
                         effect_leds_spec(unit, segment, gate),
@@ -454,6 +511,7 @@ class MmuLedManager:
         def set_gate_effect(base_effect, unit, segment, gate, fadetime=None):
             leds = self.mmu_machine.get_mmu_unit_by_index(unit).leds
             if leds.animation:
+                logging.info("PAUL: _MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1 %s" % (effect_spec(unit, gate, "%s_%s" % (base_effect, segment)), ('FADETIME=%d' % fadetime) if fadetime is not None else ''))
                 self.mmu.gcode.run_script_from_command(
                     "_MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1 %s" % (
                         effect_spec(unit, gate, "%s_%s" % (base_effect, segment)),
@@ -467,9 +525,9 @@ class MmuLedManager:
 
         # Sets rgb value of gate led(s)
         def set_gate_rgb(rgb, unit, segment, gate, transmit=True):
-            logging.info("PAUL: set_gate_rgb(rgb=%s}" % str(rgb))
             # Normally there is only a single led per gate but some designs have many
             for index, is_last in with_last(led_indexes(unit, segment, gate)):
+                logging.info("PAUL: SET_LED LED=%s INDEX=%d RED=%s GREEN=%s BLUE=%s TRANSMIT=%d" % (led_chain_spec(unit, segment), index, rgb[0], rgb[1], rgb[2], 1 if transmit and is_last else 0))
                 self.mmu.gcode.run_script_from_command(
                     "SET_LED LED=%s INDEX=%d RED=%s GREEN=%s BLUE=%s TRANSMIT=%d" % (
                         led_chain_spec(unit, segment), index, rgb[0], rgb[1], rgb[2], 1 if transmit and is_last else 0
@@ -479,7 +537,6 @@ class MmuLedManager:
         # Stop any previous effect before setting rgb else it won't have an effect
         def stop_effect_and_set_gate_rgb(rgb, unit, segment, gate, fadetime=None):
             if fadetime:
-# PAUL confirm this works
                 set_gate_rgb(rgb, unit, segment, gate)
                 stop_gate_effect(unit, segment, gate, fadetime=fadetime)
             else:
@@ -499,7 +556,8 @@ class MmuLedManager:
             ):
                 # Ignore if unit doesn have leds, is disabled for doesn't manage the specific gate
                 # (saves callers from checking)
-                logging.info("PAUL: unit/gate combo invalid. Returning")
+                logging.info("PAUL: NO-OP unit/gate combo invalid. Returning")
+                self.mmu.log_error("PAUL: NO-OP unit/gate combo invalid. Returning")
                 return
 
             if gate is not None and gate < 0:

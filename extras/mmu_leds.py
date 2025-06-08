@@ -81,7 +81,7 @@ class MmuLeds:
         for segment in self.SEGMENTS:
             name = "%s_leds" % segment
             config_chains = [self.parse_chain(line) for line in config.get(name, '').split('\n') if line.strip()]
-            self.virtual_chains[segment] = VirtualMmuLedChain(config, self.mmu_unit.name, segment, config_chains)
+            self.virtual_chains[segment] = VirtualMmuLedChain(config, "unit%d" % self.mmu_unit.unit_index, segment, config_chains)
 
             num_leds = len(self.virtual_chains[segment].leds)
             if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds % self.num_gates:

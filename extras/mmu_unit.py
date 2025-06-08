@@ -224,7 +224,7 @@ class MmuUnit:
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
 
-        if self.name != "unit1": # PAUL TEMP HACK TO ALLOW SINGLE TYPE-A MMU to be split in two for testing sharing same MmuToolhead
+        if self.name != "hack": # PAUL TEMP HACK TO ALLOW SINGLE TYPE-A MMU to be split in two for testing sharing same MmuToolhead
             # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
             # and ensure all gear steppers are loaded
             self.gear_tmc = None
