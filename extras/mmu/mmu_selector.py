@@ -147,17 +147,18 @@ class VirtualSelector(BaseSelector, object):
     def select_gate(self, gate):
         if gate == self.mmu.gate_selected: return
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
-
-        # Sync new MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+#        self.mmu.reset_sync_gear_state() # Expect this to unsync because shouldn't get here if loaded
+# PAUL not correct. Maybe call restore_sync_state()?
+#        # Sync new MMU gear stepper now if design requires it
+#        if self.mmu.mmu_machine.filament_always_gripped:
+#            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
 
     def restore_gate(self, gate):
         self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
-
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+# PAUL
+#        # Sync MMU gear stepper now if design requires it
+#        if self.mmu.mmu_machine.filament_always_gripped:
+#            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
 
     def get_mmu_status_config(self):
         msg = "\nVirtual selector"
@@ -352,15 +353,15 @@ class LinearSelector(BaseSelector, object):
             self.set_position(self.selector_offsets[gate])
 
     def filament_drive(self, buzz_gear=True):
-#        self.mmu.log_error("PAUL: filament_drive()")
+        self.mmu.log_error("PAUL: filament_drive()")
         self.servo.servo_down(buzz_gear=buzz_gear)
 
     def filament_release(self, measure=False):
-#        self.mmu.log_error("PAUL: filament_release()")
+        self.mmu.log_error("PAUL: filament_release()")
         return self.servo.servo_up(measure=measure)
 
     def filament_hold_move(self): # AKA position for holding filament and moving selector
-#        self.mmu.log_error("PAUL: filament_hold_move()")
+        self.mmu.log_error("PAUL: filament_hold_move()")
         self.servo.servo_move()
 
     def get_filament_grip_state(self):
@@ -1509,14 +1510,15 @@ class MacroSelector(BaseSelector, object):
         # Call selector macro
         self.mmu.wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
 
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+#        # Sync MMU gear stepper now if design requires it
+#        if self.mmu.mmu_machine.filament_always_gripped:
+#            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
 
     def restore_gate(self, gate):
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+        pass
+#        # Sync MMU gear stepper now if design requires it
+#        if self.mmu.mmu_machine.filament_always_gripped:
+#            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
 
 
 
@@ -1626,11 +1628,11 @@ class ServoSelector(BaseSelector, object):
             self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
 
     def filament_drive(self):
-#        self.mmu.log_error("PAUL: filament_drive()")
+        self.mmu.log_error("PAUL: filament_drive()")
         self._grip()
 
     def filament_release(self, measure=False):
-#        self.mmu.log_error("PAUL: filament_release()")
+        self.mmu.log_error("PAUL: filament_release()")
         self._grip(release=True)
         return 0. # Fake encoder movement
 

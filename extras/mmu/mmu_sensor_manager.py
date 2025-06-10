@@ -127,6 +127,7 @@ class MmuSensorManager:
         return result
 
     def has_sensor(self, name):
+# PAUL: Need to handle GEAR_TOUCH
         return self.sensors[name].runout_helper.sensor_enabled if name in self.sensors else False
 
     def has_gate_sensor(self, name, gate):
@@ -153,6 +154,7 @@ class MmuSensorManager:
 
     # Return sensor state or None if not installed
     def check_sensor(self, name):
+# PAUL: Need to handle GEAR_TOUCH
         sensor = self.sensors.get(name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             detected = bool(sensor.runout_helper.filament_present)
