@@ -13,6 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unicodedata
+import traceback
 
 # Klipper imports
 import chelper
@@ -1307,6 +1308,7 @@ class Mmu:
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
             self._spoolman_sync()
         except Exception as e:
+            self.log_error(traceback.format_exc())
             self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
