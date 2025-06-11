@@ -361,9 +361,15 @@ sync_purge: 0				# Synchronize during standalone purging (last part of load)
 # Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
 # extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
 # binary supplied by one or two switches: -1 (expanded) and 1 (compressed) of proportional value between -1.0 and 1.0
-# Requires [mmu_sensors] setting
+# Requires [mmu_sensors] setting. Modes of operation:
 #
-sync_feedback_enable: 0			# 0 = Turn off (even with fitted sensor), 1 = Turn on
+#  off     - Sync feedback is disabled even if sensor is fitted (make sure gear is well calibrated)
+#  static  - Use high/low (rotation distance) multipliers. Forced if only only of the two sensors fitted
+#  dynamic - Dynamically adjust (requires both compression/tension sensors and static multipliers will be ignored))
+#            Note: dynamic calculation will also adjust the calibrated rotation distance over time if
+#                  'autotune_rotation_distance: 1' making non-synced movement more accurate
+#
+sync_feedback_mode: off			# off, static or dynamic (see above)
 sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
 sync_multiplier_low: 0.95		# Minimum factor to apply
 
@@ -505,6 +511,26 @@ console_gate_stat: emoticon
 console_always_output_full: 1	# 1 = Show full table, 0 = Only show totals out of print
 
 
+# Calibration and autotune -------------------------------------------------------------------------------------------
+#  █████╗ ██╗   ██╗████████╗ ██████╗ ████████╗██╗   ██╗███╗   ██╗███████╗
+# ██╔══██╗██║   ██║╚══██╔══╝██╔═══██╗╚══██╔══╝██║   ██║████╗  ██║██╔════╝
+# ███████║██║   ██║   ██║   ██║   ██║   ██║   ██║   ██║██╔██╗ ██║█████╗  
+# ██╔══██║██║   ██║   ██║   ██║   ██║   ██║   ██║   ██║██║╚██╗██║██╔══╝  
+# ██║  ██║╚██████╔╝   ██║   ╚██████╔╝   ██║   ╚██████╔╝██║ ╚████║███████╗
+# ╚═╝  ╚═╝ ╚═════╝    ╚═╝    ╚═════╝    ╚═╝    ╚═════╝ ╚═╝  ╚═══╝╚══════╝
+#
+# These are auto calibration/tuning settings. Once the gear rotation_distance and encoder are calibrated, enabling these options
+# will lessen the initial calibration and will automatically tune bowden length and individual gate rotation_distance differences.
+# Note: What can be tuned is based on "variable_rotation_distance" and "variable_bowden_lengths" settings in mmu_hardware.cfg
+#       E.g. with fixed bowden and multiple BMG gears and encoder like the ERCF, the bowden length is tuned on gate#0 and
+#            rotation_distance (MMU_CALIBRATE_GATE) is tuned for other gates.
+#
+autotune_bowden_length: 1		# Automated bowden length calibration/tuning. 1=automatic, 0=manual/off
+autotune_bowden_homing_max: 2000        # Maximum attempted bowden calibration (homing) move
+autotune_rotation_distance: 0		# Automated gate calibration/tuning (requires encoder). 1=automatic, 0=manual/off
+#autotune_encoder: 0			# Automated tuning of encoder
+
+
 # Miscellaneous, but you should review -------------------------------------------------------------------------------
 # ███╗   ███╗██╗███████╗ ██████╗
 # ████╗ ████║██║██╔════╝██╔════╝
@@ -519,15 +545,6 @@ timeout_pause: 72000		# Idle time out (printer shuts down) in seconds used when 
 disable_heater: 600		# Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
 default_extruder_temp: 200	# Default temperature for performing swaps and forming tips when not in print (overridden by gate map)
 extruder_temp_variance: 2	# When waiting for extruder temperature this is the +/- permissible variance in degrees (>= 1)
-#
-# These are auto calibration/tuning settings. Once the gear rotation_distance and encoder are calibrated, enabling these options
-# will lessen the initial calibration and will automatically tune bowden length and individual gate rotation_distance differences.
-# Note: What can be tuned is based on "variable_rotation_distance" and "variable_bowden_lengths" settings in mmu_hardware.cfg
-#       E.g. with fixed bowden and multiple BMG gears and encoder like the ERCF, the bowden length is tuned on gate#0 and
-#            rotation_distance (MMU_CALIBRATE_GATE) is tuned for other gates.
-#
-autotune_bowden_length: 0       # Automated bowden length calibration/tuning. 1=automatic, 0=manual/off
-autotune_rotation_distance: 0   # Automated gate calibration/tuning (requires encoder). 1=automatic, 0=manual/off
 #
 # Other workflow options
 #

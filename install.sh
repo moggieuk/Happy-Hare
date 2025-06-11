@@ -693,6 +693,14 @@ read_previous_config() {
         variable_post_form_tip_position=$(convert_neg_one "${variable_post_form_tip_position}")
         variable_pre_load_position=$(convert_neg_one "${variable_pre_load_position}")
     fi
+
+    # v3.3.0
+    # sync_feedback now has three enumerated options
+    if [ "${_param_sync_feedback_enable}" == "0" ]; then
+        _param_sync_feedback_mode="off"
+    elif [ "${_param_sync_feedback_enable}" == "1" ]; then
+        _param_sync_feedback_mode="static"
+    fi
 }
 
 check_for_999() {
