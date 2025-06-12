@@ -131,20 +131,6 @@ class Mmu:
 
     GATE_STATS_TYPES = [GATE_STATS_STRING, GATE_STATS_PERCENTAGE, GATE_STATS_EMOTICON]
 
-    # Gear/Extruder syncing (uses SENSOR_COMPRESSION and SENSOR_TENSION sensors)
-    SYNC_FEEDBACK_INTERVAL  = 0.5   # How often to check extruder direction
-    SYNC_POSITION_TIMERANGE = 0.6   # Interval to compare movement
-    SYNC_POSITION_MIN_DELTA = 0.001 # Min extruder move distance to be significant
-    SYNC_STATE_NEUTRAL = 0
-    SYNC_STATE_COMPRESSED = 1.
-    SYNC_STATE_EXPANDED = -1.
-
-    # Sync feedback - modes of operation
-    SYNC_FEEDBACK_OFF     = 'off'     # Disabled
-    SYNC_FEEDBACK_STATIC  = 'static'  # Use "multiplier" values
-    SYNC_FEEDBACK_DYNAMIC = 'dynamic' # Autotune using binary search
-    SYNC_FEEDBACK_OPTIONS = [SYNC_FEEDBACK_OFF, SYNC_FEEDBACK_STATIC, SYNC_FEEDBACK_DYNAMIC]
-
     # Levels of logging
     LOG_ESSENTIAL = 0
     LOG_INFO      = 1
@@ -263,9 +249,6 @@ class Mmu:
         self.reactor = self.printer.get_reactor()
         self.calibration_status = 0b0
         self.encoder_force_validation = False
-        self.sync_feedback_last_state = 0.    # 0 = Neutral
-        self.sync_feedback_last_direction = 0 # 0 = Extruder not moving
-        self.sync_feedback_operational = False
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
         self._last_tool = self._next_tool = self.TOOL_GATE_UNKNOWN
@@ -416,10 +399,6 @@ class Mmu:
         if self.mmu_machine.filament_always_gripped:
             self.sync_to_extruder = self.sync_form_tip = self.sync_purge = 1
 
-        self.sync_multiplier_high = config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
-        self.sync_multiplier_low = config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
-        self.sync_feedback_mode = config.getchoice('sync_feedback_mode', {o: o for o in self.SYNC_FEEDBACK_OPTIONS}, self.SYNC_FEEDBACK_OFF)
-
         # TMC current control
         self.extruder_collision_homing_current = config.getint('extruder_collision_homing_current', 50, minval=10, maxval=100)
         self.extruder_form_tip_current = config.getint('extruder_form_tip_current', 100, minval=100, maxval=150)
@@ -523,6 +502,10 @@ class Mmu:
         # errors in klippy.log. This has been linked to subsequent Timer too close errors. An often cited workaround is
         # to increase BIT_MAX_TIME in neopixel.py. This option does that automatically for you to save dirtying klipper.
         self.update_bit_max_time = config.getint('update_bit_max_time', 0, minval=0, maxval=1)
+
+        # Initialize manager helpers
+        # These encapsulate specific functionality to reduce the complexity of main class
+        self.sync_feedback_manager = MmuSyncFeedbackManager(self)
 
         # Establish defaults for "reset" operation ----------------------------------------------------------
         # These lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
@@ -802,7 +785,6 @@ class Mmu:
 
         # Create autotune manager to oversee calibration updates based on available telemetry
         self.calibration_manager = MmuCalibrationManager(self)
-        self.sync_tension_manager = MmuSyncTensionManager(self)
 
         # Upgrade legacy or scalar variables to lists -------------------------------------------------------
         bowden_length = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
@@ -894,7 +876,7 @@ class Mmu:
             if resolution:
                 self.encoder_resolution = resolution
                 self.encoder_sensor.set_resolution(resolution)
-                self.log_debug("Loaded saved encoder resolution: %.6f" % resolution)
+                self.log_debug("Loaded saved encoder resolution: %.5f" % resolution)
                 self.calibration_status |= self.CALIBRATED_ENCODER
             else:
                 self.log_warning("Warning: Encoder resolution not found in mmu_vars.cfg. Probably not calibrated")
@@ -945,12 +927,6 @@ class Mmu:
         self.printer.register_event_handler("idle_timeout:printing", self._handle_idle_timeout_printing)
         self.printer.register_event_handler("idle_timeout:ready", self._handle_idle_timeout_ready)
         self.printer.register_event_handler("idle_timeout:idle", self._handle_idle_timeout_idle)
-
-        # Setup events for managing motor synchronization
-        self.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
-        self.printer.register_event_handler("mmu:unsynced", self._handle_mmu_unsynced)
-        self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
-        self._setup_sync_feedback_timer()
 
         self._setup_hotend_off_timer()
         self._setup_pending_spool_id_timer()
@@ -1041,6 +1017,7 @@ class Mmu:
 
         # Sub components
         self.selector.reinit()
+        self.sync_feedback_manager.reinit()
 
     def _clear_slicer_tool_map(self):
         skip = self.slicer_tool_map.get('skip_automap', False) if self.slicer_tool_map else False
@@ -1411,13 +1388,6 @@ class Mmu:
                 "Purging" if action == self.ACTION_PURGING else
                 "Unknown") # Error case - should not happen
 
-    def _get_sync_feedback_string(self, state=None, detail=False):
-        if state is None:
-            state = self.self.sync_feedback_last_state
-        if self.is_enabled and self.sync_feedback_mode != self.SYNC_FEEDBACK_OFF and (self.sync_feedback_operational or detail):
-            return 'compressed' if state > 0.5 else 'expanded' if state < -0.5 else 'neutral'
-        return "disabled"
-
     def _get_bowden_progress(self):
         if (self.bowden_start_pos is not None):
             bowden_length = self._get_bowden_length(self.gate_selected)
@@ -1473,8 +1443,8 @@ class Mmu:
             'action': self._get_action_string(),
             'has_bypass': self.selector.has_bypass(),
             'sync_drive': self.mmu_toolhead.is_synced(),
-            'sync_feedback_state': self._get_sync_feedback_string(),
-            'sync_feedback_enabled': bool(self.sync_feedback_mode != self.SYNC_FEEDBACK_OFF),
+            'sync_feedback_state': self.sync_feedback_manager.get_sync_feedback_string(),
+            'sync_feedback_enabled': self.sync_feedback_manager.is_enabled(),
             'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
             'clog_detection_enabled': self.enable_clog_detection,
             'endless_spool': self.enable_endless_spool,   # DEPRECATED use endless_spool_enabled
@@ -1979,9 +1949,13 @@ class Mmu:
         msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
         if self._standalone_sync:
             msg += ". Standalone sync mode is ENABLED"
-        if self.sync_feedback_mode != self.SYNC_FEEDBACK_OFF:
-            msg += "\nSync feedback indicates filament in bowden is: %s" % self._get_sync_feedback_string(detail=True).upper()
-            if not self.sync_feedback_operational:
+# PAUL
+#        if self.sync_feedback_enabled:
+#            msg += "\nSync feedback indicates filament in bowden is: %s" % self.get_sync_feedback_string(detail=True).upper()
+#            if not self.sync_feedback_operational:
+        if not self.sync_feedback_manager.is_enabled():
+            msg += "\nSync feedback indicates filament in bowden is: %s" % self.sync_feedback_manager.get_sync_feedback_string(detail=True).upper()
+            if not self.sync_feedback_manager.is_active():
                 msg += " (not currently active)"
         else:
             msg += "\nSync feedback is disabled"
@@ -2088,7 +2062,7 @@ class Mmu:
                 msg += "\nGear and Extruder steppers are synchronized during: "
                 m = []
                 if self.sync_to_extruder:
-                    m.append("Print (at %d%% current %s sync feedback)" % (self.sync_gear_current, "with" if self.sync_feedback_mode != self.SYNC_FEEDBACK_OFF else "without"))
+                    m.append("Print (at %d%% current %s sync feedback)" % (self.sync_gear_current, "with" if self.sync_feedback_manager.is_enabled() else "without"))
                 if self.sync_form_tip:
                     m.append("Tip forming")
                 if self.sync_purge:
@@ -2348,7 +2322,7 @@ class Mmu:
         with self.wrap_sync_gear_to_extruder():
             if reset:
                 self.rotation_distances = [self.default_rotation_distance] * self.num_gates
-                self._set_rotation_distance(self.default_rotation_distance)
+                self.set_rotation_distance(self.default_rotation_distance)
                 self.save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
                 self.log_always("Gear calibration for all gates has been reset")
                 self.calibration_status &= ~self.CALIBRATED_GEAR_0
@@ -2357,7 +2331,7 @@ class Mmu:
             elif measured > 0:
                 current_rd = self.gear_rail.steppers[0].get_rotation_distance()[0]
                 new_rd = round(current_rd * measured / length, 6)
-                self.log_always("Gear stepper 'rotation_distance' calculated to be %.6f (currently: %.6f)" % (new_rd, current_rd))
+                self.log_always("Gear stepper 'rotation_distance' calculated to be %.5f (currently: %.5f)" % (new_rd, current_rd))
                 if save:
                     all_gates = False
                     if not self.mmu_machine.variable_rotation_distances or (gate == 0 and self.rotation_distances[0] == 0.):
@@ -2366,7 +2340,7 @@ class Mmu:
                         all_gates = True
                     else:
                         self.rotation_distances[gate] = new_rd
-                    self._set_rotation_distance(new_rd)
+                    self.set_rotation_distance(new_rd)
                     self.save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
                     self.log_always("Gear calibration for %s has been saved" % ("all gates" if all_gates else "gate %d" % gate))
 
@@ -2689,118 +2663,6 @@ class Mmu:
     def _handle_idle_timeout_idle(self, eventtime):
         self._handle_idle_timeout_event(eventtime, "idle")
 
-    def _setup_sync_feedback_timer(self):
-        self.sync_feedback_timer = self.reactor.register_timer(self._update_sync_feedback)
-
-    # Gear/Extruder sync feedback event. State should be -1 (expanded) and 1 (compressed)
-    # or can be a proportional float value between -1.0 and 1.0
-    def _handle_sync_feedback(self, eventtime, state):
-        if not self.is_enabled: return
-        if abs(state) <= 1:
-            self.sync_feedback_last_state = float(state)
-            self.log_trace("Got sync force feedback update. State: %s (%s)" % (self._get_sync_feedback_string(detail=True), float(state)))
-            if self.sync_feedback_mode != self.SYNC_FEEDBACK_OFF and self.sync_feedback_operational:
-                self._adjust_gear_rotation_distance()
-        else:
-            self.log_error("Invalid sync feedback state: %s" % state)
-        if self._is_running_test:
-            self.printer.send_event("mmu:sync_feedback_finished", state)
-
-    # Event indicating that gear stepper is now synced with extruder
-    def _handle_mmu_synced(self):
-        if not self.is_enabled: return
-        msg = "Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_mode != self.SYNC_FEEDBACK_OFF else "")
-        if self.mmu_machine.filament_always_gripped:
-            self.log_debug(msg)
-        else:
-            self.log_info(msg)
-
-        if not self.sync_feedback_operational:
-            # Enable sync feedback
-            self.sync_feedback_operational = True
-            self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NOW)
-            self._update_sync_starting_state()
-
-    # Event indicating that gear stepper has been unsynced from extruder
-    def _handle_mmu_unsynced(self):
-        if not self.is_enabled: return
-        msg = "Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_mode != self.SYNC_FEEDBACK_OFF else "")
-        if self.mmu_machine.filament_always_gripped:
-            self.log_debug(msg)
-        else:
-            self.log_info(msg)
-
-        if self.sync_feedback_operational:
-            # Disable sync feedback
-            self.reactor.update_timer(self.sync_feedback_timer, self.reactor.NEVER)
-            self.sync_feedback_operational = False
-            self.sync_feedback_last_state = self.SYNC_STATE_NEUTRAL
-            self.log_trace("Reset sync multiplier") # PAUL log message may not make sense for 'dynamic' mode where there is no multiplier
-            self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
-
-    # Called periodically to check extruder movement
-    def _update_sync_feedback(self, eventtime):
-        if self.is_enabled:
-            estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time(eventtime)
-            extruder = self.toolhead.get_extruder()
-            pos = extruder.find_past_position(estimated_print_time)
-            past_pos = extruder.find_past_position(max(0., estimated_print_time - self.SYNC_POSITION_TIMERANGE))
-            if abs(pos - past_pos) >= self.SYNC_POSITION_MIN_DELTA:
-                prev_direction = self.sync_feedback_last_direction
-                self.sync_feedback_last_direction = self.DIRECTION_LOAD if pos > past_pos else self.DIRECTION_UNLOAD if pos < past_pos else 0
-                if self.sync_feedback_last_direction != prev_direction:
-                    d = self.sync_feedback_last_direction
-                    self.log_trace("New sync direction: %s" % ('extrude' if d == self.DIRECTION_LOAD else 'retract' if d == self.DIRECTION_UNLOAD else 'static'))
-                    self._adjust_gear_rotation_distance()
-        return eventtime + self.SYNC_FEEDBACK_INTERVAL
-
-    def _adjust_gear_rotation_distance(self):
-        if self.sync_feedback_mode == self.SYNC_FEEDBACK_OFF or not self.sync_feedback_operational: return
-
-        if self.sync_feedback_mode == self.SYNC_FEEDBACK_DYNAMIC:
-            self.sync_tension_manager.update_sync_rotation_dist(self.sync_feedback_last_state)
-
-        else: # SYNC_FEEDBCK_STATIC (original impl)
-            if self.sync_feedback_last_state == self.SYNC_STATE_NEUTRAL or self.sync_feedback_last_direction == 0:
-                multiplier = 1.
-            else:
-                go_slower = lambda s, d: abs(s - d) < abs(s + d)
-                if go_slower(self.sync_feedback_last_state, self.sync_feedback_last_direction):
-                    # Expanded when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
-                    multiplier = 1. - (abs(1. - self.sync_multiplier_low) * abs(self.sync_feedback_last_state))
-                    self.log_trace("Slowing gear motor down")
-                else:
-                    # Compressed when extruding or expanded when retracting, so increase the rotation distance of gear stepper to slow it down
-                    multiplier = 1. + (abs(1. - self.sync_multiplier_high) * abs(self.sync_feedback_last_state))
-                    self.log_trace("Speeding gear motor up")
-            self.log_trace("Updated sync multiplier: %.4f" % multiplier)
-            self._set_rotation_distance(self._get_rotation_distance(self.gate_selected) / multiplier)
-
-    def _get_current_sync_state(self):
-        has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
-        has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
-
-        if has_tension and has_compression:
-            # Allow for sync-feedback sensor designs with minimal travel where both sensors can be triggered at same time
-            if self.sensor_manager.check_sensor(self.SENSOR_TENSION) == self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
-                sss = self.SYNC_STATE_NEUTRAL
-            elif self.sensor_manager.check_sensor(self.SENSOR_TENSION) and not self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
-                sss = self.SYNC_STATE_EXPANDED
-            else:
-                sss = self.SYNC_STATE_COMPRESSED
-        elif has_compression and not has_tension:
-            sss = self.SYNC_STATE_COMPRESSED if self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION) else self.SYNC_STATE_EXPANDED
-        else:
-            sss = self.SYNC_STATE_EXPANDED if self.sensor_manager.check_sensor(self.SENSOR_TENSION) else self.SYNC_STATE_COMPRESSED
-        return sss
-
-    # Ensure correct sync_feedback starting state by generating a fake event
-    def _update_sync_starting_state(self):
-        eventtime = self.reactor.monotonic()
-        sss = self._get_current_sync_state()
-        self._handle_sync_feedback(eventtime, sss)
-        self.log_trace("Set initial sync feedback state to: %s" % self._get_sync_feedback_string(detail=True))
-
     def is_printing(self, force_in_print=False): # Actively printing and not paused
         return self.print_state in ["started", "printing"] or force_in_print or self.test_force_in_print
 
@@ -2973,7 +2835,7 @@ class Mmu:
 
             # Unsync and reset sync_feedback operation
             self._standalone_sync = False # Safer to clear this on print end or idle_timeout to standby to avoid user confusion
-            self.sync_feedback_last_direction = 0 # Extruder not moving to force neutral start position
+            self.sync_feedback_manager.reset_extruder_watchdog()
 # PAUL            self.sync_gear_to_extruder(False)
             self._set_print_state(state)
 
@@ -3031,7 +2893,7 @@ class Mmu:
         if recover_pos:
             self.recover_filament_pos(message=True)
 
-        self.sync_feedback_last_direction = 0 # Extruder not moving to force neutral start position
+        self.sync_feedback_manager.reset_extruder_watchdog()
 
 #PAUL        # Default to unsynced if on error. Will be restored on resume/continue_printing
 #PAUL        self.sync_gear_to_extruder(False)
@@ -3139,9 +3001,9 @@ class Mmu:
                 # Save toolhead velocity limits and set user defined for macros
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
                 self.saved_toolhead_min_cruise_ratio = self.toolhead.get_status(eventtime).get('minimum_cruise_ratio', None)
-                cmd = "SET_VELOCITY_LIMIT ACCEL=%.6f" % self.macro_toolhead_max_accel
+                cmd = "SET_VELOCITY_LIMIT ACCEL=%.5f" % self.macro_toolhead_max_accel
                 if self.saved_toolhead_min_cruise_ratio is not None:
-                    cmd += " MINIMUM_CRUISE_RATIO=%.6f" % self.macro_toolhead_min_cruise_ratio
+                    cmd += " MINIMUM_CRUISE_RATIO=%.5f" % self.macro_toolhead_min_cruise_ratio
                 self.gcode.run_script_from_command(cmd)
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
@@ -3203,9 +3065,9 @@ class Mmu:
 
                 # Always restore toolhead velocity limits
                 if self.saved_toolhead_max_accel:
-                    cmd = "SET_VELOCITY_LIMIT ACCEL=%.6f" % self.saved_toolhead_max_accel
+                    cmd = "SET_VELOCITY_LIMIT ACCEL=%.5f" % self.saved_toolhead_max_accel
                     if self.saved_toolhead_min_cruise_ratio is not None:
-                        cmd += " MINIMUM_CRUISE_RATIO=%.6f" % self.saved_toolhead_min_cruise_ratio
+                        cmd += " MINIMUM_CRUISE_RATIO=%.5f" % self.saved_toolhead_min_cruise_ratio
                     self.gcode.run_script_from_command(cmd)
                     self.saved_toolhead_max_accel = None
             else:
@@ -5720,14 +5582,14 @@ class Mmu:
         initial_pa = self.toolhead.get_extruder().get_status(0).get('pressure_advance', None)
         if initial_pa is not None:
             if reason:
-                self.log_debug("Setting pressure advance %s: %.6f" % (reason, pa))
+                self.log_debug("Setting pressure advance %s: %.5f" % (reason, pa))
             self._set_pressure_advance(pa)
         try:
             yield self
         finally:
             if initial_pa is not None:
                 if reason:
-                    self.log_debug("Restoring pressure advance: %.6f" % initial_pa)
+                    self.log_debug("Restoring pressure advance: %.5f" % initial_pa)
                 self._set_pressure_advance(initial_pa)
 
     def _set_pressure_advance(self, pa):
@@ -5942,16 +5804,16 @@ class Mmu:
 
     def _set_gate_selected(self, gate):
         self.gate_selected = gate
+
         new_unit = self.find_unit_by_gate(gate)
         if new_unit != self.unit_selected:
             self.unit_selected = new_unit
-            self.sensor_manager.reset_active_unit(self.unit_selected)
-            if self.sync_feedback_mode != self.SYNC_FEEDBACK_OFF:
-                self._update_sync_starting_state()
+            self.sensor_manager.reset_active_unit(new_unit)
+
         self.sensor_manager.reset_active_gate(self.gate_selected) # Call after unit_selected is set
+        self.sync_feedback_manager.reset_sync_starting_state_for_gate(self.gate_selected) # Will always set rotation_distance
+
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
-        self._set_rotation_distance(self._get_rotation_distance(self.gate_selected))
-        self._adjust_gear_rotation_distance() # Refine rotation distance based on sync feedback status
         self.active_filament = {
             'filament_name': self.gate_filament_name[gate],
             'material': self.gate_material[gate],
@@ -5970,17 +5832,25 @@ class Mmu:
                     return unit_index
         return self.UNIT_UNKNOWN
 
-    def _get_rotation_distance(self, gate):
-        return self.rotation_distances[gate if gate >= 0 and self.mmu_machine.variable_rotation_distances else 0]
-
-    def _set_rotation_distance(self, rd):
+    def get_rotation_distance(self, gate):
+        rd = self.rotation_distances[gate if gate >= 0 and self.mmu_machine.variable_rotation_distances else 0]
         if rd <= 0:
-            rd = self.rotation_distances[0] if self.rotation_distances[0] > 0 else self.default_rotation_distance
-            self.log_debug("Gate not calibrated, falling back to: %.6f" % rd)
-        else:
-            self.log_trace("Setting gear motor rotation distance: %.6f" % rd)
-        if self.gear_rail.steppers:
-            self.gear_rail.steppers[0].set_rotation_distance(rd)
+            rd = self.default_rotation_distance
+            self.log_debug("Gate not calibrated, falling back to default: %.5f" % rd)
+            self.log_warning("PAUL: Gate not calibrated, falling back to default: %.5f" % rd)
+        self.log_warning("PAUL: get_rotation_distance(%d) rtn: %.5f" % (gate, rd))
+        return rd
+
+    def set_rotation_distance(self, rd):
+        if rd > 0:
+#        if rd <= 0:
+#            rd = self.rotation_distances[0] if self.rotation_distances[0] > 0 else self.default_rotation_distance
+#            self.log_debug("Gate not calibrated, falling back to: %.5f" % rd)
+#        else:
+            self.log_trace("Setting gear motor rotation distance: %.5f" % rd)
+            self.log_warning("PAUL: set_rotation_distance(%.5f)" % rd)
+            if self.gear_rail.steppers:
+                self.gear_rail.steppers[0].set_rotation_distance(rd)
 
     def _get_bowden_length(self, gate):
         return self.bowden_lengths[gate if gate >= 0 and self.mmu_machine.variable_bowden_lengths else 0]
@@ -6831,6 +6701,7 @@ class Mmu:
             p for p in gcmd.get_command_parameters()
             if vars(self).get(p.lower()) is None
             and self.selector.check_test_config(p.lower())
+            and self.sync_feedback_manager.check_test_config(p.lower())
             and p.lower() not in [
                 self.VARS_MMU_CALIB_BOWDEN_LENGTH,
                 self.VARS_MMU_CALIB_CLOG_LENGTH
@@ -6864,15 +6735,11 @@ class Mmu:
         self.sync_purge = gcmd.get_int('SYNC_PURGE', self.sync_purge, minval=0, maxval=1)
         if self.mmu_machine.filament_always_gripped:
             self.sync_to_extruder = self.sync_form_tip = self.sync_purge = 1
-
-        sync_feedback_mode = gcmd.get('SYNC_FEEDBACK_MODE', self.sync_feedback_mode)
-        if sync_feedback_mode not in self.SYNC_FEEDBACK_OPTIONS:
-            raise gcmd.error("sync_feedback_mode is invalid. Options are: %s" % self.SYNC_FEEDBACK_OPTIONS)
-        self.sync_feedback_mode = sync_feedback_mode
-# PAUL more to do here?
-
-        self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
-        self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
+        self.sync_feedback_manager.set_test_config(gcmd)
+# PAUL
+#        self.sync_feedback_enabled = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled)
+#        self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
+#        self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
 
         # TMC current control
         self.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.sync_gear_current, minval=10, maxval=100)
@@ -7043,9 +6910,11 @@ class Mmu:
             msg += "\nsync_to_extruder = %d" % self.sync_to_extruder
             msg += "\nsync_form_tip = %d" % self.sync_form_tip
             msg += "\nsync_purge = %d" % self.sync_purge
-            msg += "\nsync_feedback_mode = %s" % self.sync_feedback_mode
-            msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
-            msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
+            msg += self.sync_feedback_manager.get_test_config()
+# PAUL
+#            msg += "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
+#            msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
+#            msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
             msg += "\nsync_gear_current = %d%%" % self.sync_gear_current
             msg += "\nextruder_collision_homing_current = %d%%" % self.extruder_collision_homing_current
             msg += "\nextruder_form_tip_current = %d%%" % self.extruder_form_tip_current
@@ -8413,7 +8282,7 @@ class MmuCalibrationManager:
     #
     # Calibration replaces the previous value. Autotuning applies a moving average
     def _autotune(self, direction, bowden_move_ratio, homing_movement):
-        msg = "Autotune: bowden move ratio: %.6f, Extra homing movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
+        msg = "Autotune: bowden move ratio: %.5f, Extra homing movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
         if homing_movement is not None:
             # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
             # TODO and bowden is calibrated and we don't tune bowden below
@@ -8434,15 +8303,16 @@ class MmuCalibrationManager:
                         if not self.mmu.calibrating and self.mmu.rotation_distances[self.mmu.gate_selected] > 0:
                             # Tuning existing calibration
                             new_rd = round((self.mmu.rotation_distances[self.mmu.gate_selected] * 5 + new_rd) / 6, 6) # Moving average
-                            msg += ". Autotuned rotation_distance: %.6f for gate %d (ratio: %.6f)" % (new_rd, self.mmu.gate_selected, bowden_move_ratio)
+                            msg += ". Autotuned rotation_distance: %.5f for gate %d (ratio: %.5f)" % (new_rd, self.mmu.gate_selected, bowden_move_ratio)
                         else:
                             # First time calibration or forced re-calibration
-                            self.mmu.log_always("Calibrated rotation_distance: %.6f has been automatically saved for gate %d (ratio: %.6f)" % (new_rd, self.mmu.gate_selected, bowden_move_ratio))
-                        self.mmu._set_rotation_distance(new_rd)
+                            self.mmu.log_always("Calibrated rotation_distance: %.5f has been automatically saved for gate %d (ratio: %.5f)" % (new_rd, self.mmu.gate_selected, bowden_move_ratio))
+                        # PAUL check this is still ok..
+                        self.mmu.set_rotation_distance(new_rd)
                         self.mmu.rotation_distances[self.mmu.gate_selected] = new_rd
                         self.mmu.save_variable(self.mmu.VARS_MMU_GEAR_ROTATION_DISTANCES, self.mmu.rotation_distances, write=True)
                     else:
-                        msg += ". Calculated rotation_distance: %.6f for gate %d failed sanity check and has been ignored (ratio: %.6f)" % (new_rd, self.mmu.gate_selected, bowden_move_ratio)
+                        msg += ". Calculated rotation_distance: %.5f for gate %d failed sanity check and has been ignored (ratio: %.5f)" % (new_rd, self.mmu.gate_selected, bowden_move_ratio)
 
             # TODO Currently only works with gate 0. Could work with other gates if variable_bowden_lengths is True
             # TODO and rotation distance is calibrated and not being tuned above
@@ -8690,7 +8560,7 @@ class MmuCalibrationManager:
                 self.mmu.log_warning("Warning: Encoder is not detecting the expected number of counts based on CAD parameters which may indicate an issue")
 
             msg = "Before calibration measured length: %.2fmm" % old_result
-            msg += "\nCalculated resolution of the encoder: %.6fmm (currently: %.6f)" % (resolution, self.mmu.encoder_sensor.get_resolution())
+            msg += "\nCalculated resolution of the encoder: %.5fmm (currently: %.5f)" % (resolution, self.mmu.encoder_sensor.get_resolution())
             self.mmu.log_always(msg)
 
             if save:
@@ -8740,14 +8610,14 @@ class MmuCalibrationManager:
             current_rd = self.mmu.gear_rail.steppers[0].get_rotation_distance()[0]
             new_rd = round(ratio * current_rd, 6)
 
-            self.mmu.log_always("Calibration move of %d x %.1fmm, average encoder measurement: %.1fmm - Ratio is %.6f" % (repeats * 2, length, mean, ratio))
-            self.mmu.log_always("Calculated gate %d rotation_distance: %.6f (currently: %.6f)" % (gate, new_rd, self.mmu.rotation_distances[gate]))
+            self.mmu.log_always("Calibration move of %d x %.1fmm, average encoder measurement: %.1fmm - Ratio is %.5f" % (repeats * 2, length, mean, ratio))
+            self.mmu.log_always("Calculated gate %d rotation_distance: %.5f (currently: %.5f)" % (gate, new_rd, self.mmu.rotation_distances[gate]))
             if gate != 0: # Gate 0 is not calibrated, it is the reference and set with MMU_CALIBRATE_GEAR
                 gate0_rd = self.mmu.rotation_distances[0]
                 tolerance_range = (gate0_rd - gate0_rd * 0.2, gate0_rd + gate0_rd * 0.2) # Allow 20% variation from gate 0
                 if tolerance_range[0] <= new_rd < tolerance_range[1]:
                     if save:
-                        self.mmu._set_rotation_distance(new_rd)
+                        self.mmu.set_rotation_distance(new_rd)
                         self.mmu.rotation_distances[gate] = new_rd
                         self.mmu.save_variable(self.mmu.VARS_MMU_GEAR_ROTATION_DISTANCES, self.mmu.rotation_distances, write=True)
                         self.mmu.log_always("Calibration for gate %d has been saved" % gate)
@@ -8759,245 +8629,386 @@ class MmuCalibrationManager:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration for gate %d failed. Aborting, because:\n%s" % (gate, str(ee)))
 
-# PAUL
-# class RotationDistanceManager:
-# Manager reading / persisting / locking of rotation distance for each gate
-#     def __init__(self, mmu):
-#     def get_rotation_distance(self, gate)
-#     def set_rotation_distance(self, gate)
-#     def reset_rotation_distance(self, gate)
-#     def lock_rotation_distance(self, gate)
-#     def unlock_rotation_distance(self, gate)
+
+
+
+
 #
-# class SyncFeedbackManager:
-#    def reset_sync_starting_state(self):
+# Manager class to handle sync-feedback and adjustment of gear rotation distance
 #
-#    def _handle_sync_feedback_timer(self, eventtime): # called by timer event aka _update_sync_feedback()
-#         # Process extruder movement. Extruder direction, filament moved since last change of direction
-#         self._adjust_gear_rotation_distance()
-#
-#    def _adjust_gear_rotation_distance() # PAUL args?
-#         # Common aggregator to consider new info based on filament direction, filament extruded
-#
-#    def handle_mmu_synced() # when gear is synced
-#    def handle_mmu_unsynced() # when gear is unsynced
-#    def handle_mmu_sync_feedback() # on change to sensor state (or periodic update for proportional values)
-#
+class MmuSyncFeedbackManager:
 
-# PR688 = "dynamic" mode for sync_feedback_mode
-# Filament sync tension handler, help to adjust rotation dist in real time automatically
-# to search and use the perfect rotation_dist value.
-# Theory of operation:
-# use binary search to get the perfect rotation dist value.
-# the upper limit: can slowly trigger expanded sensor (not enough filament)
-# the lower limit: can slowly trigger compressed sensor (too much filament)
-# the perfect rotation dist is always within the upper and lower limit.
-# when in neutral, get an avg value from upper and lower set it as new rotation_dist, and test it,
-# when it triggers another upper or lower limit, and use it as a new upper or lower limit value.
-# As it goes, slowly and slowly we have smaller and smaller range from upper to lower value,
-# and can have a better and better, more and more precise rota dist value.
-# If distance between upper and lower values is close enough we can use average for autotuning
-# calibrated value
+    FEEDBACK_INTERVAL  = 0.5     # How often to check extruder movement
+    SIGNIFICANT_MOVEMENT = 5.    # Min extruder movement to trigger direction change (don't want small retracts to trigger)
+    MULTIPLIER_WHEN_STUCK = 0.01 # Used to "widen" clamp if we are not getting to neutral soon enough
+    MULTIPLIER_WHEN_GOOD = 0.005 # Used to move off trigger when tuned rotation distance has been found
+    AUTOTUNE_TOLERANCE = 0.001   # The desired accuracy of autotuned rotation distance
 
-# function get_rotation_dist_on_state_change()
-#   when non sensor is triggered, we are in neutral position:
-#      time to test a avg value from current upper and lower rotation_dist values.
-#   When it's compressed, we have a confirmed compressed value, update the lower limit using current rotation_dist
-#   When it's expanded,  we have a confirmed expanded value, update the upper limit using current rotation_dist
-
-
-# update_sync_rotation_dist()
-#  similar to _adjust_gear_rotation_distance
-#   1
-#   it will be called again and again frequently.
-#   it's responsible to get the sensor out of the tension, by using a known upper/lower rotation_dist to go to the other direction
-#   the initial adjustment is 50% more or 50% less of the initial rotation_dist.
-#   as filament tension state changes, the upper and lower limit will change, we will have smaller range of upper lower limit.
-#   the perfect rotation_dist must be in between upper and lower limit.
-#   2
-#   to add a safety measure, count the times (counter, not time/sec/min) the sensor remains in the same compressed or expanded state,
-#   if with the known/confirmed other direction of the rotation_dist we still cannot get out of the current state within certain count (ALLOW_STAY_IN_TENSION_STATE_MAX)
-#   We further increase or reduce the confirmed upper/lower limit bad values to make sure we can move out of the tension state.
-
-class SyncTensionManager:
-    DEBUG = False # output even more debug info
-
-    # larger the value, need a bit more time to get out of sync bad state.
-    # smaller the value, easier to get out of sync bad state, but it adjust the good rota dist too often even it's good.
-    # 40 or 50 or 60 should be good values, the better the rota dist value is, it takes longer to get out of the trigger state because
-    # a good  rota dist doesn't change the sync tension state a lot
-    ALLOW_STAY_IN_TENSION_STATE_MAX = 50
-    # adjust the get out of tension rota dist even more (1%)
-    # once we have counter reach above (40), we increase /decrease 0.01, when reach another 40, we increase /decrease another 0.01
-    # so to make sure we can get out of the current tension state and go to neutral
-    ADJUST_WHEN_STAY_TENSION_TOO_LONG = 0.01
-    ADJUST_WHEN_ALREADY_PERFECT = 0.005
-
-
-    INITIAL_ADJ = 0.20       # Initial separation (upper and lower limits) of rotation_dist (not really important, just an initial value)
-    DEFAULT_ROTA_DIST = 22.3 # not important at all, just have some value to start with. # PAUL should use calibrated value DELETE ME
+    SYNC_STATE_NEUTRAL = 0
+    SYNC_STATE_COMPRESSED = 1.
+    SYNC_STATE_EXPANDED = -1.
 
     def __init__(self, mmu):
         self.mmu = mmu
 
-        # self.init_for_next_print(rota_dist) # cannot get rota_dist when create this object, not loaded yet
-        self.lower_rd_compressed = self.upper_rd_expanded = 0
-        self.rd = SyncTensionManager.DEFAULT_ROTA_DIST	 # doesn't really matter # PAUL not true! # PAUL get for gate
-        self.sync_state = self.mmu.SYNC_STATE_NEUTRAL
-        self.stayed_in_tension_count = 0
+        self.state = 0.             # 0 = Neutral
+        self.extruder_direction = 0 # 0 = Extruder not moving
+        self.active = False         # Actively operating?
+        self.last_recorded_extruder_position = None
 
-# PAUL this should probably be called every time sync_feedback is enabled and not on print? Pedantic but correct I think
-    def init_for_next_print(self, state, rota_dist=DEFAULT_ROTA_DIST): # PAUL perhaps pass in gate or pass gate default rd
-        self.rd = rota_dist # PAUL
-        self.lower_rd_compressed = self.rd * (1.0 - SyncTensionManager.INITIAL_ADJ)
-        self.upper_rd_expanded = self.rd * (1.0 + SyncTensionManager.INITIAL_ADJ)
-        self.mmu.log_debug("SYNC_TENSION_MANAGER: initial lower_rd_compressed: %.5f (%.1f%% smaller), initial upper_rd_expanded: %.5f (%.1f%% larger)" % (self.lower_rd_cmpressed, self.upper_rd_expanded, SyncTensionManager.INITIAL_ADJ * 100))
+        self.rd_clamps = {} # Autotune - Array of [high_rd, current_rd, low_rd] indexed by gate
 
-        self.stayed_in_tension_count = 0
-        self.sync_state = state
+        # Process config
+        self.sync_multiplier_high = self.mmu.config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
+        self.sync_multiplier_low = self.mmu.config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
+        self.sync_feedback_enabled = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
+        self.sync_movement_threshold = self.mmu.config.getfloat('sync_movement_threshold', 100, above=self.SIGNIFICANT_MOVEMENT) # Not yet exposed
 
-    def update_sync_rotation_dist(self, state): # PAUL state is same as self.mmu.sync_feedback_last_state (don't really need to pass in)
-        new_rota_dist = 0
+        # Setup events for managing motor synchronization
+        self.mmu.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
+        self.mmu.printer.register_event_handler("mmu:unsynced", self._handle_mmu_unsynced)
+        self.mmu.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
+        self._setup_extruder_watchdog_timer()
 
-        # did it change to a new state ?
-        if self.sync_state != state:
-            new_rota_dist = self.get_rotation_dist_on_state_change(last_state=self.sync_state, state=state)
-            # update the state , prepare for next state change
-            self.sync_state = state
-            return new_rota_dist
+    #
+    # Standard mmu manager hooks...
+    #
 
-        # same state
-        if state == self.mmu.SYNC_STATE_COMPRESSED:
-            # too much filament, need go slower, larger rota dist
-            # use the other side of rotat_dist value
-            # use this known value to go to the other direction
+    def reinit(self):
+        self.reset_extruder_watchdog()
 
-            self.stayed_in_tension_count += 1
-            if self.stayed_in_tension_count > SyncTensionManager.ALLOW_STAY_IN_TENSION_STATE_MAX:
-                self.mmu.log_debug("SYNC_TENSION_MANAGER: we are in trouble get out of compressed state? {self.stayed_in_tension_count=}")
-                # are we in trouble to get out of the bad compressed state??? adjust (make % larger) the known bad expanded value to get out of this state quickly
-                # ie make it larger , 105% of the current value
-                new_val = self.upper_rd_expanded * (1 + SyncTensionManager.ADJUST_WHEN_STAY_TENSION_TOO_LONG)
-                # just to make sure the expand value can make more filament (so to ensure to reach the expanded state)
-                self.mmu.log_debug("SYNC_TENSION_MANAGER: stayed too long in compressed state! {self.stayed_in_tension_count=}(too long time), make known bad "
-                f"expanded value larger {SyncTensionManager.ADJUST_WHEN_STAY_TENSION_TOO_LONG * 100}%, now {new_val:.5f}(was {self.upper_rd_expanded:.5f})")
-                self.upper_rd_expanded = new_val
-                self.stayed_in_tension_count = 0
+    def set_test_config(self, gcmd):
+        self.sync_feedback_enabled = gcmd.get_int('FEEDBACK_ENABLED', self.sync_feedback_enabled)
+        self.sync_multiplier_high = gcmd.get_float('MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
+        self.sync_multiplier_low = gcmd.get_float('MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
 
-            new_rota_dist = self.upper_rd_expanded
+    def get_test_config(self):
+        msg += "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
+        msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
+        msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
 
-        elif state == self.mmu.SYNC_STATE_EXPANDED:
-            # too little filament, need go faster, smaller rota dist
-            # use this known value to go to the other direction
+    def check_test_config(self, param):
+        return vars(self).get(param) is None
 
-            self.stayed_in_tension_count += 1
-            if self.stayed_in_tension_count > SyncTensionManager.ALLOW_STAY_IN_TENSION_STATE_MAX:
+    #
+    # Sync feedback manager public access...
+    #
 
-                # are we in trouble to get out of the bad compressed state??? adjust (make % smaller) the known bad expanded value
-                # to get out of this state quickly
-                # ie make it smaller , 95% of the current value
-                new_val = self.lower_rd_compressed * (1 - SyncTensionManager.ADJUST_WHEN_STAY_TENSION_TOO_LONG)
-                # just to make sure the expand value can make more filament (so to ensure to reach the expanded state)
-                self.mmu.log_debug("SYNC_TENSION_MANAGER: stayed too long in expanded state? {self.stayed_in_tension_count=}(too long time), make known bad " 
-                f"compressed value smaller {SyncTensionManager.ADJUST_WHEN_STAY_TENSION_TOO_LONG * 100:.5f}%, now {new_val:.5f}(was {self.lower_rd_compressed:.5f})")
-                self.stayed_in_tension_count = 0
-                self.lower_rd_compressed = new_val
+    # Ensure correct sync / rotation distance starting state based on current sensor input
+    # Regardless of state or gate this will set a sensible rotation distance
+    def reset_sync_starting_state_for_gate(self, gate):
+        self.mmu.log_warning("PAUL: reset_sync_starting_state(%d)" % gate)
+        if gate >= 0:
+            # Initialize rotation distance clampling range for gate
+            if not self.rd_clamps.get(gate):
+                rd = self.mmu.get_rotation_distance(gate)
+                self.rd_clamps[gate] = [rd * self.sync_multiplier_high, rd, rd * self.sync_multiplier_low]
 
-            new_rota_dist = self.lower_rd_compressed
+            self.reset_extruder_watchdog()
+            self._reset_current_sync_state()
+            if self.sync_feedback_enabled:
+                self.mmu.log_debug("MmuSyncFeedbackManager: Set initial sync feedback state to: %s" % self.get_sync_feedback_string(detail=True))
 
-        elif state == self.mmu.SYNC_STATE_NEUTRAL:
-            self.stayed_in_tension_count = 0
-            # do nothing don't change the current rotation dist, the current rota_dist should be correct since we are in neutral
-            # until it hits the expanded or compressed state
-            return None
-
-        #if SyncTensionManager.DEBUG:
-        #    self.mmu.log_debug("SYNC_TENSION_MANAGER: update_sync_rotation_dist have  {new_rota_dist=}")
-
-        if math.isclose(new_rota_dist, self.rd) and not math.isclose(self.rd, 0):
-            # in case self.rota_dist is not inited properly
-            # return None so it won't update again and again using the same value, wasting time and log
-            return None
+            # Always set initial rotation distance (may be autotune value)
+            if not self._adjust_gear_rotation_distance():
+                self.mmu.set_rotation_distance(self.rd_clamps[gate][1])
         else:
-            # we have a new different value, return it to let it set to stepper motor
-            self.rd = new_rota_dist
-            self.mmu.log_debug("SYNC_TENSION_MANAGER: sync state: %s, new rota_dist: %.5f" % (self.mmu._get_sync_feedback_string(state), new_rota_dist))
+            self._reset_gear_rotation_distance()
 
-            return new_rota_dist
+    # Starting assumption is that extruder is not moving and measurement is 0mm
+    def reset_extruder_watchdog(self):
+        self.mmu.log_warning("PAUL: reset_extruder_watchdog")
+        self.extruder_direction = 0 # Extruder not moving to force neutral start position
+        self.last_recorded_extruder_position = None
 
-        return None
+    def is_enabled(self):
+        return self.sync_feedback_enabled
 
-    def cal_rotation_dist_by_tension_value(self, compressed, expanded):
-        rotation_dist = (self.lower_rd_compressed + self.upper_rd_expanded) / 2.
-        self.mmu.log_always("SYNC_TENSION_MANAGER: using last compressed %.5f and last expanded %.5f to avg: have new better rotation_dist: %.5f}" % (compressed, expanded, rotation_dist))
-        return rotation_dist
+    def is_active(self):
+        return self.active
 
-    def get_rotation_dist_on_state_change(self, last_state, state):
-        if SyncTensionManager.DEBUG:
-            self.mmu.log_debug("SYNC_TENSION_MANAGER: get_rotation_dist_on_state_change() working {last_state=}({self.mmu._get_sync_feedback_string(last_state)}) {state=}({SyncTensionManager.self.mmu._get_sync_feedback_string)})")
-        # same tension state?? impossible?? this function won't be called.
-        if state == last_state:
-#PAUL        if math.isclose(last_state, state):
-            # impossible, state didn't change,
-            return self.rd
+    def get_sync_feedback_string(self, state=None, detail=False):
+        if state is None:
+            state = self.state
+        if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
+            return 'compressed' if state > 0.5 else 'expanded' if state < -0.5 else 'neutral'
+        return "disabled"
 
-        if state == self.mmu.SYNC_STATE_COMPRESSED:
-            # tension state just turn to compressed from neutral
-            # only record the confirmed bad compressed value and not to adjust it in here, let the other function update_sync_rotation_dist() to adjust it
+    #
+    # Internal implementation --------------------------------------------------
+    #
 
-            # record the current bad compressed value, this current rota dist value is confirmed bad compressed because it just triggered the compressed sensor
-            self.lower_rd_compressed = self.rd
-            self.mmu.log_debug("SYNC_TENSION_MANAGER: tension state changed to compressed(from neutral), record current rota_dist as new bad compressed val:{self.rd:.5f}(current rota dist) {self.lower_rd_compressed} {self.upper_rd_expanded=}")
+    def _setup_extruder_watchdog_timer(self):
+        self.extruder_watchdog_timer = self.mmu.reactor.register_timer(self._check_extruder_movement)
 
-            if math.isclose(self.rd, self.upper_rd_expanded):
-                adjusted_bad_rotation_dist_expanded = self.upper_rd_expanded * ( 1.0 + SyncTensionManager.ADJUST_WHEN_ALREADY_PERFECT)
-                self.mmu.log_debug("SYNC_TENSION_MANAGER: already have the perfect rota dist, adjust a little bit to make to move to expanded direction {self.upper_rd_expanded:.5f}->{adjusted_bad_rotation_dist_expanded:.5f}")
-                self.upper_rd_expanded = adjusted_bad_rotation_dist_expanded
-            # immediately return the bad value of other dir
-            self.rd = self.upper_rd_expanded
-            self.mmu.log_debug("SYNC_TENSION_MANAGER: for compressed state, return new rota_dist {self.rd:5f}")
-            return self.rd
+    # Called periodically to check extruder movement
+    def _check_extruder_movement(self, eventtime):
+        if self.mmu.is_enabled:
+            estimated_print_time = self.mmu.printer.lookup_object('mcu').estimated_print_time(eventtime)
+            extruder = self.mmu.toolhead.get_extruder()
+            pos = extruder.find_past_position(estimated_print_time)
+            if self.last_recorded_extruder_position is None:
+                self.last_recorded_extruder_position = pos
 
-        elif state == self.mmu.SYNC_STATE_EXPANDED:
-            # tension state just turn to expanded from neutral
-            # record the current bad expanded value, this current rota dist value is confirmed bad expanded because it just triggered the expanded sensor
-            self.upper_rd_expanded = self.rd
-            if SyncTensionManager.DEBUG:
-               self.mmu.log_debug("SYNC_TENSION_MANAGER: tension state changed to expanded(from neutral), record current rota_dist as new bad expanded val:{self.rd:.5f}(current rota dist), {self.lower_rd_compressed=}, {self.upper_rd_expanded=}")
+#PAUL
+#            past_pos = extruder.find_past_position(max(0., estimated_print_time - self.POSITION_TIMERANGE))
+#            if abs(pos - past_pos) >= self.POSITION_MIN_DELTA:
+#                self.extruder_direction = (
+#                    self.mmu.DIRECTION_LOAD if pos > past_pos
+#                    else self.mmu.DIRECTION_UNLOAD if pos < past_pos
+#                    else 0
+#                )
+            # Have we changed direction?
+            if abs(pos - self.last_recorded_extruder_position) > self.SIGNIFICANT_MOVEMENT:
+                prev_direction = self.extruder_direction
+                self.extruder_direction = (
+                    self.mmu.DIRECTION_LOAD if pos > self.last_recorded_extruder_position
+                    else self.mmu.DIRECTION_UNLOAD if pos < self.last_recorded_extruder_position
+                    else 0
+                )
+                if self.extruder_direction != prev_direction:
+                    self._notify_direction_change(prev_direction, self.extruder_direction)
+                    self.last_recorded_extruder_position = pos
+            elif (pos - self.last_recorded_extruder_position) > self.sync_movement_threshold:
+                # Ensure we are given periodic notifications to aid autotuning
+                self._notify_hit_movement_marker(pos - self.last_recorded_extruder_position)
+                self.last_recorded_extruder_position = pos
 
-            if math.isclose(self.rd, self.lower_rd_compressed):
-                adjusted_bad_rotation_dist_compressed = self.lower_rd_compressed * ( 1.0 - SyncTensionManager.ADJUST_WHEN_ALREADY_PERFECT)
-                self.mmu.log_debug("SYNC_TENSION_MANAGER: already have the perfect rota dist, adjust a little bit to make to move to compressed direction {self.lower_rd_compressed:.5f}->{adjusted_bad_rotation_dist_compressed:.5f}")
-                self.lower_rd_compressed = adjusted_bad_rotation_dist_compressed
+        return eventtime + self.FEEDBACK_INTERVAL
 
-            self.rd = self.lower_rd_compressed
-            self.mmu.log_debug("SYNC_TENSION_MANAGER: for expanded state, return new rota_dist {self.rd:5f}")
-            return self.rd
+    # Event indicating that gear stepper is now synced with extruder
+    def _handle_mmu_synced(self):
+        if not self.mmu.is_enabled: return
+        msg = "MmuSyncFeedbackManager: Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enabled else "")
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.log_debug(msg)
+        else:
+            self.mmu.log_info(msg)
 
-        # enhanced error handling, this shouldn't happen but just in case, if the two upper /lower limit values are messed up , fix them
-        if self.lower_rd_compressed > self.upper_rd_expanded:
-            self.mmu.log_error("SYNC_TENSION_MANAGER: impossible! why lower compressed rota_dist is larger than upper expanded rota ?? {self.lower_rd_compressed}>{self.upper_rd_expanded}, just swap them")
-            temp = self.lower_rd_compressed
-            self.lower_rd_compressed = self.upper_rd_expanded
-            self.upper_rd_expanded = temp
-            self.mmu.log_error("SYNC_TENSION_MANAGER: after swap, now compressed rota dist:{self.lower_rd_compressed} < expanded rota dist:{self.upper_rd_expanded}")
+        if not self.active:
+            # Enable sync feedback
+            self.active = True
+            self.reset_extruder_watchdog()
+            self._reset_current_sync_state()
+            self._adjust_gear_rotation_distance()
+            self.mmu.reactor.update_timer(self.extruder_watchdog_timer, self.mmu.reactor.NOW)
 
-        if state == self.mmu.SYNC_STATE_NEUTRAL:
-            # tension state just turn to neutral (because tension state is slowly moving from one end to other dir,
-            # binary search, when it's neutral, test the middle point of the two sides limt values.
+    # Event indicating that gear stepper has been unsynced from extruder
+    def _handle_mmu_unsynced(self):
+        if not self.mmu.is_enabled: return
+        msg = "MmuSyncFeedbackManager: Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enabled else "")
+        if self.mmu.mmu_machine.filament_always_gripped:
+            self.mmu.log_debug(msg)
+        else:
+            self.mmu.log_info(msg)
 
-            self.log_debug("SYNC_TENSION_MANAGER: tension state changed to neutral (from %s)" % self.mmu._get_sync_feedback_string(last_state))
-            #if math.isclose(self.lower_rd_compressed, self.upper_rd_expanded):
-            #    pass
-            #else:
-            new_rd = (self.lower_rd_compressed + self.upper_rd_expanded) / 2.
-            self.mmu.log_always("SYNC_TENSION_MANAGER: using last compressed %.5f and last expanded %.5f to avg: have new better rotation_dist: %.5f}" % (compressed, expanded, new_rd))
+        if self.active:
+            # Disable sync feedback
+            self.active = False
+            self.mmu.reactor.update_timer(self.extruder_watchdog_timer, self.mmu.reactor.NEVER)
+            self.state = self.SYNC_STATE_NEUTRAL
+            self._reset_gear_rotation_distance()
 
-            if math.isclose(new_rd, self.rd): # PAUL how close is close? can we control?
+    # Gear/Extruder sync feedback event. State should be -1 (expanded) and 1 (compressed)
+    # or can be a proportional float value between -1.0 and 1.0
+    def _handle_sync_feedback(self, eventtime, state):
+        if not self.mmu.is_enabled: return
+        if abs(state) <= 1:
+            old_state = self.state
+            self.state = float(state)
+            self.mmu.log_trace(
+                "MmuSyncFeedbackManager: Got sync force feedback update. State: %s (%s)" % (
+                    self.get_sync_feedback_string(detail=True),
+                    float(state)
+                )
+            )
+            if self.sync_feedback_enabled and self.active:
+                # Dynamically inspect sensor availability so we can be reactive to user enable/disable mid print
+                has_dual_sensors = (
+                    self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION) and
+                    self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
+                )
+                # PAUL TODO need to handle proportional feedback..
+                if state != old_state and has_dual_sensors:
+                    self._adjust_clamps(state, old_state)
+                self._adjust_gear_rotation_distance()
+        else:
+            self.mmu.log_error("Invalid sync feedback state: %s" % state)
+
+        if self.mmu._is_running_test:
+            self.mmu.printer.send_event("mmu:sync_feedback_finished", state)
+
+    # This signifies that the extruder has changed direction
+    def _notify_direction_change(self, last_direction, new_direction):
+        dir_str = lambda d: 'extrude' if d == self.mmu.DIRECTION_LOAD else 'retract' if d == self.mmu.DIRECTION_UNLOAD else 'static',
+        self.mmu.log_trace(
+            "MmuSyncFeedbackManager: Sync direction changed from %s to %s" % (
+                dir_str(last_direction),
+                dir_str(new_direction)
+            )
+        )
+        self._adjust_gear_rotation_distance()
+
+    # This signifies we have been sitting in same state for longer than the movement threshold so
+    # rotation_distance may need an additional nudge. Also allows us to "clamp down" on perfect
+    # calibration if we have dual sensors
+    def _notify_hit_movement_marker(self, movement):
+        self.mmu.log_trace("MmuSyncFeedbackManager: Extruder moved %.1fmm since last sync update" % movement)
+
+        # Dynamically inspect sensor availability so we can be reactive to user enable/disable mid print
+        has_dual_sensors = (
+            self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION) and
+            self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
+        )
+
+        # Currently we don't do anything if using fixed multipliers (single sensor case) TODO we could though!
+        if not has_dual_sensors: return
+
+        rd_clamp = self.rd_clamps[self.gate_selected]
+        current_rd = rd_clamp[1]
+
+        if self.state == self.SYNC_STATE_COMPRESSED:
+            # Compression state too long means filament feed too fast, need to go slower so larger rotation distance
+            # Increase expanded value by fixed % and set new_rd to expanded value
+            new_rd = rd_clamp[0] * (1 + self.MULTIPLIER_WHEN_STUCK)
+            self.mmu.log_debug(
+                "MmuSyncFeedbackManager: Extruder moved too far in compressed state (%.1fmm). Increased upper_rd_expanded clamp value by %d%% from %.5f to %.5f" % (
+                    movement,
+                    self.MULTIPLIER_WHEN_STUCK * 100,
+                    rd_clamp[0],
+                    new_rd
+                )
+            )
+            # Adjust clamp and use rd that is known to make sensor move towards expanded
+            rd_clamp[0] = rd_clamp[1] = new_rd
+
+        elif self.state == self.SYNC_STATE_EXPANDED:
+            # Expanded state too long means filament feed too slow, need to go faster so smaller rotation distance
+            # Increase compressed value by fixed % and set new_rd to compressed value
+            new_rd = rd_clamp[2] * (1 - self.MULTIPLIER_WHEN_STUCK)
+            self.mmu.log_debug(
+                "MmuSyncFeedbackManager: Extruder moved too far in expanded state (%.1fmm). Decreased lower_rd_compressed value by %d%% from %.5f to %.5f" % (
+                    movement,
+                    self.MULTIPLIER_WHEN_STUCK * 100,
+                    rd_clamp[2],
+                    new_val
+                )
+            )
+            # Adjust clamp and use rd that is known to make sensor move towards compressed
+            rd_clamp[2] = rd_clamp[1] = new_rd
+
+        elif self.state == self.SYNC_STATE_NEUTRAL:
+            return # Do nothing, we want to stay in this state
+
+        # No need to update the same rd value
+        if not math.isclose(new_rd, current_rd):
+            self.mmu.log_debug("MmuSyncFeedbackManager: Sync state: %s, New rotation_distance: %.5f" % (self.mmu._get_sync_feedback_string(state), new_rd))
+            self._adjust_gear_rotation_distance()
+
+    # Called to use binary search algorithm to slowly reduce clamping range to minimize switching
+    # Note that this will converge on new calibrated value and update if autotune options is set
+    def _adjust_clamps(self, state, old_state):
+        rd_clamp = self.rd_clamps[self.gate_selected]
+
+        if state == self.SYNC_STATE_COMPRESSED: # Transition from neutral --> compressed
+            # Use current rotation distance to clamp lower_rd_compressed
+            rd_clamp[2] = rd_clamp[1]
+            self.mmu.log_trace(
+                "MmuSyncFeedbackManager: Neutral -> Compressed. New clamp range: upper_rd_expanded: %.5f, current: %.5f, lower_rd_compressed: %.5f" %
+                    tuple(rd_clamp)
+            )
+
+            # If we already have good rotation_distance, adjust a little to make move off trigger to expanded direction
+            if math.isclose(rd_clamp[0], rd_clamp[1], abs_tol=self.AUTOTUNE_TOLERANCE):
+                rd_clamp[0] *= (1 + self.MULTIPLIER_WHEN_GOOD)
+                self.mmu.log_trace("MmuSyncFeedbackManager: Already have good rotation_distance, adjusting slightly to move off trigger")
+
+            rd_clamp[1] = rd_clamp[0] # Set current rd to upper_rd_expanded
+            return
+
+        elif state == self.SYNC_STATE_EXPANDED: # Transition from neutral --> expanded
+            # Use current rotation distance to clamp upper_rd_expanded
+            rd_clamp[0] = rd_clamp[1]
+            self.mmu.log_trace(
+                "MmuSyncFeedbackManager: Neutral -> Expanded. New clamp range: upper_rd_expanded: %.5f, current: %.5f, lower_rd_compressed: %.5f" %
+                    tuple(rd_clamp)
+            )
+
+            if math.isclose(rd_clamp[2], rd_clamp[1], abs_tol=self.AUTOTUNE_TOLERANCE):
+                rd_clamp[0] *= (1 - self.MULTIPLIER_WHEN_GOOD)
+                self.mmu.log_trace("MmuSyncFeedbackManager: Already have good rotation_distance, adjusting slightly to move off trigger")
+
+            rd_clamp[1] = rd_clamp[2] # Set current rd to upper_rd_expanded
+            return
+
+        # Paranoia - handle unexpected inversion conditon
+        if self.lower_rd_compressed > self.upper_rd_expanded: # PAUL error
+            self.mmu.log_warning("MmuSyncFeedbackManager: Inverted rotation_distance clamping range! Fixing...")
+            self.lower_rd_compressed, self.upper_rd_expanded = self.upper_rd_expanded, self.lower_rd_compressed
+
+        if state == self.SYNC_STATE_NEUTRAL: # Transition from compressed/expanded --> neutral
+            # Test mid point of the clamping range
+            self.log_debug("MmuSyncFeedbackManager: %s state changed to neutral" % self.mmu._get_sync_feedback_string(last_state))
+            rd_clamp[1] = (rd_clamp[2] + rd_clamp[0]) / 2.
+
+            if math.isclose(rd_clamp[0], rd_clamp[2], abs_tol=self.AUTOTUNE_TOLERANCE):
                 # PAUL if autotune then update saved value here and report?
-                self.log_always("This rotation dist seems very accurate {rotation_dist:.5f}...if haven't, consider update mmu_gear_rotation_distances[] using this value for the selected gate.")
+                self.log_always("MmuSyncFeedbackManager: Autotune goal reached!")
 
-            self.rd = new_rd
+    # Update gear rotation_distance based on current state. This correctly handled
+    # the direction of movement (although it will almost always be extruding)
+    # Return True if rotation_distance set
+    def _adjust_gear_rotation_distance(self):
+        if not self.sync_feedback_enabled or not self.active: return False
 
-        return self.rd
+        rd_clamp = self.rd_clamps[self.gate_selected]
+        if self.state == self.SYNC_STATE_NEUTRAL or self.extruder_direction == 0:
+            rd = rd_clamp[1]
+        else:
+            go_slower = lambda s, d: abs(s - d) < abs(s + d)
+            if go_slower(self.state, self.extruder_direction):
+                # Compressed when extruding or expanded when retracting, so increase the rotation distance of gear stepper to slow it down
+                rd = rd_clamp[0]
+                self.mmu.log_trace("MmuSyncFeedbackManager: Slowing gear motor down")
+            else:
+                # Expanded when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
+                rd = rd_clamp[2]
+                self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up")
 
+        rd_clamp[1] = rd
+        self.mmu.log_trace(
+            "MmuSyncFeedbackManager: Gear rotation_distance changed to: %.5f (max:%.5f, current:%.5f, min:%.5f)" % (
+                rd, rd_clamp[0], rd_clamp[1], rd_clamp[2]
+            )
+        )
+        self.mmu.set_rotation_distance(rd)
+        return True
+
+    # Reset rotation_distance to calibrated value of current gate (not necessarily current value if autotuning)
+    def _reset_gear_rotation_distance(self):
+        rd = self.mmu.get_rotation_distance(self.mmu.gate_selected)
+        self.mmu.log_trace("MmuSyncFeedbackManager: Reset rotation distance to calibrated value (%.5f)" % rd)
+        self.mmu.set_rotation_distance(rd)
+
+    # Reset current sync state based on current sensor feedback
+    def _reset_current_sync_state(self):
+        sm = self.mmu.sensor_manager
+        has_tension = sm.has_sensor(self.mmu.SENSOR_TENSION)
+        has_compression = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
+        tension_active = sm.check_sensor(self.mmu.SENSOR_TENSION)
+        compression_active = sm.check_sensor(self.mmu.SENSOR_COMPRESSION)
+
+        ss = self.SYNC_STATE_NEUTRAL
+        if has_tension and has_compression:
+            # Allow for sync-feedback sensor designs with minimal travel where both sensors can be triggered at same time
+            if tension_active == compression_active:
+                ss = self.SYNC_STATE_NEUTRAL
+            elif tension_active and not compression_active:
+                ss = self.SYNC_STATE_EXPANDED
+            else:
+                ss = self.SYNC_STATE_COMPRESSED
+        elif has_compression and not has_tension:
+            ss = self.SYNC_STATE_COMPRESSED if compression_active else self.SYNC_STATE_EXPANDED
+        elif has_tension and not has_compression:
+            ss = self.SYNC_STATE_EXPANDED if tension_active else self.SYNC_STATE_COMPRESSED
+        self.state = ss

@@ -341,18 +341,17 @@ extruder_purge_current: 100		# % of extruder current (100%-150%) to use when pur
 #
 sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when syncing with extruder during print
 
-# Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
-# extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
-# binary supplied by one or two switches: -1 (expanded) and 1 (compressed) of proportional value between -1.0 and 1.0
-# Requires [mmu_sensors] setting. Modes of operation:
+# Optionally it is possible to leverage feedback from a "compression/expansion" sensor (aka "buffer") in the bowden
+# path from MMU to extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback
+# state can be binary supplied by one or two switches: -1 (expanded) and 1 (compressed) of proportional value between
+# -1.0 and 1.0.
 #
-#  off     - Sync feedback is disabled even if sensor is fitted (make sure gear is well calibrated)
-#  static  - Use high/low (rotation distance) multipliers. Forced if only only of the two sensors fitted
-#  dynamic - Dynamically adjust (requires both compression/tension sensors and static multipliers will be ignored))
-#            Note: dynamic calculation will also adjust the calibrated rotation distance over time if
-#                  'autotune_rotation_distance: 1' making non-synced movement more accurate
+# If only "one half" of the sync-feedback is available (either compression-only or tension-only) then the rotation
+# distance is always shifted based on the high/low multipliers, however if both tension and compression cn be detected
+# then the rotation distance will autotune to correct setting (recommend you also enable 'autotune_rotation_distance: 1'
+# Proportional feedback sensors are continuously dynamic
 #
-sync_feedback_mode: off			# off, static or dynamic (see above)
+sync_feedback_enabled: 0		# Turn off even if sensor is installed and active
 sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
 sync_multiplier_low: 0.95		# Minimum factor to apply
 
