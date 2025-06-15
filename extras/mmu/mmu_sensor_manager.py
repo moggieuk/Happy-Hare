@@ -1,8 +1,9 @@
 # Happy Hare MMU Software
-# Manager to centralize mmu_sensor operations
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
+#
+# Goal: Manager to centralize mmu_sensor operations
 #
 # (\_/)
 # ( *,*)
