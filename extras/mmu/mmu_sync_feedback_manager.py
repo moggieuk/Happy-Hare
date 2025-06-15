@@ -96,7 +96,7 @@ class MmuSyncFeedbackManager:
             # Initialize rotation distance clampling range for gate
             if not self.rd_clamps.get(gate):
                 rd = self.mmu.get_rotation_distance(gate)
-                self.rd_clamps[gate] = [rd * self.sync_multiplier_high, None, rd * self.sync_multiplier_low, -1, rd]
+                self.rd_clamps[gate] = [rd * self.sync_multiplier_high, rd, rd * self.sync_multiplier_low, None, rd]
 
             self._reset_extruder_watchdog()
             self._reset_current_sync_state()

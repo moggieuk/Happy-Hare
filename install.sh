@@ -1902,6 +1902,7 @@ questionaire() {
             _hw_num_gates=4
             _hw_mmu_vendor="KMS"
             _hw_mmu_version="1.0"
+            _hw_selector_type=VirtualSelector
 
             # mmu_parameters config
             _param_extruder_homing_endstop="filament_compression"
@@ -1921,6 +1922,8 @@ questionaire() {
             _param_autotune_rotation_distance=1
             _param_skip_cal_encoder=0
             _param_autotune_encoder=0
+
+            _param_has_filament_buffer=0
 
             # TODO add espooler tuned variables..
             ;;
