@@ -30,13 +30,13 @@ import logging, time, math
 
 class MmuSyncFeedbackManager:
 
-    FEEDBACK_INTERVAL     = 0.5   # How often to check extruder movement
-    SIGNIFICANT_MOVEMENT  = 5.    # Min extruder movement to trigger direction change (don't want small retracts to trigger)
-    MOVEMENT_THRESHOLD    = 50    # Default extruder movement threshold trigger when stuck in one state
-    MULTIPLIER_WHEN_STUCK = 0.01  # Used to "widen" clamp if we are not getting to neutral soon enough
-    MULTIPLIER_WHEN_GOOD  = 0.005 # Used to move off trigger when tuned rotation distance has been found
-    MULTIPLIER_RUNAWAY    = 0.25  # Used to limit range in runaway conditions
-    AUTOTUNE_TOLERANCE    = 0.001 # The desired accuracy of autotuned rotation distance
+    FEEDBACK_INTERVAL     = 0.5     # How often to check extruder movement
+    SIGNIFICANT_MOVEMENT  = 5.      # Min extruder movement to trigger direction change (don't want small retracts to trigger)
+    MOVEMENT_THRESHOLD    = 50      # Default extruder movement threshold trigger when stuck in one state
+    MULTIPLIER_RUNAWAY    = 0.25    # Used to limit range in runaway conditions (25%)
+    MULTIPLIER_WHEN_STUCK = 0.01    # Used to "widen" clamp if we are not getting to neutral soon enough (1%)
+    MULTIPLIER_WHEN_GOOD  = 0.005   # Used to move off trigger when tuned rotation distance has been found (0.5%)
+    AUTOTUNE_TOLERANCE    = 0.0025  # The desired accuracy of autotuned rotation distance (0.25% or 2.5mm per m)
 
     SYNC_STATE_NEUTRAL    = 0
     SYNC_STATE_COMPRESSED = 1
@@ -303,7 +303,7 @@ class MmuSyncFeedbackManager:
         tuned_rd = None
 
         def check_if_tuned(rd_clamp):
-            if math.isclose(rd_clamp[0], rd_clamp[2], abs_tol=self.AUTOTUNE_TOLERANCE):
+            if math.isclose(rd_clamp[0], rd_clamp[2], rel_tol=self.AUTOTUNE_TOLERANCE):
                 tuned_rd = (rd_clamp[0] + rd_clamp[2]) / 2.
                 if not rd_clamp[3] or not math.isclose(tuned_rd, rd_clamp[3]):
                     # New tuned setting
