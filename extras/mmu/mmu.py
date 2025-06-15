@@ -8271,7 +8271,7 @@ class Mmu:
         purge_volumes = gcmd.get('PURGE_VOLUMES', "")
         num_slicer_tools = gcmd.get_int('NUM_SLICER_TOOLS', self.num_gates, minval=1, maxval=self.num_gates) # Allow slicer to have less tools than MMU gates
         automap_strategy = gcmd.get('AUTOMAP', None)
-        skip_automap = bool(gcmd.get_int('SKIP_AUTOMAP', None, minval=0, maxval=1))
+        skip_automap = gcmd.get_int('SKIP_AUTOMAP', None, minval=0, maxval=1)
 
         quiet = False
         if reset:
@@ -8282,7 +8282,7 @@ class Mmu:
 
         if skip_automap is not None:
             # This is a "one-print" option that supresses automatic automap
-            self._restore_automap_option(skip_automap)
+            self._restore_automap_option(bool(skip_automap))
 
         if tool >= 0:
             self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
