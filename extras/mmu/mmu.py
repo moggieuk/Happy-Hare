@@ -1783,9 +1783,20 @@ class Mmu:
         self.save_variable(self.VARS_MMU_COUNTERS, self.counters, write=True)
 
     def _color_message(self, msg):
-        # 0=end_color, 1=grey, 2=red, 3=green, 4=blue, 5=bold_on, 6=bold_off
-        html_msg = msg.format('</span>', '<span style=\"color:#C0C0C0\">', '<span style=\"color:#FF69B4\">', '<span style=\"color:#90EE90\">', '<span style=\"color:#87CEEB\">', '<b>', '</b>')
-        msg = re.sub(r'\{\d\}', '', msg)
+        try:
+            html_msg = msg.format(
+                '</span>',                       # {0}
+                '<span style="color:#C0C0C0">',  # {1}
+                '<span style="color:#FF69B4">',  # {2}
+                '<span style="color:#90EE90">',  # {3}
+                '<span style="color:#87CEEB">',  # {4}
+                '<b>',                           # {5}
+                '</b>'                           # {6}
+            )
+        except (IndexError, KeyError, ValueError) as e:
+            html_msg = msg
+
+        msg = re.sub(r'\{\d\}', '', msg) # Remove numbered placeholders for plain msg
         if self.serious:
             html_msg = msg
         return html_msg, msg
@@ -2218,7 +2229,7 @@ class Mmu:
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         if not self.is_in_print():
             self._standalone_sync = bool(sync) # Make sticky if not in a print
-        self.reset_sync_gear_to_extruder(sync) # PAUL check this
+        self.reset_sync_gear_to_extruder(sync)
 
 
 #########################
@@ -2798,15 +2809,6 @@ class Mmu:
             # Establish syncing state and grip (servo) position
             # (must call after print_state is set so we know we are printing)
             self.reset_sync_gear_to_extruder(self.sync_to_extruder)
-# PAUL
-#            sync = (
-#                self.sync_to_extruder or
-#                (
-#                    self.mmu_machine.filament_always_gripped and
-#                    self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY # PAUL
-#                )
-#            )
-#            self.sync_gear_to_extruder(sync)
 
             # Start espooler for current gate
             self._espooler_assist_on()
@@ -2948,16 +2950,7 @@ class Mmu:
             self._initialize_encoder(dwell=None) # Encoder 0000
 
             # Restablish desired syncing state and grip (servo) position
-            self.reset_sync_gear_to_extruder(self.sync_to_extruder, force_in_print=force_in_print) # PAUL
-# PAUL
-#            sync = (
-#                self.sync_to_extruder or
-#                (
-#                    self.mmu_machine.filament_always_gripped and
-#                    self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY # PAUL
-#                )
-#            )
-#            self.sync_gear_to_extruder(sync)
+            self.reset_sync_gear_to_extruder(self.sync_to_extruder, force_in_print=force_in_print)
 
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
@@ -3833,16 +3826,6 @@ class Mmu:
 
                     # Mimick in print if requested
                     self.reset_sync_gear_to_extruder(self.sync_form_tip, force_in_print=force_in_print)
-# PAUL not sure about this. Think of bypass... mmu could also be disconnected
-#                    sync = (
-#                        (self.sync_form_tip and self.is_printing(force_in_print)) or
-#                        (self._standalone_sync and not self.is_printing(force_in_print)) or
-#                        (
-#                            self.mmu_machine.filament_always_gripped and
-#                            self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY # PAUL
-#                        )
-#                    )
-#                    self.sync_gear_to_extruder(sync)
 
                     _,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
@@ -4341,11 +4324,13 @@ class Mmu:
                 self.log_debug("Extruder endstop reached after %.1fmm (measured %.1fmm)" % (actual, measured))
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY)
 
-                # Move the little bit more to reach extruder entrance if we homed to entry sensor
-                # We do this here to allow _load_extruder() to work with "extruder_only" option
+                # Make adjustment based on sensor: extruder - move a little move, compression - back off a little
                 if self.extruder_homing_endstop == self.SENSOR_EXTRUDER_ENTRY:
                     extra = self.toolhead_entry_to_extruder
                     _,_,measured,_ = self.trace_filament_move("Aligning filament to extruder gear", extra, motor="gear")
+                elif self.extruder_homing_endstop == self.SENSOR_COMPRESSION:
+                    # We don't actually back off because the buffer absorbs the overrun but we still report for calibration
+                    extra = -(self.sync_feedback_manager.sync_feedback_buffer / 2.)
                     
             homing_movement = actual
 
@@ -4661,7 +4646,7 @@ class Mmu:
                 msg += " {1}(encoder measured %.1fmm){0}" % self.get_encoder_distance(dwell=None)
             self.log_info(msg, color=True)
 
-            # Notify autotune manager
+            # Notify manager if calibrating/autotuning
             if calibrating:
                 self.calibration_manager.update_bowden_calibration(calibrated_bowden_length)
             elif full and not extruder_only and not self.gcode_load_sequence:
@@ -5831,13 +5816,13 @@ class Mmu:
             rd = self.default_rotation_distance
             self.log_debug("Gate not calibrated, falling back to default: %.5f" % rd)
             self.log_warning("PAUL: Gate not calibrated, falling back to default: %.5f" % rd)
-        self.log_warning("PAUL: get_rotation_distance(%d) rtn: %.5f" % (gate, rd))
+        self.log_warning("PAUL: <<< get_rotation_distance(%d) rtn: %.5f" % (gate, rd))
         return rd
 
     def set_rotation_distance(self, rd):
         if rd:
             self.log_trace("Setting gear motor rotation distance: %.5f" % rd)
-            self.log_warning("PAUL: *** set_rotation_distance(%.5f)" % rd)
+            self.log_warning("PAUL: >>> set_rotation_distance(%.5f)" % rd)
             if self.gear_rail.steppers:
                 self.gear_rail.steppers[0].set_rotation_distance(rd)
 
@@ -7954,8 +7939,9 @@ class Mmu:
         else:
             self.slicer_tool_map = dict(self.slicer_tool_map) # Ensure that webhook sees get_status() change
 
+        # This is a "one-print" option that supresses automatic automap. If specified, set the skip option
+        # else leave it be. It will be reset at print end
         if skip_automap is not None:
-            # This is a "one-print" option that supresses automatic automap
             self._restore_automap_option(skip_automap)
 
         if tool >= 0:
@@ -8296,8 +8282,6 @@ class MmuCalibrationManager:
                             self.mmu.log_always("Calibrated rotation_distance: %.5f has been automatically saved for gate %d (ratio: %.5f)" % (new_rd, self.mmu.gate_selected, bowden_move_ratio))
                         # PAUL check this is still ok..
                         self.mmu.save_rotation_distance(self.mmu.gate_selected, new_rd)
-#                        self.mmu.rotation_distances[self.mmu.gate_selected] = new_rd
-#                        self.mmu.save_variable(self.mmu.VARS_MMU_GEAR_ROTATION_DISTANCES, self.mmu.rotation_distances, write=True)
                     else:
                         msg += ". Calculated rotation_distance: %.5f for gate %d failed sanity check and has been ignored (ratio: %.5f)" % (new_rd, self.mmu.gate_selected, bowden_move_ratio)
 
@@ -8420,16 +8404,24 @@ class MmuCalibrationManager:
             raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (self.mmu.gate_selected, str(ee)))
 
     # Bowden calibration - Method 2
-    # Automatic one-shot homing calibration from gate to extruder entry sensor
+    # Automatic one-shot homing calibration from gate to endstop (
     #   bowden_length = actual_moved + toolhead_entry_to_extruder
     def calibrate_bowden_length_sensor(self, extruder_homing_max):
         try:
-            self.mmu.log_always("Calibrating bowden length for gate %d using %s as gate reference point and %s as extruder homing point" % (self.mmu.gate_selected, self.mmu._gate_homing_string(), self.mmu.extruder_homing_endstop))
+            self.mmu.log_always(
+                "Calibrating bowden length for gate %d using %s as gate reference point and %s as extruder homing point" %
+                (
+                    self.mmu.gate_selected,
+                    self.mmu._gate_homing_string(),
+                    self.mmu.extruder_homing_endstop
+                )
+            )
             self.mmu._initialize_filament_position(dwell=True)
             overshoot = self.mmu._load_gate(retry=False)
 
-            if self.mmu.sensor_manager.check_sensor(self.mmu.SENSOR_EXTRUDER_ENTRY):
-                raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % self.mmu.extruder_homing_endstop)
+            if self.extruder_homing_endstop in [self.SENSOR_EXTRUDER_ENTRY, self.mmu.SENSOR_EXTRUDER_ENTRY]:
+                if self.mmu.sensor_manager.check_sensor(self.extruder_homing_endstop):
+                    raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % self.mmu.extruder_homing_endstop)
 
             actual, extra = self.mmu._home_to_extruder(extruder_homing_max)
             measured = self.mmu.get_encoder_distance(dwell=True) + self.mmu._get_encoder_dead_space()

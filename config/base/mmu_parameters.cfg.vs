@@ -357,6 +357,7 @@ sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when synci
 # Proportional feedback sensors are continuously dynamic
 #
 sync_feedback_enabled: 0		# Turn off even if sensor is installed and active
+sync_feedback_buffer: 10		# Distance (mm) of travel of "buffer" between compression/tension (aids calibration)
 sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
 sync_multiplier_low: 0.95		# Minimum factor to apply
 
