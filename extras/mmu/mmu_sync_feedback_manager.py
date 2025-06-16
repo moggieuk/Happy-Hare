@@ -118,6 +118,9 @@ class MmuSyncFeedbackManager:
     def is_active(self):
         return self.active
 
+    def has_sensor(self):
+        return self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION) or self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
+
     def get_sync_feedback_string(self, state=None, detail=False):
         if state is None:
             state = self.state

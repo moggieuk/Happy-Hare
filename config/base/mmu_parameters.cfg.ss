@@ -288,6 +288,10 @@ toolhead_unload_safety_margin: 10	# Extra movement safety margin (default: 10mm)
 #
 toolhead_post_load_tighten: 60		# % of clog detection length, 0 to disable. Ignored if 'sync_to_extruder: 1'
 
+# If synchronizing gear and extruder and you have a sync-feedback "buffer" this setting determines whether to use it
+# to create neutral tension after loading
+toolhead_post_load_tension_adjust: 1	# 1 to enable (recommended), 0 to disable
+
 # ADVANCED: Controls the detection of successful extruder load/unload movement and represents the fraction of allowable
 # mismatch between actual movement and that seen by encoder. Setting to 100% tolerance effectively turns off checking.
 # Some designs of extruder have a short move distance that may not be picked up by encoder and cause false errors. This
