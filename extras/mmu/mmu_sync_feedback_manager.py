@@ -80,10 +80,11 @@ class MmuSyncFeedbackManager:
         self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
 
     def get_test_config(self):
-        msg += "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
+        msg = "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
         msg += "\nsync_feedback_buffer = %.1f" % self.sync_feedback_buffer
         msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
         msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
+        return msg
 
     def check_test_config(self, param):
         return vars(self).get(param) is None
@@ -264,7 +265,7 @@ class MmuSyncFeedbackManager:
             # Compression state too long means filament feed too fast, need to go slower so increase slow clamp rotation distance
             rd_clamp[0] *= (1 + self.MULTIPLIER_WHEN_STUCK)
             self.mmu.log_debug(
-                "MmuSyncFeedbackManager: Extruder moved too far in compressed state (%.1fmm). Increased slow clamp value by %d%% from %.5f to %.5f" % (
+                "MmuSyncFeedbackManager: Extruder moved too far in compressed state (%.1fmm). Increased slow clamp value by %d%% from %.4f to %.4f" % (
                     movement,
                     self.MULTIPLIER_WHEN_STUCK * 100,
                     old_clamp[0],
@@ -279,7 +280,7 @@ class MmuSyncFeedbackManager:
             # Increase compressed value by fixed % and set new_rd to compressed value
             rd_clamp[2] *= (1 - self.MULTIPLIER_WHEN_STUCK)
             self.mmu.log_debug(
-                "MmuSyncFeedbackManager: Extruder moved too far in expanded state (%.1fmm). Decreased fast clamp value by %d%% from %.5f to %.5f" % (
+                "MmuSyncFeedbackManager: Extruder moved too far in expanded state (%.1fmm). Decreased fast clamp value by %d%% from %.4f to %.4f" % (
                     movement,
                     self.MULTIPLIER_WHEN_STUCK * 100,
                     old_clamp[2],
@@ -312,7 +313,7 @@ class MmuSyncFeedbackManager:
                     # New tuned setting
                     rd_clamp[3] = tuned_rd
                     self.mmu.log_always(
-                        "MmuSyncFeedbackManager: New autotuned rotation_distance for gate %d: %.5f" % (
+                        "MmuSyncFeedbackManager: New autotuned rotation_distance for gate %d: %.4f" % (
                             self.mmu.gate_selected,
                             rd_clamp[3]
                         )
@@ -327,7 +328,7 @@ class MmuSyncFeedbackManager:
             rd_clamp[2] = rd_clamp[1]
             self.mmu.log_trace(
                 "MmuSyncFeedbackManager: Neutral -> Compressed. Going too fast. "
-                "Adjusted fast clamp (%.5f -> %.5f)" % (
+                "Adjusted fast clamp (%.4f -> %.4f)" % (
                     old_clamp[2],
                     rd_clamp[2]
                 )
@@ -339,7 +340,7 @@ class MmuSyncFeedbackManager:
                 rd_clamp[0] *= (1 + self.MULTIPLIER_WHEN_GOOD)
                 self.mmu.log_trace(
                     "MmuSyncFeedbackManager: Have good rotation_distance, adjusting slow clamp slightly "
-                    "(%.5f -> %.5f) to move off trigger" % (
+                    "(%.4f -> %.4f) to move off trigger" % (
                         old_clamp[0],
                         rd_clamp[0]
                     )
@@ -351,7 +352,7 @@ class MmuSyncFeedbackManager:
             rd_clamp[0] = rd_clamp[1]
             self.mmu.log_trace(
                 "MmuSyncFeedbackManager: Neutral -> Expanded. Going too slow. "
-                "Adjusted slow clamp (%.5f -> %.5f)" % (
+                "Adjusted slow clamp (%.4f -> %.4f)" % (
                     old_clamp[0],
                     rd_clamp[0]
                 )
@@ -363,7 +364,7 @@ class MmuSyncFeedbackManager:
                 rd_clamp[2] *= (1 - self.MULTIPLIER_WHEN_GOOD)
                 self.mmu.log_trace(
                     "MmuSyncFeedbackManager: Have good rotation_distance, adjusting fast clamp slightly "
-                    "(%.5f -> %.5f) to move off trigger" % (
+                    "(%.4f -> %.4f) to move off trigger" % (
                         old_clamp[2],
                         rd_clamp[2]
                     )
@@ -374,7 +375,7 @@ class MmuSyncFeedbackManager:
             # Test mid point of the clamping range
             rd_clamp[1] = (rd_clamp[0] + rd_clamp[2]) / 2.
             self.mmu.log_trace(
-                "MmuSyncFeedbackManager: %s -> Neutral. Averaging default rotation_distance (%.5f -> %.5f)" % (
+                "MmuSyncFeedbackManager: %s -> Neutral. Averaging default rotation_distance (%.4f -> %.4f)" % (
                     self.get_sync_feedback_string(old_state),
                     old_clamp[1],
                     rd_clamp[1]
@@ -412,12 +413,12 @@ class MmuSyncFeedbackManager:
                 self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up")
 
         self.mmu.log_trace(
-            "MmuSyncFeedbackManager: Gear rotation_distance: %.5f (slow:%.5f, default: %.5f, fast:%.5f)%s" % (
+            "MmuSyncFeedbackManager: Gear rotation_distance: %.4f (slow:%.4f, default: %.4f, fast:%.4f)%s" % (
                 rd,
                 rd_clamp[0],
                 rd_clamp[1],
                 rd_clamp[2],
-                (" tuned: %.5f" % rd_clamp[3]) if rd_clamp[3] else ""
+                (" tuned: %.4f" % rd_clamp[3]) if rd_clamp[3] else ""
             )
         )
         self.mmu.set_rotation_distance(rd)
@@ -426,7 +427,7 @@ class MmuSyncFeedbackManager:
     # Reset rotation_distance to calibrated value of current gate (not necessarily current value if autotuning)
     def _reset_gear_rotation_distance(self):
         rd = self.mmu.get_rotation_distance(self.mmu.gate_selected)
-        self.mmu.log_trace("MmuSyncFeedbackManager: Reset rotation distance to calibrated value (%.5f)" % rd)
+        self.mmu.log_trace("MmuSyncFeedbackManager: Reset rotation distance to calibrated value (%.4f)" % rd)
         self.mmu.set_rotation_distance(rd)
 
     # Reset current sync state based on current sensor feedback
