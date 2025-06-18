@@ -138,7 +138,6 @@ class MmuSyncFeedbackManager:
 
     # Starting assumption is that extruder is not moving and measurement is 0mm
     def _reset_extruder_watchdog(self):
-        self.mmu.log_warning("PAUL: _reset_extruder_watchdog")
         self.extruder_direction = 0 # Extruder not moving to force neutral start position
         self.last_recorded_extruder_position = None
 
@@ -161,7 +160,7 @@ class MmuSyncFeedbackManager:
                 )
                 if self.extruder_direction != prev_direction:
                     self._notify_direction_change(prev_direction, self.extruder_direction)
-                    self.last_recorded_extruder_position = pos # Move marker # PAUL is this correct, do we need to reset?
+                    self.last_recorded_extruder_position = pos
 
             if (pos - self.last_recorded_extruder_position) >= self.sync_movement_threshold:
                 # Ensure we are given periodic notifications to aid autotuning

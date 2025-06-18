@@ -2533,16 +2533,20 @@ class Mmu:
         if not self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD):
             raise gcmd.error("Sorry this feature requires a toolhead sensor")
         clean = gcmd.get_int('CLEAN', 0, minval=0, maxval=1)
+        dirty = gcmd.get_int('DIRTY', 0, minval=0, maxval=1)
         cut = gcmd.get_int('CUT', 0, minval=0, maxval=1)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         line = "-----------------------------------------------\n"
 
-        msg = "Reminder:\n"
-        msg += "1) 'CLEAN=1' with clean extruder for: toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder)\n"
-        msg += "2) No flags with dirty extruder (no cut tip) for: toolhead_residual_filament (and toolhead_entry_to_extruder)\n"
-        msg += "3) 'CUT=1' holding blade in for: variable_blade_pos\n"
-        msg += "Desired gate should be selected but the filament unloaded\n"
-        self.log_always(msg)
+        if not (clean or cut or dirty):
+            msg = "Reminder - run with this sequence of options:\n"
+            msg += "1) 'CLEAN=1' with clean extruder for: toolhead_extruder_to_nozzle, toolhead_sensor_to_nozzle (and toolhead_entry_to_extruder)\n"
+            msg += "2) 'DIRTY=1' with dirty extruder (no not cut tip fragment) for: toolhead_residual_filament (and toolhead_entry_to_extruder)\n"
+            msg += "3) 'CUT=1' holding blade in for: variable_blade_pos\n"
+            msg += "Desired gate should be selected but the filament unloaded\n"
+            msg += "('SAVE=0' to run without persisting results)\n"
+            self.log_always(msg)
+            return
 
         if cut:
             gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, None)
@@ -2596,7 +2600,7 @@ class Mmu:
                         self.toolhead_sensor_to_nozzle = round(tstn, 1)
                         self.toolhead_entry_to_extruder = round(tete, 1)
 
-                else:
+                elif dirty:
                     self.log_always("Measuring dirty toolhead dimensions (with filament residue)...")
                     tetn, tstn, tete = self._probe_toolhead()
                     # Ooze reduction is the difference between empty and dirty measurements for sensor to nozzle
@@ -4347,7 +4351,7 @@ class Mmu:
                 elif self.extruder_homing_endstop == self.SENSOR_COMPRESSION:
                     # We don't actually back off because the buffer absorbs the overrun but we still report for calibration
                     extra = -(self.sync_feedback_manager.sync_feedback_buffer / 2.)
-                    
+
             homing_movement = actual
 
         if not homed:
@@ -4718,7 +4722,7 @@ class Mmu:
             if calibrating:
                 self.calibration_manager.update_bowden_calibration(calibrated_bowden_length)
             elif full and not extruder_only and not self.gcode_load_sequence:
-                self.calibration_manager.load_telemetry(bowden_move_ratio, homing_movement - deficit)
+                self.calibration_manager.load_telemetry(bowden_move_ratio, homing_movement, deficit)
 
             # Activate loaded spool in Spoolman
             self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
@@ -4904,7 +4908,7 @@ class Mmu:
 
             # Notify autotune manager
             if full and not extruder_only and not self.gcode_unload_sequence:
-                self.calibration_manager.unload_telemetry(bowden_move_ratio, homing_movement - deficit)
+                self.calibration_manager.unload_telemetry(bowden_move_ratio, homing_movement, deficit)
 
             # Deactivate spool in Spoolman as it is now unloaded.
             self._spoolman_activate_spool(0)
@@ -5478,6 +5482,7 @@ class Mmu:
     #   If in a print then used desired sync state if actively printing or desired or necessary sync state
     #   If not consider desired (_standalone_sync) or necessary (always_gripped) sync state
     def reset_sync_gear_to_extruder(self, in_print_sync, force_in_print=False):
+#        self.log_error("PAUL:   --> reset_sync_gear_to_extruder(in_print_sync=%s, force=%s)" % (in_print_sync, force_in_print))
         if self.gate_selected == self.TOOL_GATE_BYPASS:
             sync = False
         elif self.is_in_print(force_in_print):
@@ -5553,13 +5558,6 @@ class Mmu:
             yield self
         finally:
             self.reset_sync_gear_to_extruder(prev_sync)
-# PAUL: Old logic tried to restore entry state to optimize movement (but is flawed)
-#            if self.gate_selected >= 0:
-#                # We are lazy on the ungrip to prevent selector/servo movement flutter on type-A MMU's
-#                # but caution must be used by all modules not to assume grip state
-#                self.sync_gear_to_extruder(prev_sync)
-#            else:
-#                self.sync_gear_to_extruder(False)
 
             # Restore espooler state
             if self.has_espooler():
@@ -8330,10 +8328,14 @@ class MmuCalibrationManager:
     def __init__(self, mmu):
         self.mmu = mmu
 
-    def load_telemetry(self, bowden_move_ratio, homing_movement):
+    def load_telemetry(self, bowden_move_ratio, homing_movement, deficit):
+        if homing_movement is not None:
+            homing_movement -= deficit
         self._autotune(self.mmu.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
 
-    def unload_telemetry(self, bowden_move_ratio, homing_movement):
+    def unload_telemetry(self, bowden_move_ratio, homing_movement, deficit):
+        if homing_movement is not None:
+            homing_movement -= deficit
         self._autotune(self.mmu.DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
 
     # Use data from load or unload operation to auto-calibrate / auto-tune
@@ -8556,9 +8558,9 @@ class MmuCalibrationManager:
     # Automatic calibration from gate to extruder entry sensor or collision with extruder gear (requires encoder)
     # Allows for repeats to average restult which is essential with encoder collision detection
     def calibrate_bowden_length_collision(self, approximate_length, extruder_homing_max, repeats):
+        orig_endstop = self.mmu.extruder_homing_endstop
         try:
-            # Can't allow "none" endstop during calibration so temporarily change to best available
-            orig_endstop = self.mmu.extruder_homing_endstop
+            # Can't allow "none" endstop during calibration so temporarily change it
             self.mmu.extruder_homing_endstop = self.mmu.SENSOR_EXTRUDER_COLLISION
 
             self.mmu.log_always("Calibrating bowden length on gate %d using %s as gate reference point and encoder collision detection" % (self.mmu.gate_selected, self.mmu._gate_homing_string()))
@@ -8710,7 +8712,7 @@ class MmuCalibrationManager:
                 if tolerance_range[0] <= new_rd < tolerance_range[1]:
                     if save:
                         self.mmu.set_rotation_distance(new_rd)
-                        self.mmu.save_rotation_distance(self.gate_selected, new_rd)
+                        self.mmu.save_rotation_distance(self.mmu.gate_selected, new_rd)
                 else:
                     self.mmu.log_always("Calibration ignored because it is not considered valid (>20% difference from gate 0)")
             self.mmu._unload_gate()

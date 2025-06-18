@@ -153,9 +153,9 @@ class MmuMachine:
         elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
             selector_type = 'RotarySelector'
             variable_rotation_distances = 0
-            variable_bowden_lengths = 0
+            variable_bowden_lengths = 1
             require_bowden_move = 1
-            filament_always_gripped = 1
+            filament_always_gripped = 0
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_PICO_MMU:
