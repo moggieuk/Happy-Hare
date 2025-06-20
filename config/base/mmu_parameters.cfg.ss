@@ -382,12 +382,21 @@ sync_purge: 0				# Synchronize during standalone purging (last part of load)
 # -1.0 and 1.0.
 #
 # If only "one half" of the sync-feedback is available (either compression-only or tension-only) then the rotation
-# distance is always shifted based on the high/low multipliers, however if both tension and compression cn be detected
+# distance is always shifted based on the high/low multipliers, however if both tension and compression are available
 # then the rotation distance will autotune to correct setting (recommend you also enable 'autotune_rotation_distance: 1'
-# Proportional feedback sensors are continuously dynamic
+# Note that proportional feedback sensors are continuously dynamic
+#
+# Possible buffer setups, forth option for type where neutral is when both sensors are active:
+#
+#   <------maxrange------>       <------maxrange------>       <------maxrange------>       <------maxrange------>
+#        <--range--->                  <----range----->       <----range----->                       >< range=0
+#   |====================|       |====================|       |====================|       |====================|
+#        ^          ^                  ^                                     ^                       ^^
+#   compression   tension        compression-only                      tension-only
 #
 sync_feedback_enabled: 0		# Turn off even if sensor is installed and active
-sync_feedback_buffer: 10		# Distance (mm) of travel of "buffer" between compression/tension (aids calibration)
+sync_feedback_buffer_range: 8		# Travel in "buffer" between compression/tension or one sensor and end (see above)
+sync_feedback_buffer_maxrange: 12	# Absolute maximum end-to-end travel (mm) provided by buffer (see above)
 sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
 sync_multiplier_low: 0.95		# Minimum factor to apply
 

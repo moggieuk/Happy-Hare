@@ -250,7 +250,6 @@ class Mmu:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.calibration_status = 0b0
-        self.encoder_force_validation = False
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
         self._last_tool = self._next_tool = self.TOOL_GATE_UNKNOWN
@@ -2032,7 +2031,7 @@ class Mmu:
             if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
                 msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
             elif self.sync_feedback_manager.has_sensor() and (self.sync_to_extruder or self.sync_purge) and self.toolhead_post_load_tension_adjust:
-                msg += "\n- Filament in bowden will be adjusted a maxium of %.1fmm to neutralize tension" % self.sync_feedback_manager.sync_feedback_buffer
+                msg += "\n- Filament in bowden will be adjusted a maxium of %.1fmm to neutralize tension" % (self.sync_feedback_manager.sync_feedback_buffer_range or self.sync_feedback_manager.sync_feedback_buffer_maxrange)
 
             msg += "\n\nUnload Sequence:"
 
@@ -2275,7 +2274,7 @@ class Mmu:
 
         # Measure 'toolhead_sensor_to_nozzle'
         self.selector.filament_drive()
-        actual,fhomed,_,_ = self.trace_filament_move("Reverse homing to toolhead sensor", -probe_depth, motor="gear+extruder", homing_move=-1, endstop_name=self.SENSOR_TOOLHEAD)
+        actual,fhomed,_,_ = self.trace_filament_move("Reverse homing off toolhead sensor", -probe_depth, motor="gear+extruder", homing_move=-1, endstop_name=self.SENSOR_TOOLHEAD)
         if fhomed:
             toolhead_sensor_to_nozzle = -actual
             self.log_always("Measured toolhead_sensor_to_nozzle: %.1f" % toolhead_sensor_to_nozzle)
@@ -2298,7 +2297,7 @@ class Mmu:
         toolhead_entry_to_extruder = 0.
         if self.sensor_manager.has_sensor(self.SENSOR_EXTRUDER_ENTRY):
             # Retract clear of extruder sensor and then home in "extrude" direction
-            actual,fhomed,_,_ = self.trace_filament_move("Reverse homing to extruder entry sensor", -(sensor_homing + toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle), motor="gear+extruder", homing_move=-1, endstop_name=self.SENSOR_EXTRUDER_ENTRY)
+            actual,fhomed,_,_ = self.trace_filament_move("Reverse homing off extruder entry sensor", -(sensor_homing + toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle), motor="gear+extruder", homing_move=-1, endstop_name=self.SENSOR_EXTRUDER_ENTRY)
             actual,_,_,_ = self.trace_filament_move("Moving before extruder entry sensor", -20, motor="gear+extruder")
             actual,fhomed,_,_ = self.trace_filament_move("Homing to extruder entry sensor", 40, motor="gear+extruder", homing_move=1, endstop_name=self.SENSOR_EXTRUDER_ENTRY)
 
@@ -3122,7 +3121,7 @@ class Mmu:
         return self.encoder_sensor is not None and not self.test_disable_encoder
 
     def _can_use_encoder(self):
-        return self.encoder_sensor is not None and (self.encoder_move_validation or self.encoder_force_validation)
+        return self.has_encoder() and self.encoder_move_validation
 
     def _check_has_encoder(self):
         if not self.has_encoder():
@@ -3154,15 +3153,17 @@ class Mmu:
                 return True
         return False
 
+    # Forces encoder to validate despite user desire (override 'encoder_move_validation' setting)
     @contextlib.contextmanager
     def _require_encoder(self):
         if not self.has_encoder():
             raise MmuError("Assertion failure: Encoder required for chosen operation but not present on MMU")
-        self.encoder_force_validation = True
+        validate = self.encoder_move_validation
+        self.encoder_move_validation = True
         try:
             yield self
         finally:
-            self.encoder_force_validation = False
+            self.encoder_move_validation = validate
 
     def get_encoder_distance(self, dwell=False):
         if self._encoder_dwell(dwell):
@@ -3993,7 +3994,7 @@ class Mmu:
         self.log_always("Ejecting...")
         if self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate):
             endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, gate)
-            msg = "Reverse homing to %s sensor" % endstop_name
+            msg = "Reverse homing off %s sensor" % endstop_name
             actual,homed,measured,_ = self.trace_filament_move(msg, -self.gate_homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
                 self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
@@ -4119,7 +4120,7 @@ class Mmu:
 
         else: # Using mmu_gate or mmu_gear_N sensor
             endstop_name = self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop)
-            actual,homed,_,_ = self.trace_filament_move("Reverse homing to %s sensor" % endstop_name, -homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
+            actual,homed,_,_ = self.trace_filament_move("Reverse homing off %s sensor" % endstop_name, -homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
                 self.trace_filament_move("Final parking", -self.gate_parking_distance)
@@ -4350,7 +4351,7 @@ class Mmu:
                     _,_,measured,_ = self.trace_filament_move("Aligning filament to extruder gear", extra, motor="gear")
                 elif self.extruder_homing_endstop == self.SENSOR_COMPRESSION:
                     # We don't actually back off because the buffer absorbs the overrun but we still report for calibration
-                    extra = -(self.sync_feedback_manager.sync_feedback_buffer / 2.)
+                    extra = -(self.sync_feedback_manager.sync_feedback_buffer_range / 2.)
 
             homing_movement = actual
 
@@ -4479,25 +4480,42 @@ class Mmu:
                     # Try to put filament in neutral tension by centering between sensors
                     tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
                     compression_active = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
-                    max_move = self.sync_feedback_manager.sync_feedback_buffer
 
                     if (compression_active is True) != (tension_active is True): # Equality means already neutral
 
                         fhomed = False
-                        direction = 0
-                        if compression_active:
-                            self.log_debug("Relaxing filament tension")
-                            direction = -1
-                            _,fhomed,_,_ = self.trace_filament_move("Reverse homing to compression sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_COMPRESSION)
+                        if self.sync_feedback_manager.sync_feedback_buffer_range == 0:
+                            # Special case for buffers whose neutral point overlaps both sensors. I.e. both sensors active
+                            # is the neutral point. This requires different homing logic
+                            max_move = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+                            if compression_active:
+                                self.log_debug("Relaxing filament tension")
+                                direction = -1
+                                _,fhomed,_,_ = self.trace_filament_move("Homing to tension sensor", max_move * direction, homing_move=1, endstop_name=self.SENSOR_TENSION)
 
-                        elif tension_active:
-                            self.log_debug("Tightening filament tension")
-                            direction = 1
-                            _,fhomed,_,_ = self.trace_filament_move("Reverse homing to tension sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_TENSION)
+                            elif tension_active:
+                                self.log_debug("Tightening filament tension")
+                                direction = 1
+                                _,fhomed,_,_ = self.trace_filament_move("Homing to compression sensor", max_move * direction, homing_move=1, endstop_name=self.SENSOR_COMPRESSION)
+                        else:
+                            max_move = self.sync_feedback_manager.sync_feedback_buffer_range
+                            direction = 0
+                            if compression_active:
+                                self.log_debug("Relaxing filament tension")
+                                direction = -1
+                                _,fhomed,_,_ = self.trace_filament_move("Reverse homing off compression sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_COMPRESSION)
 
-                        if fhomed:
-                            # Move just a little more for perfect center
-                            _,_,_,_ = self.trace_filament_move("Centering sync feedback buffer", (max_move * direction) / 2.)
+                            elif tension_active:
+                                self.log_debug("Tightening filament tension")
+                                direction = 1
+                                _,fhomed,_,_ = self.trace_filament_move("Reverse homing off tension sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_TENSION)
+
+                            if fhomed:
+                                # Move just a little more to find perfect neutral spot between sensors
+                                _,_,_,_ = self.trace_filament_move("Centering sync feedback buffer", (max_move * direction) / 2.)
+
+                        if not fhomed:
+                            self.log_debug("Failed to neutalize filament tension")
 
             self._random_failure() # Testing
             self.movequeues_wait()
@@ -4545,8 +4563,8 @@ class Mmu:
                         fhomed = True # Assumption
                 else:
                     hlength = self.toolhead_extruder_to_nozzle + self.toolhead_entry_to_extruder + self.toolhead_unload_safety_margin - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract
-                    self.log_debug("Reverse homing up to %.1fmm to extruder sensor (synced) to exit extruder" % hlength)
-                    _,fhomed,_,_ = self.trace_filament_move("Reverse homing to extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.SENSOR_EXTRUDER_ENTRY)
+                    self.log_debug("Reverse homing up to %.1fmm off extruder sensor (synced) to exit extruder" % hlength)
+                    _,fhomed,_,_ = self.trace_filament_move("Reverse homing off extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.SENSOR_EXTRUDER_ENTRY)
 
                 if not fhomed:
                     raise MmuError("Failed to reach extruder entry sensor after moving %.1fmm" % hlength)
@@ -4569,8 +4587,8 @@ class Mmu:
                         fhomed = True # Assumption
                     else:
                         hlength = self.toolhead_sensor_to_nozzle + self.toolhead_unload_safety_margin - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract
-                        self.log_debug("Reverse homing up to %.1fmm to toolhead sensor%s" % (hlength, (" (synced)" if synced else "")))
-                        _,fhomed,_,_ = self.trace_filament_move("Reverse homing to toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.SENSOR_TOOLHEAD)
+                        self.log_debug("Reverse homing up to %.1fmm off toolhead sensor%s" % (hlength, (" (synced)" if synced else "")))
+                        _,fhomed,_,_ = self.trace_filament_move("Reverse homing off toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=self.SENSOR_TOOLHEAD)
                     if not fhomed:
                         raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % hlength)
                     else:
@@ -4983,7 +5001,7 @@ class Mmu:
                         detected = False
                     elif sync:
                         # A further test is needed to see if the filament is actually in the extruder
-                        detected, moved = self._test_filament_in_extruder_by_retracting()
+                        detected, moved = self.test_filament_still_in_extruder_by_retracting()
                         park_pos += moved
 
             self._set_filament_position(-park_pos)
@@ -5429,38 +5447,30 @@ class Mmu:
             self.log_debug("No sensors configured!")
         return runout
 
-    # Requires encoder: Check for filament in extruder by moving extruder motor. Even with toolhead
-    # sensor this can happen if the filament is in the short distance from sensor to gears.
+    # Check for filament in extruder by moving extruder motor. Even with toolhead sensor this can
+    # happen if the filament is in the short distance from sensor to gears. Requires encoder
+    # Return True/False if detected or None if test not possible
     def check_filament_still_in_extruder(self):
-        detected = None
-        if self.has_encoder() and not self.mmu_machine.filament_always_gripped:
-            self.log_debug("Checking for possibility of filament still in extruder gears...")
-            self._ensure_safe_extruder_temperature(wait=False)
-            self.selector.filament_release()
-            move = self.encoder_move_step_size
-            _,_,measured,_ = self.trace_filament_move("Checking extruder", -move, speed=self.extruder_unload_speed, motor="extruder")
-            detected = measured > self.encoder_min
-            self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
-        if detected is None:
-            self.log_debug("No sensors configured!")
+        detected,_ = self.test_filament_still_in_extruder_by_retracting()
         return detected
 
-    # Retract the filament by the extruder stepper only and see if we do not have any encoder movement
-    # This assumes that we already tip formed, and the filament is parked somewhere in the extruder
-    # Return if filament detected and distance filament moved during test
-    def _test_filament_in_extruder_by_retracting(self, length=None):
-        with self._require_encoder():
-            self.log_debug("Testing for filament in extruder by retracting on extruder stepper only")
-            move = self.encoder_move_step_size if length is None else length
-            self.selector.filament_release()
-            _,_,measured,_ = self.trace_filament_move("Moving extruder to test for filament exit", -move, speed=self.extruder_unload_speed, motor="extruder")
-            detected = measured > self.encoder_min
-            self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
-            return detected, measured
+    def test_filament_still_in_extruder_by_retracting(self):
+        detected = None
+        measured = 0
+        if self.has_encoder() and not self.mmu_machine.filament_always_gripped:
+            with self._require_encoder(): # Force quality measurement
+                self.log_debug("Checking for possibility of filament still in extruder gears...")
+                self._ensure_safe_extruder_temperature(wait=False)
+                self.selector.filament_release()
+                move = self.encoder_move_step_size
+                _,_,measured,_ = self.trace_filament_move("Checking extruder", -move, speed=self.extruder_unload_speed, motor="extruder")
+                detected = measured > self.encoder_min
+                self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
+        return detected, measured
 
     def buzz_gear_motor(self):
         if self.has_encoder():
-            with self._require_encoder():
+            with self._require_encoder(): # Force quality measurement
                 initial_encoder_position = self.get_encoder_distance()
                 self.trace_filament_move(None, 2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
                 self.trace_filament_move(None, -2.5 * self.encoder_resolution, accel=self.gear_buzz_accel, encoder_dwell=None)
@@ -5548,6 +5558,7 @@ class Mmu:
     def wrap_sync_gear_to_extruder(self):
         prev_sync = self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
         prev_grip = self.selector.get_filament_grip_state()
+#        self.log_error("PAUL:   --> wrap_sync_gear_to_extruder(), prev_sync=%s, prev_grip=%s" % (prev_sync, prev_grip))
 
         # Turn espooler in-print assist off
         espooler_state = None
@@ -8505,7 +8516,7 @@ class MmuCalibrationManager:
                         homed = True
 
             else: # Gate sensor... SENSOR_GATE is shared, but SENSOR_GEAR_PREFIX is specific
-                actual,homed,measured,_ = self.mmu.trace_filament_move("Reverse homing to gate sensor", -approx_bowden_length, motor="gear", homing_move=-1, endstop_name=self.mmu.gate_homing_endstop)
+                actual,homed,measured,_ = self.mmu.trace_filament_move("Reverse homing off gate sensor", -approx_bowden_length, motor="gear", homing_move=-1, endstop_name=self.mmu.gate_homing_endstop)
 
             if not homed:
                 raise MmuError("Did not home to gate sensor after moving %.1fmm" % approx_bowden_length)
