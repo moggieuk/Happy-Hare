@@ -4483,30 +4483,31 @@ class Mmu:
 
                     if (compression_active is True) != (tension_active is True): # Equality means already neutral
 
+                        if compression_active:
+                            self.log_debug("Relaxing filament tension")
+                        elif tension_active:
+                            self.log_debug("Tightening filament tension")
+
                         fhomed = False
                         if self.sync_feedback_manager.sync_feedback_buffer_range == 0:
                             # Special case for buffers whose neutral point overlaps both sensors. I.e. both sensors active
                             # is the neutral point. This requires different homing logic
                             max_move = self.sync_feedback_manager.sync_feedback_buffer_maxrange
                             if compression_active:
-                                self.log_debug("Relaxing filament tension")
                                 direction = -1
                                 _,fhomed,_,_ = self.trace_filament_move("Homing to tension sensor", max_move * direction, homing_move=1, endstop_name=self.SENSOR_TENSION)
 
                             elif tension_active:
-                                self.log_debug("Tightening filament tension")
                                 direction = 1
                                 _,fhomed,_,_ = self.trace_filament_move("Homing to compression sensor", max_move * direction, homing_move=1, endstop_name=self.SENSOR_COMPRESSION)
                         else:
                             max_move = self.sync_feedback_manager.sync_feedback_buffer_range
                             direction = 0
                             if compression_active:
-                                self.log_debug("Relaxing filament tension")
                                 direction = -1
                                 _,fhomed,_,_ = self.trace_filament_move("Reverse homing off compression sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_COMPRESSION)
 
                             elif tension_active:
-                                self.log_debug("Tightening filament tension")
                                 direction = 1
                                 _,fhomed,_,_ = self.trace_filament_move("Reverse homing off tension sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_TENSION)
 

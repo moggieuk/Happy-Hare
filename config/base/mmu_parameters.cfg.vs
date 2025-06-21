@@ -363,7 +363,7 @@ sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when synci
 # Possible buffer setups, forth option for type where neutral is when both sensors are active:
 #
 #   <------maxrange------>       <------maxrange------>       <------maxrange------>       <------maxrange------>
-#        <--range--->                  <----range----->       <----range----->                       >< range=0
+#        <--range--->                  <----range----->       <----range----->                       <> range=0
 #   |====================|       |====================|       |====================|       |====================|
 #        ^          ^                  ^                                     ^                       ^^
 #   compression   tension        compression-only                      tension-only

@@ -1668,6 +1668,17 @@ questionaire() {
             _param_gate_parking_distance=100
             _param_gate_final_eject_distance=100
             _param_has_filament_buffer=0
+
+            _param_autocal_bowden_length=1
+            _param_autotune_bowden_length=0
+            _param_skip_cal_rotation_distance=0
+            _param_autotune_rotation_distance=1
+            _param_skip_cal_encoder=0
+            _param_autotune_encoder=0
+
+            _param_sync_feedback_enabled=1
+            _param_sync_feedback_buffer_range=8
+            _param_sync_feedback_buffer_maxrange=12
             ;;
 
         "$NIGHT_OWL")
@@ -1920,6 +1931,7 @@ questionaire() {
             _param_gate_endstop_to_encoder=14
             _param_gate_autoload=1
             _param_gate_final_eject_distance=300  
+            _param_has_filament_buffer=0
 
             _param_autocal_bowden_length=1
             _param_autotune_bowden_length=0
@@ -1928,9 +1940,11 @@ questionaire() {
             _param_skip_cal_encoder=0
             _param_autotune_encoder=0
 
-            _param_has_filament_buffer=0
+            _param_sync_feedback_enabled=1
+            _param_sync_feedback_buffer_range=8
+            _param_sync_feedback_buffer_maxrange=12
 
-            # TODO add espooler tuned variables..
+            # TODO: Tweak espooler tuned variables?..
             ;;
 
         *)

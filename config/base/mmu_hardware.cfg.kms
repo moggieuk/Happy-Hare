@@ -234,14 +234,12 @@ post_gear_switch_pin_3: mmu:PC4
 # If so, then use a comma separated list of per-unit pins instead of single pin
 gate_switch_pin: mmu:PC0
 
-#sync_feedback_tension_pin: buffer:PA0
-#sync_feedback_compression_pin: buffer:PA1
-sync_feedback_tension_pin: X_STOP
-sync_feedback_compression_pin: Y_STOP
+sync_feedback_tension_pin: !buffer:PA1
+sync_feedback_compression_pin: !buffer:PA0
 
 # These sensors are on the toolhead and often controlled by the main printer mcu
-extruder_switch_pin: X_STOP
-toolhead_switch_pin: PG13
+#extruder_switch_pin: PG11
+#toolhead_switch_pin: PG13
 
 
 # ENCODER -------------------------------------------------------------------------------------------------------------

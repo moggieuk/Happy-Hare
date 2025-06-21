@@ -389,7 +389,7 @@ sync_purge: 0				# Synchronize during standalone purging (last part of load)
 # Possible buffer setups, forth option for type where neutral is when both sensors are active:
 #
 #   <------maxrange------>       <------maxrange------>       <------maxrange------>       <------maxrange------>
-#        <--range--->                  <----range----->       <----range----->                       >< range=0
+#        <--range--->                  <----range----->       <----range----->                       <> range=0
 #   |====================|       |====================|       |====================|       |====================|
 #        ^          ^                  ^                                     ^                       ^^
 #   compression   tension        compression-only                      tension-only
