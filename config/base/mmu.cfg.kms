@@ -14,23 +14,21 @@
 # (")_(") Happy Hare Ready
 #
 #
-# This contains aliases for pins for MCU type [[PARAM_BOARD_TYPE]]
-#
-# Only serial connections are automatically created
-# Change 'serial' to 'canbus_uuid: 1234567890' for CANbus setups
+# This contains MCU connection details for KMS (and KMS buffer)
+# Change `serial` to `canbus_uuid: 1234567890` for CANbus setups
 #
 [mcu mmu]
-serial: [[PARAM_SERIAL]]
+serial: {serial1}
+
+[mcu buffer]
+serial: {serial2}
+
 
 [temperature_sensor MCU_mmu]
 sensor_type: temperature_mcu
 sensor_mcu: mmu
 
-[% if PARAM_SERIAL_BUFFER %]
-[mcu buffer]
-serial: [[PARAM_SERIAL_BUFFER]]
-
 [temperature_sensor MCU_buffer]
 sensor_type: temperature_mcu
 sensor_mcu: buffer
-[% endif %]
+
