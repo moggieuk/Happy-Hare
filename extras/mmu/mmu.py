@@ -2431,8 +2431,14 @@ class Mmu:
             if self.check_if_not_calibrated(self.CALIBRATED_GEAR_0|self.CALIBRATED_ENCODER|self.CALIBRATED_SELECTOR, check_gates=[self.gate_selected]): return
 
         can_use_sensor = (
-            self.extruder_homing_endstop in [self.SENSOR_EXTRUDER_ENTRY, self.SENSOR_COMPRESSION, self.SENSOR_GEAR_TOUCH] and
-            self.sensor_manager.has_sensor(self.extruder_homing_endstop)
+            self.extruder_homing_endstop in [
+                self.SENSOR_EXTRUDER_ENTRY,
+                self.SENSOR_COMPRESSION,
+                self.SENSOR_GEAR_TOUCH
+            ] and (
+                self.sensor_manager.has_sensor(self.extruder_homing_endstop) or
+                self.gear_rail.is_endstop_virtual(self.extruder_homing_endstop)
+            )
         )
         can_auto_calibrate = self.has_encoder() or can_use_sensor
 
@@ -4029,7 +4035,6 @@ class Mmu:
                     if m > 6.0:
                         self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
                         self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
-#                        self.log_error("PAUL: _load_gate(): overshoot=%s" % (measured))
                         return measured
                     else:
                         self.log_debug("Error loading filament - filament motion was not detected by the encoder. %s" % ("Retrying..." if i < retries - 1 else ""))
@@ -4047,7 +4052,6 @@ class Mmu:
                     self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
                     self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE)) # Don't reset if filament is buffered
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
-#                    self.log_error("PAUL: _load_gate(): overshoot=0")
                     return 0.
                 else:
                     self.log_debug("Error loading filament - filament did not reach gate homing sensor. %s" % ("Retrying..." if i < retries - 1 else ""))
@@ -4097,7 +4101,6 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
                     self.trace_filament_move("Final parking", -self.gate_parking_distance)
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-#                    self.log_error("PAUL: _unload_gate(): actual=%s, deficit=%s" % (actual, self.gate_unload_buffer))
                     return actual, self.gate_unload_buffer
 
         if self.gate_homing_endstop == self.SENSOR_ENCODER:
@@ -4114,7 +4117,6 @@ class Mmu:
                     if measured > self.encoder_min: # We expect 0, but relax the test a little (allow one pulse)
                         self.log_warning("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-#                    self.log_error("PAUL: _unload_gate(): actual=%s, deficit=%s" % (actual, self.gate_unload_buffer))
                     return actual, self.gate_unload_buffer
                 msg = "did not clear the encoder after moving %.1fmm" % homing_max
 
@@ -4125,7 +4127,6 @@ class Mmu:
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_GATE)
                 self.trace_filament_move("Final parking", -self.gate_parking_distance)
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
-#                self.log_error("PAUL: _unload_gate(): actual=%s, deficit=%s" % (actual, self.gate_unload_buffer))
                 return actual, self.gate_unload_buffer
             msg = "did not home to gate sensor %s after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
 
@@ -4195,14 +4196,12 @@ class Mmu:
 
                 # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None) - start_pos
-#                self.log_error("PAUL: loading bowden %s, encoder_start_pos=%s" % (length, self.bowden_start_pos))
 
                 if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
                     self.log_warning("Warning: gate %d not calibrated! Using default rotation distance" % self.gate_selected)
 
                 # "Fast" load
                 _,_,_,delta = self.trace_filament_move("Fast loading move through bowden", length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
-#                self.log_error("PAUL: delta=%s, dead_space=%s" % (delta, self._get_encoder_dead_space()))
                 delta -= self._get_encoder_dead_space()
                 ratio = (length - delta) / length
 
@@ -4244,7 +4243,6 @@ class Mmu:
             elif self.filament_pos != self.FILAMENT_POS_IN_BOWDEN:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
                 ratio = 0.
-#            self.log_error("PAUL: _load_bowden(): ratio=%s, deficit=%s" % (ratio, deficit))
             return ratio, deficit # For auto-calibration
         finally:
             self.bowden_start_pos = None
@@ -4283,7 +4281,6 @@ class Mmu:
 
                 # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None)
-#                self.log_error("PAUL: loading bowden %s, encoder_start_pos=%s" % (length, self.bowden_start_pos))
 
                 # Sensor validation
                 if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is False:
@@ -4292,7 +4289,6 @@ class Mmu:
 
                 # "Fast" unload
                 _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
-#                self.log_error("PAUL: delta=%s, dead_space=%s" % (delta, self._get_encoder_dead_space()))
                 delta -= self._get_encoder_dead_space()
                 ratio = (length - delta) / length
 
@@ -4313,7 +4309,6 @@ class Mmu:
             elif self.filament_pos != self.FILAMENT_POS_IN_BOWDEN:
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
                 ratio = 0.
-#            self.log_error("PAUL: _unload_bowden(): _unload_bowden: ratio=%s" % (ratio))
             return ratio # For auto-calibration
 
         finally:
@@ -4363,7 +4358,6 @@ class Mmu:
             self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to adjust your calibrated bowden length ('%s') or increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
 
         self._set_filament_pos_state(self.FILAMENT_POS_HOMED_EXTRUDER)
-#        self.log_error("PAUL: _home_to_extruder(): homing_movement=%s, extra=%s" % (homing_movement, extra))
         return homing_movement, extra
 
     # Special extruder homing option for detecting the collision base on lack of encoder movement
@@ -4522,7 +4516,6 @@ class Mmu:
             self.movequeues_wait()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self.log_debug("Filament should be loaded to nozzle")
-#            self.log_error("PAUL: _load_extruder() homing=%s" % homing_movement)
             return homing_movement
 
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
@@ -4628,7 +4621,6 @@ class Mmu:
             self._random_failure() # Testing
             self.movequeues_wait()
             self.log_debug("Filament should be out of extruder")
-#            self.log_error("PAUL: synced=%s" % synced)
             return synced
 
 
@@ -4699,7 +4691,6 @@ class Mmu:
             else:
                 if start_filament_pos <= self.FILAMENT_POS_UNLOADED:
                     overshoot = self._load_gate()
-#                    self.log_error("PAUL: filament_pos=%s, encoder=%s" % (self._get_filament_position(), self.get_encoder_distance()))
 
                 if calibrating:
                     if self.extruder_homing_endstop in [self.SENSOR_EXTRUDER_NONE, self.SENSOR_EXTRUDER_COLLISION]:
@@ -4733,7 +4724,6 @@ class Mmu:
             if self._can_use_encoder():
                 final_encoder_pos = self.get_encoder_distance(dwell=None)
                 not_seen = self.gate_parking_distance + self._get_encoder_dead_space()
-#                self.log_error("PAUL: not_seen=%s" % not_seen)
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
@@ -4921,7 +4911,6 @@ class Mmu:
             if self._can_use_encoder():
                 final_encoder_pos = self.get_encoder_distance(dwell=None)
                 not_seen = self.gate_parking_distance + self._get_encoder_dead_space() + (self.toolhead_unload_safety_margin if not synced_extruder_unload else 0.)
-#                self.log_error("PAUL: not_seen=%s" % not_seen)
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % -(final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
@@ -5493,7 +5482,6 @@ class Mmu:
     #   If in a print then used desired sync state if actively printing or desired or necessary sync state
     #   If not consider desired (_standalone_sync) or necessary (always_gripped) sync state
     def reset_sync_gear_to_extruder(self, in_print_sync, force_in_print=False):
-#        self.log_error("PAUL:   --> reset_sync_gear_to_extruder(in_print_sync=%s, force=%s)" % (in_print_sync, force_in_print))
         if self.gate_selected == self.TOOL_GATE_BYPASS:
             sync = False
         elif self.is_in_print(force_in_print):
@@ -5521,7 +5509,6 @@ class Mmu:
 
     # Sync/unsync gear motor with extruder, handle filament engagement and current control
     def sync_gear_to_extruder(self, sync, gate=None):
-#        self.log_error("PAUL:   --> sync_gear_to_extruder(sync=%s)" % sync)
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
         gate = gate if gate is not None else self.gate_selected
@@ -5559,7 +5546,6 @@ class Mmu:
     def wrap_sync_gear_to_extruder(self):
         prev_sync = self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
         prev_grip = self.selector.get_filament_grip_state()
-#        self.log_error("PAUL:   --> wrap_sync_gear_to_extruder(), prev_sync=%s, prev_grip=%s" % (prev_sync, prev_grip))
 
         # Turn espooler in-print assist off
         espooler_state = None
@@ -7863,7 +7849,9 @@ class Mmu:
                         if not (0 <= gate < self.num_gates):
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                             continue
-                        if fil:
+
+                        # Only update gate attributes if we have a valid spool_id
+                        if fil and fil.get('spool_id', -1) != -1:
                             self.gate_filament_name[gate] = fil.get('name', '')
                             self.gate_material[gate] = fil.get('material', '')
                             self.gate_color[gate] = fil.get('color', '')
@@ -7873,6 +7861,8 @@ class Mmu:
                                 self.gate_temperature[gate] = self.default_extruder_temp
                             self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
 
+                        # If spool_id has changed, clean up possible stale use of old one
+                        if fil:
                             spool_id = fil.get('spool_id', -1)
                             if spool_id != self.gate_spool_id[gate]:
                                 self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
@@ -8546,7 +8536,7 @@ class MmuCalibrationManager:
             self.mmu._initialize_filament_position(dwell=True)
             overshoot = self.mmu._load_gate(allow_retry=False)
 
-            if self.mmu.extruder_homing_endstop in [self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.SENSOR_EXTRUDER_ENTRY]:
+            if self.mmu.extruder_homing_endstop in [self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.SENSOR_COMPRESSION]:
                 if self.mmu.sensor_manager.check_sensor(self.mmu.extruder_homing_endstop):
                     raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % self.mmu.extruder_homing_endstop)
 
