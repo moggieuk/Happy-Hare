@@ -5,6 +5,8 @@
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
+# Goal: Manager to centralize mmu_sensor operations
+#
 # (\_/)
 # ( *,*)
 # (")_(") Happy Hare Ready
@@ -15,7 +17,7 @@ import random, logging, math, re
 
 # Happy Hare imports
 from .mmu_sensor_utils import MmuRunoutHelper
-from .mmu_shared       import MmuError
+from .mmu_shared       import *
 
 class MmuSensorManager:
     def __init__(self, mmu):
@@ -39,7 +41,6 @@ class MmuSensorManager:
         ])
 
         for mmu_unit in self.mmu_machine.units:
-
             unit_sensors = collect_sensors([
                 (mmu_unit.sensors.gate_sensor, self.mmu.SENSOR_GATE),
                 (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, self.mmu.SENSOR_COMPRESSION),
@@ -108,6 +109,11 @@ class MmuSensorManager:
         self.mmu.gcode.register_command('MMU_SENSORS', self.cmd_MMU_SENSORS, desc = self.cmd_MMU_SENSORS_help)
 
     cmd_MMU_SENSORS_help = "Query state of sensors fitted to mmu"
+    cmd_MMU_SENSORS_param_help = (
+        "MMU_SENSORS: %s\n" % cmd_MMU_SENSORS_help
+        + "UNIT   = # (int)\n"
+        + "DETAIL = [0|1]"
+    )
     def cmd_MMU_SENSORS(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
@@ -117,29 +123,24 @@ class MmuSensorManager:
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
 
         if help:
-            msg = (
-                "%s: %s\n" % (gcmd.get_command().upper(), self.cmd_MMU_SENSORS_help)
-                + "{1}%s{0} UNIT   = # (int)\n" % UI_CASCADE
-                + "{1}%s{0} DETAIL = [0|1]" % UI_CASCADE
-            )
-            self.mmu.log_always(msg, color=True)
+            self.mmu.log_always(self.mmu.format_param_help(self.cmd_MMU_SENSORS_param_help), color=True)
+            return
 
+        msg = ""
+        sensors = self.get_active_sensors(all_sensors=True) if unit is None else self.get_unit_sensors(unit)
+        if all(v is None for v in sensors.values()) and not detail:
+            msg += "No active sensors. Use DETAIL=1 to see all"
         else:
-            msg = ""
-            sensors = self.get_active_sensors(all_sensors=True) if unit is None else self.get_unit_sensors(unit)
-            if all(v is None for v in sensors.values()) and not detail:
-                msg += "No active sensors. Use DETAIL=1 to see all"
-            else:
-                for name in sorted(sensors):
-                    state = sensors[name]
-                    if state is not None or detail:
-                        sensor = self.all_sensors_map.get(name) if unit is None else self.unit_sensors[unit].get(name)
-                        trig = "%s" % 'TRIGGERED' if sensor.runout_helper.filament_present else 'Open'
-                        msg += "%s: %s" % (name, ("(%s, currently disabled)" % trig) if state is None else trig)
-                        if detail and sensor.runout_helper.runout_suspended is not None and state is not None:
-                            msg += "%s" % (", Runout enabled" if not sensor.runout_helper.runout_suspended else "")
-                        msg += "\n"
-            self.mmu.log_always(msg)
+            for name in sorted(sensors):
+                state = sensors[name]
+                if state is not None or detail:
+                    sensor = self.all_sensors_map.get(name) if unit is None else self.unit_sensors[unit].get(name)
+                    trig = "%s" % 'TRIGGERED' if sensor.runout_helper.filament_present else 'Open'
+                    msg += "%s: %s" % (name, ("(%s, currently disabled)" % trig) if state is None else trig)
+                    if detail and sensor.runout_helper.runout_suspended is not None and state is not None:
+                        msg += "%s" % (", Runout enabled" if not sensor.runout_helper.runout_suspended else "")
+                    msg += "\n"
+        self.mmu.log_always(msg)
 
     # Return dict of all sensor states for just active or all sensors (returns None if sensor disabled)
     def get_active_sensors(self, all_sensors=False):
@@ -204,7 +205,7 @@ class MmuSensorManager:
         if endstop_name in [self.mmu.SENSOR_GATE, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
             return self.get_unit_sensor_name(endstop_name, mmu.unit_selected)
 
-        if endstop_name in [self.mmu.SENSOR_PRE_GATE_PREFIX, self.mmu.SENSOR_GEAR_PREFIX]:
+        if endstop_name in [self.mmu.SENSOR_PRE_GATE_PREFIX, self.mmu.SENSOR_GEAR_PREFIX, self.mmu.SENSOR_GEAR_TOUCH]: # PAUL TODO verify SENSOR_GEAR_TOUCH operation for calibration
             return self.get_gate_sensor_name(endstop_name, mmu.gate_selected)
 
         return endstop_name
@@ -298,6 +299,15 @@ class MmuSensorManager:
     def _set_sensor_runout(self, enable, gate):
         for name, sensor in self.active_sensors_map.items():
             sensor.runout_helper.enable_runout(enable and gate >= 0)
+
+# PAUL
+#            if isinstance(sensor.runout_helper, MmuRunoutHelper):
+#                per_gate = re.search(r'_(\d+)$', name) # Must match mmu_sensors
+#                if per_gate:
+#                    sensor.runout_helper.enable_runout(enable and (int(per_gate.group(1)) == gate))
+#                else:
+#                    sensor.runout_helper.enable_runout(enable and (gate != self.mmu.TOOL_GATE_UNKNOWN))
+
 # PAUL old logic vvvv
 #        for name, sensor in self.active_sensors_map.items():
 #            if isinstance(sensor.runout_helper, MmuRunoutHelper):
@@ -322,8 +332,6 @@ class MmuSensorManager:
                 sensor = self.active_sensors_map.get(name, None)
                 if sensor and position_condition(pos, position_check):
                     result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-#        logging.info("PAUL: active_sensors_map:%s\n" % self.active_sensors_map)
-#        logging.info("PAUL: _get_sensors(pos=%d, gate=%d) returning:%s\n" % (pos, gate, result))
         return result
 
     def _get_sensors_before(self, pos, gate, loading=True):

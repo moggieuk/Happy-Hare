@@ -674,6 +674,7 @@ class MmuTest:
 
         fil_pos = gcmd.get_int('FILAMENT_POS', -2, minval=-1, maxval=10)
         if fil_pos != -2:
-            self.mmu._set_filament_pos_state(fil_pos)
+            with self.mmu.wrap_sync_gear_to_extruder():
+                self.mmu._set_filament_pos_state(fil_pos)
         # Restore non testing context
         self.mmu._is_running_test = False

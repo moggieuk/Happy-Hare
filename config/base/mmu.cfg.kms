@@ -1,0 +1,34 @@
+########################################################################################################################
+# Happy Hare MMU Software
+#
+# EDIT THIS FILE BASED ON YOUR SETUP
+#
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Goal: Happy Hare MMU hardware pin config
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+#
+# This contains MCU connection details for KMS (and KMS buffer)
+# Change `serial` to `canbus_uuid: 1234567890` for CANbus setups
+#
+[mcu mmu]
+serial: {serial1}
+
+[mcu buffer]
+serial: {serial2}
+
+
+[temperature_sensor MCU_mmu]
+sensor_type: temperature_mcu
+sensor_mcu: mmu
+
+[temperature_sensor MCU_buffer]
+sensor_type: temperature_mcu
+sensor_mcu: buffer
+

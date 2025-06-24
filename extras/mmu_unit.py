@@ -173,9 +173,9 @@ class MmuUnit:
         elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
             selector_type = 'RotarySelector'
             variable_rotation_distances = 0
-            variable_bowden_lengths = 0
+            variable_bowden_lengths = 1
             require_bowden_move = 1
-            filament_always_gripped = 1
+            filament_always_gripped = 0
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_PICO_MMU:
@@ -206,7 +206,12 @@ class MmuUnit:
             pass
 
         elif self.mmu_vendor == VENDOR_KMS:
-            pass
+            selector_type = 'VirtualSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
@@ -768,7 +773,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         rd = e_stepper.stepper.get_rotation_distance()
         esd = e_stepper.stepper.get_step_dist()
         msg += "Rotation Dist: %.6f (in %d steps, step_dist=%.6f)\n" % (rd[0], rd[1], esd)
-        msg += "Step size ratio of gear:extruder = %.2f:1" % (gsd/esd)
+        if gsd is not None:
+            msg += "Step size ratio of gear:extruder = %.2f:1" % (gsd/esd)
         return msg
 
 
