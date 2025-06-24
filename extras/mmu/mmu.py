@@ -1800,7 +1800,7 @@ class Mmu:
     def _persist_counters(self):
         self.save_variable(self.VARS_MMU_COUNTERS, self.counters, write=True)
 
-    def format_param_help(self, msg):
+    def format_help(self, msg):
         lines = msg.splitlines()
         if not lines:
             return msg
@@ -1808,12 +1808,22 @@ class Mmu:
         first_line = lines[0]
         if ":" in first_line:
             cmd, helpstr = first_line.split(":", 1)
-            formatted_first = "{5}%s{6}:%s" % (cmd.strip(), helpstr)
+            formatted_help = "{5}%s{6}:%s" % (cmd.strip(), helpstr)
         else:
-            formatted_first = first_line
+            formatted_help = first_line
 
-        formatted_rest = [("{4}%s %s{0}" % (UI_CASCADE, line)) for line in lines[1:]]
-        return "\n".join([formatted_first] + formatted_rest)
+        param_width = max(10, max((len(line.split("=", 1)[0].strip()) + 1 for line in lines[1:] if "=" in line), default=0))
+        formatted_params = []
+        for line in lines[1:]:
+            if "=" in line:
+                key, value = line.split("=", 1)
+                padded = key.strip().ljust(param_width, UI_SPACE) + "= " + value.strip()
+                formatted_line = "{4}%s %s{0}" % (UI_CASCADE, padded)
+            else:
+                formatted_line = "{4}%s %s{0}" % (UI_CASCADE, line)
+            formatted_params.append(formatted_line)
+
+        return "\n".join([formatted_help] + formatted_params) + '\n'
 
     def _color_message(self, msg):
         try:
@@ -3605,7 +3615,7 @@ class Mmu:
         seq_msg = "\nAdvanced load/unload sequence and steps:\n"
 
         if help:
-            self.log_always(self.format_param_help(self.cmd_MMU_HELP_param_help), color=True)
+            self.log_always(self.format_help(self.cmd_MMU_HELP_param_help), color=True)
             return
 
         command_classes = [self, self.sensor_manager, self.led_manager, self.selector] # All Happy Hare classes defining 'MMU_*' commands
@@ -3614,7 +3624,7 @@ class Mmu:
             for cls in command_classes:
                 attr_name = 'cmd_%s_param_help' % cu
                 if hasattr(cls, attr_name):
-                    return self.format_param_help(getattr(cls, attr_name)) + '\n'
+                    return self.format_help(getattr(cls, attr_name))
             return ''
 
         if cmd is not None:
@@ -3646,7 +3656,7 @@ class Mmu:
                         if show_params and get_param_help(cu):
                             msg += get_param_help(cu)
                         else:
-                            msg += "%s: %s\n" % (cu, d) # Base command
+                            msg += self.format_help("%s: %s" % (cu, d)) # Base command
 
             elif c.startswith("_MMU"):
                 if c.startswith("_MMU_STEP") or c in ["_MMU_M400", "_MMU_LOAD_SEQUENCE", "_MMU_UNLOAD_SEQUENCE"]:
@@ -5494,7 +5504,7 @@ class Mmu:
 
     # Sync/unsync gear motor with extruder, handle filament engagement and current control
     def sync_gear_to_extruder(self, sync, gate=None):
-        self.log_error("PAUL: sync_gear_to_extruder(sync=%s)" % sync)
+#        self.log_error("PAUL: sync_gear_to_extruder(sync=%s)" % sync)
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
         gate = gate if gate is not None else self.gate_selected
@@ -5617,7 +5627,7 @@ class Mmu:
                 new_cur = max(min(run_current, max_cur), 0)
                 current_helper.set_current(new_cur, req_hold_cur, print_time)
                 self.log_debug(msg.format(new_cur))
-                self.log_error("PAUL: " + msg.format(new_cur))
+#                self.log_error("PAUL: " + msg.format(new_cur))
             except Exception as e:
                 # Fallback
                 self.log_debug("Unexpected error setting stepper current: %s. Falling back to default approach" % str(e))
@@ -7382,7 +7392,6 @@ class Mmu:
             elif self.spoolman_support == self.SPOOLMAN_READONLY:
                 self._spoolman_update_filaments(gate_ids)
 
-        self.log_error("PAUL: calling led_manager.gate_map_changed()")
         self.led_manager.gate_map_changed(None)
         if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
             self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
@@ -8358,7 +8367,7 @@ class MmuCalibrationManager:
                 homing_movement > 0
             ):
                 if direction in [self.mmu.DIRECTION_LOAD, self.mmu.DIRECTION_UNLOAD]:
-                    current_rd = self.mmu.gear_rail.steppers[0].get_rotation_distance()[0]
+                    current_rd = self.mmu.gear_rail().steppers[0].get_rotation_distance()[0]
                     new_rd = round(bowden_move_ratio * current_rd, 4)
                     gate0_rd = self.mmu.rotation_distances[0]
 
@@ -8690,7 +8699,7 @@ class MmuCalibrationManager:
             mean_neg = self.mmu._sample_stats(neg_values)['mean']
             mean = (float(mean_pos) + float(mean_neg)) / 2
             ratio = mean / length
-            current_rd = self.mmu.gear_rail.steppers[0].get_rotation_distance()[0]
+            current_rd = self.mmu.gear_rail().steppers[0].get_rotation_distance()[0]
             new_rd = round(ratio * current_rd, 4)
 
             self.mmu.log_always("Calibration move of %d x %.1fmm, average encoder measurement: %.1fmm - Ratio is %.4f" % (repeats * 2, length, mean, ratio))

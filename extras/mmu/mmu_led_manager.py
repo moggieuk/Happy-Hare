@@ -24,6 +24,8 @@ class MmuLedManager:
         self.mmu = mmu
         self.mmu_machine = mmu.mmu_machine
         self.inside_timer = self.pending_update = False
+        self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
+
 
         # Event handlers
         self.mmu.printer.register_event_handler("klippy:ready", self.handle_ready)
@@ -83,7 +85,7 @@ class MmuLedManager:
             return
 
         if help:
-            self.mmu.log_always(self.mmu.format_param_help(self.cmd_MMU_SET_LED_param_help), color=True)
+            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SET_LED_param_help), color=True)
             return
 
         self._set_led(
@@ -124,7 +126,7 @@ class MmuLedManager:
             return
 
         if help:
-            self.mmu.log_always(self.mmu.format_param_help(self.cmd_MMU_LED_param_help), color=True)
+            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_LED_param_help), color=True)
             return
 
         msg = ""
@@ -207,7 +209,6 @@ class MmuLedManager:
             units_to_update = [self.mmu.unit_selected]
         else:
             units_to_update = range(self.mmu_machine.num_units)
-        self.mmu.log_error("PAUL: action_changed(action=%s, old_action=%s)" % (action, old_action))
 
         for unit in units_to_update:
 
@@ -215,7 +216,7 @@ class MmuLedManager:
             # idle -> loading -> load_ext -> [heat -> load_ext] -> loading* -> purging* -> loading* -> idle (*=excluded)
 
             if action == self.mmu.ACTION_LOADING:
-                if old_action not in [self.mmu.ACTION_LOADING_EXT, self.mmu.ACTION_PURGING]:
+                if old_action not in [self.mmu.ACTION_LOADING_EXTRUDER, self.mmu.ACTION_PURGING]:
                     self._set_led(
                         unit, gate,
                         exit_effect=self.effect_name(unit, 'loading'),
@@ -235,13 +236,19 @@ class MmuLedManager:
                 pass
 
             # Unload sequence...
-            # idle -> unloading -> form_tip/cut -> [heat -> form_tip/cut] -> unloading* -> unload_ext -> unloading*
+            # idle -> unloading -> form_tip/cut -> [heat -> form_tip/cut] -> unloading* -> unload_ext -> unloading
             # [cutting* -> unloading*] -> idle (*=excluded)
-
             elif action == self.mmu.ACTION_UNLOADING:
-                if old_action not in [
+                if old_action == self.mmu.ACTION_IDLE:
+                    self._set_led(
+                        unit, gate,
+                        exit_effect=self.effect_name(unit, 'unloading_extruder'),
+                        status_effect=self.effect_name(unit, 'unloading_extruder'),
+                        fadetime=0.5
+                    )
+
+                elif old_action not in [
                     self.mmu.ACTION_FORMING_TIP,
-                    self.mmu.ACTION_UNLOADING_EXT,
                     self.mmu.ACTION_CUTTING_FILAMENT
                 ]:
                     self._set_led(
@@ -440,8 +447,7 @@ class MmuLedManager:
     #   "filament_color"  - indicate filament color
     #   "slicer_color"    - display slicer defined color for each gate
     def _set_led(self, unit, gate, duration=None, fadetime=1, exit_effect=None, entry_effect=None, status_effect=None, logo_effect=None):
-        logging.info("PAUL: _set_led(unit=%s, gate=%s, duration=%s, fadetime=%s, exit_effect=%s, entry_effect=%s, status_effect=%s, logo_effect=%s)" % (unit, gate, duration, fadetime, exit_effect, entry_effect, status_effect, logo_effect))
-        self.mmu.log_error("PAUL: _set_led(unit=%s, gate=%s, duration=%s, fadetime=%s, exit_effect=%s, entry_effect=%s, status_effect=%s, logo_effect=%s, pending_update=%s)" % (unit, gate, duration, fadetime, exit_effect, entry_effect, status_effect, logo_effect, self.pending_update))
+#        logging.info("PAUL: _set_led(unit=%s, gate=%s, duration=%s, fadetime=%s, exit_effect=%s, entry_effect=%s, status_effect=%s, logo_effect=%s, pending_update=%s)" % (unit, gate, duration, fadetime, exit_effect, entry_effect, status_effect, logo_effect, self.pending_update))
         effects = {
             'entry': entry_effect,
             'exit': exit_effect,
@@ -503,7 +509,7 @@ class MmuLedManager:
         # Stop the current effect on the gate led(s)
         def stop_gate_effect(unit, segment, gate, fadetime=None):
             if self.mmu_machine.get_mmu_unit_by_index(unit).leds.animation:
-                logging.info("PAUL: _MMU_STOP_LED_EFFECTS LEDS='%s' %s" % (effect_leds_spec(unit, segment, gate), ('FADETIME=%d' % fadetime) if fadetime is not None else ''))
+#                logging.info("PAUL: _MMU_STOP_LED_EFFECTS LEDS='%s' %s" % (effect_leds_spec(unit, segment, gate), ('FADETIME=%d' % fadetime) if fadetime is not None else ''))
                 self.mmu.gcode.run_script_from_command(
                     "_MMU_STOP_LED_EFFECTS LEDS='%s' %s" % (
                         effect_leds_spec(unit, segment, gate),
@@ -515,7 +521,7 @@ class MmuLedManager:
         def set_gate_effect(base_effect, unit, segment, gate, fadetime=None):
             leds = self.mmu_machine.get_mmu_unit_by_index(unit).leds
             if leds.animation:
-                logging.info("PAUL: _MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1 %s" % (effect_spec(unit, gate, "%s_%s" % (base_effect, segment)), ('FADETIME=%d' % fadetime) if fadetime is not None else ''))
+#                logging.info("PAUL: _MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1 %s" % (effect_spec(unit, gate, "%s_%s" % (base_effect, segment)), ('FADETIME=%d' % fadetime) if fadetime is not None else ''))
                 self.mmu.gcode.run_script_from_command(
                     "_MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1 %s" % (
                         effect_spec(unit, gate, "%s_%s" % (base_effect, segment)),
@@ -531,7 +537,7 @@ class MmuLedManager:
         def set_gate_rgb(rgb, unit, segment, gate, transmit=True):
             # Normally there is only a single led per gate but some designs have many
             for index, is_last in with_last(led_indexes(unit, segment, gate)):
-                logging.info("PAUL: SET_LED LED=%s INDEX=%d RED=%s GREEN=%s BLUE=%s TRANSMIT=%d" % (led_chain_spec(unit, segment), index, rgb[0], rgb[1], rgb[2], 1 if transmit and is_last else 0))
+#                logging.info("PAUL: SET_LED LED=%s INDEX=%d RED=%s GREEN=%s BLUE=%s TRANSMIT=%d" % (led_chain_spec(unit, segment), index, rgb[0], rgb[1], rgb[2], 1 if transmit and is_last else 0))
                 self.mmu.gcode.run_script_from_command(
                     "SET_LED LED=%s INDEX=%d RED=%s GREEN=%s BLUE=%s TRANSMIT=%d" % (
                         led_chain_spec(unit, segment), index, rgb[0], rgb[1], rgb[2], 1 if transmit and is_last else 0
@@ -560,8 +566,7 @@ class MmuLedManager:
             ):
                 # Ignore if unit doesn't have leds, is disabled for doesn't manage the specific gate
                 # (saves callers from checking)
-                logging.info("PAUL: NO-OP unit/gate combo invalid. Returning")
-                self.mmu.log_error("PAUL: NO-OP unit/gate combo invalid. Returning")
+#                logging.info("PAUL: NO-OP unit/gate combo invalid. Returning")
                 return
 
             if gate is not None and gate < 0:
@@ -584,7 +589,7 @@ class MmuLedManager:
 #PAUL                logging.info("PAUL: %s segment effect is: %s" % (segment, effect))
 
                 # effect will be None if leds not configured for no led chain for that segment
-                if not effect:
+                if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
                     continue
 
                 elif effect == "off":
@@ -651,13 +656,16 @@ class MmuLedManager:
                 elif effect != "": # Named effect
                     set_gate_effect(effect, unit, segment, gate, fadetime=fadetime)
 
+                self.effect_state.setdefault(unit, {})[segment] = effect
+
+
             #
             # Status
             #
             segment = "status"
             effect = get_effective_effect(mmu_unit, segment, effects[segment])
 
-            if not effect:
+            if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
                 pass
 
             elif effect == "off":
@@ -689,6 +697,8 @@ class MmuLedManager:
     
             elif effect != "": # Named effect
                 set_gate_effect(effect, unit, segment, None, fadetime=fadetime)
+
+            self.effect_state.setdefault(unit, {})[segment] = effect
     
             #
             # Logo
@@ -696,7 +706,7 @@ class MmuLedManager:
             segment = "logo"
             effect = get_effective_effect(mmu_unit, segment, effects[segment])
 
-            if not effect:
+            if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
                 pass
 
             elif effect == "off":
@@ -709,6 +719,8 @@ class MmuLedManager:
 
             elif effect != "": # Named effect
                 set_gate_effect(effect, unit, segment, None, fadetime=fadetime)
+
+            self.effect_state.setdefault(unit, {})[segment] = effect
 
         except Exception as e:
             # Don't let a misconfiguration ruin a print!

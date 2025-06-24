@@ -123,7 +123,7 @@ class MmuSensorManager:
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
 
         if help:
-            self.mmu.log_always(self.mmu.format_param_help(self.cmd_MMU_SENSORS_param_help), color=True)
+            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SENSORS_param_help), color=True)
             return
 
         msg = ""
@@ -144,7 +144,7 @@ class MmuSensorManager:
 
     # Return dict of all sensor states for just active or all sensors (returns None if sensor disabled)
     def get_active_sensors(self, all_sensors=False):
-        logging.info("PAUL: active_sensors_map=%s", self.active_sensors_map)
+#        logging.info("PAUL: active_sensors_map=%s", self.active_sensors_map)
         sensor_map = self.all_sensors_map if all_sensors else self.active_sensors_map
         return {
             sname: (bool(sensor.runout_helper.filament_present) 
