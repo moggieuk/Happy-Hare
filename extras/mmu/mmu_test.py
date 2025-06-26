@@ -106,7 +106,7 @@ class MmuTest:
         sync_state = gcmd.get('SYNC_STATE', None)
         if sync_state is not None:
             # create phony sensors for testing purposes (will be removed after the test)
-            sensors : MmuSensors = self.mmu.printer.lookup_object("mmu_sensors")
+            sensors = self.mmu.printer.lookup_object("mmu_sensors")
             config = self.mmu.config.getsection('mmu_sensors')
             sensors_to_remove = []
             # use the temporary sensors for the test if the real ones are not present
@@ -154,7 +154,6 @@ class MmuTest:
                     for comp in [None, True, False]:
                         for tens in [None, True, False]:
                             for t in tests:
-                                t : SyncStateTest
                                 if (comp, tens) not in nb_hits:
                                     nb_hits.update({(comp, tens): 0})
                                 if (t.compression_state, t.tension_state) == (comp, tens):
@@ -172,7 +171,6 @@ class MmuTest:
 
                     mismatches = {}
                     for i, test in enumerate(tests):
-                        test : SyncStateTest
                         if str(test) not in mismatches:
                             mismatches[str(test)] = {'test' : test, 'count' : 0}
                         if test.expected != gathered_states[i]:
@@ -187,7 +185,6 @@ class MmuTest:
                         # Sort by most mismatches.values (highest first)
                         mismatches = dict(sorted(mismatches.items(), key=lambda item: item[1]['count'], reverse=True))
                         for test_str, info in mismatches.items():
-                            test : SyncStateTest
                             if info['count'] : self.mmu.log_debug("MISMATCH: %s (expected : %s) -> %s" % (test_str, info['test'].expected, info['count']))
                         # Summary displaying which expected state has which percentage of total errors
                         for expected in [1,0,-1]:
