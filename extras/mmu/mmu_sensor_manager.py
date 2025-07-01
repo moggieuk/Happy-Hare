@@ -300,23 +300,6 @@ class MmuSensorManager:
         for name, sensor in self.active_sensors_map.items():
             sensor.runout_helper.enable_runout(enable and gate >= 0)
 
-# PAUL
-#            if isinstance(sensor.runout_helper, MmuRunoutHelper):
-#                per_gate = re.search(r'_(\d+)$', name) # Must match mmu_sensors
-#                if per_gate:
-#                    sensor.runout_helper.enable_runout(enable and (int(per_gate.group(1)) == gate))
-#                else:
-#                    sensor.runout_helper.enable_runout(enable and (gate != self.mmu.TOOL_GATE_UNKNOWN))
-
-# PAUL old logic vvvv
-#        for name, sensor in self.active_sensors_map.items():
-#            if isinstance(sensor.runout_helper, MmuRunoutHelper):
-#                per_gate = re.search(r'_(\d+)$', name) # Must match mmu_sensors
-#                if per_gate:
-#                    sensor.runout_helper.enable_runout(enable and (int(per_gate.group(1)) == gate))
-#                else:
-#                    sensor.runout_helper.enable_runout(enable and (gate != self.mmu.TOOL_GATE_UNKNOWN))
-
     # Defines sensors and relationship to filament_pos state for easy filament tracing
     def _get_sensors(self, pos, gate, position_condition):
         result = {}

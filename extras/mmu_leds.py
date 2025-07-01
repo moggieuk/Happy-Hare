@@ -33,12 +33,13 @@ class VirtualMmuLedChain:
         # We need to configure the chain now so we can validate
         self.leds = []
         for chain_name, leds in self.config_chains:
-            chain = self.printer.lookup_object(chain_name, None)
-            if chain:
-                for led in leds:
-                    self.leds.append((chain, led))
-            else:
-                raise config.error("MMU LED chain '%s' referenced in '%s' doesn't exist" % (chain_name, self.name))
+            try:
+                chain = self.printer.load_object(config, chain_name)
+                if chain:
+                    for led in leds:
+                        self.leds.append((chain, led))
+            except Exception as e:
+                raise config.error("MMU LED chain '%s' referenced in '%s' cannot be loaded:\n%s" % (chain_name, self.name, str(e)))
 
         # Register led object with klipper
         logging.info("MMU: Created: %s" % led_section)

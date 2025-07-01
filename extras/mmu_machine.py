@@ -75,6 +75,7 @@ class MmuMachine:
 
         for i, name in enumerate(self.unit_names):
             section = "mmu_unit %s" % name
+            logging.info("MMU: Loading section %s" % section)
 
             if not config.has_section(section):
                 raise config.error("Expected [%s] section not found" % section)

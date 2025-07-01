@@ -5251,7 +5251,7 @@ class Mmu:
                         self.toolhead.move(ext_pos, speed)
 
             self.mmu_toolhead().flush_step_generation() # TTC mitigation
-            self.toolhead.flush_step_generation()     # TTC mitigation
+            self.toolhead.flush_step_generation()       # TTC mitigation
             if wait:
                 self.movequeues_wait()
 

@@ -26,7 +26,6 @@ class MmuLedManager:
         self.inside_timer = self.pending_update = False
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
 
-
         # Event handlers
         self.mmu.printer.register_event_handler("klippy:ready", self.handle_ready)
 
@@ -447,7 +446,7 @@ class MmuLedManager:
     #   "filament_color"  - indicate filament color
     #   "slicer_color"    - display slicer defined color for each gate
     def _set_led(self, unit, gate, duration=None, fadetime=1, exit_effect=None, entry_effect=None, status_effect=None, logo_effect=None):
-#        logging.info("PAUL: _set_led(unit=%s, gate=%s, duration=%s, fadetime=%s, exit_effect=%s, entry_effect=%s, status_effect=%s, logo_effect=%s, pending_update=%s)" % (unit, gate, duration, fadetime, exit_effect, entry_effect, status_effect, logo_effect, self.pending_update))
+        #logging.info("PAUL: _set_led(unit=%s, gate=%s, duration=%s, fadetime=%s, exit_effect=%s, entry_effect=%s, status_effect=%s, logo_effect=%s, pending_update=%s, effect_state=%s)" % (unit, gate, duration, fadetime, exit_effect, entry_effect, status_effect, logo_effect, self.pending_update, self.effect_state))
         effects = {
             'entry': entry_effect,
             'exit': exit_effect,
@@ -471,14 +470,12 @@ class MmuLedManager:
 
         # List of led indexes (1-based on led_chain_spec) for iteration
         def led_indexes(unit, segment, gate):
-#            logging.info("PAUL: leds_indexes(unit=%s, segment=%s, gate=%s" % (unit, segment, gate))
             mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit)
             num_leds = mmu_unit.leds.get_status()[segment]
             if gate is None or gate < 0:
                 return list(range(1, num_leds + 1))
             leds_per_gate = num_leds // mmu_unit.num_gates
             index0 = (gate - mmu_unit.first_gate) * leds_per_gate + 1
-#            logging.info("PAUL: leds_per_gate=%s, index0=%s" % (leds_per_gate, index0))
             return list(range(index0, index0 + leds_per_gate))
 
         # Get raw "LEDS=" spec to stop an effect on virtual chain for given segment
@@ -566,7 +563,6 @@ class MmuLedManager:
             ):
                 # Ignore if unit doesn't have leds, is disabled for doesn't manage the specific gate
                 # (saves callers from checking)
-#                logging.info("PAUL: NO-OP unit/gate combo invalid. Returning")
                 return
 
             if gate is not None and gate < 0:
@@ -586,10 +582,10 @@ class MmuLedManager:
             #
             for segment in ['exit', 'entry']:
                 effect = get_effective_effect(mmu_unit, segment, effects[segment])
-#PAUL                logging.info("PAUL: %s segment effect is: %s" % (segment, effect))
 
                 # effect will be None if leds not configured for no led chain for that segment
-                if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
+                #if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
+                if not effect:
                     continue
 
                 elif effect == "off":
@@ -665,7 +661,8 @@ class MmuLedManager:
             segment = "status"
             effect = get_effective_effect(mmu_unit, segment, effects[segment])
 
-            if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
+            #if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
+            if not effect:
                 pass
 
             elif effect == "off":
@@ -706,7 +703,8 @@ class MmuLedManager:
             segment = "logo"
             effect = get_effective_effect(mmu_unit, segment, effects[segment])
 
-            if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
+            #if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
+            if not effect:
                 pass
 
             elif effect == "off":

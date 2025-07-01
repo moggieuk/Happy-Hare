@@ -94,8 +94,8 @@ class MmuUnit:
         self.name = config.get_name().split()[1]
         self.printer = config.get_printer()
         self.num_gates = config.getint('num_gates')
-        self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
-        self.mmu_version_string = config.get('mmu_version', "1.0")
+        self.mmu_vendor = config.getchoice('vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
+        self.mmu_version_string = config.get('version', "1.0")
         version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
         try:
             self.mmu_version = float(version)
@@ -119,6 +119,7 @@ class MmuUnit:
         filament_always_gripped = 0 # Whether MMU design has ability to release filament (overrides gear/extruder syncing)
         has_bypass = 0 # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearSelector)
 
+        logging.info("MMU: Building MMU %s v%s" % (self.mmu_vendor, self.mmu_version))
         if self.mmu_vendor == VENDOR_ERCF:
             selector_type = 'LinearSelector'
             variable_rotation_distances = 1
@@ -203,7 +204,12 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_VVD:
-            pass
+            selector_type = 'IndexedSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_KMS:
             selector_type = 'VirtualSelector'
@@ -222,7 +228,7 @@ class MmuUnit:
         self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
         self.selector_type = config.getchoice(
             'selector_type', 
-            {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'ServoSelector2']},
+            {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'IndexedSelector']},
             selector_type
         )
 
@@ -288,7 +294,7 @@ class MmuUnit:
                 raise config.error("MMU unit is configured with %d gates but %d gear stepper configurations were found" % (self.num_gates, last_gear))
 
             # Load selector stepper if applicable
-            if self.selector_type in ['LinearSelector', 'RotarySelector']:
+            if self.selector_type in ['LinearSelector', 'RotarySelector', 'IndexedSelector']:
                 found = False
                 for chip in TMC_CHIPS:
                     tmc_section = '%s %s' % (chip, self.selector_name)
@@ -515,7 +521,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 
         # Add useful debugging command
-        gcode.register_mux_command("_MMU_DUMP_TOOLHEAD", "UNIT", self.mmu_unit.name, self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
+        gcode.register_mux_command("_MMU_DUMP_TOOLHEAD", "UNIT_NAME", self.mmu_unit.name, self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
 
         # Bi-directional sync management of gear(s) and extruder(s)
         self.mmu_toolhead = self # Make it easier to read code and distinquish printer_toolhead from mmu_toolhead
@@ -789,13 +795,15 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_unit.selector_type in {'LinearSelector', 'RotarySelector'}:
+        if self.mmu_unit.selector_type in {'LinearSelector', 'RotarySelector', 'IndexedSelector'}:
             # Inject options into selector stepper config so it is set up correct. The selector class with correct once user config is known
-            config.fileconfig.set(self.mmu_unit.selector_name, 'position_min', -1.)
-            config.fileconfig.set(self.mmu_unit.selector_name, 'position_max', 99)
-            config.fileconfig.set(self.mmu_unit.selector_name, 'homing_speed', 99)
-
-            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_name), need_position_minmax=True, default_position_endstop=0.))
+# PAUL
+#            config.fileconfig.set(self.mmu_unit.selector_name, 'position_min', -1.)
+#            config.fileconfig.set(self.mmu_unit.selector_name, 'position_max', 99)
+#            config.fileconfig.set(self.mmu_unit.selector_name, 'homing_speed', 99)
+#
+#            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_name), need_position_minmax=True, default_position_endstop=0.))
+            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_name), need_position_minmax=False, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         else:
             self.rails.append(DummyRail())
@@ -812,6 +820,10 @@ class MmuKinematics:
         self.gear_max_velocity, self.gear_max_accel = toolhead.get_gear_limits()
         self.move_accel = None
         self.limits = [(1.0, -1.0)] * len(self.rails)
+# PAUL ref code
+#        ranges = [r.get_range() for r in self.rails]
+#        self.axes_min = toolhead.Coord(*[r[0] for r in ranges], e=0.)
+#        self.axes_max = toolhead.Coord(*[r[1] for r in ranges], e=0.)
 
     def get_steppers(self):
         return [s for rail in self.rails for s in rail.get_steppers()]
@@ -859,10 +871,11 @@ class MmuKinematics:
         self.move_accel = accel
 
     def check_move(self, move):
-        limits = self.limits
-        xpos, _ = move.end_pos[:2]
-        if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
-            raise move.move_error()
+# PAUL temp test
+#        limits = self.limits
+#        xpos, _ = move.end_pos[:2]
+#        if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
+#            raise move.move_error()
         if move.axes_d[0]: # Selector
             move.limit_speed(self.selector_max_velocity, min(self.selector_max_accel, self.move_accel or self.selector_max_accel))
         elif move.axes_d[1]: # Gear
