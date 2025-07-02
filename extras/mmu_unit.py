@@ -797,7 +797,7 @@ class MmuKinematics:
         self.rails = []
         if self.mmu_unit.selector_type in {'LinearSelector', 'RotarySelector', 'IndexedSelector'}:
             # Inject options into selector stepper config so it is set up correct. The selector class with correct once user config is known
-# PAUL
+# PAUL testing removal of need to home selector (managed by mmu.py)
 #            config.fileconfig.set(self.mmu_unit.selector_name, 'position_min', -1.)
 #            config.fileconfig.set(self.mmu_unit.selector_name, 'position_max', 99)
 #            config.fileconfig.set(self.mmu_unit.selector_name, 'homing_speed', 99)
@@ -820,10 +820,6 @@ class MmuKinematics:
         self.gear_max_velocity, self.gear_max_accel = toolhead.get_gear_limits()
         self.move_accel = None
         self.limits = [(1.0, -1.0)] * len(self.rails)
-# PAUL ref code
-#        ranges = [r.get_range() for r in self.rails]
-#        self.axes_min = toolhead.Coord(*[r[0] for r in ranges], e=0.)
-#        self.axes_max = toolhead.Coord(*[r[1] for r in ranges], e=0.)
 
     def get_steppers(self):
         return [s for rail in self.rails for s in rail.get_steppers()]
@@ -881,6 +877,7 @@ class MmuKinematics:
         elif move.axes_d[1]: # Gear
             move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel or self.gear_max_accel))
 
+# PAUL why do I need this info? Perhaps remove or is there other useful user info?
     def get_status(self, eventtime):
         axes = [a for a, (l, h) in zip("xy", self.limits) if l <= h]
         return {

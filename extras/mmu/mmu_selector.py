@@ -1859,7 +1859,7 @@ class IndexedSelector(PhysicalSelector, object):
         gcode = mmu.printer.lookup_object('gcode') # PAUL testing
         gcode.register_command('PAUL', self.cmd_PAUL) # PAUL testing
 
-        self.unit_gate_selected = 0 # PAUL could be set as part of startup homing..
+        self.unit_gate_selected = 0 # PAUL TODO could be set as part of startup homing..
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -1871,14 +1871,14 @@ class IndexedSelector(PhysicalSelector, object):
         self.selector_rail.homing_speed = self.selector_homing_speed
         self._set_position(0) # Reset pos
 
-    def cmd_PAUL(self, gcmd):
+    def cmd_PAUL(self, gcmd): # PAUL testing command
         move = gcmd.get_float('MOVE', self._get_max_selector_movement())
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None)
         wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
         gate = gcmd.get_int('GATE', None)
         if gate is not None:
-            endstop_name = "unit0_gate%d" % gate # PAUL test. Fixme
+            endstop_name = "%s_gate%d" % (self.mmu_unit.name, unit_gate)
             self.mmu.log_debug("Homing selector motor %.1fmm to %s..." % (move, endstop_name))
             actual,homed = self._trace_selector_move("PAUL TEST homing selector", move, homing_move=1, endstop_name=endstop_name, speed=speed, accel=accel, wait=wait)
         else:
@@ -1907,6 +1907,8 @@ class IndexedSelector(PhysicalSelector, object):
 
     def restore_gate(self, gate):
         if gate >= 0:
+            # PAUL this will generate a TTC error if the mcu has just booted. It is called from "ready" callback. Either need to move the
+            # intial call or delay actual move here..
             self._find_gate(gate - self.mmu_unit.first_gate)
 
     def disable_motors(self):
@@ -1948,7 +1950,6 @@ class IndexedSelector(PhysicalSelector, object):
 
     def _get_max_selector_movement(self):
         max_movement = self.mmu_unit.num_gates * self.cad_gate_width * self.cad_max_rotations
-        logging.info("PAUL: max_movement=%s" % max_movement)
         return max_movement
 
     def _home_selector(self):
@@ -1956,16 +1957,13 @@ class IndexedSelector(PhysicalSelector, object):
         self.mmu.movequeues_wait()
         try:
             self._find_gate(0)
-#            homing_state = MmuUnit.MmuHoming(self.mmu.printer, self.mmu_toolhead)
-#            homing_state.set_axes([0])
-#            self.mmu_toolhead.get_kinematics().home(homing_state)
             self.is_homed = True
         except Exception as e: # Homing failed
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
 
     def _find_gate(self, unit_gate):
         self.mmu.log_error("PAUL: _find_gate(%s)" % unit_gate)
-        endstop_name = "unit0_gate%d" % unit_gate # PAUL test. Fixme
+        endstop_name = "%s_gate%d" % (self.mmu_unit.name, unit_gate)
         max_move = self._get_max_selector_movement() * self._best_rotation_direction(self.unit_gate_selected, unit_gate)
         self.mmu.movequeues_wait()
         actual,homed = self._trace_selector_move("Indexing selector", max_move, speed=self.selector_move_speed, homing_move=1, endstop_name=endstop_name, wait=False)
@@ -1973,7 +1971,7 @@ class IndexedSelector(PhysicalSelector, object):
             self.unit_gate_selected = unit_gate
         self.mmu.log_error("PAUL: actual=%s, homed=%s" % (actual, homed))
 
-# PAUL automate the setup of the sequence through homing move on startup
+    # PAUL TODO automate the setup of the sequence through homing move on startup
     def _best_rotation_direction(self, start_gate, end_gate):
         if start_gate < 0:
             return 1 # Forward direction
@@ -1985,24 +1983,19 @@ class IndexedSelector(PhysicalSelector, object):
         # Find distance in forward direction
         start_idx = sequence.index(start_gate)
         for i in range(1, n):
-            self.mmu.log_error("PAUL: i=%s, seq[i]=%s" % (i, sequence[(start_idx + i) % n]))
             if sequence[(start_idx + i) % n] == end_gate:
                 forward_distance = i
-                self.mmu.log_error("PAUL: forward_distance=%s" % i)
                 break
 
         # Find distance in reverse direction
         rev_seq = sequence[::-1]
         start_idx = rev_seq.index(start_gate)
         for i in range(1, n):
-            self.mmu.log_error("PAUL: i=%s, rev_seq[i]=%s" % (i, rev_seq[(start_idx + i) % n]))
             if rev_seq[(start_idx + i) % n] == end_gate:
                 reverse_distance = i
-                self.mmu.log_error("PAUL: rev_distance=%s" % i)
                 break
 
         return 1 if forward_distance <= reverse_distance else -1
-
 
     # Internal raw wrapper around all selector moves
     # Returns position after move, and if homed (homing moves)

@@ -76,7 +76,7 @@ class MmuSensorManager:
         self.all_sensors_map.update(common_sensors)
         self.bypass_sensors_map = common_sensors
 
-# PAUL.. how did we do?
+# PAUL.. testing how did we do?
 #        logging.info("PAUL: all_sensors_map=%s\n" % self.all_sensors_map.keys())
 #        for unit in self.mmu_machine.units:
 #            logging.info("PAUL: unit_sensors[%d]=%s\n" % (unit.unit_index, self.unit_sensors[unit.unit_index].keys()))

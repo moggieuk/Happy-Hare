@@ -252,7 +252,7 @@ class Mmu:
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.num_gates = self.mmu_machine.num_gates
 
-        self.name = "mmu_1" # PAUL TEMP hack to get though initialization
+#        self.name = "mmu_1" # PAUL TEMP hack to get though initialization
         self.gate_selected = self.TOOL_GATE_UNKNOWN # PAUL TEMP HACK to get through initialization
 
         self.calibration_status = 0b0
@@ -1160,7 +1160,6 @@ class Mmu:
             self.slicer_color_rgb[gate] = self._color_to_rgb_tuple(tool_value['color'])
         self._update_t_macros()
         self.led_manager.gate_map_changed(None) # Force LED update
-#PAUL        self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1") # Cheat to force LED update
 
     # Helper to determine purge volume for toolchange
     def _get_purge_volume(self, from_tool, to_tool):
@@ -1338,7 +1337,6 @@ class Mmu:
             self._spoolman_sync()
         except Exception as e:
             self.log_error('Error booting up MMU: %s' % str(e))
-            raise e # PAUL temp for testing
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
@@ -2818,7 +2816,7 @@ class Mmu:
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead().is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_operation, self.is_printer_paused(), idle_timeout))
             if call_macro:
-                self.led_manager.print_state_changed(print_state, self.print_state) # PAUL
+                self.led_manager.print_state_changed(print_state, self.print_state)
                 if self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro, None) is not None:
                     self.wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.print_state_changed_macro, print_state, self.print_state))
             self.print_state = print_state
@@ -7204,19 +7202,14 @@ class Mmu:
 
     def _mmu_visual_to_string(self):
         divider = UI_SPACE + UI_SEPARATOR + UI_SPACE
-# PAUL        c_sum = 0
         msg_units = "Unit : "
         msg_gates = "Gate : "
         msg_avail = "Avail: "
         msg_tools = "Tools: "
         msg_selct = "Selct: "
-# PAUL could do this differently using mmu_unit attributes (first_gate, num_gates)
         for unit in range(self.mmu_machine.num_units):
-# PAUL        for unit_index, gate_count in enumerate(self.mmu_machine.units):
-# PAUL            gate_indices = range(c_sum, c_sum + gate_count)
             unit = self.mmu_machine.get_mmu_unit_by_index(unit)
             gate_indices = range(unit.first_gate, unit.first_gate + unit.num_gates)
-# PAUL            c_sum += gate_count
             last_gate = gate_indices[-1] == self.num_gates - 1
             sep = ("|" + divider) if not last_gate else "|"
             tool_strings = []
