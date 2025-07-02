@@ -60,12 +60,12 @@ sensor_mcu: buffer
 #
 [mmu_unit unit0]
 
-num_gates: 4			# Number of gates/lanes *this* mmu_unit
+num_gates: 4				# Number of gates/lanes *this* mmu_unit
 
 # MMU Vendor & Version is used to automatically configure some parameters and validate configuration
 #
-mmu_vendor: KMS				# MMU family
-mmu_version: 1.0			# MMU hardware version number (add mod suffix documented above)
+vendor: KMS				# MMU family
+version: 1.0				# MMU hardware version number (add mod suffix documented above)
 #
 # The following attributes are set internally from vendor/version above. Only uncomment to customize the vendor
 # default if you known what you are doing or for custom ("Other") designs

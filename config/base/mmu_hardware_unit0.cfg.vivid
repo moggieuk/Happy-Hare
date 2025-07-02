@@ -60,7 +60,7 @@ sensor_mcu: buffer
 #
 [mmu_unit unit0]
 
-num_gates: 4			# Number of gates/lanes *this* mmu_unit
+num_gates: 4				# Number of gates/lanes *this* mmu_unit
 
 # MMU Vendor & Version is used to automatically configure some parameters and validate configuration
 #
