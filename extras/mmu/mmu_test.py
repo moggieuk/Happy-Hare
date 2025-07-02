@@ -16,8 +16,7 @@ import random, logging
 from ..mmu_sensors import MmuSensors
 
 # Happy Hare imports
-from ..            import mmu_machine
-from ..mmu_machine import MmuToolHead
+from ..mmu_unit    import MmuToolHead
 
 # MMU subcomponent clases
 from .mmu_shared   import *
@@ -479,7 +478,8 @@ class MmuTest:
                         if not tracking:
                             self.mmu.log_error(">>>>>> Position tracking error")
                             break
-                self.mmu.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD")
+                for unit_name in self.mmu.mmu_machine.units_names:
+                    self.mmu.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD UNIT=%s" % unit_name)
                 self.mmu.log_info("Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" % (total, self.mmu._get_filament_position()))
             finally:
                 self.mmu._is_running_test = False
@@ -540,7 +540,7 @@ class MmuTest:
                 self.mmu._is_running_test = True
                 for i in range(loop):
                     self.mmu.log_info("Loop: %d" % i)
-                    if self.mmu.mmu_machine.multigear:
+                    if self.mmu.mmu_unit().multigear:
                         self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
                     stop_on_endstop = random.choice([-1, 1])
                     motor = "gear+extruder" if random.randint(0, mix) else "extruder"
@@ -577,7 +577,7 @@ class MmuTest:
                 self.mmu._is_running_test = True
                 for i in range(loop):
                     self.mmu.log_info("Loop: %d" % i)
-                    if self.mmu.mmu_machine.multigear:
+                    if self.mmu.mmu_unit().multigear:
                         self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
                     stop_on_endstop = random.choice([-1, 1])
                     motor = "gear"

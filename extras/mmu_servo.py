@@ -1,8 +1,8 @@
 # Happy Hare MMU Software
-# Custom servo support that carefully synchronizes PWM changes to avoid "kickback" caused
-# by a truncated final pulse with digital servos.
-# All existing servo functionality is available with the addition of a 'DURATION'
-# parameter for setting PWM pulse train with auto off
+#
+# Custom servo support that carefully synchronizes PWM changes to avoid "kickback" caused by
+# a truncated final pulse with digital servos. All existing servo functionality is available
+# with the addition of a 'DURATION' parameter for setting PWM pulse train with auto off
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com

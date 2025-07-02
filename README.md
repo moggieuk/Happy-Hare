@@ -33,7 +33,7 @@ Universal Automated Filament Changer / MMU driver for Klipper
 -->
 </p>
 
-Happy Hare is the original open-source filament changer controller for multi-color printing. Its philosophy is to provide a universal control system that adapts to your choice of MMU (Multi-Material Unit). If you switch MMUs, the software transitions seamlessly with you. Currently, it fully supports **ERCF**, **Tradrack**, **Box Turtle**, **Angry Beaver**, **Night Owl**, **3MS**, **3D Chameleon**, **QuattroBox**, **PicoMMU**, and various custom designs.
+Happy Hare is the original open-source filament changer controller for multi-color printing. Its philosophy is to provide a universal control system that adapts to your choice of MMU (Multi-Material Unit). If you switch MMUs, the software transitions seamlessly with you. Currently, it fully supports **ERCF**, **Tradrack**, **Box Turtle**, **Angry Beaver**, **Night Owl**, **3MS**, **3D Chameleon**, **QuattroBox**, **PicoMMU**, **MMX**, **ViViD**, **KMS** and various custom designs.
 
 The system is implemented as a Klipper extension (primarily using Python modules) to control MMUs and AFCs. It also provides functionality that can be customized through Klipper macros. With extensive configuration options for personalization, it includes an installer to simplify the initial setup for popular MMU and MCU types. For details about the different conceptual types of MMUs and the functions of their various sensors, refer to the [conceptual MMU guide](https://github.com/moggieuk/Happy-Hare/wiki/Conceptual-MMU). This guide is particularly useful for customized setups. For the best experience, pair it with the [KlipperScreen for Happy Hare](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) project, at least until Mainsail integration is completed. Extensive documentation is available in the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki).
 
@@ -66,6 +66,8 @@ Some users have inquired about making donations to support this project (and to 
   - Quattro Box
   - PicoMMU
   - MMX
+  - ViViD (BTT)
+  - KMS
   - Custom...
 - Synchronized movement of extruder and gear motors (with sync feedback control) to overcome friction and even work with FLEX materials!
 - Support for all type of sensor: pre-gate, post-gear, combiner gate sensors, extruder entry sensors, toolhead sensors
