@@ -39,7 +39,7 @@ config ENABLE_SYNC_FEEDBACK
   help
     Sync feedback will be used to dynamically adjust the gear stepper speed to
     match the extruder.
-  depends on MMU_HAS_SYNC_FEEDBACK && (ENABLE_SYNC_TO_EXTRUDER || FILAMENT_ALWAYS_GRIPPED)
+  depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && (ENABLE_SYNC_TO_EXTRUDER || FILAMENT_ALWAYS_GRIPPED)
 config PARAM_SYNC_FEEDBACK
   int
   default 1 if ENABLE_SYNC_FEEDBACK

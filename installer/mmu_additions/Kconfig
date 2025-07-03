@@ -5,6 +5,7 @@ menu "MMU Additions"
     modifications available to enhance the design. Select those modifications
     here so that Happy Hare will install the correct drivers and setup
     the best possible starter configuration.
+
   rsource "Kconfig.*"
   rsource "sensors/Kconfig"
 endmenu

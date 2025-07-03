@@ -1,3 +1,5 @@
+if MMU_HAS_SYNC_FEEDBACK_BUFFER
+
 config MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
   help
     A sync-feedback sensor (often referred to as a "buffer") is
@@ -20,3 +22,5 @@ config MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
     This sensor allows the MMU gear stepper to be synchronized with
     the extruder.
   bool "Sync-Feedback Tension sensor (aka buffer in)?"
+
+endif
