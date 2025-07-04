@@ -1,3 +1,4 @@
+import sys
 import logging
 import re
 
@@ -12,6 +13,8 @@ CONFIG_SPEC = [
     ("unknown", re.compile(r"^\S")),
 ]
 
+if sys.version_info[0] >= 3:
+    unicode = str
 
 class Token(object):
     def __init__(self, type, value):
