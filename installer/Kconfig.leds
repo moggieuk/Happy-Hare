@@ -1,8 +1,10 @@
 if MMU_HAS_LEDS
   menu "Leds"
+
     config BOOL_ENABLE_LEDS
       bool "Enable on start?"
-      default y
+      help
+        This allows you to install but turn off LED on startup.
     config PARAM_LED_ENABLE
       int
       default 0
@@ -10,7 +12,10 @@ if MMU_HAS_LEDS
 
     config BOOL_ANIMATE_LEDS
       bool "Enable animation?"
-      default y
+      help
+        This allows you to turn off LED animations perhaps reducing the overhead
+        on your main klipper CPU. Only disable if you have frequent TTC errors.
+        (rarely necessary)
     config PARAM_LED_ANIMATION
       int
       default 0

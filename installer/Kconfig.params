@@ -30,6 +30,9 @@ config MMU_DISABLE_FILAMENT_BUFFER_OPTION
 config MMU_HAS_LEDS
   bool
 
+config PARAM_MISC_HARDWARE
+  string
+default ""
 
 menu "Parameters"
 
