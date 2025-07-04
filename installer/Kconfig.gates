@@ -2,15 +2,24 @@ menu "Gate loading & parking"
 
   config PARAM_GATE_HOMING_MAX
     string "Maximum homing distance to the gate (mm)"
-    default "70"
-
-  config PARAM_GATE_PRELOAD_HOMING_MAX
-    string "Maximum homing distance to the mmu_gear endstop (mm)"
-    default "70"
+    default "100"
 
   config PARAM_GATE_PARKING_DISTANCE
     string "Gate parking distance (mm)"
     default "23"
+    help
+      Filament parking distance (mm) after homing to configured gate sensor
+
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    string "Maximum homing distance to the mmu_gear endstop (mm)"
+    default "100"
+
+  config PARAM_GATE_PRELOAD_PARKING_DISTANCE
+    string "Preload parking distance (mm)"
+    default "0"
+    help
+      Filament parking distance (mm) after homing to configured gate sensor
+      or `mmu_gear' sensor if available
 
   config PARAM_GATE_ENDSTOP_TO_ENCODER
     string "Gate endstop to encoder distance (mm)"

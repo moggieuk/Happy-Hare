@@ -8,7 +8,7 @@ config MMU_TYPE_PICO_MMU_1_0
   select MMU_HAS_SERVO
   select PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_FILAMENT_ALWAYS_GRIPPED
-  imply ENABLE_LEDS
+  imply BOOL_ENABLE_LEDS
 
 if MMU_TYPE_PICO_MMU_1_0
   rsource "../servos/Kconfig"

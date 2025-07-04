@@ -10,9 +10,21 @@ choice CHOICE_BOARD_TYPE
     the default pin layout for your setup. After selecting board
     pins can be customized in Advanced Settings.
 
-  rsource "Kconfig.*"
+  if !MMU_TYPE_KMS_1_0 && ! MMU_TYPE_VVD_1_0
+    rsource "Kconfig.*"
 
-  config BOARD_TYPE_OTHER
-    bool "Not listed / Other"
-    select OVERRIDE_PINS # Force user to define pins
+    config BOARD_TYPE_OTHER
+      bool "Not listed / Other"
+      select OVERRIDE_PINS # Force user to define pins
+  endif
+
+  # KMS has custom mcu
+  if MMU_TYPE_KMS_1_0
+    rsource "custom/Kconfig.kms"
+  endif
+
+  # ViViD has custom mcu
+  if MMU_TYPE_VVD_1_0
+    rsource "custom/Kconfig.kms"
+  endif
 endchoice

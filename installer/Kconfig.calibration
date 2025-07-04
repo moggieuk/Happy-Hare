@@ -1,0 +1,70 @@
+menu "Calibration / Autotuning"
+
+  config BOOL_AUTOCAL_BOWDEN_LENGTH
+    bool "Auto calibration bowden length"
+    help
+      Automated bowden length calibration.
+      The calibrated bowden length will be established on first load. It can also be set
+      manually or reset with MMU_CALIBRATE_BOWDEN. Best results require the use of
+      sync-feedback-compression or extruder sensor but gear-touch or encoder will also work.
+      Note that 'extruder_homing_endstop' cannot be 'none'
+  config PARAM_AUTOCAL_BOWDEN_LENGTH
+    int
+    default 1 if BOOL_AUTOCAL_BOWDEN_LENGTH
+    default 0
+
+  config BOOL_AUTOTUNE_BOWDEN_LENGTH
+    bool "Autotune bowden length"
+    help
+      Automated bowden length tuning.
+      Once calibrated this setting will tune the bowden distance over time.
+      Works best with toolhead sensor
+  config PARAM_AUTOTUNE_BOWDEN_LENGTH
+    int
+    default 1 if BOOL_AUTOTUNE_BOWDEN_LENGTH
+    default 0
+
+  config BOOL_SKIP_CAL_ROTATION_DISTANCE
+    bool "Skip rotation distance calibration"
+    help
+      Skip rotation distance calibration (MMU_CALIBRATE_GEAR).
+      This will rely on installed default value (although it can still be calibrated).
+      Usually a good choice if autotune is enabled.
+  config PARAM_SKIP_CAL_ROTATION_DISTANCE
+    int
+    default 1 if BOOL_SKIP_CAL_ROTATION_DISTANCE
+    default 0
+
+  config BOOL_AUTOTUNE_ROTATION_DISTANCE
+    bool "Autotune rotation distance"
+    help
+      Automated gate calibration/tuning.
+      Requires sync-feedback sensor (aka "buffer") with both compression and tension switches
+      or accurately calibrated encoder (encoder works only with gate 0)
+  config PARAM_AUTOTUNE_ROTATION_DISTANCE
+    int
+    default 1 if BOOL_AUTOTUNE_ROTATION_DISTANCE
+    default 0
+
+  config BOOL_SKIP_CAL_ENCODER
+    bool "Skip encoder calibration"
+    help
+      Skip encoder calibration (MMU_CALIBRATE_ENCODER).
+      Will rely on installed default value (although it can still be calibrated).
+      Not recommended but allows for easier initial setup especially when 'autotune_encoder'
+  config PARAM_SKIP_CAL_ENCODER
+    int
+    default 1 if BOOL_SKIP_CAL_ENCODER
+    default 0
+
+  config BOOL_AUTOTUNE_ENCODER
+    bool "Autotune encoder"
+    help
+      Automated encoder tuning.
+      Not Implemented Yet!
+  config PARAM_AUTOTUNE_ENCODER
+    int
+    default 1 if BOOL_AUTOTUNE_ENCODER
+    default 0
+
+endmenu

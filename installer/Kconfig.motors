@@ -1,8 +1,8 @@
 menu "Motors"
 
-  comment '                  '
-  comment '-- Gear Stepper --'
-  comment '                  '
+    comment '                      '
+    comment '-- Gear Stepper --'
+    comment '                      '
   
   config PARAM_GEAR_GEAR_RATIO
     string "Gear ratio"
@@ -75,11 +75,28 @@ menu "Motors"
       default "0.5" if PARAM_SELECTOR_TYPE = "LinearSelector"
       default "0.8" if PARAM_SELECTOR_TYPE = "ServoSelector"
 
-    config SERVO_ALWAYS_ACTIVE
+    config BOOL_SERVO_ALWAYS_ACTIVE
       bool "Servo always active?"
+      help
+        This option will force the servo to always stay active. It can be dangerous on some
+        on some designs or miscalibrated MMU because it strains the servo and control electronics.
+
+        Recommend to disable unless you are sure you know you need it.
     config PARAM_SERVO_ALWAYS_ACTIVE
       int
-      default 1 if SERVO_ALWAYS_ACTIVE
+      default 1 if BOOL_SERVO_ALWAYS_ACTIVE
+      default 0
+
+    config BOOL_SERVO_ACTIVE_DOWN
+      bool "Servo active down"
+      help
+        This option will force the servo to stay active when in the down or gripped position. It can
+        be dangerous on some designs or miscalibrated MMU because it strains the servo and control electronics.
+
+        Recommend to disable unless you are sure you know you need it or your experience poor filament grip.
+    config PARAM_SERVO_ACTIVE_DOWN
+      int
+      default 1 if BOOL_SERVO_ACTIVE_DOWN
       default 0
   endif 
 

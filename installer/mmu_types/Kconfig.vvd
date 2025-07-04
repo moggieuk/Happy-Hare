@@ -2,10 +2,21 @@ config MMU_TYPE_VVD_1_0
   bool "BTT ViViD"
   select MMU_HAS_SELECTOR
   select MMU_HAS_LEDS
-  select MMU_HAS_SYNC_FEEDBACK_BUFFER
   select MMU_HAS_ESPOOLER
   select PARAM_REQUIRE_BOWDEN_MOVE
   select MMU_DISABLE_FILAMENT_BUFFER_OPTION
+
+if MMU_TYPE_VVD_1_0
+  config CHOICE_VVD_BUFFER
+    help
+      Select if using the BTT ViViD brand buffer connected to the bowden tube using its
+      integrated mcu. Don't select if using a different buffer system (instead add
+      under MMU additions)
+    bool "KMS buffer"
+    select MMU_HAS_SYNC_FEEDBACK_BUFFER
+    select MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+    select MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+endif
 
 if MMU_TYPE_VVD_1_0
   if SHOW_MMU_ADDITIONS_WITH_TYPE
