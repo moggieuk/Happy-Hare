@@ -20,6 +20,9 @@ class Upgrades:
         print(from_version)
         try:
             upgrade_path = next(upgrade for upgrade in all_upgrades if upgrade[1] > float(from_version))
+        except StopIteration:
+            print("No upgrade found for version:", from_version)
+            exit(1)
         except ValueError:
             lowest_from_version = min([upgrade[0] for upgrade in all_upgrades if upgrade[0] > float(from_version)])
             lowest_from_version = "{:.2f}".format(lowest_from_version)

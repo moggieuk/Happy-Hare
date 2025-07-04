@@ -1,3 +1,4 @@
+import sys
 import argparse
 import re
 import os
@@ -223,9 +224,12 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     if os.path.islink(dest_file):
         os.remove(dest_file)
 
-    with open(dest_file, "w") as f:
-        f.write(builder.write().encode("utf-8"))
-
+    if sys.version_info[0] < 3: # Python 2
+        with open(dest_file, "w") as f:
+            f.write(builder.write().encode("utf-8"))
+    else: # Python 3
+        with open(dest_file, "w", encoding="utf-8") as f:
+            f.write(builder.write())
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     logging.info("Adding moonraker components")
@@ -370,7 +374,7 @@ def check_version(kconfig_file, input_files):
 
     if float(current_version) > float(target_version):
         logging.warning(
-            "Automatic 'downgrade' to earlier version is not guaranteed!"
+            "Automatic 'downgrade' to earlier version is not guaranteed!\n"
             "If you encounter startup problems you may need to manually compare "
             "the backed-up 'mmu_parameters.cfg' with current one to restore differences"
         )
