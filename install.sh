@@ -51,17 +51,17 @@ while getopts "a:b:k:c:m:r:idsze" arg; do
     esac
 done
 
-if [ "${F_MENUCONFIG}" -eq 1 ] && [ "${F_UNINSTALL}" -eq 1 ]; then
+if [ "${F_MENUCONFIG:-0}" -eq 1 ] && [ "${F_UNINSTALL:-0}" -eq 1 ]; then
     echo "${C_ERROR}Can't install and uninstall at the same time!${C_OFF}"
     usage
 fi
 
-if [ "${F_UNINSTALL}" -eq 1 ]; then
+if [ "${F_UNINSTALL:-0}" -eq 1 ]; then
     make uninstall
     exit 0
 fi
 
-if [ "${F_MENUCONFIG}" -eq 1 ]; then
+if [ "${F_MENUCONFIG:-0}" -eq 1 ]; then
     make menuconfig
 fi
 
