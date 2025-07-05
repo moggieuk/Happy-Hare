@@ -100,7 +100,7 @@ backup = \
 	fi
 
 restart_service = \
-	if [ "$(F_NOSERVICE)" -eq 1 ]; then \
+	if [ "${F_NOSERVICE:-0}" -eq 1 ]; then \
 		echo "$(C_INFO)Skipping restart of $(2) service$(C_OFF)"; \
 	else \
 		[ "$(1)" -eq 0 ] || $(BUILD_MODULE) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
