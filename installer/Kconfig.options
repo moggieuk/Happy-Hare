@@ -5,49 +5,42 @@ menu "Software Options"
     configuration can be achieved later by editing generated klipper
     config files.
 
-  config BOOL_ENABLE_SELECTOR_TOUCH
+  config BOOL_SELECTOR_TOUCH_ENABLE
     bool "Enable touch selector operation using TMC Stallguard?"
     help
       This allows for additional selector recovery steps but is difficult to tune.
       Not recommended if you are new to MMU/Happy-Hare.
       The MCU must have DIAG output for steppers. Possible to configure later
     depends on PARAM_SELECTOR_TYPE = "LinearSelector"
-  config PARAM_ENABLE_SELECTOR_TOUCH
+  config PARAM_SELECTOR_TOUCH_ENABLE
     int
-    default 1 if BOOL_ENABLE_SELECTOR_TOUCH
+    default 1 if BOOL_SELECTOR_TOUCH_ENABLE
     default 0
 
   if BOARD_TYPE_EASY_BRD
     comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
-      depends on ENABLE_SELECTOR_TOUCH
+      depends on BOOL_SELECTOR_TOUCH_ENABLE
     comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
-      depends on !ENABLE_SELECTOR_TOUCH
+      depends on !BOOL_SELECTOR_TOUCH_ENABLE
   endif
 
-  menu "Gear/Extruder Synchronization Options"
-    help
-      Some MMU designs allow fine control over when the MMU stepper is
-      synced with the extruder stepper. Synchronization helps to
-      overcome friction in the filament path.
-    rsource "Kconfig.sync"
-  endmenu
+  rsource "Kconfig.sync"
 
-
-  config BOOL_ENABLE_CLOG_DETECT
+  config BOOL_ENABLE_CLOG_DETECTION
     bool "Enable clog detection?"
     help
       Clog detection uses the encoder to detect when filament is no longer moving and pauses print
     depends on MMU_HAS_ENCODER
-  config BOOL_ENABLE_AUTO_CLOG_DETECT
+  config BOOL_ENABLE_AUTO_CLOG_DETECTION
     bool "Enable automatic clog detection length?"
     help
       This constantly tunes the clog detection length to help avoid false triggering
-    depends on BOOL_ENABLE_CLOG_DETECT
+    depends on BOOL_ENABLE_CLOG_DETECTION
     default y
   config PARAM_ENABLE_CLOG_DETECTION
     int 
-    default 2 if BOOL_ENABLE_AUTO_CLOG_DETECT
-    default 1 if BOOL_ENABLE_CLOG_DETECT
+    default 2 if BOOL_ENABLE_AUTO_CLOG_DETECTION
+    default 1 if BOOL_ENABLE_CLOG_DETECTION
     default 0
 
   config BOOL_ENABLE_ENDLESS_SPOOL

@@ -1,4 +1,9 @@
-menu "Motor Sync"
+menu "MMU Motor Sync"
+  help
+    Some MMU designs allow fine control over when the MMU stepper is
+    synced with the extruder stepper. Synchronization helps to
+    overcome friction in the filament path.
+
 
   if !FILAMENT_ALWAYS_GRIPPED
 
@@ -42,7 +47,7 @@ menu "Motor Sync"
       Sync feedback will be used to dynamically adjust the gear stepper speed to
       match the extruder.
     depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && !FILAMENT_ALWAYS_GRIPPED
-  config PARAM_SYNC_FEEDBACK
+  config PARAM_SYNC_FEEDBACK_ENABLE
     int
     default 1 if BOOL_ENABLE_SYNC_FEEDBACK
     default 0

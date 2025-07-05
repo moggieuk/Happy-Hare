@@ -81,7 +81,7 @@ class HHConfig(ConfigBuilder):
         # self.document = super(HHConfig, self).document  # because Python's inheritance apparently completly broken
         prefix = os.path.commonprefix(cfg_files)
         for cfg_file in cfg_files:
-            logging.info("Reading config file: " + cfg_file)
+            logging.debug(" > Reading config file: " + cfg_file)
             basename = cfg_file.replace(prefix, "")
             super(HHConfig, self).read(cfg_file)
             for section in self.sections():

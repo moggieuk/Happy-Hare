@@ -547,6 +547,9 @@ class ConfigBuilder(object):
         return default
 
     def set(self, section_name, option_name, value):
+        if value is None:
+            logging.error("{} in section {} has not value".format(option_name, section_name))
+            value="NOT_SET"
         value = value.strip()
         idx = value.find("\n")
         if idx != -1:
