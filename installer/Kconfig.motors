@@ -54,12 +54,15 @@ menu "Motors"
 
     config PARAM_SERVO_UP_ANGLE
       int "Servo up angle"
+      default 0
 
     config PARAM_SERVO_MOVE_ANGLE
       int "Servo move angle"
+      default 0
 
     config PARAM_SERVO_DOWN_ANGLE
       int "Servo down angle"
+      default 0
 
     config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
       int "How often to buzz servo on down angle"
