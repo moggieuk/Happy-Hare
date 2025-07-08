@@ -25,6 +25,9 @@ if MMU_TYPE_NIGHT_OWL_1_0
     default "1.0"
   config PARAM_NUM_GATES
     default 2
+  choice CHOICE_SELECTOR_TYPE
+    default VIRTUAL_SELECTOR
+  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "50:10"

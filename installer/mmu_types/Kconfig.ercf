@@ -66,6 +66,9 @@ if MMU_TYPE_ERCF_1_1
     default "1.1"
   config PARAM_NUM_GATES
     default 9
+  choice CHOICE_SELECTOR_TYPE
+    default LINEAR_SELECTOR
+  endchoice
 
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 3
@@ -152,6 +155,9 @@ if MMU_TYPE_ERCF_2_0
     default "2.0"
   config PARAM_NUM_GATES
     default 8
+  choice CHOICE_SELECTOR_TYPE
+    default LINEAR_SELECTOR
+  endchoice
   
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 3

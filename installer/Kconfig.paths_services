@@ -11,10 +11,12 @@ menu "Paths & Services"
     default "/usr/share/klipper" if $(to_bool, [ -d "/usr/share/klipper" ])
     default "~/klipper"
 
-  config PRINTER_CONFIG_FILE
-    string "Printer config file"
-    depends on !REPETIER
-    default "printer.cfg"
+  config MOONRAKER_HOME
+    string "Moonraker directory"
+    depends on !OCTOPRINT
+    default "$(CONFIG_MOONRAKER_HOME)" if $(to_bool, [ -n "$(CONFIG_MOONRAKER_HOME)" ])
+    default "/usr/data/moonraker" if $(to_bool, [ -e "/usr/data/moonraker" ])
+    default "~/moonraker"
 
   config KLIPPER_CONFIG_HOME
     string "Klipper config directory"
@@ -23,25 +25,29 @@ menu "Paths & Services"
     default "/usr/data/printer_data/config" if $(to_bool, [ -e "/usr/data/printer_data" ])
     default "~/printer_data/config"
 
-  config MOONRAKER_CONFIG_FILE
-    string "Moonraker config file"
-    default "moonraker.conf"
-
-  config MOONRAKER_HOME
-    string "Moonraker directory"
-    depends on !OCTOPRINT
-    default "$(CONFIG_MOONRAKER_HOME)" if $(to_bool, [ -n "$(CONFIG_MOONRAKER_HOME)" ])
-    default "/usr/data/moonraker" if $(to_bool, [ -e "/usr/data/moonraker" ])
-    default "~/moonraker"
-
-  config PARAM_HAPPY_HARE_HOME
-    string "Happy Hare directory"
-    default "$(SRC)"
-
   config PARAM_GCODES_PATH
     string "Gcodes directory"
     default "/usr/data/printer_data/gcodes" if $(to_bool, [ -e "/usr/data/printer_data" ])
     default "~/printer_data/gcodes"
+
+  config PRINTER_CONFIG_FILE
+    string "Printer config file"
+    depends on !REPETIER
+    default "printer.cfg"
+
+  config MOONRAKER_CONFIG_FILE
+    string "Moonraker config file"
+    default "moonraker.conf"
+
+  config PARAM_MMU_VARS_CFG
+    string "save_variables path"
+    default "$(CONFIG_KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg" if $(to_bool, [ -n "$(CONFIG_KLIPPER_CONFIG_HOME)" ])
+    default "/usr/data/printer_data/config/mmu/mmu_vars.cfg" if $(to_bool, [ -e "/usr/data/printer_data" ])
+    default "~/printer_data/config/mmu/mmu_vars.cfg"
+
+  config PARAM_HAPPY_HARE_HOME
+    string "Happy Hare directory"
+    default "$(SRC)"
 
   config SERVICE_KLIPPER
     string "Klipper service name"

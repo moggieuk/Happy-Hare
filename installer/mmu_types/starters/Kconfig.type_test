@@ -30,4 +30,7 @@ if MMU_CUSTOM_TYPE_EVERYTHING
     default "1.0"
   config PARAM_NUM_GATES
     default 4
+  choice CHOICE_SELECTOR_TYPE
+    default MACRO_SELECTOR
+  endchoice
 endif 

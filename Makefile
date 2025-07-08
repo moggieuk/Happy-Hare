@@ -1,6 +1,6 @@
 SHELL:=/usr/bin/env sh
 PY:=python
-PAULMAKEFLAGS += --jobs 16 # Parallel build
+MAKEFLAGS += --jobs 16 # Parallel build
 
 # Print Colors (exported for use in py installer)
 ifneq ($(shell which tput 2>/dev/null),)

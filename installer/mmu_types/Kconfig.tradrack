@@ -38,6 +38,9 @@ if MMU_TYPE_TRADRACK_1_0
     default "1.0"
   config PARAM_NUM_GATES
     default 10
+  choice CHOICE_SELECTOR_TYPE
+    default LINEAR_SELECTOR
+  endchoice
 
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0

@@ -11,10 +11,10 @@ config MMU_TYPE_KMS_1_0
   select PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_FILAMENT_ALWAYS_GRIPPED
   select MMU_DISABLE_FILAMENT_BUFFER_OPTION
-  imply CHOICE_KMS_BUFFER
+  imply OPTION_KMS_BUFFER
 
 if MMU_TYPE_KMS_1_0
-  config CHOICE_KMS_BUFFER
+  config OPTION_KMS_BUFFER
     help
       Select if using the KMS brand buffer connected to the bowden tube using its
       integrated mcu. Don't select if using a different buffer system (instead add
@@ -38,6 +38,9 @@ if MMU_TYPE_KMS_1_0
     default "1.0"  
   config PARAM_NUM_GATES
     default 4
+  choice CHOICE_SELECTOR_TYPE
+    default VIRTUAL_SELECTOR
+  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"

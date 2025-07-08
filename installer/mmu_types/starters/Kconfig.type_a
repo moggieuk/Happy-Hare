@@ -42,6 +42,9 @@ if MMU_CUSTOM_TYPE_A
     default "1.0"
   config PARAM_NUM_GATES
     default 8
+  choice CHOICE_SELECTOR_TYPE
+    default LINEAR_SELECTOR
+  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"

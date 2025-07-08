@@ -29,6 +29,10 @@ if MMU_TYPE_QUATTRO_BOX_1_0
     default "1.0"  
   config PARAM_NUM_GATES
     default 4
+  choice CHOICE_SELECTOR_TYPE
+    default VIRTUAL_SELECTOR
+  endchoice
+
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"
   config PARAM_GEAR_RUN_CURRENT
@@ -100,6 +104,9 @@ if MMU_TYPE_QUATTRO_BOX_1_1
     default "1.1"  
   config PARAM_NUM_GATES
     default 4
+  choice CHOICE_SELECTOR_TYPE
+    default VIRTUAL_SELECTOR
+  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"
