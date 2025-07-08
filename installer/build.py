@@ -182,6 +182,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     if (not basename.startswith("addons/") or not basename.endswith("_hw.cfg")) and basename not in [
         "base/mmu.cfg",
         "base/mmu_hardware.cfg",
+        "base/mmu_hardware_unit0.cfg",
         "base/mmu_parameters.cfg",
         "base/mmu_macro_vars.cfg",
         "mmu_vars.cfg",
@@ -319,6 +320,7 @@ def uninstall_includes(dest_file):
         "mmu_form_tip.cfg",
         "mmu_parameters.cfg",
         "mmu_hardware.cfg",
+        "mmu_hardware_unit0.cfg",
         "mmu_filametrix.cfg",
         "mmu.cfg",
         "mmu/base/*.cfg",

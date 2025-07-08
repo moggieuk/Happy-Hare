@@ -1,6 +1,6 @@
 SHELL:=/usr/bin/env sh
 PY:=python
-MAKEFLAGS += --jobs 16 # Parallel build
+PAULMAKEFLAGS += --jobs 16 # Parallel build
 
 # Print Colors (exported for use in py installer)
 ifneq ($(shell which tput 2>/dev/null),)
@@ -61,6 +61,7 @@ cfg_base = $(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
 				base/mmu.cfg \
 				base/mmu_parameters.cfg \
 				base/mmu_hardware.cfg \
+				base/mmu_hardware_unit0.cfg \
 				base/mmu_macro_vars.cfg))
 hh_configs_to_parse = $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(cfg_base) $(cfg_addons))
 
