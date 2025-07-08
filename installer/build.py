@@ -203,7 +203,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     else:
         from_version = to_version
 
-    logging.info("Upgrading from {} to {}".format(from_version, to_version))
+    #logging.info("Upgrading from {} to {}".format(from_version, to_version))
     upgrades = Upgrades()
     upgrades.upgrade(hhcfg, from_version, to_version)
 

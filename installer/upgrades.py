@@ -33,7 +33,7 @@ class Upgrades:
             exit(1)
 
         upgrade_path = ["{:.2f}".format(v) for v in upgrade_path]
-        logging.debug("Upgrading from {} to {}".format(from_version, upgrade_path[1]))
+        logging.info("Upgrading from {} to {}".format(from_version, upgrade_path[1]))
         upgrade_fn = "upgrade_{}_to_{}".format(upgrade_path[0].replace(".", "_"), upgrade_path[1].replace(".", "_"))
         getattr(self, upgrade_fn)(cfg)
         cfg.set("mmu", "happy_hare_version", upgrade_path[1])
