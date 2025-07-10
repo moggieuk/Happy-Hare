@@ -29,12 +29,14 @@ if MMU_TYPE_3D_CHAMELEON_1_0
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+
+  config PARAM_GEAR_HOMING_SPEED
+    default "80"
+
   config PARAM_SELECTOR_RUN_CURRENT
     default "0.63"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
-  config PARAM_GEAR_HOMING_SPEED
-    default "80"
 
   config PARAM_GATE_PARKING_DISTANCE
     default "250"

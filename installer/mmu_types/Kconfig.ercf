@@ -79,10 +79,12 @@ if MMU_TYPE_ERCF_1_1
     default "0.5"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+
   config PARAM_SELECTOR_RUN_CURRENT
     default "0.4"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
+
   config PARAM_SERVO_DURATION
     default "0.4"
   config PARAM_GATE_PARKING_DISTANCE
@@ -168,10 +170,12 @@ if MMU_TYPE_ERCF_2_0
     default "0.5"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+
   config PARAM_SELECTOR_RUN_CURRENT
     default "0.4"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
+
   config PARAM_SERVO_DURATION
     default "0.4"
   config PARAM_ENCODER_RESOLUTION

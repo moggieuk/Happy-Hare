@@ -51,10 +51,12 @@ if MMU_TYPE_TRADRACK_1_0
     default "1.27"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.2"
+
   config PARAM_SELECTOR_RUN_CURRENT
     default "0.63"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
+
   config PARAM_SERVO_DURATION
     default "0.4"
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN

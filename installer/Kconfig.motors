@@ -1,8 +1,6 @@
 menu "Motors"
 
-    comment '                      '
-    comment '-- Gear Stepper --'
-    comment '                      '
+  comment 'v----- GEAR STEPPER -----v'
   
   config PARAM_GEAR_GEAR_RATIO
     string "Gear ratio"
@@ -21,9 +19,15 @@ menu "Motors"
     default "0.1"
 
   if MMU_HAS_SELECTOR
-    comment '                      '
-    comment '-- Selector Stepper --'
-    comment '                      '
+    comment 'v--- SELECTOR STEPPER ---v'
+
+    config PARAM_SELECTOR_GEAR_RATIO
+      string "Selector gear ratio"
+      default "1:1"
+
+    config PARAM_SELECTOR_ROTATION_DISTANCE
+      string "Selector rotation distance"
+      default "40"
 
     config PARAM_SELECTOR_RUN_CURRENT
       string "Selector run current"
@@ -35,9 +39,7 @@ menu "Motors"
   endif 
 
   if MMU_HAS_SERVO
-    comment '                    '
-    comment '-- Selector Servo --'
-    comment '                    '
+    comment 'v---- SELECTOR SERVO ----v'
 
     config PARAM_SERVO_MAX_ANGLE
       int "Servo maximum angle"

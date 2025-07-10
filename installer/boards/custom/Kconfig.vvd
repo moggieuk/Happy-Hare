@@ -1,9 +1,9 @@
-config BOARD_TYPE_KMS_1_0
-  bool "BIQU KMS MCU"
+config BOARD_TYPE_VVD_1_0
+  bool "BTT ViViD MCU"
 
-if BOARD_TYPE_KMS_1_0
+if BOARD_TYPE_VVD_1_0
   config PARAM_BOARD_TYPE
-    default "KMS10"
+    default "VVD10"
 
   choice CHOICE_SERIAL_DEVICE
     default $(serial_config,1,stm32)
@@ -11,60 +11,38 @@ if BOARD_TYPE_KMS_1_0
 
   # PAUL TODO add second serial board for buffer (if fitted)
 
-  config PIN_GEAR_UART 
-    default "mmu:PB4"
-  config PIN_GEAR_STEP
-    default "mmu:PB5" 
-  config PIN_GEAR_DIR
-    default "mmu:PB6" 
-  config PIN_GEAR_ENABLE
-    default "!mmu:PB3" 
-
-  config PIN_GEAR_UART_1 
-    default "mmu:PB8" 
-  config PIN_GEAR_STEP_1
-    default "mmu:PB9" 
-  config PIN_GEAR_DIR_1
-    default "!mmu:PC10" 
-  config PIN_GEAR_ENABLE_1
-    default "!mmu:PB7" 
-
-  config PIN_GEAR_UART_2 
+  config PIN_SELECTOR_UART
+    default "mmu:PB3" 
+  config PIN_SELECTOR_STEP
     default "mmu:PD3" 
-  config PIN_GEAR_STEP_2
-    default "mmu:PD4" 
-  config PIN_GEAR_DIR_2
-    default "mmu:PD5" 
-  config PIN_GEAR_ENABLE_2
-    default "!mmu:PD6" 
+  config PIN_SELECTOR_DIR
+    default "mmu:PD2" 
+  config PIN_SELECTOR_ENABLE
+    default "!mmu:PB4" 
 
-  config PIN_GEAR_UART_3 
-    default "mmu:PC9" 
-  config PIN_GEAR_STEP_3
-    default "mmu:PD0" 
-  config PIN_GEAR_DIR_3
-    default "!mmu:PD1" 
-  config PIN_GEAR_ENABLE_3
-    default "!mmu:PD2" 
+  config PIN_GEAR_UART 
+    default "mmu:PB7"
+  config PIN_GEAR_STEP
+    default "mmu:PB6" 
+  config PIN_GEAR_DIR
+    default "mmu:PB5" 
+  config PIN_GEAR_ENABLE
+    default "!mmu:PB8" 
+
+  config PIN_SELECTOR_ENDSTOP
+    default "!mmu:PD0, !mmu:PA15, !mmu:PD1, !mmu:PC13"
+  config PIN_SELECTOR_ENDSTOP_NAME
+    default "unit0_gate0, unit0_gate1, unit0_gate2, unit0_gate3"
 
   config PIN_PRE_GATE_0
-    default "mmu:PA0" 
+    default "!mmu:PA0" 
   config PIN_PRE_GATE_1
-    default "mmu:PA1" 
+    default "!mmu:PA1" 
   config PIN_PRE_GATE_2
-    default "mmu:PA2" 
+    default "!mmu:PA2" 
   config PIN_PRE_GATE_3
-    default "mmu:PA3" 
+    default "!mmu:PA3" 
 
-  config PIN_GEAR_SENSOR_0
-    default "mmu:PA5"
-  config PIN_GEAR_SENSOR_1
-    default "mmu:PA6"
-  config PIN_GEAR_SENSOR_2
-    default "mmu:PA7"
-  config PIN_GEAR_SENSOR_3
-    default "mmu:PC4"
-  
   config PIN_ESPOOLER_FWD_0
     default "mmu:PA8"
   config PIN_ESPOOLER_RWD_0
