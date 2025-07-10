@@ -88,4 +88,40 @@ if BOARD_TYPE_KMS_1_0
     default "mmu:PC13" 
   config PIN_GATE_SENSOR
     default "mmu:PC0"
+
+# [temperature_sensor Environment]
+# sensor_type: HTU21D
+# i2c_mcu:mmu
+# htu21d_report_time:5
+# i2c_software_scl_pin:PB10
+# i2c_software_sda_pin:PB11
+#
+# [heater_fan KMS_BOX_FAN_LEFT]
+# pin: mmu:PC3
+# max_power: 1
+# kick_start_time: 0.5
+# heater: KMS_BOX_HOT
+# heater_temp: 20
+#
+# [heater_fan MMU_BOX_FAN_RIGHT]
+# pin: mmu:PC1
+# max_power: 1
+# kick_start_time: 0.5
+# heater: KMS_BOX_HOT
+# heater_temp: 20
+#
+# [heater_generic KMS_BOX_HOT]
+# gcode_id:BOX		# ID used when querying temperature using M105.
+# heater_pin:mmu:PB1
+# max_power:1.0
+# sensor_type: EPCOS 100K B57560G104F
+# sensor_pin: mmu:PA4
+# #smooth_time:
+# control:watermark
+# min_temp:0
+# max_temp:60
+
+  config PARAM_MISC_HARDWARE
+    default "[temperature_sensor Environment]\nsensor_type: HTU21D\ni2c_mcu:mmu\nhtu21d_report_time:5\ni2c_software_scl_pin:PB10\ni2c_software_sda_pin:PB11\n\n[heater_fan KMS_BOX_FAN_LEFT]\npin: mmu:PC3\nmax_power: 1\nkick_start_time: 0.5\nheater: KMS_BOX_HOT\nheater_temp: 20\n\n[heater_fan MMU_BOX_FAN_RIGHT]\npin: mmu:PC1\nmax_power: 1\nkick_start_time: 0.5\nheater: KMS_BOX_HOT\nheater_temp: 20\n\n[heater_generic KMS_BOX_HOT]\ngcode_id:BOX		# ID used when querying temperature using M105.\nheater_pin:mmu:PB1\nmax_power:1.0\nsensor_type: EPCOS 100K B57560G104F\nsensor_pin: mmu:PA4\n#smooth_time:\ncontrol:watermark\nmin_temp:0\nmax_temp:60"
+
 endif

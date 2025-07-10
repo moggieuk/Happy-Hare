@@ -32,7 +32,7 @@ config MMU_HAS_LEDS
 
 config PARAM_MISC_HARDWARE
   string
-default ""
+  default ""
 
 menu "Design Attributes"
 

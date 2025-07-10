@@ -66,4 +66,69 @@ if BOARD_TYPE_VVD_1_0
     default "mmu:PC13" 
   config PIN_GATE_SENSOR
     default "mmu:PC0"
+
+# PAUL TODO... misc h/w setup
+#
+# [neopixel mmu_leds_1]
+# pin: unit0:PC6
+# chain_count: 14
+# color_order: GRB
+#  
+# [neopixel mmu_leds_2]
+# pin: unit0:PC7
+# chain_count: 14
+# color_order: GRB
+
+# [temperature_sensor aht30_left]
+# sensor_type: AHT10
+# i2c_mcu: unit0
+# i2c_bus: i2c1_PA9_PA10
+# aht10_report_time: 5
+#
+# [temperature_sensor aht30_right]
+# sensor_type: AHT10
+# i2c_mcu: unit0
+# i2c_bus: i2c3_PA7_PA6
+# aht10_report_time: 5
+#
+# [heater_generic MMU_heater_vivid]
+# gcode_id:  mmu_heater_vivid
+# heater_pin: unit0:PC14
+# sensor_type: temperature_combined # PAUL TODO need to add this...
+# sensor_list: temperature_sensor aht30_left, temperature_sensor aht30_right
+# combination_method: mean
+# maximum_deviation: 100
+# control: pid
+# pid_Kp=51.604
+# pid_Ki=1.121
+# pid_Kd=593.934
+# min_temp: -100
+# max_temp: 70
+#
+# # PAUL ? saftey monitoring..?
+# #[verify_heater vivid_heater]
+# #max_error: 300
+# #check_gain_time: 600
+# #hysteresis: 10
+# #heating_gain: 1
+#
+# [heater_fan MMU_vivid_box_fan]
+# pin: unit0:PC15
+# shutdown_speed: 0
+# heater: MMU_heater_vivid
+#
+# # Electronics cooling fan
+# [controller_fan my_controller_fan]
+# pin: unit0:PA14
+# stepper: stepper mmu_selector_unit0, stepper mmu_gear_unit0
+#
+# # PAUL what is this used for?
+# [temperature_sensor ptc_ntc100k]
+# sensor_pin: unit0:PA4
+# sensor_type: Generic 3950
+# pullup_resistor: 2200
+
+  config PARAM_MISC_HARDWARE
+    default "PAUL TODO"
+
 endif
