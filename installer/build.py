@@ -4,7 +4,6 @@ import re
 import os
 import logging
 import subprocess
-from pprint import pprint
 from jinja2 import Environment, FileSystemLoader
 
 
@@ -24,9 +23,12 @@ LEVEL_NOTICE = 25
 
 
 class KConfig(kconfiglib.Kconfig):
-    def __init__(self, confg_file):
+    def __init__(self, config_file):
         super(KConfig, self).__init__("installer/Kconfig")
-        self.load_config(confg_file)
+        self.load_config(config_file)
+
+    def load_unit(self, unit_config_file):
+        self.load_config(unit_config_file)
 
     def is_selected(self, choice, value):
         if isinstance(value, list):
@@ -42,8 +44,16 @@ class KConfig(kconfiglib.Kconfig):
     def get(self, sym):
         """Get the value of the symbol"""
         if sym not in self.syms:
-            return None
+            raise KeyError("Symbol '{}' not found in Kconfig".format(sym))
         return self.syms[sym].user_value
+
+    def set(self, sym, value):
+        """Set the value of the symbol"""
+        # if sym not in self.syms:
+        self.syms[sym] = kconfiglib.Symbol(sym, type=kconfiglib.STRING, user_value=value)
+        # if isinstance(value, bool):
+        #     value = 1 if value else 0
+        # self.syms[sym].set_user_value(value)
 
     def as_dict(self):
         """Return the Kconfig as a dictionary"""
@@ -152,7 +162,7 @@ def build_mmu_parameters_cfg(builder, hhcfg):
 
 
 def jinja_env():
-    env = Environment(
+    return Environment(
         loader=FileSystemLoader("."),
         block_start_string="[%",
         block_end_string="%]",
@@ -162,38 +172,70 @@ def jinja_env():
         comment_end_string="#]",
         trim_blocks=True,
     )
-    return env
 
 
-def render_template(template_file, kcfg):
+def render_template(template_file, kcfg, extra_params):
     env = jinja_env()
     template = env.get_template(os.path.relpath(template_file))
-    return template.render(kcfg.as_dict())
+    params = kcfg.as_dict()
+    params.update(extra_params)
+    return template.render(params)
 
 
 def build(cfg_file, dest_file, kconfig_file, input_files):
-    match = re.search(r"config/(.*?)$", cfg_file)
-    if match:
-        basename = match.group(1)
-    else:
-        logging.error("Invalid config file: " + cfg_file)
-        exit(1)
+    cfg_file_basename = cfg_file[len(os.getenv("SRC")) + 1 :]
 
-    if (not basename.startswith("addons/") or not basename.endswith("_hw.cfg")) and basename not in [
-        "base/mmu.cfg",
-        "base/mmu_hardware.cfg",
-        "base/mmu_hardware_unit0.cfg",
-        "base/mmu_parameters.cfg",
-        "base/mmu_macro_vars.cfg",
-        "mmu_vars.cfg",
+    if (
+        not cfg_file_basename.startswith("config/addons/") or not cfg_file_basename.endswith("_hw.cfg")
+    ) and cfg_file_basename not in [
+        "config/base/mmu.cfg",
+        "config/base/mmu_hardware.cfg",
+        "config/base/mmu_parameters.cfg",
+        "config/base/mmu_macro_vars.cfg",
+        "config/base/mmu_hardware_unit0.cfg",
+        "config/mmu_vars.cfg",
     ]:
         return
-    logging.info("Building config file: " + cfg_file)
+
+    kcfg = KConfig(kconfig_file)
+    # kcfg.load_all(kconfig_files)
+    extra_params = dict()
+    unit_kcfgs = dict()
+
+    if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
+        total_num_gates = 0
+        for unit in kcfg.get("PARAM_MMU_UNITS").split(","):
+            unit = unit.strip()
+            unit_kcfgs[unit] = KConfig(kconfig_file + "." + unit)
+            total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
+
+        # Total sum of gates for all units
+        extra_params["PARAM_TOTAL_NUM_GATES"] = total_num_gates
+    else:
+        extra_params["PARAM_TOTAL_NUM_GATES"] = kcfg.getint("PARAM_NUM_GATES")
+
+        # if basename == "base/mmu_hardware.cfg":
+        #     build_config_file(basename, dest_file, kcfg, input_files, extra_params)
+        #     if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
+        #         for unit, unit_kcfg in unit_kcfgs.items():
+        #             unit_dest_file = dest_file.replace(".cfg", "_" + unit + ".cfg")
+        #             build_config_file("base/mmu_hardware_unit0.cfg", unit_dest_file, unit_kcfg, input_files, extra_params)
+        #     else:
+        #         build_config_file(
+        #             "base/mmu_hardware_unit0.cfg", dest_file.replace(".cfg", "_unit0.cfg"), kcfg, input_files, extra_params
+        #         )
+        # else:
+    build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params)
+
+
+def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
+    dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
+    logging.info("Building config file: " + dest_file_basename)
+    logging.info(dest_file)
 
     hhcfg = HHConfig(input_files)
-    kcfg = KConfig(kconfig_file)
 
-    buffer = render_template("config/" + basename, kcfg)
+    buffer = render_template(cfg_file_basename, kcfg, extra_params)
     builder = ConfigBuilder()
     builder.read_buf(buffer)
 
@@ -203,40 +245,37 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     else:
         from_version = to_version
 
-    #logging.info("Upgrading from {} to {}".format(from_version, to_version))
     upgrades = Upgrades()
     upgrades.upgrade(hhcfg, from_version, to_version)
 
-    if basename == "base/mmu_parameters.cfg":
+    if cfg_file_basename == "config/base/mmu_parameters.cfg":
         build_mmu_parameters_cfg(builder, hhcfg)
 
     hhcfg.update_builder(builder)
 
     first = True
-    for section, option in hhcfg.unused_options_for(basename):
+    for section, option in hhcfg.unused_options_for(cfg_file_basename):
         if first:
             first = False
-            logging.warning("The following parameters in {} have been dropped:".format(basename))
+            logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))
         logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
-
-    for ph in builder.placeholders():
-        logging.warning("Placeholder {{{}}} not replaced".format(ph))
 
     if os.path.islink(dest_file):
         os.remove(dest_file)
 
-    if sys.version_info[0] < 3: # Python 2
+    if sys.version_info[0] < 3:  # Python 2
         with open(dest_file, "w") as f:
             f.write(builder.write().encode("utf-8"))
-    else: # Python 3
+    else:  # Python 3
         with open(dest_file, "w", encoding="utf-8") as f:
             f.write(builder.write())
+
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     logging.info("Adding moonraker components")
 
     kcfg = KConfig(kconfig)
-    buffer = render_template(moonraker_cfg, kcfg)
+    buffer = render_template(moonraker_cfg, kcfg, {})
     update = ConfigBuilder()
     update.read_buf(buffer)
     builder = ConfigBuilder(existing_cfg)
