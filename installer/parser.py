@@ -6,15 +6,16 @@ CONFIG_SPEC = [
     ("comment", re.compile(r"^[ \t]*[#;].*?(?=\{[^}]+\})")),
     ("comment", re.compile(r"^[ \t]*[#;].*")),
     ("whitespace", re.compile(r"^\s+")),
-    ("section", re.compile(r"^\[[^]]+\]")),
+    ("section", re.compile(r"^\[.+\]")),
     ("word", re.compile(r"^\w[\w\d%]*")),
     ("assign_op", re.compile(r"^[:=]")),
-    ("placeholder", re.compile(r"^\[[pin_|cfg_|param_)[^%\]][^\]]+\]]")),
+    ("placeholder", re.compile(r"^\[[PIN_|CFG_|PARAM_)[^%\]][^\]]+\]]")),
     ("unknown", re.compile(r"^\S")),
 ]
 
 if sys.version_info[0] >= 3:
     unicode = str
+
 
 class Token(object):
     def __init__(self, type, value):

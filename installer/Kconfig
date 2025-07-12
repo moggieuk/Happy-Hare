@@ -1,7 +1,6 @@
 happy_hare_version = 4.0
 formatted_version = $(shell, echo "$(happy_hare_version)0" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)[0]*/\1.\2.\3/')
-
-mainmenu "Happy Hare $(formatted_version) Configuration"
+title = $(shell, echo "Happy Hare $(formatted_version) Configuration${UNIT_NAME+ - Unit '${UNIT_NAME}'}")
 
 ### Helper functions
 # Used to convert a shell command result to a y/n value
@@ -15,6 +14,8 @@ serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "PARAM_SERIA
 # To allow multiline config strings
 ml = $(shell, echo '$(1)')
 
+mainmenu "$(title)"
+
 ### Start of configuration
 config PARAM_HAPPY_HARE_VERSION
   string
@@ -23,6 +24,24 @@ config PARAM_HAPPY_HARE_VERSION
 config F_VERSION
   string
   default "$(formatted_version)"
+
+config MULTI_UNIT
+  bool
+  default "$(F_MULTI_UNIT)"
+
+config MULTI_UNIT_ENTRY_POINT
+  bool
+  default "$(F_MULTI_UNIT_ENTRY_POINT)"
+
+if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
+  config UNIT_INDEX
+    int
+    default $(shell, echo "${UNIT_INDEX-0}")
+
+  config UNIT_NAME
+    string
+    default "$(UNIT_NAME)" 
+endif
 
 # y to shows MMU additions menu inline with type
 # n to show as top level menu
@@ -36,51 +55,63 @@ comment '( *,*)							'
 comment '(")_(") Happy Hare version $(formatted_version) 			'	
 comment '							'
 
-# Step 1 - Base MMU
-rsource "mmu_types/Kconfig"
-
-# Step 2 - MMU Additions/Customization (optionally inline with base type)
-if !SHOW_MMU_ADDITIONS_WITH_TYPE
-  rsource "mmu_additions/Kconfig"
+if MULTI_UNIT_ENTRY_POINT
+  rsource "Kconfig.multi"
 endif
 
-# Step 3 - Addon Features
-rsource "addons/Kconfig"
 
-# Step 4 - MCU
-rsource "boards/Kconfig"
+if !MULTI_UNIT_ENTRY_POINT
+  if MULTI_UNIT
+    comment "Configuration for unit '$(UNIT_NAME)'"
+  endif 
+  # Step 1 - Base MMU
+  rsource "mmu_types/Kconfig"
 
-# Step 5 - MCU connection
-rsource "Kconfig.serial"
+  # Step 2 - MMU Additions/Customization (optionally inline with base type)
+  if !SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "mmu_additions/Kconfig"
+  endif
 
-# Step 6 - Popular options
-rsource "Kconfig.options"
+  # Step 3 - Addon Features
+  rsource "addons/Kconfig"
 
-# Raw access to suggested settings
-menu "Advanced Settings"
-  help
-    Advanced Settings
-    Only change these settings if you know what you are doing (or have
-    MMU customizations) because doing so may alter designer defaults.
-    Can always be changed later in generated klipper config files.
+  # Step 4 - MCU
+  rsource "boards/Kconfig"
 
-  config SHOW_ADVANCED_OPTIONS
-    bool "Show advanced options in config menus?"
-    default n
+  # Step 5 - MCU connection
+  rsource "Kconfig.serial"
+
+  # Step 6 - Popular options
+  rsource "Kconfig.options"
+
+  # Raw access to suggested settings
+  menu "Advanced Settings"
     help
-      When enabled additional (advanced) options will be shown
-      throughout the config menus.
+      Advanced Settings
+      Only change these settings if you know what you are doing (or have
+      MMU customizations) because doing so may alter designer defaults.
+      Can always be changed later in generated klipper config files.
 
-  rsource "Kconfig.num_gates"
-  rsource "Kconfig.leds"
-  rsource "Kconfig.encoder"
-  rsource "Kconfig.endstops"
-  rsource "Kconfig.gates"
-  rsource "Kconfig.motors"
-  rsource "Kconfig.sync"
-  rsource "Kconfig.speeds"
-  rsource "Kconfig.calibration"
-  rsource "Kconfig.pins"
-  rsource "Kconfig.params"
-  rsource "Kconfig.paths_services"
-endmenu
+    config SHOW_ADVANCED_OPTIONS
+      bool "Show advanced options in config menus?"
+      default n
+      help
+        When enabled additional (advanced) options will be shown
+        throughout the config menus.
+
+    rsource "Kconfig.num_gates"
+    rsource "Kconfig.leds"
+    rsource "Kconfig.encoder"
+    rsource "Kconfig.endstops"
+    rsource "Kconfig.gates"
+    rsource "Kconfig.motors"
+    rsource "Kconfig.sync"
+    rsource "Kconfig.speeds"
+    rsource "Kconfig.calibration"
+    rsource "Kconfig.pins"
+    rsource "Kconfig.params"
+    if !MULTI_UNIT
+      rsource "Kconfig.paths_services"
+    endif
+  endmenu
+endif

@@ -1,0 +1,12 @@
+[update_manager happy-hare]
+type: git_repo
+path: [[PARAM_HAPPY_HARE_HOME]]
+origin: https://github.com/moggieuk/Happy-Hare.git
+primary_branch: main
+managed_services: klipper
+
+[mmu_server]
+enable_file_preprocessor: True
+enable_toolchange_next_pos: True
+update_spoolman_location: True
+
