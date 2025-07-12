@@ -52,8 +52,13 @@ hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon in
 hh_config_files = $(patsubst config/%,%,$(wildcard config/*.cfg config/**/*.cfg))
 hh_moonraker_components = $(patsubst components/%,%,$(wildcard components/*.py))
 
-# use sudo if the klipper home is at a system location
-SUDO:=$(shell [ -d $(KLIPPER_HOME) ] && [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && echo "sudo " || echo "")
+# Use sudo if the klipper home is at a system location
+SUDO := $(shell \
+  [ -n "$(KLIPPER_HOME)" ] && \
+  [ -d "$(KLIPPER_HOME)" ] && \
+  [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && \
+  echo "sudo " || echo "")
+
 
 # Look for installed configs that would need be parsed by the build script
 cfg_addons = $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*_hw.cfg)

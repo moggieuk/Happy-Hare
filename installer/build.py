@@ -6,6 +6,7 @@ import logging
 import subprocess
 from pprint import pprint
 from jinja2 import Environment, FileSystemLoader
+from collections import defaultdict
 
 
 import kconfiglib
@@ -188,7 +189,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         "mmu_vars.cfg",
     ]:
         return
-    logging.info("Building config file: " + cfg_file)
+    logging.log(LEVEL_NOTICE, "Building config file: " + cfg_file)
 
     hhcfg = HHConfig(input_files)
     kcfg = KConfig(kconfig_file)
@@ -203,21 +204,27 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     else:
         from_version = to_version
 
-    #logging.info("Upgrading from {} to {}".format(from_version, to_version))
-    upgrades = Upgrades()
-    upgrades.upgrade(hhcfg, from_version, to_version)
+    if from_version != to_version:
+        logging.debug("Upgrading {} from v{} to v{}".format(cfg_file, from_version, to_version))
+        upgrades = Upgrades()
+        upgrades.upgrade(hhcfg, from_version, to_version)
 
     if basename == "base/mmu_parameters.cfg":
         build_mmu_parameters_cfg(builder, hhcfg)
 
     hhcfg.update_builder(builder)
 
-    first = True
+    grouped = defaultdict(list)
     for section, option in hhcfg.unused_options_for(basename):
-        if first:
-            first = False
-            logging.warning("The following parameters in {} have been dropped:".format(basename))
-        logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
+        grouped[section].append(option)
+
+    if grouped:
+        logging.warning("The following parameters in {} have been dropped:".format(basename))
+        for section in sorted(grouped):
+            logging.warning("[{}]".format(section))
+            for option in sorted(grouped[section]):
+                value = hhcfg.get(section, option)
+                logging.warning("  {}: {}".format(option, value))
 
     for ph in builder.placeholders():
         logging.warning("Placeholder {{{}}} not replaced".format(ph))

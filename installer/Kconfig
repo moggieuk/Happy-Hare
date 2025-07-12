@@ -12,6 +12,9 @@ serial=$(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail 
 serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
 serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 
+# To allow multiline config strings
+ml = $(shell, echo '$(1)')
+
 ### Start of configuration
 config PARAM_HAPPY_HARE_VERSION
   string

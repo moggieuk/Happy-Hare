@@ -431,7 +431,7 @@ class ConfigBuilder(object):
         if section:
             return section
         else:
-            raise KeyError("Section '{}' not found".format(section_name))
+            raise KeyError("Section [{}] not found".format(section_name))
 
     def sections(self):
         return [x.name for x in self._sections()]
@@ -548,8 +548,8 @@ class ConfigBuilder(object):
 
     def set(self, section_name, option_name, value):
         if value is None:
-            logging.error("{} in section {} has no value".format(option_name, section_name))
-            value="NOT_SET"
+            logging.warning("{} in section [{}] has no value".format(option_name, section_name))
+            value=""
         value = value.strip()
         idx = value.find("\n")
         if idx != -1:
