@@ -67,6 +67,7 @@ class KConfig(kconfiglib.Kconfig):
                 value = 1 if self.syms[sym].user_value else 0
             else:
                 value = self.syms[sym].user_value
+                value = value.replace("\\n", "\n")
 
             if re.match(r".+\d+$", sym):
                 split = re.split(r"(\d+$)", sym)

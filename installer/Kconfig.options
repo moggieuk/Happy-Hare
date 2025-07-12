@@ -104,14 +104,20 @@ menu "Software Options"
       like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
     default y
 
+  comment 'v----- ADVANCED -----v'
+
   config REPETIER
-    bool "Enable Repetier support?" if SHOW_ADVANCED_OPTIONS
+    bool "Enable Repetier support?"
+    help
+      Enable ONLY if you need Repetier support otherwise leave disabled
 
   config REPETIER_NAME
     string "Repetier name"
     depends on REPETIER
 
   config OCTOPRINT
-    bool "Enable Octoprint support?" if SHOW_ADVANCED_OPTIONS
+    bool "Enable Octoprint support?"
+    help
+      Enable ONLY if you need to use Octoprint otherwise recommended to leave disabled
 
 endmenu

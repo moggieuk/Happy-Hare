@@ -9,10 +9,4 @@ config PIN_EXTRUDER_SENSOR
 config PIN_TOOLHEAD_SENSOR
  string "Toolhead sensor pin"
 
-config PIN_SYNC_FEEDBACK_TENSION
- string "Sync feedback tension pin"
-
-config PIN_SYNC_FEEDBACK_COMPRESSION
- string "Sync feedback compression pin"
-
 rsource "Kconfig.paths_services"

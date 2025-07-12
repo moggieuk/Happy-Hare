@@ -72,8 +72,8 @@ if MMU_TYPE_VVD_1_0
   config PARAM_CHAIN_COUNT
     default 28   
   config PARAM_COLOR_ORDER
-    default "GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
+    default "GRB"
   config PARAM_EXIT_LEDS 
-    default "neopixel:mmu_leds_1 (1-14)\nneopixel:mmu_leds_2 (1-14)"
+    default "neopixel:mmu_leds_1 (1-14)\\nneopixel:mmu_leds_2 (1-14)"
 
 endif 

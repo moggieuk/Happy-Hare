@@ -1,10 +1,5 @@
 menu "Paths & Services"
 
-  config INIT_SYSTEMD
-    bool
-    prompt "Systemd" if SHOW_ADVANCED_OPTIONS
-    default $(to_bool, [ -d /etc/systemd/system ])
-
   config KLIPPER_HOME
     string "Klipper directory"
     default "$(CONFIG_KLIPPER_HOME)" if $(to_bool, [ -n "$(CONFIG_KLIPPER_HOME)" ])
@@ -66,5 +61,10 @@ menu "Paths & Services"
     string "Octoprint service name"
     depends on OCTOPRINT
     default "octoprint.service"
+
+  config INIT_SYSTEMD
+    bool
+    prompt "Systemd"
+    default $(to_bool, [ -d /etc/systemd/system ])
 
 endmenu

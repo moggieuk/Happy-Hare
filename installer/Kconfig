@@ -12,7 +12,8 @@ serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
 serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 
 # To allow multiline config strings
-ml = $(shell, echo '$(1)')
+#ml = $(shell, echo -e '$(1)') # TODO
+ml = $(shell, bash -c "echo '$(1)'")
 
 mainmenu "$(title)"
 
@@ -64,6 +65,7 @@ if !MULTI_UNIT_ENTRY_POINT
   if MULTI_UNIT
     comment "Configuration for unit '$(UNIT_NAME)'"
   endif 
+
   # Step 1 - Base MMU
   rsource "mmu_types/Kconfig"
 
@@ -92,13 +94,6 @@ if !MULTI_UNIT_ENTRY_POINT
       MMU customizations) because doing so may alter designer defaults.
       Can always be changed later in generated klipper config files.
 
-    config SHOW_ADVANCED_OPTIONS
-      bool "Show advanced options in config menus?"
-      default n
-      help
-        When enabled additional (advanced) options will be shown
-        throughout the config menus.
-
     rsource "Kconfig.num_gates"
     rsource "Kconfig.leds"
     rsource "Kconfig.encoder"
@@ -110,6 +105,7 @@ if !MULTI_UNIT_ENTRY_POINT
     rsource "Kconfig.calibration"
     rsource "Kconfig.pins"
     rsource "Kconfig.params"
+
     if !MULTI_UNIT
       rsource "Kconfig.paths_services"
     endif
