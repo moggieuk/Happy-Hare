@@ -199,10 +199,10 @@ class MmuESpooler:
 
         # If gate not specifed, find the active gate (there should only be one)
         gate = (
-            gate if gate is not None else 
+            gate if gate is not None else
             next(
-                (g for g in range(self.first_gate, self.first_gate + self.num_gates) 
-                 if self.operation[self._key(g)][0] == Mmu.ESPOOLER_PRINT), 
+                (g for g in range(self.first_gate, self.first_gate + self.num_gates)
+                 if self.operation[self._key(g)][0] == Mmu.ESPOOLER_PRINT),
                 None
             )
         )
@@ -230,7 +230,7 @@ class MmuESpooler:
         # Turn off assist for all gates except specified gate if still wanted
         for g in range(self.first_gate, self.first_gate + self.num_gates):
             if (
-                (self.operation[self._key(g)][0] == Mmu.ESPOOLER_PRINT and g != gate) or 
+                (self.operation[self._key(g)][0] == Mmu.ESPOOLER_PRINT and g != gate) or
                 (g == gate and operation == Mmu.ESPOOLER_PRINT and value != 0)
             ):
                 self._update(g, 0, Mmu.ESPOOLER_OFF)
@@ -264,17 +264,17 @@ class MmuESpooler:
     def _update(self, gate, value, operation):
         from .mmu import Mmu # For operation names
 
-        if self.mmu.log_enabled(Mmu.LOG_TRACE):
-            self.mmu.log_trace("ESPOOLER: _update(%s, %s, %s)" % (gate, value, operation))
+        if self.mmu.log_enabled(Mmu.LOG_STEPPER):
+            self.mmu.log_stepper("ESPOOLER: _update(%s, %s, %s)" % (gate, value, operation))
 
         def _schedule_set_pin(name, value):
             mcu_pin = self.motor_mcu_pins.get(name, None)
             if mcu_pin:
                 estimated_print_time = mcu_pin.get_mcu().estimated_print_time(self.printer.reactor.monotonic())
-                if self.mmu.log_enabled(Mmu.LOG_TRACE):
-                    self.mmu.log_trace("ESPOOLER: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
+                if self.mmu.log_enabled(Mmu.LOG_STEPPER):
+                    self.mmu.log_stepper("ESPOOLER: --> _schedule_set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, estimated_print_time))
                 self.gcrqs[mcu_pin.get_mcu()].send_async_request((name, value))
-       
+
         # None operation is special case of updating without changing operation (typically in-print assist burst)
         if operation is None:
             operation = self.operation[self._key(gate)][0]
@@ -310,8 +310,8 @@ class MmuESpooler:
         if mcu_pin:
             if value == self.last_value.get(name, None):
                 return
-            if self.mmu.log_enabled(Mmu.LOG_TRACE):
-                self.mmu.log_trace("ESPOOLER: -----> _set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, print_time))
+            if self.mmu.log_enabled(Mmu.LOG_STEPPER):
+                self.mmu.log_stepper("ESPOOLER: -----> _set_pin(name=%s, value=%s) @ print_time: %.8f" % (name, value, print_time))
             if self.is_pwm and not name.startswith('enable_'):
                 mcu_pin.set_pwm(print_time, value)
             else:

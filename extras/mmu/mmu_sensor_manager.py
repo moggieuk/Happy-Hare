@@ -1,8 +1,9 @@
 # Happy Hare MMU Software
-# Manager to centralize mmu_sensor operations
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
+#
+# Goal: Manager to centralize mmu_sensor operations
 #
 # (\_/)
 # ( *,*)
@@ -28,7 +29,7 @@ class MmuSensorManager:
         sensor_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, i) for i in range(self.mmu.num_gates)])
         sensor_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
         sensor_names.extend([
-            self.mmu.SENSOR_GATE, 
+            self.mmu.SENSOR_GATE,
             self.mmu.SENSOR_TENSION,
             self.mmu.SENSOR_COMPRESSION
         ])
@@ -38,7 +39,7 @@ class MmuSensorManager:
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
         sensor_names.extend([
-            self.mmu.SENSOR_EXTRUDER_ENTRY, 
+            self.mmu.SENSOR_EXTRUDER_ENTRY,
             self.mmu.SENSOR_TOOLHEAD
         ])
         for name in sensor_names:
@@ -55,7 +56,7 @@ class MmuSensorManager:
         self.endstop_names = []
         self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
         self.endstop_names.extend([
-            self.mmu.SENSOR_GATE, 
+            self.mmu.SENSOR_GATE,
             self.mmu.SENSOR_TENSION,
             self.mmu.SENSOR_COMPRESSION
         ])
@@ -65,8 +66,12 @@ class MmuSensorManager:
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
         self.endstop_names.extend([
-            self.mmu.SENSOR_EXTRUDER_ENTRY, 
+            self.mmu.SENSOR_EXTRUDER_ENTRY,
             self.mmu.SENSOR_TOOLHEAD
+        ])
+        # TODO Assumes one stepper but in theory could be on all
+        self.endstop_names.extend([
+            self.mmu.SENSOR_GEAR_TOUCH
         ])
         for name in self.endstop_names:
             sensor_name = name if re.search(r'_(\d+)$', name) else "%s_sensor" % name # Must match mmu_sensors
