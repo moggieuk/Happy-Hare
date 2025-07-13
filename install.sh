@@ -68,8 +68,6 @@ if [ "$1" ]; then
     KCONFIG_CONFIG="$1"
 fi
 
-echo $KCONFIG_CONFIG
-
 export KCONFIG_CONFIG="${KCONFIG_CONFIG-.config}"
 
 if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
@@ -94,6 +92,14 @@ if [ "${F_MULTI_UNIT}" ]; then
     # shellcheck source=./.config
     . "$(realpath "${KCONFIG_CONFIG}")"
 
+    if [ ! "${CONFIG_MULTI_UNIT}" ]; then
+        echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, forcing interactive menu"
+        make F_MULTI_UNIT_ENTRY_POINT=y menuconfig
+        F_MENUCONFIG=y
+        # shellcheck source=./.config
+        . "$(realpath "${KCONFIG_CONFIG}")"
+    fi
+
     i=0
     IFS=,
     for name in ${CONFIG_PARAM_MMU_UNITS}; do
@@ -104,8 +110,17 @@ if [ "${F_MULTI_UNIT}" ]; then
             i=$((i + 1))
         fi
     done
-elif [ "${F_MENUCONFIG}" ]; then
-    make menuconfig
+else
+    if [ "${F_MENUCONFIG}" ]; then
+        make menuconfig
+    fi
+
+    # shellcheck source=./.config
+    . "$(realpath "${KCONFIG_CONFIG}")"
+    if [ "${CONFIG_MULTI_UNIT}" ]; then
+        echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is a multi-unit configuration, forcing interactive menu${C_OFF}"
+        make menuconfig
+    fi
 fi
 
 make install

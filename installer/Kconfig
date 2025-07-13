@@ -9,7 +9,7 @@ to_bool = $(shell, $(1) && echo y || echo n)
 # Used to get the serial device paths
 serial=$(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
 serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
-serial_config=$(shell, basename '$(serial,$(1),$(2))' | awk '{print "PARAM_SERIAL_" toupper($0)}')
+serial_config=$(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 
 # To allow multiline config strings
 ml = $(shell, printf "$(1)" | sed -z "s/\\n/\\\\n/g")

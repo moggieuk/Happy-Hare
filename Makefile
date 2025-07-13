@@ -57,8 +57,6 @@ MOONRAKER_HOME := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
 PRINTER_CONFIG_FILE := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
 MOONRAKER_CONFIG_FILE := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
-BUILD_MODULE:=$(PY) -m installer.build $(V)
-
 hh_klipper_extras_files = $(wildcard extras/*.py extras/**/*.py)
 hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon install
 hh_moonraker_components = $(wildcard components/*.py)
@@ -135,7 +133,7 @@ restart_service = \
 	if [ "$(F_NO_SERVICE)" ]; then \
 		echo "$(C_INFO)Skipping restart of $(2) service$(C_OFF)"; \
 	else \
-		[ "$(1)" -eq 0 ] || $(BUILD_MODULE) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
+		[ "$(1)" -eq 0 ] || $(PY) -m installer.build $(V) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
 	fi
 
 # Bool to check if moonraker/klipper needs to be restarted
@@ -166,25 +164,25 @@ $(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F)
 	$(info $(C_INFO)Copying $(MOONRAKER_CONFIG_FILE) to '$(notdir $(OUT))' directory$(C_OFF))
 	$(Q)cp -aL "$<" "$@" # Copy the current version to the out directory
 	$(Q)chmod +w "$@" # Make sure the file is writable
-	$(Q)$(BUILD_MODULE) --install-moonraker "$(SRC)/installer/moonraker_update.txt" "$@" "$(KCONFIG_CONFIG)"
+	$(Q)$(PY) -m installer.build $(V) --install-moonraker "$(SRC)/installer/moonraker_update.txt" "$@" "$(KCONFIG_CONFIG)"
 
 # Copy existing printer.cfg to the out directory and update with includes
 $(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F) 
 	$(info $(C_INFO)Copying $(PRINTER_CONFIG_FILE) to '$(notdir $(OUT))' directory$(C_OFF))
 	$(Q)cp -aL "$<" "$@" # Copy the current version to the out directory
 	$(Q)chmod +w "$@" # Make sure the file is writable
-	$(Q)$(BUILD_MODULE) --install-includes "$@" "$(KCONFIG_CONFIG)"
+	$(Q)$(PY) -m installer.build $(V) --install-includes "$@" "$(KCONFIG_CONFIG)"
 
 # We link all config files, those that need to be updated will be written over in the install script, in case of a multi unit setup, the unit hardware config targets are overridden below
 $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 	$(Q)$(call link,$<,$@)
-	$(Q)$(BUILD_MODULE) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
+	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
 ifeq ($(CONFIG_MULTI_UNIT),y)
 # Build the unit hardware configs, these use their own $(KCONFIG_CONFIG).<unit> Kconfig file 
 $(OUT)/mmu/base/mmu_hardware_%.cfg: $(SRC)/config/base/mmu_hardware_unit0.cfg $(hh_configs_to_parse) $(KCONFIG_CONFIG).%
 	$(Q)$(call link,$<,$@)
-	$(Q)$(BUILD_MODULE) --build "$<" "$@" "$(KCONFIG_CONFIG).$*" $(hh_configs_to_parse)
+	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG).$*" $(hh_configs_to_parse)
 endif
 
 # Python files are linked to the out directory
@@ -255,7 +253,7 @@ install: $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras,$(hh_old_klipper_modules))
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
-	$(Q)$(BUILD_MODULE) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
+	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
 
 uninstall:
 	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE))
@@ -268,12 +266,12 @@ uninstall:
 	$(Q)rmdir --ignore-fail-on-non-empty $(addprefix $(MOONRAKER_HOME)/moonraker/,$(filter-out components/,$(dir $(hh_moonraker_components)))) 2>/dev/null || true
 	$(Q)rm -rf $(KLIPPER_CONFIG_HOME)/mmu
 	@# Remove HH from config files
-	$(Q)$(BUILD_MODULE) --uninstall-moonraker $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
-	$(Q)$(BUILD_MODULE) --uninstall-includes $(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE)
+	$(Q)$(PY) -m installer.build $(V) --uninstall-moonraker $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
+	$(Q)$(PY) -m installer.build $(V) --uninstall-includes $(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE)
 	@# Restart services if needed
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
-	$(Q)$(BUILD_MODULE) --print-unhappy-hare "Done... Very unHappy Hare."
+	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done... Very unHappy Hare."
 
 
 
@@ -299,7 +297,7 @@ test:
 	$(Q)$(PY) -m unittest discover $(V) -p '$(UT)'
 
 check_version:
-	$(Q)$(BUILD_MODULE) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)  
+	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)  
 
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
 # if KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig

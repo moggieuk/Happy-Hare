@@ -47,14 +47,6 @@ class KConfig(kconfiglib.Kconfig):
             raise KeyError("Symbol '{}' not found in Kconfig".format(sym))
         return self.syms[sym].user_value
 
-    def set(self, sym, value):
-        """Set the value of the symbol"""
-        # if sym not in self.syms:
-        self.syms[sym] = kconfiglib.Symbol(sym, type=kconfiglib.STRING, user_value=value)
-        # if isinstance(value, bool):
-        #     value = 1 if value else 0
-        # self.syms[sym].set_user_value(value)
-
     def as_dict(self):
         """Return the Kconfig as a dictionary"""
         result = {}
@@ -81,15 +73,12 @@ class KConfig(kconfiglib.Kconfig):
                 result[sym] = value
         return result
 
-        # return {sym: self.syms[sym].user_value for sym in self.syms if self.syms[sym].user_value is not None}
-
 
 class HHConfig(ConfigBuilder):
     def __init__(self, cfg_files):
         super(HHConfig, self).__init__()
         self.origins = {}
         self.used_options = set()
-        # self.document = super(HHConfig, self).document  # because Python's inheritance apparently completly broken
         prefix = os.path.commonprefix(cfg_files)
         for cfg_file in cfg_files:
             logging.debug(" > Reading config file: " + cfg_file)
@@ -138,14 +127,6 @@ class HHConfig(ConfigBuilder):
                     if not option.startswith("gcode"):  # Don't ever resuse the gcode
                         builder.set(section, option, self.get(section, option))
                     self.used_options.add((section, option))
-        #
-        # if self.kcfg is not None:
-        #     for key, sym in self.kcfg.syms.items():
-        #         if key.startswith("PARAM_") or key.startswith("PIN_"):
-        #             builder.replace_placeholder(key.lower(), sym.user_value or "")
-
-        # for param, value in self.extra_params().items():
-        #     builder.replace_placeholder(param, str(value))
 
     def unused_options_for(self, origin):
         return [
@@ -172,6 +153,7 @@ def jinja_env():
         comment_start_string="[#",
         comment_end_string="#]",
         trim_blocks=True,
+        # keep_trailing_newline=True,
     )
 
 
@@ -199,7 +181,6 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         return
 
     kcfg = KConfig(kconfig_file)
-    # kcfg.load_all(kconfig_files)
     extra_params = dict()
     unit_kcfgs = dict()
 
@@ -215,17 +196,6 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
     else:
         extra_params["PARAM_TOTAL_NUM_GATES"] = kcfg.getint("PARAM_NUM_GATES")
 
-        # if basename == "base/mmu_hardware.cfg":
-        #     build_config_file(basename, dest_file, kcfg, input_files, extra_params)
-        #     if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
-        #         for unit, unit_kcfg in unit_kcfgs.items():
-        #             unit_dest_file = dest_file.replace(".cfg", "_" + unit + ".cfg")
-        #             build_config_file("base/mmu_hardware_unit0.cfg", unit_dest_file, unit_kcfg, input_files, extra_params)
-        #     else:
-        #         build_config_file(
-        #             "base/mmu_hardware_unit0.cfg", dest_file.replace(".cfg", "_unit0.cfg"), kcfg, input_files, extra_params
-        #         )
-        # else:
     build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params)
 
 
