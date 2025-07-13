@@ -1,4 +1,4 @@
-SHELL := /usr/bin/env sh
+SHELL := /usr/bin/env bash
 PY := python
 MAKEFLAGS += --jobs 16 # Parallel build
 Q ?= @ # For quiet builds, override with make Q= for verbose output

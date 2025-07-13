@@ -230,13 +230,13 @@ menu "Pins"
 
       config PIN_TOOLHEAD_SENSOR
         string "Toolhead sensor pin"
-
-      config PIN_SYNC_FEEDBACK_TENSION
-        string "Sync feedback tension pin"
-
-      config PIN_SYNC_FEEDBACK_COMPRESSION
-        string "Sync feedback compression pin"
     endif
+
+   config PIN_SYNC_FEEDBACK_TENSION
+     string "Sync feedback tension pin"
+
+   config PIN_SYNC_FEEDBACK_COMPRESSION
+     string "Sync feedback compression pin"
 
     config PIN_GANTRY_SERVO
       string "Gantry servo pin"

@@ -39,9 +39,19 @@ if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
     int
     default $(shell, echo "${UNIT_INDEX-0}")
 
-  config UNIT_NAME
+  config PARAM_UNIT_NAME
     string
-    default "$(UNIT_NAME)" 
+    default "$(UNIT_NAME)"
+endif
+
+if !(MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT)
+  config PARAM_UNIT_NAME
+    string
+    default "unit0"
+
+  config PARAM_MMU_UNITS
+    string
+    default "unit0"
 endif
 
 # y to shows MMU additions menu inline with type
@@ -59,7 +69,6 @@ comment '							'
 if MULTI_UNIT_ENTRY_POINT
   rsource "Kconfig.multi"
 endif
-
 
 if !MULTI_UNIT_ENTRY_POINT
   if MULTI_UNIT

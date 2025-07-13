@@ -1,12 +1,14 @@
 config PARAM_MMU_UNITS
- string "MMU unit names"
- help
-  Comma-separated list of unit names. 
+  string "MMU unit names"
+  help
+    Comma-separated list of unit names.
+    Use only alphanumeric characters.
+    E.g. "unit0,unit1"
  
 config PIN_EXTRUDER_SENSOR
- string "Extruder sensor pin"
+  string "Extruder sensor pin"
 
 config PIN_TOOLHEAD_SENSOR
- string "Toolhead sensor pin"
+  string "Toolhead sensor pin"
 
 rsource "Kconfig.paths_services"

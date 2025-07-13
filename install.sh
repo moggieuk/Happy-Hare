@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
