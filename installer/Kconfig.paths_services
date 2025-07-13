@@ -63,8 +63,9 @@ menu "Paths & Services"
     default "octoprint.service"
 
   config INIT_SYSTEMD
-    bool
-    prompt "Systemd"
+    bool "Systemd"
     default $(to_bool, [ -d /etc/systemd/system ])
+    help
+      Set if host computer using /etc/systemd/system for service restart
 
 endmenu
