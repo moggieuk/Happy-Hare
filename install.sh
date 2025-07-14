@@ -41,7 +41,7 @@ ordinal() {
     esac
 }
 
-while getopts "a:b:k:c:m:nidszev" arg; do
+while getopts "a:b:k:c:m:nidszevq" arg; do
     case $arg in
     a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
     b) export BRANCH="${OPTARG}" ;;
@@ -59,7 +59,8 @@ while getopts "a:b:k:c:m:nidszev" arg; do
     d) F_UNINSTALL=y ;;
     s) export F_NO_SERVICE=y ;;
     z) export F_SKIP_UPDATE=y ;;
-    v) export Q= ;;
+    q) export Q= ;; # disable quite mode in Makefile
+    v) export V=-v ;; # enable verbose mode in builder
     *) usage ;;
     esac
 done

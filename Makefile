@@ -1,11 +1,9 @@
 SHELL := /usr/bin/env bash
 PY := python
 MAKEFLAGS += --jobs 16 # Parallel build
-Q ?= @ # For quiet builds, override with make Q= for verbose output
+Q ?= @ # For quiet make builds, override with make Q= for verbose output
+V ?=  # For verbose output of python builder, set to -v to enable
 UT ?= * # For unittests, e.g. make UT=test_build.py test
-ifneq ($(strip $(Q)),@)
-  V ?= -v # For verbose output of build.py
-endif
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
 # Just checking for root isn't enough, as users on Creality K1 printers usually run as root (ugh)
