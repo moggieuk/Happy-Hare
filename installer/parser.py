@@ -89,8 +89,8 @@ class Node(object):
                 lines.append(unicode(" " * (depth + 1) * tab + "{}: `{}`").format(k, v))
             return True, lines
 
-        lines = self.walk(_print, [])
-        return "\n".join(lines).encode("utf-8")
+        lines = self.walk(_print, []) or []
+        return unicode("\n".join(lines))
 
     def __str__(self):
         return self._pretty_print()
@@ -409,6 +409,13 @@ class ConfigBuilder(object):
     def read_test(self, b):
         self.document.body = b
 
+    def pretty_print_document(self):
+        def print_node(node, ctx, _):
+            logging.debug(node._pretty_print())
+            return True, ctx
+
+        print(self.document._pretty_print())
+
     def write(self):
         def print_node(node, buffer, _):
             buffer += node.serialize()
@@ -550,23 +557,25 @@ class ConfigBuilder(object):
     def set(self, section_name, option_name, value):
         if value is None:
             logging.warning("{} in section [{}] has no value".format(option_name, section_name))
-            value=""
+            value = ""
         value = value.strip()
         idx = value.find("\n")
+
         if idx != -1:
             value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
         if self.has_option(section_name, option_name):
             option = self._get_option(section_name, option_name)
-            if option.body and isinstance(option.body[0].body[0].type, WhitespaceNode):
+            if option.body and isinstance(option.body[0].body[0], WhitespaceNode):
                 value = option.body[0].body[0].value + value
             value = self.parser.parse_value(Tokenizer(value, CONFIG_SPEC))
-            option.value = value
+            option.body = value
         else:
             value = self.parser.parse_value(Tokenizer(" " + value, CONFIG_SPEC))
             section = self._get_section(section_name)
             section.body.append(OptionNode(option_name, value, self.parser.default_assign_op))
             section.body.append(WhitespaceNode("\n"))
-        option = self._get_option(section_name, option_name)
+            option = self._get_option(section_name, option_name)
+            option.body = value
 
     def items(self, section_name):
         section = self._get_section(section_name)

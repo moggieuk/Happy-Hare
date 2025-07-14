@@ -41,7 +41,7 @@ ordinal() {
     esac
 }
 
-while getopts "a:b:k:c:m:nidsze" arg; do
+while getopts "a:b:k:c:m:nidszev" arg; do
     case $arg in
     a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
     b) export BRANCH="${OPTARG}" ;;
@@ -59,6 +59,7 @@ while getopts "a:b:k:c:m:nidsze" arg; do
     d) F_UNINSTALL=y ;;
     s) export F_NO_SERVICE=y ;;
     z) export F_SKIP_UPDATE=y ;;
+    v) export Q= ;;
     *) usage ;;
     esac
 done
@@ -89,6 +90,7 @@ if [ "${F_MULTI_UNIT}" ]; then
         echo "${C_ERROR}Config '${KCONFIG_CONFIG}' has not been saved, exiting.${C_OFF}"
         exit 1
     fi
+
     # shellcheck source=./.config
     . "$(realpath "${KCONFIG_CONFIG}")"
 
@@ -111,14 +113,17 @@ if [ "${F_MULTI_UNIT}" ]; then
         fi
     done
 else
-    if [ "${F_MENUCONFIG}" ]; then
-        make menuconfig
+    # If a `.config` already exists check if it's a single-unit setup else force menuconfig
+    if [ -e "${KCONFIG_CONFIG}" ]; then
+        # shellcheck source=./.config
+        . "$(realpath "${KCONFIG_CONFIG}")"
+        if [ "${CONFIG_MULTI_UNIT}" ]; then
+            echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is a multi-unit configuration, forcing interactive menu${C_OFF}"
+            F_MENUCONFIG=y
+        fi
     fi
 
-    # shellcheck source=./.config
-    . "$(realpath "${KCONFIG_CONFIG}")"
-    if [ "${CONFIG_MULTI_UNIT}" ]; then
-        echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is a multi-unit configuration, forcing interactive menu${C_OFF}"
+    if [ "${F_MENUCONFIG}" ]; then
         make menuconfig
     fi
 fi
