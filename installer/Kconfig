@@ -95,12 +95,13 @@ if !MULTI_UNIT_ENTRY_POINT
   rsource "Kconfig.options"
 
   # Raw access to suggested settings
-  menu "Advanced Settings"
+  menu "Advanced/Raw Settings"
     help
-      Advanced Settings
-      Only change these settings if you know what you are doing (or have
-      MMU customizations) because doing so may alter designer defaults.
-      Can always be changed later in generated klipper config files.
+      Advanced/Raw Settings
+      Allows override of designer defaults. Only change these settings if
+      you know what you are doing (or have MMU customizations). You can always
+      change later by re-running "./install.sh -i" or editing the generated
+      klipper config files.
 
     rsource "Kconfig.num_gates"
     rsource "Kconfig.leds"

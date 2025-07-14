@@ -37,6 +37,7 @@ menu "Calibration / Autotuning"
 
   config BOOL_AUTOTUNE_ROTATION_DISTANCE
     bool "Autotune rotation distance"
+    depends on MMU_HAS_SYNC_FEEDBACK_BUFFER
     help
       Automated gate calibration/tuning.
       Requires sync-feedback sensor (aka "buffer") with both compression and tension switches

@@ -87,8 +87,10 @@ if MMU_TYPE_KMS_1_0
     default n
   config BOOL_SKIP_CAL_ROTATION_DISTANCE
     default y
-  config BOOL_AUTOTUNE_ROTATION_DISTANCE
-    default y
+  if MMU_HAS_SYNC_FEEDBACK_BUFFER
+    config BOOL_AUTOTUNE_ROTATION_DISTANCE
+      default y
+  endif
   config BOOL_SKIP_CAL_ENCODER
     default n
   config BOOL_AUTOTUNE_ENCODER

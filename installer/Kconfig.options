@@ -119,6 +119,7 @@ menu "Software Options"
       bool "Enable Octoprint support?"
       help
         Enable ONLY if you need to use Octoprint otherwise recommended to leave disabled
+
   endmenu
 
 endmenu

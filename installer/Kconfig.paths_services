@@ -44,28 +44,32 @@ menu "Paths & Services"
     string "Happy Hare directory"
     default "$(SRC)"
 
-  config SERVICE_KLIPPER
-    string "Klipper service name"
-    depends on !REPETIER
-    default "${CONFIG_SERVICE_KLIPPER}" if $(to_bool, [ -n "$(CONFIG_SERVICE_KLIPPER)" ])
-    default "klipper.service" if INIT_SYSTEMD
-    default "klipper_service"
+  menu "Advanced"
 
-  config SERVICE_MOONRAKER
-    string "Moonraker service name"
-    depends on !OCTOPRINT
-    default "moonraker.service" if INIT_SYSTEMD 
-    default "moonraker_service"
+    config SERVICE_KLIPPER
+      string "Klipper service name"
+      depends on !REPETIER
+      default "${CONFIG_SERVICE_KLIPPER}" if $(to_bool, [ -n "$(CONFIG_SERVICE_KLIPPER)" ])
+      default "klipper.service" if INIT_SYSTEMD
+      default "klipper_service"
 
-  config SERVICE_OCTOPRINT
-    string "Octoprint service name"
-    depends on OCTOPRINT
-    default "octoprint.service"
+    config SERVICE_MOONRAKER
+      string "Moonraker service name"
+      depends on !OCTOPRINT
+      default "moonraker.service" if INIT_SYSTEMD 
+      default "moonraker_service"
 
-  config INIT_SYSTEMD
-    bool "Systemd"
-    default $(to_bool, [ -d /etc/systemd/system ])
-    help
-      Set if host computer using /etc/systemd/system for service restart
+    config SERVICE_OCTOPRINT
+      string "Octoprint service name"
+      depends on OCTOPRINT
+      default "octoprint.service"
+
+    config INIT_SYSTEMD
+      bool "Systemd"
+      default $(to_bool, [ -d /etc/systemd/system ])
+      help
+        Set if host computer using /etc/systemd/system for service restart
+
+  endmenu
 
 endmenu
