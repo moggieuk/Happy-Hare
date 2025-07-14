@@ -34,6 +34,15 @@ config PARAM_MISC_HARDWARE
   string
   default ""
 
+# Future TODO: multi-mmu units can share the same buffer and encoder. For now assume one per unit
+config PARAM_SYNC_FEEDBACK_BUFFER_NAME
+  string
+  default PARAM_UNIT_NAME
+
+config PARAM_ENCODER_NAME
+  string
+  default PARAM_UNIT_NAME
+
 menu "Design Attributes"
 
   choice CHOICE_SELECTOR_TYPE
@@ -112,12 +121,4 @@ menu "Design Attributes"
   config PARAM_FILAMENT_ALWAYS_GRIPPED
     bool "Filament always gripped?"
 
-  # Future TODO: multi-mmu units can share the same buffer and encoder. For now assume one per unit
-  config PARAM_SYNC_FEEDBACK_BUFFER_NAME
-    string
-    default PARAM_UNIT_NAME
-
-  config PARAM_ENCODER_NAME
-    string
-    default PARAM_UNIT_NAME
 endmenu

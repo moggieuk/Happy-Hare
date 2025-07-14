@@ -153,7 +153,7 @@ def jinja_env():
         comment_start_string="[#",
         comment_end_string="#]",
         trim_blocks=True,
-        # keep_trailing_newline=True,
+        line_comment_prefix=";;",
     )
 
 
@@ -420,6 +420,8 @@ def main():
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.getLogger().setLevel(logging.INFO)
 
     if args.build:
         build(args.build[0], args.build[1], args.build[2], args.build[3:])
