@@ -153,7 +153,7 @@ def jinja_env():
         comment_start_string="[#",
         comment_end_string="#]",
         trim_blocks=True,
-        # keep_trailing_newline=True,
+        line_comment_prefix=";;",
     )
 
 

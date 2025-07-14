@@ -315,7 +315,7 @@ class Mmu:
         self.autocal_bowden_length = config.getint('autocal_bowden_length', 1, minval=0, maxval=1)
         self.autotune_bowden_length = config.getint('autotune_bowden_length', 0, minval=0, maxval=1)
         self.skip_cal_encoder = config.getint('skip_cal_encoder', 0, minval=0, maxval=1)
-        self.autotune_encoder = config.getint('autotune_encoder', 0, minval=0, maxval=1) # Not exposed TODO placeholder for implementation
+        self.autotune_encoder = config.getint('autotune_encoder', 0, minval=0, maxval=1)
 
         # Internal macro overrides
         self.pause_macro = config.get('pause_macro', 'PAUSE')
