@@ -92,9 +92,9 @@ if BOARD_TYPE_KMS_1_0
 
   if OPTION_KMS_BUFFER
     config PIN_SYNC_FEEDBACK_TENSION
-      default "!$(MMU_MCU)_buffer):PA1"
+      default "!$(MMU_MCU)_buffer:PA1"
     config PIN_SYNC_FEEDBACK_COMPRESSION
-      default "!$(MMU_MCU)_buffer):PA0"
+      default "!$(MMU_MCU)_buffer:PA0"
   endif
 
   config PARAM_MISC_HARDWARE
@@ -106,21 +106,21 @@ htu21d_report_time: 5\n\
 i2c_software_scl_pin: PB10\n\
 i2c_software_sda_pin: PB11\n\
 \n\
-[heater_fan fan_left_$(UNIT_NAME)]\n\
+[heater_fan $(UNIT_NAME)_fan_left]\n\
 pin: $(MMU_MCU):PC3\n\
 max_power: 1\n\
 kick_start_time: 0.5\n\
-heater: heater_$(UNIT_NAME)\n\
+heater: $(UNIT_NAME)_heater\n\
 heater_temp: 20\n\
 \n\
-[heater_fan fan_right_$(UNIT_NAME)]\n\
+[heater_fan $(UNIT_NAME)_fan_right]\n\
 pin: $(MMU_MCU):PC1\n\
 max_power: 1\n\
 kick_start_time: 0.5\n\
-heater: heater_$(UNIT_NAME)\n\
+heater: $(UNIT_NAME)_heater\n\
 heater_temp: 20\n\
 \n\
-[heater_generic heater_$(UNIT_NAME)]\n\
+[heater_generic $(UNIT_NAME)_heater]\n\
 gcode_id: $(UNIT_NAME)		# ID used when querying temperature using M105.\n\
 heater_pin: $(MMU_MCU):PB1\n\
 max_power: 1.0\n\
