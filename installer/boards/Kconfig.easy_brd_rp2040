@@ -1,0 +1,40 @@
+config BOARD_TYPE_EASY_BRD_RP2040
+  bool "EASY-BRD with RP2040"
+
+if BOARD_TYPE_EASY_BRD_RP2040
+  config PARAM_BOARD_TYPE
+    default "EASY-BRD-RP2040"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,rp2040)
+  endchoice
+
+  config PIN_GEAR_UART
+    default "$(MMU_MCU):gpio6" 
+  config PIN_GEAR_STEP
+    default "$(MMU_MCU):gpio27" 
+  config PIN_GEAR_DIR
+    default "$(MMU_MCU):gpio28" 
+  config PIN_GEAR_ENABLE
+    default "!$(MMU_MCU):gpio26" 
+
+  config PIN_SELECTOR_UART
+    default "$(MMU_MCU):gpio6" 
+  config PIN_SELECTOR_STEP
+    default "$(MMU_MCU):gpio7" 
+  config PIN_SELECTOR_DIR
+    default "$(MMU_MCU):gpio0" 
+  config PIN_SELECTOR_ENABLE
+    default "!$(MMU_MCU):gpio29" 
+  config PIN_SELECTOR_DIAG
+    default "$(MMU_MCU):gpio2" if MMU_SELECTOR_TOUCH 
+  config PIN_SELECTOR_ENDSTOP
+    default "^$(MMU_MCU):gpio1" if !MMU_SELECTOR_TOUCH
+  config PIN_SELECTOR_SERVO
+    default "$(MMU_MCU):gpio4" 
+
+  config PIN_ENCODER
+    default "^$(MMU_MCU):gpio3" if MMU_HAS_ENCODER
+  config PIN_GATE_SENSOR
+    default "^$(MMU_MCU):gpio3" if !MMU_HAS_ENCODER 
+endif

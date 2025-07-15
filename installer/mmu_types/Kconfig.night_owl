@@ -1,0 +1,55 @@
+config MMU_TYPE_NIGHT_OWL_1_0
+  help
+    Night Owl is type-B MMU similar to Box Turtle but without the
+    active dc-motor respooler and often with just 2 gates. Instead
+    of active respooler it uses a Filamentalist based design leveraging
+    gear steppers for motion.
+  bool "Night Owl v1.0"
+  select MMU_HAS_LEDS
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select PARAM_REQUIRE_BOWDEN_MOVE
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select BOOL_ENABLE_SYNC_TO_EXTRUDER
+  select BOOL_ENABLE_SYNC_FORM_TIP
+  select BOOL_ENABLE_SYNC_PURGE
+  select MMU_DISABLE_ESPOOLER_OPTION
+  select MMU_DISABLE_FILAMENT_BUFFER_OPTION
+
+if MMU_TYPE_NIGHT_OWL_1_0
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
+
+if MMU_TYPE_NIGHT_OWL_1_0
+  config PARAM_MMU_VENDOR
+    default "NightOwl"
+  config PARAM_MMU_VERSION
+    default "1.0"
+  config PARAM_NUM_GATES
+    default 2
+  choice CHOICE_SELECTOR_TYPE
+    default VIRTUAL_SELECTOR
+  endchoice
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "50:10"
+  config PARAM_GEAR_RUN_CURRENT
+    default "0.7"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.1"
+
+  config PARAM_GATE_PARKING_DISTANCE
+    default "0"
+  config PARAM_GATE_HOMING_MAX
+    default "100"
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default "100"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_GEAR
+  endchoice
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 

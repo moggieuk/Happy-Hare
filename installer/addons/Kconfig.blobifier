@@ -1,0 +1,17 @@
+config ADDON_BLOBIFIER
+  help
+    Enable this if you have a Blobifer (or derivative) purging system.
+  bool "Enable Blobifier support?"
+
+if ADDON_BLOBIFIER
+  menu "Blobifier pins"
+    config PIN_BLOBIFIER_SERVO
+      string "Blobifier servo pin"
+      default "PG14"
+
+    config PIN_BLOBIFIER_BUCKET_SWITCH
+      string "Blobifier bucket switch pin"
+      default "PG15"
+  endmenu
+endif
+

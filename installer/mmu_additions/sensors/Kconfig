@@ -1,0 +1,16 @@
+menu "Filament Sensors"
+  help
+    Specify any additional filament sensors you have incorporated here.
+    This also allows for the installation of TMC stallguard based filament
+    detection and homing option.
+
+  # Force a logical order from mmu to extruder
+  rsource "Kconfig.pre_gate"
+  rsource "Kconfig.post_gear"
+  rsource "Kconfig.gate"
+  rsource "Kconfig.sync_feedback"
+  rsource "Kconfig.extruder"
+  rsource "Kconfig.toolhead"
+  rsource "Kconfig.gear_touch"
+
+endmenu

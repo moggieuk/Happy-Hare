@@ -1,0 +1,67 @@
+config BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
+  bool "Mellow EASY-BRD v2.x (with CANbus)"
+
+if BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
+  config PARAM_BOARD_TYPE
+    default "MELLOW-EASY-BRD-CANv2"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,rp2040)
+  endchoice
+
+  config PIN_GEAR_UART
+    default "$(MMU_MCU):gpio9" 
+  config PIN_GEAR_STEP
+    default "$(MMU_MCU):gpio7" 
+  config PIN_GEAR_DIR
+    default "$(MMU_MCU):gpio8" 
+  config PIN_GEAR_ENABLE
+    default "!$(MMU_MCU):gpio6"
+
+  config PIN_SELECTOR_UART
+    default "$(MMU_MCU):gpio2" 
+  config PIN_SELECTOR_STEP
+    default "$(MMU_MCU):gpio4" 
+  config PIN_SELECTOR_DIR
+    default "$(MMU_MCU):gpio3" 
+  config PIN_SELECTOR_ENABLE
+    default "!$(MMU_MCU):gpio5" 
+  config PIN_SELECTOR_DIAG
+    default "$(MMU_MCU):gpio20" if MMU_SELECTOR_TOUCH 
+  config PIN_SELECTOR_ENDSTOP
+    default "^$(MMU_MCU):gpio20" if !MMU_SELECTOR_TOUCH
+  config PIN_SELECTOR_SERVO
+    default "$(MMU_MCU):gpio21" 
+
+  config PIN_PRE_GATE_0
+    default "^$(MMU_MCU):gpio24"
+  config PIN_PRE_GATE_1
+    default "^$(MMU_MCU):gpio22"
+  config PIN_PRE_GATE_2
+    default "^$(MMU_MCU):gpio25"
+  config PIN_PRE_GATE_3
+    default "^$(MMU_MCU):gpio23"
+  config PIN_PRE_GATE_4
+    default "^$(MMU_MCU):gpio13"
+  config PIN_PRE_GATE_5
+    default "^$(MMU_MCU):gpio26"
+  config PIN_PRE_GATE_6
+    default "^$(MMU_MCU):gpio12"
+  config PIN_PRE_GATE_7
+    default "^$(MMU_MCU):gpio27"
+  config PIN_PRE_GATE_8
+    default "^$(MMU_MCU):gpio11"
+  config PIN_PRE_GATE_9
+    default "^$(MMU_MCU):gpio28"
+  config PIN_PRE_GATE_10
+    default "^$(MMU_MCU):gpio10"
+  config PIN_PRE_GATE_11
+    default "^$(MMU_MCU):gpio29"
+
+  config PIN_ENCODER
+    default "^$(MMU_MCU):gpio15" if MMU_HAS_ENCODER
+  config PIN_GATE_SENSOR
+    default "^$(MMU_MCU):gpio15" if !MMU_HAS_ENCODER
+  config PIN_NEOPIXEL
+    default "$(MMU_MCU):gpio14"
+endif

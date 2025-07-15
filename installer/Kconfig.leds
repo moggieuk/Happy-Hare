@@ -1,0 +1,51 @@
+if MMU_HAS_LEDS
+  menu "Leds"
+
+    config BOOL_ENABLE_LEDS
+      bool "Enable on start?"
+      default y
+      help
+        This allows you to install but turn off LED on startup.
+    config PARAM_LED_ENABLE
+      int
+      default 0
+      default 1 if BOOL_ENABLE_LEDS
+
+    config BOOL_ANIMATE_LEDS
+      bool "Enable animation?"
+      default y
+      help
+        This allows you to turn off LED animations perhaps reducing the overhead
+        on your main klipper CPU. Only disable if you have frequent TTC errors.
+        (rarely necessary)
+    config PARAM_LED_ANIMATION
+      int
+      default 0
+      default 1 if BOOL_ANIMATE_LEDS
+
+    config PARAM_CHAIN_COUNT
+      int "Chain count"
+      default PARAM_NUM_GATES
+
+    config PARAM_COLOR_ORDER
+      string "Color order"
+      default "GRBW"
+
+    config PARAM_EXIT_LEDS
+      string "Exit leds"
+      default "neopixel:mmu_leds (1-4)"
+
+    config PARAM_ENTRY_LEDS
+      string "Entry leds"
+      default ""
+
+    config PARAM_STATUS_LEDS
+      string "Status leds"
+      default ""
+
+    config PARAM_LOGO_LEDS
+      string "Logo leds"
+      default ""
+  endmenu
+endif
+

@@ -148,3 +148,4 @@ class PurgeVolCalculator:
         g = (color_value >> 8) & 0xFF
         b = color_value & 0xFF
         return r, g, b
+

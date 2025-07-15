@@ -12,15 +12,15 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging
+import logging, re
 
 # Klipper imports
 from . import led as klipper_led
 
 class VirtualMmuLedChain:
-    def __init__(self, config, segment, config_chains):
+    def __init__(self, config, unit_name, segment, config_chains):
         self.printer = config.get_printer()
-        self.name = "mmu_%s_leds" % segment
+        self.name = "%s_mmu_%s_leds" % (unit_name, segment)
         self.config_chains = config_chains
 
         # Create temporary config section just to access led helper
@@ -33,12 +33,17 @@ class VirtualMmuLedChain:
         # We need to configure the chain now so we can validate
         self.leds = []
         for chain_name, leds in self.config_chains:
-            chain = self.printer.lookup_object(chain_name, None)
-            if chain:
-                for led in leds:
-                    self.leds.append((chain, led))
-            else:
-                raise config.error("MMU LED chain '%s' referenced in '%s' doesn't exist" % (chain_name, self.name))
+            try:
+                chain = self.printer.load_object(config, chain_name)
+                if chain:
+                    for led in leds:
+                        self.leds.append((chain, led))
+            except Exception as e:
+                raise config.error("MMU LED chain '%s' referenced in '%s' cannot be loaded:\n%s" % (chain_name, self.name, str(e)))
+
+        # Register led object with klipper
+        logging.info("MMU: Created: %s" % led_section)
+        self.printer.add_object(self.name, self)
 
     def update_leds(self, led_state, print_time):
         chains_to_update = set()
@@ -64,10 +69,12 @@ class MmuLeds:
     PER_GATE_SEGMENTS = ['exit', 'entry']
     SEGMENTS = PER_GATE_SEGMENTS + ['status', 'logo']
 
-    def __init__(self, config):
+    def __init__(self, config, *args):
+        if len(args) < 2:
+            raise config.error("[%s] cannot be instantiated directly. It must be loaded by [mmu_unit]" % config.get_name())
+        self.mmu_machine, self.mmu_unit, self.first_gate, self.num_gates = args
+        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
-
-        self.num_gates = self.printer.lookup_object("mmu_machine").num_gates
         self.frame_rate = config.getint('frame_rate', 24)
 
         # Create virtual led chains
@@ -75,12 +82,11 @@ class MmuLeds:
         for segment in self.SEGMENTS:
             name = "%s_leds" % segment
             config_chains = [self.parse_chain(line) for line in config.get(name, '').split('\n') if line.strip()]
-            self.virtual_chains[segment] = VirtualMmuLedChain(config, segment, config_chains)
-            self.printer.add_object("mmu_%s" % name, self.virtual_chains[segment])
+            self.virtual_chains[segment] = VirtualMmuLedChain(config, "unit%d" % self.mmu_unit.unit_index, segment, config_chains)
 
             num_leds = len(self.virtual_chains[segment].leds)
-            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds != self.num_gates:
-                raise config.error("Number of MMU '%s' LEDs (%d) doesn't match num_gates (%d)" % (segment, num_leds, self.num_gates))
+            if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds % self.num_gates:
+                raise config.error("Number of MMU '%s' LEDs (%d) cannot be spread over num_gates (%d)" % (segment, num_leds, self.num_gates))
 
         # Check for LED chain overlap or unavailable LEDs
         used = {}
@@ -94,13 +100,44 @@ class MmuLeds:
                 else:
                     used[led] = segment
 
-        # Check if LED effects module is installed
-        self.led_effect_module = False
-        try:
-            _ = config.get_printer().load_object(config, 'led_effect')
-            self.led_effect_module = True
-        except Exception:
-            pass
+        # Read default effects for each segment and other options
+        self.enabled = config.get('enabled', True)
+        self.animation = config.get('animation', True)
+        self.exit_effect = config.get('exit_effect', 'gate_status')
+        self.entry_effect = config.get('entry_effect', 'filament_color')
+        self.status_effect = config.get('status_effect', 'filament_color')
+        self.logo_effect = MmuLeds.string_to_rgb(config.get('logo_effect', '(0,0,0.3)'))
+        self.white_light = MmuLeds.string_to_rgb(config.get('white_light', '(1,1,1)'))
+        self.black_light = MmuLeds.string_to_rgb(config.get('black_light', '(0.01,0,0.02)'))
+        self.empty_light = MmuLeds.string_to_rgb(config.get('empty_light', '(0,0,0)'))
+
+        # Read operation to effect mappings
+        self.effects = {}
+        self.effect_rgb = {}
+        effect_keys = [
+            'effect_loading',
+            'effect_loading_extruder',
+            'effect_unloading',
+            'effect_unloading_extruder',
+            'effect_heating',
+            'effect_selecting',
+            'effect_checking',
+            'effect_initialized',
+            'effect_error',
+            'effect_complete',
+            'effect_gate_available',
+            'effect_gate_unknown',
+            'effect_gate_empty',
+            'effect_gate_selected'
+        ]
+        for key in effect_keys:
+            parts = [part.strip() for part in config.get(key, '').split(",", 1)]
+            effect = parts[0]
+            rgb_string = parts[1] if len(parts) == 2 else config.get('empty_light', '(0,0,0)')
+            operation = key[len('effect_'):]
+            self.effects[operation] = effect
+            self.effect_rgb[effect] = MmuLeds.string_to_rgb(rgb_string)
+        self.effect_rgb[''] = (0,0,0)
 
     def parse_chain(self, chain):
         chain = chain.strip()
@@ -128,14 +165,35 @@ class MmuLeds:
         else:
             return None, None
 
+    def get_effect(self, operation):
+        return self.effects.get(operation, '')
+
+    def get_rgb_for_effect(self, effect):
+        return self.effect_rgb[effect]
+
     def get_status(self, eventtime=None):
         status = {segment: len(self.virtual_chains[segment].leds) for segment in self.SEGMENTS}
         status.update({
-            'led_effect_module': self.led_effect_module,
+            'enabled': self.enabled,
+            'animation': self.animation,
+            'exit_effect': self.exit_effect,
+            'entry_effect': self.entry_effect,
+            'status_effect': self.status_effect,
+            'logo_effect': self.logo_effect,
             'num_gates': self.num_gates,
-            'default_frame_rate': self.frame_rate
         })
         return status
 
-def load_config(config):
+    @staticmethod
+    def string_to_rgb(rgb_string):
+        if not isinstance(rgb_string, tuple):
+            rgb = re.sub(r"[\"'()]", '', rgb_string) # Clean up strings
+            rgb = tuple(float(x) for x in rgb.split(','))
+        else:
+           rgb = rgb_string
+        if len(rgb) != 3:
+            raise ValueError("%s is not a valid rgb tuple" % str(rgb_string))
+        return rgb
+
+def load_config_prefix(config):
     return MmuLeds(config)

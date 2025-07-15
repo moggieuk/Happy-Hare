@@ -5,23 +5,23 @@ This provides a quick way to run through the installer in a docker environment, 
 > [!NOTE]
 > This will create/update configs at `<repo-root>/installer-dev/config`. You may then review the changes there
 > or completely remove the files and start from scratch.
+> currently symbolic links aren't copied 
+
+There are two targets:
+- debian, to mimic most common klipper installs (mainsail OS, Raspian OS, etc)
+- alpine, to mimic a busybox environment like with Creality K1 
 
 ## Usage
 
-### Full install
-
-This will run the installer with `-i` which forces it to run through the questionaire.
-
-```shell
-cd ./installer-dev
-docker compose run --build --rm install
+To run use:
+```shell 
+docker compose run --build --rm <target> '<command>'
 ```
 
-### Upgrade
-
-This will run the installer without `-i` which will perform a config upgrade.
+for example, to run the installer with a debian base:
 
 ```shell
-cd ./installer-dev
-docker compose run --build --rm upgrade
+docker compose run --build --rm debian 'make install'
 ```
+
+

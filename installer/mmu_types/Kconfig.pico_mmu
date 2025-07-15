@@ -1,0 +1,60 @@
+config MMU_TYPE_PICO_MMU_1_0
+  help
+    Pick MMU is a type-A that uses a single servo and cam mechanism
+    to both select and grip the filament in the chosen gate. It is a
+    simple compact design but is limited to about 4 gates.
+   
+  bool "Pico MMU"
+  select MMU_HAS_SERVO
+  select PARAM_REQUIRE_BOWDEN_MOVE
+  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select BOOL_ENABLE_SYNC_TO_EXTRUDER
+  select BOOL_ENABLE_SYNC_FORM_TIP
+  select BOOL_ENABLE_SYNC_PURGE
+  imply BOOL_ENABLE_LEDS
+
+if MMU_TYPE_PICO_MMU_1_0
+  rsource "../servos/Kconfig"
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
+
+if MMU_TYPE_PICO_MMU_1_0
+  config PARAM_MMU_VENDOR
+    default "PicoMMU"
+  config PARAM_MMU_VERSION
+    default "1.0"  
+  config PARAM_NUM_GATES
+    default 4
+  choice CHOICE_SELECTOR_TYPE
+    default SERVO_SELECTOR
+  endchoice
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "1.28:1"
+  config PARAM_GEAR_RUN_CURRENT
+    default "0.7"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.1"
+
+  config PARAM_GEAR_HOMING_SPEED
+    default "80"
+
+  config PARAM_GATE_HOMING_MAX
+    default "100"
+  config PARAM_GATE_PARKING_DISTANCE
+    default "25"
+
+  config PARAM_CHAIN_COUNT
+    default 4   
+  config PARAM_EXIT_LEDS 
+    default "neopixel:$(UNIT_NAME)_leds (1-4)"
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_GATE
+  endchoice
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 

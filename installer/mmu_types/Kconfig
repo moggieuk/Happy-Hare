@@ -1,0 +1,18 @@
+config PARAM_MMU_VENDOR
+  string
+
+config PARAM_MMU_VERSION
+  string
+
+choice CHOICE_MMU_TYPE 
+  prompt "MMU Type"
+  help 
+    Step 1 - MMU type and hardware
+    MMU Type (plus options and popular mods)
+    Setting the MMU/AFC type and fitted options or popular mods should
+    be done first and will default many software options to those
+    recommended by the MMU designer or Happy Hare author.
+
+  rsource "Kconfig.*"
+  rsource "starters/Kconfig.*"
+endchoice

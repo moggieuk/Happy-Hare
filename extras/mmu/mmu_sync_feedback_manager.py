@@ -52,7 +52,8 @@ class MmuSyncFeedbackManager:
 
         # Process config
         self.sync_feedback_enabled = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
-        self.sync_feedback_buffer = self.mmu.config.getfloat('sync_feedback_buffer', 10., minval=0.)
+        self.sync_feedback_buffer_range = self.mmu.config.getfloat('sync_feedback_buffer_range', 10., minval=0.)
+        self.sync_feedback_buffer_maxrange = self.mmu.config.getfloat('sync_feedback_buffer_maxrange', 10., minval=0.)
         self.sync_multiplier_high = self.mmu.config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
         self.sync_multiplier_low = self.mmu.config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
         self.sync_movement_threshold = self.mmu.config.getfloat('sync_movement_threshold', self.MOVEMENT_THRESHOLD, above=self.SIGNIFICANT_MOVEMENT) # Not yet exposed
@@ -75,13 +76,15 @@ class MmuSyncFeedbackManager:
 
     def set_test_config(self, gcmd):
         self.sync_feedback_enabled = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled)
-        self.sync_feedback_buffer = gcmd.get_float('SYNC_FEEDBACK_BUFFER', self.sync_feedback_buffer, minval=0.)
+        self.sync_feedback_buffer_range = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
+        self.sync_feedback_buffer_maxrange = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
         self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
         self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
 
     def get_test_config(self):
         msg = "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
-        msg += "\nsync_feedback_buffer = %.1f" % self.sync_feedback_buffer
+        msg += "\nsync_feedback_buffer_range = %.1f" % self.sync_feedback_buffer_range
+        msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
         msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
         msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
         return msg

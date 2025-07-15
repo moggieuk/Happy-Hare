@@ -1,0 +1,81 @@
+config MMU_TYPE_TRADRACK_1_0
+ help
+   Tradrack is a type-A MMU designed by the Annex Engineering team.
+   It differed from ERCF in that it is easier to add additional gates/lanes
+   but also uses the same BMG gear to drive all filaments. It has a shared
+   gate sensor but a Binky based encoder is a popular option.
+  bool "Tradrack v1.0"
+  select MMU_HAS_SELECTOR
+  select MMU_HAS_SERVO
+  select MMU_HAS_SENSOR_GATE
+  select PARAM_REQUIRE_BOWDEN_MOVE
+  imply BOOL_SERVO_ALWAYS_ACTIVE
+  
+if MMU_TYPE_TRADRACK_1_0
+  rsource "../Kconfig.num_gates"
+  rsource "../servos/Kconfig"
+
+  menu "Project Options"
+    help
+      If you have any project upgrades then you can specify them here.
+
+    config MOD_BINKY
+      bool "Binky encoder"
+      help
+        Select if building with a Binky based encoder.
+      imply MMU_HAS_ENCODER
+  endmenu
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    rsource "../mmu_additions/Kconfig"
+  endif
+endif
+
+if MMU_TYPE_TRADRACK_1_0
+  config PARAM_MMU_VENDOR
+    default "Tradrack"
+  config PARAM_MMU_VERSION
+    default "1.0"
+  config PARAM_NUM_GATES
+    default 10
+  choice CHOICE_SELECTOR_TYPE
+    default LINEAR_SELECTOR
+  endchoice
+  choice CHOICE_BOARD_TYPE
+    default BOARD_TYPE_MMB_2_0
+  endchoice
+
+  config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
+    default 0
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "50:17"
+  config PARAM_GEAR_RUN_CURRENT
+    default "1.27"
+  config PARAM_GEAR_HOLD_CURRENT
+    default "0.2"
+
+  config PARAM_SELECTOR_RUN_CURRENT
+    default "0.63"
+  config PARAM_SELECTOR_HOLD_CURRENT
+    default "0.2"
+
+  config PARAM_SERVO_DURATION
+    default "0.4"
+  config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
+    default 0
+
+  config PARAM_GATE_PARKING_DISTANCE
+    default "48" if MOD_BINKY 
+    default "17.5"
+  config PARAM_GATE_ENDSTOP_TO_ENCODER
+    default "31" if MOD_BINKY
+
+  choice CHOICE_GATE_HOMING_ENDSTOP
+    default GATE_HOMING_ENDSTOP_GATE
+  endchoice
+  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+    default EXTRUDER_HOMING_ENDSTOP_COLLISION if MOD_BINKY
+    default EXTRUDER_HOMING_ENDSTOP_NONE
+  endchoice
+endif 

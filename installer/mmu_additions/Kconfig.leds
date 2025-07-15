@@ -1,0 +1,26 @@
+config MMU_HAS_LEDS
+  help
+    Select if your MMU has LEDs. This will install the LED driver but
+    will still need to finialize configuration in the generated klipper
+    config files or you can edit parameters in "Advanced" section.
+  prompt "Has Leds?"
+
+if MMU_HAS_LEDS
+  menu "Led Options"
+    help
+      Select default led options
+
+    config BOOL_ENABLE_LEDS
+      prompt "Enable on start?"
+      help
+        This allows you to install but turn off LED on startup.
+
+    config BOOL_ANIMATE_LEDS
+      prompt "Enable animation?"
+      help
+        This allows you to turn off LED animations perhaps reducing the overhead
+        on your main klipper CPU. Only disable if you have frequent TTC errors.
+        (rarely necessary)
+
+  endmenu
+endif

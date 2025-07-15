@@ -1,1 +1,7 @@
 my_*.cfg
+out/
+out_*/
+*.config
+*.config.*
+__pycache__/
+*.pyc
