@@ -10,60 +10,60 @@ if BOARD_TYPE_ERB_2
   endchoice
 
   config PIN_GEAR_UART
-    default "mmu:gpio11" 
+    default "$(MMU_MCU):gpio11" 
   config PIN_GEAR_STEP
-    default "mmu:gpio10" 
+    default "$(MMU_MCU):gpio10" 
   config PIN_GEAR_DIR
-    default "mmu:gpio9" 
+    default "$(MMU_MCU):gpio9" 
   config PIN_GEAR_ENABLE
-    default "!mmu:gpio8"
+    default "!$(MMU_MCU):gpio8"
   config PIN_GEAR_DIAG
-    default "mmu:gpio13"
+    default "$(MMU_MCU):gpio13"
 
   config PIN_SELECTOR_UART
-    default "mmu:gpio17" 
+    default "$(MMU_MCU):gpio17" 
   config PIN_SELECTOR_STEP
-    default "mmu:gpio16" 
+    default "$(MMU_MCU):gpio16" 
   config PIN_SELECTOR_DIR
-    default "mmu:gpio15" 
+    default "$(MMU_MCU):gpio15" 
   config PIN_SELECTOR_ENABLE
-    default "!mmu:gpio14" 
+    default "!$(MMU_MCU):gpio14" 
   config PIN_SELECTOR_DIAG
-    default "mmu:gpio19" if MMU_SELECTOR_TOUCH 
+    default "$(MMU_MCU):gpio19" if MMU_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "^mmu:gpio24" if !MMU_SELECTOR_TOUCH
+    default "^$(MMU_MCU):gpio24" if !MMU_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
-    default "mmu:gpio23" 
+    default "$(MMU_MCU):gpio23" 
 
   config PIN_PRE_GATE_0
-    default "^mmu:gpio12"
+    default "^$(MMU_MCU):gpio12"
   config PIN_PRE_GATE_1
-    default "^mmu:gpio18"
+    default "^$(MMU_MCU):gpio18"
   config PIN_PRE_GATE_2
-    default "^mmu:gpio2"
+    default "^$(MMU_MCU):gpio2"
   config PIN_PRE_GATE_3
-    default "^mmu:gpio3"
+    default "^$(MMU_MCU):gpio3"
   config PIN_PRE_GATE_4
-    default "^mmu:gpio4"
+    default "^$(MMU_MCU):gpio4"
   config PIN_PRE_GATE_5
-    default "^mmu:gpio5"
+    default "^$(MMU_MCU):gpio5"
   config PIN_PRE_GATE_6
-    default "^mmu:gpio6"
+    default "^$(MMU_MCU):gpio6"
   config PIN_PRE_GATE_7
-    default "^mmu:gpio7"
+    default "^$(MMU_MCU):gpio7"
   config PIN_PRE_GATE_8
-    default "^mmu:gpio26"
+    default "^$(MMU_MCU):gpio26"
   config PIN_PRE_GATE_9
-    default "^mmu:gpio27"
+    default "^$(MMU_MCU):gpio27"
   config PIN_PRE_GATE_10
-    default "^mmu:gpio28"
+    default "^$(MMU_MCU):gpio28"
   config PIN_PRE_GATE_11
-    default "^mmu:gpio29"
+    default "^$(MMU_MCU):gpio29"
 
   config PIN_ENCODER
-    default "^mmu:gpio22" if MMU_HAS_ENCODER
+    default "^$(MMU_MCU):gpio22" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "^mmu:gpio25" if !MMU_HAS_ENCODER
+    default "^$(MMU_MCU):gpio25" if !MMU_HAS_ENCODER
   config PIN_NEOPIXEL
-    default "mmu:gpio21"
+    default "$(MMU_MCU):gpio21"
 endif

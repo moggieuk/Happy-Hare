@@ -5,7 +5,7 @@ menu "Software Options"
     configuration can be achieved later by editing generated klipper
     config files.
 
-  config BOOL_SELECTOR_TOUCH_ENABLE
+  config BOOL_ENABLE_SELECTOR_TOUCH
     bool "Enable touch selector operation using TMC Stallguard?"
     help
       This allows for additional selector recovery steps but is difficult to tune.
@@ -14,14 +14,14 @@ menu "Software Options"
     depends on PARAM_SELECTOR_TYPE = "LinearSelector"
   config PARAM_SELECTOR_TOUCH_ENABLE
     int
-    default 1 if BOOL_SELECTOR_TOUCH_ENABLE
+    default 1 if BOOL_ENABLE_SELECTOR_TOUCH
     default 0
 
   if BOARD_TYPE_EASY_BRD
     comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
-      depends on BOOL_SELECTOR_TOUCH_ENABLE
+      depends on BOOL_ENABLE_SELECTOR_TOUCH
     comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
-      depends on !BOOL_SELECTOR_TOUCH_ENABLE
+      depends on !BOOL_ENABLE_SELECTOR_TOUCH
   endif
 
   rsource "Kconfig.sync"

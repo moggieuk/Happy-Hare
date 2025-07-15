@@ -33,25 +33,30 @@ config MULTI_UNIT_ENTRY_POINT
   bool
   default "$(F_MULTI_UNIT_ENTRY_POINT)"
 
+# Make environment variable available as config tokens
+if !MULTI_UNIT_ENTRY_POINT
+  config UNIT_NAME
+    string
+    default "$(UNIT_NAME)"
+
+  config MMU_MCU
+    string
+    default "$(MMU_MCU)"
+
+  config BUFFER_MCU
+    string
+    default "$(BUFFER_MCU)"
+endif
+
 if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
   config UNIT_INDEX
     int
     default $(shell, echo "${UNIT_INDEX-0}")
-
-  config PARAM_UNIT_NAME
-    string
-    default "$(UNIT_NAME)"
 endif
 
-if !(MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT)
-  config PARAM_UNIT_NAME
-    string
-    default "unit0"
-
-  config PARAM_MMU_UNITS
-    string
-    default "unit0"
-endif
+config PARAM_MMU_UNITS
+  string
+  default "$(UNIT_NAME)"
 
 # y to shows MMU additions menu inline with type
 # n to show as top level menu

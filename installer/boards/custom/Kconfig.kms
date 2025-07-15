@@ -9,119 +9,129 @@ if BOARD_TYPE_KMS_1_0
     default $(serial_config,1,stm32)
   endchoice
 
+  config PARAM_SERIAL_BUFFER
+    default "SET_ME"
+
   # PAUL TODO add second serial board for buffer (if fitted)
 
   config PIN_GEAR_UART 
-    default "mmu:PB4"
+    default "$(MMU_MCU):PB4"
   config PIN_GEAR_STEP
-    default "mmu:PB5" 
+    default "$(MMU_MCU):PB5" 
   config PIN_GEAR_DIR
-    default "mmu:PB6" 
+    default "$(MMU_MCU):PB6" 
   config PIN_GEAR_ENABLE
-    default "!mmu:PB3" 
+    default "!$(MMU_MCU):PB3" 
 
   config PIN_GEAR_UART_1 
-    default "mmu:PB8" 
+    default "$(MMU_MCU):PB8" 
   config PIN_GEAR_STEP_1
-    default "mmu:PB9" 
+    default "$(MMU_MCU):PB9" 
   config PIN_GEAR_DIR_1
-    default "!mmu:PC10" 
+    default "!$(MMU_MCU):PC10" 
   config PIN_GEAR_ENABLE_1
-    default "!mmu:PB7" 
+    default "!$(MMU_MCU):PB7" 
 
   config PIN_GEAR_UART_2 
-    default "mmu:PD3" 
+    default "$(MMU_MCU):PD3" 
   config PIN_GEAR_STEP_2
-    default "mmu:PD4" 
+    default "$(MMU_MCU):PD4" 
   config PIN_GEAR_DIR_2
-    default "mmu:PD5" 
+    default "$(MMU_MCU):PD5" 
   config PIN_GEAR_ENABLE_2
-    default "!mmu:PD6" 
+    default "!$(MMU_MCU):PD6" 
 
   config PIN_GEAR_UART_3 
-    default "mmu:PC9" 
+    default "$(MMU_MCU):PC9" 
   config PIN_GEAR_STEP_3
-    default "mmu:PD0" 
+    default "$(MMU_MCU):PD0" 
   config PIN_GEAR_DIR_3
-    default "!mmu:PD1" 
+    default "!$(MMU_MCU):PD1" 
   config PIN_GEAR_ENABLE_3
-    default "!mmu:PD2" 
+    default "!$(MMU_MCU):PD2" 
 
   config PIN_PRE_GATE_0
-    default "mmu:PA0" 
+    default "$(MMU_MCU):PA0" 
   config PIN_PRE_GATE_1
-    default "mmu:PA1" 
+    default "$(MMU_MCU):PA1" 
   config PIN_PRE_GATE_2
-    default "mmu:PA2" 
+    default "$(MMU_MCU):PA2" 
   config PIN_PRE_GATE_3
-    default "mmu:PA3" 
+    default "$(MMU_MCU):PA3" 
 
   config PIN_GEAR_SENSOR_0
-    default "mmu:PA5"
+    default "$(MMU_MCU):PA5"
   config PIN_GEAR_SENSOR_1
-    default "mmu:PA6"
+    default "$(MMU_MCU):PA6"
   config PIN_GEAR_SENSOR_2
-    default "mmu:PA7"
+    default "$(MMU_MCU):PA7"
   config PIN_GEAR_SENSOR_3
-    default "mmu:PC4"
+    default "$(MMU_MCU):PC4"
   
   config PIN_ESPOOLER_FWD_0
-    default "mmu:PA8"
+    default "$(MMU_MCU):PA8"
   config PIN_ESPOOLER_RWD_0
-    default "mmu:PB15"
+    default "$(MMU_MCU):PB15"
   config PIN_ESPOOLER_FWD_1
-    default "mmu:PB13"
+    default "$(MMU_MCU):PB13"
   config PIN_ESPOOLER_RWD_1
-    default "mmu:PB14"
+    default "$(MMU_MCU):PB14"
   config PIN_ESPOOLER_FWD_2
-    default "mmu:PA9"
+    default "$(MMU_MCU):PA9"
   config PIN_ESPOOLER_RWD_2
-    default "mmu:PC6"
+    default "$(MMU_MCU):PC6"
   config PIN_ESPOOLER_FWD_3
-    default "mmu:PD8"
+    default "$(MMU_MCU):PD8"
   config PIN_ESPOOLER_RWD_3
-    default "mmu:PC7"
+    default "$(MMU_MCU):PC7"
 
   config PIN_ENCODER
-    default "mmu:PC5"
+    default "$(MMU_MCU):PC5"
   config PIN_NEOPIXEL
-    default "mmu:PC13" 
+    default "$(MMU_MCU):PC13" 
   config PIN_GATE_SENSOR
-    default "mmu:PC0"
+    default "$(MMU_MCU):PC0"
+
+  if OPTION_KMS_BUFFER
+    config PIN_SYNC_FEEDBACK_TENSION
+      default "!$(BUFFER_MCU):PA1"
+    config PIN_SYNC_FEEDBACK_COMPRESSION
+      default "!$(BUFFER_MCU):PA0"
+  endif
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\
 [temperature_sensor Environment]\n\
 sensor_type: HTU21D\n\
-i2c_mcu:mmu\n\
-htu21d_report_time:5\n\
-i2c_software_scl_pin:PB10\n\
-i2c_software_sda_pin:PB11\n\
+i2c_mcu: $(MMU_MCU)\n\
+htu21d_report_time: 5\n\
+i2c_software_scl_pin: PB10\n\
+i2c_software_sda_pin: PB11\n\
 \n\
 [heater_fan KMS_BOX_FAN_LEFT]\n\
-pin: mmu:PC3\n\
+pin: $(MMU_MCU):PC3\n\
 max_power: 1\n\
 kick_start_time: 0.5\n\
 heater: KMS_BOX_HOT\n\
 heater_temp: 20\n\
 \n\
 [heater_fan MMU_BOX_FAN_RIGHT]\n\
-pin: mmu:PC1\n\
+pin: $(MMU_MCU):PC1\n\
 max_power: 1\n\
 kick_start_time: 0.5\n\
 heater: KMS_BOX_HOT\n\
 heater_temp: 20\n\
 \n\
 [heater_generic KMS_BOX_HOT]\n\
-gcode_id:BOX		# ID used when querying temperature using M105.\n\
-heater_pin:mmu:PB1\n\
-max_power:1.0\n\
+gcode_id: BOX		# ID used when querying temperature using M105.\n\
+heater_pin: $(MMU_MCU):PB1\n\
+max_power: 1.0\n\
 sensor_type: EPCOS 100K B57560G104F\n\
-sensor_pin: mmu:PA4\n\
+sensor_pin: $(MMU_MCU):PA4\n\
 #smooth_time:\n\
-control:watermark\n\
-min_temp:0\n\
-max_temp:60\n\
+control: watermark\n\
+min_temp: 0\n\
+max_temp: 60\n\
 )"
 
 endif

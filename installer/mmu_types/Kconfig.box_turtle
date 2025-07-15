@@ -52,6 +52,9 @@ if MMU_TYPE_BOX_TURTLE_1_0
   choice CHOICE_SELECTOR_TYPE
     default VIRTUAL_SELECTOR
   endchoice
+  choice CHOICE_BOARD_TYPE
+    default BOARD_TYPE_AFC_LITE_1_0
+  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "50:10"

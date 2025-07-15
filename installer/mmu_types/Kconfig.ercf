@@ -69,6 +69,9 @@ if MMU_TYPE_ERCF_1_1
   choice CHOICE_SELECTOR_TYPE
     default LINEAR_SELECTOR
   endchoice
+  choice CHOICE_BOARD_TYPE
+    default BOARD_TYPE_EASY_BRD_RP2040
+  endchoice
 
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 3
@@ -159,6 +162,9 @@ if MMU_TYPE_ERCF_2_0
     default 8
   choice CHOICE_SELECTOR_TYPE
     default LINEAR_SELECTOR
+  endchoice
+  choice CHOICE_BOARD_TYPE
+    default BOARD_TYPE_MMB_2_0
   endchoice
   
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN

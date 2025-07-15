@@ -25,6 +25,6 @@ choice CHOICE_BOARD_TYPE
 
   # ViViD has custom mcu
   if MMU_TYPE_VVD_1_0
-    rsource "custom/Kconfig.kms"
+    rsource "custom/Kconfig.vvd"
   endif
 endchoice

@@ -64,7 +64,9 @@ menu "Pins"
       endif
     endmenu
 
-    if PARAM_SELECTOR_TYPE = "LinearSelector"
+    if PARAM_SELECTOR_TYPE = "LinearSelector" || \
+       PARAM_SELECTOR_TYPE = "RotarySelector" || \
+       PARAM_SELECTOR_TYPE = "IndexedSelector"
       menu "Selector pins"
         config PIN_SELECTOR_UART
           string "Selector UART pin"

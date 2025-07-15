@@ -67,3 +67,6 @@ config PARAM_SERIAL
   default "$(serial,9)" if $(serial_config,9)
   default "$(serial,10)" if $(serial_config,10)
 
+# TODO - implement second buffer mcu
+config PARAM_SERIAL_BUFFER
+  string

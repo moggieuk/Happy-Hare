@@ -11,58 +11,58 @@ if BOARD_TYPE_SKR_PICO_1
 
   # MMU Type B
   config PIN_GEAR_UART 
-    default "mmu:gpio9" 
+    default "$(MMU_MCU):gpio9" 
   config PIN_GEAR_STEP
-    default "mmu:gpio11" 
+    default "$(MMU_MCU):gpio11" 
   config PIN_GEAR_DIR
-    default "mmu:gpio10" 
+    default "$(MMU_MCU):gpio10" 
   config PIN_GEAR_ENABLE
-    default "!mmu:gpio12" 
+    default "!$(MMU_MCU):gpio12" 
   config PIN_GEAR_DIAG
-    default "mmu:gpio4" 
+    default "$(MMU_MCU):gpio4" 
 
   if PARAM_SELECTOR_TYPE = "VirtualSelector"
     config PIN_GEAR_STEP_1
-      default "mmu:gpio6" 
+      default "$(MMU_MCU):gpio6" 
     config PIN_GEAR_DIR_1
-      default "mmu:gpio5" 
+      default "$(MMU_MCU):gpio5" 
     config PIN_GEAR_ENABLE_1
-      default "!mmu:gpio7" 
+      default "!$(MMU_MCU):gpio7" 
     config PIN_GEAR_DIAG_1
-      default "mmu:gpop3" 
+      default "$(MMU_MCU):gpop3" 
 
     config PIN_GEAR_STEP_2
-      default "mmu:gpio19" 
+      default "$(MMU_MCU):gpio19" 
     config PIN_GEAR_DIR_2
-      default "mmu:gpio28" 
+      default "$(MMU_MCU):gpio28" 
     config PIN_GEAR_ENABLE_2
-      default "!mmu:gpio2" 
+      default "!$(MMU_MCU):gpio2" 
     config PIN_GEAR_DIAG_2
-      default "mmu:gpio25"
+      default "$(MMU_MCU):gpio25"
 
     config PIN_GEAR_STEP_3
-      default "mmu:gpio14" 
+      default "$(MMU_MCU):gpio14" 
     config PIN_GEAR_DIR_3
-      default "mmu:gpio13" 
+      default "$(MMU_MCU):gpio13" 
     config PIN_GEAR_ENABLE_3
-      default "!mmu:gpio15" 
+      default "!$(MMU_MCU):gpio15" 
     config PIN_GEAR_DIAG_3
-      default "mmu:gpio16" 
+      default "$(MMU_MCU):gpio16" 
   endif
 
   if PARAM_SELECTOR_TYPE != "VirtualSelector"
     config PIN_SELECTOR_STEP
-      default "mmu:gpio19" 
+      default "$(MMU_MCU):gpio19" 
     config PIN_SELECTOR_DIR
-      default "mmu:gpio28" 
+      default "$(MMU_MCU):gpio28" 
     config PIN_SELECTOR_ENABLE
-      default "!mmu:gpio2" 
+      default "!$(MMU_MCU):gpio2" 
     config PIN_SELECTOR_DIAG
-      default "mmu:gpio25" 
+      default "$(MMU_MCU):gpio25" 
     config PIN_SELECTOR_SERVO
-      default "mmu:gpio29" 
+      default "$(MMU_MCU):gpio29" 
   endif
 
   config PIN_NEOPIXEL
-    default "mmu:gpio24" 
+    default "$(MMU_MCU):gpio24" 
 endif

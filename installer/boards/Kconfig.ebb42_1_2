@@ -10,28 +10,28 @@ if BOARD_TYPE_EBB42_1_2
   endchoice
 
   config PIN_GEAR_UART 
-    default "mmu:PA15" 
+    default "$(MMU_MCU):PA15" 
   config PIN_GEAR_STEP
-    default "mmu:PD0" 
+    default "$(MMU_MCU):PD0" 
   config PIN_GEAR_DIR
-    default "mmu:PD1" 
+    default "$(MMU_MCU):PD1" 
   config PIN_GEAR_ENABLE
-    default "!mmu:PD2" 
+    default "!$(MMU_MCU):PD2" 
 
   config PIN_SELECTOR_SERVO
-    default "mmu:PB9"
+    default "$(MMU_MCU):PB9"
 
   config PIN_PRE_GATE_0
-    default "^mmu:PB7" 
+    default "^$(MMU_MCU):PB7" 
   config PIN_PRE_GATE_1
-    default "^mmu:PB5" 
+    default "^$(MMU_MCU):PB5" 
   config PIN_PRE_GATE_2
-    default "^mmu:PB6" 
+    default "^$(MMU_MCU):PB6" 
   config PIN_PRE_GATE_3
-    default "^mmu:PB8"
+    default "^$(MMU_MCU):PB8"
 
   config PIN_NEOPIXEL
-    default "mmu:PD3" 
+    default "$(MMU_MCU):PD3" 
   config PIN_GATE_SENSOR
-    default "^mmu:PB4" if !MMU_HAS_ENCODER
+    default "^$(MMU_MCU):PB4" if !MMU_HAS_ENCODER
 endif

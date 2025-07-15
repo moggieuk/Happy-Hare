@@ -6528,7 +6528,10 @@ class Mmu:
             # Prevent BASE_RESUME from moving toolhead
             if self.TOOLHEAD_POSITION_STATE in self.gcode_move.saved_states:
                 gcode_pos = self.gcode_move.get_status(self.reactor.monotonic())['gcode_position']
-                self.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = gcode_pos[:3]
+                try:
+                    self.gcode_move.saved_states['PAUSE_STATE']['last_position'][:3] = gcode_pos[:3]
+                except KeyError:
+                    self.log_error("PAUSE_STATE not defined!")
 
             self.wrap_gcode_command(" ".join(("__RESUME", gcmd.get_raw_command_parameters())), exception=None)
             self._continue_after("resume", force_in_print=force_in_print)

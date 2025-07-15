@@ -36,6 +36,10 @@ menu "Motors"
     config PARAM_SELECTOR_HOLD_CURRENT
       string "Selector hold current"
       default "0.2"
+
+    config PARAM_SELECTOR_ENDSTOP_NAME
+      string
+      default "mmu_sel_home"
   endif 
 
   if MMU_HAS_SERVO

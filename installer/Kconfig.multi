@@ -1,5 +1,5 @@
 config PARAM_MMU_UNITS
-  string "MMU unit names"
+  prompt "MMU unit names"
   help
     Comma-separated list of unit names.
     Use only alphanumeric characters.

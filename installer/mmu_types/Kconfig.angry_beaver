@@ -28,6 +28,9 @@ if MMU_TYPE_ANGRY_BEAVER_1_0
   choice CHOICE_SELECTOR_TYPE
     default VIRTUAL_SELECTOR
   endchoice
+  choice CHOICE_BOARD_TYPE
+    default BOARD_TYPE_MMB_2_0
+  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
