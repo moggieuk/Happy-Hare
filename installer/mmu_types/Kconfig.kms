@@ -61,7 +61,7 @@ if MMU_TYPE_KMS_1_0
   config PARAM_COLOR_ORDER
     default "GRBW"
   config PARAM_EXIT_LEDS 
-    default "neopixel:mmu_leds (1-4)"
+    default "neopixel:$(UNIT_NAME)_leds (1-4)"
 
   # "Gates" config
   config PARAM_GATE_HOMING_MAX

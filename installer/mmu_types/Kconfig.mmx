@@ -44,7 +44,7 @@ if MMU_TYPE_MMX_1_0
     default "60,0,180,120"
 
   config PARAM_EXIT_LEDS 
-    default "neopixel:mmu_leds (1-4)"
+    default "neopixel:$(UNIT_NAME)_leds (1-4)"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE

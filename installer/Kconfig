@@ -42,10 +42,6 @@ if !MULTI_UNIT_ENTRY_POINT
   config MMU_MCU
     string
     default "$(MMU_MCU)"
-
-  config BUFFER_MCU
-    string
-    default "$(BUFFER_MCU)"
 endif
 
 if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT

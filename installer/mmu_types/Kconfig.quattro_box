@@ -62,11 +62,11 @@ if MMU_TYPE_QUATTRO_BOX_1_0
   config PARAM_COLOR_ORDER
     default "GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
   config PARAM_EXIT_LEDS 
-    default "neopixel:mmu_leds (1-4)"
+    default "neopixel:$(UNIT_NAME)_leds (1-4)"
   config PARAM_STATUS_LEDS
-    default "neopixel:mmu_leds (5-14)"
+    default "neopixel:$(UNIT_NAME)_leds (5-14)"
   config PARAM_LOGO_LEDS
-    default "neopixel:mmu_leds (15-32)"
+    default "neopixel:$(UNIT_NAME)_leds (15-32)"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
@@ -137,11 +137,11 @@ if MMU_TYPE_QUATTRO_BOX_1_1
   config PARAM_COLOR_ORDER
     default "GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
   config PARAM_EXIT_LEDS 
-    default "neopixel:mmu_leds (2,4,6,8)"
+    default "neopixel:$(UNIT_NAME)_leds (2,4,6,8)"
   config PARAM_STATUS_LEDS
-    default "neopixel:mmu_leds (1,3,5,7)"
+    default "neopixel:$(UNIT_NAME)_leds (1,3,5,7)"
   config PARAM_LOGO_LEDS
-    default "neopixel:mmu_leds (9-36)"
+    default "neopixel:$(UNIT_NAME)_leds (9-36)"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE

@@ -37,11 +37,11 @@ config PARAM_MISC_HARDWARE
 # Future TODO: multi-mmu units can share the same buffer and encoder. For now assume one per unit
 config PARAM_SYNC_FEEDBACK_BUFFER_NAME
   string
-  default PARAM_UNIT_NAME
+  default UNIT_NAME
 
 config PARAM_ENCODER_NAME
   string
-  default PARAM_UNIT_NAME
+  default UNIT_NAME
 
 menu "Design Attributes"
 

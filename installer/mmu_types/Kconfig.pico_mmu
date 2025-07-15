@@ -49,7 +49,7 @@ if MMU_TYPE_PICO_MMU_1_0
   config PARAM_CHAIN_COUNT
     default 4   
   config PARAM_EXIT_LEDS 
-    default "neopixel:mmu_leds (1-4)"
+    default "neopixel:$(UNIT_NAME)_leds (1-4)"
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE

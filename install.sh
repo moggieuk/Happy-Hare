@@ -109,7 +109,7 @@ if [ "${F_MULTI_UNIT}" ]; then
         name=${name#"${name%%[![:space:]]*}"} # remove leading spaces
         name=${name%"${name##*[![:space:]]}"} # remove trailing spaces
         if [ "${F_MENUCONFIG}" ] || [ ! -e "${KCONFIG_CONFIG}.${name}" ]; then
-            make KCONFIG_CONFIG="${KCONFIG_CONFIG}.${name}" UNIT_INDEX=$i UNIT_NAME="${name}" MMU_MCU="${name}" BUFFER_MCU="buffer${i}" menuconfig
+            make KCONFIG_CONFIG="${KCONFIG_CONFIG}.${name}" UNIT_INDEX=$i UNIT_NAME="${name}" MMU_MCU="${name}" menuconfig
             i=$((i + 1))
         fi
     done
