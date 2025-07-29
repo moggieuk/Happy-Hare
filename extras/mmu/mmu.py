@@ -4738,7 +4738,7 @@ class Mmu:
             # Deal with purging
             if purge == self.PURGE_SLICER and not skip_extruder:
                 self.log_debug("Purging expected to be performed by slicer")
-            elif purge == self.PURGE_STANDALONE and not skip_extruder and not self.is_handling_runout:
+            elif purge == self.PURGE_STANDALONE and not skip_extruder:
                 with self._wrap_track_time('purge'):
                     self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge)
                     with self.wrap_action(self.ACTION_PURGING):
@@ -7136,7 +7136,7 @@ class Mmu:
                 self._eject_from_gate() # Push completely out of gate
                 self.select_gate(next_gate) # Necessary if unloaded to waste gate
                 self._remap_tool(self.tool_selected, next_gate)
-                self._select_and_load_tool(self.tool_selected, purge=self.PURGE_NONE)
+                self._select_and_load_tool(self.tool_selected, purge=self.PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
             else:
                 raise MmuError("Runout detected on %s\nEndlessSpool mode is off - manual intervention is required" % sensor)
 

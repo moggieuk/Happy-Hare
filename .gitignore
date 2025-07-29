@@ -5,3 +5,4 @@ out_*/
 *.config.*
 __pycache__/
 *.pyc
+.DS_Store
