@@ -111,7 +111,7 @@ class MmuSensorManager:
     cmd_MMU_SENSORS_help = "Query state of sensors fitted to mmu"
     cmd_MMU_SENSORS_param_help = (
         "MMU_SENSORS: %s\n" % cmd_MMU_SENSORS_help
-        + "UNIT   = # (int)\n"
+        + "UNIT   = #(int)\n"
         + "DETAIL = [0|1]"
     )
     def cmd_MMU_SENSORS(self, gcmd):
@@ -171,7 +171,7 @@ class MmuSensorManager:
         # First ensure any excluded sensor is completely deactivated
         for sname, sensor in self.all_sensors_map.items():
             if re.match(r'^unit\d+_', sname) and not sname.startswith("unit%d_" % unit):
-                sensor.runout_helper.enable_runout(False) # PAUL how does runout get re-enabled?
+                sensor.runout_helper.enable_runout(False)
                 sensor.runout_helper.enable_button_feedback(False)
 
         # Activate just this unit sensors
@@ -291,9 +291,11 @@ class MmuSensorManager:
             MmuError("Loaded check failed:\nFilament not detected by sensors: %s" % ', '.join([name for name, state in sensors.items() if state is False]))
 
     def enable_runout(self, gate):
+        logging.info("PAUL: enable_runout(gate=%d)" % gate)
         self._set_sensor_runout(True, gate)
 
     def disable_runout(self, gate):
+        logging.info("PAUL: disable_runout(gate=%d)" % gate)
         self._set_sensor_runout(False, gate)
 
     def _set_sensor_runout(self, enable, gate):

@@ -57,14 +57,14 @@ class MmuLedManager:
     cmd_MMU_SET_LED_help = "Directly control MMU leds"
     cmd_MMU_SET_LED_param_help = (
         "MMU_SET_LED: %s\n" % cmd_MMU_SET_LED_help
-        + "UNIT          = # (int)\n"
-        + "GATE          = # (int)\n"
+        + "UNIT          = #(int)\n"
+        + "GATE          = #(int)\n"
         + "EXIT_EFFECT   = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
         + "ENTRY_EFFECT  = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
         + "STATUS_EFFECT = [off|on|filament_color|slicer_color|r,g,b|_effect_]\n"
         + "LOGO_EFFECT   = [off|r,g,b|_effect_]\n"
-        + "DURATION      = #.# (float) seconds\n"
-        + "FADETIME      = #.# (float) seconds"
+        + "DURATION      = #.#(float) seconds\n"
+        + "FADETIME      = #.#(float) seconds"
     )
     def cmd_MMU_SET_LED(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
@@ -100,7 +100,7 @@ class MmuLedManager:
     cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
     cmd_MMU_LED_param_help = (
         "MMU_LED: %s\n" % cmd_MMU_LED_help
-        + "UNIT          = # (int) default all units\n"
+        + "UNIT          = #(int) default all units\n"
         + "ENABLE        = [0|1]\n"
         + "ANIMATION     = [0|1]\n"
         + "EXIT_EFFECT   = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
@@ -446,7 +446,6 @@ class MmuLedManager:
     #   "filament_color"  - indicate filament color
     #   "slicer_color"    - display slicer defined color for each gate
     def _set_led(self, unit, gate, duration=None, fadetime=1, exit_effect=None, entry_effect=None, status_effect=None, logo_effect=None):
-        #logging.info("PAUL: _set_led(unit=%s, gate=%s, duration=%s, fadetime=%s, exit_effect=%s, entry_effect=%s, status_effect=%s, logo_effect=%s, pending_update=%s, effect_state=%s)" % (unit, gate, duration, fadetime, exit_effect, entry_effect, status_effect, logo_effect, self.pending_update, self.effect_state))
         effects = {
             'entry': entry_effect,
             'exit': exit_effect,
@@ -506,7 +505,6 @@ class MmuLedManager:
         # Stop the current effect on the gate led(s)
         def stop_gate_effect(unit, segment, gate, fadetime=None):
             if self.mmu_machine.get_mmu_unit_by_index(unit).leds.animation:
-#                logging.info("PAUL: _MMU_STOP_LED_EFFECTS LEDS='%s' %s" % (effect_leds_spec(unit, segment, gate), ('FADETIME=%d' % fadetime) if fadetime is not None else ''))
                 self.mmu.gcode.run_script_from_command(
                     "_MMU_STOP_LED_EFFECTS LEDS='%s' %s" % (
                         effect_leds_spec(unit, segment, gate),
@@ -518,7 +516,6 @@ class MmuLedManager:
         def set_gate_effect(base_effect, unit, segment, gate, fadetime=None):
             leds = self.mmu_machine.get_mmu_unit_by_index(unit).leds
             if leds.animation:
-#                logging.info("PAUL: _MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1 %s" % (effect_spec(unit, gate, "%s_%s" % (base_effect, segment)), ('FADETIME=%d' % fadetime) if fadetime is not None else ''))
                 self.mmu.gcode.run_script_from_command(
                     "_MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1 %s" % (
                         effect_spec(unit, gate, "%s_%s" % (base_effect, segment)),
@@ -534,7 +531,6 @@ class MmuLedManager:
         def set_gate_rgb(rgb, unit, segment, gate, transmit=True):
             # Normally there is only a single led per gate but some designs have many
             for index, is_last in with_last(led_indexes(unit, segment, gate)):
-#                logging.info("PAUL: SET_LED LED=%s INDEX=%d RED=%s GREEN=%s BLUE=%s TRANSMIT=%d" % (led_chain_spec(unit, segment), index, rgb[0], rgb[1], rgb[2], 1 if transmit and is_last else 0))
                 self.mmu.gcode.run_script_from_command(
                     "SET_LED LED=%s INDEX=%d RED=%s GREEN=%s BLUE=%s TRANSMIT=%d" % (
                         led_chain_spec(unit, segment), index, rgb[0], rgb[1], rgb[2], 1 if transmit and is_last else 0
@@ -566,7 +562,6 @@ class MmuLedManager:
                 return
 
             if gate is not None and gate < 0:
-                self.mmu.log_error("PAUL: FIXME saftey .. gate <0")
                 return
 
             # Don't allow changes to shortcut animations - important changes will be seen when update timer fires

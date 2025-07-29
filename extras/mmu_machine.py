@@ -82,7 +82,7 @@ class MmuMachine:
             c = config.getsection(section)
             unit = mmu_unit.MmuUnit(c, self, i, self.num_gates)
             logging.info("MMU: Created: %s" % c.get_name())
-            self.printer.add_object(c.get_name(), unit) # Register mmu_unit to stop if being loaded by klipper
+            self.printer.add_object(c.get_name(), unit) # Register mmu_unit to prevent it being loaded by klipper
 
             self.units.append(unit)
             self.unit_by_name[name] = unit
@@ -145,6 +145,18 @@ class MmuMachine:
             logging.info("MMU: Found %s on extruder '%s'. Current control enabled. %s" % (chip, printer_extruder.name, "Stallguard 'touch' extruder homing possible." if self.homing_extruder else ""))
         else:
             logging.info("MMU: TMC driver not found for extruder, cannot use current increase for tip forming move")
+
+    def reinit(self):
+        for unit in self.units:
+            unit.reinit()
+
+    def enable_motors(self):
+        for unit in self.units:
+            unit.enable_motors()
+
+    def disable_motors(self):
+        for unit in self.units:
+            unit.disable_motors()
 
     def get_mmu_unit_by_index(self, index):
         if index >= 0 and index < self.num_units:

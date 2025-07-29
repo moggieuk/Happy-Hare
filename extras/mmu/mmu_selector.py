@@ -58,6 +58,21 @@ class BaseSelector:
         self.mmu_toolhead = mmu_unit.mmu_toolhead
         self.is_homed = False
 
+    # Ensure that shared commands are only registered once
+    def register_command(self, cmd, func, desc=None):
+        gcode = self.mmu.printer.lookup_object('gcode')
+        if cmd not in gcode.ready_gcode_handlers:
+            gcode.register_command(cmd, func, desc=desc)
+
+    # Turn mux commands into simple commands if the MMU has a single mmu_unit
+    def register_mux_command(self, cmd, func, desc=None):
+        gcode = self.mmu.printer.lookup_object('gcode')
+        if self.mmu.mmu_machine.num_units > 1:
+            self.mmu.log_error("%s, %s, %s" % (cmd, 'UNIT', self.mmu_unit.unit_index))
+            gcode.register_mux_command(cmd, 'UNIT', str(self.mmu_unit.unit_index), func, desc=desc)
+        else:
+            gcode.register_command(cmd, func, desc=desc)
+
     def reinit(self):
         pass
 
@@ -123,8 +138,6 @@ class BaseSelector:
     def get_uncalibrated_gates(self, check_gates):
         return []
 
-
-
 ################################################################################
 # Physical Selector Class
 # (to save some code repetition)
@@ -139,16 +152,15 @@ class PhysicalSelector(BaseSelector, object):
         super(PhysicalSelector, self).__init__(mmu, mmu_unit)
 
         # Register GCODE commands
-        gcode = mmu.printer.lookup_object('gcode')
-        gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
+        self.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc=self.cmd_MMU_SOAKTEST_SELECTOR_help)
 
     cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
     cmd_MMU_SOAKTEST_SELECTOR_param_help = (
         "MMU_SOAKTEST_SELECTOR: %s\n" % cmd_MMU_SOAKTEST_SELECTOR_help
-        + "UNIT  = # (int) Optional, defaults to all units\n"
-        + "LOOP  = #       Test loops\n"
-        + "GRIP  = [0|1]   Force filament gripping after selection where optional\n"
-        + "HOME  = [0|1]   Randomized homing\n"
+        + "UNIT  = #(int) Optional, defaults to all units\n"
+        + "LOOP  = #(int) Test loops\n"
+        + "GRIP  = [0|1]  Force filament gripping after selection where optional\n"
+        + "HOME  = [0|1]  Randomized homing\n"
     )
     def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
@@ -317,11 +329,10 @@ class LinearSelector(PhysicalSelector, object):
         self.cad_selector_tolerance = mmu.config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
 
         # Sub components
-        self.servo = LinearSelectorServo(mmu, mmu_unit)
+        self.servo = LinearSelectorServo(mmu, mmu_unit, self)
 
         # Register GCODE commands specific to this module
-        gcode = mmu.printer.lookup_object('gcode')
-        gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc = self.cmd_MMU_CALIBRATE_SELECTOR_help)
+        self.register_mux_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -495,6 +506,14 @@ class LinearSelector(PhysicalSelector, object):
     # Internal Implementation --------------------------------------------------
 
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
+    cmd_MMU_CALIBRATE_SELECTOR_param_help = (
+        "MMU_CALIBRATE_SELECTOR: %s\n" % cmd_MMU_CALIBRATE_SELECTOR_help
+        + "UNIT         = #(int)\n"
+        + "GATE         = #(int) Optional, default all gates on unit\n"
+        + "SAVE         = [0|1]\n"
+        + "BYPASS       = [0|1]\n"
+        + "BYPASS_BLOCK = [0|1]  ERCFv1.1 only\n"
+    )
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
@@ -504,6 +523,10 @@ class LinearSelector(PhysicalSelector, object):
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_unit.num_gates - 1)
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = self.mmu.TOOL_GATE_BYPASS
+
+        if help:
+            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_CALIBRATE_SELECTOR_param_help), color=True)
+            return
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
@@ -848,7 +871,7 @@ class LinearSelectorServo:
     # mmu_vars.cfg variables
     VARS_MMU_SERVO_ANGLES = "mmu_servo_angles"
 
-    def __init__(self, mmu, mmu_unit):
+    def __init__(self, mmu, mmu_unit, selector):
         self.mmu = mmu
         self.mmu_unit = mmu_unit
 
@@ -875,8 +898,7 @@ class LinearSelectorServo:
             raise self.mmu.config.error("Selector servo not found")
 
         # Register GCODE commands specific to this module
-        gcode = self.mmu.printer.lookup_object('gcode')
-        gcode.register_command('MMU_SERVO', self.cmd_MMU_SERVO, desc = self.cmd_MMU_SERVO_help)
+        selector.register_mux_command('MMU_SERVO', self.cmd_MMU_SERVO, desc=self.cmd_MMU_SERVO_help)
 
         self.reinit()
 
@@ -899,12 +921,26 @@ class LinearSelectorServo:
         pass
 
     cmd_MMU_SERVO_help = "Move MMU servo to position specified position or angle"
+    cmd_MMU_SERVO_param_help = (
+        "MMU_SERVO: %s\n" % cmd_MMU_SERVO_help
+        + "UNIT   = #(int) Optional, defaults to all units\n"
+        + "RESET  = [0|1]  Clear saved calibration\n"
+        + "SAVE   = [0|1]  Save current position against pos if calibrating\n"
+        + "POS    = [off|up|move|down]\n"
+    )
     def cmd_MMU_SERVO(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
+
+        help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
         reset = gcmd.get_int('RESET', 0)
         save = gcmd.get_int('SAVE', 0)
         pos = gcmd.get('POS', "").lower()
+
+        if help:
+            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SERVO_param_help), color=True)
+            return
+
         if reset:
             self.mmu.delete_variable(self.VARS_MMU_SERVO_ANGLES, write=True)
             self.mmu.log_info("Calibrated servo angles have be reset to configured defaults")
@@ -1138,10 +1174,9 @@ class RotarySelector(PhysicalSelector, object):
         self.cad_release_gates = list(mmu.config.getintlist('cad_release_gates', self.cad_release_gates))
 
         # Register GCODE commands specific to this module
-        gcode = mmu.printer.lookup_object('gcode')
-        gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
-        gcode.register_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
-        gcode.register_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
+        self.register_mux_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
+        self.register_mux_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
+        self.register_mux_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -1316,6 +1351,14 @@ class RotarySelector(PhysicalSelector, object):
                 self.mmu.log_error("Selector configured to not allow filament release")
 
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
+    cmd_MMU_CALIBRATE_SELECTOR_param_help = (
+        "MMU_CALIBRATE_SELECTOR: %s\n" % cmd_MMU_CALIBRATE_SELECTOR_help
+        + "UNIT   = #(int)\n"
+        + "GATE   = #(int) Optional, default all gates on unit\n"
+        + "SAVE   = [0|1]\n"
+        + "SINGLE = [0|1]\n"
+        + "QUICK  = [0|1]\n"
+    )
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
@@ -1324,6 +1367,10 @@ class RotarySelector(PhysicalSelector, object):
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         quick = gcmd.get_int('QUICK', 0, minval=0, maxval=1)
         gate = gcmd.get_int('GATE', 0, minval=0, maxval=self.mmu_unit.num_gates - 1)
+
+        if help:
+            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_CALIBRATE_SELECTOR_param_help), color=True)
+            return
 
         try:
             self.mmu.calibrating = True
@@ -1497,8 +1544,6 @@ class MacroSelector(BaseSelector, object):
         self.is_homed = True
 
         self.printer = mmu.printer
-        self.gcode = self.printer.lookup_object('gcode')
-
         self.select_tool_macro = mmu.config.get('select_tool_macro')
         self.select_tool_num_switches = mmu.config.getint('select_tool_num_switches', default=0, minval=1)
 
@@ -1591,10 +1636,9 @@ class ServoSelector(PhysicalSelector, object):
         self.selector_angles = list(mmu.config.getintlist('selector_gate_angles', []))
 
         # Register GCODE commands specific to this module
-        gcode = mmu.printer.lookup_object('gcode')
-        gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc = self.cmd_MMU_CALIBRATE_SELECTOR_help)
-        gcode.register_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
-        gcode.register_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
+        self.register_mux_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
+        self.register_mux_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
+        self.register_mux_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
 
         # Read all controller parameters related to selector or servo to stop klipper complaining. This
         # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
@@ -1736,12 +1780,23 @@ class ServoSelector(PhysicalSelector, object):
                 self.mmu.log_error("Selector configured to not allow filament release")
 
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector servo angle for specifed gate(s)"
+    cmd_MMU_CALIBRATE_SELECTOR_param_help = (
+        "MMU_CALIBRATE_SELECTOR: %s\n" % cmd_MMU_CALIBRATE_SELECTOR_help
+        + "UNIT    = #(int)\n"
+        + "GATE    = #(int) Optional, default all gates on unit\n"
+        + "SHOW    = [0,1]\n"
+        + "ANGLE   = #(int)\n"
+        + "SAVE    = [0|1]\n"
+        + "SINGLE  = [0|1]\n"
+        + "SPACING = #.#(float)\n"
+        + "BYPASS  = [0|1]\n"
+    )
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
 
         usage = "\nUsage: MMU_CALIBRATE_SELECTOR [GATE=x] [BYPASS=0|1] [SPACING=x] [ANGLE=x] [SAVE=0|1] [SINGLE=0|1] [SHOW=0|1]"
-        show = gcmd.get_int('SHOW', 0)
+        show = gcmd.get_int('SHOW', 0, minval=0, maxval=1)
         angle = gcmd.get_int('ANGLE', None)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
@@ -1749,6 +1804,10 @@ class ServoSelector(PhysicalSelector, object):
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_unit.num_gates - 1)
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = self.mmu.TOOL_GATE_BYPASS
+
+        if help:
+            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_CALIBRATE_SELECTOR_param_help), color=True)
+            return
 
         if show:
             msg = ""
@@ -1856,10 +1915,9 @@ class IndexedSelector(PhysicalSelector, object):
         self.cad_gate_width = mmu.config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
         self.cad_max_rotations = mmu.config.getfloat('cad_max_rotations', self.cad_max_rotations, above=0.)
 
-        gcode = mmu.printer.lookup_object('gcode') # PAUL testing
-        gcode.register_command('PAUL', self.cmd_PAUL) # PAUL testing
+        self.register_mmu_command('PAUL', self.cmd_PAUL) # PAUL testing
 
-        self.unit_gate_selected = 0 # PAUL TODO could be set as part of startup homing..
+        self.unit_gate_selected = 0 # TODO could be set as part of startup homing..
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -1885,6 +1943,7 @@ class IndexedSelector(PhysicalSelector, object):
             self.mmu.log_debug("Moving selector motor %.1fmm..." % move)
             actual,homed = self._trace_selector_move("PAUL TEST selector", move, speed=speed, accel=accel, wait=wait)
         self.mmu.log_error("PAUL: actual=%s, homed=%s" % (actual, homed))
+        # End of PAUL testing command ^^^^
 
     def home(self, force_unload = None):
         if self.mmu.check_if_bypass(): return
@@ -1971,7 +2030,7 @@ class IndexedSelector(PhysicalSelector, object):
             self.unit_gate_selected = unit_gate
         self.mmu.log_error("PAUL: actual=%s, homed=%s" % (actual, homed))
 
-    # PAUL TODO automate the setup of the sequence through homing move on startup
+    # TODO automate the setup of the sequence through homing move on startup
     def _best_rotation_direction(self, start_gate, end_gate):
         if start_gate < 0:
             return 1 # Forward direction

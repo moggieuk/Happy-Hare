@@ -13,7 +13,7 @@
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Based on code by Kevin O'Connor <kevin@koconnor.net>
+# Kinematics logic based on code by Kevin O'Connor <kevin@koconnor.net>
 #
 # (\_/)
 # ( *,*)
@@ -31,7 +31,6 @@ import stepper, chelper, toolhead
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
 from .homing             import Homing, HomingMove
 
-
 # TMC chips to search for
 TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
 
@@ -41,7 +40,6 @@ GEAR_STEPPER_CONFIG     = "stepper_mmu_gear"
 
 SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
 OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
-
 SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
 
 # Vendor MMU's supported
@@ -91,6 +89,7 @@ class MmuUnit:
         if len(args) < 3:
             raise config.error("[%s] cannot be instantiated directly. Add to 'mmu_units' in [mmu_machine]" % config.get_name())
         self.mmu_machine, self.unit_index, self.first_gate = args
+        self.selector = None
         self.name = config.get_name().split()[1]
         self.printer = config.get_printer()
         self.num_gates = config.getint('num_gates')
@@ -235,9 +234,9 @@ class MmuUnit:
         # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
         self.multigear = False
 
+        # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
+        # and ensure all gear steppers are loaded
         if self.name != "hack": # PAUL TEMP HACK TO ALLOW SINGLE TYPE-A MMU to be split in two for testing sharing same MmuToolhead
-            # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
-            # and ensure all gear steppers are loaded
             self.gear_tmc = None
             base_gear_tmc = base_tmc_section = None
             for chip in TMC_CHIPS:
@@ -379,6 +378,21 @@ class MmuUnit:
                 logging.info("MMU: Loaded: %s" % section)
             else:
                 logging.info("MMU: Skipping: %s" % section)
+
+    def set_selector(self, selector):
+        self.selector = selector
+
+    def reinit(self):
+        if self.selector:
+            self.selector.reinit()
+
+    def enable_motors(self):
+        if self.selector:
+            self.selector.enable_motors()
+
+    def disable_motors(self):
+        if self.selector:
+            self.selector.disable_motors()
 
     def manages_gate(self, gate):
         return self.first_gate <= gate < self.first_gate + self.num_gates
