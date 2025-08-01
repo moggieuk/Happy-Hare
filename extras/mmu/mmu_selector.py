@@ -21,6 +21,9 @@
 # Servo Selector
 # - Servo based Selector for PicoMMU and clones
 #
+# Indexed Selector
+# - Stepper based Selector for ViViD with per-gate index sensors
+#
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
@@ -79,7 +82,7 @@ class BaseSelector:
         pass
 
     def filament_release(self, measure=False):
-        return 0. # Encoder movement
+        return 0. # Fake encoder movement
 
     def filament_hold_move(self):
         pass
@@ -113,7 +116,10 @@ class BaseSelector:
     def get_test_config(self):
         return ""
 
-    def get_uncalibrated_gates(self, check_gates=[]):
+    def check_test_config(self, param):
+        return True
+
+    def get_uncalibrated_gates(self, check_gates):
         return []
 
 
@@ -145,16 +151,8 @@ class VirtualSelector(BaseSelector, object):
         if gate == self.mmu.gate_selected: return
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
 
-        # Sync new MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
-
     def restore_gate(self, gate):
         self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct drive stepper or none if bypass
-
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate, current=True)
 
     def get_mmu_status_config(self):
         msg = "\nVirtual selector"
@@ -403,13 +401,23 @@ class LinearSelector(BaseSelector, object):
         self.selector_touch_speed = gcmd.get_float('SELECTOR_TOUCH_SPEED', self.selector_touch_speed, minval=1.)
         self.selector_touch_enable = gcmd.get_int('SELECTOR_TOUCH_ENABLE', self.selector_touch_enable, minval=0, maxval=1)
 
+        # Sub components
+        self.servo.set_test_config(gcmd)
+
     def get_test_config(self):
         msg = "\n\nSELECTOR:"
         msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
         msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
         msg += "\nselector_touch_speed = %.1f" % self.selector_touch_speed
         msg += "\nselector_touch_enable = %d" % self.selector_touch_enable
+
+        # Sub components
+        msg += self.servo.get_test_config()
+
         return msg
+
+    def check_test_config(self, param):
+        return (vars(self).get(param) is None) and self.servo.check_test_config(param)
 
     def get_uncalibrated_gates(self, check_gates):
         return [gate for gate, value in enumerate(self.selector_offsets) if value == -1 and gate in check_gates]
@@ -475,7 +483,7 @@ class LinearSelector(BaseSelector, object):
                         if random.randint(0, 10) == 0 and home:
                             self.mmu.home(tool=tool)
                         else:
-                            self.mmu.select_tool(tool, adjust_grip=servo)
+                            self.mmu.select_tool(tool)
                     if servo:
                         self.filament_drive()
         except MmuError as ee:
@@ -908,14 +916,20 @@ class LinearSelectorServo:
         if self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS: return
         if self.servo_state == self.SERVO_DOWN_STATE: return
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
-        self.mmu.movequeues_wait()
+
+        if buzz_gear and self.servo_buzz_gear_on_down > 0:
+            self.mmu_toolhead.unsync() # Must be unsynced before buzz to avoid delay
+
+        self.mmu.movequeues_wait() # Probably not necessary
         initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
         self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
+
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             for _ in range(self.servo_buzz_gear_on_down):
-                self.mmu.trace_filament_move(None, 0.8, speed=25, accel=self.mmu.gear_buzz_accel, encoder_dwell=None)
-                self.mmu.trace_filament_move(None, -0.8, speed=25, accel=self.mmu.gear_buzz_accel, encoder_dwell=None)
+                self.mmu.trace_filament_move(None, 0.8, speed=25, accel=self.mmu.gear_buzz_accel, encoder_dwell=None, speed_override=False)
+                self.mmu.trace_filament_move(None, -0.8, speed=25, accel=self.mmu.gear_buzz_accel, encoder_dwell=None, speed_override=False)
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
+
         self.servo_angle = self.servo_angles['down']
         self.servo_state = self.SERVO_DOWN_STATE
         self.mmu.set_encoder_distance(initial_encoder_position)
@@ -998,6 +1012,26 @@ class LinearSelectorServo:
         else:
             self.servo_up()
 
+    def set_test_config(self, gcmd):
+        self.servo_duration = gcmd.get_float('SERVO_DURATION', self.servo_duration, minval=0.1)
+        self.servo_always_active = gcmd.get_int('SERVO_ALWAYS_ACTIVE', self.servo_always_active, minval=0, maxval=1)
+        self.servo_active_down = gcmd.get_int('SERVO_ACTIVE_DOWN', self.servo_active_down, minval=0, maxval=1)
+        self.servo_dwell = gcmd.get_float('SERVO_DWELL', self.servo_active_down, minval=0.1)
+        self.servo_buzz_gear_on_down = gcmd.get_int('SERVO_BUZZ_GEAR_ON_DOWN', self.servo_buzz_gear_on_down, minval=0, maxval=10)
+
+    def get_test_config(self):
+        msg = "\n\nSERVO:"
+        msg += "\nservo_duration = %.1f" % self.servo_duration
+        msg += "\nservo_always_active = %d" % self.servo_always_active
+        msg += "\nservo_active_down = %d" % self.servo_active_down
+        msg += "\nservo_dwell = %.1f" % self.servo_dwell
+        msg += "\nservo_buzz_gear_on_down = %d" % self.servo_buzz_gear_on_down
+
+        return msg
+
+    def check_test_config(self, param):
+        return vars(self).get(param) is None
+
     def get_mmu_status_config(self):
         msg = ". Servo in %s position" % ("UP" if self.servo_state == self.SERVO_UP_STATE else \
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
@@ -1018,6 +1052,10 @@ class LinearSelectorServo:
 # Implements Rotary Selector for type-A MMU's that uses stepper controlled
 # rail[0] on mmu toolhead (3D Chameleon)
 #
+# 'filament_always_gripped' alters operation:
+#   0 (default) - Lazy gate selection, occurs when asked to grip filament
+#   1           - Gripped immediately on selection and will not release
+#
 # Implements commands:
 #   MMU_CALIBRATE_SELECTOR
 #   MMU_SOAKTEST_SELECTOR
@@ -1028,7 +1066,8 @@ class LinearSelectorServo:
 class RotarySelector(BaseSelector, object):
 
     # mmu_vars.cfg variables
-    VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
+    VARS_MMU_SELECTOR_OFFSETS  = "mmu_selector_offsets"
+    VARS_MMU_SELECTOR_GATE_POS = "mmu_selector_gate_pos"
 
     def __init__(self, mmu):
         super(RotarySelector, self).__init__(mmu)
@@ -1129,25 +1168,58 @@ class RotarySelector(BaseSelector, object):
                 self.mmu.unload_sequence()
             self._home_selector()
 
-    # Physically move selector to correct gate position
+    # Actual gate selection can be delayed (if not forcing grip) until the
+    # filament_drive/release to reduce selector movement
     def select_gate(self, gate):
-        if gate >= 0:
-            self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
-            if gate != self.mmu.gate_selected:
-                with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
-                    self._position(self.selector_offsets[gate])
+        if gate != self.mmu.gate_selected:
+            with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
+                if self.mmu.mmu_machine.filament_always_gripped:
+                    self._grip(gate)
+
+    def restore_gate(self, gate):
+        gate_pos = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_GATE_POS, None)
+        if gate_pos is not None:
+            self.set_position(self.selector_offsets[gate_pos])
+            if gate == gate_pos:
+                self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
             else:
-                # Always move because filament release could have changed selector position
-                self._position(self.selector_offsets[gate])
+                self.grip_state = self.mmu.FILAMENT_RELEASE_STATE
+        else:
+            self.grip_state = self.mmu.FILAMENT_UNKNOWN_STATE
+
+    def filament_drive(self):
+        self._grip(self.mmu.gate_selected)
+
+    def filament_release(self, measure=False):
+        if not self.mmu.mmu_machine.filament_always_gripped:
+            self._grip(self.mmu.gate_selected, release=True)
+        return 0. # Fake encoder movement
+
+    # Note there is no separation of gate selection and grip/release with this type of selector
+    def _grip(self, gate, release=False):
+        if gate >= 0:
+            if release:
+                release_pos = self.selector_offsets[self.cad_release_gates[gate]]
+                self.mmu.log_trace("Setting selector to filament release position at position: %.1f" % release_pos)
+                self._position(release_pos)
+                self.grip_state = self.mmu.FILAMENT_RELEASE_STATE
+
+                # Precaution to ensure correct postion/gate restoration on restart
+                self.mmu.save_variable(self.VARS_MMU_SELECTOR_GATE_POS, self.cad_release_gates[gate], write=True)
+            else:
+                grip_pos = self.selector_offsets[gate]
+                self.mmu.log_trace("Setting selector to filament grip position at position: %.1f" % grip_pos)
+                self._position(grip_pos)
+                self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
+
+                # Precaution to ensure correct postion/gate restoration on restart
+                self.mmu.save_variable(self.VARS_MMU_SELECTOR_GATE_POS, gate, write=True)
 
             # Ensure gate filament drive is in the correct direction
             self.mmu_toolhead.get_kinematics().rails[1].set_direction(self.cad_gate_directions[gate])
-
-    # Correct rail position for selector
-    def restore_gate(self, gate):
-        if gate >= 0:
-            self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
-            self.set_position(self.selector_offsets[gate])
+            self.mmu.movequeues_wait()
+        else:
+            self.grip_state = self.mmu.FILAMENT_UNKNOWN_STATE
 
     def get_filament_grip_state(self):
         return self.grip_state
@@ -1203,20 +1275,15 @@ class RotarySelector(BaseSelector, object):
     cmd_MMU_GRIP_help = "Grip filament in current gate"
     def cmd_MMU_GRIP(self, gcmd):
         if self.mmu.gate_selected >= 0:
-            self._position(self.selector_offsets[self.mmu.gate_selected])
-            self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
-
-            # Precaution to ensure correct postion/gate restoration on restart
-            self.mmu.save_variable(self.mmu.VARS_MMU_GATE_SELECTED, self.mmu.gate_selected, write=True)
+            self.filament_drive()
 
     cmd_MMU_RELEASE_help = "Ungrip filament in current gate"
     def cmd_MMU_RELEASE(self, gcmd):
         if self.mmu.gate_selected >= 0:
-            self._position(self.selector_offsets[self.cad_release_gates[self.mmu.gate_selected]])
-            self.grip_state = self.mmu.FILAMENT_RELEASE_STATE
-
-            # Precaution to ensure correct postion/gate restoration on restart
-            self.mmu.save_variable(self.mmu.VARS_MMU_GATE_SELECTED, self.cad_release_gates[self.mmu.gate_selected], write=True)
+            if not self.mmu.mmu_machine.filament_always_gripped:
+                self.filament_release()
+            else:
+                self.mmu.log_error("Selector configured to not allow filament release")
 
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
@@ -1275,6 +1342,8 @@ class RotarySelector(BaseSelector, object):
                         self.mmu.home(tool=tool)
                     else:
                         self.mmu.select_tool(tool)
+                        if not self.mmu.mmu_machine.filament_always_gripped:
+                            self.filament_drive()
         except MmuError as ee:
             self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
@@ -1399,22 +1468,20 @@ class RotarySelector(BaseSelector, object):
 ################################################################################
 # Macro Selector
 # Implements macro-based selector for MMU's
+#
+# Example demultiplexer-style SELECT_TOOL macro:
+# [gcode_macro SELECT_TOOL]
+# gcode:
+#     SET_PIN PIN=d0 VALUE={params.S0}
+#     SET_PIN PIN=d1 VALUE={params.S1}
+#     SET_PIN PIN=d2 VALUE={params.S2}
+# 
+# Example optocoupler-style SELECT_TOOL macro:
+# [gcode_macro SELECT_TOOL]
+# gcode:
+#     SET_PIN PIN=o{printer.mmu.gate} VALUE=0
+#     SET_PIN PIN=o{params.GATE} VALUE=1
 ################################################################################
-
-"""
-Example demultiplexer-style SELECT_TOOL macro:
-[gcode_macro SELECT_TOOL]
-gcode:
-    SET_PIN PIN=d0 VALUE={params.S0}
-    SET_PIN PIN=d1 VALUE={params.S1}
-    SET_PIN PIN=d2 VALUE={params.S2}
-
-Example optocoupler-style SELECT_TOOL macro:
-[gcode_macro SELECT_TOOL]
-gcode:
-    SET_PIN PIN=o{printer.mmu.gate} VALUE=0
-    SET_PIN PIN=o{params.GATE} VALUE=1
-"""
 
 class MacroSelector(BaseSelector, object):
 
@@ -1467,14 +1534,8 @@ class MacroSelector(BaseSelector, object):
         # Call selector macro
         self.mmu.wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
 
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
-
     def restore_gate(self, gate):
-        # Sync MMU gear stepper now if design requires it
-        if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.sync_gear_to_extruder(gate >= 0, gate)
+        pass
 
 
 
@@ -1483,6 +1544,10 @@ class MacroSelector(BaseSelector, object):
 # Implements Servo based Selector for type-A MMU's like PicoMMU. Filament is
 # always gripped when gate selected but a release position is assumed between
 # each gate position (or specified release position, often 0 degrees)
+#
+# 'filament_always_gripped' alters operation:
+#   0 (default) - Lazy gate selection, occurs when asked to grip filament
+#   1           - Gripped immediately on selection and will not release
 #
 # Implements commands:
 #   MMU_CALIBRATE_SELECTOR
@@ -1567,12 +1632,13 @@ class ServoSelector(BaseSelector, object):
         lst.extend([default_value] * (size - len(lst)))
         return lst
 
-    # We defer the actual gate selection (servo movement) until the filament_drive/release/hold
-    # calls to prevent unecessary flutter
+    # Actual gate selection (servo movement) can be delayed until the filament_drive/release instruction
+    # to prevent unecessary flutter. Conrolled by `filament_always_gripped` setting
     def select_gate(self, gate):
         if gate != self.mmu.gate_selected:
             with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
-                pass # Ensure action macro is called
+                if self.mmu.mmu_machine.filament_always_gripped:
+                    self._grip(gate)
 
     def restore_gate(self, gate):
         if gate == self.mmu.TOOL_GATE_BYPASS:
@@ -1580,33 +1646,34 @@ class ServoSelector(BaseSelector, object):
             self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.selector_bypass_angle)
             self._set_servo_angle(self.selector_bypass_angle)
         else:
-            # Defer movement until filament_drive/release/hold call
-            self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
+            if self.mmu.mmu_machine.filament_always_gripped:
+                self._grip(gate)
+            else:
+                # Defer movement until filament_drive/release/hold call
+                self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
 
     def filament_drive(self):
-        self._grip()
+        self._grip(self.mmu.gate_selected)
 
     def filament_release(self, measure=False):
-        self._grip(release=True)
-        return 0. # Encoder movement
-
-    def filament_hold_move(self):
-        self._grip(release=True)
+        if not self.mmu.mmu_machine.filament_always_gripped:
+            self._grip(self.mmu.gate_selected, release=True)
+        return 0. # Fake encoder movement
 
     # Common logic for servo manipulation
-    def _grip(self, release=False):
-        if self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS:
+    def _grip(self, gate, release=False):
+        if gate == self.mmu.TOOL_GATE_BYPASS:
             self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.selector_bypass_angle)
             self._set_servo_angle(self.selector_bypass_angle)
-            self.servo_state = self.mmu.FILAMENT_RELEASE_STATE
-        elif self.mmu.gate_selected >= 0:
+            self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
+        elif gate >= 0:
             if release:
                 release_angle = self._get_closest_released_angle()
                 self.mmu.log_trace("Setting servo to filament released position at angle: %.1f" % release_angle)
                 self._set_servo_angle(release_angle)
                 self.servo_state = self.mmu.FILAMENT_RELEASE_STATE
             else:
-                angle = self.selector_angles[self.mmu.gate_selected]
+                angle = self.selector_angles[gate]
                 self.mmu.log_trace("Setting servo to filament grip position at angle: %.1f" % angle)
                 self._set_servo_angle(angle)
                 self.servo_state = self.mmu.FILAMENT_DRIVE_STATE
@@ -1654,11 +1721,16 @@ class ServoSelector(BaseSelector, object):
 
     cmd_MMU_GRIP_help = "Grip filament in current gate"
     def cmd_MMU_GRIP(self, gcmd):
-        self.filament_drive()
+        if self.mmu.gate_selected >= 0:
+            self.filament_drive()
 
     cmd_MMU_RELEASE_help = "Ungrip filament in current gate"
     def cmd_MMU_RELEASE(self, gcmd):
-        self.filament_release()
+        if self.mmu.gate_selected >= 0:
+            if not self.mmu.mmu_machine.filament_always_gripped:
+                self.filament_release()
+            else:
+                self.mmu.log_error("Selector configured to not allow filament release")
 
     cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector servo angle for specifed gate(s)"
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
@@ -1735,12 +1807,14 @@ class ServoSelector(BaseSelector, object):
                     self.mmu.log_always("Testing loop %d / %d" % (l + 1, loops))
                     tool = random.randint(0, self.mmu.num_gates - 1)
                     self.mmu.select_tool(tool)
+                    if not self.mmu.mmu_machine.filament_always_gripped:
+                        self.filament_drive()
         except MmuError as ee:
             self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
     def _set_servo_angle(self, angle):
         if angle >= 0 and angle != self.servo_angle:
-            self.mmu.movequeues_wait();
+            self.mmu.movequeues_wait()
             self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
             self.servo_angle = angle
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))

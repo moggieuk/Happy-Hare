@@ -148,6 +148,7 @@ macro_toolhead_min_cruise_ratio: 0.5	# Default printer cruise ratio applied when
 gate_homing_endstop: encoder		# Name of gate endstop, "encoder" forces use of encoder for parking
 gate_homing_max: 70			# Maximum move distance to home to the gate (or actual move distance for encoder parking)
 gate_preload_homing_max: 70		# Maximum homing distance to the mmu_gear endstop (if MMU is fitted with one)
+gate_preload_parking_distance: 0	# Parking position relative to mmu_gear endstop (-ve value means move forward) 
 gate_unload_buffer: 50			# Amount to reduce the fast unload so that filament doesn't overshoot when parking
 gate_parking_distance: 23 		# Parking position in the gate (distance back from homing point, -ve value means move forward)
 gate_endstop_to_encoder: 10		# Distance between gate endstop and encoder (IF both fitted. +ve if encoder after endstop)
@@ -163,21 +164,25 @@ gate_final_eject_distance: 0		# Distance to eject filament on MMU_EJECT (Ignored
 # ██████╔╝╚██████╔╝╚███╔███╔╝██████╔╝███████╗██║ ╚████║    ███████╗╚██████╔╝██║  ██║██████╔╝
 # ╚═════╝  ╚═════╝  ╚══╝╚══╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝    ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ 
 #
+bowden_homing_max: 2000			# Maximum attempted bowden move (for calibration). Should be larger than your actual bowden!
+
+# If you MMU is equiped with an encoder the following options are available:
+# 
 # In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to detect missed
-# steps caused by "jerking" on a heavy spool. If bowden correction is enabled the driver with "believe" the encoder
+# steps caused by "jerking" on a heavy spool. If bowden correction is enabled Happy Hare will "believe" the encoder
 # reading and make correction moves to bring the filament to within the 'bowden_allowable_load_delta' of the end of
 # bowden position (this does require a reliable encoder and is not recommended for very high speed loading >350mm/s)
 #
-bowden_apply_correction: 0		# 1 to enable, 0 disabled. Requires Encoder
-bowden_allowable_load_delta: 20.0	# How close in mm the correction moves will attempt to get to target. Requires Encoder
-
-# This test verifies the filament is free of extruder before the fast bowden movement to reduce possibility of grinding filament
-bowden_pre_unload_test: 1		# 1 to check for bowden movement before full pull (slower), 0 don't check (faster). Requires Encoder
-
-# ADVANCED: If pre-unload test is enabled, this controls the detection of successful bowden pre-unload test and represents
-# the fraction of allowable mismatch between actual movement and that seen by encoder. Setting to 50% tolerance usually
-# works well. Increasing will make test more tolerant. Value of 100% essentially disables error detection
-bowden_pre_unload_error_tolerance: 50
+bowden_apply_correction: 0		# 1 to enable, 0 disabled
+bowden_allowable_load_delta: 20.0	# How close in mm the correction moves will attempt to get to target
+#
+# This saftey check uses the encoder to verify the filament is free of extruder before the fast bowden movement to
+# reduce possibility of grinding filament. If enabled the trigger can be tuned by setting the "error tolerance" which
+# represents the fraction of allowable mismatch between actual movement and that seen by encoder. Setting to 50% tolerance
+# usually works well. Increasing will make test more tolerant. Value of 100% essentially disables error detection
+# 
+bowden_pre_unload_test: 1		# 1 to check for bowden movement before full pull (slower), 0 don't check (faster)
+bowden_pre_unload_error_tolerance: 50	# ADVANCED: tune pre_unload_test
 
 
 # Extruder homing -----------------------------------------------------------------------------------------------------
@@ -283,6 +288,10 @@ toolhead_unload_safety_margin: 10	# Extra movement safety margin (default: 10mm)
 #
 toolhead_post_load_tighten: 60		# % of clog detection length, 0 to disable. Ignored if 'sync_to_extruder: 1'
 
+# If synchronizing gear and extruder and you have a sync-feedback "buffer" this setting determines whether to use it
+# to create neutral tension after loading
+toolhead_post_load_tension_adjust: 1	# 1 to enable (recommended), 0 to disable
+
 # ADVANCED: Controls the detection of successful extruder load/unload movement and represents the fraction of allowable
 # mismatch between actual movement and that seen by encoder. Setting to 100% tolerance effectively turns off checking.
 # Some designs of extruder have a short move distance that may not be picked up by encoder and cause false errors. This
@@ -367,14 +376,29 @@ sync_gear_current: 70                   # % of gear_stepper current (10%-100%) t
 sync_form_tip: 0                        # Synchronize during standalone tip formation (initial part of unload)
 sync_purge: 0				# Synchronize during standalone purging (last part of load)
 
-# Optionally it is possible to leverage feedback for a "compression/expansion" sensor in the bowden path from MMU to
-# extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback state can be
-# binary supplied by one or two switches: -1 (expanded) and 1 (compressed) of proportional value between -1.0 and 1.0
-# Requires [mmu_sensors] setting
+# Optionally it is possible to leverage feedback from a "compression/expansion" sensor (aka "buffer") in the bowden
+# path from MMU to extruder to ensure that the two motors are kept in sync as viewed by the filament (the signal feedback
+# state can be binary supplied by one or two switches: -1 (expanded) and 1 (compressed) of proportional value between
+# -1.0 and 1.0.
 #
-sync_feedback_enable: 0                 # 0 = Turn off (even with fitted sensor), 1 = Turn on
-sync_multiplier_high: 1.05              # Maximum factor to apply to gear stepper 'rotation_distance'
-sync_multiplier_low: 0.95               # Minimum factor to apply
+# If only "one half" of the sync-feedback is available (either compression-only or tension-only) then the rotation
+# distance is always shifted based on the high/low multipliers, however if both tension and compression are available
+# then the rotation distance will autotune to correct setting (recommend you also enable 'autotune_rotation_distance: 1'
+# Note that proportional feedback sensors are continuously dynamic
+#
+# Possible buffer setups, forth option for type where neutral is when both sensors are active:
+#
+#   <------maxrange------>       <------maxrange------>       <------maxrange------>       <------maxrange------>
+#        <--range--->                  <----range----->       <----range----->                       <> range=0
+#   |====================|       |====================|       |====================|       |====================|
+#        ^          ^                  ^                                     ^                       ^^
+#   compression   tension        compression-only                      tension-only
+#
+sync_feedback_enabled: 0		# Turn off even if sensor is installed and active
+sync_feedback_buffer_range: 8		# Travel in "buffer" between compression/tension or one sensor and end (see above)
+sync_feedback_buffer_maxrange: 12	# Absolute maximum end-to-end travel (mm) provided by buffer (see above)
+sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
+sync_multiplier_low: 0.95		# Minimum factor to apply
 
 
 # ESpooler control -----------------------------------------------------------------------------------------------------
@@ -514,6 +538,44 @@ console_gate_stat: emoticon
 console_always_output_full: 1	# 1 = Show full table, 0 = Only show totals out of print
 
 
+# Calibration and autotune -------------------------------------------------------------------------------------------
+#  ██████╗ █████╗ ██╗     ██╗██████╗ ██████╗  █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
+# ██╔════╝██╔══██╗██║     ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║
+# ██║     ███████║██║     ██║██████╔╝██████╔╝███████║   ██║   ██║██║   ██║██╔██╗ ██║
+# ██║     ██╔══██║██║     ██║██╔══██╗██╔══██╗██╔══██║   ██║   ██║██║   ██║██║╚██╗██║
+# ╚██████╗██║  ██║███████╗██║██████╔╝██║  ██║██║  ██║   ██║   ██║╚██████╔╝██║ ╚████║
+#  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+#
+# These are auto calibration/tuning settings that can be used to ease initial setup and/or to tune calibration over
+# time based on measured telemetry. Whether these auto-tuning features are available depends on MMU design and
+# configured sensors (explained below). The setting will be ignored if the required sensors are not available but if
+# they can operate they will suppress the normal calibration warnings (MMU_STATUS can still be used to view them).
+# Note that these are initially set by the installer to recommended values
+#
+#  autocal_bowden_length      - the calibrated bowden length will be established on first load. It can also be set
+#                               manually or reset with MMU_CALIBRATE_BOWDEN. Best results require the use of
+#                               sync-feedback-compression or extruder sensor but gear-touch or encoder will also work.
+#                               'extruder_homing_endstop' cannot be 'none'
+#  autotune_bowden_length     - Once calibrated this setting will tune the bowden distance over time. Works best with
+#                               toolhead sensor
+#  skip_cal_rotation_distance - This will rely on installed default value (although it can still be calibrated). Usually
+#                               a good choice if autotune is enabled
+#  autotune_rotation_distance - Requires sync-feedback sensor (aka "buffer") with both compression and tension switches
+#                               or accurately calibrated encoder (encoder works only with gate 0)
+#  skip_cal_encoder           - Will rely on installed default value (although it can still be calibrates).
+#  skip_cal_encoder           - Will rely on installed default value (although it can still be calibrates).
+#                               Not recommended but allows for easier initial setup especially when 'autotune_encoder'
+#                               is enabled.
+#  autotune_encoder           - NOT IMPLEMENTED YET. Soon!
+#
+autocal_bowden_length: 1	# Automated bowden length calibration. 1=automatic, 0=manual/off
+autotune_bowden_length: 1	# Automated bowden length tuning. 1=on, 0=off
+skip_cal_rotation_distance: 0	# Skip rotation distance calibration (MMU_CALIBRATE_GEAR), 1=skip, 0=require
+autotune_rotation_distance: 0	# Automated gate calibration/tuning. 1=automatic, 0=manual/off
+skip_cal_encoder: 0		# Skip encoder calibration (MMU_CALIBRATE_ENCODER), 1=skip, 0=require
+autotune_encoder: 0		# Automated encoder tuning. 1=automatic, 0=manual/off
+
+
 # Miscellaneous, but you should review -------------------------------------------------------------------------------
 # ███╗   ███╗██╗███████╗ ██████╗
 # ████╗ ████║██║██╔════╝██╔════╝
@@ -529,20 +591,12 @@ disable_heater: 600		# Delay in seconds after which the hotend heater is disable
 default_extruder_temp: 200	# Default temperature for performing swaps and forming tips when not in print (overridden by gate map)
 extruder_temp_variance: 2	# When waiting for extruder temperature this is the +/- permissible variance in degrees (>= 1)
 #
-# These are auto calibration/tuning settings. Once the gear rotation_distance and encoder are calibrated, enabling these options
-# will lessen the initial calibration and will automatically tune bowden length and individual gate rotation_distance differences.
-# Note: What can be tuned is based on "variable_rotation_distance" and "variable_bowden_lengths" settings in mmu_hardware.cfg
-#       E.g. with fixed bowden and multiple BMG gears and encoder like the ERCF, the bowden length is tuned on gate#0 and
-#            rotation_distance (MMU_CALIBRATE_GATE) is tuned for other gates.
-#
-autotune_bowden_length: 0       # Automated bowden length calibration/tuning. 1=automatic, 0=manual/off
-autotune_rotation_distance: 0   # Automated gate calibration/tuning (requires encoder). 1=automatic, 0=manual/off
-#
 # Other workflow options
 #
 startup_home_if_unloaded: 0	# 1 = force mmu homing on startup if unloaded, 0 = do nothing
 startup_reset_ttg_map: 0	# 1 = reset TTG map on startup, 0 = do nothing
-show_error_dialog: 0		# 1 = show pop-up dialog in addition to console message, 0 = show error in console
+show_error_dialog: 1		# 1 = show pop-up dialog in addition to console message, 0 = show error in console
+preload_attempts: 5		# How many "grabbing" attempts are made to pick up the filament with preload feature
 strict_filament_recovery: 0	# If enabled with MMU with toolhead sensor, this will cause filament position recovery to
 				# perform extra moves to look for filament trapped in the space after extruder but before sensor
 filament_recovery_on_pause: 1	# 1 = Run a quick check to determine current filament position on pause/error, 0 = disable
@@ -557,7 +611,7 @@ has_filament_buffer: 1          # Whether the MMU has a filament buffer. Set to 
 encoder_move_validation: 1	# ADVANCED: 1 = Normally Encoder validates move distances are within given tolerance
 				#           0 = Validation is disabled (eliminates slight pause between moves but less safe)
 print_start_detection: 1	# ADVANCED: Enabled for Happy Hare to automatically detect start and end of print and call
-				# ADVANCED: MMU_START_PRINT and MMU_END_PRINT automatically. Harmless to leave enabled but can disable
+				# ADVANCED: MMU_PRINT_START and MMU_PRINT_END automatically. Harmless to leave enabled but can disable
                                 #           if you think it is causing problems and known START/END is covered in your macros
 extruder: extruder		# ADVANCED: Name of the toolhead extruder that MMU is using
 gcode_load_sequence: 0		# VERY ADVANCED: Gcode loading sequence 1=enabled, 0=internal logic (default)
