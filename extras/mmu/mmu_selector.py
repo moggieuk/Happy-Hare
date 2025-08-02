@@ -1,5 +1,7 @@
 # Happy Hare MMU Software
-# Implementation of various selector variations:
+# Implementation of various selector variations. Note that in this module
+# 'lgate' is local gate relative to the mmu_unit. Caller is responsible for
+# converting gate to a local gate on the particular mmu_unit selector
 #
 # VirtualSelector
 #  - Used to simply select correct gear stepper
@@ -44,6 +46,9 @@ from ..          import mmu_unit as MmuUnit
 
 # MMU subcomponent clases
 from .mmu_shared import MmuError
+
+
+# PAUL TODO... carefully change 'gate' to 'lgate' (meaning local gate)
 
 
 ################################################################################
@@ -135,8 +140,10 @@ class BaseSelector:
     def check_test_config(self, param):
         return True
 
-    def get_uncalibrated_gates(self, check_gates):
+    def get_uncalibrated_gates(self, check_lgates):
         return []
+
+
 
 ################################################################################
 # Physical Selector Class
@@ -166,7 +173,7 @@ class PhysicalSelector(BaseSelector, object):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
         if self.mmu.check_if_loaded(): return
-        if self.mmu.check_if_not_calibrated(self.mmu.CALIBRATED_SELECTOR): return
+        if self.mmu.check_if_not_calibrated(self.mmu.calibration_manager.CALIBRATED_SELECTOR): return
 
         help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
         unit = gcmd.get_int('UNIT', None, minval=0, maxval=self.mmu.mmu_machine.num_units - 1)
@@ -228,7 +235,7 @@ class VirtualSelector(BaseSelector, object):
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
-        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
+        self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR) # No calibration necessary
 
     def select_gate(self, gate):
         if gate == self.mmu.gate_selected: return
@@ -351,7 +358,10 @@ class LinearSelector(PhysicalSelector, object):
         self.selector_rail.homing_positive_dir = False
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
-        self.selector_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
+        self.mmu.var_manager.upgrade(self.VARS_MMU_SELECTOR_OFFSETS, self.mmu_unit.name) # v3 upgrade
+        self.mmu.var_manager.upgrade(self.VARS_MMU_SELECTOR_BYPASS, self.mmu_unit.name) # v3 upgrade
+
+        self.selector_offsets = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_OFFSETS, None, namespace=self.mmu_unit.name)
         if self.selector_offsets:
             # Ensure list size
             if len(self.selector_offsets) == self.mmu_unit.num_gates:
@@ -361,18 +371,18 @@ class LinearSelector(PhysicalSelector, object):
                 self.selector_offsets = self._ensure_list_size(self.selector_offsets, self.mmu_unit.num_gates)
 
             if not any(x == -1 for x in self.selector_offsets):
-                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+                self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR)
         else:
             self.mmu.log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
             self.selector_offsets = [-1] * self.mmu_unit.num_gates
-        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_OFFSETS] = self.selector_offsets
+        self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, namespace=self.mmu_unit.name)
 
-        self.bypass_offset = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS, -1)
+        self.bypass_offset = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_BYPASS, -1, namespace=self.mmu_unit.name)
         if self.bypass_offset > 0:
             self.mmu.log_debug("Loaded saved bypass offset: %s" % self.bypass_offset)
         else:
             self.bypass_offset = -1 # Ensure -1 value for uncalibrated / non-existent
-        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_BYPASS] = self.bypass_offset
+        self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, namespace=self.mmu_unit.name)
 
         # See if we have a TMC controller setup with stallguard
         if not self.mmu_unit.selector_touch:
@@ -500,8 +510,8 @@ class LinearSelector(PhysicalSelector, object):
     def check_test_config(self, param):
         return (vars(self).get(param) is None) and self.servo.check_test_config(param)
 
-    def get_uncalibrated_gates(self, check_gates):
-        return [gate for gate, value in enumerate(self.selector_offsets) if value == -1 and gate in check_gates]
+    def get_uncalibrated_gates(self, check_lgates):
+        return [lgate for lgate, value in enumerate(self.selector_offsets) if value == -1 and lgate in check_lgates]
 
     # Internal Implementation --------------------------------------------------
 
@@ -540,10 +550,10 @@ class LinearSelector(PhysicalSelector, object):
                     successful = self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
 
                 if not any(x == -1 for x in self.selector_offsets):
-                    self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+                    self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR)
 
                 # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-                if successful and self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR:
+                if successful and self.mmu.calibration_manager.check_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR):
                     self.mmu.log_always("Selector calibration complete")
                     self.mmu.select_tool(0)
                 else:
@@ -603,11 +613,11 @@ class LinearSelector(PhysicalSelector, object):
                     self.selector_offsets = [round(self.selector_offsets[0] + i * spacing, 1) for i in range(self.mmu_unit.num_gates)]
                 else:
                     extrapolate = False
-                self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
+                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True, namespace=self.mmu_unit.name)
             else:
                 self.bypass_offset = round(traveled, 1)
                 extrapolate = False
-                self.mmu.save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, write=True)
+                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, write=True, namespace=self.mmu_unit.name)
 
             if extrapolate:
                 self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
@@ -709,9 +719,9 @@ class LinearSelector(PhysicalSelector, object):
         if save:
             self.selector_offsets = selector_offsets
             self.bypass_offset = bypass_offset
-            self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets)
-            self.mmu.save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset)
-            self.mmu.write_variables()
+            self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, namespace=self.mmu_unit.name)
+            self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, namespace=self.mmu_unit.name)
+            self.mmu.var_manager.write()
             self.mmu.log_always("Selector calibration has been saved")
         return True
 
@@ -909,7 +919,8 @@ class LinearSelectorServo:
     def handle_connect(self):
         # Override with saved/calibrated servo positions (set with MMU_SERVO)
         try:
-            servo_angles = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SERVO_ANGLES, {})
+            self.mmu.var_manager.upgrade(self.VARS_MMU_SERVO_ANGLES, self.mmu_unit.name) # v3 upgrade
+            servo_angles = self.mmu.var_manager.get(self.VARS_MMU_SERVO_ANGLES, {}, namespace=self.mmu_unit.name)
             self.servo_angles.update(servo_angles)
         except Exception as e:
             raise self.mmu.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
@@ -984,7 +995,7 @@ class LinearSelectorServo:
     def _servo_save_pos(self, pos):
         if self.servo_angle != self.SERVO_UNKNOWN_STATE:
             self.servo_angles[pos] = self.servo_angle
-            self.mmu.save_variable(self.VARS_MMU_SERVO_ANGLES, self.servo_angles, write=True)
+            self.mmu.var_manager.set(self.VARS_MMU_SERVO_ANGLES, self.servo_angles, write=True, namespace=self.mmu_unit.name)
             self.mmu.log_info("Servo angle '%d' for position '%s' has been saved" % (self.servo_angle, pos))
         else:
             self.mmu.log_info("Servo angle unknown")
@@ -1198,7 +1209,8 @@ class RotarySelector(PhysicalSelector, object):
         self.has_endstop = bool(endstops) and endstops[0][0].__class__.__name__ != "MockEndstop"
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
-        self.selector_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
+        self.mmu.var_manager.upgrade(self.VARS_MMU_SELECTOR_OFFSETS, self.mmu_unit.name) # v3 upgrade
+        self.selector_offsets = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_OFFSETS, None, namespace=self.mmu_unit.name)
         if self.selector_offsets:
             # Ensure list size
             if len(self.selector_offsets) == self.mmu_unit.num_gates:
@@ -1208,11 +1220,11 @@ class RotarySelector(PhysicalSelector, object):
                 self.selector_offsets = self._ensure_list_size(self.selector_offsets, self.mmu_unit.num_gates)
 
             if not any(x == -1 for x in self.selector_offsets):
-                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+                self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR)
         else:
             self.mmu.log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
             self.selector_offsets = [-1] * self.mmu_unit.num_gates
-        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_OFFSETS] = self.selector_offsets
+        self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, namespace=self.mmu_unit.name)
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
@@ -1242,7 +1254,7 @@ class RotarySelector(PhysicalSelector, object):
                     self._grip(gate)
 
     def restore_gate(self, gate):
-        gate_pos = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_GATE_POS, None)
+        gate_pos = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_GATE_POS, None, namespace=self.mmu_unit.name)
         if gate_pos is not None:
             self.set_position(self.selector_offsets[gate_pos])
             if gate == gate_pos:
@@ -1270,7 +1282,7 @@ class RotarySelector(PhysicalSelector, object):
                 self.grip_state = self.mmu.FILAMENT_RELEASE_STATE
 
                 # Precaution to ensure correct postion/gate restoration on restart
-                self.mmu.save_variable(self.VARS_MMU_SELECTOR_GATE_POS, self.cad_release_gates[gate], write=True)
+                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_GATE_POS, self.cad_release_gates[gate], write=True, namespace=self.mmu_unit.name)
             else:
                 grip_pos = self.selector_offsets[gate]
                 self.mmu.log_trace("Setting selector to filament grip position at position: %.1f" % grip_pos)
@@ -1278,7 +1290,7 @@ class RotarySelector(PhysicalSelector, object):
                 self.grip_state = self.mmu.FILAMENT_DRIVE_STATE
 
                 # Precaution to ensure correct postion/gate restoration on restart
-                self.mmu.save_variable(self.VARS_MMU_SELECTOR_GATE_POS, gate, write=True)
+                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_GATE_POS, gate, write=True, namespace=self.mmu_unit.name)
 
             # Ensure gate filament drive is in the correct direction
             self.mmu_toolhead.get_kinematics().rails[1].set_direction(self.cad_gate_directions[gate])
@@ -1332,8 +1344,8 @@ class RotarySelector(PhysicalSelector, object):
         msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
         return msg
 
-    def get_uncalibrated_gates(self, check_gates):
-        return [gate for gate, value in enumerate(self.selector_offsets) if value == -1 and gate in check_gates]
+    def get_uncalibrated_gates(self, check_lgates):
+        return [lgate for lgate, value in enumerate(self.selector_offsets) if value == -1 and lgate in check_lgates]
 
     # Internal Implementation --------------------------------------------------
 
@@ -1382,14 +1394,14 @@ class RotarySelector(PhysicalSelector, object):
             else:
                 self.mmu.log_always("%s - will calculate gate offsets from cad_gate0_offset and cad_gate_width" % ("Quick method" if quick else "No endstop configured"))
                 self.selector_offsets = [round(self.cad_gate0_pos + i * self.cad_gate_width, 1) for i in range(self.mmu_unit.num_gates)]
-                self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
+                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True, namespace=self.mmu_unit.name)
                 successful = True
 
             if not any(x == -1 for x in self.selector_offsets):
-                self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+                self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR)
 
             # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-            if successful and self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR:
+            if successful and self.mmu.calibration_manager.check_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR):
                 self.mmu.log_always("Selector calibration complete")
                 self.mmu.select_tool(0)
             else:
@@ -1437,7 +1449,7 @@ class RotarySelector(PhysicalSelector, object):
                 self.selector_offsets = [round(self.selector_offsets[0] + i * self.cad_gate_width, 1) for i in range(self.mmu_unit.num_gates)]
             else:
                 extrapolate = False
-            self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True)
+            self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, write=True, namespace=self.mmu_unit.name)
 
             if extrapolate:
                 self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
@@ -1566,7 +1578,7 @@ class MacroSelector(BaseSelector, object):
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
-        self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR # No calibration necessary
+        self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR) # No calibration necessary
 
     def handle_ready(self):
         logging.info("Happy Hare MacroSelector: Gate %d" % self.mmu.gate_selected)
@@ -1584,9 +1596,6 @@ class MacroSelector(BaseSelector, object):
 
         # Call selector macro
         self.mmu.wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
-
-    def restore_gate(self, gate):
-        pass
 
 
 
@@ -1652,10 +1661,13 @@ class ServoSelector(PhysicalSelector, object):
         self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
 
     def handle_connect(self):
-        # Load and merge calibrated selector angles (calibration set with MMU_CALIBRATE_SELECTOR) -----------
+        self.mmu.var_manager.upgrade(self.VARS_MMU_SELECTOR_ANGLES, self.mmu_unit.name) # v3 upgrade
+        self.mmu.var_manager.upgrade(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, self.mmu_unit.name) # v3 upgrade
+
+        # Load and merge calibrated selector angles (calibration set with MMU_CALIBRATE_SELECTOR) ------------
         self.selector_angles = self._ensure_list_size(self.selector_angles, self.mmu_unit.num_gates)
 
-        cal_selector_angles = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_ANGLES, [])
+        cal_selector_angles = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_ANGLES, [], namespace=self.mmu_unit.name)
         if cal_selector_angles:
             self.mmu.log_debug("Loaded saved selector angles: %s" % cal_selector_angles)
         else:
@@ -1667,9 +1679,9 @@ class ServoSelector(PhysicalSelector, object):
                 self.selector_angles[gate] = angle[1]
 
         if not any(x == -1 for x in self.selector_angles):
-            self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+            self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR)
 
-        selector_bypass_angle = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, -1)
+        selector_bypass_angle = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, -1, namespace=self.mmu_unit.name)
         if selector_bypass_angle >= 0:
             self.selector_bypass_angle = selector_bypass_angle
             self.mmu.log_debug("Loaded saved bypass angle: %s" % self.selector_bypass_angle)
@@ -1761,8 +1773,8 @@ class ServoSelector(PhysicalSelector, object):
                 "RELEASE" if self.servo_state == self.mmu.FILAMENT_RELEASE_STATE else "unknown")
         return msg
 
-    def get_uncalibrated_gates(self, check_gates):
-        return [gate for gate, value in enumerate(self.selector_angles) if value == -1 and gate in check_gates]
+    def get_uncalibrated_gates(self, check_lgates):
+        return [lgate for lgate, value in enumerate(self.selector_angles) if value == -1 and lgate in check_lgates]
 
     # Internal Implementation --------------------------------------------------
 
@@ -1811,7 +1823,7 @@ class ServoSelector(PhysicalSelector, object):
 
         if show:
             msg = ""
-            if not self.mmu.calibration_status & self.mmu.CALIBRATED_SELECTOR:
+            if not self.mmu.calibration_manager.check_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR):
                 msg += "Calibration not complete\n"
             msg += "Current selector gate angle positions are: %s degrees" % self.selector_angles
             if self.selector_release_angle >= 0:
@@ -1832,19 +1844,19 @@ class ServoSelector(PhysicalSelector, object):
         elif save:
             if gate == self.mmu.TOOL_GATE_BYPASS:
                 self.selector_bypass_angle = self.servo_angle
-                self.mmu.save_variable(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, self.selector_bypass_angle, write=True)
+                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, self.selector_bypass_angle, write=True, namespace=self.mmu_unit.name)
                 self.mmu.log_info("Servo angle '%d' for bypass position has been saved" % self.servo_angle)
             elif gate >= 0:
                 if single:
                     self.selector_angles[gate] = self.servo_angle
-                    self.mmu.save_variable(self.VARS_MMU_SELECTOR_ANGLES, self.selector_angles, write=True)
+                    self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_ANGLES, self.selector_angles, write=True, namespace=self.mmu_unit.name)
                     self.mmu.log_info("Servo angle '%d' for gate %d has been saved" % (self.servo_angle, gate))
                 else:
                     # If possible evenly distribute based on spacing
                     angles = self._generate_gate_angles(self.servo_angle, gate, spacing)
                     if angles:
                         self.selector_angles = angles
-                        self.mmu.save_variable(self.VARS_MMU_SELECTOR_ANGLES, self.selector_angles, write=True)
+                        self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_ANGLES, self.selector_angles, write=True, namespace=self.mmu_unit.name)
                         self.mmu.log_info("Selector gate angle positions %s has been saved" % self.selector_angles)
                     else:
                         self.mmu.log_error("Not possible to distribute angles with separation of %.1f degrees with gate %d at %.1f%s" % (spacing, gate, self.servo_angle, usage))
@@ -1854,7 +1866,7 @@ class ServoSelector(PhysicalSelector, object):
             self.mmu.log_always("Current selector servo angle: %d, Selector gate angle positions: %s" % (self.servo_angle, self.selector_angles))
 
         if not any(x == -1 for x in self.selector_angles):
-            self.mmu.calibration_status |= self.mmu.CALIBRATED_SELECTOR
+            self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR)
 
     def _set_servo_angle(self, angle):
         if angle >= 0 and angle != self.servo_angle:
@@ -1962,13 +1974,13 @@ class IndexedSelector(PhysicalSelector, object):
     def select_gate(self, gate):
         if gate >= 0 and gate != self.mmu.gate_selected:
             with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
-                self._find_gate(gate - self.mmu_unit.first_gate)
+                self._find_gate(gate)
 
     def restore_gate(self, gate):
         if gate >= 0:
             # PAUL this will generate a TTC error if the mcu has just booted. It is called from "ready" callback. Either need to move the
             # intial call or delay actual move here..
-            self._find_gate(gate - self.mmu_unit.first_gate)
+            self._find_gate(gate)
 
     def disable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')

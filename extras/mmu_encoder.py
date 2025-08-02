@@ -27,15 +27,23 @@ class MmuEncoder:
     RUNOUT_STATIC = 1
     RUNOUT_AUTOMATIC = 2
 
-    def __init__(self, config):
+    def __init__(self, config, *args):
+        if len(args) < 2:
+            raise config.error("[%s] cannot be instantiated directly. It must be loaded by [mmu_unit]" % config.get_name())
+        self.mmu_machine, self.mmu_unit = args
+        self.mmu = None
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+
+#    def __init__(self, config):
+#        self.name = config.get_name().split()[-1]
+#        self.printer = config.get_printer()
+#        self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
         encoder_pin = config.get('encoder_pin')
-        self._logger = None
 
-        # For counter functionality
+        # For counter functionality...
         self.sample_time = config.getfloat('sample_time', 0.1, above=0.)
         self.poll_time = config.getfloat('poll_time', 0.001, above=0.)
         self.set_resolution(config.getfloat('encoder_resolution', 1., above=0.)) # Must be calibrated by user in Happy Hare
@@ -45,16 +53,17 @@ class MmuEncoder:
         self._counter.setup_callback(self._counter_callback)
         self._movement = False
 
-        # For clog/runout functionality
-        self.extruder_name = config.get('extruder', 'extruder')
+        # For clog/runout functionality...
+        self.extruder = None
         # The runout headroom that MMU will attempt to maintain (closest MMU comes to triggering runout)
         self.desired_headroom = config.getfloat('desired_headroom', 6., above=0.)
         # The "damping" effect of last measurement. Higher value means clog_length will be reduced more slowly
         self.average_samples = config.getint('average_samples', 4, minval=1)
         # The extrusion interval where new detection_length is calculated (also done on toolchange)
         self.next_calibration_point = self.calibration_length = config.getfloat('calibration_length', 10000., minval=50.) # 10m
-        # Detection length will be set by MMU calibration
+        # Detection length will be adjusted by MMU calibration so this is just default
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
+
         self.event_delay = config.getfloat('event_delay', 2., above=0.)
         self.pause_delay = config.getfloat('pause_delay', 0, above=0.)
         self.runout_gcode = '__MMU_ENCODER_RUNOUT'
@@ -74,20 +83,22 @@ class MmuEncoder:
 
         # Register event handlers
         self.printer.register_event_handler('klippy:ready', self._handle_ready)
-        self.printer.register_event_handler('klippy:connect', self._handle_connect)
+# PAUL        self.printer.register_event_handler('klippy:connect', self._handle_connect)
         self.printer.register_event_handler('idle_timeout:printing', self._handle_printing)
         self.printer.register_event_handler('idle_timeout:ready', self._handle_not_printing)
         self.printer.register_event_handler('idle_timeout:idle', self._handle_not_printing)
 
-    def _handle_connect(self):
-        try:
-            self.extruder = self.printer.lookup_object(self.extruder_name)
-        except Exception:
-            pass # Can set this later
+# PAUL
+#    def _handle_connect(self):
+#        self.last_extruder_pos = 0.
+#        self.filament_runout_pos = self.min_headroom = self.detection_length
+
+    def _handle_ready(self):
+        self.mmu = self.printer.lookup_object('mmu')
+        self.extruder = self.printer.lookup_object(self.mmu_machine.extruder_name)
         self.last_extruder_pos = 0.
         self.filament_runout_pos = self.min_headroom = self.detection_length
 
-    def _handle_ready(self):
         self.min_event_systime = self.reactor.monotonic() + 2. # Don't process events too early
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self._reset_filament_runout_params()
@@ -124,11 +135,11 @@ class MmuEncoder:
                 self.next_calibration_point = extruder_pos + self.calibration_length
             if self.filament_runout_pos - extruder_pos < self.min_headroom:
                 self.min_headroom = self.filament_runout_pos - extruder_pos
-                if self._logger and self.min_headroom < self.desired_headroom:
+                if self.min_headroom < self.desired_headroom:
                     if self.detection_mode == self.RUNOUT_AUTOMATIC:
-                        self._logger("Automatic clog detection: new min_headroom (< %.1fmm desired): %.1fmm" % (self.desired_headroom, self.min_headroom))
+                        self.mmu.log_debug("Automatic clog detection: new min_headroom (< %.1fmm desired): %.1fmm" % (self.desired_headroom, self.min_headroom))
                     elif self.detection_mode == self.RUNOUT_STATIC:
-                        self._logger("Warning: Only %.1fmm of headroom to clog/runout" % self.min_headroom)
+                        self.mmu.log_debug("Warning: Only %.1fmm of headroom to clog/runout" % self.min_headroom)
             self._handle_filament_event(extruder_pos < self.filament_runout_pos)
 
             # Flowrate calc. Depends of calibration accuracy of encoder
@@ -162,22 +173,19 @@ class MmuEncoder:
             # Maintain headroom
             extra_length = min((self.desired_headroom - self.min_headroom), self.desired_headroom)
             self.detection_length += extra_length
-            if self._logger:
-                self._logger("Automatic clog detection: maintaining headroom by adding %.1fmm to detection_length" % extra_length)
+            self.mmu.log_debug("Automatic clog detection: maintaining headroom by adding %.1fmm to detection_length" % extra_length)
         elif not increase_only:
             # Average down
             sample = self.detection_length - (self.min_headroom - self.desired_headroom)
             self.detection_length = ((self.average_samples * self.detection_length) + self.desired_headroom - self.min_headroom) / self.average_samples
-            if self._logger:
-                self._logger("Automatic clog detection: averaging down detection_length with new %.1fmm measurement" % sample)
+            self.mmu.log_debug("Automatic clog detection: averaging down detection_length with new %.1fmm measurement" % sample)
         else:
             return
 
         self.min_headroom = self.detection_length
         self.filament_runout_pos = self.last_extruder_pos + self.detection_length
         if round(self.detection_length, 1) != round(current_detection_length, 1): # Persist if significant
-            if self._logger:
-                self._logger("Automatic clog detection: reset detection_length to %.1fmm" % self.min_headroom)
+            self.mmu.log_debug("Automatic clog detection: reset detection_length to %.1fmm" % self.min_headroom)
             self.set_clog_detection_length(self.detection_length)
 
     # Called to see if state update requires callback notification
@@ -235,16 +243,6 @@ class MmuEncoder:
         if self.RUNOUT_DISABLED <= mode <= self.RUNOUT_AUTOMATIC:
             self.detection_mode = mode
 
-    def set_extruder(self, extruder_name):
-        self.extruder = self.printer.lookup_object(extruder_name)
-        if not self.extruder:
-            raise self.printer.config.error("Extruder named `%s` not found" % extruder_name)
-        self.extruder_name = extruder_name
-        self.filament_runout_pos = self.min_headroom = self.detection_length
-
-    def set_logger(self, log):
-        self._logger = log
-
     def enable(self):
         self._reset_filament_runout_params()
         self._enabled = True
@@ -282,6 +280,11 @@ class MmuEncoder:
 
     def get_resolution(self):
         return self.resolution
+
+    # The threshold (mm) that determines real encoder movement
+    # (set to 1.5 pulses of encoder. i.e. to allow one rougue pulse)
+    def movement_min(self):
+        return 1.5 * self.resolution
 
     def get_counts(self):
         return self._counts

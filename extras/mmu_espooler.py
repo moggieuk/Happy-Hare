@@ -337,9 +337,11 @@ class MmuESpooler:
             self.espooler = espooler
             self.reactor = espooler.reactor
             self.estimated_print_time = espooler.printer.lookup_object('mcu').estimated_print_time
-            self.extruder = espooler.printer.lookup_object(espooler.mmu.extruder_name, None)
+# PAUL            self.extruder = espooler.printer.lookup_object(espooler.mmu.extruder_name, None) # PAUL should be on mmu_machine?
+            self.extruder = espooler.printer.lookup_object(espooler.mmu_machine.extruder_name, None)
             if not self.extruder:
-                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu.extruder_name)
+# PAUL                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu.extruder_name) # PAUL should be on mmu_machine?
+                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu_machine.extruder_name)
 
             self.enabled = False
             self.last_extruder_pos = None

@@ -361,11 +361,18 @@ class MmuUnit:
         if encoder_name:
             section = 'mmu_encoder %s' % encoder_name
             self.encoder = self.printer.lookup_object(section, None)
-            if self.encoder is None:
-                self.encoder = self.printer.load_object(config, section)
-                logging.info("MMU: Loaded: %s" % section)
-            else:
-                logging.info("MMU: Skipping: %s" % section)
+            if self.encoder is None and config.has_section(section):
+                c = config.getsection(section)
+                self.encoder = mmu_encoder.MmuEncoder(c, self.mmu_machine, self)
+                logging.info("MMU: Created: %s" % c.get_name())
+                self.printer.add_object(c.get_name(), self.encoder) # Register mmu_encoder to stop it being loaded by klipper
+# PAUL
+#            self.encoder = self.printer.lookup_object(section, None)
+#            if self.encoder is None:
+#                self.encoder = self.printer.load_object(config, section)
+#                logging.info("MMU: Loaded: %s" % section)
+#            else:
+#                logging.info("MMU: Skipping: %s" % section)
 
         # Load optional sync-feedback mmu_buffer (could be a shared buffer)
         self.buffer = None
