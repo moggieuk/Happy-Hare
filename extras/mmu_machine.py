@@ -183,7 +183,12 @@ class MmuMachine:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_VVD:
-            pass
+            selector_type = 'IndexedSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_KMS:
             selector_type = 'VirtualSelector'
