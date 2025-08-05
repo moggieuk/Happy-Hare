@@ -983,9 +983,9 @@ class Mmu:
     def mmu_unit(self, gate=None):
         if gate is None:
             gate = self.gate_selected
-        unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
-        if unit:
-            return unit
+        mmu_unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
+        if mmu_unit:
+            return mmu_unit
         #logging.info("PAUL: mmu_unit() returning default unit_0?")
         return self.mmu_machine.get_mmu_unit_by_gate(0)
 
@@ -997,14 +997,6 @@ class Mmu:
 
     def gear_rail(self, gate=None):
         return self.mmu_toolhead(gate).get_kinematics().rails[1]
-
-    # Convert gate number to relative gate on mmu_unit
-    def gate_on_unit(self, gate=None):
-        if gate is None:
-            gate = self.gate_selected
-        if gate >= 0:
-            return gate - self.mmu_unit(gate).first_gate
-        return gate
 
     def espooler(self, gate=None):
         unit = self.mmu_unit(gate)
@@ -1252,7 +1244,7 @@ class Mmu:
 # PAUL            gate_selected = 0
             gate_selected = self.mmu_unit().first_gate
 
-        self.selector(gate_selected).restore_gate(self.gate_on_unit(gate_selected))
+        self.selector(gate_selected).restore_gate(gate_selected)
         self._set_gate_selected(gate_selected)
         self._set_tool_selected(tool_selected)
         self._ensure_ttg_match() # Ensure tool/gate consistency
@@ -2219,7 +2211,7 @@ class Mmu:
                     se.motor_enable(self.mmu_toolhead().get_last_move_time())
             if motor in ["all", "selector"]:
                 self.mmu_machine.enable_motors()
-                self.selector().restore_gate(self.gate_on_unit())
+                self.selector().restore_gate()
                 self.selector().filament_hold_move() # Aka selector move position
         else:
             if motor in ["all", "gear", "gears"]:
@@ -2228,7 +2220,7 @@ class Mmu:
                     se = stepper_enable.lookup_enable(stepper.get_name())
                     se.motor_disable(self.mmu_toolhead().get_last_move_time())
             if motor in ["all", "selector"]:
-                self.selector().restore_gate(self.gate_on_unit(self.TOOL_GATE_UNKNOWN))
+                self.selector().restore_gate(self.TOOL_GATE_UNKNOWN)
                 self.mmu_machine.disable_motors()
 
 
@@ -3347,15 +3339,8 @@ class Mmu:
                     (required & CalibrationManager.CALIBRATED_SELECTOR) and
                     not self.calibration_manager.check_calibrated(mmu_unit, CalibrationManager.CALIBRATED_SELECTOR)
                 ):
-                    check_lgates = [
-                        gate - mmu_unit.first_gate
-                        for gate in check_gates
-                        if mmu_unit.manages_gate(gate)
-                    ]
-                    uncalibrated = [
-                        gate + mmu_unit.first_gate
-                        for gate in mmu_unit.selector.get_uncalibrated_gates(check_lgates)
-                    ]
+                    unit_check_gates = [gate for gate in check_gates if mmu_unit.manages_gate(gate)]
+                    uncalibrated = mmu_unit.selector.get_uncalibrated_gates(unit_check_gates)
                     if uncalibrated:
                         info = "\n- Use MMU_CALIBRATE_SELECTOR to calibrate selector for gates: %s" % ",".join(map(str, uncalibrated))
                         if self.autocal_selector:
@@ -3431,7 +3416,7 @@ class Mmu:
                                 rmsg += info
 
                 if rmsg or omsg:
-                    msg = "Warning: Calibration steps are not complete for unit %s:" % mmu_unit.name
+                    msg = "Warning: Calibration steps are not complete for mmu unit %s:" % mmu_unit.name
                     if rmsg:
                         msg += "\nRequired:%s" % rmsg
                     if omsg:
@@ -3444,109 +3429,6 @@ class Mmu:
                     calibrated = False
 
         return not calibrated
-
-# PAUL ORIGINAL CODE>...
-#
-#        if not self.calibration_status & required == required:
-## PAUL
-##            if check_gates is None:
-##                check_gates = list(range(self.num_gates))
-#
-#            rmsg = omsg = ""
-#            if (
-#                (not use_autotune or not self.autocal_selector) and
-#                (required & CalibrationManager.CALIBRATED_SELECTOR) and
-##PAUL                not (self.calibration_status & CalibrationManager.CALIBRATED_SELECTOR)
-#                not self.calibration_manager.calbration_status(mmu_unit, CalibrationManager.CALIBRATED_SELECTOR)
-#            ):
-#                uncalibrated = self.selector().get_uncalibrated_gates(check_gates)
-#                if uncalibrated:
-#                    info = "\n- Use MMU_CALIBRATE_SELECTOR to calibrate selector for gates: %s" % ",".join(map(str, uncalibrated))
-#                    if self.autocal_selector:
-#                        omsg += info
-#                    else:
-#                        rmsg += info
-#
-#            if (
-#                (not use_autotune or not self.skip_cal_rotation_distance) and
-#                (required & CalibrationManager.CALIBRATED_GEAR_0) and
-#                not (self.calibration_status & CalibrationManager.CALIBRATED_GEAR_0)
-#            ):
-#                uncalibrated = self.rotation_distances[0] == -1
-#                if uncalibrated:
-#                    info = "\n- Use MMU_CALIBRATE_GEAR (with gate 0 selected)"
-#                    info += " to calibrate gear rotation_distance on gate: 0"
-#                    if self.skip_cal_rotation_distance:
-#                        omsg += info
-#                    else:
-#                        rmsg += info
-#
-#            if (
-#                (not use_autotune or not self.skip_cal_encoder) and
-#                (required & CalibrationManager.CALIBRATED_ENCODER and
-#                not (self.calibration_status & CalibrationManager.CALIBRATED_ENCODER))
-#            ):
-#                info = "\n- Use MMU_CALIBRATE_ENCODER (with gate 0 selected)"
-#                if self.skip_cal_encoder:
-#                    omsg += info
-#                else:
-#                    rmsg += info
-#
-#            if (
-#                self.mmu_unit().variable_rotation_distances and
-#                (not use_autotune or not (self.skip_cal_rotation_distance or self.autotune_rotation_distance)) and
-#                (required & CalibrationManager.CALIBRATED_GEAR_RDS) and
-#                not (self.calibration_status & CalibrationManager.CALIBRATED_GEAR_RDS)
-#            ):
-#                uncalibrated = [gate for gate, value in enumerate(self.rotation_distances) if gate != 0 and value == -1 and gate in check_gates]
-#                if uncalibrated:
-#                    if self.has_encoder():
-#                        info = "\n- Use MMU_CALIBRATE_GEAR (with each gate selected) or MMU_CALIBRATE_GATES GATE=xx"
-#                        info += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
-#                    else:
-#                        info = "\n- Use MMU_CALIBRATE_GEAR (with each gate selected)"
-#                        info += " to calibrate gear rotation_distance on gates: %s" % ",".join(map(str, uncalibrated))
-#                    if (self.skip_cal_rotation_distance or self.autotune_rotation_distance):
-#                        omsg += info
-#                    else:
-#                        rmsg += info
-#
-#            if (
-#                (not use_autotune or not self.autocal_bowden_length) and
-#                (required & CalibrationManager.CALIBRATED_BOWDENS) and
-#                not (self.calibration_status & CalibrationManager.CALIBRATED_BOWDENS)
-#            ):
-#                if self.mmu_unit().variable_bowden_lengths:
-#                    uncalibrated = [gate for gate, value in enumerate(self.bowden_lengths) if value == -1 and gate in check_gates]
-#                    if uncalibrated:
-#                        info = "\n- Use MMU_CALIBRATE_BOWDEN (with gate selected)"
-#                        info += " to calibrate bowden length gates: %s" % ",".join(map(str, uncalibrated))
-#                        if self.autocal_bowden_length:
-#                            omsg += info
-#                        else:
-#                            rmsg += info
-#                else:
-#                    uncalibrated = self.bowden_lengths[0] == -1
-#                    if uncalibrated:
-#                        info = "\n- Use MMU_CALIBRATE_BOWDEN (with gate 0 selected) to calibrate bowden length"
-#                        if self.autocal_bowden_length:
-#                            omsg += info
-#                        else:
-#                            rmsg += info
-#
-#            if rmsg or omsg:
-#                msg = "Warning: Calibration steps are not complete:"
-#                if rmsg:
-#                    msg += "\nRequired:%s" % rmsg
-#                if omsg:
-#                    msg += "\nOptional (handled by autocal/autotune):%s" % omsg
-#                if not silent:
-#                    if silent is None: # Bootup/status use case to avoid looking like error
-#                        self.log_always("{2}%s{0}" % msg, color=True)
-#                    else:
-#                        self.log_error(msg)
-#                return True
-#        return False
 
     def check_if_spoolman_enabled(self):
         if self.spoolman_support == self.SPOOLMAN_OFF:
@@ -5960,7 +5842,7 @@ class Mmu:
         if gate == self.gate_selected: return
         try:
             self._next_gate = gate # Valid only during the gate selection process
-            self.selector().select_gate(self.gate_on_unit(gate))
+            self.selector(gate).select_gate(gate) # PAUL added gate to selector
             self._set_gate_selected(gate)
             self._espooler_assist_on() # Will switch assist print mode if printing
         except MmuError as ee:
@@ -6737,7 +6619,7 @@ class Mmu:
                 return
 
             if tool == self.TOOL_GATE_BYPASS:
-                self.selector().restore_gate(self.gate_on_unit(self.TOOL_GATE_BYPASS))
+                self.selector().restore_gate(self.TOOL_GATE_BYPASS)
                 self._set_gate_selected(self.TOOL_GATE_BYPASS)
                 self._set_tool_selected(self.TOOL_GATE_BYPASS)
                 self._ensure_ttg_match()
@@ -6748,13 +6630,13 @@ class Mmu:
                 if mod_gate >= 0:
                     gate = mod_gate
                 if gate >= 0:
-                    self.selector(gate).restore_gate(self.gate_on_unit(gate))
+                    self.selector(gate).restore_gate(gate)
                     self._set_gate_selected(gate)
                     self.log_info("Remapping T%d to gate %d" % (tool, gate))
                     self._remap_tool(tool, gate, loaded)
 
             elif mod_gate >= 0: # If only gate specified then just reset and ensure tool is correct
-                self.selector(mod_gate).restore_gate(self.gate_on_unit(mod_gate))
+                self.selector(mod_gate).restore_gate(mod_gate)
                 self._set_gate_selected(mod_gate)
                 self._ensure_ttg_match()
 

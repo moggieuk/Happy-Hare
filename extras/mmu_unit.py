@@ -366,13 +366,6 @@ class MmuUnit:
                 self.encoder = mmu_encoder.MmuEncoder(c, self.mmu_machine, self)
                 logging.info("MMU: Created: %s" % c.get_name())
                 self.printer.add_object(c.get_name(), self.encoder) # Register mmu_encoder to stop it being loaded by klipper
-# PAUL
-#            self.encoder = self.printer.lookup_object(section, None)
-#            if self.encoder is None:
-#                self.encoder = self.printer.load_object(config, section)
-#                logging.info("MMU: Loaded: %s" % section)
-#            else:
-#                logging.info("MMU: Skipping: %s" % section)
 
         # Load optional sync-feedback mmu_buffer (could be a shared buffer)
         self.buffer = None
@@ -821,7 +814,7 @@ class MmuKinematics:
 # PAUL testing removal of need to home selector (managed by mmu.py)
 #            config.fileconfig.set(self.mmu_unit.selector_name, 'position_min', -1.)
 #            config.fileconfig.set(self.mmu_unit.selector_name, 'position_max', 99)
-#            config.fileconfig.set(self.mmu_unit.selector_name, 'homing_speed', 99)
+            config.fileconfig.set(self.mmu_unit.selector_name, 'homing_speed', 60)
 #
 #            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_name), need_position_minmax=True, default_position_endstop=0.))
             self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_name), need_position_minmax=False, default_position_endstop=0.))
@@ -888,11 +881,12 @@ class MmuKinematics:
         self.move_accel = accel
 
     def check_move(self, move):
-# PAUL temp test
-#        limits = self.limits
-#        xpos, _ = move.end_pos[:2]
-#        if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
-#            raise move.move_error()
+# PAUL do I need this move_error test? vvv
+        limits = self.limits
+        xpos, _ = move.end_pos[:2]
+        if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
+            raise move.move_error()
+# PAUL do I need this move_error test? ^^^
         if move.axes_d[0]: # Selector
             move.limit_speed(self.selector_max_velocity, min(self.selector_max_accel, self.move_accel or self.selector_max_accel))
         elif move.axes_d[1]: # Gear
