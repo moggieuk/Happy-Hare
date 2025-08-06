@@ -972,8 +972,10 @@ class LinearSelectorServo:
             self.servo_down()
         elif not self.mmu.selector.is_homed or self.mmu.tool_selected < 0 or self.mmu.gate_selected < 0:
             self.servo_move()
-        else:
+        elif self.mmu.is_printing() and not self.mmu_toolhead.is_gear_synced_to_extruder():
             self.servo_up()
+        else:
+            self.servo_move()
 
     # De-energize servo if 'servo_always_active' or 'servo_active_down' are being used
     def servo_off(self):
