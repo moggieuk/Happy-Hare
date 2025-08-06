@@ -1857,7 +1857,7 @@ class ServoSelector(BaseSelector, object):
 #   MMU_SOAKTEST_SELECTOR
 ################################################################################
 
-class IndexedSelector(PhysicalSelector, object):
+class IndexedSelector(BaseSelector, object):
 
     def __init__(self, mmu):
 

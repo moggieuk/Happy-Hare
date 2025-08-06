@@ -28,6 +28,7 @@ import stepper, chelper, toolhead
 from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
 from .homing import Homing, HomingMove
 
+from . import mmu_leds
 
 # TMC chips to search for
 TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
@@ -72,11 +73,12 @@ class MmuMachine:
 
     def __init__(self, config):
         # Essential information for validation and setup
-        self.units = list(config.getintlist('num_gates', []))
-        self.num_units = len(self.units)
+        self.printer = config.get_printer()
+        self.gate_counts = list(config.getintlist('num_gates', []))
+        self.num_units = len(self.gate_counts)
         if self.num_units < 1:
             raise config.error("Invalid or missing num_gates parameter in section [mmu_machine]")
-        self.num_gates = sum(self.units)
+        self.num_gates = sum(self.gate_counts)
         self.mmu_vendor = config.getchoice('mmu_vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
         self.mmu_version_string = config.get('mmu_version', "1.0")
         version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
@@ -84,6 +86,52 @@ class MmuMachine:
             self.mmu_version = float(version)
         except ValueError:
             raise config.error("Invalid version parameter")
+
+        # Hack to bring some v4 functionality into v3
+        # vvv
+
+        # Create a minimal fake MmuUnit object
+        self.units = []        # Unit by index
+        self.unit_by_gate = [] # Quick unit lookup by gate
+        next_gate = 0
+        for i in range(self.num_units):
+            unit = MmuUnit("unit%d" % i, i, next_gate, self.gate_counts[i])
+            self.units.append(unit)
+            self.unit_by_gate[next_gate:next_gate + self.gate_counts[i]] = [unit] * self.gate_counts[i]
+            next_gate += self.gate_counts[i]
+
+        # If single unit then convert to new format else require user to do so
+        orig_section = 'mmu_leds'
+        if config.has_section(orig_section):
+            if self.num_units == 1:
+                c = config.getsection(orig_section)
+                logging.info("PAUL: found orig mmu_leds section")
+                keys = config.fileconfig.options(orig_section)
+                logging.info("PAUL: keys=%s" % keys)
+                new_section = 'mmu_leds unit0'
+                config.fileconfig.add_section(new_section)
+                for key in keys:
+                    value = config.fileconfig.get(orig_section, key)
+                    logging.info("PAUL: value=%s" % value)
+                    config.fileconfig.set(new_section, key, value)
+                logging.info("PAUL: added new section: %s" % new_section)
+                config.fileconfig.remove_section(orig_section)
+                logging.info("PAUL: removed section: %s" % orig_section)
+            else:
+                raise config.error("v3.4 requires manual update of [mmu_leds] section for multiple mmu units")
+
+        # Load optional mmu_leds module for each mmu unit
+        for unit in self.units:
+            section = 'mmu_leds %s' % unit.name
+            if config.has_section(section):
+                c = config.getsection(section)
+                unit.leds = mmu_leds.MmuLeds(c, self, unit, unit.first_gate, unit.num_gates)
+                logging.info("MMU: Created: %s" % c.get_name())
+                logging.info("PAUL: Created: %s" % c.get_name())
+                self.printer.add_object(c.get_name(), unit.leds) # Register mmu_leds to stop it being loaded by klipper
+
+        # ^^^
+        # Hack to bring some v4 functionality into v3
 
         # MMU design for control purposes can be broken down into the following choices:
         #  - Selector type or no selector
@@ -260,10 +308,10 @@ class MmuMachine:
         # TODO would allow for easier to understand error messages for conflicting or missing
         # TODO hardware definitions.
 
-        # TODO: Temp until restructured to allow multiple MMU's of different types. Used by
+        # TODO: Temp until restructured to allow multiple MMU's of different types.
         gate_count = 0
         self.unit_status = {}
-        for i, unit in enumerate(self.units):
+        for i, unit in enumerate(self.gate_counts):
             unit_info = {}
             unit_info['name'] = self.display_name
             unit_info['vendor'] = self.mmu_vendor
@@ -279,10 +327,33 @@ class MmuMachine:
             unit_info['multi_gear'] = self.multigear
             gate_count += unit
             self.unit_status["unit_%d" % i] = unit_info
-            self.unit_status['num_units'] = len(self.units)
+            self.unit_status['num_units'] = len(self.gate_counts)
+
+    def get_mmu_unit_by_index(self, index): # Hack to allow some v4 functionality into the v3 line
+        if index >= 0 and index < self.num_units:
+            return self.units[index]
+        return None
+        
+    def get_mmu_unit_by_gate(self, gate): # Hack to allow some v4 functionality into the v3 line
+        if gate >= 0 and gate < self.num_gates:
+            return self.unit_by_gate[gate]
+        return None
 
     def get_status(self, eventtime):
         return self.unit_status
+
+# This is a Hack to allow some v4 functionality into the v3 line. Skeletal MmuUnit object
+class MmuUnit:
+    def __init__(self, name, unit_index, first_gate, num_gates):
+        self.name = name
+        self.unit_index = unit_index
+        self.first_gate = first_gate
+        self.num_gates = num_gates
+        self.leds = None 
+        logging.info("PAUL: MmuUnit() name=%s, index=%s, first_gate=%s, num_gates=%s" % (self.name, self.unit_index, self.first_gate, self.num_gates))
+
+    def manages_gate(self, gate):
+        return self.first_gate <= gate < self.first_gate + self.num_gates
 
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"

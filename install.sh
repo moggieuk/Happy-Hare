@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.3 # Important: Keep synced with mmy.py
+VERSION=3.4 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -963,8 +963,12 @@ copy_config_files() {
         if [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
 
             # Kludge to support complete h/w configurations for dedicated MMUs
-            if [ "${_hw_mmu_vendor}" == "KMS" ]; then
-                cp "${src}.kms" ${dest}
+            if [ "${_hw_mmu_vendor}" == "KMS" -o "${_hw_mmu_vendor}" == "VVD" ]; then
+                if [ "${_hw_mmu_vendor}" == "KMS" ]; then
+                    cp "${src}.kms" ${dest}
+                else
+                    cp "${src}.vvd" ${dest}
+                fi
 
                 # Do all the token substitution
                 cat ${dest} | sed -e "$sed_expr" "${dest}" > "${dest}.tmp" > ${dest}.tmp && mv ${dest}.tmp ${dest}
@@ -1478,7 +1482,7 @@ questionaire() {
     option QUATTRO_BOX    'QuattroBox v1.0'
     option QUATTRO_BOX11  'QuattroBox v1.1'
     option MMX            'MMX'
-    #option VVD            'BigTreeTech VVD'
+    option VVD            'BigTreeTech ViViD'
     option KMS            'KMS'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
@@ -1906,7 +1910,38 @@ questionaire() {
         "$VVD")
             # Comming soon (Bigtreetech)...
             HAS_ENCODER=no
-            HAS_SELECTOR=no
+            HAS_SELECTOR=yes
+            HAS_ESPOOLER=yes
+            SETUP_LED=yes
+            # Note VVD has preconfigured mmu_hardware.cfg based on dedicated electronics
+            _hw_num_gates=4
+            _hw_mmu_vendor="VVD"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=IndexedSelector
+
+            # mmu_parameters config
+            _param_extruder_homing_endstop="filament_compression"
+            _param_gate_homing_endstop="mmu_gate"
+            _param_gate_preload_homing_max=300
+            _param_gate_preload_parking_distance=-10
+            _param_gate_homing_max=300
+            _param_gate_parking_distance=20
+            _param_gate_unload_buffer=50
+            _param_gate_endstop_to_encoder=14
+            _param_gate_autoload=1
+            _param_gate_final_eject_distance=300  
+            _param_has_filament_buffer=0
+
+            _param_autocal_bowden_length=1
+            _param_autotune_bowden_length=0
+            _param_skip_cal_rotation_distance=0
+            _param_autotune_rotation_distance=1
+            _param_skip_cal_encoder=0
+            _param_autotune_encoder=0
+
+            _param_sync_feedback_enabled=1
+            _param_sync_feedback_buffer_range=8
+            _param_sync_feedback_buffer_maxrange=12
             ;;
 
         "$KMS")
@@ -1943,8 +1978,6 @@ questionaire() {
             _param_sync_feedback_enabled=1
             _param_sync_feedback_buffer_range=8
             _param_sync_feedback_buffer_maxrange=12
-
-            # TODO: Tweak espooler tuned variables?..
             ;;
 
         *)
@@ -2055,7 +2088,7 @@ questionaire() {
             ;;
         esac
 
-    if [ "${_hw_mmu_vendor}" != "KMS" ]; then
+    if [ "${_hw_mmu_vendor}" != "KMS" -a "${_hw_mmu_vendor}" != "VVD" ]; then
         echo -e "${PROMPT}${SECTION}How many gates (lanes) do you have?${INPUT}"
         _hw_num_gates=$(prompt_123 "Number of gates")
     fi
@@ -2072,6 +2105,39 @@ questionaire() {
                 prompt_option opt 'KMS MCU?' "${OPTIONS[@]}"
                 case $opt in
                     "$KMS")
+                        _hw_serial1="/dev/serial/by-id/${line}"
+                        ;;
+                    "$BUFFER")
+                        _hw_serial2="/dev/serial/by-id/${line}"
+                        ;;
+                    *)
+                        ;;
+                esac
+            fi
+        done
+        if [ "${_hw_serial1}" == "" ]; then
+            echo
+            echo -e "${WARNING}    Couldn't find your MMU serial port, but no worries - I'll configure the default and you can manually change later"
+            _hw_serial1='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+        fi
+        if [ "${_hw_serial2}" == "" ]; then
+            echo
+            echo -e "${WARNING}    Couldn't find your Bufffer (sync-feedback sensor) serial port, but no worries - I'll configure the default and you can manually change later"
+            _hw_serial1='/dev/ttyACM2 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+        fi
+
+    elif [ "${_hw_mmu_vendor}" == "VVD" ]; then
+        pattern="Klipper_stm32"
+        for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
+            if echo ${line} | grep --quiet "${pattern}"; then
+                echo -e "${PROMPT}${SECTION}Is '/dev/serial/by-id/${line}' a ${EMPHASIZE}KMS${PROMPT} controller serial port?${INPUT}"
+                OPTIONS=()
+                option VVD     'ViVid MMU'
+                option BUFFER  'ViViD Buffer (sync-feedback sensor)'
+                option NEITHER 'No, not related to ViViD'
+                prompt_option opt 'ViViD MCU?' "${OPTIONS[@]}"
+                case $opt in
+                    "$VVD")
                         _hw_serial1="/dev/serial/by-id/${line}"
                         ;;
                     "$BUFFER")
