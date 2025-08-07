@@ -698,6 +698,21 @@ read_previous_config() {
     if [ "${_param_sync_feedback_enable}" != "" ]; then
         _param_sync_feedback_enabled=${_param_sync_feedback_enable}
     fi
+
+    # v3.4.0 - led config moved to v4 format (from macro to python module)
+#variable_led_enable             : True                  ; True = LEDs are enabled at startup (MMU_LED can control), False = Disabled
+#variable_led_animation          : True                  ; True = Use led-animation-effects, False = Static LEDs
+#variable_default_exit_effect    : "gate_status"         ;    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+#variable_default_entry_effect   : "filament_color"      ;    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+#variable_default_status_effect  : "filament_color"      ; on|off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+#variable_default_logo_effect    : "0,0,.3"              ;    off                                        |r,g,b|_effect_
+#variable_white_light            : (1, 1, 1)             ; RGB color for static white light
+#variable_black_light            : (0.01, 0, 0.02)               ; RGB color used to represent "black" (filament)
+#variable_empty_light            : (0, 0, 0)  
+# PAUL TODO
+    if [ "${variable_led_enable}" != "" ]; then
+        _hw_led_enable=$(convert_boolean_string_to_int "${variable_led_enable}")
+    fi
 }
 
 check_for_999() {
@@ -867,6 +882,71 @@ EOF
 )
         echo "${new_section}" >> "${hardware_cfg}"
         echo -e "${INFO}Added new [mmu_machine] section to mmu_hardware.cfg..."
+    fi
+
+    # v3.4.0: Update [mmu_leds] section for v4 python impl
+    found_old_mmu_leds=$(grep -E -c "^\[mmu_leds\]" ${hardware_cfg} || true)
+    if [ "${found_old_mmu_leds}" -eq 1 ]; then
+
+        sed "s/\[mmu_leds\]/\[mmu_leds unit0\]/g" "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+        new_section=$(cat <<EOF
+
+# Default effects for LED segments when not providing action status
+#    off              - LED's off
+#    on               - LED's white
+#    gate_status      - indicate gate availability / status            (printer.mmu.gate_status)
+#    filament_color   - display filament color defined in gate map     (printer.mmu.gate_color_rgb)
+#    slicer_color     - display slicer defined set color for each gate (printer.mmu.slicer_color_rgb)
+#   (r,g,b)           - display static r,g,b color e.g. "0,0,0.3" for dim blue
+#    _effect_         - display the named led effect
+#
+enabled: True                           # True = LEDs are enabled at startup (MMU_LED can control), False = Disabled
+animation: True                         # True = Use led-animation-effects, False = Static LEDs
+exit_effect: gate_status                #    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+entry_effect: filament_color            #    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+status_effect: filament_color           # on|off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+logo_effect: (0, 0, 0.3)                #    off                                        |r,g,b|_effect_
+white_light: (1, 1, 1)                  # RGB color for static white light
+black_light: (.01, 0, .02)              # RGB color used to represent "black" (filament)
+empty_light: (0, 0, 0)                  # RGB color used to represent empty gate
+
+# Default effects (animation: True) / static rbg (animation False) to apply to actions
+#   effect_name, (r,b,g)
+#
+# IMPORTANT: Effects must be from [mmu_led_effects] set defined in mmu_leds.cfg
+#
+effect_loading:            mmu_blue_clockwise_slow, (0, 0, 0.4)
+effect_loading_extruder:   mmu_blue_clockwise_fast, (0, 0, 1)
+effect_unloading:          mmu_blue_anticlock_slow, (0, 0, 1)
+effect_unloading_extruder: mmu_blue_anticlock_fast, (0, 0, 1)
+effect_heating:            mmu_breathing_red,       (0.3, 0, 0)
+effect_selecting:          mmu_white_fast,          (0.2, 0.2, 0.2)
+effect_checking:           mmu_white_fast,          (0.8, 0.8, 0.8)
+effect_initialized:        mmu_rainbow,             (0.5, 0.2, 0)
+effect_error:              mmu_strobe,              (1, 0, 0)
+effect_complete:           mmu_sparkle,             (0.3, 0.3, 0.3)
+effect_gate_available:     mmu_static_green,        (0, 0.5, 0)
+effect_gate_unknown:       mmu_static_orange,       (0.5, 0.2, 0)
+effect_gate_empty:         mmu_static_black,        (0, 0, 0)
+effect_gate_selected:      mmu_static_blue,         (0, 0, 1)
+
+EOF
+)
+        temp_file=$(mktemp)
+        echo "$new_section" > "$temp_file"
+        awk '
+            BEGIN { found = 0 }
+            /^frame_rate$/ && !found {
+                print
+                while ((getline line < "'"$temp_file"'") > 0) print line
+                close("'"$temp_file"'")
+                found = 1
+                next
+            }
+            { print }
+        ' "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
+        rm "$temp_file"
+        echo -e "${INFO}Upgraded [mmu_leds] section in mmu_hardware.cfg with new settings..."
     fi
 }
 

@@ -114,7 +114,7 @@ class MmuSensorManager:
         self.sensors = {}
         for name, sensor in self.all_sensors.items():
             if name.startswith("unit_"):
-                if unit != self.mmu.UNIT_UNKNOWN and name.startswith("unit_" + str(unit)):
+                if unit is not None and name.startswith("unit_" + str(unit)):
                     self.sensors[re.sub(r'unit_\d+_', '', name)] = sensor
                     sensor.runout_helper.enable_button_feedback(True)
                 else:

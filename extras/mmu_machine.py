@@ -100,34 +100,17 @@ class MmuMachine:
             self.unit_by_gate[next_gate:next_gate + self.gate_counts[i]] = [unit] * self.gate_counts[i]
             next_gate += self.gate_counts[i]
 
-        # If single unit then convert to new format else require user to do so
         orig_section = 'mmu_leds'
         if config.has_section(orig_section):
-            if self.num_units == 1:
-                c = config.getsection(orig_section)
-                logging.info("PAUL: found orig mmu_leds section")
-                keys = config.fileconfig.options(orig_section)
-                logging.info("PAUL: keys=%s" % keys)
-                new_section = 'mmu_leds unit0'
-                config.fileconfig.add_section(new_section)
-                for key in keys:
-                    value = config.fileconfig.get(orig_section, key)
-                    logging.info("PAUL: value=%s" % value)
-                    config.fileconfig.set(new_section, key, value)
-                logging.info("PAUL: added new section: %s" % new_section)
-                config.fileconfig.remove_section(orig_section)
-                logging.info("PAUL: removed section: %s" % orig_section)
-            else:
-                raise config.error("v3.4 requires manual update of [mmu_leds] section for multiple mmu units")
+            raise config.error("v3.4 requires update of [mmu_leds] section for multiple mmu units")
 
-        # Load optional mmu_leds module for each mmu unit
+        # Load optional mmu_leds module for each mmu unit in v4 style
         for unit in self.units:
             section = 'mmu_leds %s' % unit.name
             if config.has_section(section):
                 c = config.getsection(section)
                 unit.leds = mmu_leds.MmuLeds(c, self, unit, unit.first_gate, unit.num_gates)
                 logging.info("MMU: Created: %s" % c.get_name())
-                logging.info("PAUL: Created: %s" % c.get_name())
                 self.printer.add_object(c.get_name(), unit.leds) # Register mmu_leds to stop it being loaded by klipper
 
         # ^^^
@@ -350,7 +333,6 @@ class MmuUnit:
         self.first_gate = first_gate
         self.num_gates = num_gates
         self.leds = None 
-        logging.info("PAUL: MmuUnit() name=%s, index=%s, first_gate=%s, num_gates=%s" % (self.name, self.unit_index, self.first_gate, self.num_gates))
 
     def manages_gate(self, gate):
         return self.first_gate <= gate < self.first_gate + self.num_gates

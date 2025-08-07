@@ -50,8 +50,6 @@ class Mmu:
     CALIBRATED_ESSENTIAL = 0b01111
     CALIBRATED_ALL       = 0b11111
 
-    UNIT_UNKNOWN = -1
-
     TOOL_GATE_UNKNOWN = -1
     TOOL_GATE_BYPASS = -2
 
@@ -264,7 +262,6 @@ class Mmu:
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
-# PAUL        self.has_leds = self.has_led_animation = False
         self.bowden_start_pos = None
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
@@ -584,7 +581,6 @@ class Mmu:
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
         self.gcode.register_command('MMU_ESPOOLER', self.cmd_MMU_ESPOOLER, desc = self.cmd_MMU_ESPOOLER_help)
-#PAUL        self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
         self.gcode.register_command('MMU_SELECT', self.cmd_MMU_SELECT, desc = self.cmd_MMU_SELECT_help)
         self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help) # Alias for MMU_SELECT BYPASS=1
@@ -721,7 +717,7 @@ class Mmu:
         self._setup_logging()
 
         self.toolhead = self.printer.lookup_object('toolhead')
-        self.sensor_manager.reset_active_unit(self.UNIT_UNKNOWN)
+        self.sensor_manager.reset_active_unit(self.unit_selected)
 
         # Sanity check extruder name
         extruder = self.printer.lookup_object(self.extruder_name, None)
@@ -967,29 +963,6 @@ class Mmu:
         except Exception as e:
             self.log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
-# PAUL        # Basic LED validation
-# PAUL        gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-# PAUL        if gcode_macro:
-# PAUL            mmu_leds = self.printer.lookup_object('mmu_leds', None)
-# PAUL            self.has_leds = bool(mmu_leds)
-# PAUL            self.has_led_animation = mmu_leds.get_status().get('led_effect_module', False) if mmu_leds else False
-# PAUL
-# PAUL            if self.has_leds:
-# PAUL                self.log_debug("LEDs support enabled %s" % "with optional animation" if self.has_led_animation else "")
-# PAUL            else:
-# PAUL                self.log_debug("LEDs support is not configured")
-# PAUL        else:
-# PAUL            self.log_error("LEDs macro _MMU_SET_LED not available")
-# PAUL
-# PAUL        # Override user configuration based on actual h/w setup
-# PAUL        led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
-# PAUL        if led_vars_macro:
-# PAUL            variables = led_vars_macro.variables
-# PAUL            led_vars = {}
-# PAUL            led_vars['led_enable'] = variables.get('led_enable', True) & self.has_leds
-# PAUL            led_vars['led_animation'] = variables.get('led_animation', True) & self.has_led_animation
-# PAUL            led_vars_macro.variables.update(led_vars)
-
         # Sub components
         self.selector.handle_ready()
 
@@ -1002,7 +975,7 @@ class Mmu:
         self.is_handling_runout = self.calibrating = False
         self.last_print_stats = self.paused_extruder_temp = self.reason_for_pause = None
         self.tool_selected = self._next_tool = self.gate_selected = self.TOOL_GATE_UNKNOWN
-        self.unit_selected = self.UNIT_UNKNOWN # Which MMU unit is active if more than one
+        self.unit_selected = 0 # Which MMU unit is active if more than one
         self._last_toolchange = "Unknown"
         self.active_filament = {}
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
@@ -1146,7 +1119,6 @@ class Mmu:
             self.slicer_color_rgb[gate] = self._color_to_rgb_tuple(tool_value['color'])
         self._update_t_macros()
         self.led_manager.gate_map_changed(None) # Force LED update
-# PAUL        self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1") # Cheat to force LED update
 
     # Helper to determine purge volume for toolchange
     def _get_purge_volume(self, from_tool, to_tool):
@@ -3418,12 +3390,6 @@ class Mmu:
                 return True
         return False
 
-# PAUL    def check_if_has_leds(self):
-# PAUL        if not self.has_leds:
-# PAUL            self.log_error("No LEDs configured on MMU")
-# PAUL            return True
-# PAUL        return False
-
     def check_if_spoolman_enabled(self):
         if self.spoolman_support == self.SPOOLMAN_OFF:
             self.log_error("Spoolman support is currently disabled")
@@ -3527,10 +3493,7 @@ class Mmu:
             return "#%d" % gate
 
     def _selected_unit_string(self, unit=None):
-        if self.mmu_machine.num_units > 1 and self.unit_selected != self.UNIT_UNKNOWN:
-            return " (unit #%d)" % self.unit_selected
-        else:
-            return ""
+        return " (unit #%d)" % self.unit_selected if self.mmu_machine.num_units > 1 else ""
 
     def _set_action(self, action):
         if action == self.action: return action
@@ -3730,62 +3693,6 @@ class Mmu:
                 else:
                     msg += "not fitted"
             self.log_always(msg)
-
-# PAUL    cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
-# PAUL    def cmd_MMU_LED(self, gcmd):
-# PAUL        self.log_to_file(gcmd.get_commandline())
-# PAUL        if self.check_if_has_leds(): return
-# PAUL        if self.check_if_disabled(): return
-# PAUL        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-# PAUL
-# PAUL        set_led_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-# PAUL        led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
-# PAUL        mmu_leds = self.printer.lookup_object('mmu_leds', None)
-# PAUL        if led_vars_macro and set_led_macro and mmu_leds:
-# PAUL
-# PAUL            current_led_enable = led_vars_macro.variables['led_enable']
-# PAUL            current_led_animation = led_vars_macro.variables['led_animation']
-# PAUL            led_enable = bool(gcmd.get_int('ENABLE', current_led_enable, minval=0, maxval=1))
-# PAUL            led_animation = bool(gcmd.get_int('ANIMATION', current_led_animation, minval=0, maxval=1))
-# PAUL            if led_animation and not self.has_led_animation:
-# PAUL                raise gcmd.error("Led animation is unavailable. Klipper led_effects module is missing")
-# PAUL
-# PAUL            default_exit_effect = gcmd.get('EXIT_EFFECT', led_vars_macro.variables['default_exit_effect'])
-# PAUL            default_entry_effect = gcmd.get('ENTRY_EFFECT', led_vars_macro.variables['default_entry_effect'])
-# PAUL            default_status_effect = gcmd.get('STATUS_EFFECT', led_vars_macro.variables['default_status_effect'])
-# PAUL            default_logo_effect = gcmd.get('LOGO_EFFECT', led_vars_macro.variables['default_logo_effect'])
-# PAUL
-# PAUL            led_vars = {}
-# PAUL            led_vars['led_enable'] = led_enable
-# PAUL            led_vars['led_animation'] = led_animation
-# PAUL            led_vars['default_exit_effect'] = default_exit_effect
-# PAUL            led_vars['default_entry_effect'] = default_entry_effect
-# PAUL            led_vars['default_status_effect'] = default_status_effect
-# PAUL            led_vars['default_logo_effect'] = default_logo_effect
-# PAUL
-# PAUL            if current_led_enable and not led_enable:
-# PAUL                # Enabled to disabled
-# PAUL                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off LOGO_EFFECT=off")
-# PAUL                led_vars_macro.variables.update(led_vars)
-# PAUL            else:
-# PAUL                if current_led_animation and not led_animation:
-# PAUL                    # Turning animation off so clear existing effects
-# PAUL                    self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off LOGO_EFFECT=off FADETIME=0")
-# PAUL                led_vars_macro.variables.update(led_vars)
-# PAUL                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default LOGO_EFFECT=default")
-# PAUL
-# PAUL            if not quiet:
-# PAUL                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled > 0 else "Unavailable"
-# PAUL                msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
-# PAUL                msg += "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
-# PAUL                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, mmu_leds.get_status()['exit'])
-# PAUL                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, mmu_leds.get_status()['entry'])
-# PAUL                msg += "Default status effect: %s\n" % effect_string(default_status_effect, mmu_leds.get_status()['status'])
-# PAUL                msg += "Default logo effect: %s\n" % effect_string(default_logo_effect, mmu_leds.get_status()['logo'])
-# PAUL                msg += "\nOptions:\nENABLE=[0|1]\nANIMATION=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\nENTRY_EFFECT=[off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\nSTATUS_EFFECT=[off|on|filament_color|slicer_color|r,g,b|_effect_]\nLOGO_EFFECT=[off|r,g,b|_effect_]"
-# PAUL                self.log_always(msg)
-# PAUL        else:
-# PAUL            self.log_error("LEDs not available")
 
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
     def cmd_MMU_RESET(self, gcmd):
@@ -5921,20 +5828,13 @@ class Mmu:
             'temperature': self.gate_temperature[gate],
         } if gate >= 0 else {}
 
-    # Simple support for multiple MMUs (all same type for now)
+    # Return unit number for gate
     def find_unit_by_gate(self, gate):
-        if gate >= 0:
-            for unit in self.mmu_machine.units:
-                if unit.manages_gate(gate):
-                    return unit.unit_index
-        return self.UNIT_UNKNOWN
-# PAUL        if gate >= 0:
-# PAUL            c_sum = 0
-# PAUL            for unit_index, gate_count in enumerate(self.mmu_machine.units):
-# PAUL                c_sum += gate_count
-# PAUL                if gate < c_sum:
-# PAUL                    return unit_index
-# PAUL        return self.UNIT_UNKNOWN
+        unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
+        if unit:
+            return unit.unit_index
+        self.log_debug("Assertion failure: Gate %d has no unit!" % gate)
+        return 0
 
     def get_rotation_distance(self, gate):
         rd = self.rotation_distances[gate if gate >= 0 and self.mmu_machine.variable_rotation_distances else 0]
