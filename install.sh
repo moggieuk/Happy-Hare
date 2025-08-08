@@ -700,19 +700,10 @@ read_previous_config() {
     fi
 
     # v3.4.0 - led config moved to v4 format (from macro to python module)
-#variable_led_enable             : True                  ; True = LEDs are enabled at startup (MMU_LED can control), False = Disabled
-#variable_led_animation          : True                  ; True = Use led-animation-effects, False = Static LEDs
-#variable_default_exit_effect    : "gate_status"         ;    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
-#variable_default_entry_effect   : "filament_color"      ;    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
-#variable_default_status_effect  : "filament_color"      ; on|off|gate_status|filament_color|slicer_color|r,g,b|_effect_
-#variable_default_logo_effect    : "0,0,.3"              ;    off                                        |r,g,b|_effect_
-#variable_white_light            : (1, 1, 1)             ; RGB color for static white light
-#variable_black_light            : (0.01, 0, 0.02)               ; RGB color used to represent "black" (filament)
-#variable_empty_light            : (0, 0, 0)  
-# PAUL TODO
-    if [ "${variable_led_enable}" != "" ]; then
-        _hw_led_enable=$(convert_boolean_string_to_int "${variable_led_enable}")
-    fi
+    # <users are going to be responsible for this...>
+    #if [ "${variable_led_enable}" != "" ]; then
+    #    _hw_led_enable=$(convert_boolean_string_to_int "${variable_led_enable}")
+    #fi
 }
 
 check_for_999() {
@@ -936,7 +927,7 @@ EOF
         echo "$new_section" > "$temp_file"
         awk '
             BEGIN { found = 0 }
-            /^frame_rate$/ && !found {
+            /^frame_rate/ && !found {
                 print
                 while ((getline line < "'"$temp_file"'") > 0) print line
                 close("'"$temp_file"'")

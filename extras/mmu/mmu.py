@@ -4224,7 +4224,8 @@ class Mmu:
                     sensor_msg = ''
                     for name, state in sensors.items():
                         sensor_msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state is True else "Empty"))
-                    self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden: %s\nWill attempt to continue..." % sensor_msg)
+                    self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden\nWill attempt to continue...")
+                    self.log_debug("Sensor state: %s" % sensor_msg)
 
                 # "Fast" unload
                 _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
