@@ -4302,7 +4302,12 @@ class Mmu:
 # PAUL get KeyError: "'mmu_pre_gate'" here...
                 if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is False:
                     sensors = self.sensor_manager.get_active_sensors()
-                    self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden: %s\nWill attempt to continue..." % sensors)
+# PAUL check this code below .. was imported without testing
+                    sensor_msg = ''
+                    for name, state in sensors.items():
+                        sensor_msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state is True else "Empty"))
+                    self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden\nWill attempt to continue...")
+                    self.log_debug("Sensor state: %s" % sensor_msg)
 
                 # "Fast" unload
                 _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
