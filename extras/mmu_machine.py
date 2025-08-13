@@ -231,7 +231,7 @@ class MmuMachine:
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'ServoSelector2']}, selector_type)
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
@@ -710,11 +710,13 @@ class MmuToolHead(toolhead.ToolHead, object):
                 if mcu_endstop.__class__.__name__ == "MockEndstop":
                     msg += "- None (Mock - cannot home rail)\n"
                 else:
-                    msg += "- %s%s, mcu: %s, pin: %s" % (name," (virtual)" if rail.is_endstop_virtual(name) else "", mcu_endstop.get_mcu().get_name(), mcu_endstop._pin)
+                    mcu_name = mcu_endstop.get_mcu().get_name() if hasattr(mcu_endstop, 'get_mcu') else mcu_endstop.__class__.__name__
+                    msg += "- %s%s, mcu: %s, pin: %s" % (name," (virtual)" if rail.is_endstop_virtual(name) else "", mcu_name, mcu_endstop._pin)
                     msg += " on: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
             msg += "Extra Endstops:\n"
             for (mcu_endstop, name) in rail.extra_endstops:
-                msg += "- %s%s, mcu: %s, pin: %s" % (name, " (virtual)" if rail.is_endstop_virtual(name) else "", mcu_endstop.get_mcu().get_name(), mcu_endstop._pin)
+                mcu_name = mcu_endstop.get_mcu().get_name() if hasattr(mcu_endstop, 'get_mcu') else mcu_endstop.__class__.__name__
+                msg += "- %s%s, mcu: %s, pin: %s" % (name, " (virtual)" if rail.is_endstop_virtual(name) else "", mcu_name, mcu_endstop._pin)
                 msg += " on: %s\n" % ["%d: %s" % (idx, s.get_name()) for idx, s in enumerate(mcu_endstop.get_steppers())]
             if axis == 1: # Gear rail
                 if self.is_gear_synced_to_extruder():
@@ -746,8 +748,11 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_machine.selector_type in {'LinearSelector', 'RotarySelector'}:
+        if self.mmu_machine.selector_type in ['LinearSelector', 'RotarySelector']:
             self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
+            self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
+        elif self.mmu_machine.selector_type in ['IndexedSelector']:
+            self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=False, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         else:
             self.rails.append(DummyRail())
@@ -810,10 +815,12 @@ class MmuKinematics:
         self.move_accel = accel
 
     def check_move(self, move):
-        limits = self.limits
-        xpos, _ = move.end_pos[:2]
-        if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
-            raise move.move_error()
+        if self.mmu_machine.selector_type in ['LinearSelector', 'RotarySelector']:
+            limits = self.limits
+            xpos, _ = move.end_pos[:2]
+            if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
+                raise move.move_error()
+
         if move.axes_d[0]: # Selector
             move.limit_speed(self.selector_max_velocity, min(self.selector_max_accel, self.move_accel or self.selector_max_accel))
         elif move.axes_d[1]: # Gear
@@ -962,15 +969,16 @@ class MmuPrinterRail(_StepperPrinterRail, object):
     def add_extra_stepper(self, config, **kwargs):
         self.add_stepper_from_config(config, **kwargs)
 
-    def add_extra_endstop(self, pin, name, register=True, bind_rail_steppers=True):
+    def add_extra_endstop(self, pin, name, register=True, bind_rail_steppers=True, mcu_endstop=None):
         is_virtual = 'virtual_endstop' in pin
         if is_virtual:
             if name not in self.virtual_endstops:
                 self.virtual_endstops.append(name)
             else:
                 raise self.config.error("Extra virtual endstop '%s' defined more than once" % name)
-        ppins = self.printer.lookup_object('pins')
-        mcu_endstop = ppins.setup_pin('endstop', pin)
+        if mcu_endstop is None:
+            ppins = self.printer.lookup_object('pins')
+            mcu_endstop = ppins.setup_pin('endstop', pin)
         self.extra_endstops.append((mcu_endstop, name))
         if bind_rail_steppers:
             for s in self.steppers if not is_virtual else [self.steppers[-1]]:
@@ -985,13 +993,12 @@ class MmuPrinterRail(_StepperPrinterRail, object):
     def get_extra_endstop_names(self):
         return [x[1] for x in self.extra_endstops]
 
-    # Returns the mcu_endstop of given name
+    # Returns the endstop of given name as list to match get_endstops()
     def get_extra_endstop(self, name):
-        matches = [x for x in self.extra_endstops if x[1] == name]
-        if matches:
-            return list(matches)
-        else:
-            return None
+        for x in self.extra_endstops:
+            if x[1] == name:
+                return [x]
+        return None
 
     def is_endstop_virtual(self, name):
         return name in self.virtual_endstops if name else False

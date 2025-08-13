@@ -1238,6 +1238,7 @@ class Mmu:
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
+        self.selector.select_gate(self.gate_selected) # PAUL added
 
         try:
             # Splash...
@@ -1954,7 +1955,7 @@ class Mmu:
         msg = "MMU: Happy Hare %s running %s v%s" % (self._fversion(self.config_version), self.mmu_machine.mmu_vendor, self.mmu_machine.mmu_version_string)
         msg += " with %d gates" % self.num_gates
         msg += (" over %d units" % self.mmu_machine.num_units) if self.mmu_machine.num_units > 1 else ""
-        msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_mmu_paused() else "OPERATIONAL")
+        msg += " (%s) " % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_mmu_paused() else "OPERATIONAL")
         msg += self.selector.get_mmu_status_config()
         if self.has_encoder():
             msg += ". Encoder reads %.1fmm" % self.get_encoder_distance()
@@ -3895,17 +3896,22 @@ class Mmu:
     def _preload_gate(self):
         if self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, self.gate_selected):
             # Minimal load past gear stepper if gear sensor is fitted
-            endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, self.gate_selected)
-            self.log_always("Preloading...")
-            msg = "Homing to %s sensor" % endstop_name
-            with self._wrap_suspend_runout():
-                actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
-                if homed:
-                    self.trace_filament_move("Final parking", -self.gate_preload_parking_distance)
-                    self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
-                    self._check_pending_spool_id(self.gate_selected) # Have spool_id ready?
-                    self.log_always("Filament detected and loaded in gate %d" % self.gate_selected)
-                    return
+            if self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, self.gate_selected):
+                self.log_always("Filament already preloaded")
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+                return
+            else:
+                endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, self.gate_selected)
+                self.log_always("Preloading...")
+                msg = "Homing to %s sensor" % endstop_name
+                with self._wrap_suspend_runout():
+                    actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
+                    if homed:
+                        self.trace_filament_move("Final parking", -self.gate_preload_parking_distance)
+                        self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+                        self._check_pending_spool_id(self.gate_selected) # Have spool_id ready?
+                        self.log_always("Filament detected and loaded in gate %d" % self.gate_selected)
+                        return
         else:
             # Full gate load if no gear sensor
             for _ in range(self.preload_attempts):
@@ -3921,8 +3927,12 @@ class Mmu:
                     # Exception just means filament is not loaded yet, so continue
                     self.log_trace("Exception on preload: %s" % str(ee))
 
-        self.log_always("Filament not detected in gate %d" % self.gate_selected)
-        self._set_gate_status(self.gate_selected, self.GATE_EMPTY)
+        if self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, self.gate_selected):
+            self._set_gate_status(self.gate_selected, self.GATE_UNKNOWN)
+            self.log_warning("Filament detected by pre-gate %d sensor but did not complete preload" % self.gate_selected)
+        else:
+            self._set_gate_status(self.gate_selected, self.GATE_EMPTY)
+            raise MmuError("Filament not detected")
 
     # Eject final clear of gate. Important for MMU's where filament is always gripped (e.g. most type-B)
     def _eject_from_gate(self, gate=None):
@@ -3941,10 +3951,10 @@ class Mmu:
             if homed:
                 self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
             else:
-                raise MmuError("Error ejecting filament - filament did not reach gate homing sensor: %s" % endstop_name)
+                raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
 
         if self.gate_final_eject_distance > 0:
-            self.trace_filament_move("Ejecting filament out of gate", -self.gate_final_eject_distance)
+            self.trace_filament_move("Ejecting filament out of gate", -self.gate_final_eject_distance, wait=True)
 
         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True) # Should already be in this position
         self._set_gate_status(gate, self.GATE_EMPTY)
@@ -5055,11 +5065,11 @@ class Mmu:
         if homing_move != 0:
             # Check for valid endstop
             if endstop_name is None:
-                endstop = self.gear_rail.get_endstops()
+                endstops = self.gear_rail.get_endstops()
             else:
                 endstop_name = self.sensor_manager.get_mapped_endstop_name(endstop_name)
-                endstop = self.gear_rail.get_extra_endstop(endstop_name)
-                if endstop is None:
+                endstops = self.gear_rail.get_extra_endstop(endstop_name)
+                if endstops is None:
                     self.log_error("Endstop '%s' not found" % endstop_name)
                     return null_rtn
 
@@ -5117,7 +5127,7 @@ class Mmu:
                 with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else None):
                     if homing_move != 0:
                         trig_pos = [0., 0., 0., 0.]
-                        hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
+                        hmove = HomingMove(self.printer, endstops, self.mmu_toolhead)
                         init_ext_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
                         init_pos = pos[1]
                         pos[1] += dist
@@ -5761,10 +5771,11 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
+        self.selector.select_gate(gate) # PAUL move earlier
         if gate == self.gate_selected: return
         try:
             self._next_gate = gate # Valid only during the gate selection process
-            self.selector.select_gate(gate)
+#PAUL            self.selector.select_gate(gate)
             self._set_gate_selected(gate)
             self._espooler_assist_on() # Will switch assist print mode if printing
         except MmuError as ee:

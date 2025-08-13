@@ -496,7 +496,7 @@ read_previous_mmu_type() {
     echo -e "${INFO}HAS_SERVO=${HAS_SERVO}"
     echo -e "${INFO}HAS_ENCODER=${HAS_ENCODER}"
     echo -e "${INFO}HAS_ESPOOLER=${HAS_ESPOOLER}"
-    echo -e "${INFO}Determined you have a ${_hw_selector_type}"
+    echo -e "${INFO}Determined you have a ${_hw_selector_type} or similar"
 }
 
 # Set default parameters from the distribution (reference) config files
@@ -1715,6 +1715,7 @@ questionaire() {
             _param_extruder_homing_endstop="extruder"
             _param_gate_homing_endstop="extruder"
             _param_gate_homing_max=500
+            _param_gate_preload_homing_max=500
             _param_gate_parking_distance=50
             _param_gear_homing_speed=80
             _param_has_filament_buffer=0
@@ -1973,6 +1974,7 @@ questionaire() {
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=1000
+            _param_gate_preload_homing_max=1000
             _param_gate_parking_distance=25
             _param_gear_homing_speed=80
             _param_selector_gate_angles="60,0,180,120"
@@ -1982,6 +1984,7 @@ questionaire() {
             # Comming soon (Bigtreetech)...
             HAS_ENCODER=no
             HAS_SELECTOR=yes
+            HAS_SERVO=no
             HAS_ESPOOLER=yes
             SETUP_LED=yes
             # Note VVD has preconfigured mmu_hardware.cfg based on dedicated electronics
@@ -1992,15 +1995,16 @@ questionaire() {
 
             # mmu_parameters config
             _param_extruder_homing_endstop="filament_compression"
-            _param_gate_homing_endstop="mmu_gate"
-            _param_gate_preload_homing_max=300
+            _param_extruder_homing_buffer=35
+            _param_gate_homing_endstop="mmu_gear"
+            _param_gate_homing_max=100
+            _param_gate_preload_homing_max=650
             _param_gate_preload_parking_distance=-10
-            _param_gate_homing_max=300
-            _param_gate_parking_distance=20
+            _param_gate_parking_distance=-10
             _param_gate_unload_buffer=50
             _param_gate_endstop_to_encoder=14
             _param_gate_autoload=1
-            _param_gate_final_eject_distance=300  
+            _param_gate_final_eject_distance=650
             _param_has_filament_buffer=0
 
             _param_autocal_bowden_length=1
@@ -2018,6 +2022,7 @@ questionaire() {
         "$KMS")
             HAS_ENCODER=yes
             HAS_SELECTOR=no
+            HAS_SERVO=no
             HAS_ESPOOLER=yes
             SETUP_LED=yes
             # Note KMS has preconfigured mmu_hardware.cfg based on dedicated electronics
@@ -2029,9 +2034,9 @@ questionaire() {
             # mmu_parameters config
             _param_extruder_homing_endstop="filament_compression"
             _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=300
             _param_gate_preload_homing_max=300
             _param_gate_preload_parking_distance=-10
-            _param_gate_homing_max=300
             _param_gate_parking_distance=20
             _param_gate_unload_buffer=50
             _param_gate_endstop_to_encoder=14

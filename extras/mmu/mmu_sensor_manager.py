@@ -42,11 +42,8 @@ class MmuSensorManager:
             self.mmu.SENSOR_EXTRUDER_ENTRY,
             self.mmu.SENSOR_TOOLHEAD
         ])
-        for name in sensor_names:
-            sensor_name = name if re.search(r'_(\d+)$', name) else "%s_sensor" % name # Must match mmu_sensors
-            sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
-            if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
-                self.all_sensors[name] = sensor
+        mmu_sensors = self.mmu.printer.lookup_object("mmu_sensors")
+        self.all_sensors = mmu_sensors.sensors
 
         # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
         if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
@@ -74,16 +71,19 @@ class MmuSensorManager:
             self.mmu.SENSOR_GEAR_TOUCH
         ])
         for name in self.endstop_names:
-            sensor_name = name if re.search(r'_(\d+)$', name) else "%s_sensor" % name # Must match mmu_sensors
-            sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
-            if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
-                # Add sensor pin as an extra endstop for gear rail
-                sensor_pin = sensor.runout_helper.switch_pin
-                ppins = self.mmu.printer.lookup_object('pins')
-                pin_params = ppins.parse_pin(sensor_pin, True, True)
-                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-                ppins.allow_multi_use_pin(share_name)
-                mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name)
+            sensor = self.all_sensors.get(name, None)
+            if sensor is not None:
+                if sensor.__class__.__name__ == "MmuAdcSwitchSensor":
+                    sensor_pin = sensor.runout_helper.switch_pin
+                    mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name, mcu_endstop=sensor)
+                else:
+                    # Add sensor pin as an extra endstop for gear rail
+                    sensor_pin = sensor.runout_helper.switch_pin
+                    ppins = self.mmu.printer.lookup_object('pins')
+                    pin_params = ppins.parse_pin(sensor_pin, True, True)
+                    share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+                    ppins.allow_multi_use_pin(share_name)
+                    mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name)
 
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 # otherwise the extruder can continue to move a small (speed dependent) distance
