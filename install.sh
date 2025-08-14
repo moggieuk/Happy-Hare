@@ -2009,10 +2009,8 @@ questionaire() {
 
             _param_autocal_bowden_length=1
             _param_autotune_bowden_length=0
-            _param_skip_cal_rotation_distance=0
+            _param_skip_cal_rotation_distance=1
             _param_autotune_rotation_distance=1
-            _param_skip_cal_encoder=0
-            _param_autotune_encoder=0
 
             _param_sync_feedback_enabled=1
             _param_sync_feedback_buffer_range=8

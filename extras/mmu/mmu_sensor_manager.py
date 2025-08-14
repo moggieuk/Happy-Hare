@@ -215,7 +215,7 @@ class MmuSensorManager:
 
     # Returns True is any sensors in current filament path are triggered (EXCLUDES pre-gate)
     #         None if no sensors available (disambiguate from non-triggered sensor)
-    def check_any_sensors_in_path(self):
+    def check_any_sensors_in_path(self, exclude_gear=False):
         sensors = self._get_all_sensors_for_gate(self.mmu.gate_selected)
         if all(state is None for state in sensors.values()):
             return None
@@ -268,9 +268,10 @@ class MmuSensorManager:
     def _get_sensors(self, pos, gate, position_condition):
         result = {}
         if gate >= 0:
+            # Note: For gear sensor the position of POS_HOMED_GATE is only valid if is not usually triggered (i.e. parking retract)
             sensor_selection = [
                 (self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, gate), None),
-                (self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.SENSOR_GEAR_PREFIX else None),
+                (self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.SENSOR_GEAR_PREFIX and self.mmu.gate_parking_distance >= 0 else None),
                 (self.mmu.SENSOR_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
                 (self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
                 (self.mmu.SENSOR_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),

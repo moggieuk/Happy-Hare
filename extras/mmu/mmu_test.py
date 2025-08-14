@@ -106,21 +106,21 @@ class MmuTest:
         sync_state = gcmd.get('SYNC_STATE', None)
         if sync_state is not None:
             # Create phony sensors for testing purposes (will be removed after the test)
-            sensors = self.mmu.printer.lookup_object("mmu_sensors")
+            mmu_sensors = self.mmu.printer.lookup_object("mmu_sensors")
             config = self.mmu.config.getsection('mmu_sensors')
             sensors_to_remove = []
             compression_sensor_filament_present = tension_sensor_filament_present = False
 
             # Use the temporary sensors for the test if the real ones are not present or disabled
-            compression_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION, None) # PAUL lookup in mmu_sensors
+            compression_test_sensor = mmu_sensors.sensors.get(self.mmu.SENSOR_COMPRESSION, None)
             if compression_test_sensor is None or not compression_test_sensor.runout_helper.sensor_enabled:
-                sensors._create_mmu_sensor(config, self.mmu.SENSOR_COMPRESSION, None, 'test_'+self.mmu.SENSOR_COMPRESSION+'_pin', 0, button_handler=sensors._sync_compression_callback)
-                compression_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_COMPRESSION)
+                mmu_sensors._create_mmu_sensor(config, self.mmu.SENSOR_COMPRESSION, None, 'test_'+self.mmu.SENSOR_COMPRESSION+'_pin', 0, button_handler=mmu_sensors._sync_compression_callback)
+                compression_test_sensor = mmu_sensors.sensors.get(self.mmu.SENSOR_COMPRESSION, None)
                 sensors_to_remove.append(self.mmu.SENSOR_COMPRESSION)
-            tension_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION, None) # PAUL fixme
+            tension_test_sensor = mmu_sensors.sensors.get(self.mmu.SENSOR_TENSION, None)
             if tension_test_sensor is None or not tension_test_sensor.runout_helper.sensor_enabled:
-                sensors._create_mmu_sensor(config, self.mmu.SENSOR_TENSION, None, 'test_'+self.mmu.SENSOR_TENSION+'_pin', 0, button_handler=sensors._sync_tension_callback)
-                tension_test_sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s_sensor" % self.mmu.SENSOR_TENSION)
+                mmu_sensors._create_mmu_sensor(config, self.mmu.SENSOR_TENSION, None, 'test_'+self.mmu.SENSOR_TENSION+'_pin', 0, button_handler=mmu_sensors._sync_tension_callback)
+                tension_test_sensor = mmu_sensors.sensors.get(self.mmu.SENSOR_TENSION, None)
                 sensors_to_remove.append(self.mmu.SENSOR_TENSION)
 
             if sync_state == 'loop':
@@ -263,6 +263,7 @@ class MmuTest:
                 for sensor in sensors_to_remove:
                     self.mmu.printer.objects.pop("filament_switch_sensor %s_sensor"  % sensor)
                     config.fileconfig.pop("filament_switch_sensor %s_sensor"  % sensor)
+                    mmu_sensors.sensors.pop(sensor)
                     share_name = "%s:%s" % (ppins.parse_pin('test_'+sensor+'_pin')['chip_name'], ppins.parse_pin('test_'+sensor+'_pin')['pin'])
                     ppins.active_pins.pop(share_name)
                     for cmd, (__, val) in self.mmu.gcode.mux_commands.items() :

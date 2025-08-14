@@ -70,8 +70,8 @@ num_gates: 4
 # MMU Vendor & Version is used to automatically configure some parameters and validate configuration
 # If custom set to "Other" and uncomment the additional parameters below
 #
-vendor: VVD				# MMU family
-version: 1.0				# MMU hardware version number (add mod suffix documented above)
+mmu_vendor: VVD				# MMU family
+mmu_version: 1.0			# MMU hardware version number (add mod suffix documented above)
 
 # The following attributes are set internally from vendor/version above. Only uncomment to customize the vendor
 # default or for custom ("Other") designs
@@ -145,8 +145,7 @@ gear_ratio: 25:10
 microsteps: 16 				# Don't need high fidelity
 full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
 extra_endstop_pins: !mmu:PD0, !mmu:PA15, !mmu:PD1, !mmu:PC13
-extra_endstop_names: mmu_sel_home0, mmu_sel_home1, mmu_sel_home2, mmu_sel_home3
-
+extra_endstop_names: unit0_gate0, unit0_gate1, unit0_gate2, unit0_gate3
 
 
 # SERVOS ---------------------------------------------------------------------------------------------------------------
@@ -201,44 +200,22 @@ pre_gate_switch_pin_2: !mmu:PA2
 pre_gate_switch_pin_3: !mmu:PA3
 
 post_gear_switch_pin_0: buffer:PA0
+post_gear_analog_range_0: 0, 500
 post_gear_switch_pin_1: buffer:PA1
+post_gear_analog_range_1: 0, 500
 post_gear_switch_pin_2: buffer:PA2
+post_gear_analog_range_2: 0, 500
 post_gear_switch_pin_3: buffer:PA3
+post_gear_analog_range_3: 0, 500
 
 #gate_switch_pin:
 
-sync_feedback_tension_pin: buffer:PA4
-sync_feedback_compression_pin: buffer:PA5
+sync_feedback_tension_pin: !buffer:PA4
+sync_feedback_compression_pin: !buffer:PA5
 
 # These sensors are on the toolhead and often controlled by the main printer mcu
 #extruder_switch_pin: PG11
 #toolhead_switch_pin: PG13
-
-
-# ENCODER -------------------------------------------------------------------------------------------------------------
-# ███████╗███╗   ██╗ ██████╗ ██████╗ ██████╗ ███████╗██████╗ 
-# ██╔════╝████╗  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗
-# █████╗  ██╔██╗ ██║██║     ██║   ██║██║  ██║█████╗  ██████╔╝
-# ██╔══╝  ██║╚██╗██║██║     ██║   ██║██║  ██║██╔══╝  ██╔══██╗
-# ███████╗██║ ╚████║╚██████╗╚██████╔╝██████╔╝███████╗██║  ██║
-# ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝
-# Encoder measures distance, monitors for runout and clogging and constantly calculates % flow rate
-# Note that the encoder_resolution set here is purely a default to get started. It will be correcly set after calibration
-# with the value stored in mmu_vars.cfg
-#
-# The encoder resolution will be calibrated but it needs a default approximation 
-# If BMG gear based:
-#   resolution = bmg_circumfrance / (2 * teeth)
-# 24 / (2 * 17) = 0.7059 for TRCT5000 based sensor
-# 24 / (2 * 12) = 1.0 for Binky with 12 tooth disc
-#
-[mmu_encoder mmu_encoder]
-encoder_pin: mmu:PC5
-encoder_resolution: 0.967		# This is just a starter value. Overriden by calibrated 'mmu_encoder_resolution' in mmm_vars.cfg
-desired_headroom: 5.0			# The clog/runout headroom that MMU attempts to maintain (closest point to triggering runout)
-average_samples: 4			# The "damping" effect of last measurement (higher value means slower automatic clog_length reduction)
-flowrate_samples: 20			# How many "movements" of the extruder to measure average flowrate over
-
 
 
 # LED SUPPORT (OPTIONAL) -----------------------------------------------------------------------------------------------
@@ -252,12 +229,12 @@ flowrate_samples: 20			# How many "movements" of the extruder to measure average
 # Define mmu leds, both the "neopixel" config and [mmu_led] to define their purpose
 #
 [neopixel mmu_leds_1]
-pin: unit0:PC6
+pin: mmu:PC6
 chain_count: 14
 color_order: GRB
 
 [neopixel mmu_leds_2]
-pin: unit0:PC7
+pin: mmu:PC7
 chain_count: 14
 color_order: GRB
 
@@ -314,15 +291,15 @@ frame_rate: 24
 #   (r,g,b)           - display static r,g,b color e.g. "0,0,0.3" for dim blue
 #    _effect_         - display the named led effect
 #
-enabled: True                           # True = LEDs are enabled at startup (MMU_LED can control), False = Disabled
-animation: True                         # True = Use led-animation-effects, False = Static LEDs
-default_exit_effect: gate_status        #    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
-default_entry_effect: filament_color    #    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
-default_status_effect: filament_color   # on|off|gate_status|filament_color|slicer_color|r,g,b|_effect_
-default_logo_effect: (0, 0, 0.3)        #    off                                        |r,g,b|_effect_
-white_light: (1, 1, 1)                  # RGB color for static white light
-black_light: (.01, 0, .02)              # RGB color used to represent "black" (filament)
-empty_light: (0, 0, 0)                  # RGB color used to represent empty gate
+enabled: True				# True = LEDs are enabled at startup (MMU_LED can control), False = Disabled
+animation: True				# True = Use led-animation-effects, False = Static LEDs
+exit_effect: gate_status		#    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+entry_effect: filament_color		#    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+status_effect: filament_color		# on|off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+logo_effect: (0, 0, 0.3)		#    off                                        |r,g,b|_effect_
+white_light: (1, 1, 1)			# RGB color for static white light
+black_light: (.01, 0, .02)		# RGB color used to represent "black" (filament)
+empty_light: (0, 0, 0)			# RGB color used to represent empty gate
 
 # Default effects (animation: True) / static rbg (animation False) to apply to actions
 #   effect_name, (r,b,g)
@@ -364,9 +341,8 @@ aht10_report_time: 10
 [temperature_sensor aht30_right]
 sensor_type: AHT10
 i2c_mcu: mmu
-i2c_bus: i2c3_PA7_PA6
-#i2c_software_scl_pin: PA7
-#i2c_software_sda_pin: PA6
+i2c_software_scl_pin: PA7
+i2c_software_sda_pin: PA6
 aht10_report_time: 10
 
 [heater_generic MMU_heater_vivid]
@@ -397,7 +373,7 @@ heater: MMU_heater_vivid
 # Electronics cooling fan
 [controller_fan my_controller_fan]
 pin: mmu:PA14
-stepper: stepper mmu_selector, stepper mmu_gear
+stepper: stepper_mmu_selector, stepper_mmu_gear
 
 [temperature_sensor ptc_ntc100k]
 sensor_pin: mmu:PA4

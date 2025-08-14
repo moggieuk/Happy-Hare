@@ -1987,8 +1987,11 @@ class IndexedSelector(BaseSelector, object):
 
     def select_gate(self, gate):
         if gate >= 0:
-            mcu_endstop = self.selector_rail.get_extra_endstop(self._get_gate_endstop(gate))[0][0]
-            if mcu_endstop and not mcu_endstop.query_endstop(self.mmu_toolhead.get_last_move_time()):
+            endstop = self.selector_rail.get_extra_endstop(self._get_gate_endstop(gate))
+            if not endstop:
+                raise MmuError("Extra endstop %s not defined on the selector stepper" % self._get_gate_endstop(gate))
+            mcu_endstop = endstop[0][0]
+            if not mcu_endstop.query_endstop(self.mmu_toolhead.get_last_move_time()):
                 with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
                     self._find_gate(gate)
 

@@ -5317,8 +5317,17 @@ class Mmu:
 
         ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
-        gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
+        logging.info("PAUL: gate_home=%s" % self.gate_homing_endstop)
+        logging.info("PAUL: mapped=%s" % self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
+
+        # We ignore the gate enstop trigger if using gear sensor and parking distance is not a retract (i.e. sensor expected to be triggered))
+        if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX and self.gate_parking_distance <= 0:
+            gs = None
+        else:
+            gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
+        logging.info("PAUL: gs=%s" % gs)
         filament_detected = self.sensor_manager.check_any_sensors_in_path()
+        logging.info("PAUL: filament_detected=%s" % filament_detected)
         if not filament_detected:
             filament_detected = self.check_filament_in_mmu() # Include encoder detection method
 
@@ -8256,7 +8265,7 @@ class Mmu:
             if self.check_if_bypass(): return
             if self.check_if_loaded(): return
 
-        self.log_always("Preloading filament in %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
+        self.log_always("Preloading filament in %s..." % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self.wrap_suppress_visual_log():
