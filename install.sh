@@ -1553,7 +1553,7 @@ questionaire() {
     option QUATTRO_BOX    'QuattroBox v1.0'
     option QUATTRO_BOX11  'QuattroBox v1.1'
     option MMX            'MMX'
-    option VVD            'BigTreeTech ViViD'
+    option VVD            'BigTreeTech ViViD (BETA)'
     option KMS            'KMS'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
