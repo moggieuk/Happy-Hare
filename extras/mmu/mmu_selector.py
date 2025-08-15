@@ -69,6 +69,9 @@ class BaseSelector:
     def handle_disconnect(self):
         pass
 
+    def bootup(self):
+        pass
+
     def home(self, force_unload = None):
         pass
 
@@ -264,15 +267,6 @@ class LinearSelector(BaseSelector, object):
         self.mmu_toolhead = self.mmu.mmu_toolhead
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
-
-# PAUL new
-#        # Adjust selector rail limits now we know the config
-#        self.selector_rail.position_min = -1
-#        self.selector_rail.position_max = self._get_max_selector_movement()
-#        self.selector_rail.homing_speed = self.selector_homing_speed
-#        self.selector_rail.second_homing_speed = self.selector_homing_speed / 2.
-#        self.selector_rail.homing_retract_speed = self.selector_homing_speed
-#        self.selector_rail.homing_positive_dir = False
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
         self.selector_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_OFFSETS, None)
@@ -1862,14 +1856,8 @@ class ServoSelector(BaseSelector, object):
 # gate selection but has an indexing sensor for each gate.
 # E.g. As fitted to BTT ViViD
 #
-##PAUL 'filament_always_gripped' alters operation:
-##PAUL   0 (default) - Lazy gate selection, occurs when asked to grip filament
-##PAUL   1           - Gripped immediately on selection and will not release
-#
 # Implements commands:
 #   MMU_SOAKTEST_SELECTOR
-#PAUL#   MMU_GRIP    - realign with selected gate
-#PAUL#   MMU_RELEASE - move to opposing gate to release filament
 ################################################################################
 
 class IndexedSelector(BaseSelector, object):
@@ -1896,10 +1884,6 @@ class IndexedSelector(BaseSelector, object):
         # Register GCODE commands
         gcode = mmu.printer.lookup_object('gcode')
         gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc=self.cmd_MMU_SOAKTEST_SELECTOR_help)
-# PAUL
-#        gcode.register_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
-#        gcode.register_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
-#        gcode.register_command('PAUL', self.cmd_PAUL)
 
         # Selector stepper setup before MMU toolhead is instantiated
         section = mmu_machine.SELECTOR_STEPPER_CONFIG
@@ -1939,37 +1923,8 @@ class IndexedSelector(BaseSelector, object):
         except MmuError as ee:
             self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
-# PAUL vvv
-#    cmd_MMU_GRIP_help = "Grip filament in current gate"
-#    def cmd_MMU_GRIP(self, gcmd):
-#        if self.mmu.gate_selected >= 0:
-#            self.filament_drive()
-#
-#    cmd_MMU_RELEASE_help = "Ungrip filament in current gate"
-#    def cmd_MMU_RELEASE(self, gcmd):
-#        if self.mmu.gate_selected >= 0:
-#            if not self.mmu.mmu_machine.filament_always_gripped:
-#                self.filament_release()
-#            else:
-#                self.mmu.log_error("Selector configured to not allow filament release")
-# PAUL ^^^
-
-#    def cmd_PAUL(self, gcmd): # PAUL testing command
-#        move = gcmd.get_float('MOVE', self._get_max_selector_movement())
-#        logging.info("PAUL: move=%s" % move)
-#        speed = gcmd.get_float('SPEED', None)
-#        accel = gcmd.get_float('ACCEL', None)
-#        wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
-#        gate = gcmd.get_int('GATE', None)
-#        if gate is not None:
-#            endstop_name = "unit0_gate%d" % gate
-#            self.mmu.log_debug("Homing selector motor %.1fmm to %s..." % (move, endstop_name))
-#            actual,homed = self._trace_selector_move("PAUL TEST homing selector", move, homing_move=1, endstop_name=endstop_name, speed=speed, accel=accel, wait=wait)
-#        else:
-#            self.mmu.log_debug("Moving selector motor %.1fmm..." % move)
-#            actual,homed = self._trace_selector_move("PAUL TEST selector", move, speed=speed, accel=accel, wait=wait)
-#        self.mmu.log_error("PAUL: actual=%s, homed=%s" % (actual, homed))
-#        # End of PAUL testing command ^^^^
+    def bootup(self):
+        self.select_gate(self.mmu.gate_selected)
 
     def home(self, force_unload = None):
         if self.mmu.check_if_bypass(): return
@@ -1994,23 +1949,6 @@ class IndexedSelector(BaseSelector, object):
             if not mcu_endstop.query_endstop(self.mmu_toolhead.get_last_move_time()):
                 with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
                     self._find_gate(gate)
-
-# PAUL may not need
-#    def restore_gate(self, gate):
-#        if gate >= 0:
-#            # PAUL this will generate a TTC error if the mcu has just booted. It is called from "ready" callback. Either need to move the
-#            # intial call or delay actual move here..
-#            self._find_gate(gate)
-
-# PAUL unfinished feature
-#    def filament_drive(self):
-#        if self.mmu.gate_selected >= 0:
-#            self._find_gate(self.mmu.gate_selected)
-#
-#    def filament_release(self, measure=False):
-#        if self.mmu.gate_selected >= 0 and not self.mmu.mmu_machine.filament_always_gripped:
-#            self._find_gate(self.mmu.gate_selected ^ 2)
-#        return 0. # Fake encoder movement
 
     def disable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')

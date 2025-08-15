@@ -1238,7 +1238,7 @@ class Mmu:
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        self.selector.select_gate(self.gate_selected) # PAUL added
+        self.selector.bootup()
 
         try:
             # Splash...
@@ -5317,17 +5317,13 @@ class Mmu:
 
         ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
-        logging.info("PAUL: gate_home=%s" % self.gate_homing_endstop)
-        logging.info("PAUL: mapped=%s" % self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
 
         # We ignore the gate enstop trigger if using gear sensor and parking distance is not a retract (i.e. sensor expected to be triggered))
         if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX and self.gate_parking_distance <= 0:
             gs = None
         else:
             gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
-        logging.info("PAUL: gs=%s" % gs)
         filament_detected = self.sensor_manager.check_any_sensors_in_path()
-        logging.info("PAUL: filament_detected=%s" % filament_detected)
         if not filament_detected:
             filament_detected = self.check_filament_in_mmu() # Include encoder detection method
 
@@ -5780,13 +5776,17 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        self.selector.select_gate(gate) # PAUL move earlier
-        if gate == self.gate_selected: return
         try:
-            self._next_gate = gate # Valid only during the gate selection process
-#PAUL            self.selector.select_gate(gate)
-            self._set_gate_selected(gate)
-            self._espooler_assist_on() # Will switch assist print mode if printing
+            if gate == self.gate_selected:
+                self.selector.select_gate(gate) # Always give selector a chance to fix position
+            else:
+                self._next_gate = gate # Valid only during the gate selection process
+                _prev_gate = self.gate_selected
+                self.selector.select_gate(gate)
+                self._set_gate_selected(gate)
+                self.led_manager.gate_map_changed(_prev_gate)
+                self.led_manager.gate_map_changed(gate)
+                self._espooler_assist_on() # Will switch assist print mode if printing
         except MmuError as ee:
             self.unselect_gate()
             raise ee

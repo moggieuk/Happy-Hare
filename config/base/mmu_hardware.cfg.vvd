@@ -112,7 +112,7 @@ stealthchop_threshold: 0		# Spreadcycle has more torque and better at speed
 step_pin: mmu:PB6
 dir_pin: mmu:PB5
 enable_pin: !mmu:PB8
-rotation_distance: 7.54			# 7.8
+rotation_distance: 8.0			# This is highly variable -- tune each gate with MMU_CALIBRATE_GEAR
 gear_ratio: 1:1
 microsteps: 16
 full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
@@ -316,10 +316,13 @@ effect_checking:           mmu_white_fast,          (0.8, 0.8, 0.8)
 effect_initialized:        mmu_rainbow,             (0.5, 0.2, 0)
 effect_error:              mmu_strobe,              (1, 0, 0)
 effect_complete:           mmu_sparkle,             (0.3, 0.3, 0.3)
-effect_gate_available:     mmu_static_green,        (0, 0.5, 0)
-effect_gate_unknown:       mmu_static_orange,       (0.5, 0.2, 0)
-effect_gate_empty:         mmu_static_black,        (0, 0, 0)
 effect_gate_selected:      mmu_static_blue,         (0, 0, 1)
+effect_gate_available:     mmu_static_green,        (0, 0.5, 0)
+effect_gate_available_sel: mmu_ready_green,         (0, 0.75, 0)
+effect_gate_unknown:       mmu_static_orange,       (0.5, 0.2, 0)
+effect_gate_unknown_sel:   mmu_ready_orange ,       (0.75, 0.3, 0)
+effect_gate_empty:         mmu_static_black,        (0, 0, 0)
+effect_gate_empty_sel:     mmu_ready_blue,          (0, 0, 0.2)
 
 
 # ADDITIONAL HARDWARE -------------------------------------------------------------------------------------------------

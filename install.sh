@@ -1995,16 +1995,16 @@ questionaire() {
 
             # mmu_parameters config
             _param_extruder_homing_endstop="filament_compression"
-            _param_extruder_homing_buffer=35
+            _param_extruder_homing_max=200
+            _param_extruder_homing_buffer=80
             _param_gate_homing_endstop="mmu_gear"
-            _param_gate_homing_max=100
+            _param_gate_homing_max=200
+            _param_gate_unload_buffer=80
+            _param_gate_parking_distance=10
             _param_gate_preload_homing_max=650
-            _param_gate_preload_parking_distance=-10
-            _param_gate_parking_distance=-10
-            _param_gate_unload_buffer=50
-            _param_gate_endstop_to_encoder=14
-            _param_gate_autoload=1
+            _param_gate_preload_parking_distance=10
             _param_gate_final_eject_distance=650
+            _param_gate_autoload=1
             _param_has_filament_buffer=0
 
             _param_autocal_bowden_length=1
