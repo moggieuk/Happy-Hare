@@ -7857,7 +7857,7 @@ class Mmu:
                             continue
 
                         # Only update gate attributes if we have a valid spool_id
-                        if fil and fil.get('spool_id', -1) != -1:
+                        if fil and (fil.get('spool_id', -1) != -1 or self.spoolman_support == self.SPOOLMAN_OFF):
                             self.gate_filament_name[gate] = fil.get('name', '')
                             self.gate_material[gate] = fil.get('material', '')
                             self.gate_color[gate] = fil.get('color', '')
