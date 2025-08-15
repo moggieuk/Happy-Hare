@@ -42,9 +42,9 @@ The system is implemented as a Klipper extension (primarily using Python modules
 Happy Hare is under active development, with a meticulous focus on the quality of multi-color printing. It has benefited from insights gained over two years from thousands of users. While the experience is highly polished, development continues in three key areas:
 
 - **Additional MMU Support:** _Striving for inclusivity—support for Prusa MMU and others is in progress_
-- **Mainsail/Fluidd Plugin:** _While the KlipperScreen extension offers a rich user interface, many users have requested similar functionality for Mainsail. This integration is coming soon!_
+- **v4 Rework:** _This release will allow for even more modularity and in particular support for dissimilar MMU/AFC's on the same printer!  Yes, mix your old ERCF and BoxTurtle on the same machine or even direct to different toolheads in a IDEX design!_
 
-Some users have inquired about making donations to support this project (and to keep my coffee or G&T supply steady!). While this project is a labor of love and not financially motivated, it is a substantial undertaking—comprising 17,000 lines of Python code, 10,000 lines of documentation, 160 illustrations and 6,000 lines of macros/configuration. If you’ve found value in Happy Hare and wish to contribute, donations can be made via PayPal https://www.paypal.me/moggieuk. Any support will be spent improving your experience with your favorite MMU. Thank you!
+Some users have inquired about making donations to support this project (and to keep my coffee or G&T supply steady!). While this project is a labor of love and not financially motivated, it is a substantial undertaking—comprising 18,000 lines of Python code, 10,000 lines of documentation, 160 illustrations and 6,000 lines of macros/configuration. If you’ve found value in Happy Hare and wish to contribute, donations can be made via PayPal https://www.paypal.me/moggieuk. Any support will be spent improving your experience with your favorite MMU/AFC. Thank you!
 <p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="30%"></a></p>
 
 <br>
