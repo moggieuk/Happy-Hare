@@ -200,15 +200,13 @@ pre_gate_switch_pin_2: !mmu:PA2
 pre_gate_switch_pin_3: !mmu:PA3
 
 post_gear_switch_pin_0: buffer:PA0
-post_gear_analog_range_0: 0, 500
+post_gear_analog_range_0: 0, 500 # Delete if using updated digital sensor
 post_gear_switch_pin_1: buffer:PA1
-post_gear_analog_range_1: 0, 500
+post_gear_analog_range_1: 0, 500 # Delete if using updated digital sensor
 post_gear_switch_pin_2: buffer:PA2
-post_gear_analog_range_2: 0, 500
+post_gear_analog_range_2: 0, 500 # Delete if using updated digital sensor
 post_gear_switch_pin_3: buffer:PA3
-post_gear_analog_range_3: 0, 500
-
-#gate_switch_pin:
+post_gear_analog_range_3: 0, 500 # Delete if using updated digital sensor
 
 sync_feedback_tension_pin: !buffer:PA4
 sync_feedback_compression_pin: !buffer:PA5
