@@ -426,8 +426,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)
         if self.motion_queuing:
             # Setup for generating moves
-#PAUL            from .motion_queuing import PrinterMotionQueuing
-#PAUL            self.motion_queuing = PrinterMotionQueuing(config) # HACK a second motion queue PAUL experiment
             self.trapq = self.motion_queuing.allocate_trapq()
             self.trapq_append = self.motion_queuing.lookup_trapq_append()
         else:
@@ -552,26 +550,21 @@ class MmuToolHead(toolhead.ToolHead, object):
             # No steppers on rail is ok, because Rail keeps separate reference for the first stepper added
             pass
 
-    def _register(self, toolhead, s):
+    # Register stepper step generator with desired toolhead
+    def _register(self, toolhead, stepper):
         if self.motion_queuing:
-# Notes:
-# self._stepqueue is set with  motion_queuing.allocate_stepcompress(mcu, oid)
-# and self._oid = oid is set with mcu.create_oid() on stepper
-# But klipper assumes only one PrinterMotionQueuing (motion_queuing) object
-# ... this seems to prevents multiple toolheads!
-            pass # PAUL not sure what to do here
-            #self.motion_queuing.register_flush_callback(s._check_active)
+            pass # Need to enable stepper
         else:
-            if s.generate_steps not in self.mmu_toolhead.step_generators:
-                toolhead.register_step_generator(s.generate_steps)
+            if stepper.generate_steps not in self.mmu_toolhead.step_generators:
+                toolhead.register_step_generator(stepper.generate_steps)
 
-    def _unregister(self, toolhead, s):
+    # Unregister stepper step generator with desired toolhead
+    def _unregister(self, toolhead, stepper):
         if self.motion_queuing:
-            pass # PAUL not sure what to do here
-            #self.motion_queuing.unregister_flush_callback(s._check_active)
+            pass # Need to disable stepper
         else:
-            if s.generate_steps in self.mmu_toolhead.step_generators:
-                toolhead.unregister_step_generator(s.generate_steps)
+            if stepper.generate_steps in self.mmu_toolhead.step_generators:
+                toolhead.unregister_step_generator(stepper.generate_steps)
 
     def _ready_rail(self):
         lmt = self.printer_toolhead.get_last_move_time()
