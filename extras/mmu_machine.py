@@ -293,6 +293,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu = mmu
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self._saved_stepper_kins = {}
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
         self.mcu = self.all_mcus[0]
 
@@ -365,14 +366,22 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Kinematic step generation scan window time tracking
         self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
         self.kin_flush_times = []
-        # Setup iterative solver
-        ffi_main, ffi_lib = chelper.get_ffi()
-        self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
-        self.trapq_append = ffi_lib.trapq_append
-        self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
-        # Motion flushing
-        self.step_generators = []
-        self.flush_trapqs = [self.trapq]
+
+        if hasattr(self, 'register_step_generator'):
+            # Setup iterative solver
+            ffi_main, ffi_lib = chelper.get_ffi()
+            self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
+            self.trapq_append = ffi_lib.trapq_append
+            self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
+            # Motion flushing
+            self.step_generators = []
+            self.flush_trapqs = [self.trapq]
+        else:
+            # Setup for generating moves
+            self.motion_queuing = self.printer.load_object(config, 'motion_queuing')
+            self.trapq = self.motion_queuing.allocate_trapq()
+            self.trapq_append = self.motion_queuing.lookup_trapq_append()
+
         # Create kinematics class
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
@@ -458,6 +467,34 @@ class MmuToolHead(toolhead.ToolHead, object):
         else:
             self._reconfigure_rail(None)
 
+    def _enable_stepper(self, stepper):
+        # klipper 0.13.0 <= 195
+        if hasattr(self.mmu_toolhead, 'register_step_generator'):
+            if stepper.generate_steps not in self.mmu_toolhead.step_generators:
+                self.mmu_toolhead.register_step_generator(stepper.generate_steps)
+        # klipper 0.13.0 > 195
+        elif hasattr(stepper, '_stepqueue') and hasattr(stepper, '_stepper_kinematics'):
+            ffi_main, ffi_lib = chelper.get_ffi()
+            ffi_lib.stepcompress_set_stepper_kinematics(stepper._stepqueue, stepper._stepper_kinematics)
+        else:
+            msg = "MMU: This version of klipper is not compatible with MMU stepper management"
+            logging.exception("MMU: %s" % msg)
+            raise ValueError(msg)
+
+    def _disable_stepper(self, stepper):
+        # klipper 0.13.0 <= 195
+        if hasattr(self.mmu_toolhead, 'register_step_generator'):
+            if stepper.generate_steps in self.mmu_toolhead.step_generators:
+                self.mmu_toolhead.step_generators.remove(stepper.generate_steps)
+        # klipper 0.13.0 > 195
+        elif hasattr(stepper, '_stepqueue'):
+            ffi_main, ffi_lib = chelper.get_ffi()
+            ffi_lib.stepcompress_set_stepper_kinematics(stepper._stepqueue, ffi_main.NULL)
+        else:
+            msg = "MMU: This version of klipper is not compatible with MMU stepper management"
+            logging.exception("MMU: %s" % msg)
+            raise ValueError(msg)
+
     def _reconfigure_rail(self, selected_steppers):
         sync_mode = self.sync_mode
         if sync_mode:
@@ -473,12 +510,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         for s in self.all_gear_rail_steppers:
             if selected_steppers and s.get_name() in selected_steppers:
                 gear_rail.steppers.append(s)
-                if s.generate_steps not in self.mmu_toolhead.step_generators:
-                    self.mmu_toolhead.register_step_generator(s.generate_steps)
+                self._enable_stepper(s)
             else:
                 # Cripple unused/unwanted gear steppers
-                if s.generate_steps in self.mmu_toolhead.step_generators:
-                    self.mmu_toolhead.step_generators.remove(s.generate_steps)
+                self._disable_stepper(s)
 
         if selected_steppers:
             if not gear_rail.steppers:
@@ -532,7 +567,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
                 self.inactive_gear_steppers = list(rail.steppers)
                 for s in self.inactive_gear_steppers:
-                    self.mmu_toolhead.step_generators.remove(s.generate_steps)
+                    self._disable_stepper(s)
             rail.steppers.extend(following_steppers)
 
         elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
@@ -552,8 +587,10 @@ class MmuToolHead(toolhead.ToolHead, object):
             s_kinematics = ffi_main.gc(s_alloc, ffi_lib.free)
             self._prev_sk.append(s.set_stepper_kinematics(s_kinematics))
             self._prev_rd.append(s.get_rotation_distance()[0])
-            following_toolhead.step_generators.remove(s.generate_steps)
-            driving_toolhead.register_step_generator(s.generate_steps)
+            if hasattr(following_toolhead, 'step_generators'):
+                following_toolhead.step_generators.remove(s.generate_steps)
+            if hasattr(driving_toolhead, 'register_step_generator'):
+                driving_toolhead.register_step_generator(s.generate_steps)
             s.set_trapq(driving_trapq)
             s.set_position(pos)
 
@@ -580,7 +617,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             rail = self.mmu_toolhead.get_kinematics().rails[1]
             if self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR: # I.e. self.inactive_gear_steppers is not None
                 for s in self.inactive_gear_steppers:
-                    self.mmu_toolhead.register_step_generator(s.generate_steps)
+                    if hasattr(self.mmu_toolhead, 'register_step_generator'):
+                        self.mmu_toolhead.register_step_generator(s.generate_steps)
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
                 self.inactive_gear_steppers = [] # python3 - self.inactive_gear_steppers.clear()
             rail.steppers = rail.steppers[:-len(following_steppers)]
@@ -597,8 +635,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         for i, s in enumerate(following_steppers):
             s.set_stepper_kinematics(self._prev_sk[i])
             s.set_rotation_distance(self._prev_rd[i])
-            driving_toolhead.step_generators.remove(s.generate_steps)
-            following_toolhead.register_step_generator(s.generate_steps)
+            if hasattr(driving_toolhead, 'step_generators'):
+                driving_toolhead.step_generators.remove(s.generate_steps)
+            if hasattr(following_toolhead, 'register_step_generator'):
+                following_toolhead.register_step_generator(s.generate_steps)
             s.set_trapq(self._prev_trapq)
             s.set_position(pos)
 
@@ -698,7 +738,8 @@ class MmuKinematics:
 
         for s in self.get_steppers():
             s.set_trapq(toolhead.get_trapq())
-            toolhead.register_step_generator(s.generate_steps)
+            if hasattr(toolhead, 'register_step_generator'):
+                toolhead.register_step_generator(s.generate_steps)
 
         # Setup boundary checks
         self.selector_max_velocity, self.selector_max_accel = toolhead.get_selector_limits()
