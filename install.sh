@@ -2018,6 +2018,8 @@ questionaire() {
             _param_sync_feedback_enabled=1
             _param_sync_feedback_buffer_range=8
             _param_sync_feedback_buffer_maxrange=12
+
+            _param_update_aht10_commmands=1
             ;;
 
         "$KMS")

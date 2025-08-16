@@ -507,6 +507,9 @@ class Mmu:
         # to increase BIT_MAX_TIME in neopixel.py. This option does that automatically for you to save dirtying klipper.
         self.update_bit_max_time = config.getint('update_bit_max_time', 0, minval=0, maxval=1)
 
+        # This is required for the BTT AHT10 used on the ViViD MMU
+        self.update_aht10_commands = config.getint('update_aht10_commands', 0, minval=0, maxval=1)
+
         # Initialize manager helpers
         # These encapsulate specific functionality to reduce the complexity of main class
         self.sync_feedback_manager = MmuSyncFeedbackManager(self)
@@ -665,6 +668,17 @@ class Mmu:
                 neopixel.BIT_MAX_TIME = max(neopixel.BIT_MAX_TIME, 0.000030)
             except Exception as e:
                 self.log_error("Unable to update BIT_MAX_TIME: %s" % str(e))
+
+        if self.update_aht10_commands: # Command set of AHT10 (on ViViD)
+            try:
+                from extras import aht10
+                aht10.AHT10_COMMANDS = {
+                    'INIT'              :[0xBE, 0x08, 0x00],
+                    'MEASURE'           :[0xAC, 0x33, 0x00],
+                    'RESET'             :[0xBE, 0x08, 0x00]
+                }
+            except Exception as e:
+                self.log_error("Unable to update AHT10_COMMANDS: %s" % str(e))
 
         # Initialize state and statistics variables
         self.reinit()
