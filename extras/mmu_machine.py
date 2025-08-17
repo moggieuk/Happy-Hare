@@ -293,7 +293,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu = mmu
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self._saved_stepper_kins = {}
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
         self.mcu = self.all_mcus[0]
 
@@ -467,18 +466,13 @@ class MmuToolHead(toolhead.ToolHead, object):
         else:
             self._reconfigure_rail(None)
 
-    def _register(self, toolhead, stepper):
+    def _register(self, toolhead, stepper, trapq = None):
         # klipper 0.13.0 <= 195
-        if hasattr(toolhead, 'register_step_generator'):
-            if stepper.generate_steps not in toolhead.step_generators:
-                toolhead.register_step_generator(stepper.generate_steps)
-        # klipper 0.13.0 > 195
-        elif hasattr(stepper, '_stepqueue') and hasattr(stepper, '_stepper_kinematics'):
-            ffi_main, ffi_lib = chelper.get_ffi()
-            stepper.set_trapq(toolhead.get_trapq())
-            # if hasattr(stepper, 'prev_kin'):
-            #     stepper.set_stepper_kinematics(stepper.prev_kin)
-            ffi_lib.stepcompress_set_stepper_kinematics(stepper._stepqueue, stepper._stepper_kinematics)
+        # if hasattr(toolhead, 'register_step_generator'):
+        #     if stepper.generate_steps not in toolhead.step_generators:
+        #         toolhead.register_step_generator(stepper.generate_steps)
+        if hasattr(stepper, 'set_trapq'):
+            stepper.set_trapq(self.get_trapq() if trapq is None else trapq)
         else:
             msg = "MMU: This version of klipper is not compatible with MMU stepper management"
             logging.exception("MMU: %s" % msg)
@@ -486,15 +480,11 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def _unregister(self, toolhead, stepper):
         # klipper 0.13.0 <= 195
-        if hasattr(toolhead, 'register_step_generator'):
-            if stepper.generate_steps in toolhead.step_generators:
-                toolhead.step_generators.remove(stepper.generate_steps)
-        # klipper 0.13.0 > 195
-        elif hasattr(stepper, '_stepqueue'):
-            ffi_main, ffi_lib = chelper.get_ffi()
+        # if hasattr(toolhead, 'register_step_generator'):
+        #     if stepper.generate_steps in toolhead.step_generators:
+        #         toolhead.step_generators.remove(stepper.generate_steps)
+        if hasattr(stepper, 'set_trapq'):
             stepper.set_trapq(None)
-            # stepper.prev_kin = stepper.set_stepper_kinematics(ffi_main.NULL)
-            ffi_lib.stepcompress_set_stepper_kinematics(stepper._stepqueue, ffi_main.NULL)
         else:
             msg = "MMU: This version of klipper is not compatible with MMU stepper management"
             logging.exception("MMU: %s" % msg)
@@ -593,8 +583,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._prev_sk.append(s.set_stepper_kinematics(s_kinematics))
             self._prev_rd.append(s.get_rotation_distance()[0])
             self._unregister(following_toolhead, s)
-            self._register(driving_toolhead, s)
-            s.set_trapq(driving_trapq)
+            self._register(driving_toolhead, s, driving_trapq)
             s.set_position(pos)
 
         self.sync_mode = new_sync_mode
@@ -638,8 +627,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             s.set_stepper_kinematics(self._prev_sk[i])
             s.set_rotation_distance(self._prev_rd[i])
             self._unregister(driving_toolhead, s)
-            self._register(following_toolhead, s)
-            s.set_trapq(self._prev_trapq)
+            self._register(following_toolhead, s, self._prev_trapq)
             s.set_position(pos)
 
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
@@ -737,8 +725,7 @@ class MmuKinematics:
         self.rails[1].setup_itersolve('cartesian_stepper_alloc', b'y')
 
         for s in self.get_steppers():
-            s.set_trapq(toolhead.get_trapq())
-            self.toolhead._register(self.toolhead, s)
+            self.toolhead._register(self.toolhead, s, toolhead.get_trapq())
 
         # Setup boundary checks
         self.selector_max_velocity, self.selector_max_accel = toolhead.get_selector_limits()
