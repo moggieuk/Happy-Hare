@@ -471,8 +471,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         # if hasattr(toolhead, 'register_step_generator'):
         #     if stepper.generate_steps not in toolhead.step_generators:
         #         toolhead.register_step_generator(stepper.generate_steps)
-        if hasattr(stepper, 'set_trapq'):
-            stepper.set_trapq(self.get_trapq() if trapq is None else trapq)
+        if hasattr(stepper, 'set_trapq') and hasattr(stepper, 'get_trapq'):
+            trapq = self.get_trapq() if trapq is None else trapq
+            if trapq != stepper.get_trapq():
+                stepper.set_trapq(trapq)
         else:
             msg = "MMU: This version of klipper is not compatible with MMU stepper management"
             logging.exception("MMU: %s" % msg)
@@ -484,7 +486,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         #     if stepper.generate_steps in toolhead.step_generators:
         #         toolhead.step_generators.remove(stepper.generate_steps)
         if hasattr(stepper, 'set_trapq'):
-            stepper.set_trapq(None)
+            if stepper.get_trapq() is not None:
+                stepper.set_trapq(None)
         else:
             msg = "MMU: This version of klipper is not compatible with MMU stepper management"
             logging.exception("MMU: %s" % msg)
