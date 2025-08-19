@@ -1998,15 +1998,15 @@ questionaire() {
 
             # mmu_parameters config
             _param_extruder_homing_endstop="filament_compression"
-            _param_extruder_homing_max=200
+            _param_extruder_homing_max=250
             _param_extruder_homing_buffer=80
             _param_gate_homing_endstop="mmu_gear"
-            _param_gate_homing_max=200
+            _param_gate_homing_max=250
             _param_gate_unload_buffer=80
-            _param_gate_parking_distance=10
-            _param_gate_preload_homing_max=650
-            _param_gate_preload_parking_distance=10
-            _param_gate_final_eject_distance=650
+            _param_gate_parking_distance=30
+            _param_gate_preload_homing_max=750
+            _param_gate_preload_parking_distance=30
+            _param_gate_final_eject_distance=750
             _param_gate_autoload=1
             _param_has_filament_buffer=0
 
@@ -2019,7 +2019,7 @@ questionaire() {
             _param_sync_feedback_buffer_range=8
             _param_sync_feedback_buffer_maxrange=12
 
-            _param_update_aht10_commmands=1
+            _param_update_aht10_commands=1
             ;;
 
         "$KMS")

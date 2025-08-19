@@ -23,7 +23,6 @@ serial: {serial1}
 [mcu buffer]
 serial: {serial2}
 
-
 [temperature_sensor MCU_mmu]
 sensor_type: temperature_mcu
 sensor_mcu: mmu
