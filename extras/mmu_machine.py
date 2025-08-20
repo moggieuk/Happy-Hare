@@ -491,7 +491,8 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def handle_connect(self):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
-        self.last_move_time = self.printer_toolhead.get_last_move_time()
+        self.printer_last_move_time = self.printer_toolhead.get_last_move_time()
+        self.mmu_last_move_time = self.mmu_toolhead.get_last_move_time()
 
         printer_extruder = self.printer_toolhead.get_extruder()
         if self.mmu_machine.homing_extruder:
@@ -534,7 +535,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if sync_mode:
             self.unsync()
         else:
-            self._ready_rail()
+            self._quiesce()
 
         # Activate only the desired gear steppers
         gear_rail = self.get_kinematics().rails[1]
@@ -557,30 +558,56 @@ class MmuToolHead(toolhead.ToolHead, object):
             # No steppers on rail is ok, because Rail keeps separate reference for the first stepper added
             pass
 
-    # Register stepper step generator with desired toolhead
-    def _register(self, toolhead, stepper):
-        if self.motion_queuing:
-            pass # Need to enable stepper
-        else:
+    # Register stepper step generator with desired toolhead and add toolhead's trapq
+    def _register(self, toolhead, stepper, trapq=None):
+        logging.info("PAUL: _register(stepper=%s) toolhead.trapq=%s, trapq=%s, stepper_old_trapq=%s" % (stepper._name, toolhead.get_trapq(), trapq, stepper.get_trapq()))
+        trapq = trapq or toolhead.get_trapq()
+        if not self.motion_queuing:
+            # klipper 0.13.0 <= 195 we also register step generators from mmu_toolhead
+            # May not be necessary but that's what we have always done
             if stepper.generate_steps not in self.mmu_toolhead.step_generators:
                 toolhead.register_step_generator(stepper.generate_steps)
+        stepper.set_trapq(trapq)
 
-    # Unregister stepper step generator with desired toolhead
+    # Unregister stepper step generator with desired toolhead and remove from trapq
     def _unregister(self, toolhead, stepper):
-        if self.motion_queuing:
-            pass # Need to disable stepper
-        else:
+        logging.info("PAUL: _unregister(stepper=%s) toolhead.trapq=%s, stepper_old_trapq=%s" % (stepper._name, toolhead.get_trapq(), stepper.get_trapq()))
+        if not self.motion_queuing:
+            # klipper 0.13.0 <= 195 we also unregister step generators from mmu_toolhead
+            # May not be necessary but that's what we have always done
             if stepper.generate_steps in self.mmu_toolhead.step_generators:
                 toolhead.unregister_step_generator(stepper.generate_steps)
+        stepper.set_trapq(None)
 
-    def _ready_rail(self):
+    def _quiesce(self):
+        start = time.time()
+        logging.info("PAUL: _quiesce() START")
         lmt = self.printer_toolhead.get_last_move_time()
-        if lmt > self.last_move_time:
-            self.last_move_time = lmt
+        if lmt > self.printer_last_move_time:
+            logging.info("PAUL: __quiesce() wating on printer_toolhead because lmt=%s > printer_last_move=%s" % (lmt, self.printer_last_move_time))
             self.printer_toolhead.wait_moves()
-        self.printer_toolhead.flush_step_generation()
+            logging.info("PAUL:  >> Elapsed: %.6f s" % (time.time() - start))
+
+        lmt = self.mmu_toolhead.get_last_move_time()
+        if lmt > self.mmu_last_move_time:
+            logging.info("PAUL: __quiesce() wating on mmu_toolhead because lmt=%.6f > mmu_last_move=%.6f" % (lmt, self.mmu_last_move_time))
+            self.printer_toolhead.wait_moves()
+            logging.info("PAUL:  >> Elapsed: %.6f s" % (time.time() - start))
+
+        logging.info("PAUL: dwell + flush")
+        self.mmu_toolhead.dwell(0.01) # Give motion queues time to flush
+        self.printer_toolhead.dwell(0.01) # Give motion queues time to flush
         self.mmu_toolhead.flush_step_generation()
-        self.mmu_toolhead.dwell(0.01) # TTC Mitigation
+        self.printer_toolhead.flush_step_generation()
+        logging.info("PAUL:  >> Elapsed: %.6f s" % (time.time() - start))
+
+        if self.motion_queuing:
+            self.motion_queuing.wipe_trapq(self.mmu_toolhead.get_trapq())
+        logging.info("PAUL:  >> Total: %.6f s" % (time.time() - start))
+        logging.info("PAUL: _quiesce() END")
+
+        self.printer_last_move_time = self.printer_toolhead.get_last_move_time()
+        self.mmu_last_move_time = self.mmu_toolhead.get_last_move_time()
 
     def is_synced(self):
         return self.sync_mode is not None
@@ -599,7 +626,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.unsync()
         if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
-        self._ready_rail()
+        self._quiesce()
 
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -638,8 +665,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._prev_sk.append(s.set_stepper_kinematics(s_kinematics))
             self._prev_rd.append(s.get_rotation_distance()[0])
             self._unregister(following_toolhead, s)
-            self._register(driving_toolhead, s)
-            s.set_trapq(driving_trapq)
+            self._register(driving_toolhead, s, trapq=driving_trapq)
             s.set_position(pos)
 
         self.sync_mode = new_sync_mode
@@ -652,7 +678,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         self.mmu.log_stepper("unsync()")
         prev_sync_mode = self.sync_mode
-        self._ready_rail()
+        self._quiesce()
 
         if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead = self.mmu_toolhead
@@ -683,8 +709,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             s.set_stepper_kinematics(self._prev_sk[i])
             s.set_rotation_distance(self._prev_rd[i])
             self._unregister(driving_toolhead, s)
-            self._register(following_toolhead, s)
-            s.set_trapq(self._prev_trapq)
+            logging.info("PAUL: unsync() passing _prev_trapq because might be extruder or mmu_toolhead shared")
+            self._register(following_toolhead, s, trapq=self._prev_trapq)
             s.set_position(pos)
 
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:

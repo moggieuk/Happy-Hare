@@ -1267,7 +1267,7 @@ class Mmu:
                     self.log_warning(msg)
             self._set_print_state("initialized")
 
-            # Use pre-gate sensors to adjust gate map
+            # Use per gate sensors to adjust gate map
             self.gate_status = self._validate_gate_status(self.gate_status)
 
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
@@ -5088,7 +5088,6 @@ class Mmu:
     # motor = "gear"           - gear motor(s) only on rail
     #         "gear+extruder"  - gear and extruder included on rail
     #         "extruder"       - extruder only on gear rail
-    #         "both"           - gear and extruder together but independent (legacy, homing move not possible)
     #         "synced"         - gear synced with extruder as in print (homing move not possible)
     #
     # If homing move then endstop name can be specified.
@@ -5147,7 +5146,7 @@ class Mmu:
                     speed = speed or self.gear_short_move_speed
                     accel = accel or self.gear_short_move_accel
 
-        elif motor in ["both", "gear+extruder", "synced"]:
+        elif motor in ["gear+extruder", "synced"]:
             if homing_move != 0:
                 speed = speed or min(self.gear_homing_speed, self.extruder_homing_speed)
                 accel = accel or min(max(self.gear_from_buffer_accel, self.gear_from_spool_accel), self.extruder_accel)
@@ -5242,21 +5241,6 @@ class Mmu:
                     else:
                         if self.log_enabled(self.LOG_STEPPER):
                             self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
-                        ext_pos[3] += dist
-                        self.toolhead.move(ext_pos, speed)
-
-            # Independent motors. Unsynced move
-            elif motor == "both":
-                with self._wrap_sync_mode(None):
-                    if homing_move != 0:
-                        self.log_error("Not possible to perform homing move on two independent steppers")
-                    else:
-                        self._ensure_safe_extruder_temperature(wait=False)
-                        if self.log_enabled(self.LOG_STEPPER):
-                            self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
-                        pos[1] += dist
-                        with self.wrap_accel(accel):
-                            self.mmu_toolhead.move(pos, speed)
                         ext_pos[3] += dist
                         self.toolhead.move(ext_pos, speed)
 
@@ -5681,8 +5665,8 @@ class Mmu:
         accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
         wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
-        if motor not in ["gear", "extruder", "gear+extruder", "synced", "both"]:
-            raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder', 'synced' or 'both'")
+        if motor not in ["gear", "extruder", "gear+extruder", "synced"]:
+            raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder' or 'synced'")
         if motor == "extruder":
             self.selector.filament_release()
         else:
